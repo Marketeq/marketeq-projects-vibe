@@ -171,7 +171,10 @@ export interface ScreenshotTakenEvent {
   /** Shared by every monitor's screenshot from the same capture. */
   groupKey: string;
   sensitive: boolean;
-  activeAppName: string | null;
+  /** Every distinct app seen frontmost during this capture interval (not just the instant of capture). */
+  activeApps: string[];
+  /** appName -> local temp-file path to that app's extracted icon PNG, for apps where extraction succeeded. */
+  activeAppIcons: Record<string, string>;
 }
 
 // ---------- Activity monitor contracts ----------

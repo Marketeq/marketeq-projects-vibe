@@ -75,8 +75,13 @@ export class Contract {
   @Column({ nullable: true })
   jobId: string;
 
-  @Column({ type: 'text', nullable: true }) 
+  @Column({ type: 'text', nullable: true })
   note?: string;
+
+  // The accepted offer this contract was created from (OS-07). Null for
+  // contracts that predate the offer handoff. Unique when set.
+  @Column({ type: 'uuid', nullable: true })
+  offerId: string | null;
 
   // Automatic timestamps
   @CreateDateColumn()

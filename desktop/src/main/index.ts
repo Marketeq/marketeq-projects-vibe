@@ -26,6 +26,8 @@ import { createScreenshotService } from './services/capture/screenshot-service';
 import { createActivityMonitor } from './services/capture/activity-monitor';
 import { startInputActivity, stopInputActivity } from './services/capture/input-activity';
 import { createCleanupJob } from './services/capture/cleanup-job';
+import { createAppUsageTracker, type AppUsageTracker } from './services/capture/app-usage-tracker';
+import { createActivityWatchTracker } from './services/capture/activitywatch-tracker';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
 import { createApiClient } from './services/sync/api-client';
@@ -337,12 +339,53 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
+    // Real event-driven tracking via a locally-run ActivityWatch, with an
+    // automatic fallback to 15s polling if the bundled binaries are
+    // missing, blocked, or fail to start on this machine — app tracking
+    // never drops to zero, it just degrades to the previous behavior.
+    //
+    // The polling tracker only ever runs when ActivityWatch has genuinely
+    // failed — its own startup check came back negative, or one of its two
+    // child processes exited mid-session — never as a standing "just in
+    // case" companion. Each polling sample shells out to PowerShell/
+    // osascript; running that on a timer for the length of every session
+    // regardless of whether it's needed was wasted work for the common
+    // case where ActivityWatch is working fine.
+    const pollingTracker = createAppUsageTracker({
+      logger,
+      options: { pollIntervalMs: 15_000 },
+    });
+    let fallbackActive = false;
+    const awTracker = createActivityWatchTracker({
+      logger,
+      options: { dbPath: path.join(app.getPath('userData'), 'dtt', 'activitywatch') },
+      onAvailabilityChange: (available) => {
+        if (!available && !fallbackActive) {
+          fallbackActive = true;
+          pollingTracker.start();
+          logger.info('activitywatch unavailable — starting polling tracker fallback');
+        }
+      },
+    });
+    const appUsageTracker: AppUsageTracker = {
+      start: () => {
+        fallbackActive = false;
+        awTracker.start();
+      },
+      stop: () => {
+        pollingTracker.stop();
+        awTracker.stop();
+        fallbackActive = false;
+      },
+      drain: () => (awTracker.isAvailable() ? awTracker.drain() : pollingTracker.drain()),
+    };
     screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
       preferenceRepo: repos.preference,
       permissions,
+      appUsageTracker,
     });
     const activityMonitor = createActivityMonitor({
       logger,
@@ -358,6 +401,7 @@ async function bootstrap(): Promise<void> {
       logger,
       screenshotService,
       activityMonitor,
+      appUsageTracker,
       cleanupJob,
       permissions,
       preferenceRepo: repos.preference,
