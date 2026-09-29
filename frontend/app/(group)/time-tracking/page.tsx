@@ -1523,6 +1523,8 @@ function TimeTrackingSettingsDialog({
 type FilterCategory =
   | "contracts"
   | "tasks"
+  | "apps"
+  | "urls"
   | "activity"
   | "timeEntry"
 
@@ -1600,6 +1602,50 @@ const taskFilterOpts: FilterOptionItem[] = [
 ]
 
 
+const appFilterOpts: FilterOptionItem[] = [
+  {
+    value: "Google Docs",
+    label: "Google Docs",
+    avatar: { initial: "G", color: "bg-primary-500" },
+  },
+  {
+    value: "Notion",
+    label: "Notion",
+    avatar: { initial: "N", color: "bg-gray-800" },
+  },
+  {
+    value: "Slack",
+    label: "Slack",
+    avatar: { initial: "S", color: "bg-error-400" },
+  },
+  {
+    value: "Figma",
+    label: "Figma",
+    avatar: { initial: "F", color: "bg-purple-500" },
+  },
+]
+const urlFilterOpts: FilterOptionItem[] = [
+  {
+    value: "https://youtube.com/wat...",
+    label: "https://youtube.com/wat...",
+    avatar: { initial: "Y", color: "bg-error-500" },
+  },
+  {
+    value: "https://pinterest.com/ap...",
+    label: "https://pinterest.com/ap...",
+    avatar: { initial: "P", color: "bg-error-600" },
+  },
+  {
+    value: "https://docs.google.com/...",
+    label: "https://docs.google.com/...",
+    avatar: { initial: "D", color: "bg-primary-500" },
+  },
+  {
+    value: "https://www.google.com...",
+    label: "https://www.google.com...",
+    avatar: { initial: "G", color: "bg-success-500" },
+  },
+]
 const activityFilterOpts: FilterOptionItem[] = [
   { value: "none", label: "No Activity" },
   { value: "low", label: "Low Activity" },
@@ -1631,6 +1677,22 @@ const filterCategories: Record<FilterCategory, CategoryConfig> = {
     combinable: true,
     options: taskFilterOpts,
   },
+  apps: {
+    label: "Apps",
+    pluralChip: "Apps",
+    searchPlaceholder: "Filter by app...",
+    searchable: true,
+    combinable: true,
+    options: appFilterOpts,
+  },
+  urls: {
+    label: "URL's",
+    pluralChip: "URL's",
+    searchPlaceholder: "Filter by url...",
+    searchable: true,
+    combinable: true,
+    options: urlFilterOpts,
+  },
   activity: {
     label: "Activity Level",
     pluralChip: "",
@@ -1652,6 +1714,8 @@ const filterCategories: Record<FilterCategory, CategoryConfig> = {
 const filterCategoryOrder: FilterCategory[] = [
   "contracts",
   "tasks",
+  "apps",
+  "urls",
   "activity",
   "timeEntry",
 ]
@@ -1660,6 +1724,8 @@ type AppliedFilters = Record<FilterCategory, string[]>
 const emptyAppliedFilters: AppliedFilters = {
   contracts: [],
   tasks: [],
+  apps: [],
+  urls: [],
   activity: [],
   timeEntry: [],
 }
@@ -3381,6 +3447,17 @@ export default function TimeTrackingPage() {
                   <Plus className="size-4" />
                   Manual time <span className="font-bold">{manualTimeLabel}</span>
                 </Badge>
+              )}
+              {/* US-89: only shown when a single contract is selected — with
+                  "all" selected, contracts can have different rates, and
+                  picking one to display (or averaging) would be a guess. */}
+              {contractFilter !== "all" && realContracts.find((c) => c.id === contractFilter) && (
+                <span className="text-sm text-gray-400">
+                  Rate{" "}
+                  <span className="font-bold text-primary-500">
+                    ${realContracts.find((c) => c.id === contractFilter)!.rate}/hr
+                  </span>
+                </span>
               )}
             </div>
             <div className="flex items-center gap-3">
