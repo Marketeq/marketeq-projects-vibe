@@ -39,6 +39,11 @@ export interface MyListing {
   updatedAt?: string
   datePublished?: string | null
   teamAvatars?: string[]
+  /** QA-195/PMCM-403: unresolved required-field validation error, computed
+   * server-side (getMyProjects) regardless of status — true even for a
+   * Published/Active listing whose content was edited below what's
+   * required after it went live. */
+  hasValidationError?: boolean
 }
 
 export const MY_LISTINGS_STORAGE_KEY = "marketeq-project-drafts"
@@ -345,6 +350,7 @@ async function fetchBackendListings(): Promise<MyListing[]> {
       updatedAt: p.updatedAt || p.createdAt,
       datePublished: p.projectDatePublished ?? null,
       teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
+      hasValidationError: Boolean(p.hasValidationError),
     }))
   } catch (err) {
     console.warn("Failed to fetch backend listings; using local fallback:", err)

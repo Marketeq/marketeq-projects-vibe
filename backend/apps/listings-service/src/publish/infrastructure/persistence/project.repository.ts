@@ -95,6 +95,15 @@ export abstract class ProjectRepository {
     }>,
   ): Promise<void>;
 
+  // QA-195/PMCM-403: lightweight, unpersisted signal for the dashboard's
+  // error badge — "does this project have a real scope" (>=1 phase with
+  // >=1 task) isn't on the Project entity itself; scope lives in the
+  // separate phase/task tables. Batched by project id to avoid an N+1
+  // query per dashboard card.
+  abstract getProjectIdsWithScope(
+    projectIds: Array<Project['id']>,
+  ): Promise<Set<string>>;
+
   abstract getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]>;
 
   abstract updateRecentQuestions(
