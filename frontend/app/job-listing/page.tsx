@@ -10827,6 +10827,14 @@ const formatTeamBudgetDuration = (durationMonths?: number) => {
   return `${durationMonths} ${durationMonths === 1 ? "month" : "months"}`;
 };
 
+const formatTeamBudgetWorkDuration = (durationMonths?: number) => {
+  if (typeof durationMonths !== "number" || durationMonths <= 0) {
+    return "Ongoing work";
+  }
+
+  return `${durationMonths} month work`;
+};
+
 const createTeamRoleRow = (
   index: number,
   overrides: Partial<TeamRoleRow> = {},
@@ -18800,8 +18808,11 @@ const TeamRoles = ({
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const isExistingProject = existingContractId === "marketeq-projects-network";
   const isIndividualMode = hiringMode === "individual";
-  // AI generates the team table only for a new (non-existing-contract) team.
-  const shouldAutoGenerateTeam = hiringMode === "team" && !existingContractId;
+  // AI generates the role table for new listings. Individual mode uses the
+  // same flow as team mode, capped to one generated role.
+  const shouldAutoGenerateTeam =
+    (hiringMode === "team" || hiringMode === "individual") &&
+    !existingContractId;
   // The step-2 budget is the client's target, so a new team must not overwrite
   // it with the rows' estimate.
   const keepStepTwoBudget = shouldAutoGenerateTeam;
@@ -18834,7 +18845,7 @@ const TeamRoles = ({
       return details.teamRoleRows;
     }
 
-    if (!existingContractId && !isIndividualMode) {
+    if (!existingContractId) {
       return [];
     }
 
@@ -18850,10 +18861,6 @@ const TeamRoles = ({
             row.workSchedule === "part_time" ? "Part-time" : "Full-time",
         }),
       );
-    }
-
-    if (isIndividualMode) {
-      return [createTeamRoleRow(0, { role: "Individual Role" })];
     }
 
     return teamRoleRows;
@@ -18939,11 +18946,13 @@ const TeamRoles = ({
           return;
         }
 
-        const response = await JobListingAPI.GenerateTeamRows(jobListingId);
+        const response = await JobListingAPI.GenerateTeamRows(jobListingId, {
+          ...(isIndividualMode ? { headcount: 1 } : {}),
+        });
         const payload = getResponsePayload(response);
-        const generated: any[] = Array.isArray(payload?.rows)
-          ? payload.rows
-          : [];
+        const generated: any[] = (
+          Array.isArray(payload?.rows) ? payload.rows : []
+        ).slice(0, isIndividualMode ? 1 : undefined);
         const durationMonths = toFiniteNumber(payload?.durationMonths);
 
         if (payload?.aiStatus !== "OK" || generated.length === 0) {
@@ -18982,6 +18991,7 @@ const TeamRoles = ({
   }, [
     jobListingId,
     persistTeamRoleRows,
+    isIndividualMode,
     rows.length,
     setDetails,
     shouldAutoGenerateTeam,
@@ -19228,12 +19238,12 @@ const TeamRoles = ({
         <div className="mx-auto max-w-[1240px] py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-0">
           <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
             <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
-              {isIndividualMode ? "Customize your role" : "Customize your team"}
+              Customize your team
             </h1>
             <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
-              {isIndividualMode
-                ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
-                : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
+              Add the roles, locations, and experience levels you&apos;re
+              looking for—we&apos;ll estimate pay rates and help you build the
+              right team faster.
             </p>
           </div>
 
@@ -19241,7 +19251,7 @@ const TeamRoles = ({
             <div className="min-w-0 flex-auto overflow-hidden rounded-lg border border-gray-200 bg-white min-[1024px]:w-[886px] min-[1024px]:flex-none">
               <div className="flex h-[60px] items-center justify-between gap-4 self-stretch border-b border-gray-200 bg-white px-6 py-3">
                 <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                  {isIndividualMode ? "Role" : "Team Members"}
+                  Team Members
                 </h2>
                 <Button
                   size="sm"
@@ -19250,7 +19260,7 @@ const TeamRoles = ({
                   onClick={openAddRoleDialog}
                 >
                   <Plus className="size-[15px]" />
-                  {isIndividualMode ? "Add Role" : "Add Team Member"}
+                  Add Team Member
                 </Button>
               </div>
 
@@ -19271,19 +19281,19 @@ const TeamRoles = ({
               <div className="self-stretch overflow-x-auto bg-white">
                 <Table className="min-w-[886px] table-fixed bg-white">
                   <colgroup>
-                    <col className="w-[216px]" />
+                    <col className="w-[241px]" />
                     <col className="w-[140px]" />
                     <col className="w-[105px]" />
                     <col className="w-[124px]" />
                     <col className="w-[126px]" />
                     <col className="w-[100px]" />
-                    <col className="w-[75px]" />
+                    <col className="w-[50px]" />
                   </colgroup>
                   <TableHeader className="bg-gray-50 [&_tr]:border-y-0">
                     <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
-                      <TableHead className="h-11 w-[216px] px-0 py-0">
+                      <TableHead className="h-11 w-[241px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[180px]">Role</span>
+                          <span className="h-[18px] w-[205px]">Role</span>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[140px] px-0 py-0">
@@ -19322,8 +19332,8 @@ const TeamRoles = ({
                           <TooltipProvider delayDuration={75}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="h-[18px] w-[54px] cursor-default">
-                                  Schedule
+                                <span className="h-[18px] w-[94px] cursor-default">
+                                  Work Schedule
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent
@@ -19395,50 +19405,56 @@ const TeamRoles = ({
                           </TooltipProvider>
                         </div>
                       </TableHead>
-                      <TableHead className="h-11 w-[75px] px-0 py-0">
-                        <div className="h-11 px-6 py-3 pl-3" />
+                      <TableHead className="h-11 w-[50px] px-0 py-0">
+                        <div className="h-11 px-3 py-3" />
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isGeneratingTeamRows && rows.length === 0
-                      ? Array.from({ length: 3 }, (_, index) => (
-                          <TableRow
-                            key={`team-row-skeleton-${index}`}
-                            className="h-[72px] border-b border-gray-200 hover:bg-transparent"
-                          >
-                            <TableCell colSpan={7} className="h-[72px] px-6 py-4">
-                              <span className="relative block h-10 w-full overflow-hidden rounded bg-gray-100">
-                                <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
-                              </span>
-                            </TableCell>
-                          </TableRow>
-                        ))
+                      ? Array.from(
+                          { length: isIndividualMode ? 1 : 3 },
+                          (_, index) => (
+                            <TableRow
+                              key={`team-row-skeleton-${index}`}
+                              className="h-[72px] border-b border-gray-200 hover:bg-transparent"
+                            >
+                              <TableCell
+                                colSpan={7}
+                                className="h-[72px] px-6 py-4"
+                              >
+                                <span className="relative block h-10 w-full overflow-hidden rounded bg-gray-100">
+                                  <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        )
                       : null}
                     {rows.map((row, index) => (
                       <TableRow
                         key={`${row.role}-${index}`}
                         className="h-[72px] border-b border-gray-200 hover:bg-transparent"
                       >
-                        <TableCell className="h-[72px] w-[216px] px-0 py-0">
-                          <div className="flex h-[72px] items-center gap-3 px-6 py-4 pr-4">
+                        <TableCell className="h-[72px] w-[241px] px-0 py-0">
+                          <div className="flex h-[72px] items-center gap-3 py-4 pl-6 pr-3">
                             {row.editable ? (
-                              <div className="flex h-10 w-44 flex-col items-start justify-start gap-0">
+                              <div className="flex h-5 w-[205px] flex-col items-start justify-start gap-0">
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   visual="gray"
-                                  className="h-5 w-44 justify-start p-0 text-left hover:bg-transparent"
+                                  className="h-5 w-[205px] justify-start p-0 text-left hover:bg-transparent"
                                   onClick={() => openRenameRoleDialog(index)}
                                 >
-                                  <span className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                  <span className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
                                     {row.role}
                                   </span>
                                 </Button>
                               </div>
                             ) : (
-                              <div className="flex h-10 w-44 flex-col items-start">
-                                <p className="h-5 w-44 truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                              <div className="flex h-5 w-[205px] flex-col items-start">
+                                <p className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
                                   {row.role}
                                 </p>
                               </div>
@@ -19681,8 +19697,8 @@ const TeamRoles = ({
                             </TooltipProvider>
                           </div>
                         </TableCell>
-                        <TableCell className="h-[72px] w-[75px] px-0 py-0">
-                          <div className="flex h-[72px] items-center justify-center px-6 py-4">
+                        <TableCell className="h-[72px] w-[50px] px-0 py-0">
+                          <div className="flex h-[72px] items-center justify-center px-3 py-4">
                             {row.editable ? (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -19771,14 +19787,12 @@ const TeamRoles = ({
                 <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
                   <Clock className="size-[18px] text-primary-500" />
                   {isExistingProject
-                    ? "6 month project"
-                    : isIndividualMode
-                      ? (rows[0]?.length ?? "3 months")
-                      : formatTeamBudgetDuration(details.durationMonths)}
+                    ? "6 month work"
+                    : formatTeamBudgetWorkDuration(contractMonths)}
                 </div>
                 <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
                   <Users className="size-[18px] text-primary-500" />
-                  {rows.length} {isIndividualMode ? "role" : "team members"}
+                  {rows.length} {rows.length === 1 ? "team member" : "team members"}
                 </div>
               </div>
             </div>
@@ -19798,9 +19812,7 @@ const TeamRoles = ({
           accessibilityTitle={
             roleDialogMode === "rename"
               ? "Rename role"
-              : isIndividualMode
-                ? "Add role"
-                : "Add team member"
+              : "Add team member"
           }
           dialogOverlay={<DialogOverlay className="bg-[#101828]/20" />}
           className={cn(
