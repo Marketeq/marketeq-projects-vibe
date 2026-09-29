@@ -275,6 +275,42 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     return typeof pid === 'number' && Number.isInteger(pid) && pid > 0;
   }
 
+  // .kill() only *requests* termination — it resolves nothing and fires no
+  // event of its own; the process can still hold its port and any open file
+  // handles (notably the sqlite --dbpath file) for a little while after the
+  // call returns. Confirmed directly against the real binaries: a stop()
+  // that only called .kill() and moved on let a rapid stop()-then-start()
+  // spawn a new aw-server-rust before the old one had actually released the
+  // port/db file, and the new one died on startup. Waiting for the child's
+  // own 'exit' event (not just calling kill()) is what actually closes that
+  // gap. Bounded by a timeout so a process that refuses to die can't hang
+  // shutdown (and therefore the next start()) forever.
+  function waitForExit(proc: ChildProcess | null, timeoutMs = 3000): Promise<void> {
+    return new Promise((resolve) => {
+      if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => {
+        proc.removeListener('exit', onExit);
+        log.debug('process did not exit within the timeout after kill() — proceeding anyway');
+        resolve();
+      }, timeoutMs);
+      function onExit() {
+        clearTimeout(timer);
+        resolve();
+      }
+      proc.once('exit', onExit);
+      try {
+        proc.kill();
+      } catch {
+        clearTimeout(timer);
+        proc.removeListener('exit', onExit);
+        resolve();
+      }
+    });
+  }
+
   // Kills a leftover process from a previous crashed run — but only after
   // confirming it's actually still our own binary, not whatever the OS has
   // since handed that PID to. Real review finding, verified against the
@@ -347,7 +383,30 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
   // that's already changed its mind.
   let startGeneration = 0;
 
+  // Set while stop()'s teardown (wipe the bucket, then kill both
+  // processes, then clear the pid file) is in flight, cleared once it's
+  // fully done. Review finding: stop() used to fire the wipe and kill
+  // immediately after, without waiting — the wipe rarely completed before
+  // the server died. The fix isn't just "await the wipe": if start() is
+  // called while that teardown is still running, it must wait for the old
+  // processes to actually be dead before spawning new ones, otherwise it
+  // either wrongly thinks a session is "already running" or tries to bind
+  // the same port the dying server hasn't released yet.
+  let stoppingPromise: Promise<void> | null = null;
+
   function start(): void {
+    if (stoppingPromise) {
+      const waitFor = stoppingPromise;
+      const myGeneration = ++startGeneration;
+      void waitFor.then(() => {
+        if (myGeneration !== startGeneration) {
+          log.debug('start() superseded while waiting for a prior stop() to finish tearing down — abandoning');
+          return;
+        }
+        start(); // teardown is done, refs are cleared — re-enter for a normal fresh start
+      });
+      return;
+    }
     if (serverProc || watcherProc) return;
     if (!fs.existsSync(serverPath) || !fs.existsSync(watcherPath)) {
       log.info({ serverPath, watcherPath }, 'activitywatch binaries not present, unavailable');
@@ -450,40 +509,73 @@ export function createActivityWatchTracker(deps: Deps): ActivityWatchTracker {
     startGeneration++;
     if (syncHandle) clearInterval(syncHandle);
     syncHandle = null;
-    // Retention backstop: wipe anything left in the bucket (events that
-    // arrived after the last sync but before stop) so nothing outlives the
-    // session that generated it. Best-effort and fired before the server
-    // process is killed below, since it needs to still be running to
-    // answer the request. Confirmed directly against the real binary:
-    // DELETE /api/0/buckets/<bucket>?force=1 -> 200.
-    if (available && hostname) {
-      const bucketId = `aw-watcher-window_${hostname}`;
-      fetchFn(`http://127.0.0.1:${port}/api/0/buckets/${encodeURIComponent(bucketId)}?force=1`, {
-        method: 'DELETE',
-      }).catch((err) => log.debug({ err }, 'failed to wipe AW bucket on stop (non-fatal)'));
+    if (stoppingPromise) return; // a teardown is already in flight — don't start a second one
+    if (!serverProc && !watcherProc) {
+      available = false;
+      return; // nothing actually running, nothing to tear down
     }
-    try {
-      watcherProc?.kill();
-    } catch {
-      /* ignore */
-    }
-    try {
-      serverProc?.kill();
-    } catch {
-      /* ignore */
-    }
-    // A clean stop shut both processes down properly — nothing orphaned,
-    // nothing for the next start() to clean up.
-    if (pidFilePath) {
-      try {
-        fs.unlinkSync(pidFilePath);
-      } catch {
-        /* ignore — may not exist */
+
+    // Snapshot what needs cleanup before resetting state, so a start()
+    // called the instant after this returns doesn't see stale references.
+    const serverProcToKill = serverProc;
+    const watcherProcToKill = watcherProc;
+    const bucketIdToWipe = available && hostname ? `aw-watcher-window_${hostname}` : null;
+    available = false; // reflect "stopped" immediately — isAvailable() shouldn't lag behind a stop() call
+
+    stoppingPromise = (async () => {
+      // Ordered, not parallel — and each step is confirmed-dead, not just
+      // signaled. Review finding: killing the watcher and wiping the bucket
+      // at the same time leaves a real gap — the watcher can still report
+      // one more focus change while the DELETE is in flight, and that event
+      // can land in the bucket *after* the wipe already ran, so it never
+      // gets erased. Killing the watcher first, and waiting for it to
+      // actually be gone (not just signaled — see waitForExit's comment),
+      // makes it physically impossible for new data to appear once the wipe
+      // starts. The server is killed last, once nothing needs it anymore.
+      await waitForExit(watcherProcToKill);
+
+      // Retention backstop: wipe anything left in the bucket (events that
+      // arrived after the last sync but before stop) so nothing outlives
+      // the session that generated it. Genuinely awaited — a real review
+      // finding: this used to fire the DELETE and kill the server in the
+      // same tick, so the request almost never landed before the process
+      // died. Bounded by a short timeout so an unresponsive server can't
+      // block shutdown (and a subsequent start()) forever. Confirmed
+      // directly against the real binary: DELETE
+      // /api/0/buckets/<bucket>?force=1 -> 200, and the data is actually
+      // gone afterward — not just "the request didn't error."
+      if (bucketIdToWipe) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        try {
+          await fetchFn(`http://127.0.0.1:${port}/api/0/buckets/${encodeURIComponent(bucketIdToWipe)}?force=1`, {
+            method: 'DELETE',
+            signal: controller.signal,
+          });
+        } catch (err) {
+          log.debug({ err }, 'failed to wipe AW bucket on stop (non-fatal)');
+        } finally {
+          clearTimeout(timeoutId);
+        }
       }
-    }
-    watcherProc = null;
-    serverProc = null;
-    available = false;
+      // Awaited, not fire-and-forget — see waitForExit's comment for why:
+      // a queued start() must not be able to spawn into a port/db file the
+      // old process hasn't actually released yet.
+      await waitForExit(serverProcToKill);
+      // A clean stop shut both processes down properly — nothing orphaned,
+      // nothing for the next start() to clean up.
+      if (pidFilePath) {
+        try {
+          fs.unlinkSync(pidFilePath);
+        } catch {
+          /* ignore — may not exist */
+        }
+      }
+    })().finally(() => {
+      watcherProc = null;
+      serverProc = null;
+      stoppingPromise = null;
+    });
   }
 
   function isAvailable(): boolean {
