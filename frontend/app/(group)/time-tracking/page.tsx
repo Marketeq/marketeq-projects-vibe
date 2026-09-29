@@ -19,6 +19,7 @@ import {
   bulkTransferScreenshots,
 } from "@/service/http/screenshots"
 import { cn } from "@/utils/functions"
+import { getPublicApiUrl, getPublicBackendUrl } from "@/lib/runtime-urls"
 import { ROLE } from "@/types/user"
 import {
   ArrowLeft,
@@ -99,6 +100,9 @@ import {
   useToast,
 } from "@/components/ui"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
+import { VscCode } from "react-icons/vsc"
+import { FiFigma } from "react-icons/fi"
+import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
 import { getManualTime } from "@/service/http/manual-time"
 import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
 import { createContractTask, getTasksForContract } from "@/service/http/tasks"
@@ -114,6 +118,9 @@ interface Screenshot {
   activityLevel: number // 0-100 progress bar
   // The same apps with their real names and time in front during this
   // screenshot's interval — the detail panel's app activity.
+  apps: string[] // app icon labels like "chrome", "slack", "github"
+  appIconUrls?: Record<string, string> // normalized app key -> real extracted icon URL, when available
+  appDisplayNames?: Record<string, string> // normalized app key -> real appName, for apps not in the curated appDisplay dictionary
   isDuplicate?: boolean
   duplicateCount?: number
   isNoActivity?: boolean
@@ -208,6 +215,127 @@ const projectTaskColors: Record<ProjectColor, string> = {
   lime: "text-[#91B46A]",
 }
 
+// ─── App icon components (small colored dots) ───────────────────────────
+
+// function AppIcons({ apps }: { apps: string[] }) {
+//   const colors: Record<string, string> = {
+//     chromebrowser: "bg-success-500",
+//     chrome: "bg-success-500",
+//     googlesearch: "bg-warning-500",
+//     slack: "bg-error-400",
+//     github: "bg-gray-700",
+//     githubdesktop: "bg-gray-700",
+//     vscode: "bg-primary-500",
+//     figma: "bg-purple-500",
+//     terminal: "bg-gray-500",
+//   }
+//   return (
+//     <div className="flex items-center gap-0.5">
+//       {apps.map((app, i) => (
+//         <div
+//           key={i}
+//           className={cn("size-3 rounded-full", colors[app] || "bg-gray-400")}
+//           title={app}
+//         />
+//       ))}
+//     </div>
+//   )
+// }
+
+function AppIcons({
+  apps,
+  iconUrls,
+  displayNames,
+}: {
+  apps: string[]
+  iconUrls?: Record<string, string>
+  displayNames?: Record<string, string>
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {apps.map((app, i) => (
+        <AppIcon key={i} app={app} iconUrl={iconUrls?.[app]} displayName={displayNames?.[app]} />
+      ))}
+    </div>
+  )
+}
+
+// The backend never sends anything but its own server-derived iconUrl (see
+// screenshots.service.ts#confirm — a client-supplied value is always
+// dropped) — this is a second, independent check on the render side, so a
+// future backend regression can't turn into loading an arbitrary attacker
+// URL in another user's browser just by re-introducing a passthrough field.
+function isTrustedIconOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return true
+    const trustedOrigins = [getPublicBackendUrl(), getPublicApiUrl(), process.env.NEXT_PUBLIC_R2_CDN_BASE]
+      .map((u) => {
+        if (!u) return null
+        try {
+          return new URL(u).origin
+        } catch {
+          return null
+        }
+      })
+      .filter((origin): origin is string => origin !== null)
+    return trustedOrigins.includes(parsed.origin)
+  } catch {
+    return false
+  }
+}
+
+function AppIcon({
+  app,
+  iconUrl,
+  displayName,
+}: {
+  app: string
+  iconUrl?: string
+  displayName?: string
+}) {
+  const size = 14
+  if (iconUrl && isTrustedIconOrigin(iconUrl)) {
+    // Real, OS-extracted icon — exact, not a guess. Falls through to the
+    // name-based guess below when unavailable or untrusted.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={iconUrl} alt={app} width={size} height={size} className="rounded-[3px]" />
+    )
+  }
+  switch (app) {
+    case "chrome":
+    case "chromebrowser":
+      return <FaChrome size={size} className="text-green-500" title="Chrome" />
+    case "googlesearch":
+      return <FaGoogle size={size} className="text-amber-500" title="Google Search" />
+    case "slack":
+      return <FaSlack size={size} className="text-rose-500" title="Slack" />
+    case "github":
+    case "githubdesktop":
+      return <FaGithub size={size} className="text-gray-700" title="GitHub" />
+    case "vscode":
+      return <VscCode size={size} className="text-blue-500" title="VS Code" />
+    case "figma":
+      return <FiFigma size={size} className="text-purple-500" title="Figma" />
+    case "terminal":
+      return <FaTerminal size={size} className="text-gray-500" title="Terminal" />
+    case "code":
+      return <VscCode size={size} className="text-blue-500" title="VS Code" />
+    case "googlechrome":
+      return <FaChrome size={size} className="text-green-500" title="Chrome" />
+    case "finder":
+      return <FaApple size={size} className="text-gray-500" title="Finder" />
+    case "safari":
+      return <FaSafari size={size} className="text-blue-400" title="Safari" />
+    case "electron":
+      return <VscCode size={size} className="text-blue-400" title="Electron" />
+    default:
+      return <div className="size-3 rounded-full bg-gray-400" title={displayName ?? app} />
+  }
+}
+
+
 // ─── Sample data ────────────────────────────────────────────────────────
 
 const sampleScreenshots: Screenshot[] = [
@@ -216,18 +344,21 @@ const sampleScreenshots: Screenshot[] = [
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 72,
+    apps: ["chrome", "slack", "github"],
   },
   {
     id: "s2",
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 85,
+    apps: ["chrome", "slack", "github"],
   },
   {
     id: "s3",
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 60,
+    apps: ["chrome", "slack", "github"],
     isDuplicate: true,
     duplicateCount: 2,
   },
@@ -236,6 +367,7 @@ const sampleScreenshots: Screenshot[] = [
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 0,
+    apps: [],
     isNoActivity: true,
   },
   {
@@ -243,12 +375,14 @@ const sampleScreenshots: Screenshot[] = [
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 90,
+    apps: ["chrome", "slack", "github"],
   },
   {
     id: "s6",
     time: "11:11 am",
     imageUrl: "",
     activityLevel: 45,
+    apps: ["chrome", "slack", "github"],
     isDuplicate: true,
     duplicateCount: 2,
   },
@@ -410,12 +544,32 @@ function transformScreenshotsToTimeBlocks(
       .toLowerCase()
 
     const activityLevel = Math.round((Number(c.keyboardPct) + Number(c.mousePct)) / 2)
+    const apps = c.apps
+      ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
+      : []
+    const appIconUrls = c.apps
+      ? c.apps.reduce<Record<string, string>>((acc, a) => {
+          const key = a.appName.toLowerCase().replace(/\s+/g, "")
+          if (a.iconUrl) acc[key] = a.iconUrl
+          return acc
+        }, {})
+      : undefined
+    const appDisplayNames = c.apps
+      ? c.apps.reduce<Record<string, string>>((acc, a) => {
+          const key = a.appName.toLowerCase().replace(/\s+/g, "")
+          acc[key] = a.appName // keep the real, original name for display
+          return acc
+        }, {})
+      : undefined
 
     return {
       id: c.id,
       time: timeStr,
       imageUrl: c.thumbnailUrl || "",
       activityLevel,
+      apps,
+      appIconUrls,
+      appDisplayNames,
       isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0) && !c.thumbnailUrl,
       isBlurred: c.isBlurred ?? false,
       contractId: c.contractId ?? undefined,
@@ -605,6 +759,13 @@ function ScreenshotThumbnail({
       {/* Timestamp + app icons */}
       <div className="mt-2 flex h-5 items-center justify-between">
         <span className="text-sm leading-5 text-dark-blue-400">{screenshot.time}</span>
+        {screenshot.apps.length > 0 && (
+          <AppIcons
+            apps={screenshot.apps}
+            iconUrls={screenshot.appIconUrls}
+            displayNames={screenshot.appDisplayNames}
+          />
+        )}
       </div>
     </div>
   )
@@ -1724,6 +1885,28 @@ function flattenScreenshots(blocks: TimeBlock[]): FlatScreenshot[] {
   )
 }
 
+// const appDisplay: Record<string, { name: string; color: string }> = {
+//   chrome: { name: "Chrome Browser", color: "bg-success-500" },
+//   slack: { name: "Slack", color: "bg-error-400" },
+//   github: { name: "Github Desktop", color: "bg-gray-700" },
+//   vscode: { name: "VS Code", color: "bg-primary-500" },
+//   figma: { name: "Figma", color: "bg-purple-500" },
+//   terminal: { name: "Terminal", color: "bg-gray-500" },
+// }
+
+const appDisplay: Record<string, { name: string; color: string }> = {
+  chrome: { name: "Chrome Browser", color: "bg-success-500" },
+  chromebrowser: { name: "Chrome Browser", color: "bg-success-500" },
+  googlesearch: { name: "Google Search", color: "bg-warning-500" },
+  slack: { name: "Slack", color: "bg-error-400" },
+  github: { name: "GitHub Desktop", color: "bg-gray-700" },
+  githubdesktop: { name: "GitHub Desktop", color: "bg-gray-700" },
+  vscode: { name: "VS Code", color: "bg-primary-500" },
+  figma: { name: "Figma", color: "bg-purple-500" },
+  terminal: { name: "Terminal", color: "bg-gray-500" },
+  googlechrome: { name: "Google Chrome", color: "bg-success-500" },
+  code: { name: "VS Code", color: "bg-primary-500" },
+}
 // ─── Contract / Task pickers ───────────────────────────────────────────
 
 interface ProjectOption {
@@ -2330,6 +2513,13 @@ function ScreenshotDetailsDialog({
                           <span className="text-[11px] text-gray-400">
                             {f.screenshot.time}
                           </span>
+                          {f.screenshot.apps.length > 0 && (
+                            <AppIcons
+                              apps={f.screenshot.apps}
+                              iconUrls={f.screenshot.appIconUrls}
+                              displayNames={f.screenshot.appDisplayNames}
+                            />
+                          )}
                         </div>
                       </button>
                     )
@@ -2427,6 +2617,41 @@ function ScreenshotDetailsDialog({
                     contractId={s.contractId || undefined}
                   />
                 )}
+
+                <div className="h-px bg-gray-200" />
+
+                {/* Apps */}
+                <div className="space-y-2">
+                  <label className="text-sm text-gray-500">Apps</label>
+                  {s.apps.length === 0 ? (
+                    <p className="text-xs text-gray-400">
+                      No app activity recorded
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {s.apps.map((app, i) => {
+                        const info = appDisplay[app] || {
+                          name: s.appDisplayNames?.[app] ?? app,
+                          color: "bg-gray-400",
+                        }
+                        return (
+                          <div key={i} className="flex items-center gap-2.5">
+                            <div className="size-5 flex-none flex items-center justify-center">
+                              <AppIcon
+                                app={app}
+                                iconUrl={s.appIconUrls?.[app]}
+                                displayName={s.appDisplayNames?.[app]}
+                              />
+                            </div>
+                            <span className="text-sm text-dark-blue-400">
+                              {info.name}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
