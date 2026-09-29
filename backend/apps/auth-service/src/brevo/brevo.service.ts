@@ -4,6 +4,22 @@ import axios, { AxiosInstance } from 'axios';
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 const PASSWORD_CREATED_SUBJECT =
   'Your Account Password Has Been Successfully Created!';
+const PASSWORD_CHANGED_SUBJECT = 'Your Password Has Been Changed';
+
+/**
+ * The Marketeq lockup, served from Brevo's own content library — the same
+ * asset the password-reset template (id 2) already uses, so it is a URL that
+ * is known to render in the clients our mail actually reaches.
+ *
+ * It has to be a hosted raster: the vector source
+ * (frontend/components/icons/marketeq-logo.tsx) cannot be inlined because
+ * Gmail strips <svg> and blocks data: image URIs.
+ *
+ * The file is 256x38, i.e. 2x the 128x19 it is displayed at, so it stays sharp
+ * on high-DPI screens.
+ */
+const MARKETEQ_LOGO_URL =
+  'https://img.mailinblue.com/10971309/images/content_library/original/6a508977bb8791bb42794f96.png';
 
 interface BrevoSender {
   email: string;
@@ -33,6 +49,7 @@ export class BrevoService {
   private readonly fromName: string;
   private readonly passwordResetTemplateId?: number;
   private readonly passwordCreatedTemplateId?: number;
+  private readonly passwordChangedTemplateId?: number;
 
   constructor() {
     const apiKey = process.env.BREVO_API_KEY || '';
@@ -43,6 +60,8 @@ export class BrevoService {
     this.passwordResetTemplateId = raw ? Number(raw) : undefined;
     const passwordCreatedRaw = process.env.BREVO_PASSWORD_CREATED_TEMPLATE_ID;
     this.passwordCreatedTemplateId = passwordCreatedRaw ? Number(passwordCreatedRaw) : undefined;
+    const passwordChangedRaw = process.env.BREVO_PASSWORD_CHANGED_TEMPLATE_ID;
+    this.passwordChangedTemplateId = passwordChangedRaw ? Number(passwordChangedRaw) : undefined;
 
     if (!apiKey) {
       this.logger.warn(
@@ -157,6 +176,112 @@ export class BrevoService {
     }
 
     await this.send(request);
+  }
+
+  /**
+   * Security notification sent after a password is actually changed.
+   *
+   * The when/device/where lines exist so someone who did *not* change their
+   * password can recognise that from the email alone. Each value is optional:
+   * the user-agent and the IP can legitimately be absent (a non-browser
+   * client, a proxy that strips them), and a line that would read
+   * "Device: unknown" tells the reader nothing while implying we looked. Such
+   * a line is omitted instead.
+   */
+  async sendPasswordChangedEmail(
+    to: string,
+    params: {
+      firstName?: string;
+      when?: string;
+      device?: string;
+      where?: string;
+      changePasswordUrl?: string;
+    },
+  ): Promise<void> {
+    const request: SendTransacEmailRequest = {
+      to: [{ email: to }],
+      subject: PASSWORD_CHANGED_SUBJECT,
+      params: {
+        firstName: params.firstName ?? '',
+        when: params.when ?? '',
+        device: params.device ?? '',
+        where: params.where ?? '',
+        changePasswordUrl: params.changePasswordUrl ?? '',
+      },
+      tags: ['password-changed'],
+    };
+
+    if (this.passwordChangedTemplateId) {
+      request.templateId = this.passwordChangedTemplateId;
+    } else {
+      request.htmlContent = this.buildPasswordChangedHtml(params);
+    }
+
+    await this.send(request);
+  }
+
+  /**
+   * Figma values, kept literal: 724px frame with 40px vertical padding and a
+   * 660px content column, 24px between blocks, Inter 14px/20px, body weight
+   * 500 and labels 700, text #22376B (Dark Blue/400), link #306CFE
+   * (Primary/500).
+   *
+   * Inline styles and no flexbox because email clients strip <style> blocks
+   * and do not lay out flex. Inter is named first but will not load in most
+   * clients, hence the Arial/Helvetica fallback.
+   *
+   * The logo is the full Figma lockup at its specified 128px width. Height is
+   * set to 19px rather than the Figma's 18.81px: the hosted asset's own aspect
+   * ratio puts it at 19.00px there, and forcing the fractional value would
+   * distort it by more than the 0.19px it would correct.
+   */
+  private buildPasswordChangedHtml(params: {
+    firstName?: string;
+    when?: string;
+    device?: string;
+    where?: string;
+    changePasswordUrl?: string;
+  }): string {
+    const firstName = this.escapeHtml(params.firstName?.trim() || 'there');
+    const changePasswordUrl = params.changePasswordUrl?.trim();
+
+    const linkText = 'change your password';
+    const linkHtml = changePasswordUrl
+      ? `<a href="${this.escapeAttribute(changePasswordUrl)}" style="color:#306CFE;text-decoration:underline;">${linkText}</a>`
+      : linkText;
+
+    const detail = (label: string, value?: string): string => {
+      const trimmed = value?.trim();
+      if (!trimmed) return '';
+      return `<div style="margin:0;"><span style="font-weight:700;">${this.escapeHtml(label)}:</span> ${this.escapeHtml(trimmed)}</div>`;
+    };
+
+    const details = [
+      detail('When', params.when),
+      detail('Device', params.device),
+      detail('Where', params.where),
+    ].join('');
+
+    const detailsBlock = details
+      ? `<div style="margin:24px 0 0;">${details}</div>`
+      : '';
+
+    return `<!doctype html>
+<html>
+  <body style="background:#ffffff;margin:0;padding:0;">
+    <div style="color:#22376B;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:20px;margin:0 auto;max-width:724px;padding:40px 24px;">
+      <img src="${MARKETEQ_LOGO_URL}" alt="Marketeq" width="128" height="19" style="border:0;display:block;height:19px;margin:0 0 32px;max-width:100%;outline:none;text-decoration:none;width:128px;" />
+      <div style="max-width:660px;">
+        <p style="margin:0 0 24px;">Hi ${firstName},</p>
+        <p style="margin:0 0 24px;">Your Marketeq password has been successfully updated.</p>
+        <p style="margin:0;">If you did not perform this action, you should ${linkHtml} right away. If this was you, you can safely ignore this email.</p>
+        ${detailsBlock}
+        <p style="margin:24px 0 0;">Thanks,</p>
+        <p style="font-weight:700;margin:0;">The Marketeq Team</p>
+      </div>
+    </div>
+  </body>
+</html>`;
   }
 
   private buildPasswordCreatedHtml(params: {

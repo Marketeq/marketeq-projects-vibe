@@ -23,6 +23,7 @@ import axios from 'axios';
 import * as otplib from 'otplib';
 import * as QRCode from 'qrcode';
 import { UAParser } from 'ua-parser-js';
+import * as geoip from 'geoip-lite';
 import type { StringValue } from 'ms';
 
 import { BrevoService } from '../brevo/brevo.service';
@@ -105,6 +106,66 @@ const INVALID_EMAIL_OR_PASSWORD_MESSAGE = 'Invalid email or password';
 const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
 const PASSWORD_HISTORY_LIMIT = 5;
+
+/**
+ * geoip-lite returns two-letter subdivision codes; the password-changed email
+ * shows full state names ("Brooklyn, New York, United States"). US only —
+ * other countries fall back to the raw code.
+ */
+const US_STATE_NAMES: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  DC: 'District of Columbia',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  PR: 'Puerto Rico',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
 
 type RateLimitBucket = {
   count: number;
@@ -781,6 +842,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime });
     const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
+    await this.notifyPasswordChanged(user, ipAddress, userAgent);
+
     return {
       success: true,
       ...tokens,
@@ -788,6 +851,68 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       csrfToken,
       user: this.serializeUser(user),
     };
+  }
+
+  /**
+   * Tells the account holder their password changed, so an unauthorised change
+   * is visible to them even though the attacker now holds the credentials.
+   *
+   * Deliberately never throws: the password is already committed by this point
+   * and the caller's session is issued, so a mail failure must not turn a
+   * completed reset into an error the user would retry. That does mean a
+   * delivery failure is only visible in this log — the same swallow that
+   * applies to the reset email itself.
+   */
+  private async notifyPasswordChanged(
+    user: Pick<User, 'id' | 'email' | 'username'>,
+    ipAddress: string,
+    userAgent: string,
+  ): Promise<void> {
+    try {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+
+      await this.brevoService.sendPasswordChangedEmail(user.email, {
+        firstName: await this.resolveDisplayName(user),
+        when: this.formatEventTime(new Date(), ipAddress),
+        device: this.describeDevice(userAgent),
+        where: this.describeLocation(ipAddress),
+        // Whoever did this holds the password now, so the recipient cannot
+        // simply sign in and change it — the recovery flow is the way back in.
+        changePasswordUrl: frontendUrl
+          ? `${frontendUrl.replace(/\/$/, '')}/forgot-password`
+          : undefined,
+      });
+    } catch (error) {
+      this.logger.error(
+        `notifyPasswordChanged: password-changed email failed for userId=${user.id}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * First name from user-service for the greeting, falling back to the
+   * username. Mirrors what forgotPassword does for the reset email.
+   */
+  private async resolveDisplayName(
+    user: Pick<User, 'id' | 'username'>,
+  ): Promise<string> {
+    try {
+      const userServiceUrl =
+        this.configService.get<string>('USER_SERVICE_URL') ?? 'http://localhost:3002';
+      const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+      const profileRes = await axios.get(
+        `${userServiceUrl.replace(/\/$/, '')}/internal/users/${user.id}/summary`,
+        {
+          headers: internalToken ? { 'x-internal-token': internalToken } : {},
+          timeout: 3000,
+        },
+      );
+      const firstName = profileRes?.data?.firstName;
+      if (firstName) return firstName;
+    } catch {
+      // fall back to username
+    }
+    return user.username;
   }
 
   private async assertPasswordNotReused(
@@ -2003,6 +2128,118 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         this.passwordResetRateLimits.delete(key);
       }
     }
+  }
+
+  /**
+   * "Chrome, Mac OS X" for the password-changed notification.
+   *
+   * Returns undefined rather than a placeholder when the user-agent is absent
+   * or unrecognised — the email omits the line entirely in that case. Note the
+   * header only reaches this service because api-gateway forwards it; if that
+   * passthrough is ever removed this silently goes blank again.
+   */
+  private describeDevice(userAgent: string): string | undefined {
+    if (!userAgent?.trim()) return undefined;
+
+    const parser = new UAParser(userAgent);
+    const parts = [parser.getBrowser().name, parser.getOS().name].filter(
+      (part): part is string => Boolean(part?.trim()),
+    );
+
+    return parts.length ? parts.join(', ') : undefined;
+  }
+
+  /**
+   * "Brooklyn, New York, United States" from the caller's IP.
+   *
+   * geoip-lite is a bundled offline database, so this costs no network call
+   * and cannot fail slowly. It resolves nothing for private and loopback
+   * addresses, which is why this is absent in local development.
+   *
+   * Region codes are expanded to full names for the US only; elsewhere the
+   * raw subdivision code is used, since ISO 3166-2 has no bundled name table
+   * here. Country codes go through Intl.DisplayNames.
+   */
+  private describeLocation(ipAddress: string): string | undefined {
+    const ip = ipAddress?.trim();
+    if (!ip) return undefined;
+
+    let geo: geoip.Lookup | null = null;
+    try {
+      geo = geoip.lookup(ip);
+    } catch {
+      return undefined;
+    }
+    if (!geo) return undefined;
+
+    let country: string | undefined;
+    if (geo.country) {
+      try {
+        country =
+          new Intl.DisplayNames(['en'], { type: 'region' }).of(geo.country) ??
+          geo.country;
+      } catch {
+        country = geo.country;
+      }
+    }
+
+    const region =
+      geo.country === 'US' && geo.region
+        ? US_STATE_NAMES[geo.region] ?? geo.region
+        : geo.region || undefined;
+
+    const parts = [geo.city || undefined, region, country].filter(
+      (part): part is string => Boolean(part?.trim()),
+    );
+
+    return parts.length ? parts.join(', ') : undefined;
+  }
+
+  /**
+   * "June 13th, 2023, 2:51 PM EDT" in the timezone the IP resolves to,
+   * falling back to UTC. Shown in the reader's own local time where we can
+   * work it out, because the point of the line is for them to recognise
+   * whether that was them.
+   */
+  private formatEventTime(when: Date, ipAddress: string): string {
+    let timeZone = 'UTC';
+    try {
+      const geo = ipAddress?.trim() ? geoip.lookup(ipAddress.trim()) : null;
+      if (geo?.timezone) timeZone = geo.timezone;
+    } catch {
+      // keep UTC
+    }
+
+    let parts: Intl.DateTimeFormatPart[];
+    try {
+      parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short',
+      }).formatToParts(when);
+    } catch {
+      return when.toISOString();
+    }
+
+    const find = (type: string) =>
+      parts.find((part) => part.type === type)?.value ?? '';
+
+    const day = Number(find('day'));
+    const suffix =
+      day % 10 === 1 && day !== 11
+        ? 'st'
+        : day % 10 === 2 && day !== 12
+          ? 'nd'
+          : day % 10 === 3 && day !== 13
+            ? 'rd'
+            : 'th';
+
+    return `${find('month')} ${day}${suffix}, ${find('year')}, ${find('hour')}:${find('minute')} ${find('dayPeriod')} ${find('timeZoneName')}`;
   }
 
   private normalizeRateLimitIp(ipAddress: string): string {
