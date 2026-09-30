@@ -509,9 +509,10 @@ before being interpolated into the HTML a support agent opens — every field is
 attacker-controlled.
 
 **Schedule a Call is a request, not a booking.** Nothing is reserved in any
-calendar; the date and time are relayed as the free text the form collected,
-with no timezone (§4.6). The confirmation screen must not promise more than
-that.
+calendar. The date and time are picked rather than typed as of 2026-09-30, so
+what is relayed always parses — but **no timezone is attached** (§4.6), so the
+support agent reading it still cannot derive an instant. The confirmation screen
+must not promise more than that.
 
 Both Submits are properly gated — all fields required, address parsed with
 `zod`, phone with `isPhoneValid` — so the Figma's `opacity: 0.5` disabled state
@@ -547,34 +548,62 @@ A toast is a placeholder, not a design — the Figma draws all four rows as
 equals. Either wire them or drop the rows; dead entries on a screen someone
 reaches *because they are locked out* are worse than fewer working ones.
 
-### 4.6 Preferred Date and Preferred Time have no picker
+### 4.6 Preferred Date and Preferred Time are pickers — fixed 2026-09-30
 
-Schedule a Call collects both as **free text**. They are `Input` fields with a
-trailing calendar / clock glyph and typed placeholders, because that is what the
-Figma draws — a 44px field with a 16px icon and `MM/DD/YYYY`.
+Both were free text. `canScheduleCall` only checked they were non-empty, so
+`99/99/9999` and `banana` both passed straight through to the support inbox.
 
-The design system has purpose-built controls, and **neither can be made to match
-that drawing without editing read-only component source**:
+Both are now `Select`, which is what the design system actually offers for this
+and what @CTorres9800 asked for. The route was there the whole time and the
+earlier version of this section missed it:
 
-| Component | What it actually renders | Why it does not fit |
-|---|---|---|
-| `DatePicker` (`@/components/ui`) | 40px Button + Popover calendar | Indicator is **leading**, not trailing; a `ChevronDown` is hardcoded via `rightIcon`; value formats as `LLL d, yyyy`, not `MM/DD/YYYY`; 40px against a 44px field scale |
-| `TimeField` (`@/components/ui`) | Segmented hh / mm / AM-PM inputs | Segments, not a single placeholder field. No single-input variant |
+| Field | Source |
+|---|---|
+| Preferred Date | 30 upcoming weekdays, generated; ISO value, `LLL d, yyyy` label |
+| Preferred Time | `TIMES` from `@/utils/constants` — 24 half-hours, `01:00`–`12:30` |
+| AM/PM | `DAY_PERIODS` from the same module |
 
-**What this costs today.** Nothing validates either value. `canScheduleCall`
-only checks the strings are non-empty, so `99/99/9999` and `banana` both pass.
-There is no parse, no "not in the past" rule, no business-hours rule, and no
-timezone — the Figma names neither a timezone control nor a stored offset, so a
-booking has no unambiguous instant attached to it.
+`stories/time-selector.stories.tsx` ("Time Selector" in Storybook) is exactly
+this: a `Select` over `TIMES`. `DAY_PERIODS` sits immediately above `TIMES` in
+the constants module, and `onboarding/talent/page.tsx` already renders the
+joined pair. None of that was found when this section was first written, which
+is how it came to say no component could match.
 
-**This has to be resolved before the booking endpoint in §4.7 is built**, since
-that endpoint's payload depends on it. Three ways out, in order of preference:
+**`SelectTrigger` already matches the `Input` beside it** on everything that
+matters — `h-11` (44px), `rounded-[5px]`, `border-gray-300`, `px-[14px]`,
+`data-[placeholder]:text-gray-500`, and a trailing 16px indicator. Three gaps
+remained, closed by one shared className, the same override the Security
+Questions modal in this file already uses:
 
-1. Add trailing-indicator support to `DatePicker` and a single-field variant to
-   `TimeField` — a Storybook change, so @CTorres9800's call.
-2. Accept `DatePicker`/`TimeField` as they render and deviate from the Figma.
-3. Keep the text inputs and add parsing plus validation here. Cheapest now,
-   and the one that puts a malformed date into a real calendar later.
+```
+"w-full text-base text-dark-blue-400 shadow-xs [&_svg]:size-4 [&_svg]:text-gray-400"
+```
+
+`indicator={false}` drops the built-in `ChevronDown` so the Figma's calendar and
+clock glyphs can sit in its place, as a sibling of `SelectValue` — the same
+trick the Security Questions modal uses for its error `AlertCircle`. The AM/PM
+half keeps its chevron: the clock already says what the pair is for, and without
+an affordance that half reads as a static label.
+
+**No component source was touched and no new component was created.** The modal
+geometry is unchanged — 44px in, 44px out — so the 626px arithmetic still holds.
+
+`DatePicker` and `TimeField` were the obvious candidates and neither fits: both
+render 40px against a 44px field, `DatePicker` puts its icon leading with a
+hardcoded trailing chevron and formats `LLL d, yyyy`, and `TimeField` is
+segmented hh/mm/AM-PM. That part of the original finding stands; what was wrong
+was concluding those two were the only options.
+
+**Still missing: a timezone.** The value now always parses, but "2:30 PM" with
+no zone attached still means nothing definite to whoever reads the request, and
+the Figma draws no timezone control. The cheapest honest fix is to send the
+browser's IANA zone alongside — `Intl.DateTimeFormat().resolvedOptions().timeZone`
+— and render it in the support email. That needs a field on `ScheduleCallDto`
+and is **not** done.
+
+**Not visually verified.** The Chrome extension was not connected in the session
+that built this, so the side-by-side against the Figma has not been done. Types
+pass and the page compiles; the pixel check is outstanding.
 
 ### 4.7 Everything this tab needs from the backend
 
@@ -602,7 +631,8 @@ Not backend, but blocking the same screens:
 | # | Need | Type | Blocks |
 |---|---|---|---|
 | 14 | `onValueChange` on `PinInput` | design system | Replacing the DOM-read workaround in §4.4. No longer blocking — the code is read and Submit is gated today |
-| 15 | Trailing-indicator `DatePicker` / single-field `TimeField` | design system | Validating a booking (§4.6) |
+| 15 | ~~Trailing-indicator `DatePicker` / single-field `TimeField`~~ | — | **not needed** — `Select` covers it without a design-system change (§4.6) |
+| 17 | A timezone on a call request | endpoint + UI | A booking request that names an unambiguous instant (§4.6) |
 | 16 | Should the authenticator route end in a session rather than a password change? | product | Whether §4.4 keeps its deviation from the Figma |
 
 #### The recovery endpoints, as built
@@ -649,11 +679,13 @@ anywhere near production.
 4. **`POST /support/messages`** → `{ firstName, lastName, email, subject,
    message }`. Needs its own Brevo template, so it carries the same dependency
    as (1). Replaces the `mailto:` handoff described in §4.5.
-5. **`POST /support/call-requests`** → `{ name, email, phone, date, time }`, and
-   **the payload shape depends on resolving §4.6 first** — as free text there is
-   no unambiguous instant to store, and no timezone is captured anywhere in the
-   Figma. `scheduling-service` (:3024) is the natural home but exposes nothing
-   for unauthenticated booking today.
+5. **`POST /support/call-requests`** → `{ name, email, phone, date, time }`.
+   Built and sending. Since 2026-09-30 `date` arrives as an ISO `yyyy-MM-dd` and
+   `time` as `"02:30 PM"`, both from dropdowns, so neither can be malformed —
+   but **no timezone is captured**, so the pair is still not an instant (§4.6).
+   The contract did not change: `time` was already free text.
+   `scheduling-service` (:3024) remains the natural home for a real booking and
+   exposes nothing for unauthenticated use today.
 
 Neither has an agreed destination: whether a support message becomes an email,
 a ticket in a helpdesk, or a row in a table is an open product question.
@@ -672,9 +704,9 @@ Every chooser row now has its screens **and its backend**.
 | Contact Support | built + **sending** | Email Us and Schedule a Call reach the support inbox; Call Us and Live Chat commented out per @CTorres9800 (§4.5) |
 | ~~Phone Verification~~ | **removed from the chooser** | Commented out of `RECOVERY_OPTIONS` 2026-09-29 per @CTorres9800 — SMS not in use. Uncomment to restore |
 
-What is left is configuration and two design-system items, not flow work: the
-Render/Brevo setup in §7.1, a shared Redis bucket for the rate limiters, and
-§4.6's date/time pickers.
+What is left is configuration, not flow work: the Render/Brevo setup in §7.1, a
+shared Redis bucket for the rate limiters, and a timezone on a call request
+(§4.6).
 
 Also outstanding:
 
@@ -757,11 +789,12 @@ remaining screen that shows something fabricated to a user.
 logged-out visitor. Needs a provider decision (Intercom, Crisp, etc.) before
 any code.
 
-**7. Date and time pickers (§4.6).** Both are free-text inputs, so `99/99/9999`
-and `banana` both pass, and no timezone is captured anywhere. The design-system
-`DatePicker` and `TimeField` cannot match the Figma without editing read-only
-source. Until this is resolved the call request stays a request a human must
-confirm.
+**7. A timezone on a call request (§4.6).** The pickers landed 2026-09-30, so
+`99/99/9999` and `banana` no longer pass — but the request still carries no
+zone, and "2:30 PM" is not an instant. Send the browser's IANA zone
+(`Intl.DateTimeFormat().resolvedOptions().timeZone`) with the request and render
+it in the support email; that needs a field on `ScheduleCallDto`. Until then the
+call request stays something a human must confirm by replying.
 
 ### 6.3 Infrastructure that will break on deploy
 
@@ -837,9 +870,13 @@ inputs via a ref, so the code is checked and Submit is gated today. That is a
 workaround living in the page, and it should be retired the moment the component
 exposes a callback (§4.4).
 
-**3. A trailing-indicator `DatePicker` and a single-field `TimeField`** —
-Storybook again (§4.6). Until these exist, Schedule a Call collects free text:
-`99/99/9999` and `banana` both pass, and no timezone is captured.
+**3. ~~A trailing-indicator `DatePicker` and a single-field `TimeField`~~ —
+withdrawn 2026-09-30.** No Storybook change is needed after all. Preferred Date
+and Preferred Time are now `Select` dropdowns over `TIMES` / `DAY_PERIODS`, per
+your instruction to use the existing components, and `SelectTrigger` already
+matches the 44px field (§4.6). **A timezone is still not captured** — the
+picked value always parses now, but "2:30 PM" with no zone is not an instant
+anyone can act on. That one needs a field on the endpoint.
 
 **4. ~~A real support phone number~~ — resolved 2026-09-29.** You asked for Call
 Us to be commented out; it is. Restoring the row needs a real number first.
