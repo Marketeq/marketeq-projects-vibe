@@ -792,6 +792,9 @@ export class PublishService {
     if (dto.teamMemberIds !== undefined) {
       payload.teamMemberIds = dto.teamMemberIds;
     }
+    if (dto.pendingInviteEmails !== undefined) {
+      payload.pendingInviteEmails = dto.pendingInviteEmails;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
