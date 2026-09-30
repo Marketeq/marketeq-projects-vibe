@@ -1988,6 +1988,7 @@ ${input.command}
     context?: SmartAssistantFieldContext;
   }): Promise<{
     updatedValue: string;
+    summary: string;
     suggestions: string[];
   }> {
     const limitInstruction =
@@ -2012,6 +2013,7 @@ ${input.command}
 
     const result = await this.call<{
       updatedValue: string;
+      summary?: string;
       suggestions: string[];
     }>(
       {
@@ -2022,8 +2024,9 @@ ${input.command}
             role: "system",
             content:
               `You are a Smart Assistant editing a ${input.field} field for a freelance job listing. ` +
-              `Respond only with JSON: { "updatedValue": "string", "suggestions": ["string"] }. ` +
+              `Respond only with JSON: { "updatedValue": "string", "summary": "string", "suggestions": ["string"] }. ` +
               limitInstruction +
+              `summary is one short plain-English sentence (at most 30 words) telling the user what you changed in the ${input.field} and why, written in the past tense. Do not quote updatedValue in full. ` +
               titleInstruction +
               'suggestions contains 2-3 short follow-up action options (e.g. "Make it shorter"). ' +
               "Preserve the original meaning unless the command explicitly asks to change the meaning, audience, scope, tone, or emphasis. " +
@@ -2053,6 +2056,9 @@ ${input.command}
         input.currentValue,
         input.context,
       ),
+      summary:
+        this.limitWords(result.summary ?? "", 30) ||
+        `Updated the ${input.field}.`,
       suggestions: Array.isArray(result.suggestions)
         ? result.suggestions.slice(0, 3)
         : [],

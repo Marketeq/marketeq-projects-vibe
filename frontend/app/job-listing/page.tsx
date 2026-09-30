@@ -3271,11 +3271,6 @@ const projectInfoSchema = z.object({
     .string()
     .trim()
     .min(1, "Please enter a project title")
-    .regex(
-      /^[A-Za-z0-9 -]+$/,
-      "Title can only contain letters, numbers, spaces, and hyphens.",
-    )
-    .min(10, "Please enter at least 10 character(s)")
     .max(100, "Please do not enter more than 100 character(s)"),
   category: z
     .array(
@@ -14096,7 +14091,7 @@ const ProjectScopeEditStep = ({
                     return (
                       <div
                         key={item.id}
-                        className="flex w-[282px] flex-col items-start gap-6 self-stretch"
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
                       >
                         <div className="flex w-[282px] justify-end">
                           <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
@@ -14109,12 +14104,15 @@ const ProjectScopeEditStep = ({
                               <p>{item.result}</p>
                             ) : (
                               <>
-                                <p>Here&apos;s what we&apos;ve updated:</p>
-                                <ul className="list-disc pl-5">
-                                  {resultLines.map((line) => (
-                                    <li key={`${item.id}-${line}`}>{line}</li>
-                                  ))}
-                                </ul>
+                                {resultLines.length <= 1 ? (
+                                  <p>{resultLines[0] ?? item.result}</p>
+                                ) : (
+                                  <ul className="list-disc pl-5">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
                               </>
                             )}
                           </div>
@@ -14166,7 +14164,53 @@ const ProjectScopeEditStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch px-5 pb-5 pt-3">
+              {projectAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-3 self-stretch">
+                  <button
+                    type="button"
+                    className="flex h-[18px] w-[282px] items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                    onClick={() =>
+                      setShowProjectAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showProjectAssistantFollowUps
+                        ? "Use this suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showProjectAssistantFollowUps && "rotate-180"
+                      )}
+                    />
+                  </button>
+                  {showProjectAssistantFollowUps ? (
+                    <div className="flex w-[282px] flex-wrap items-start gap-2 self-stretch">
+                      {projectAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className="h-10 shrink-0 justify-center rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium leading-5 text-dark-blue-400 shadow-xs hover:bg-white hover:text-dark-blue-400"
+                          disabled={projectAssistant.isLoading}
+                          onClick={() =>
+                            projectAssistant.run(
+                              suggestion,
+                              latestProjectAssistantItem?.field ??
+                                activeAssistantField
+                            )
+                          }
+                        >
+                          {suggestion}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
                   className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
@@ -14262,6 +14306,66 @@ const NDA_OFF_WARNING =
 
 const INHERITED_NDA_MESSAGE =
   "NDA settings are inherited from the parent contract."
+
+type FinalReviewAssistantHistoryItem = {
+  id: string
+  prompt: string
+  field: SmartAssistantEditableField
+  result?: string
+  suggestions?: string[]
+  status: "pending" | "success" | "error"
+}
+
+const getFinalReviewAssistantResultText = (
+  value: unknown,
+  fallback: string
+) => {
+  if (typeof value === "string" && value.trim()) return value
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+      .filter(Boolean)
+      .join("\n")
+
+    return text || fallback
+  }
+
+  if (value && typeof value === "object") {
+    const objectValue = value as {
+      summary?: unknown
+      message?: unknown
+      suggestions?: unknown
+      updatedValue?: unknown
+    }
+
+    if (typeof objectValue.summary === "string" && objectValue.summary.trim()) {
+      return objectValue.summary
+    }
+
+    if (typeof objectValue.message === "string" && objectValue.message.trim()) {
+      return objectValue.message
+    }
+
+    if (Array.isArray(objectValue.suggestions)) {
+      const suggestionsText = objectValue.suggestions
+        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+        .filter(Boolean)
+        .join("\n")
+
+      if (suggestionsText) return suggestionsText
+    }
+
+    if (
+      typeof objectValue.updatedValue === "string" &&
+      objectValue.updatedValue.trim()
+    ) {
+      return objectValue.updatedValue
+    }
+  }
+
+  return fallback
+}
 
 const NdaPreviewDialog = ({
   trigger,
@@ -14689,6 +14793,7 @@ const useFinalReviewSmartAssistant = ({
 }) => {
   const [message, setMessage] = useState("")
   const [result, setResult] = useState("")
+  const [history, setHistory] = useState<FinalReviewAssistantHistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
   const run = useCallback(
@@ -14699,15 +14804,44 @@ const useFinalReviewSmartAssistant = ({
         return
       }
 
+      const historyId = `final-review-assistant-${getId()}`
+      setHistory((currentHistory) =>
+        [
+          ...currentHistory,
+          {
+            id: historyId,
+            prompt: trimmedCommand,
+            field,
+            status: "pending" as const,
+          },
+        ].slice(-20)
+      )
       setIsLoading(true)
       setResult("")
+      setMessage("")
+
+      const completeHistoryItem = (
+        nextResult: string,
+        status: FinalReviewAssistantHistoryItem["status"],
+        suggestions: string[] = []
+      ) => {
+        setResult(nextResult)
+        setHistory((currentHistory) =>
+          currentHistory.map((item) =>
+            item.id === historyId
+              ? { ...item, result: nextResult, suggestions, status }
+              : item
+          )
+        )
+      }
 
       try {
         const listingId = jobListingId ?? (await ensureJobListingDraft?.())
 
         if (!listingId) {
-          setResult(
-            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment."
+          completeHistoryItem(
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+            "error"
           )
           return
         }
@@ -14721,13 +14855,15 @@ const useFinalReviewSmartAssistant = ({
         const data = response.data as {
           aiStatus?: "OK" | "AI_UNAVAILABLE"
           updatedValue?: string
+          summary?: string
           suggestions?: string[]
           message?: string
         }
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
-          setResult(
-            data.message ?? "Smart Assistant is temporarily unavailable."
+          completeHistoryItem(
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+            "error"
           )
           return
         }
@@ -14738,19 +14874,24 @@ const useFinalReviewSmartAssistant = ({
             data.updatedValue
           )
           onApply(field, updatedValue)
-          setResult(
-            field === "title"
-              ? `Suggested title: ${updatedValue}`
-              : "Smart Assistant updated this section."
+          completeHistoryItem(
+            getFinalReviewAssistantResultText(
+              data,
+              "Smart Assistant updated this section."
+            ),
+            "success",
+            Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []
           )
-          setMessage("")
           return
         }
 
-        setResult("Smart Assistant did not return an update for this section.")
+        completeHistoryItem(
+          "Smart Assistant did not return an update for this section.",
+          "error"
+        )
       } catch (error) {
         console.error("Smart Assistant field edit failed", error)
-        setResult("Smart Assistant is temporarily unavailable.")
+        completeHistoryItem("Smart Assistant is temporarily unavailable.", "error")
       } finally {
         setIsLoading(false)
       }
@@ -14762,6 +14903,7 @@ const useFinalReviewSmartAssistant = ({
     message,
     setMessage,
     result,
+    history,
     isLoading,
     run,
   }
@@ -15929,6 +16071,9 @@ const FinalProjectReviewStep = ({
   const [responsibilities, setResponsibilities] = useState("")
   const [activeAssistantField, setActiveAssistantField] =
     useState<SmartAssistantEditableField>("title")
+  const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
+    useState(false)
+  const projectAssistantScrollRef = useRef<HTMLDivElement | null>(null)
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
     useDynamicFinalReviewSkills()
@@ -15971,6 +16116,28 @@ const FinalProjectReviewStep = ({
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
   })
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = projectAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [projectAssistant.history])
+
+  const latestProjectAssistantItem =
+    projectAssistant.history[projectAssistant.history.length - 1]
+  const projectAssistantFollowUpSuggestions =
+    latestProjectAssistantItem?.status === "success"
+      ? (latestProjectAssistantItem.suggestions ?? [])
+      : []
+
+  useEffect(() => {
+    setShowProjectAssistantFollowUps(false)
+  }, [latestProjectAssistantItem?.id])
+
   const projectAssistantQuickActions: Record<
     SmartAssistantEditableField,
     string[]
@@ -15996,6 +16163,21 @@ const FinalProjectReviewStep = ({
       "Group similar tasks",
     ],
   }
+  const getProjectAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Make it more descriptive" && "w-[211px]",
+      suggestion === "Simplify the wording" && "w-[194px]",
+      suggestion === "Reword for clarity" && "w-[163px]",
+      suggestion === "Add project goals" && "w-[151px]",
+      suggestion === "Highlight key deliverables" && "w-[218px]",
+      suggestion === "Reword for better flow" && "w-[191px]",
+      suggestion === "Add bullet points" && "w-[154px]",
+      suggestion === "Focus on team impact" && "w-[196px]",
+      suggestion === "Highlight learning opportunities" && "w-[248px]",
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]"
+    )
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
     if (!jobListingId || didGenerateBasicInformationRef.current) return
@@ -16465,7 +16647,10 @@ const FinalProjectReviewStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+            <div
+              ref={projectAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+            >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
                   What do you want to do?
@@ -16481,19 +16666,7 @@ const FinalProjectReviewStep = ({
                       key={`${activeAssistantField}-${item}`}
                       className={cn(
                         "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                        item === "Make it more descriptive" && "w-[211px]",
-                        item === "Simplify the wording" && "w-[194px]",
-                        item === "Reword for clarity" && "w-[163px]",
-                        item === "Add project goals" && "w-[151px]",
-                        item === "Highlight key deliverables" && "w-[218px]",
-                        item === "Reword for better flow" && "w-[191px]",
-                        item === "Add bullet points" && "w-[154px]",
-                        item === "Focus on team impact" && "w-[196px]",
-                        item === "Highlight learning opportunities" &&
-                          "w-[248px]",
-                        item === "Add more specifics" && "w-[169px]",
-                        item === "Simplify the task list" && "w-[184px]",
-                        item === "Group similar tasks" && "w-[181px]"
+                        getProjectAssistantSuggestionWidthClass(item)
                       )}
                       variant="outlined"
                       visual="gray"
@@ -16507,16 +16680,128 @@ const FinalProjectReviewStep = ({
                   )
                 )}
               </div>
-              {projectAssistant.result ? (
-                <p className="text-xs leading-[18px] text-primary-600">
-                  {projectAssistant.result}
-                </p>
+              {projectAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {projectAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === projectAssistant.history.length - 1
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                            {item.prompt}
+                          </p>
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <Button
+                            type="button"
+                            className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                            disabled={projectAssistant.isLoading}
+                            onClick={() =>
+                              projectAssistant.run(item.prompt, item.field)
+                            }
+                          >
+                            <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                            Retry
+                          </Button>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : null}
             </div>
-            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch px-5 pb-5 pt-3">
+              {projectAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-3 self-stretch">
+                  <button
+                    type="button"
+                    className="flex h-[18px] w-[282px] items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                    onClick={() =>
+                      setShowProjectAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showProjectAssistantFollowUps
+                        ? "Use this suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showProjectAssistantFollowUps && "rotate-180"
+                      )}
+                    />
+                  </button>
+                  {showProjectAssistantFollowUps ? (
+                    <div className="flex w-[282px] flex-wrap items-start gap-2 self-stretch">
+                      {projectAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getProjectAssistantSuggestionWidthClass(suggestion)
+                          )}
+                          disabled={projectAssistant.isLoading}
+                          onClick={() =>
+                            projectAssistant.run(
+                              suggestion,
+                              latestProjectAssistantItem?.field ??
+                                activeAssistantField
+                            )
+                          }
+                        >
+                          <span className="h-5 shrink-0">{suggestion}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={projectAssistant.message}
                   onChange={(event) =>
@@ -16524,7 +16809,14 @@ const FinalProjectReviewStep = ({
                   }
                 />
                 <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
                     className="size-6 rounded-full p-1 shadow-none"
                     type="button"
@@ -16535,9 +16827,7 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        resolveFinalReviewAssistantField(
-                          projectAssistant.message
-                        )
+                        activeAssistantField
                       )
                     }
                   >
@@ -18727,12 +19017,17 @@ const ServiceScopeEditStep = ({
                                 <p>{item.result}</p>
                               ) : (
                                 <>
-                                  <p>Here&apos;s what we&apos;ve updated:</p>
-                                  <ul className="list-disc pl-5">
-                                    {resultLines.map((line) => (
-                                      <li key={`${item.id}-${line}`}>{line}</li>
-                                    ))}
-                                  </ul>
+                                  {resultLines.length <= 1 ? (
+                                    <p>{resultLines[0] ?? item.result}</p>
+                                  ) : (
+                                    <ul className="list-disc pl-5">
+                                      {resultLines.map((line) => (
+                                        <li key={`${item.id}-${line}`}>
+                                          {line}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
                                 </>
                               )}
                             </div>
