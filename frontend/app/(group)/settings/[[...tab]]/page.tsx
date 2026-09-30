@@ -10,6 +10,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
+import { useSecurityQuestions } from "../hooks/use-security-questions"
 import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
 import AllowedIpsAPI from "@/service/http/allowed-ips"
@@ -949,25 +950,82 @@ export default function SettingsPage() {
   }
 
   const [isSecurityQuestionsOpen, setIsSecurityQuestionsOpen] = useState(false)
-  const [areSecurityQuestionsSaved, setAreSecurityQuestionsSaved] =
+  const [isSavingSecurityQuestions, setIsSavingSecurityQuestions] =
     useState(false)
+  const [securityQuestionsError, setSecurityQuestionsError] = useState<
+    string | null
+  >(null)
+  // `question` holds the catalogue id, not the prompt. The id is what the
+  // answer is stored against; the prompt is display text and may be reworded.
   const [securityQuestions, setSecurityQuestions] = useState([
     { question: "", answer: "" },
     { question: "", answer: "" },
   ])
 
-  const securityQuestionOptions = [
-    "What is the name of your first pet?",
-    "What was the name of your first school?",
-    "What city were you born in?",
-    "What is your mother's maiden name?",
-    "What was the make of your first car?",
-    "What is your favourite book?",
-  ]
+  const {
+    catalog: securityQuestionOptions,
+    configuredIds: savedSecurityQuestionIds,
+    isConfigured: areSecurityQuestionsSaved,
+    promptFor: securityQuestionPrompt,
+    save: saveSecurityQuestions,
+  } = useSecurityQuestions(activeTab === "account-recovery")
+
+  /**
+   * Reopens the modal on the questions the account actually answered, with the
+   * answer fields blank. Blank is not an oversight: an answer is hashed on the
+   * way in and there is no endpoint that returns it, so the only honest thing
+   * to show is which questions are set. Saving replaces the whole set, so every
+   * answer has to be retyped — which is also what stops a half-filled form from
+   * silently wiping the answers it did not carry.
+   */
+  useEffect(() => {
+    if (savedSecurityQuestionIds.length === 0) return
+    setSecurityQuestions(
+      savedSecurityQuestionIds.map((questionId) => ({
+        question: questionId,
+        answer: "",
+      }))
+    )
+  }, [savedSecurityQuestionIds])
 
   const canSaveSecurityQuestions = securityQuestions.every(
     (q) => q.question !== "" && q.answer.trim() !== ""
   )
+
+  /**
+   * Persists the answers. Closes the modal and shows the saved alert only on a
+   * success — the button used to do both unconditionally while storing nothing,
+   * so the Enabled badge appeared for an account that had answered nothing and
+   * the recovery flow had no answers to check.
+   */
+  const handleSaveSecurityQuestions = async () => {
+    setSecurityQuestionsError(null)
+    setIsSavingSecurityQuestions(true)
+    try {
+      await saveSecurityQuestions(
+        securityQuestions.map((entry) => ({
+          questionId: entry.question,
+          answer: entry.answer,
+        }))
+      )
+      setIsSecurityQuestionsOpen(false)
+      setSavedAlertMessage("Successfully saved security questions")
+      setIsSavedAlertMounted(true)
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong"
+      // Reported inline rather than as a toast, matching Company Info: toasts
+      // in this screen confirm successes only.
+      setSecurityQuestionsError(
+        message.startsWith("Please") ? message : `Please try again. ${message}`
+      )
+    } finally {
+      setIsSavingSecurityQuestions(false)
+    }
+  }
 
   const updateSecurityQuestion = (
     index: number,
@@ -3121,16 +3179,17 @@ export default function SettingsPage() {
                                   <ListboxButton
                                     placeholder="Select a question"
                                     displayValue={(val) =>
-                                      (val as string) || null
+                                      securityQuestionPrompt(val as string) ||
+                                      null
                                     }
                                   />
                                   <ListboxOptions>
                                     {securityQuestionOptions.map((option) => (
                                       <ListboxOption
-                                        key={option}
-                                        value={option}
+                                        key={option.id}
+                                        value={option.id}
                                       >
-                                        {option}
+                                        {option.prompt}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3156,6 +3215,12 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
+                      {securityQuestionsError && (
+                        <p className="w-full text-xs font-medium text-error-500">
+                          {securityQuestionsError}
+                        </p>
+                      )}
+
                       <div className="flex w-full items-start justify-end gap-x-3">
                         <Button
                           variant="outlined"
@@ -3172,18 +3237,16 @@ export default function SettingsPage() {
                         </Button>
                         <Button
                           size="sm"
-                          disabled={!canSaveSecurityQuestions}
-                          onClick={() => {
-                            setAreSecurityQuestionsSaved(true)
-                            setIsSecurityQuestionsOpen(false)
-                            setSavedAlertMessage(
-                              "Successfully saved security questions"
-                            )
-                            setIsSavedAlertMounted(true)
-                          }}
+                          disabled={
+                            !canSaveSecurityQuestions ||
+                            isSavingSecurityQuestions
+                          }
+                          onClick={() => void handleSaveSecurityQuestions()}
                           leftIcon={<Save01 className="size-[15px]" />}
                         >
-                          Save Security Questions
+                          {isSavingSecurityQuestions
+                            ? "Saving..."
+                            : "Save Security Questions"}
                         </Button>
                       </div>
                     </DialogContent>

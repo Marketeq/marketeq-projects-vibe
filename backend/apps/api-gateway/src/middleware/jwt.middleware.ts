@@ -19,6 +19,15 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/2fa/verify',
+  // Reached by someone locked out of their account, who therefore has no token
+  // to present — the same reasoning as /auth/forgot-password above. The
+  // catalogue is the same six prompts for everyone and names no account; the
+  // two verify routes are rate limited per account and per IP in auth-service
+  // and answer every failure identically, so neither reveals whether an email
+  // is registered.
+  '/auth/security-questions/catalog',
+  '/auth/recovery/security-questions/verify',
+  '/auth/recovery/authenticator/verify',
   '/auth/2fa/resend',
   '/homepage',
   '/homepage/health',

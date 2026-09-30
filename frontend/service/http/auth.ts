@@ -100,4 +100,48 @@ export const AuthAPI = {
       `${AUTH_BASE}/auth/sessions?currentSessionId=${encodeURIComponent(currentSessionId)}`
     )
   },
+
+  /**
+   * The six prompts both screens render. Public, and the single source of
+   * truth — Settings and /forgot-password used to each hardcode their own copy
+   * of the list, and an edit to one would have locked every account that
+   * answered the edited question out of its own recovery path.
+   */
+  GetSecurityQuestionCatalog: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/security-questions/catalog`)
+  },
+
+  /** Question ids only. There is no endpoint that returns the answers. */
+  GetSecurityQuestions: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/security-questions`)
+  },
+
+  SetSecurityQuestions: (data: {
+    answers: { questionId: string; answer: string }[]
+  }) => {
+    return AxiosRequest.put(`${AUTH_BASE}/auth/security-questions`, data)
+  },
+
+  /**
+   * Recovery, so unauthenticated on purpose. On a pass this returns a
+   * short-lived reset token that ResetPassword accepts; every failure comes
+   * back identically, so the response says nothing about whether the account
+   * exists.
+   */
+  VerifySecurityQuestions: (data: {
+    email: string
+    answers: { questionId: string; answer: string }[]
+  }) => {
+    return AxiosRequest.post(
+      `${AUTH_BASE}/auth/recovery/security-questions/verify`,
+      data
+    )
+  },
+
+  VerifyRecoveryAuthenticator: (data: { email: string; code: string }) => {
+    return AxiosRequest.post(
+      `${AUTH_BASE}/auth/recovery/authenticator/verify`,
+      data
+    )
+  },
 }

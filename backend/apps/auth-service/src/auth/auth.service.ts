@@ -43,6 +43,18 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import {
+  SetSecurityQuestionsDto,
+  VerifySecurityQuestionsDto,
+} from './dto/security-questions.dto';
+import { VerifyRecoveryAuthenticatorDto } from './dto/recovery-authenticator.dto';
+import { SecurityQuestionAnswer } from '../security-questions/entities/security-question-answer.entity';
+import {
+  REQUIRED_SECURITY_ANSWERS,
+  SECURITY_QUESTION_CATALOG,
+  SecurityQuestion,
+  normalizeSecurityAnswer,
+} from '../security-questions/security-questions.catalog';
 
 type JwtPair = { access_token: string; refresh_token: string; csrfToken?: string };
 type SyncUserProfilePayload = {
@@ -167,6 +179,17 @@ const US_STATE_NAMES: Record<string, string> = {
   WY: 'Wyoming',
 };
 
+/**
+ * The single answer both recovery checks give on every failure.
+ *
+ * Unknown email, no answers ever set, wrong questions named, wrong answers,
+ * no authenticator paired, SMS-backed 2FA, wrong code — all of it comes back
+ * as this. Any wording that distinguishes them turns the endpoint into a probe
+ * for which accounts exist and how they are protected.
+ */
+const RECOVERY_VERIFICATION_FAILED_MESSAGE =
+  'We could not verify those details. Please check them and try again.';
+
 type RateLimitBucket = {
   count: number;
   resetAt: number;
@@ -190,6 +213,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private sessionCleanupTimer: NodeJS.Timeout | null = null;
 
+  private unmatchableAnswerHash?: Promise<string>;
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -197,6 +222,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly sessionRepository: Repository<Session>,
     @InjectRepository(PasswordHistory)
     private readonly passwordHistoryRepository: Repository<PasswordHistory>,
+    @InjectRepository(SecurityQuestionAnswer)
+    private readonly securityQuestionRepository: Repository<SecurityQuestionAnswer>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -913,6 +940,334 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       // fall back to username
     }
     return user.username;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Security questions
+  //
+  // Two audiences, deliberately separated. The three methods above the divider
+  // are for a signed-in user managing their own answers from Settings; the two
+  // below are the unauthenticated recovery checks, which end in a password
+  // reset and are therefore treated as an attack surface throughout.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The prompts both screens render. Public: the catalogue is the same for
+   * everyone and reveals nothing about any account.
+   */
+  getSecurityQuestionCatalog(): { questions: SecurityQuestion[] } {
+    return { questions: [...SECURITY_QUESTION_CATALOG] };
+  }
+
+  /**
+   * Which questions this account has answered — ids only.
+   *
+   * Never returns the answers or their hashes, and there is no endpoint that
+   * does. An answer is write-only by design; Settings shows which questions are
+   * set and offers to replace them, it does not show what was said.
+   */
+  async getSecurityQuestions(
+    userId: string,
+  ): Promise<{ questionIds: string[]; configured: boolean }> {
+    const rows = await this.securityQuestionRepository.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+
+    return {
+      questionIds: rows.map((row) => row.questionId),
+      configured: rows.length >= REQUIRED_SECURITY_ANSWERS,
+    };
+  }
+
+  /**
+   * Replaces this account's answers wholesale.
+   *
+   * Replace rather than merge: the form always submits the full set, so a merge
+   * would leave an answer to a question the user has since deselected still
+   * live and still accepted at recovery time.
+   */
+  async setSecurityQuestions(
+    userId: string,
+    dto: SetSecurityQuestionsDto,
+  ): Promise<{ questionIds: string[]; configured: boolean }> {
+    const questionIds = dto.answers.map((entry) => entry.questionId);
+
+    if (new Set(questionIds).size !== questionIds.length) {
+      throw new BadRequestException(
+        'Each security question can only be answered once.',
+      );
+    }
+
+    const prepared = await Promise.all(
+      dto.answers.map(async (entry) => {
+        const normalized = normalizeSecurityAnswer(entry.answer);
+
+        // @IsNotEmpty passes a string of spaces; normalisation turns it into
+        // an empty answer that would then match any other whitespace-only one.
+        if (!normalized) {
+          throw new BadRequestException('Answers cannot be blank.');
+        }
+
+        return {
+          userId,
+          questionId: entry.questionId,
+          answerHash: await bcrypt.hash(normalized, 10),
+        };
+      }),
+    );
+
+    await this.securityQuestionRepository.manager.transaction(
+      async (manager) => {
+        const repository = manager.getRepository(SecurityQuestionAnswer);
+        await repository.delete({ userId });
+        await repository.save(prepared);
+      },
+    );
+
+    this.logger.log(
+      `setSecurityQuestions: stored ${prepared.length} answers for userId=${userId}`,
+    );
+
+    return { questionIds, configured: true };
+  }
+
+  /**
+   * Checks answers submitted by someone who is locked out, and on a pass
+   * returns a short-lived reset token that resetPassword will accept.
+   *
+   * The caller states which questions they are answering as well as what the
+   * answers are. That is not laziness about showing them their own questions —
+   * it is what keeps this from being an account-existence oracle. There is no
+   * endpoint that will tell an unauthenticated caller which questions an
+   * account set, so the response is identical whether the email is unknown, the
+   * account never set any answers, the wrong questions were named, or the
+   * answers were simply wrong.
+   */
+  async verifySecurityQuestionsForRecovery(
+    dto: VerifySecurityQuestionsDto,
+    ipAddress = '',
+  ): Promise<{ resetToken: string }> {
+    this.enforceRecoveryRateLimit('security-questions', dto.email, ipAddress);
+
+    const normalizedEmail = normalizeEmail(dto.email);
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+      select: ['id', 'email', 'passwordResetVersion'],
+    });
+
+    const submittedIds = dto.answers.map((entry) => entry.questionId);
+    const stored = user
+      ? await this.securityQuestionRepository.find({
+          where: { userId: user.id },
+          select: ['id', 'questionId', 'answerHash'],
+        })
+      : [];
+
+    const storedByQuestion = new Map(
+      stored.map((row) => [row.questionId, row.answerHash]),
+    );
+
+    // Every branch below still runs a bcrypt comparison, including the ones
+    // that are already doomed, so that "no such account" does not return
+    // measurably faster than "wrong answer". Timing is blunted rather than
+    // equalised — the rate limiter above is the control that actually matters.
+    let passed =
+      !!user &&
+      new Set(submittedIds).size === submittedIds.length &&
+      stored.length >= REQUIRED_SECURITY_ANSWERS &&
+      submittedIds.length >= REQUIRED_SECURITY_ANSWERS;
+
+    for (const entry of dto.answers) {
+      const expected =
+        (passed ? storedByQuestion.get(entry.questionId) : undefined) ??
+        (await this.getUnmatchableAnswerHash());
+
+      const matched = await bcrypt.compare(
+        normalizeSecurityAnswer(entry.answer),
+        expected,
+      );
+
+      if (!matched) passed = false;
+    }
+
+    if (!passed) {
+      this.logger.warn(
+        `verifySecurityQuestionsForRecovery: rejected (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new UnauthorizedException(RECOVERY_VERIFICATION_FAILED_MESSAGE);
+    }
+
+    this.logger.log(
+      `verifySecurityQuestionsForRecovery: passed for userId=${user!.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    return { resetToken: await this.issueRecoveryResetToken(user!) };
+  }
+
+  /**
+   * Checks a TOTP code from someone who is locked out, and on a pass returns
+   * the same short-lived reset token the security-question route returns.
+   *
+   * It has to be its own route. /auth/2fa/verify is the only other place that
+   * validates a TOTP code, and it demands a partialToken minted by a *completed*
+   * login — which nobody holds in a forgotten-password flow — so it is
+   * unreachable from here by construction.
+   *
+   * It deliberately does NOT issue a session. Proving a TOTP code means proving
+   * possession of the second factor; handing back a session for it alone would
+   * make an account with 2FA enabled reachable with strictly less than its own
+   * sign-in requires (password *and* code), which is an authentication bypass.
+   * The code authorises setting a new password, and the new password is the way
+   * back in. See docs/ACCOUNT_RECOVERY_NOTES.md §4.4.
+   */
+  async verifyAuthenticatorForRecovery(
+    dto: VerifyRecoveryAuthenticatorDto,
+    ipAddress = '',
+  ): Promise<{ resetToken: string }> {
+    this.enforceRecoveryRateLimit('authenticator', dto.email, ipAddress);
+
+    const normalizedEmail = normalizeEmail(dto.email);
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+      select: [
+        'id',
+        'email',
+        'passwordResetVersion',
+        'twoFactorEnabled',
+        'twoFactorMethod',
+        'twoFactorSecret',
+        'twoFactorBackupCodes',
+      ],
+    });
+
+    // An SMS-backed account has no secret to check a code against without
+    // sending one first, and SMS is deprioritised, so it falls through to the
+    // same rejection as an account with no authenticator at all — rather than a
+    // distinguishable "wrong method" error.
+    const checkable =
+      !!user &&
+      user.twoFactorEnabled &&
+      !!user.twoFactorSecret &&
+      (user.twoFactorMethod ?? 'totp') !== 'sms';
+
+    const passed = checkable
+      ? await this.validateTwoFactorCode(user!, dto.code)
+      : await this.burnUnmatchableComparison();
+
+    if (!passed) {
+      this.logger.warn(
+        `verifyAuthenticatorForRecovery: rejected (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new UnauthorizedException(RECOVERY_VERIFICATION_FAILED_MESSAGE);
+    }
+
+    this.logger.log(
+      `verifyAuthenticatorForRecovery: passed for userId=${user!.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    return { resetToken: await this.issueRecoveryResetToken(user!) };
+  }
+
+  /**
+   * Mints the proof that Update Password consumes.
+   *
+   * Rotating passwordResetVersion first is what makes it single-use: resetPassword
+   * requires the version in the token to still match the row, and rotates it
+   * again on success. It also invalidates any reset link already sitting in the
+   * account's inbox, which is the right outcome — a second recovery attempt
+   * should retire the first.
+   *
+   * Minutes, not the 24 hours an emailed link gets: this token is handed
+   * straight to the next screen in an open modal, so its whole life is the time
+   * it takes to type a password.
+   */
+  private async issueRecoveryResetToken(user: {
+    id: string;
+    email: string;
+  }): Promise<string> {
+    const resetVersion = randomUUID();
+    await this.userRepository.update(
+      { id: user.id },
+      { passwordResetVersion: resetVersion },
+    );
+
+    const expiresIn = parseExpiresIn(
+      this.configService.get<string>('AUTH_RECOVERY_RESET_TOKEN_EXPIRES_IN') ??
+        '15m',
+    );
+
+    return this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion,
+      },
+      { expiresIn },
+    );
+  }
+
+  /**
+   * Per-account and per-IP ceilings on the two recovery checks.
+   *
+   * Both are unauthenticated, both end in a password reset, and both compare
+   * against a small answer space — six questions, or a six-digit code. Without
+   * a ceiling they are a brute-force target, and the code space in particular
+   * falls quickly to an unthrottled attacker.
+   *
+   * Shares the password-reset limiter, which means it shares its limitation:
+   * the buckets live in this process, so they are per-instance and reset on
+   * deploy. On Render with more than one instance the effective limit is the
+   * configured number times the instance count. A shared Redis bucket is the
+   * real fix and Redis is already a dependency of this stack.
+   */
+  private enforceRecoveryRateLimit(
+    scope: 'security-questions' | 'authenticator',
+    email: string,
+    ipAddress: string,
+  ): void {
+    this.enforcePasswordResetRateLimit(
+      `recovery:${scope}:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RECOVERY_IP_LIMIT',
+      10,
+      'AUTH_RECOVERY_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `recovery:${scope}:email:${normalizeEmail(email)}`,
+      'AUTH_RECOVERY_ACCOUNT_LIMIT',
+      5,
+      'AUTH_RECOVERY_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+  }
+
+  /**
+   * A bcrypt hash of random bytes, so nothing a caller can send will ever match
+   * it. Compared against when there is no real hash to compare against, so the
+   * doomed paths through the two verify methods still pay for a hash.
+   *
+   * Generated once per process rather than written into the source, where a
+   * constant bcrypt string would read as a leaked credential to anyone — and to
+   * the secret scanner — looking at this file.
+   */
+  private getUnmatchableAnswerHash(): Promise<string> {
+    if (!this.unmatchableAnswerHash) {
+      this.unmatchableAnswerHash = bcrypt.hash(
+        randomBytes(32).toString('hex'),
+        10,
+      );
+    }
+    return this.unmatchableAnswerHash;
+  }
+
+  private async burnUnmatchableComparison(): Promise<false> {
+    await bcrypt.compare(
+      randomBytes(16).toString('hex'),
+      await this.getUnmatchableAnswerHash(),
+    );
+    return false;
   }
 
   private async assertPasswordNotReused(

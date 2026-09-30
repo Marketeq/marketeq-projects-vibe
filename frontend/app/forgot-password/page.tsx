@@ -1,9 +1,15 @@
 "use client"
 
-import { Fragment, Suspense, useEffect, useState } from "react"
+import { Fragment, Suspense, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
+import {
+  mergeDashboardUserFields,
+  resolveDashboardRoute,
+  useAuth,
+} from "@/contexts/auth"
 import { SupportAPI } from "@/service/http/support"
+import { UserAPI } from "@/service/http/user"
 import { AuthAPI } from "@/service/http/auth"
 import {
   cn,
@@ -157,25 +163,40 @@ const SCHEDULE_TEXT_FIELDS = [
   { id: "email", label: "Email", placeholder: "you@me.com" },
 ] as const
 
+type SecurityQuestion = { id: string; prompt: string }
+
 /**
- * Kept identical to the list Settings > Account Recovery offers, so a person is
- * asked here exactly what they were asked when they set the answers. Duplicated
- * rather than imported because the Settings copy lives inside a page component;
- * the two must be moved to one shared module once this gains a backend.
+ * The catalogue is now fetched from GET /auth/security-questions/catalog, which
+ * is the single source of truth for both screens — this one and the Settings
+ * one where the answers are set. That matters more than it looks: the id, not
+ * the prompt, is what is stored against an answer, so two hand-maintained lists
+ * drifting apart would have rejected correct answers with no visible cause.
+ *
+ * This list is only the fallback for a catalogue request that fails, so the ids
+ * must stay in step with
+ * backend/apps/auth-service/src/security-questions/security-questions.catalog.ts.
+ * Prompts are display text and may be reworded; ids are permanent.
  */
-const SECURITY_QUESTIONS = [
-  "What is the name of your first pet?",
-  "What was the name of your first school?",
-  "What city were you born in?",
-  "What is your mother's maiden name?",
-  "What was the make of your first car?",
-  "What is your favourite book?",
+const SECURITY_QUESTION_FALLBACK: SecurityQuestion[] = [
+  { id: "first-pet", prompt: "What is the name of your first pet?" },
+  { id: "first-school", prompt: "What was the name of your first school?" },
+  { id: "birth-city", prompt: "What city were you born in?" },
+  { id: "mothers-maiden-name", prompt: "What is your mother's maiden name?" },
+  { id: "first-car", prompt: "What was the make of your first car?" },
+  { id: "favourite-book", prompt: "What is your favourite book?" },
 ]
 
 /**
  * The two ways the flow can end. Both land on the same 420x490 confirmation
  * screen; only the wording differs, because only the wording differs in the
  * Figma. The session options and the button are shared.
+ *
+ * "authenticated" is currently UNREACHABLE. The authenticator route no longer
+ * terminates on its own -- proving a TOTP code authorises a password change
+ * rather than restoring access, so it converges on the "password" ending. See
+ * handleAuthenticatorSubmit for why, and docs/ACCOUNT_RECOVERY_NOTES.md §4.4.
+ * The copy is kept, not deleted, because restoring the Figma flow is one line
+ * here plus one decision from @CTorres9800.
  */
 type ConfirmationKind = "password" | "authenticated"
 
@@ -229,6 +250,7 @@ function ForgotPassword() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { setUser } = useAuth()
   const [isLoading, setIsLoading] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -249,7 +271,17 @@ function ForgotPassword() {
   const [touchedSecurityFields, setTouchedSecurityFields] = useState<
     Record<string, boolean>
   >({})
+  const [securityQuestionCatalog, setSecurityQuestionCatalog] = useState<
+    SecurityQuestion[]
+  >(SECURITY_QUESTION_FALLBACK)
+  const [hasLoadedCatalog, setHasLoadedCatalog] = useState(false)
+  const [isVerifyingAnswers, setIsVerifyingAnswers] = useState(false)
   const [isAuthenticatorOpen, setIsAuthenticatorOpen] = useState(false)
+  // Read off the rendered inputs rather than from the component -- see
+  // readAuthenticatorCode.
+  const [authenticatorCode, setAuthenticatorCode] = useState("")
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false)
+  const authenticatorInputsRef = useRef<HTMLDivElement>(null)
   const [isSupportOpen, setIsSupportOpen] = useState(false)
   const [isCallUsOpen, setIsCallUsOpen] = useState(false)
   const [isEmailUsOpen, setIsEmailUsOpen] = useState(false)
@@ -275,6 +307,17 @@ function ForgotPassword() {
     subject: "",
     message: "",
   })
+  // The proof that Update Password spends. Issued by whichever recovery check
+  // passed, short-lived, and single-use: auth-service rotates the account's
+  // passwordResetVersion when it mints this and again when it is redeemed.
+  const [recoveryResetToken, setRecoveryResetToken] = useState("")
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  // Both set by the reset response, and both needed by the confirmation screen:
+  // the session id to sign the other devices out with, the user to work out
+  // where "Continue to Dashboard" actually goes.
+  const [recoverySessionId, setRecoverySessionId] = useState("")
+  const [recoveredUser, setRecoveredUser] = useState<any>(null)
+  const [isContinuing, setIsContinuing] = useState(false)
   const [isUpdatePasswordOpen, setIsUpdatePasswordOpen] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -356,6 +399,57 @@ function ForgotPassword() {
     if (!touchedSecurityFields[`${index}-${field}`]) return false
     const value = securityAnswers[index][field]
     return field === "question" ? value === "" : value.trim() === ""
+  }
+
+  /**
+   * Pulls the question catalogue once the recovery flow is open rather than on
+   * mount: the page itself is the reset form, and only the Security Questions
+   * modal needs the list. A failure leaves SECURITY_QUESTION_FALLBACK in place,
+   * which is the same six prompts, so the modal still works.
+   */
+  useEffect(() => {
+    if (!isRecoveryFlowOpen || hasLoadedCatalog) return
+
+    let cancelled = false
+    setHasLoadedCatalog(true)
+
+    AuthAPI.GetSecurityQuestionCatalog()
+      .then((response) => {
+        if (cancelled) return
+        const questions = response?.data?.questions
+        if (Array.isArray(questions) && questions.length > 0) {
+          setSecurityQuestionCatalog(questions)
+        }
+      })
+      .catch(() => {
+        // Fallback list stands. Nothing to tell the user: the modal is
+        // identical either way.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isRecoveryFlowOpen, hasLoadedCatalog])
+
+  /**
+   * Reads the six digits straight off the inputs SixDigitPinInput rendered.
+   *
+   * A workaround, and a deliberate one. SixDigitPinInput owns its zag machine
+   * internally and exposes no value callback -- extra props land on the root
+   * div, not the machine -- so there is no supported way to observe what was
+   * typed. Copying the component into this page to add one would be a
+   * COMPONENTS.md violation, and editing it is a Storybook change and so
+   * @CTorres9800's call. Reading the DOM it already rendered touches neither.
+   *
+   * Replace this with onValueChange the moment PinInput gains one; the rest of
+   * the authenticator path does not change when it does.
+   */
+  const readAuthenticatorCode = () => {
+    const root = authenticatorInputsRef.current
+    if (!root) return ""
+    return Array.from(root.querySelectorAll("input"))
+      .map((input) => input.value)
+      .join("")
   }
 
   useEffect(() => {
@@ -457,12 +551,6 @@ function ForgotPassword() {
   }
 
   const handleRecoverySelect = (id: RecoveryOptionId) => {
-    if (id === "questions") {
-      setIsRecoveryOpen(false)
-      setIsSecurityQuestionsOpen(true)
-      return
-    }
-
     // Support is reachable without knowing who you are, so it branches before
     // the address check the account-bound routes need.
     if (id === "support") {
@@ -471,14 +559,14 @@ function ForgotPassword() {
       return
     }
 
-    // Security questions and support are handled above; anything else is not a
-    // route this screen can start.
-    if (id !== "email" && id !== "authenticator") return
+    // Support is handled above; anything else is not a route this screen can
+    // start.
+    if (id !== "email" && id !== "authenticator" && id !== "questions") return
 
-    // Both remaining routes are tied to an account, so the address is required
-    // before either can start. The authenticator needs it for the same reason
-    // the emailed link does: the code only means anything against a known
-    // user's TOTP secret.
+    // All three remaining routes are tied to an account, so the address is
+    // required before any of them can start. The authenticator and the security
+    // questions need it for the same reason the emailed link does: a code or an
+    // answer only means anything checked against a known user's record.
     const email = watch("email").trim()
     if (!email) {
       toast({
@@ -498,25 +586,61 @@ function ForgotPassword() {
       return
     }
 
+    if (id === "questions") {
+      setIsSecurityQuestionsOpen(true)
+      return
+    }
+
     setIsEmailVerificationOpen(true)
     void sendRecoveryLink(email)
   }
 
   /**
-   * Advances to Update Password.
+   * Checks the answers and, only on a pass, opens Update Password with the
+   * reset token the check returned.
    *
-   * The answers are NOT checked, because there is nothing to check them
-   * against: security questions have no entity, no endpoint and no client API
-   * on either side of the stack. This moves the flow on so the screens can be
-   * reviewed end to end; it is not a verification.
+   * The caller states which questions it is answering as well as what the
+   * answers are, and both have to be right. That is what lets this screen stay
+   * as the Figma draws it -- a picker, not a list of the account's own
+   * questions -- without becoming a way to ask which accounts exist and how
+   * they are protected.
    *
-   * Once POST /auth/recovery/security-questions/verify exists this must call
-   * it, keep the proof it returns, and open the next step only on a pass.
-   * See docs/ACCOUNT_RECOVERY_NOTES.md.
+   * Every failure comes back with the same message for the same reason, so
+   * there is nothing more specific to show than what the server said.
    */
-  const handleSecurityAnswersSubmit = () => {
-    setIsSecurityQuestionsOpen(false)
-    setIsUpdatePasswordOpen(true)
+  const handleSecurityAnswersSubmit = async () => {
+    if (!recoveryEmail) {
+      toast({
+        title: "Enter your email address first, then start account recovery.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsVerifyingAnswers(true)
+    try {
+      const response = await AuthAPI.VerifySecurityQuestions({
+        email: recoveryEmail,
+        answers: securityAnswers.map((entry) => ({
+          questionId: entry.question,
+          answer: entry.answer,
+        })),
+      })
+
+      setRecoveryResetToken(response?.data?.resetToken ?? "")
+      setIsSecurityQuestionsOpen(false)
+      setIsUpdatePasswordOpen(true)
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "We could not verify those answers. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVerifyingAnswers(false)
+    }
   }
 
   /**
@@ -676,37 +800,159 @@ function ForgotPassword() {
     }
   }
 
-  const handleAuthenticatorSubmit = () => {
-    setIsAuthenticatorOpen(false)
-    setConfirmationKind("authenticated")
-    setIsConfirmationOpen(true)
-  }
-
   /**
-   * Advances to the confirmation screen.
+   * Checks the six digits against the account's TOTP secret and, on a pass,
+   * opens Update Password with the reset token the check returned.
    *
-   * NOTHING IS PERSISTED. The password is not changed: every write path into
-   * resetPassword needs a token proving identity, and the security-question
-   * route issues none, so there is nothing to authorise the change with. This
-   * exists so the flow can be walked end to end while the backend is built.
-   * See docs/ACCOUNT_RECOVERY_NOTES.md for the endpoints this is waiting on.
+   * This route DEVIATES FROM THE FIGMA, deliberately. The Figma ends it at "You
+   * have been successfully authenticated!" with Continue to Dashboard, which
+   * only means anything if proving a code creates a session -- and it must not.
+   * An account with 2FA on signs in with a password AND a code; letting the
+   * code alone restore access makes the account reachable with strictly less
+   * than its own sign-in requires, which is an authentication bypass. So the
+   * code authorises setting a new password, exactly as the security questions
+   * do, and the new password is the way back in.
+   *
+   * Reverting to the Figma means having the endpoint issue a session instead
+   * and sending this back to setConfirmationKind("authenticated"). That is
+   * @CTorres9800's call, not this screen's -- see
+   * docs/ACCOUNT_RECOVERY_NOTES.md §4.4.
    */
-  /**
-   * NOT WIRED. sessionChoice is collected and discarded: signing other devices
-   * out means calling AuthAPI.RevokeAllOtherSessions, which needs a session
-   * this unauthenticated flow does not have. Sends the person to sign in, which
-   * is the only honest destination while the password was never actually
-   * changed.
-   */
-  const handleContinueToDashboard = () => {
-    setIsConfirmationOpen(false)
-    router.push("/sign-in")
+  const handleAuthenticatorSubmit = async () => {
+    const code = readAuthenticatorCode()
+
+    if (!recoveryEmail) {
+      toast({
+        title: "Enter your email address first, then start account recovery.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsVerifyingCode(true)
+    try {
+      const response = await AuthAPI.VerifyRecoveryAuthenticator({
+        email: recoveryEmail,
+        code,
+      })
+
+      setRecoveryResetToken(response?.data?.resetToken ?? "")
+      setIsAuthenticatorOpen(false)
+      setIsUpdatePasswordOpen(true)
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "We could not verify that code. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsVerifyingCode(false)
+    }
   }
 
-  const handleUpdatePasswordSubmit = () => {
-    setIsUpdatePasswordOpen(false)
-    setConfirmationKind("password")
-    setIsConfirmationOpen(true)
+  /**
+   * Acts on the session choice, then leaves.
+   *
+   * The reset in handleUpdatePasswordSubmit signed this browser in, so by the
+   * time this screen is on we hold a session -- which is what makes both halves
+   * of this possible: RevokeAllOtherSessions needs a current session id to
+   * exempt, and "Continue to Dashboard" needs somewhere real to go.
+   *
+   * The route comes from the user the reset returned, so a client and a talent
+   * land on their own dashboard. The old /sign-in destination was the honest
+   * one only while the password was never actually changed.
+   */
+  const handleContinueToDashboard = async () => {
+    setIsContinuing(true)
+    try {
+      if (sessionChoice === "signOut" && recoverySessionId) {
+        await AuthAPI.RevokeAllOtherSessions(recoverySessionId)
+      }
+      setIsConfirmationOpen(false)
+      router.push(resolveDashboardRoute(recoveredUser))
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "We could not sign your other devices out. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsContinuing(false)
+    }
+  }
+
+  /**
+   * Actually changes the password, spending the reset token the security
+   * question or authenticator check returned.
+   *
+   * Mirrors /reset-password's onSubmit, which redeems the same kind of token
+   * from an emailed link: same endpoint, same profile merge, same handover of
+   * the session id to the screen that offers to sign the other devices out.
+   * The two paths differ only in where the token came from.
+   *
+   * The confirmation screen opens ONLY on a success. It used to open
+   * unconditionally, announcing a change that had not happened.
+   */
+  const handleUpdatePasswordSubmit = async () => {
+    if (!recoveryResetToken) {
+      toast({
+        title: "That recovery step has expired. Please start again.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsUpdatingPassword(true)
+    try {
+      const response = await AuthAPI.ResetPassword({
+        token: recoveryResetToken,
+        password: newPassword,
+      })
+
+      let resolvedUser = response?.data?.user
+      try {
+        const meResponse = await UserAPI.me()
+        if (meResponse?.status === 200) {
+          const profileUser =
+            meResponse?.data?.user ??
+            meResponse?.data?.data?.user ??
+            meResponse?.data
+
+          if (profileUser && typeof profileUser === "object") {
+            resolvedUser = mergeDashboardUserFields(resolvedUser, profileUser)
+          }
+        }
+      } catch {
+        // fall back to the auth payload
+      }
+
+      if (resolvedUser && typeof resolvedUser === "object") {
+        setUser(resolvedUser)
+      }
+
+      setRecoveredUser(resolvedUser)
+      setRecoverySessionId(response?.data?.sessionId ?? "")
+      // Spent. Leaving it in state would let a second Save Password retry a
+      // token the server has already retired.
+      setRecoveryResetToken("")
+      setIsUpdatePasswordOpen(false)
+      setConfirmationKind("password")
+      setIsConfirmationOpen(true)
+    } catch (error: any) {
+      toast({
+        title:
+          error?.response?.data?.errors?.message ??
+          error?.response?.data?.message ??
+          "We could not update your password. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingPassword(false)
+    }
   }
 
   const handleResend = async () => {
@@ -1055,10 +1301,17 @@ function ForgotPassword() {
                                     <AlertCircle className="size-4 shrink-0 !text-error-500" />
                                   )}
                                 </SelectTrigger>
+                                {/* The value is the catalogue id, not the
+                                    prompt -- the id is what the answer is
+                                    stored against, and the prompt is display
+                                    text that may be reworded. */}
                                 <SelectContent>
-                                  {SECURITY_QUESTIONS.map((question) => (
-                                    <SelectItem key={question} value={question}>
-                                      {question}
+                                  {securityQuestionCatalog.map((question) => (
+                                    <SelectItem
+                                      key={question.id}
+                                      value={question.id}
+                                    >
+                                      {question.prompt}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -1125,11 +1378,11 @@ function ForgotPassword() {
                     <Button
                       type="button"
                       size="sm"
-                      disabled={!canSubmitSecurityAnswers}
-                      onClick={handleSecurityAnswersSubmit}
+                      disabled={!canSubmitSecurityAnswers || isVerifyingAnswers}
+                      onClick={() => void handleSecurityAnswersSubmit()}
                     >
                       <Check className="size-[15px]" />
-                      Submit
+                      {isVerifyingAnswers ? "Checking..." : "Submit"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -1182,10 +1435,24 @@ function ForgotPassword() {
                         important modifier is what makes it deterministic.
                         placeholder:text-gray-300 is a separate selector, so it
                         is untouched. */}
+                    {/* onInput on the root catches the bubbling events from
+                        the six inputs, which is how the digits become readable
+                        at all -- see readAuthenticatorCode. The read is
+                        deferred a frame because zag rewrites the values after
+                        the event on paste and on backspace, so reading
+                        synchronously would see the pre-machine state. This is
+                        also what finally lets Submit be gated on six digits,
+                        which is the Figma's disabled state. */}
                     <SixDigitPinInput
+                      ref={authenticatorInputsRef}
                       size="md"
                       className="gap-x-3"
                       pinInputClassName="!text-gray-black"
+                      onInput={() =>
+                        requestAnimationFrame(() =>
+                          setAuthenticatorCode(readAuthenticatorCode())
+                        )
+                      }
                     />
                   </div>
 
@@ -1204,10 +1471,11 @@ function ForgotPassword() {
                     <Button
                       type="button"
                       size="sm"
-                      onClick={handleAuthenticatorSubmit}
+                      disabled={authenticatorCode.length < 6 || isVerifyingCode}
+                      onClick={() => void handleAuthenticatorSubmit()}
                     >
                       <Check className="size-[15px]" />
-                      Submit
+                      {isVerifyingCode ? "Checking..." : "Submit"}
                     </Button>
                   </div>
                 </DialogContent>
@@ -1803,11 +2071,11 @@ function ForgotPassword() {
                   <Button
                     type="button"
                     size="sm"
-                    disabled={!canSavePassword}
-                    onClick={handleUpdatePasswordSubmit}
+                    disabled={!canSavePassword || isUpdatingPassword}
+                    onClick={() => void handleUpdatePasswordSubmit()}
                   >
                     <Check className="size-[15px]" />
-                    Save Password
+                    {isUpdatingPassword ? "Saving..." : "Save Password"}
                   </Button>
                 </DialogContent>
               </Dialog>
@@ -1895,10 +2163,11 @@ function ForgotPassword() {
                     type="button"
                     size="sm"
                     className="w-full"
-                    onClick={handleContinueToDashboard}
+                    disabled={isContinuing}
+                    onClick={() => void handleContinueToDashboard()}
                   >
                     <Check className="size-[15px]" />
-                    Continue to Dashboard
+                    {isContinuing ? "Please wait..." : "Continue to Dashboard"}
                   </Button>
                 </DialogContent>
               </Dialog>
