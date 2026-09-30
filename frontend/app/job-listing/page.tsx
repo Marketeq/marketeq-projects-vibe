@@ -14553,6 +14553,7 @@ const FinalReviewRichTextField = ({
   counterLabel,
   compact = false,
   onChange,
+  onActivate,
 }: {
   title: string
   initialValue?: string
@@ -14560,6 +14561,7 @@ const FinalReviewRichTextField = ({
   counterLabel?: string
   compact?: boolean
   onChange?: (value: string) => void
+  onActivate?: () => void
 }) => {
   const [value, setValue] = useState(initialValue)
 
@@ -14584,6 +14586,8 @@ const FinalReviewRichTextField = ({
           ? "flex h-[200px] w-full flex-col items-start gap-1.5 self-stretch p-0"
           : undefined
       }
+      onFocusCapture={onActivate}
+      onClick={onActivate}
     >
       <div
         className={
@@ -14643,6 +14647,7 @@ const FinalReviewTextSection = ({
   onChange,
   children,
   compact = false,
+  onActivate,
 }: {
   title: string
   initialValue?: string
@@ -14650,6 +14655,7 @@ const FinalReviewTextSection = ({
   onChange?: (value: string) => void
   children?: React.ReactNode
   compact?: boolean
+  onActivate?: () => void
 }) => (
   <div
     className={
@@ -14664,6 +14670,7 @@ const FinalReviewTextSection = ({
       placeholder={placeholder}
       onChange={onChange}
       compact={compact}
+      onActivate={onActivate}
     />
     {children}
   </div>
@@ -15220,7 +15227,13 @@ const ReviewEditableTags = ({
   )
 }
 
-const ReviewEditableTitle = ({ label }: { label: string }) => {
+const ReviewEditableTitle = ({
+  label,
+  onActivate,
+}: {
+  label: string
+  onActivate?: () => void
+}) => {
   const methods = useProjectInfoContext()
   const value = useWatch({ control: methods.control, name: "title" }) ?? ""
   const titleHasError = methods.getFieldState("title").invalid
@@ -15265,6 +15278,8 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         }
         value={value}
         maxLength={100}
+        onFocus={onActivate}
+        onClick={onActivate}
         onChange={(event) => updateTitle(event.target.value)}
         onBlur={() => void methods.trigger("title")}
         isInvalid={titleHasError}
@@ -15766,7 +15781,14 @@ const FinalServiceReviewStep = ({
               <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
             <div className="p-5">
               <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
@@ -15775,27 +15797,57 @@ const FinalServiceReviewStep = ({
               <p className="text-sm leading-5 text-dark-blue-400">
                 Here are some suggestions:
               </p>
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 flex flex-col items-start gap-2">
                 {[
-                  ["Change a Service Title", "title"],
-                  ["Rewrite Overview", "overview"],
-                  ["Rewrite Benefits", "benefits"],
-                ].map(([item, field]) => (
+                  {
+                    label: "Change a Service Title",
+                    field: "title",
+                    icon: "/job-listing/smart-assistant-target.png",
+                    className: "w-[235px]",
+                    textClassName: "w-[167px]",
+                  },
+                  {
+                    label: "Rewrite Overview",
+                    field: "overview",
+                    icon: "/job-listing/smart-assistant-timeline.png",
+                    className: "w-[201px]",
+                    textClassName: "w-[133px]",
+                  },
+                  {
+                    label: "Rewrite Benefits",
+                    field: "benefits",
+                    icon: "/job-listing/smart-assistant-money-bag.png",
+                    className: "w-[194px]",
+                    textClassName: "w-[126px]",
+                  },
+                ].map((item) => (
                   <Button
-                    key={item}
-                    className="h-10 rounded-full"
+                    key={item.label}
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      item.className
+                    )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
                       serviceAssistant.run(
-                        item,
-                        field as SmartAssistantEditableField
+                        item.label,
+                        item.field as SmartAssistantEditableField
                       )
                     }
                   >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
+                    <img
+                      src={item.icon}
+                      alt=""
+                      aria-hidden="true"
+                      width={20}
+                      height={20}
+                      className="size-5 shrink-0"
+                    />
+                    <span className={cn("h-5 shrink-0", item.textClassName)}>
+                      {item.label}
+                    </span>
                   </Button>
                 ))}
               </div>
@@ -15875,6 +15927,8 @@ const FinalProjectReviewStep = ({
   )
   const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
   const [responsibilities, setResponsibilities] = useState("")
+  const [activeAssistantField, setActiveAssistantField] =
+    useState<SmartAssistantEditableField>("title")
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
     useDynamicFinalReviewSkills()
@@ -15917,6 +15971,31 @@ const FinalProjectReviewStep = ({
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
   })
+  const projectAssistantQuickActions: Record<
+    SmartAssistantEditableField,
+    string[]
+  > = {
+    title: [
+      "Make it more descriptive",
+      "Simplify the wording",
+      "Reword for clarity",
+    ],
+    overview: [
+      "Add project goals",
+      "Highlight key deliverables",
+      "Reword for better flow",
+    ],
+    benefits: [
+      "Add bullet points",
+      "Focus on team impact",
+      "Highlight learning opportunities",
+    ],
+    responsibilities: [
+      "Add more specifics",
+      "Simplify the task list",
+      "Group similar tasks",
+    ],
+  }
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
     if (!jobListingId || didGenerateBasicInformationRef.current) return
@@ -16130,7 +16209,10 @@ const FinalProjectReviewStep = ({
                 <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                   Basic Information
                 </h2>
-                <ReviewEditableTitle label="Project Title" />
+                <ReviewEditableTitle
+                  label="Project Title"
+                  onActivate={() => setActiveAssistantField("title")}
+                />
                 <ReviewJobTypeSelect />
                 <ReviewEditableTags
                   fieldName="industry"
@@ -16257,6 +16339,7 @@ const FinalProjectReviewStep = ({
                   title="Overview"
                   initialValue={details.description ?? ""}
                   placeholder="Add the project overview"
+                  onActivate={() => setActiveAssistantField("overview")}
                   onChange={(value) =>
                     setDetails((current) => ({
                       ...current,
@@ -16269,6 +16352,7 @@ const FinalProjectReviewStep = ({
                   title="Benefits"
                   initialValue={details.successCriteria ?? ""}
                   placeholder="Add benefits for joining this project"
+                  onActivate={() => setActiveAssistantField("benefits")}
                   onChange={(value) =>
                     setDetails((current) => ({
                       ...current,
@@ -16321,6 +16405,9 @@ const FinalProjectReviewStep = ({
                       title="Responsibilities"
                       initialValue={responsibilities}
                       placeholder={`Add responsibilities for ${selectedRole}`}
+                      onActivate={() =>
+                        setActiveAssistantField("responsibilities")
+                      }
                       onChange={setResponsibilities}
                     />
 
@@ -16369,7 +16456,14 @@ const FinalProjectReviewStep = ({
               <h2 className="h-6 flex-1 text-base font-semibold leading-6 text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
             <div className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
@@ -16380,29 +16474,38 @@ const FinalProjectReviewStep = ({
                   Here are some suggestions:
                 </p>
               </div>
-              <div className="flex w-[282px] shrink-0 flex-col items-start gap-3 self-stretch">
-                {[
-                  ["Change a Project Title", "title"],
-                  ["Rewrite Overview", "overview"],
-                  ["Rewrite Benefits", "benefits"],
-                ].map(([item, field]) => (
-                  <Button
-                    key={item}
-                    className="h-10 rounded-full"
-                    variant="outlined"
-                    visual="gray"
-                    disabled={projectAssistant.isLoading}
-                    onClick={() =>
-                      projectAssistant.run(
-                        item,
-                        field as SmartAssistantEditableField
-                      )
-                    }
-                  >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
-                  </Button>
-                ))}
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
+                {projectAssistantQuickActions[activeAssistantField].map(
+                  (item) => (
+                    <Button
+                      key={`${activeAssistantField}-${item}`}
+                      className={cn(
+                        "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                        item === "Make it more descriptive" && "w-[211px]",
+                        item === "Simplify the wording" && "w-[194px]",
+                        item === "Reword for clarity" && "w-[163px]",
+                        item === "Add project goals" && "w-[151px]",
+                        item === "Highlight key deliverables" && "w-[218px]",
+                        item === "Reword for better flow" && "w-[191px]",
+                        item === "Add bullet points" && "w-[154px]",
+                        item === "Focus on team impact" && "w-[196px]",
+                        item === "Highlight learning opportunities" &&
+                          "w-[248px]",
+                        item === "Add more specifics" && "w-[169px]",
+                        item === "Simplify the task list" && "w-[184px]",
+                        item === "Group similar tasks" && "w-[181px]"
+                      )}
+                      variant="outlined"
+                      visual="gray"
+                      disabled={projectAssistant.isLoading}
+                      onClick={() =>
+                        projectAssistant.run(item, activeAssistantField)
+                      }
+                    >
+                      <span className="h-5 shrink-0">{item}</span>
+                    </Button>
+                  )
+                )}
               </div>
               {projectAssistant.result ? (
                 <p className="text-xs leading-[18px] text-primary-600">
