@@ -1,22 +1,31 @@
 # Account Recovery — implementation notes and blockers
 
-**Branch:** `account-recovery` · **Verified 2026-09-28** against the stack running
+**Branch:** `account-recovery` · **Verified 2026-09-30** against the stack running
 locally (api-gateway, auth-service, user-service all healthy on :4000/:3001/:3002).
 
 Scope is the `/forgot-password` entry point and the six modals behind it.
 
-> **@CTorres9800: §7 is the list of what needs you.** Read §4 first for what
-> is still unwired. The flow can be walked end to end, but **most of it
-> persists nothing** — including a final screen that tells the user their
-> password was changed when it was not, a Call Us screen showing a placeholder
-> phone number, and a Call Scheduled screen for a call nobody booked. This is
-> fine for review; it must not reach an environment real users can reach.
+> **@CTorres9800: §7 is the list of what needs you.**
 >
-> §3 is now **resolved** — the password reset email sends and delivers for real
-> as of 2026-09-28. It is kept because it records the Brevo configuration, which
-> template was chosen and why, and the authorised-IP restriction that **will
-> break staging and production on deploy** until Render's egress IPs are
-> allowlisted.
+> As of **2026-09-30 every route through this flow reaches a backend and
+> persists what it claims to persist.** The screen that told people their
+> password had changed when it had not is gone; so is the unchecked
+> authenticator code that let an empty field through. §4 is the record of what
+> each route now does and how it was verified.
+>
+> Two things still stand out:
+>
+> 1. **Nothing works in staging or production until §7.1 is done** — the Brevo
+>    vars on Render and Render's egress IPs on Brevo's allowlist. Every mail
+>    failure in this flow is caught and swallowed, so a misconfiguration here
+>    looks exactly like a working system while locking people out.
+> 2. **The authenticator route deviates from the Figma on purpose** (§4.4 and
+>    §7.2). It ends in a password change rather than a session, because issuing
+>    a session for a TOTP code alone is an authentication bypass. That is a call
+>    you may want to make differently.
+>
+> Schedule a Call still books nothing — it relays a request to the support
+> inbox, and the confirmation screen must not promise more than that (§4.5).
 
 ---
 
@@ -27,20 +36,26 @@ Scope is the `/forgot-password` entry point and the six modals behind it.
 
 ```
 Start account recovery → Account Recovery (chooser)
-    ├─ Email Verification  → sends the magic link request
-    ├─ Security Questions  → Update Password ─┐
-    ├─ App Authenticator ─────────────────────┴─→ Confirmation → /sign-in
-    └─ Contact Support     → Call Us (screen)
-                           → Email Us (form) → mail client → Message Sent
-                           → Schedule a Call (form) → Call Scheduled
-                           → Live Chat (inert)
+    ├─ Email Verification  → POST /auth/forgot-password → emailed link
+    ├─ Security Questions ──┐
+    ├─ App Authenticator ───┴→ reset token → Update Password
+    │                              → POST /auth/reset-password (session issued)
+    │                              → Confirmation → optional session sweep
+    │                                             → dashboard
+    └─ Contact Support     → Email Us (form)       → POST /support/messages
+                           → Schedule a Call (form) → POST /support/call-requests
 ```
 
-The authenticator route **skips Update Password**. The Figma ends it at "You
-have been successfully authenticated!" with Continue to Dashboard, so proving a
-TOTP code is treated as regaining access, not as authorising a password change.
-Worth confirming that is intended: it means the authenticator path restores
-access without the person ever setting a new password.
+Call Us, Live Chat and Phone Verification are commented out per @CTorres9800
+(§4.5); their markup is still in the file.
+
+The authenticator route **used to skip Update Password**, following the Figma,
+which ends it at "You have been successfully authenticated!" with Continue to
+Dashboard. It no longer does. Issuing a session for a TOTP code alone makes an
+account with 2FA on reachable with strictly less than its own sign-in requires,
+so the code now authorises a password change instead and both non-email routes
+converge on Update Password. This is the one knowing deviation from the drawing
+— see §4.4 and §7.2.
 
 Phone Verification is still inert, deliberately — SMS is deprioritised per
 CTorres, so nothing in this flow should build toward it.
@@ -272,79 +287,178 @@ still the fastest way to exercise the flow without spending quota:
 
 ---
 
-## 4. BLOCKER — what is NOT wired to a backend
+## 4. What is wired, and what is not
 
-The `/forgot-password` recovery flow now runs end to end as screens, and can be
-walked start to finish for review. **Most of it persists nothing.** The table is
-exhaustive; anything not listed here is real.
+**Every route through this flow now reaches a backend and persists what it
+claims to persist.** As of 2026-09-30 nothing on this screen announces something
+that did not happen. The table is exhaustive; anything not listed here is real.
 
 | Step | Works? | What actually happens |
 |---|---|---|
-| Account Recovery chooser | UI only | Email and Security Questions open; the other three rows are inert |
-| Email Verification | **real** | Calls `POST /auth/forgot-password`, issues a real 24h token, rotates `passwordResetVersion` — **but the email never sends**, see §3 |
-| Security Questions | **UI only** | Answers are not checked against anything |
-| Update Password | **UI only** | **The password is not changed** |
-| Password Updated | **UI only** | Confirms a change that did not happen |
-| "Sign out of all other devices" | **UI only** | The choice is collected and discarded |
+| Account Recovery chooser | **real** | All four remaining rows open a working route |
+| Email Verification | **real** | `POST /auth/forgot-password` — real 24h token, rotates `passwordResetVersion`, email delivers (§3) |
+| Security Questions | **real** | `POST /auth/recovery/security-questions/verify` — answers checked against hashes, returns a reset token on a pass only |
+| App Authenticator | **real** | `POST /auth/recovery/authenticator/verify` — code checked against the account's TOTP secret, returns a reset token |
+| Update Password | **real** | `POST /auth/reset-password` spending that token — the password is changed and a session is issued |
+| Password Updated | **real** | Opens only on a success |
+| "Sign out of all other devices" | **real** | `DELETE /auth/sessions?currentSessionId=` with the session the reset issued |
+| Contact Support | **real** | Email Us and Schedule a Call relay to the support inbox (§4.5) |
 
-### 4.1 Security questions cannot be verified — nothing exists
+Verified end to end through api-gateway on 2026-09-30: catalogue served,
+answers set and read back, wrong answer and wrong question both rejected,
+correct answers accepted case- and whitespace-insensitively, token redeemed,
+token reuse rejected, `{"revoked":2}` from the session sweep, a real TOTP code
+accepted and a wrong one rejected, and the account-scoped limiter returning 429
+on the sixth attempt.
 
-Confirmed 2026-09-22 by searching `feat/settings-unblocked`, which carries all
-20 commits of the Settings work. The phrase "security question" appears in
-exactly two files: `docs/SETTINGS_BLOCKERS.md` and the Settings page UI.
+### 4.1 Security questions — built 2026-09-30
 
-**No entity, no migration, no route, no client API, on either branch.** Searched
-`securityQuestion`, `security_question`, `recovery question`, `kba` and
-`knowledge-based`; every hit was a false positive (`kba` matches inside
-`fallbackBase`, and a listings migration has `recentQuestions` for job
-applications).
+`security_question_answers` in auth-service holds one row per answered question:
+`userId`, `questionId`, a bcrypt `answerHash`, unique on `(userId, questionId)`.
+Migration `1772600000000-CreateSecurityQuestionAnswers`.
 
-`handleSecurityAnswersSubmit` therefore advances **without checking anything.**
+**Answers are hashed, not encrypted.** They are only ever compared, never read
+back or displayed — the same argument as a password. There is no endpoint that
+returns an answer, which is why Settings reopens the modal with the questions
+preselected and the answer fields blank: it can show that something is set, not
+what was said.
 
-### 4.2 The password is never changed
+**Normalisation** (`normalizeSecurityAnswer`) trims, collapses internal
+whitespace and lowercases, applied identically on set and on verify. Changing it
+on one side alone invalidates every stored answer.
 
-`handleUpdatePasswordSubmit` opens the confirmation screen and writes nothing.
-Every write path into `resetPassword` requires a token proving identity, and the
-security-question route issues none, so there is nothing to authorise the change
-with. The confirmation screen then states the password was updated — **it was
-not.** This must not reach an environment real users can get to.
+**The catalogue is now owned by the backend**
+(`security-questions.catalog.ts`) and served from
+`GET /auth/security-questions/catalog`. It used to be two hardcoded lists in two
+React components with nothing keeping them in step; because the *id* is what an
+answer is stored against, an edit to one copy would have silently locked every
+account that answered the edited question out of its own recovery path. Both
+screens now render from the endpoint, with the same six prompts as a fallback.
 
-### 4.3 The session choice is discarded
+**Endpoints:**
 
-Applies to both terminals — the confirmation screen is shared, so the same
-unwired radio group is shown after a password reset and after an authenticator
-pass.
+| Route | Auth | Purpose |
+|---|---|---|
+| `GET /auth/security-questions/catalog` | public | The six prompts. Names no account. |
+| `GET /auth/security-questions` | bearer | Which questions *I* have answered — ids only |
+| `PUT /auth/security-questions` | bearer | Replace my answers wholesale |
+| `POST /auth/recovery/security-questions/verify` | public | The locked-out check |
 
-"Sign out of all other devices" would call `AuthAPI.RevokeAllOtherSessions`,
-which needs a session this unauthenticated flow does not have.
-`handleContinueToDashboard` sends the person to `/sign-in` rather than a
-dashboard, because there is no session to land in.
+**Replace, not merge**, on `PUT`: the form always submits the full set, so a
+merge would leave an answer to a question the user has since deselected still
+live and still accepted at recovery time.
 
-### 4.4 The authenticator code is never verified
+**There is deliberately no endpoint that tells an unauthenticated caller which
+questions an account set.** The recovery modal stays as the Figma draws it — a
+picker — and the caller must name the right questions *and* give the right
+answers. That is what keeps this from being an account-existence oracle, and it
+is strictly stronger than showing someone their own questions.
 
-`handleAuthenticatorSubmit` advances to the confirmation screen without
-checking the six digits, so **anything gets you in** — including an empty
-field. Two separate things block a real check:
+Every failure returns the same 401 and the same sentence: unknown email, no
+answers ever set, wrong questions named, wrong answers. The doomed paths still
+run a bcrypt comparison against an unmatchable hash so the timing does not give
+the answer away either — blunted rather than equalised; the rate limiter is the
+control that actually matters.
 
-**There is no route it can call.** Verifying means POSTing the code plus the
-address from the reset form to something that loads that user's TOTP secret and
-validates the time window. `auth-service` already exposes `POST /auth/2fa/verify`
-(`AuthAPI.VerifyTwoFactor`), but it requires a `partialToken` issued by a
-*completed* login — which nobody holds in a forgotten-password flow. So the one
-endpoint that checks TOTP codes is unreachable from here by construction; this
-needs its own unauthenticated route keyed on the email.
+**Settings now saves for real.** `Save Security Questions` used to set a boolean
+in component state: the modal closed, the Enabled badge appeared, and nothing
+was stored. It now calls `PUT /auth/security-questions` through
+`useSecurityQuestions`, closes only on a success, and reports a failure inline.
 
-**The digits are not readable on the client either.** `SixDigitPinInput`
-(`components/ui/pin-input/pin-input.tsx`) owns its `@zag-js/pin-input` machine
-internally and exposes no value callback — extra props spread onto the root
-`div`, not the machine. So the page cannot see what was typed, and Submit cannot
-even be gated on six digits being present. It is enabled unconditionally, which
-is why the Figma's `opacity: 0.5` disabled state is not reproduced.
+### 4.2 Update Password writes — fixed 2026-09-30
 
-Gating Submit needs `onValueChange` / `onValueComplete` plumbed through
-`PinInput`. That is a Storybook design-system change and therefore
-@CTorres9800's call, not something to work around locally — a page-local copy of
-the component would be a COMPONENTS.md violation.
+`handleUpdatePasswordSubmit` calls `POST /auth/reset-password` with the reset
+token the security-question or authenticator check returned, and opens the
+confirmation screen **only on a success**. It used to open unconditionally while
+writing nothing.
+
+The token is the existing `type: 'reset'` JWT, minted by
+`issueRecoveryResetToken` — which rotates the account's `passwordResetVersion`
+first. That is what makes it single-use: `resetPassword` requires the version in
+the token to still match the row and rotates it again on success. It also
+retires any reset link already sitting in the account's inbox, which is the
+right outcome — a second recovery attempt should invalidate the first.
+
+TTL is `AUTH_RECOVERY_RESET_TOKEN_EXPIRES_IN`, default **15 minutes**, not the
+24 hours an emailed link gets: this token is handed straight to the next screen
+in an open modal, so its whole life is the time it takes to type a password.
+
+The path mirrors `/reset-password`'s `onSubmit` exactly — same endpoint, same
+profile merge, same handover of the session id — because it redeems the same
+kind of token. The two differ only in where the token came from.
+
+### 4.3 The session choice is wired — fixed 2026-09-30
+
+`handleContinueToDashboard` now calls
+`DELETE /auth/sessions?currentSessionId=<id>` when "Sign out of all other
+devices" is chosen, then routes via `resolveDashboardRoute(recoveredUser)`.
+
+The endpoint always existed; what did not exist was a session to call it with.
+The reset in §4.2 signs this browser in, so by the time the confirmation screen
+is on we hold one — which is what makes both halves possible: the revoke needs a
+current session id to exempt, and "Continue to Dashboard" needs somewhere real
+to go. The old `/sign-in` destination was the honest one only while the password
+was never actually changed.
+
+Verified: three live sessions before, `{"revoked":2}`, one after.
+
+### 4.4 The authenticator code is checked — fixed 2026-09-30
+
+`POST /auth/recovery/authenticator/verify` takes `{ email, code }`, loads that
+account's TOTP secret, validates the window through the same
+`validateTwoFactorCode` the login path uses (so backup codes work too), and on a
+pass returns a reset token.
+
+It had to be its own route. `/auth/2fa/verify` is the only other place that
+validates a TOTP code and it demands a `partialToken` minted by a *completed*
+login — which nobody holds in a forgotten-password flow — so it is unreachable
+from here by construction.
+
+**It deliberately does not issue a session, and this DEVIATES FROM THE FIGMA.**
+The Figma ends the route at "You have been successfully authenticated!" with
+Continue to Dashboard, which only means anything if proving a code creates a
+session. It must not. An account with 2FA on signs in with a password **and** a
+code; letting the code alone restore access makes that account reachable with
+strictly less than its own sign-in requires, which is an authentication bypass.
+So the code authorises setting a new password — exactly as the security
+questions do — and the new password is the way back in. Both non-email routes
+now converge on Update Password, which is also what gives the authenticator
+terminal a session for the §4.3 choice.
+
+Reverting to the Figma means having the endpoint issue a session and sending
+`handleAuthenticatorSubmit` back to `setConfirmationKind("authenticated")`. The
+copy for that ending is kept, not deleted. **That is @CTorres9800's call** — see
+§7.2.
+
+**SMS-backed 2FA falls through to the same rejection** as an account with no
+authenticator at all, rather than a distinguishable "wrong method" error. There
+is no code to compare against without sending one first, and SMS is
+deprioritised.
+
+**The digits are readable now.** `SixDigitPinInput` still exposes no value
+callback — extra props land on the root `div`, not the zag machine — so the page
+reads the values straight off the six `<input>` elements the component rendered,
+via a ref plus an `onInput` listener on the root (deferred a frame, because zag
+rewrites the values after the event on paste and on backspace). **This is a
+workaround.** Copying the component into the page to add a callback would be a
+COMPONENTS.md violation and editing it is a Storybook change, so reading the DOM
+it already rendered was the only option that touches neither. It is also what
+finally lets Submit be gated on six digits, which is the Figma's disabled state.
+Replace it with `onValueChange` the moment `PinInput` gains one — nothing else
+in the authenticator path changes when it does.
+
+**Rate limiting.** Both recovery checks are limited per account (5) and per IP
+(10) per 15 minutes — `AUTH_RECOVERY_ACCOUNT_LIMIT`, `AUTH_RECOVERY_IP_LIMIT`,
+`AUTH_RECOVERY_RATE_LIMIT_WINDOW_MS`. They are unauthenticated, they end in a
+password reset, and they compare against a small space — six questions, or a
+six-digit code — so without a ceiling they are a brute-force target, and the
+code space in particular falls fast to an unthrottled attacker.
+
+> **Same limitation as the support limiter (§4.5): the buckets live in the
+> process.** Per-instance, cleared by a deploy, and on Render with more than one
+> instance the effective limit is the configured number times the instance
+> count. A shared Redis bucket is the real fix and Redis is already a dependency
+> of this stack.
 
 ### 4.5 Contact Support: Email Us and Schedule a Call now reach the backend
 
@@ -467,56 +581,64 @@ that endpoint's payload depends on it. Three ways out, in order of preference:
 Consolidated list. Nothing below exists today — every row was searched for on
 both `account-recovery` and `feat/settings-unblocked`.
 
-| # | Need | Type | Blocks | Owner |
-|---|---|---|---|---|
-| 1 | ~~`BREVO_API_KEY` + `BREVO_PASSWORD_RESET_TEMPLATE_ID`~~ **done locally 2026-09-28**; still needed on Render staging/production, plus Render egress IPs on the Brevo allowlist | config | Email Verification (§3) | @CTorres9800 |
-| 2 | `GET /auth/recovery/security-questions` | endpoint | Security Questions (§4.1) | backend |
-| 3 | `POST /auth/recovery/security-questions/verify` | endpoint | Security Questions → Update Password | backend |
-| 4 | `POST /auth/recovery/authenticator/verify` | endpoint | App Authenticator (§4.4) | backend |
-| 5 | Reset token accepted by `resetPassword` | contract | Update Password actually saving (§4.2) | backend |
-| 6 | Session revocation without a session | design | "Sign out of all other devices" (§4.3) | backend |
-| 7 | `POST /support/messages` + a Brevo template | endpoint | Email Us (§4.5) | backend |
-| 8 | `POST /support/call-requests` | endpoint | Schedule a Call (§4.5) | backend |
-| 9 | A real support phone number | config | Call Us (§4.5) | @CTorres9800 |
-| 10 | A live-chat provider | integration | Live Chat (§4.5) | product |
+| # | Need | Type | Blocks | Owner | State |
+|---|---|---|---|---|---|
+| 1 | `BREVO_API_KEY` + `BREVO_PASSWORD_RESET_TEMPLATE_ID` on Render staging/production, plus Render egress IPs on the Brevo allowlist | config | Email Verification (§3) | @CTorres9800 | **open** — done locally 2026-09-28 |
+| 2 | ~~`GET /auth/recovery/security-questions`~~ | — | — | — | **not built, on purpose** — it would be an account-existence oracle (§4.1) |
+| 3 | `POST /auth/recovery/security-questions/verify` | endpoint | Security Questions → Update Password | backend | **done** 2026-09-30 |
+| 4 | `POST /auth/recovery/authenticator/verify` | endpoint | App Authenticator (§4.4) | backend | **done** 2026-09-30 |
+| 5 | Reset token accepted by `resetPassword` | contract | Update Password actually saving (§4.2) | backend | **done** 2026-09-30 |
+| 6 | Session revocation without a session | design | "Sign out of all other devices" (§4.3) | backend | **done** 2026-09-30 — resolved by the reset issuing one |
+| 7 | `POST /support/messages` + a Brevo template | endpoint | Email Us (§4.5) | backend | **done** 2026-09-28 |
+| 8 | `POST /support/call-requests` | endpoint | Schedule a Call (§4.5) | backend | **done** 2026-09-28 |
+| 9 | A real support phone number | config | Call Us (§4.5) | @CTorres9800 | moot — row commented out |
+| 10 | A live-chat provider | integration | Live Chat (§4.5) | product | moot — row commented out |
+| 11 | Storage for the answers (`security_question_answers` + migration) | schema | Security Questions (§4.1) | backend | **done** 2026-09-30 |
+| 12 | A way to *set* the answers (`PUT /auth/security-questions`, Settings wired) | endpoint | everything in §4.1 | backend | **done** 2026-09-30 |
+| 13 | Redis-backed rate limiting for `/support/*` and `/auth/recovery/*` | infra | multi-instance correctness | backend | **open** |
 
 Not backend, but blocking the same screens:
 
 | # | Need | Type | Blocks |
 |---|---|---|---|
-| 11 | `onValueChange` on `PinInput` | design system | Gating the authenticator's Submit (§4.4) |
-| 12 | Trailing-indicator `DatePicker` / single-field `TimeField` | design system | Validating a booking (§4.6) |
-| 13 | Is a security question an acceptable recovery factor? | product | Whether (2) and (3) are built at all |
+| 14 | `onValueChange` on `PinInput` | design system | Replacing the DOM-read workaround in §4.4. No longer blocking — the code is read and Submit is gated today |
+| 15 | Trailing-indicator `DatePicker` / single-field `TimeField` | design system | Validating a booking (§4.6) |
+| 16 | Should the authenticator route end in a session rather than a password change? | product | Whether §4.4 keeps its deviation from the Figma |
 
-#### The three recovery endpoints
+#### The recovery endpoints, as built
 
 Keyed on the email from the reset form — the same source the email step uses:
 
-1. **`GET /auth/recovery/security-questions?email=…`** → which questions that
-   account set, so the modal shows theirs rather than all six. **Must respond
-   identically for unknown emails**, or it becomes an account-existence oracle.
-2. **`POST /auth/recovery/security-questions/verify`** → `{ email, answers[] }`.
-   On a pass, returns a short-lived reset token that `resetPassword` accepts, so
-   Update Password has something to authorise with.
-3. **`POST /auth/recovery/authenticator/verify`** → `{ email, code }`. Loads
-   that account's TOTP secret, validates the window, and on a pass returns the
-   same short-lived reset token as (2). Needed because `/auth/2fa/verify`
-   demands a `partialToken` from a completed login, which this flow never has.
-   **Must respond identically for unknown emails and for accounts with no
-   authenticator paired**, for the same oracle reason as (1) — and it needs the
-   same rate limiting as (2), since it also ends in a password reset.
+1. **`POST /auth/recovery/security-questions/verify`** → `{ email, answers[] }`,
+   each answer `{ questionId, answer }`. On a pass, returns a short-lived reset
+   token that `resetPassword` accepts. Every failure is identical.
+2. **`POST /auth/recovery/authenticator/verify`** → `{ email, code }`. Loads the
+   account's TOTP secret, validates the window, and on a pass returns the same
+   kind of token. Needed because `/auth/2fa/verify` demands a `partialToken`
+   from a completed login, which this flow never has. Identical response for
+   unknown emails, accounts with no authenticator paired, and SMS-backed
+   accounts — same oracle reasoning — and the same rate limiting, since it also
+   ends in a password reset.
 
-Storage requirements:
+A third endpoint — "which questions did this account set?" — was specified here
+and **deliberately not built**. See §4.1: the modal asks the caller to name the
+questions, which is both the Figma's drawing and the stronger check.
+
+Storage, as implemented:
 
 - Answers **hashed, not encrypted** — they are only ever compared, never read
   back. Same argument as passwords.
-- Normalised for case and surrounding whitespace before hashing.
-- Rate limiting and lockout per account **and** per IP. These are
-  unauthenticated endpoints that end in a password reset; without a lockout they
-  are a brute-force target against a small answer space.
-- A product decision first on whether security questions are an acceptable
-  recovery factor at all — they are weak, and this is the second time that
-  question has been raised (SB-702).
+- Normalised for case and whitespace before hashing, identically on both sides.
+- Rate limited per account **and** per IP (§4.4).
+- Unique on `(userId, questionId)`, so a concurrent second write cannot leave an
+  account with two different answers to the same question — which would make
+  verification depend on row order.
+
+**The product question stands.** Security questions are a weak factor, and this
+is the third time it has been raised (SB-702). The route is built and safe as
+built; whether it should be *offered* is still @CTorres9800's call, and turning
+it off is one commented line in `RECOVERY_OPTIONS` — the same treatment Phone
+Verification got.
 
 #### The two support endpoints
 
@@ -540,16 +662,19 @@ a ticket in a helpdesk, or a row in a table is an open product question.
 
 ## 5. Still to build
 
-Every chooser row except one now has its screens. What they lack is the backend
-in §4.7.
+Every chooser row now has its screens **and its backend**.
 
 | Row | Screens | State |
 |---|---|---|
 | Email Verification | built + **sending** | Real email delivers as of 2026-09-28 (§3); Render envs still unset |
-| Security Questions | built | Answers never checked (§4.1) |
-| App Authenticator | built | Code never checked, Submit ungateable (§4.4) |
+| Security Questions | built + **wired** | Answers stored hashed and checked (§4.1); set from Settings |
+| App Authenticator | built + **wired** | Code checked against the TOTP secret, Submit gated on six digits (§4.4) |
 | Contact Support | built + **sending** | Email Us and Schedule a Call reach the support inbox; Call Us and Live Chat commented out per @CTorres9800 (§4.5) |
 | ~~Phone Verification~~ | **removed from the chooser** | Commented out of `RECOVERY_OPTIONS` 2026-09-29 per @CTorres9800 — SMS not in use. Uncomment to restore |
+
+What is left is configuration and two design-system items, not flow work: the
+Render/Brevo setup in §7.1, a shared Redis bucket for the rate limiters, and
+§4.6's date/time pickers.
 
 Also outstanding:
 
@@ -692,14 +817,25 @@ exactly like a working system while locking people out of their accounts.
 ### 7.2 Decisions only you can make
 
 **1. Are security questions an acceptable recovery factor?**
-Nothing is built yet, and this blocks two screens (§4.1, §4.2). As drawn, that
-route hands out a password change with no second factor. If the answer is no,
-the route should be removed rather than built. **This is the largest open item.**
+The route is now **built and verified** (§4.1) — hashed answers, no
+account-existence oracle, rate limited per account and per IP. The product
+question is unchanged though: a security question is a weak factor, and that
+route hands out a password change on it alone. If the answer is no, turning the
+row off is one commented line in `RECOVERY_OPTIONS`, the same treatment Phone
+Verification got. Nothing is wasted either way.
+
+**1b. The authenticator route no longer ends in a session, and that deviates
+from the Figma.** Proving a TOTP code now authorises a password change instead
+of restoring access, because issuing a session for a code alone makes an account
+with 2FA on reachable with strictly less than its own sign-in requires (§4.4).
+This is the one place the implementation knowingly departs from the drawing.
+Reverting it is one line here plus a change to the endpoint — your call.
 
 **2. `onValueChange` on `PinInput`** — a Storybook change, and therefore yours.
-Without it the App Authenticator cannot read the typed code, so its Submit
-cannot be gated and the code cannot be checked even once the backend endpoint
-exists (§4.4).
+**No longer blocking**: the authenticator reads its digits off the rendered
+inputs via a ref, so the code is checked and Submit is gated today. That is a
+workaround living in the page, and it should be retired the moment the component
+exposes a callback (§4.4).
 
 **3. A trailing-indicator `DatePicker` and a single-field `TimeField`** —
 Storybook again (§4.6). Until these exist, Schedule a Call collects free text:
@@ -714,8 +850,15 @@ out. Restoring it needs a provider that serves logged-out visitors.
 **5b. Phone Verification** is commented out of the recovery chooser at your
 request. Restoring it needs the SMS decision reversed.
 
-**6. Should the authenticator route skip Update Password?** The Figma draws it
-that way; the implementation follows the Figma. Confirm that is intended.
+**6. ~~Should the authenticator route skip Update Password?~~** Answered by
+1b above: it no longer does, on security grounds. Confirm or reverse.
+
+**7. Redis-backed rate limiting.** Both the support endpoints and the two
+recovery checks limit in process memory, so on Render with more than one
+instance the effective limit multiplies by the instance count and a deploy
+clears the buckets. Redis is already a dependency of this stack. Not a decision
+so much as a scheduling call — it is ordinary work, it just is not on this
+branch.
 
 ### 7.3 Housekeeping in Brevo
 
@@ -741,5 +884,24 @@ Two changes touch files outside the recovery flow, both deliberate:
    as `/auth/forgot-password`. Both endpoints are per-IP rate limited, input is
    length-capped, validated and HTML-escaped.
 
+3. **`api-gateway/src/middleware/jwt.middleware.ts`** (2026-09-30) also adds
+   `/auth/security-questions/catalog`,
+   `/auth/recovery/security-questions/verify` and
+   `/auth/recovery/authenticator/verify`. Same reasoning: reached by people who
+   are locked out and hold no token. The catalogue is the same six prompts for
+   everyone and names no account; the two verify routes are rate limited per
+   account and per IP and answer every failure identically, so neither reveals
+   whether an email is registered.
+
+4. **`auth.service.ts` / `auth.controller.ts`** (2026-09-30) gain the security
+   question management and recovery verification methods, and
+   **`app/(group)/settings/[[...tab]]/page.tsx`** now saves security questions
+   for real through a new `useSecurityQuestions` hook. The Settings change is
+   confined to that panel: no shared component was touched, no frozen tree was
+   entered, and the modal's markup changed only where the list had to render
+   from the catalogue instead of a hardcoded array.
+
 These will trip the **Login Gate**, which is correct — they are exactly the kind
-of change it exists to surface.
+of change it exists to surface. The auth-service changes are additive: no
+existing method, route or contract was modified. `resetPassword` is unchanged —
+the new routes mint the token it already accepted.

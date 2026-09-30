@@ -31,6 +31,11 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import {
+  SetSecurityQuestionsDto,
+  VerifySecurityQuestionsDto,
+} from './dto/security-questions.dto';
+import { VerifyRecoveryAuthenticatorDto } from './dto/recovery-authenticator.dto';
 import { VerifyTwoFactorDto, TwoFactorVerifyLoginDto, GenerateSmsTwoFactorDto, ResendTwoFactorDto } from './dto/two-factor.dto';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -234,6 +239,58 @@ export class AuthController {
     const result = await this.authService.resetPassword(dto, ipAddress, userAgent);
     this.setAuthCookies(res, result);
     return result;
+  }
+
+  @ApiOperation({ summary: 'The security questions a user can choose from' })
+  @Get('security-questions/catalog')
+  getSecurityQuestionCatalog() {
+    return this.authService.getSecurityQuestionCatalog();
+  }
+
+  @ApiOperation({ summary: 'Which security questions this account has answered' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
+  @Get('security-questions')
+  getSecurityQuestions(@Req() req: Request) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.getSecurityQuestions(userId);
+  }
+
+  @ApiOperation({ summary: 'Replace this account\'s security question answers' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
+  @Put('security-questions')
+  @HttpCode(HttpStatus.OK)
+  setSecurityQuestions(@Req() req: Request, @Body() dto: SetSecurityQuestionsDto) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.setSecurityQuestions(userId, dto);
+  }
+
+  // The two routes below are reached by someone who is locked out and holds no
+  // token, for the same reason /auth/forgot-password is public. Both end in a
+  // reset token, so both are rate limited per account and per IP in the service
+  // and both answer every failure identically.
+
+  @ApiOperation({ summary: 'Recovery: verify security question answers' })
+  @Post('recovery/security-questions/verify')
+  @HttpCode(HttpStatus.OK)
+  verifySecurityQuestionsForRecovery(
+    @Body() dto: VerifySecurityQuestionsDto,
+    @Req() req: Request,
+  ) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.verifySecurityQuestionsForRecovery(dto, ipAddress);
+  }
+
+  @ApiOperation({ summary: 'Recovery: verify an authenticator code' })
+  @Post('recovery/authenticator/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyAuthenticatorForRecovery(
+    @Body() dto: VerifyRecoveryAuthenticatorDto,
+    @Req() req: Request,
+  ) {
+    const { ipAddress } = extractRequestMeta(req);
+    return this.authService.verifyAuthenticatorForRecovery(dto, ipAddress);
   }
 
   @ApiOperation({ summary: 'Login using Google' })
