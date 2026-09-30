@@ -4716,7 +4716,17 @@ const TaskDialog = ({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
+    // QA-199/PMCM-397: modal (the default) makes Radix wrap this dialog's
+    // content in a scroll lock (react-remove-scroll) that only recognizes
+    // scrollable elements that are DOM descendants of the dialog's own
+    // portal. The Location/Role comboboxes below are cmdk popovers that
+    // portal to document.body as a *separate* tree, so the lock intercepts
+    // their wheel events and blocks scrolling entirely — reproduced and
+    // confirmed fixed by this prop alone (before: scrollTop stuck at 0 on
+    // every wheel tick; after: scrolls normally). Non-modal still closes on
+    // outside click/Escape; it only drops the focus trap and body scroll
+    // lock, which this single-field-at-a-time add-task form doesn't rely on.
+    <Dialog open={isOpen} onOpenChange={toggleIsOpen} modal={false}>
       <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
         <form
           className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]"
