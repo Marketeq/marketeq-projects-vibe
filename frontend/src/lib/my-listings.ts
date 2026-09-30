@@ -460,9 +460,18 @@ export function useMyListings() {
       // QA-201/PMCM-403: surface the failure rather than silently rendering
       // the same "no listings" state a genuinely empty account would show.
       // Local drafts still fill in below it so in-progress work isn't
-      // hidden by the error state.
+      // hidden by the error state. Not getMyListings(): that always appends
+      // TEAM_SEED_LISTINGS, which would render six sample listings as the
+      // user's own and keep the error state from ever showing. Same merge
+      // as the success path, with an empty backend list.
       setHasError(true)
-      setListings(getMyListings())
+      const seedMigrated = localStorage.getItem(SEED_MIGRATED_KEY) === "true"
+      setListings(
+        [
+          ...normalizeDraftsFromStorage(),
+          ...(seedMigrated ? [] : TEAM_SEED_LISTINGS),
+        ].sort(compareListingsByRecentActivity)
+      )
     } finally {
       if (requestId === requestIdRef.current) setIsLoading(false)
     }
