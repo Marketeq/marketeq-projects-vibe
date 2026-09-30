@@ -14,7 +14,7 @@ export abstract class DiditWebhookVerificationError extends Error {
 // The X-Signature header is missing, or the computed HMAC does not match
 // it. Never carries the signature value, the secret, or the body content.
 export class InvalidDiditWebhookSignatureError extends DiditWebhookVerificationError {
-  constructor(public readonly reason: 'missing_header' | 'mismatch') {
+  constructor(public readonly reason: 'missing_header' | 'mismatch' | 'body_not_json') {
     super(`Didit webhook signature invalid: ${reason}`);
   }
 }
