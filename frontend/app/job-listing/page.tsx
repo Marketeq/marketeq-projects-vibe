@@ -14218,6 +14218,12 @@ const finalReviewRichTextEditorClassName =
 const finalReviewRichTextEditorContentClassName =
   "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
 
+const finalReviewCompactRichTextEditorClassName =
+  "h-[174px] w-full self-stretch rounded-lg border border-gray-300 bg-white px-4 py-3 shadow-[0px_1px_2px_rgba(16,24,40,.05)] transition-colors focus-within:border-primary-500"
+
+const finalReviewCompactRichTextEditorContentClassName =
+  "h-[150px] max-h-[150px] min-h-[150px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden text-base leading-6 text-dark-blue-400 break-words scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg [overflow-wrap:anywhere] [word-break:break-word] [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+
 const ndaPreviewSections = [
   {
     title: "Parties",
@@ -14481,12 +14487,14 @@ const FinalReviewRichTextField = ({
   initialValue = "",
   placeholder,
   counterLabel,
+  compact = false,
   onChange,
 }: {
   title: string
   initialValue?: string
   placeholder: string
   counterLabel?: string
+  compact?: boolean
   onChange?: (value: string) => void
 }) => {
   const [value, setValue] = useState(initialValue)
@@ -14495,7 +14503,10 @@ const FinalReviewRichTextField = ({
     setValue(initialValue)
   }, [initialValue])
 
-  const characterCount = getRichTextCharacterCount(value)
+  const plainTextValue = plainTextFromRichTextHtml(value)
+  const count = compact
+    ? getWordCount(plainTextValue)
+    : getRichTextCharacterCount(value)
 
   const handleChange = (html: string) => {
     setValue(html)
@@ -14503,26 +14514,59 @@ const FinalReviewRichTextField = ({
   }
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-x-4">
-        <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
+    <div
+      className={
+        compact
+          ? "flex h-[200px] w-full flex-col items-start gap-1.5 self-stretch p-0"
+          : undefined
+      }
+    >
+      <div
+        className={
+          compact
+            ? "flex h-5 w-full items-center justify-between gap-2 self-stretch p-0"
+            : "flex items-center justify-between gap-x-4"
+        }
+      >
+        <h3
+          className={
+            compact
+              ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+              : "text-base leading-6 font-semibold text-dark-blue-400"
+          }
+        >
           {title}
         </h3>
-        <span className="text-xs leading-[18px] text-gray-500">
+        <span
+          className={
+            compact
+              ? "h-5 text-sm leading-5 font-normal text-gray-400"
+              : "text-xs leading-[18px] text-gray-500"
+          }
+        >
           {counterLabel ? `${counterLabel}: ` : ""}
-          {characterCount} / 100
+          {count} / {STEP_TWO_WORD_LIMIT}
         </span>
       </div>
       <RichTextEditor
         defaultValue={value}
         placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
-        className={finalReviewRichTextEditorClassName}
+        className={
+          compact
+            ? finalReviewCompactRichTextEditorClassName
+            : finalReviewRichTextEditorClassName
+        }
         toolbarClassName="left-4"
-        editorClassName={finalReviewRichTextEditorContentClassName}
+        editorClassName={
+          compact
+            ? finalReviewCompactRichTextEditorContentClassName
+            : finalReviewRichTextEditorContentClassName
+        }
         onUpdate={handleChange}
         onBlur={handleChange}
+        hideImageButton={compact}
       />
-    </>
+    </div>
   )
 }
 
@@ -14532,19 +14576,28 @@ const FinalReviewTextSection = ({
   placeholder,
   onChange,
   children,
+  compact = false,
 }: {
   title: string
   initialValue?: string
   placeholder: string
   onChange?: (value: string) => void
   children?: React.ReactNode
+  compact?: boolean
 }) => (
-  <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+  <div
+    className={
+      compact
+        ? "w-full"
+        : "rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+    }
+  >
     <FinalReviewRichTextField
       title={title}
       initialValue={initialValue}
       placeholder={placeholder}
       onChange={onChange}
+      compact={compact}
     />
     {children}
   </div>
@@ -15598,6 +15651,7 @@ const FinalProjectReviewStep = ({
     () => getScopeRoleOptions(projectScopeState),
     [projectScopeState]
   )
+  const visibleRoleOptions = roleOptions.slice(0, 4)
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
   )
@@ -15868,100 +15922,109 @@ const FinalProjectReviewStep = ({
               </div>
             </div>
 
-            <div className="mt-6 space-y-4">
-              <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Description
-              </h2>
-              <FinalReviewTextSection
-                title="Overview"
-                initialValue={details.description ?? ""}
-                placeholder="Add the project overview"
-                onChange={(value) =>
-                  setDetails((current) => ({ ...current, description: value }))
-                }
-              />
-              <FinalReviewTextSection
-                title="Benefits"
-                initialValue={details.successCriteria ?? ""}
-                placeholder="Add benefits for joining this project"
-                onChange={(value) =>
-                  setDetails((current) => ({
-                    ...current,
-                    successCriteria: value,
-                  }))
-                }
-              />
+            <div className="mt-6 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6 min-[1180px]:min-h-[976px]">
+              <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
+                <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
+                  Description
+                </h2>
+              </div>
+              <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                <FinalReviewTextSection
+                  compact
+                  title="Overview"
+                  initialValue={details.description ?? ""}
+                  placeholder="Add the project overview"
+                  onChange={(value) =>
+                    setDetails((current) => ({
+                      ...current,
+                      description: value,
+                    }))
+                  }
+                />
+                <FinalReviewTextSection
+                  compact
+                  title="Benefits"
+                  initialValue={details.successCriteria ?? ""}
+                  placeholder="Add benefits for joining this project"
+                  onChange={(value) =>
+                    setDetails((current) => ({
+                      ...current,
+                      successCriteria: value,
+                    }))
+                  }
+                />
 
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                <div className="flex flex-wrap gap-2">
-                  {roleOptions.map((role) => (
+                <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
+                  <div className="flex h-10 w-full flex-nowrap items-start gap-2 self-stretch overflow-hidden p-0">
+                    {visibleRoleOptions.map((role) => (
+                      <Button
+                        key={role}
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className={cn(
+                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                          selectedRole === role &&
+                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500"
+                        )}
+                        onClick={() => setSelectedRole(role)}
+                      >
+                        {role}
+                      </Button>
+                    ))}
                     <Button
-                      key={role}
                       variant="outlined"
                       visual="gray"
                       type="button"
-                      className={cn(
-                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
-                        selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
-                      )}
-                      onClick={() => setSelectedRole(role)}
+                      className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
                     >
-                      {role}
+                      + 5 More
                     </Button>
-                  ))}
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
-                  >
-                    + 5 More
-                  </Button>
-                </div>
+                  </div>
 
-                <div className="mt-5">
-                  <FinalReviewRichTextField
-                    title="Responsibilities"
-                    initialValue={responsibilities}
-                    placeholder={`Add responsibilities for ${selectedRole}`}
-                    onChange={setResponsibilities}
-                  />
-                </div>
+                  <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                    <FinalReviewRichTextField
+                      compact
+                      title="Responsibilities"
+                      initialValue={responsibilities}
+                      placeholder={`Add responsibilities for ${selectedRole}`}
+                      onChange={setResponsibilities}
+                    />
 
-                <div className="mt-5">
-                  <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
-                    Skills
-                  </h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {skills.map((skill) => (
-                      <Badge
-                        key={skill}
-                        size="md"
-                        visual="gray"
-                        className="border border-gray-200 bg-white"
-                      >
-                        {skill}
+                    <div className="flex w-full flex-col items-start gap-1.5 self-stretch pb-6">
+                      <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
+                        Skills
+                      </h3>
+                      <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                        {skills.map((skill) => (
+                          <Badge
+                            key={skill}
+                            size="md"
+                            visual="gray"
+                            className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
+                          >
+                            {skill}
+                            <BadgeCloseButton
+                              type="button"
+                              onClick={() => removeSkill(skill)}
+                              aria-label={`Remove ${skill}`}
+                              className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                            >
+                              <X2 className="size-4" />
+                            </BadgeCloseButton>
+                          </Badge>
+                        ))}
                         <Button
-                          variant="link"
-                          visual="gray"
-                          type="button"
-                          className="ml-2 text-gray-400"
-                          onClick={() => removeSkill(skill)}
-                          aria-label={`Remove ${skill}`}
+                          className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                          variant="outlined"
+                          visual="primary"
+                          onClick={addSkill}
                         >
-                          <X className="size-3" />
+                          Add Skill
+                          <Plus className="size-4" />
                         </Button>
-                      </Badge>
-                    ))}
-                    <Button
-                      className="h-7"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={addSkill}
-                    >
-                      Add Skill
-                    </Button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
