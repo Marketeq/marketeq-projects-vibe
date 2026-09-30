@@ -14565,6 +14565,8 @@ const FinalReviewRichTextField = ({
         onUpdate={handleChange}
         onBlur={handleChange}
         hideImageButton={compact}
+        showToolbarOnFocus={compact}
+        toolbarVariant={compact ? "final-review" : "full"}
       />
     </div>
   )
