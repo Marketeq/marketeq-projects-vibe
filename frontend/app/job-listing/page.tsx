@@ -15773,86 +15773,99 @@ const FinalProjectReviewStep = ({
               </p>
             </div>
 
-            <div className="mt-8 flex w-full flex-col items-start gap-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:h-[440px]">
-              <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
-                Basic Information
-              </h2>
-              <ReviewEditableTitle label="Project Title" />
-              <ReviewJobTypeSelect />
-              <ReviewEditableTags
-                fieldName="industry"
-                label="Industries"
-                addLabel="Add Industry"
-                autocompleteType="industries"
-                fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                max={5}
-              />
-              <ReviewEditableTags
-                fieldName="languages"
-                label="Languages"
-                addLabel="Add Language"
-                autocompleteType="languages"
-                fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
-                max={10}
-              />
-            </div>
-
-            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Include a Non-Disclosure Agreement (NDA)?
-              </h2>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                We&apos;ll generate one with your company name. Each team member
-                will receive and sign it before starting the project.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {[
-                  { value: "yes" as const, label: "Yes, Include NDA" },
-                  { value: "no" as const, label: "No NDA" },
-                ].map((option) => (
-                  <Button
-                    key={option.value}
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className={cn(
-                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
-                      ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
-                    )}
-                    onClick={() => {
-                      setNdaChoice(option.value)
-                      setDetails((current) => ({
-                        ...current,
-                        ndaEnabled: option.value === "yes",
-                      }))
-                    }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
+            <div className="mt-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex w-full flex-col items-start gap-6 p-6 min-[1180px]:h-[440px]">
+                <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  Basic Information
+                </h2>
+                <ReviewEditableTitle label="Project Title" />
+                <ReviewJobTypeSelect />
+                <ReviewEditableTags
+                  fieldName="industry"
+                  label="Industries"
+                  addLabel="Add Industry"
+                  autocompleteType="industries"
+                  fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
+                  max={5}
+                />
+                <ReviewEditableTags
+                  fieldName="languages"
+                  label="Languages"
+                  addLabel="Add Language"
+                  autocompleteType="languages"
+                  fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
+                  max={10}
+                />
               </div>
-              {ndaChoice === "yes" ? (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  Your Non-Disclosure Agreement (NDA) has been created. Feel
-                  free to review it.{" "}
-                  {renderNdaPreviewDialog(
-                    <Button
-                      type="button"
-                      className="h-7 px-2"
-                      variant="link"
-                      visual="primary"
-                    >
-                      View NDA
-                    </Button>,
-                    ndaDocumentId
-                  )}
+
+              <div className="flex w-full flex-col items-start gap-4 border-t border-gray-200 bg-white p-6 min-[1180px]:h-[224px]">
+                <div className="flex h-24 w-full flex-col items-start gap-3 self-stretch p-0">
+                  <div className="flex h-11 w-full flex-col items-start gap-1 self-stretch p-0">
+                    <div className="flex h-5 items-center justify-center gap-2 p-0">
+                      <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
+                        Include a Non-Disclosure Agreement (NDA)?
+                      </h2>
+                      <AlertCircle className="size-4 shrink-0 text-gray-400" />
+                    </div>
+                    <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                      We&apos;ll generate one with your company name. Each team
+                      member will receive and sign it before starting the
+                      project.
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-full items-start gap-2 self-stretch p-0">
+                    {[
+                      { value: "yes" as const, label: "Yes, Include NDA" },
+                      { value: "no" as const, label: "No NDA" },
+                    ].map((option) => (
+                      <Button
+                        key={option.value}
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className={cn(
+                          "h-10 rounded-[52px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white",
+                          ndaChoice === option.value &&
+                            "border-2 border-primary-500 bg-primary-25 hover:bg-primary-25"
+                        )}
+                        onClick={() => {
+                          setNdaChoice(option.value)
+                          setDetails((current) => ({
+                            ...current,
+                            ndaEnabled: option.value === "yes",
+                          }))
+                        }}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-warning-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  {NDA_OFF_WARNING}
-                </div>
-              )}
+                {ndaChoice === "yes" ? (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                    <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                    <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
+                      Your Non-Disclosure Agreement (NDA) has been created. Feel
+                      free to review it.
+                    </p>
+                    {renderNdaPreviewDialog(
+                      <Button
+                        type="button"
+                        className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
+                        variant="outlined"
+                        visual="primary"
+                      >
+                        View NDA
+                      </Button>,
+                      ndaDocumentId
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-warning-50 p-4 text-xs leading-[18px] font-normal text-dark-blue-400">
+                    {NDA_OFF_WARNING}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 space-y-4">
