@@ -1,0 +1,4 @@
+desktop/resources/activitywatch/**/*.exe filter=lfs diff=lfs merge=lfs -text
+desktop/resources/activitywatch/**/*.dll filter=lfs diff=lfs merge=lfs -text
+desktop/resources/activitywatch/**/*.pyd filter=lfs diff=lfs merge=lfs -text
+desktop/resources/activitywatch/**/*.zip filter=lfs diff=lfs merge=lfs -text

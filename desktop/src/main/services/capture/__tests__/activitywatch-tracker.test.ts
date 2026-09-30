@@ -15,8 +15,22 @@ const logger = { child: () => ({ info: vi.fn(), debug: vi.fn(), warn: vi.fn() })
 
 function fakeChildProcess(pid = 12345) {
   const emitter = new EventEmitter() as any;
-  emitter.kill = vi.fn();
   emitter.pid = pid;
+  // Match real ChildProcess shape: exitCode/signalCode are null (not
+  // undefined) before exit — activitywatch-tracker.ts's waitForExit()
+  // relies on that to know whether a process is still alive.
+  emitter.exitCode = null;
+  emitter.signalCode = null;
+  // Real processes exit asynchronously after being signaled, not
+  // synchronously inside the kill() call itself — emit 'exit' on a later
+  // tick so tests exercise the same wait-for-'exit' path relied on against
+  // the real binaries, instead of resolving before kill() would for real.
+  emitter.kill = vi.fn(() => {
+    setTimeout(() => {
+      emitter.signalCode = 'SIGTERM';
+      emitter.emit('exit', null, 'SIGTERM');
+    }, 0);
+  });
   return emitter;
 }
 
@@ -283,6 +297,7 @@ describe('createActivityWatchTracker', () => {
     expect(tracker.isAvailable()).toBe(true);
 
     tracker.stop();
+    await new Promise((r) => setTimeout(r, 50)); // let the (now-awaited) watcher teardown run before the wipe fires
     expect(bucketWiped).toBe(true);
   });
 
@@ -334,9 +349,103 @@ describe('createActivityWatchTracker', () => {
     expect(tracker.isAvailable()).toBe(true);
 
     tracker.stop();
+    expect(tracker.isAvailable()).toBe(false); // reflects "stopped" immediately, before the async teardown finishes
+    await new Promise((r) => setTimeout(r, 50)); // let the (now-awaited) bucket wipe resolve before the kill
     expect(serverProc.kill).toHaveBeenCalled();
     expect(watcherProc.kill).toHaveBeenCalled();
+  });
+
+  it('kills the watcher (confirmed dead) before wiping the bucket, and only kills the server after the wipe resolves', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const serverProc = fakeChildProcess();
+    const watcherProc = fakeChildProcess();
+    let call = 0;
+    const spawnFn = vi.fn(() => (call++ === 0 ? serverProc : watcherProc));
+    let resolveDelete: (() => void) | null = null;
+    const fetchFn = vi.fn().mockImplementation((url: string, init?: any) => {
+      if (url.includes('/api/0/info')) return jsonResponse({ hostname: 'test-host' });
+      if (init?.method === 'DELETE') {
+        return new Promise((resolve) => {
+          resolveDelete = () => resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+        });
+      }
+      return jsonResponse([]);
+    });
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir },
+      spawnFn: spawnFn as any,
+      fetchFn: fetchFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(tracker.isAvailable()).toBe(true);
+
+    tracker.stop();
+    await new Promise((r) => setTimeout(r, 50));
+    // The watcher must already be confirmed dead by the time the wipe is even
+    // sent — otherwise it could still report one more event that lands after
+    // the wipe runs and never gets erased.
+    expect(watcherProc.kill).toHaveBeenCalled();
+    expect(fetchFn).toHaveBeenCalledWith(expect.stringContaining('?force=1'), expect.objectContaining({ method: 'DELETE' }));
+    // The server must stay alive (not killed) while the wipe is still
+    // pending — it needs to be running to answer the DELETE. If the kill
+    // happened anyway, the wipe would be racing the process teardown
+    // exactly like the original bug.
+    expect(serverProc.kill).not.toHaveBeenCalled();
+
+    resolveDelete?.();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(serverProc.kill).toHaveBeenCalled();
+  });
+
+  it('start() called immediately after stop() waits for teardown to finish before spawning again (no duplicate spawn, no stuck state)', async () => {
+    const resourcesDir = setupFakeBinaries();
+    const procs = [fakeChildProcess(111), fakeChildProcess(222), fakeChildProcess(333), fakeChildProcess(444)];
+    let call = 0;
+    const spawnFn = vi.fn(() => procs[call++]);
+    let resolveDelete: (() => void) | null = null;
+    const fetchFn = vi.fn().mockImplementation((url: string, init?: any) => {
+      if (url.includes('/api/0/info')) return jsonResponse({ hostname: 'test-host' });
+      if (init?.method === 'DELETE') {
+        return new Promise((resolve) => {
+          resolveDelete = () => resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+        });
+      }
+      return jsonResponse([]);
+    });
+    const tracker = createActivityWatchTracker({
+      logger,
+      platform: 'win32',
+      arch: 'x64',
+      options: { resourcesDir },
+      spawnFn: spawnFn as any,
+      fetchFn: fetchFn as any,
+    });
+
+    tracker.start();
+    await new Promise((r) => setTimeout(r, 400));
+    expect(spawnFn).toHaveBeenCalledTimes(2);
+
+    tracker.stop();
+    tracker.start(); // rapid pause-then-resume while the old teardown is still in flight
+
+    await new Promise((r) => setTimeout(r, 50));
+    // teardown (the DELETE) is still pending — start() must not spawn a second pair yet,
+    // and must not report available while the old session is still being torn down.
+    expect(spawnFn).toHaveBeenCalledTimes(2);
     expect(tracker.isAvailable()).toBe(false);
+
+    resolveDelete?.();
+    await new Promise((r) => setTimeout(r, 400)); // let teardown finish, then the queued start() run its own startup check
+
+    expect(spawnFn).toHaveBeenCalledTimes(4); // exactly one new pair — not stuck (2), not duplicated (6+)
+    expect(procs[0].kill).toHaveBeenCalled(); // the old server was actually killed, not leaked
+    expect(procs[1].kill).toHaveBeenCalled(); // the old watcher was actually killed, not leaked
+    expect(tracker.isAvailable()).toBe(true);
   });
 
   it('does not spawn twice if start() is called while already running', async () => {
@@ -376,6 +485,7 @@ describe('createActivityWatchTracker', () => {
     expect(written).toEqual({ serverPid: 12345, watcherPid: 12345 });
 
     tracker.stop();
+    await new Promise((r) => setTimeout(r, 50)); // let the (now-awaited) process exit resolve before the pidfile is removed
     expect(fs.existsSync(pidFilePath)).toBe(false);
   });
 

@@ -110,7 +110,7 @@ export default function MyListingsPage() {
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
   const [showNewListingDialog, setShowNewListingDialog] = useState(false)
   const [creatingType, setCreatingType] = useState<string | null>(null)
-  const { listings, isLoading } = useMyListings()
+  const { listings, isLoading, hasError, refreshListings } = useMyListings()
   const [viewMode, setViewMode] = useState("grid")
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [searchVisible, setSearchVisible] = useState(true)
@@ -468,6 +468,26 @@ export default function MyListingsPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                ) : hasError && filteredListings.length === 0 ? (
+                  // QA-201/PMCM-403: a failed fetch used to render the same
+                  // "you haven't created any listings yet" copy below as a
+                  // genuinely empty account — misleading, and with no way to
+                  // recover short of a full page reload. Mirrors the
+                  // error-text + outlined Retry button pattern already used
+                  // for other failed-list-loads in the app (e.g. the inbox
+                  // right sidebar's profile-load error).
+                  <div className="py-16 flex flex-col items-center gap-y-3 text-center">
+                    <p className="text-sm text-error-500">
+                      Couldn&apos;t load your listings.
+                    </p>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => refreshListings()}
+                    >
+                      Retry
+                    </Button>
                   </div>
                 ) : filteredListings.length === 0 ? (
                   <div className="py-16 text-center">
