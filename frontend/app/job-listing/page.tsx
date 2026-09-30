@@ -152,6 +152,7 @@ import { util, z } from "zod";
 import { Prettify } from "@/types/core";
 import { CreateProjectType } from "@/types/project";
 import { Spinner } from "@/components/ui/spinner/spinner";
+import { BadgeCloseButton } from "@/components/ui/badge/badge";
 import { GripVertical2 } from "@/components/icons/grip-vertical-2";
 import { Network1 } from "@/components/icons/network-1";
 import { Network2 } from "@/components/icons/network-2";
@@ -14819,6 +14820,8 @@ const ReviewEditableTags = ({
   const [isEditing, setIsEditing] = useState(false)
   const [options, setOptions] = useState<string[]>(fallbackOptions)
   const requestRef = useRef(0)
+  const usesReviewChipStyle =
+    fieldName === "industry" || fieldName === "languages"
 
   const updateValues = useCallback(
     (nextValues: string[]) => {
@@ -14873,38 +14876,70 @@ const ReviewEditableTags = ({
   )
 
   return (
-    <div>
-      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+    <div
+      className={
+        usesReviewChipStyle
+          ? "flex min-h-[66px] w-full flex-col items-start gap-1.5 self-stretch p-0"
+          : undefined
+      }
+    >
+      <Label
+        className={
+          usesReviewChipStyle
+            ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+            : "text-sm leading-5 text-gray-500"
+        }
+      >
+        {label}
+      </Label>
+      <div
+        className={
+          usesReviewChipStyle
+            ? "flex min-h-10 w-full flex-wrap items-start content-start gap-2 self-stretch p-0"
+            : "mt-2 flex flex-wrap items-center gap-2"
+        }
+      >
         {values.length ? (
           values.map((item) => (
             <Badge
               key={item}
               size="md"
               visual="gray"
-              className="gap-1 border border-gray-200 bg-white pr-1"
+              className={
+                usesReviewChipStyle
+                  ? "h-10 gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-dark-blue-400 mix-blend-normal"
+                  : "gap-1 border border-gray-200 bg-white pr-1"
+              }
             >
               {item}
-              <Button
-                variant="link"
-                visual="gray"
-                type="button"
-                className="size-4 rounded-full text-gray-400 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
+              <BadgeCloseButton
+                className={
+                  usesReviewChipStyle
+                    ? "size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                    : "size-4 rounded-full text-gray-400 opacity-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
+                }
                 aria-label={`Remove ${item}`}
                 onClick={() => removeValue(item)}
               >
-                <X2 className="size-3" />
-              </Button>
+                <X2 className={usesReviewChipStyle ? "size-4" : "size-3"} />
+              </BadgeCloseButton>
             </Badge>
           ))
         ) : (
           <span className="text-sm leading-5 text-gray-400">None added</span>
         )}
         <Button
-          className="h-7"
+          className={
+            usesReviewChipStyle
+              ? "h-10 rounded-lg border-2 border-primary-500 py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white"
+              : "h-7"
+          }
           variant="outlined"
-          visual="gray"
+          visual={usesReviewChipStyle ? "primary" : "gray"}
           type="button"
+          rightIcon={
+            usesReviewChipStyle ? <Plus className="size-4" /> : undefined
+          }
           onClick={() => setIsEditing((current) => !current)}
         >
           {addLabel}
@@ -14959,6 +14994,7 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
   const methods = useProjectInfoContext()
   const value = useWatch({ control: methods.control, name: "title" }) ?? ""
   const titleHasError = methods.getFieldState("title").invalid
+  const isProjectTitle = label === "Project Title"
 
   const updateTitle = useCallback(
     (nextTitle: string) => {
@@ -14975,10 +15011,28 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
   )
 
   return (
-    <div>
-      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
+    <div
+      className={
+        isProjectTitle
+          ? "flex h-[70px] w-full flex-col items-start gap-1.5 self-stretch p-0"
+          : undefined
+      }
+    >
+      <Label
+        className={
+          isProjectTitle
+            ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+            : "text-sm leading-5 text-gray-500"
+        }
+      >
+        {label}
+      </Label>
       <Input
-        className="mt-1.5"
+        className={
+          isProjectTitle
+            ? "h-11 w-full rounded-[5px] px-[14px] py-2.5 text-base leading-6 font-normal text-dark-blue-400 shadow-[0px_1px_2px_rgba(16,24,40,.05)]"
+            : "mt-1.5"
+        }
         value={value}
         maxLength={100}
         onChange={(event) => updateTitle(event.target.value)}
@@ -14994,6 +15048,68 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
           </ErrorMessage>
         )}
       />
+    </div>
+  )
+}
+
+const ReviewJobTypeSelect = () => {
+  const [value, setValue] = useState("Website")
+  const [options, setOptions] = useState<string[]>(["Website"])
+  const requestRef = useRef(0)
+
+  const loadOptions = useCallback(async () => {
+    const requestId = requestRef.current + 1
+    requestRef.current = requestId
+
+    try {
+      const response = await AutocompleteAPI.getByType("project_types", "", 500)
+      if (requestRef.current !== requestId) return
+
+      const nextOptions = Array.isArray(response?.data)
+        ? getUniqueOptions(
+            response.data
+              .map((item: AutocompleteTypeSuggestion) =>
+                normalizeAutocompleteLabel(item)
+              )
+              .filter(Boolean)
+          )
+        : []
+
+      setOptions(getUniqueOptions([value, ...nextOptions]))
+    } catch {
+      if (requestRef.current === requestId) {
+        setOptions([value])
+      }
+    }
+  }, [value])
+
+  return (
+    <div className="flex h-[66px] w-full flex-col items-start gap-1.5 self-stretch p-0">
+      <Label className="h-5 self-stretch text-sm leading-5 font-medium text-dark-blue-400">
+        Job Type
+      </Label>
+      <Select
+        value={value}
+        onValueChange={setValue}
+        onOpenChange={(open) => {
+          if (open) void loadOptions()
+        }}
+      >
+        <SelectTrigger
+          indicator={false}
+          className="h-10 w-[200px] rounded-lg px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400"
+        >
+          <SelectValue placeholder="Website" />
+          <ChevronDown className="size-4 shrink-0 text-gray-400" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }
@@ -15647,45 +15763,38 @@ const FinalProjectReviewStep = ({
       <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
           <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              One Last Check
-            </h1>
-            <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-              Take a moment to review your setup. If everything looks good, go
-              ahead and publish, or make quick edits if needed.
-            </p>
+            <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+              <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                One Last Check
+              </h1>
+              <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                Take a moment to review your setup. If everything looks good, go
+                ahead and publish, or make quick edits if needed.
+              </p>
+            </div>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div className="mt-8 flex w-full flex-col items-start gap-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:h-[440px]">
+              <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                 Basic Information
               </h2>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <ReviewEditableTitle label="Project Title" />
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Job Type
-                  </Label>
-                  <Input className="mt-1.5" value="Website" readOnly />
-                </div>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <ReviewEditableTags
-                  fieldName="industry"
-                  label="Industries"
-                  addLabel="Add Industry"
-                  autocompleteType="industries"
-                  fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                  max={5}
-                />
-                <ReviewEditableTags
-                  fieldName="languages"
-                  label="Languages"
-                  addLabel="Add Language"
-                  autocompleteType="languages"
-                  fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
-                  max={10}
-                />
-              </div>
+              <ReviewEditableTitle label="Project Title" />
+              <ReviewJobTypeSelect />
+              <ReviewEditableTags
+                fieldName="industry"
+                label="Industries"
+                addLabel="Add Industry"
+                autocompleteType="industries"
+                fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
+                max={5}
+              />
+              <ReviewEditableTags
+                fieldName="languages"
+                label="Languages"
+                addLabel="Add Language"
+                autocompleteType="languages"
+                fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
+                max={10}
+              />
             </div>
 
             <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
