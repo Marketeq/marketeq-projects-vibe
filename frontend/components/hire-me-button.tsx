@@ -2596,15 +2596,12 @@ export function OfferDialog({
                                   }
                                 />
                                 <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
-                                  {/* BTB-287: BTB-273's own comment said the
-                                  point was collapsing to 0 only for an
-                                  all-whitespace value — but message.length
-                                  is already 0 for a genuinely empty string,
-                                  and this ternary counted a whitespace-only
-                                  value as 0 too, undercounting real
-                                  (whitespace) characters the textarea holds
-                                  and the 500-char slice actually allows. */}
-                                  {message.length}/500
+                                  {/* BTB-273: same boolean-gate-not-live-filter
+                                  mechanism as contractTitle.trim() above —
+                                  collapse to 0 only when the whole value is
+                                  whitespace, don't recompute a trimmed length
+                                  for a value that has real content. */}
+                                  {message.trim() === "" ? 0 : message.length}/500
                                 </span>
                               </div>
                             </div>
