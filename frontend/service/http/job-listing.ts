@@ -129,6 +129,22 @@ export const JobListingAPI = {
       data,
     ),
 
+  GenerateBasicInformation: (
+    id: string,
+    data: {
+      workType?: JobListingWorkType;
+      description?: string;
+      deliverables?: string;
+      tools?: string[];
+      roles?: string[];
+      save?: boolean;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-basic-information`),
+      data,
+    ),
+
   SmartAssistantScope: (
     id: string,
     data: {

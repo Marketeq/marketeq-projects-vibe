@@ -3307,7 +3307,7 @@ const projectInfoSchema = z.object({
       required_error: "Please enter/select at least 1 industry(s)",
     })
     .min(1, "Please enter at least 1 industry(s)")
-    .max(5, "Please do not enter more than 5 industry(s)"),
+    .max(10, "Please do not enter more than 10 industry(s)"),
   languages: z.array(z.string()).max(10).default([]),
   shortDescription: z
     .string()
@@ -3366,6 +3366,7 @@ type JobListingDraftDetails = {
   briefFilename?: string;
   briefSizeBytes?: number;
   tools?: string[];
+  jobType?: string;
   ndaEnabled?: boolean;
   ndaDocumentId?: string | null;
   teamRoleRows?: TeamRoleRow[];
@@ -3576,8 +3577,7 @@ const getPublishRoleRowDetails = (phases: Phase[] | undefined) => {
 };
 
 const getScopeRoleOptions = (phases: Phase[] | undefined) => {
-  const roles = getPublishRoleRows(phases);
-  return roles.length > 0 ? roles : finalReviewRoles;
+  return getPublishRoleRows(phases);
 };
 
 const buildJobListingMediaPayload = (mediaValues: Partial<MediaFormValues>) => {
@@ -5528,7 +5528,7 @@ const ProjectInfo = ({
                                   </HelperText>
 
                                   <span className="text-xs leading-[14.52px] text-gray-500">
-                                    {projectInfoValues.industry?.length || 0}/5
+                                    {projectInfoValues.industry?.length || 0}/10
                                   </span>
                                 </div>
                               </div>
@@ -14874,9 +14874,15 @@ const ReviewEditableTags = ({
   const values = useWatch({ control: methods.control, name: fieldName }) ?? []
   const [isEditing, setIsEditing] = useState(false)
   const [options, setOptions] = useState<string[]>(fallbackOptions)
+  const [isAddDialogOpen, setAddDialogOpen] = useState(false)
+  const [isAddAutocompleteOpen, setAddAutocompleteOpen] = useState(false)
+  const [draftValue, setDraftValue] = useState("")
   const requestRef = useRef(0)
   const usesReviewChipStyle =
     fieldName === "industry" || fieldName === "languages"
+  const usesAddDialog = fieldName === "industry" || fieldName === "languages"
+  const searchPlaceholder =
+    fieldName === "industry" ? "Search industry" : "Search language"
 
   const updateValues = useCallback(
     (nextValues: string[]) => {
@@ -14898,6 +14904,26 @@ const ReviewEditableTags = ({
     [updateValues, values]
   )
 
+  const openAddDialog = useCallback(() => {
+    setDraftValue("")
+    setAddDialogOpen(true)
+  }, [])
+
+  const closeAddDialog = useCallback(() => {
+    setAddDialogOpen(false)
+    setAddAutocompleteOpen(false)
+    setDraftValue("")
+  }, [])
+
+  const saveDraftValue = useCallback(() => {
+    const nextValue = draftValue.trim()
+
+    if (!nextValue) return
+
+    updateValues([...values, nextValue])
+    closeAddDialog()
+  }, [closeAddDialog, draftValue, updateValues, values])
+
   const loadOptions = useCallback(
     async (query: string) => {
       const requestId = requestRef.current + 1
@@ -14906,7 +14932,8 @@ const ReviewEditableTags = ({
       try {
         const response = await AutocompleteAPI.getByType(
           autocompleteType,
-          query
+          query,
+          usesAddDialog ? 500 : undefined
         )
         if (requestRef.current !== requestId) return
 
@@ -14927,7 +14954,7 @@ const ReviewEditableTags = ({
         }
       }
     },
-    [autocompleteType, fallbackOptions]
+    [autocompleteType, fallbackOptions, usesAddDialog]
   )
 
   return (
@@ -14954,7 +14981,7 @@ const ReviewEditableTags = ({
             : "mt-2 flex flex-wrap items-center gap-2"
         }
       >
-        {values.length ? (
+        {values.length > 0 &&
           values.map((item) => (
             <Badge
               key={item}
@@ -14979,10 +15006,7 @@ const ReviewEditableTags = ({
                 <X2 className={usesReviewChipStyle ? "size-4" : "size-3"} />
               </BadgeCloseButton>
             </Badge>
-          ))
-        ) : (
-          <span className="text-sm leading-5 text-gray-400">None added</span>
-        )}
+          ))}
         <Button
           className={
             usesReviewChipStyle
@@ -14995,12 +15019,95 @@ const ReviewEditableTags = ({
           rightIcon={
             usesReviewChipStyle ? <Plus className="size-4" /> : undefined
           }
-          onClick={() => setIsEditing((current) => !current)}
+          onClick={
+            usesAddDialog
+              ? openAddDialog
+              : () => setIsEditing((current) => !current)
+          }
         >
           {addLabel}
         </Button>
       </div>
-      {isEditing && (
+      {usesAddDialog ? (
+        <Dialog
+          open={isAddDialogOpen}
+          onOpenChange={(isOpen) => {
+            if (isOpen) {
+              setAddDialogOpen(true)
+              return
+            }
+
+            closeAddDialog()
+          }}
+        >
+          <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
+            <Combobox
+              className="w-full"
+              value={draftValue}
+              onChange={(value) => {
+                setDraftValue(String(value ?? ""))
+                setAddAutocompleteOpen(false)
+              }}
+              nullable
+            >
+              <ComboboxTrigger>
+                <ComboboxInput
+                  className="h-11 w-full"
+                  placeholder={searchPlaceholder}
+                  value={draftValue}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    setDraftValue(nextValue)
+                    setAddAutocompleteOpen(true)
+                    void loadOptions(nextValue)
+                  }}
+                  onFocus={() => {
+                    setAddAutocompleteOpen(true)
+                    void loadOptions("")
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => setAddAutocompleteOpen(false), 150)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      saveDraftValue()
+                    }
+                  }}
+                />
+              </ComboboxTrigger>
+              {isAddAutocompleteOpen && options.length > 0 ? (
+                <ComboboxOptions className="max-h-[180px] w-full overflow-hidden">
+                  <ScrollArea viewportClassName="max-h-[180px]">
+                    {options.map((option) => (
+                      <ComboboxOption key={option} value={option}>
+                        {option}
+                      </ComboboxOption>
+                    ))}
+                  </ScrollArea>
+                </ComboboxOptions>
+              ) : null}
+            </Combobox>
+            <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                onClick={closeAddDialog}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!draftValue.trim() || values.length >= max}
+                onClick={saveDraftValue}
+              >
+                Add
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : isEditing ? (
         <TagsInputRoot
           className="mt-2 space-y-1.5"
           value={values}
@@ -15040,7 +15147,7 @@ const ReviewEditableTags = ({
           </TagsInputContext>
           <TagsInputHiddenInput />
         </TagsInputRoot>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -15108,8 +15215,14 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
 }
 
 const ReviewJobTypeSelect = () => {
-  const [value, setValue] = useState("Website")
-  const [options, setOptions] = useState<string[]>(["Website"])
+  const { details, setDetails } = useJobListingDraftContext()
+  const value = details.jobType ?? ""
+  const setValue = useCallback(
+    (nextValue: string) =>
+      setDetails((current) => ({ ...current, jobType: nextValue })),
+    [setDetails]
+  )
+  const [options, setOptions] = useState<string[]>([])
   const requestRef = useRef(0)
 
   const loadOptions = useCallback(async () => {
@@ -15130,12 +15243,16 @@ const ReviewJobTypeSelect = () => {
           )
         : []
 
-      setOptions(getUniqueOptions([value, ...nextOptions]))
+      setOptions(getUniqueOptions([value, ...nextOptions].filter(Boolean)))
     } catch {
       if (requestRef.current === requestId) {
-        setOptions([value])
+        setOptions(value ? [value] : [])
       }
     }
+  }, [value])
+
+  useEffect(() => {
+    if (value) setOptions((current) => getUniqueOptions([value, ...current]))
   }, [value])
 
   return (
@@ -15154,7 +15271,7 @@ const ReviewJobTypeSelect = () => {
           indicator={false}
           className="h-10 w-[200px] rounded-lg px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400"
         >
-          <SelectValue placeholder="Website" />
+          <SelectValue placeholder="Select job type" />
           <ChevronDown className="size-4 shrink-0 text-gray-400" />
         </SelectTrigger>
         <SelectContent>
@@ -15191,7 +15308,7 @@ const FinalServiceReviewStep = ({
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
   )
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0])
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
   const [responsibilities, setResponsibilities] = useState("")
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -15237,7 +15354,7 @@ const FinalServiceReviewStep = ({
   })
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0])
+      setSelectedRole(roleOptions[0] ?? "")
     }
   }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
@@ -15278,6 +15395,7 @@ const FinalServiceReviewStep = ({
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!selectedRole || roleOptions.length === 0) return
     if (responsibilities) return
     didGenerateRoleDescriptionsRef.current = true
 
@@ -15381,7 +15499,7 @@ const FinalServiceReviewStep = ({
                   addLabel="Add Industry"
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                  max={5}
+                  max={10}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -15522,14 +15640,6 @@ const FinalServiceReviewStep = ({
                       {role}
                     </Button>
                   ))}
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
-                  >
-                    + 5 More
-                  </Button>
                 </div>
 
                 <div className="mt-5">
@@ -15681,11 +15791,18 @@ const FinalProjectReviewStep = ({
     () => getScopeRoleOptions(projectScopeState),
     [projectScopeState]
   )
-  const visibleRoleOptions = roleOptions.slice(0, 4)
+  const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
+  const visibleRoleOptions = showAllRoleOptions
+    ? roleOptions
+    : roleOptions.slice(0, 4)
+  const remainingRoleCount = Math.max(
+    0,
+    roleOptions.length - visibleRoleOptions.length
+  )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
   )
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0])
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
   const [responsibilities, setResponsibilities] = useState("")
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -15729,9 +15846,85 @@ const FinalProjectReviewStep = ({
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
   })
+  const didGenerateBasicInformationRef = useRef(false)
+  useEffect(() => {
+    if (!jobListingId || didGenerateBasicInformationRef.current) return
+    // Generate only the first time: once a title, industries or languages are
+    // persisted, the user's own edits are the source of truth.
+    const current = projectInfoMethods.getValues()
+    if (
+      current.title?.trim() ||
+      current.industry?.length ||
+      current.languages?.length
+    ) {
+      didGenerateBasicInformationRef.current = true
+      return
+    }
+    didGenerateBasicInformationRef.current = true
+
+    void (async () => {
+      try {
+        const response = await JobListingAPI.GenerateBasicInformation(
+          jobListingId,
+          {
+            workType: "project",
+            description: details.description || undefined,
+            deliverables: details.deliverables || undefined,
+            tools: details.tools ?? [],
+            roles: roleOptions.length ? roleOptions : undefined,
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          basicInformation?: {
+            title?: string
+            jobType?: string
+            industries?: string[]
+            languages?: string[]
+          } | null
+        }
+        const generated = data.basicInformation
+        if (data.aiStatus !== "OK" || !generated) return
+
+        // Only fill what is still empty so anything the user typed while the
+        // request was in flight is never overwritten.
+        const latest = projectInfoMethods.getValues()
+        const fill = (
+          name: "title" | "industry" | "languages",
+          value: string | string[]
+        ) =>
+          projectInfoMethods.setValue(name, value as never, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: true,
+          })
+
+        if (!latest.title?.trim() && generated.title?.trim()) {
+          fill("title", generated.title.slice(0, 100))
+        }
+        if (!latest.industry?.length && generated.industries?.length) {
+          fill("industry", getUniqueOptions(generated.industries).slice(0, 10))
+        }
+        if (!latest.languages?.length && generated.languages?.length) {
+          fill("languages", getUniqueOptions(generated.languages).slice(0, 10))
+        }
+        if (generated.jobType?.trim()) {
+          setDetails((existing) =>
+            existing.jobType
+              ? existing
+              : { ...existing, jobType: generated.jobType?.trim() }
+          )
+        }
+      } catch (error) {
+        console.error("Generate basic information failed", error)
+      }
+    })()
+    // Runs once, when the saved draft id is available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobListingId])
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0])
+      setSelectedRole(roleOptions[0] ?? "")
     }
   }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
@@ -15772,6 +15965,7 @@ const FinalProjectReviewStep = ({
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!selectedRole || roleOptions.length === 0) return
     if (responsibilities) return
     didGenerateRoleDescriptionsRef.current = true
 
@@ -15870,7 +16064,7 @@ const FinalProjectReviewStep = ({
                   addLabel="Add Industry"
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                  max={5}
+                  max={10}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -16010,7 +16204,14 @@ const FinalProjectReviewStep = ({
                 />
 
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
-                  <div className="flex h-10 w-full flex-nowrap items-start gap-2 self-stretch overflow-hidden p-0">
+                  <div
+                    className={cn(
+                      "flex w-full items-start gap-2 self-stretch p-0",
+                      showAllRoleOptions
+                        ? "flex-wrap"
+                        : "h-10 flex-nowrap overflow-hidden"
+                    )}
+                  >
                     {visibleRoleOptions.map((role) => (
                       <Button
                         key={role}
@@ -16027,14 +16228,17 @@ const FinalProjectReviewStep = ({
                         {role}
                       </Button>
                     ))}
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      type="button"
-                      className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
-                    >
-                      + 5 More
-                    </Button>
+                    {remainingRoleCount > 0 ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                        onClick={() => setShowAllRoleOptions(true)}
+                      >
+                        + {remainingRoleCount} More
+                      </Button>
+                    ) : null}
                   </div>
 
                   <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
@@ -20283,8 +20487,8 @@ function PublishProject({
         { category: "Development", subCategories: ["Web Development"] },
         { category: "Marketing", subCategories: ["E-commerce"] },
       ],
-      industry: ["E-commerce"],
-      languages: ["English", "Spanish", "Japanese"],
+      industry: [],
+      languages: [],
       shortDescription:
         "This project needs support defining the scope, expected deliverables, and team requirements for a successful launch.",
       fullDescription:
@@ -20592,6 +20796,14 @@ function PublishProject({
             briefFilename: toNullableString(listing?.briefFilename),
             briefSizeBytes: nextBriefSizeBytes,
             tools: Array.isArray(listing?.tools) ? listing.tools : undefined,
+            jobType:
+              typeof basicInformation?.jobType === "string" &&
+              basicInformation.jobType.trim() &&
+              !["project", "service"].includes(
+                basicInformation.jobType.trim().toLowerCase(),
+              )
+                ? basicInformation.jobType.trim()
+                : undefined,
             ndaEnabled:
               typeof listing?.ndaEnabled === "boolean"
                 ? listing.ndaEnabled
@@ -20946,7 +21158,8 @@ function PublishProject({
       }
       const basicInfoPayload = {
         title: info.title ?? "",
-        jobType: selectedWorkType ?? undefined,
+        jobType:
+          jobListingDraftDetails.jobType || (selectedWorkType ?? undefined),
         industries: info.industry ?? [],
         languages: info.languages ?? [],
       };
@@ -21377,7 +21590,8 @@ function PublishProject({
       };
       const basicInfoPayload = {
         title: info.title ?? "",
-        jobType: selectedWorkType ?? undefined,
+        jobType:
+          jobListingDraftDetails.jobType || (selectedWorkType ?? undefined),
         industries: info.industry ?? [],
         languages: info.languages ?? [],
       };

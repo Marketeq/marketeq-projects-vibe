@@ -1653,8 +1653,9 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
               "jobType examples: Website, Mobile App, API Integration, E-commerce, SaaS Platform, " +
               "Brand Identity, Data Pipeline, CMS, Marketplace. Use the most specific applicable type. " +
               "industries: use well-known industry names (Fintech, Healthcare, Education, etc). " +
-              "languages: programming languages and frameworks only (TypeScript, React, Python, etc). " +
-              "Do not include human spoken languages in the languages field.",
+              "languages: human (spoken/written) languages the team needs to communicate in or deliver content in " +
+              "(English, Spanish, Japanese, etc). Default to English when the listing does not imply otherwise. " +
+              "Do not include programming languages or frameworks in the languages field.",
           },
           {
             role: "user",
@@ -1673,8 +1674,8 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
     return {
       title: this.limitCharacters(result.title ?? "", 100),
       jobType: result.jobType,
-      industries: result.industries.slice(0, 10),
-      languages: result.languages.slice(0, 10),
+      industries: (Array.isArray(result.industries) ? result.industries : []).slice(0, 10),
+      languages: (Array.isArray(result.languages) ? result.languages : []).slice(0, 10),
     };
   }
 
