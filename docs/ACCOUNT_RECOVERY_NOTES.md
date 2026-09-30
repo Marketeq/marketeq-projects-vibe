@@ -601,9 +601,40 @@ browser's IANA zone alongside — `Intl.DateTimeFormat().resolvedOptions().timeZ
 — and render it in the support email. That needs a field on `ScheduleCallDto`
 and is **not** done.
 
+**The phone country dropdown no longer scrolls the modal.** Opening it used to
+put a scrollbar on the form and cut the list off. `PhoneNumberInput` wraps
+`react-international-phone`, whose country list is a plain absolutely-positioned
+`<ul>` rather than a portal — so an `overflow-y-auto` ancestor both clipped it
+and counted it toward the scroll height. The Schedule a Call field box is now
+`overflow-visible`, which costs nothing: its 352px is exact, so it never had
+anything to scroll, and the `-mb-1`/`pb-1` pair that kept the last row's shadow
+off the clip boundary went with it.
+
+The list itself is capped at 176px and scrolls internally. That number is
+load-bearing: the dropdown opens at y=258 inside the 352px field box, which is
+followed by a 50px gap and a 36px button row, so 176 ends at 434 against an
+inner bottom of 438 — it cannot reach the modal's edge. The library's own 200px
+would clear the buttons and crowd the border. Radius, border, shadow and
+scrollbar are matched to `SelectContent`, the other dropdown on that screen.
+
+All of it is done with arbitrary variants on the wrapper this page owns
+(`[&_.react-international-phone-country-selector-dropdown]:…`), which beat the
+library's rules on specificity — two classes against one — so no `!important`
+and no stylesheet-order dependency. **`phone-number-input.tsx` was not touched.**
+
+> Every one of those class names is written out in full. Tailwind's JIT scans
+> source text for whole class names, so a variant assembled from a prefix at
+> runtime is never generated — the rule silently does not exist, which looks
+> exactly like the override not working. Verified against the served CSS: nine
+> rules, `max-height: 176px` among them.
+
+**Trade-off:** on a viewport under ~690px the modal's `max-h-[calc(100vh-4rem)]`
+now crops the form rather than scrolling it.
+
 **Not visually verified.** The Chrome extension was not connected in the session
 that built this, so the side-by-side against the Figma has not been done. Types
-pass and the page compiles; the pixel check is outstanding.
+pass, the page compiles, and the CSS was checked as served; the pixel check is
+outstanding.
 
 ### 4.7 Everything this tab needs from the backend
 
