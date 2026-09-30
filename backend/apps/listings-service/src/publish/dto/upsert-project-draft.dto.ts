@@ -147,4 +147,16 @@ export class UpsertProjectDraftDto {
   @IsArray()
   @IsString({ each: true })
   teamMemberIds?: string[];
+
+  // QA-180/PMCM-399: emails invited (search or email, via the shared
+  // InviteWindow) but not yet accepted — shown as "Pending Invite" rows
+  // in the Team step's members table. Plain strings, not IsUUID, same as
+  // teamMemberIds above — this DTO validates loosely even though that
+  // field's own column is uuid[]; this one's column is text[] since
+  // emails aren't UUIDs.
+  @ApiProperty({ type: [String], required: false })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  pendingInviteEmails?: string[];
 }

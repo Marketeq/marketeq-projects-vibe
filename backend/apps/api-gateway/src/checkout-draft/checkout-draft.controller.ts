@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Req } from '@nestjs/common';
-import { Request } from 'express';
+import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CheckoutDraftGatewayService } from './checkout-draft.service';
 
 // Both prefixes, because the frontend's base URL is not consistent about the
@@ -11,12 +11,8 @@ export class CheckoutDraftController {
   constructor(private readonly checkoutDraftService: CheckoutDraftGatewayService) {}
 
   @Get('listings/:listingId/summary')
-  getListingSummary(@Param('listingId') listingId: string, @Req() req: Request) {
-    const cookieToken = (req as any).cookies?.access_token as string | undefined;
-    const authorization =
-      (req.headers.authorization as string | undefined) ??
-      (cookieToken ? `Bearer ${cookieToken}` : undefined);
-
-    return this.checkoutDraftService.getListingSummary(listingId, authorization);
+  @UseGuards(JwtAuthGuard)
+  getListingSummary(@Param('listingId') listingId: string, @Req() req: any) {
+    return this.checkoutDraftService.getListingSummary(listingId, req.user.userId);
   }
 }

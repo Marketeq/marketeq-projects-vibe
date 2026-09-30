@@ -166,7 +166,7 @@ with `npm run start:dev` from inside their own `apps/<service>` directory.
 | billing-service | 3027 | |
 | resume-parsing-service | 3028 | |
 | pricing-service | 3029 | |
-| location-service | 3030 | |
+| location-service | 3036 | |
 | browsing-history-service | 3034 | nested build output |
 
 ## How To Run The Tests

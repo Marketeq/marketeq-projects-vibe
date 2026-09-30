@@ -106,6 +106,12 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ name: 'teamMemberIds', type: 'uuid', array: true, default: [] })
   teamMemberIds: string[];
 
+  // QA-180/PMCM-399: emails invited but not yet accepted, shown as
+  // "Pending Invite" rows in the Team step. text[], not uuid[] like
+  // teamMemberIds above — these are emails, not user ids.
+  @Column({ name: 'pendingInviteEmails', type: 'text', array: true, default: [] })
+  pendingInviteEmails: string[];
+
   @Column({ name: 'videoUrl', type: String, nullable: true })
   videoUrl?: string | null;
 

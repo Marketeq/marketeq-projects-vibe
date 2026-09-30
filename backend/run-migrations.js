@@ -57,8 +57,17 @@ function findCompiledDataSource(serviceDir) {
     // offer-service names its CLI data-source typeorm.config.ts rather than
     // data-source.ts. Its compiled migrations glob is __dirname-relative and so
     // still resolves correctly under dist/, which is what makes it safe to read
-    // here — verified to yield schema "offer_service" and the two compiled
-    // migrations in dist/apps/offer-service/migrations/.
+    // here.
+    //
+    // A fresh `nest build offer-service` emits it at
+    // dist/apps/offer-service/apps/offer-service/src/config/typeorm.config.js
+    // (the service imports from libs/, so tsc roots the output at backend/),
+    // and neither of the two shorter paths below existed in the image. That is why
+    // offer-service was missing from the boot report entirely, and why
+    // AddContractIdToOffers never ran: every GET /v1/offers then 500'd on
+    // "column o.contract_id does not exist". The migrations themselves are
+    // compiled next to it via tsconfig.app.json's "migrations/**/*" include.
+    path.join(__dirname, 'dist', serviceDir, serviceDir, 'src', 'config', 'typeorm.config.js'),
     path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'typeorm.config.js'),
     path.join(__dirname, 'dist', serviceDir, 'config', 'typeorm.config.js'),
     // Deliberately NOT probed: dist/<service>/typeorm.config.js at the service

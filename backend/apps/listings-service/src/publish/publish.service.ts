@@ -152,6 +152,17 @@ export class PublishService {
     }
   }
 
+  // QA-196/PMCM-402: "ownership" here also covers anyone on the listing's
+  // own team roster (teamMemberIds), not only its literal creator — the
+  // editor is expected to be usable by the whole team the owner staffed on
+  // this listing, matching the AC's "can access it normally".
+  private isProjectMember(project: Project, userId: string): boolean {
+    if (project.userId === userId) return true;
+    return (project.teamMemberIds ?? [])
+      .map((id) => String(id))
+      .includes(String(userId));
+  }
+
   private async ensureProjectOwnership(
     projectId: string,
     userId: string,
@@ -162,7 +173,7 @@ export class PublishService {
       throw new NotFoundException('Project not found');
     }
 
-    if (project.userId !== userId) {
+    if (!this.isProjectMember(project, userId)) {
       throw new ForbiddenException('You do not have access to this project');
     }
 
@@ -792,6 +803,9 @@ export class PublishService {
     if (dto.teamMemberIds !== undefined) {
       payload.teamMemberIds = dto.teamMemberIds;
     }
+    if (dto.pendingInviteEmails !== undefined) {
+      payload.pendingInviteEmails = dto.pendingInviteEmails;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -802,9 +816,19 @@ export class PublishService {
   }
 
   async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
-    const project = await this.projectRepository.findBySlug(slug, userId);
+    const project = await this.projectRepository.findBySlug(slug);
     if (!project) {
       throw new NotFoundException('Project not found');
+    }
+
+    // QA-196/PMCM-402: findBySlug used to filter by userId at the query
+    // level, so the row simply never came back for anyone but the literal
+    // creator — including a real team member on this listing. The lookup
+    // above is unscoped; the access check now happens explicitly here so a
+    // team member sees the real listing and a stranger gets a 403 instead
+    // of both silently falling through to "not found".
+    if (!this.isProjectMember(project, userId)) {
+      throw new ForbiddenException('You do not have access to this project');
     }
 
     const media = await this.mediaRepository.find({ projectId: project.id });
@@ -835,9 +859,49 @@ export class PublishService {
     };
   }
 
+  // QA-195/PMCM-403: mirrors the wizard's own "which required fields are
+  // still missing" check (edit-listing/[slug]/page.tsx's firstInvalidStep)
+  // at the level of "is the field populated at all" rather than the
+  // wizard's exact character-count/regex niceties — this runs for every
+  // listing regardless of status, so a Published listing whose content was
+  // edited down below what's required after it went live is flagged the
+  // same as an unfinished draft. Team is intentionally excluded: PMCM-395
+  // made the account owner always satisfy it, so it can never be the
+  // reason a listing gets flagged here either.
+  private hasUnresolvedRequiredFields(
+    project: Project,
+    scopedProjectIds: Set<string>,
+  ): boolean {
+    const missingProjectInfo =
+      !project.title?.trim() ||
+      !(project.categories ?? []).length ||
+      !(project.industries ?? []).length ||
+      !(project.tags ?? []).length ||
+      !(project.skills ?? []).length ||
+      !project.shortDescription?.trim() ||
+      !project.fullDescription?.trim();
+
+    const hasFeaturedImage =
+      (project.mediaUrls ?? []).length > 0 ||
+      Boolean((project.media ?? [])[0]?.featuredImage);
+
+    const completedFaqCount = (project.faqs ?? []).filter(
+      (f) => f?.question?.trim() && f?.answer?.trim(),
+    ).length;
+
+    return (
+      missingProjectInfo ||
+      !hasFeaturedImage ||
+      !scopedProjectIds.has(String(project.id)) ||
+      completedFaqCount < 3
+    );
+  }
+
   async getMyProjects(
     userId: string,
-  ): Promise<(Project & { teamAvatars: string[] })[]> {
+  ): Promise<
+    (Project & { teamAvatars: string[]; hasValidationError: boolean })[]
+  > {
     const projects = await this.projectRepository.findAll({
       filterOptions: {
         userId,
@@ -864,6 +928,10 @@ export class PublishService {
       hydrated.map((m) => [String(m.userId), m.avatarUrl]),
     );
 
+    const scopedProjectIds = await this.projectRepository.getProjectIdsWithScope(
+      projects.map((p) => p.id).filter((id): id is string => !!id),
+    );
+
     return projects.map((p) => {
       const ids = [
         String(userId),
@@ -872,7 +940,14 @@ export class PublishService {
       const teamAvatars = Array.from(new Set(ids))
         .map((id) => avatarByUserId.get(id))
         .filter((url): url is string => Boolean(url));
-      return { ...p, teamAvatars };
+      return {
+        ...p,
+        teamAvatars,
+        hasValidationError: this.hasUnresolvedRequiredFields(
+          p,
+          scopedProjectIds,
+        ),
+      };
     });
   }
 
@@ -1397,6 +1472,17 @@ export class PublishService {
       } else if (dto.featuredImage) {
         featuredImageUrl = dto.featuredImage;
       } else if (clearFeatured) {
+        // QA-176/PMCM-396: only the pure-clear path reaches here — a
+        // request that also supplies a replacement (files.featuredImage or
+        // dto.featuredImage above) never falls through to this branch, so
+        // this is exactly "delete would leave the slot empty." A published
+        // listing can't be left without a featured image; draft listings
+        // are unrestricted, matching the pre-existing behavior below.
+        if (project.status === 'published') {
+          throw new BadRequestException(
+            'The featured image cannot be deleted on a published listing until a replacement image is uploaded.',
+          );
+        }
         featuredImageUrl = '';
       } else {
         throw new BadRequestException('Featured image is required.');

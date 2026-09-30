@@ -29,6 +29,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
@@ -1428,16 +1429,16 @@ function SortableGalleryItem({
   )
 }
 
-export default function ProjectDetails() {
+// PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+// full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+// requires everywhere on listing pages. The default export below wraps this
+// in AuthenticatedRoute instead, matching every other gated route (spinner,
+// then the modal, then the page — no full-page redirect).
+function ProjectDetailsInner() {
   const params = useParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
-  React.useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
+  const { user } = useAuth()
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1468,6 +1469,9 @@ export default function ProjectDetails() {
     scope: [],
   })
   const [loading, setLoading] = React.useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [hasChanges, setHasChanges] = React.useState(false)
 
   // Warn on browser tab close/refresh with unsaved changes
@@ -3060,12 +3064,26 @@ export default function ProjectDetails() {
         Math.round((Number(project.budget) || 0) * 100)
       const pricingCents = Number(project.budgetUsdCents) || 0
       const computedCents = estimateScopeBudgetCents(phases)
-      const budgetTotalCents =
-        pricingCents > 0
+      // QA-178/PMCM-397: pricingCents only updates ~1.5s after a change,
+      // via handleScopeChange's debounced ReplaceProjectScope round-trip —
+      // so preferring it over computedCents (the old order) masked every
+      // edit made before that round-trip landed, or made again inside that
+      // window. This is what made phase deletion look broken while task
+      // deletion looked fine: both mutate scope through the identical
+      // onPhasesChange -> handleScopeChange path and land in this same
+      // memo, but by the time a *later* edit (e.g. a phase delete) ran, an
+      // *earlier* edit's round-trip had already primed a stale positive
+      // pricingCents that outranked anything computed live afterward —
+      // including the AC's "reset to zero when every phase is deleted"
+      // case. Once scope has actually been loaded (project.scope is a real
+      // array, even an empty one), the live computation is authoritative;
+      // storedCents/pricingCents only apply before scope has loaded at all.
+      const hasScope = Array.isArray(project.scope)
+      const budgetTotalCents = hasScope
+        ? computedCents
+        : pricingCents > 0
           ? pricingCents
-          : computedCents > 0
-            ? computedCents
-            : storedCents
+          : storedCents
 
       return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
     }, [
@@ -3442,7 +3460,16 @@ export default function ProjectDetails() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // stop here instead of falling through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // draft not found by ID — fall through
           }
         }
@@ -3462,7 +3489,12 @@ export default function ProjectDetails() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // not found — try next candidate
           }
         }
@@ -3566,10 +3598,6 @@ export default function ProjectDetails() {
   const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
-
-  if (!isAuthLoading && !user) {
-    return null
-  }
 
   if (loading) {
     return (
@@ -3708,6 +3736,31 @@ export default function ProjectDetails() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask
+            the listing owner to add you to the team if you should be able
+            to edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
           </div>
         </div>
       </div>
@@ -3922,6 +3975,11 @@ export default function ProjectDetails() {
                   </div>
 
                   {/* Featured image delete confirmation */}
+                  {/* QA-176/PMCM-396: a Published listing can't be left with
+                  no featured image — deleting it here is a pure clear with
+                  no replacement in the same action (unlike the Edit/replace
+                  button above, which uploads the new image before the old
+                  one is gone). Draft listings stay unrestricted. */}
                   <Dialog
                     open={featuredDeleteOpen}
                     onOpenChange={setFeaturedDeleteOpen}
@@ -3930,7 +3988,9 @@ export default function ProjectDetails() {
                       <div className="p-6 border-b border-gray-200">
                         <DialogTitle>Delete featured image?</DialogTitle>
                         <DialogDescription className="mt-2">
-                          Your image will be removed permanently.
+                          {isPublished
+                            ? "This listing is published. A replacement image must be uploaded first."
+                            : "Your image will be removed permanently."}
                         </DialogDescription>
                       </div>
                       <div className="py-4 flex rounded-b-xl bg-gray-25 items-center justify-between px-6">
@@ -3947,6 +4007,7 @@ export default function ProjectDetails() {
                         <Button
                           variant="outlined"
                           visual="gray"
+                          disabled={isPublished}
                           onClick={() => {
                             setProject((prev: any) => ({
                               ...prev,
@@ -10579,5 +10640,13 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+export default function ProjectDetails() {
+  return (
+    <AuthenticatedRoute>
+      <ProjectDetailsInner />
+    </AuthenticatedRoute>
   )
 }

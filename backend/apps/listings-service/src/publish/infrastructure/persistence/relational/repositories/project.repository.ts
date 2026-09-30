@@ -98,12 +98,9 @@ export class ProjectRelationalRepository implements ProjectRepository {
     return entities.map((project) => ProjectMapper.toDomain(project));
   }
 
-  async findBySlug(
-    slug: string,
-    userId: string,
-  ): Promise<NullableType<Project>> {
+  async findBySlug(slug: string): Promise<NullableType<Project>> {
     const entity = await this.projectRepository.findOne({
-      where: { slug, userId } as FindOptionsWhere<ProjectEntity>,
+      where: { slug } as FindOptionsWhere<ProjectEntity>,
     });
     return entity ? ProjectMapper.toDomain(entity) : null;
   }
@@ -199,39 +196,65 @@ export class ProjectRelationalRepository implements ProjectRepository {
     const userIds = members
       .map((m) => (m?.userId ? String(m.userId) : null))
       .filter((x): x is string => !!x);
-    if (userIds.length > 0) {
+
+    // QA-181/PMCM-399: the whole roster (including which single member is
+    // lead) is replaced together, so it must commit together — otherwise a
+    // failure partway through the loop below could leave the old lead
+    // cleared without the new one having been written yet, or vice versa.
+    await this.projectRepository.manager.transaction(async (manager) => {
+      if (userIds.length > 0) {
+        await manager.query(
+          `DELETE FROM listings.project_members WHERE "projectId" = $1 AND "userId" <> ALL($2::uuid[])`,
+          [id?.toString(), userIds],
+        );
+      } else {
+        await manager.query(
+          `DELETE FROM listings.project_members WHERE "projectId" = $1`,
+          [id?.toString()],
+        );
+      }
+      for (const m of members) {
+        if (!m?.userId) continue;
+        await manager.query(
+          `INSERT INTO listings.project_members
+             ("projectId", "userId", "projectRole", "status", "isLead", "leadLabel", "updatedAt")
+           VALUES ($1, $2, COALESCE($3, 'Contributor'), COALESCE($4, 'Active'), COALESCE($5, false), $6, now())
+           ON CONFLICT ("projectId", "userId") DO UPDATE SET
+             "projectRole" = EXCLUDED."projectRole",
+             "status" = EXCLUDED."status",
+             "isLead" = EXCLUDED."isLead",
+             "leadLabel" = EXCLUDED."leadLabel",
+             "updatedAt" = now()`,
+          [
+            id?.toString(),
+            String(m.userId),
+            m.projectRole ?? null,
+            m.status ?? null,
+            m.isLead ?? null,
+            m.leadLabel ?? null,
+          ],
+        );
+      }
+    });
+  }
+
+  async getProjectIdsWithScope(
+    projectIds: Array<Project['id']>,
+  ): Promise<Set<string>> {
+    const ids = projectIds.filter((id): id is string => !!id).map(String);
+    if (!ids.length) return new Set();
+    const rows: Array<{ projectId: string }> =
       await this.projectRepository.manager.query(
-        `DELETE FROM listings.project_members WHERE "projectId" = $1 AND "userId" <> ALL($2::uuid[])`,
-        [id?.toString(), userIds],
+        `SELECT DISTINCT p."projectId"::text AS "projectId"
+         FROM listings.phase p
+         INNER JOIN listings.task t
+           ON t."phaseId" = p.id AND t."deletedAt" IS NULL
+         WHERE p."projectId" = ANY($1::uuid[])
+           AND p."deletedAt" IS NULL
+           AND btrim(p."phaseName") <> ''`,
+        [ids],
       );
-    } else {
-      await this.projectRepository.manager.query(
-        `DELETE FROM listings.project_members WHERE "projectId" = $1`,
-        [id?.toString()],
-      );
-    }
-    for (const m of members) {
-      if (!m?.userId) continue;
-      await this.projectRepository.manager.query(
-        `INSERT INTO listings.project_members
-           ("projectId", "userId", "projectRole", "status", "isLead", "leadLabel", "updatedAt")
-         VALUES ($1, $2, COALESCE($3, 'Contributor'), COALESCE($4, 'Active'), COALESCE($5, false), $6, now())
-         ON CONFLICT ("projectId", "userId") DO UPDATE SET
-           "projectRole" = EXCLUDED."projectRole",
-           "status" = EXCLUDED."status",
-           "isLead" = EXCLUDED."isLead",
-           "leadLabel" = EXCLUDED."leadLabel",
-           "updatedAt" = now()`,
-        [
-          id?.toString(),
-          String(m.userId),
-          m.projectRole ?? null,
-          m.status ?? null,
-          m.isLead ?? null,
-          m.leadLabel ?? null,
-        ],
-      );
-    }
+    return new Set(rows.map((r) => r.projectId));
   }
 
   async getRecentQuestions(id: Project['id']): Promise<RecentQuestion[]> {

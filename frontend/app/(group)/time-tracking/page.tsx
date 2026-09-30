@@ -19,34 +19,37 @@ import {
   bulkTransferScreenshots,
 } from "@/service/http/screenshots"
 import { cn } from "@/utils/functions"
+import { getPublicApiUrl, getPublicBackendUrl } from "@/lib/runtime-urls"
 import { ROLE } from "@/types/user"
 import {
   ArrowLeft,
-  Calendar,
+  CalendarPlus02,
   ChevronDown,
   ChevronRight,
   Clock,
   Download,
   Droplet,
   Edit03,
-  FilterLines,
   HelpCircle,
   Image01,
   Keyboard01,
+  Monitor01,
   MoreHorizontal,
   Mouse,
   Plus,
   SearchSm,
   Settings02,
-  SwitchVertical01,
   Trash01,
   X,
   ZoomIn,
 } from "@blend-metrics/icons"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
+import { SortAs } from "@/components/icons"
 import {
   Avatar,
   AvatarFallback,
+  Badge,
+  BadgeCloseButton,
   Button,
   Checkbox,
   Combobox,
@@ -96,6 +99,7 @@ import {
   toast,
   useToast,
 } from "@/components/ui"
+import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { VscCode } from "react-icons/vsc"
 import { FiFigma } from "react-icons/fi"
 import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
@@ -112,7 +116,11 @@ interface Screenshot {
   time: string
   imageUrl: string
   activityLevel: number // 0-100 progress bar
+  // The same apps with their real names and time in front during this
+  // screenshot's interval — the detail panel's app activity.
   apps: string[] // app icon labels like "chrome", "slack", "github"
+  appIconUrls?: Record<string, string> // normalized app key -> real extracted icon URL, when available
+  appDisplayNames?: Record<string, string> // normalized app key -> real appName, for apps not in the curated appDisplay dictionary
   isDuplicate?: boolean
   duplicateCount?: number
   isNoActivity?: boolean
@@ -120,6 +128,10 @@ interface Screenshot {
   contractId?: string
   keyboardPct?: number
   mousePct?: number
+  // Every monitor captured at the same moment, default (primary) screen
+  // first. The grid shows only the first; the details view switches between
+  // them. Always includes this screenshot itself.
+  screens?: Screenshot[]
 }
 
 type ProjectColor =
@@ -154,29 +166,53 @@ interface TimeBlock {
 // ─── Color map for project bars (using design system project-* tokens) ──
 
 const projectBarColors: Record<ProjectColor, string> = {
-  mint: "bg-project-mint/40 border-project-mint",
-  salmon: "bg-project-salmon/40 border-project-salmon",
-  lavender: "bg-project-lavender/40 border-project-lavender",
-  cyan: "bg-project-cyan/40 border-project-cyan",
-  gold: "bg-project-gold/40 border-project-gold",
-  yellow: "bg-project-yellow/40 border-project-yellow",
-  pink: "bg-project-pink/40 border-project-pink",
-  teal: "bg-project-teal/40 border-project-teal",
-  sage: "bg-project-sage/40 border-project-sage",
-  lime: "bg-project-lime/40 border-project-lime",
+  mint: "bg-project-mint",
+  salmon: "bg-project-salmon",
+  lavender: "bg-project-lavender",
+  cyan: "bg-project-cyan",
+  gold: "bg-project-gold",
+  yellow: "bg-project-yellow",
+  pink: "bg-project-pink",
+  teal: "bg-project-teal",
+  sage: "bg-project-sage",
+  lime: "bg-project-lime",
 }
 
+const barColSpan: Record<number, string> = {
+  1: "col-span-1",
+  2: "col-span-2",
+  3: "col-span-3",
+  4: "col-span-4",
+  5: "col-span-5",
+  6: "col-span-6",
+}
+
+// Contract name / task text are darker shades of the bar's own hue. Mint and
+// cyan are the Figma values; the rest follow the same hue-shift.
 const projectLabelColors: Record<ProjectColor, string> = {
-  mint: "text-dark-blue-400",
-  salmon: "text-dark-blue-400",
-  lavender: "text-dark-blue-400",
-  cyan: "text-dark-blue-400",
-  gold: "text-dark-blue-400",
-  yellow: "text-dark-blue-400",
-  pink: "text-dark-blue-400",
-  teal: "text-dark-blue-400",
-  sage: "text-dark-blue-400",
-  lime: "text-dark-blue-400",
+  mint: "text-[#0D553C]",
+  salmon: "text-[#631724]",
+  lavender: "text-[#391763]",
+  cyan: "text-[#23777D]",
+  gold: "text-[#634D17]",
+  yellow: "text-[#635D17]",
+  pink: "text-[#631733]",
+  teal: "text-[#176353]",
+  sage: "text-[#17633A]",
+  lime: "text-[#3F6317]",
+}
+
+const projectTaskColors: Record<ProjectColor, string> = {
+  mint: "text-[#56A087]",
+  salmon: "text-[#B46A77]",
+  lavender: "text-[#8B6AB4]",
+  cyan: "text-[#80C4C8]",
+  gold: "text-[#B49E6A]",
+  yellow: "text-[#B4AD6A]",
+  pink: "text-[#B46A85]",
+  teal: "text-[#6AB4A4]",
+  sage: "text-[#6AB48C]",
+  lime: "text-[#91B46A]",
 }
 
 // ─── App icon components (small colored dots) ───────────────────────────
@@ -206,18 +242,67 @@ const projectLabelColors: Record<ProjectColor, string> = {
 //   )
 // }
 
-function AppIcons({ apps }: { apps: string[] }) {
+function AppIcons({
+  apps,
+  iconUrls,
+  displayNames,
+}: {
+  apps: string[]
+  iconUrls?: Record<string, string>
+  displayNames?: Record<string, string>
+}) {
   return (
     <div className="flex items-center gap-1">
       {apps.map((app, i) => (
-        <AppIcon key={i} app={app} />
+        <AppIcon key={i} app={app} iconUrl={iconUrls?.[app]} displayName={displayNames?.[app]} />
       ))}
     </div>
   )
 }
 
-function AppIcon({ app }: { app: string }) {
+// The backend never sends anything but its own server-derived iconUrl (see
+// screenshots.service.ts#confirm — a client-supplied value is always
+// dropped) — this is a second, independent check on the render side, so a
+// future backend regression can't turn into loading an arbitrary attacker
+// URL in another user's browser just by re-introducing a passthrough field.
+function isTrustedIconOrigin(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1") return true
+    const trustedOrigins = [getPublicBackendUrl(), getPublicApiUrl(), process.env.NEXT_PUBLIC_R2_CDN_BASE]
+      .map((u) => {
+        if (!u) return null
+        try {
+          return new URL(u).origin
+        } catch {
+          return null
+        }
+      })
+      .filter((origin): origin is string => origin !== null)
+    return trustedOrigins.includes(parsed.origin)
+  } catch {
+    return false
+  }
+}
+
+function AppIcon({
+  app,
+  iconUrl,
+  displayName,
+}: {
+  app: string
+  iconUrl?: string
+  displayName?: string
+}) {
   const size = 14
+  if (iconUrl && isTrustedIconOrigin(iconUrl)) {
+    // Real, OS-extracted icon — exact, not a guess. Falls through to the
+    // name-based guess below when unavailable or untrusted.
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={iconUrl} alt={app} width={size} height={size} className="rounded-[3px]" />
+    )
+  }
   switch (app) {
     case "chrome":
     case "chromebrowser":
@@ -246,7 +331,7 @@ function AppIcon({ app }: { app: string }) {
     case "electron":
       return <VscCode size={size} className="text-blue-400" title="Electron" />
     default:
-      return <div className="size-3 rounded-full bg-gray-400" title={app} />
+      return <div className="size-3 rounded-full bg-gray-400" title={displayName ?? app} />
   }
 }
 
@@ -445,9 +530,79 @@ function transformScreenshotsToTimeBlocks(
     return projectColorMap.get(key)!
   }
 
+  const toScreenshot = (c: ScreenshotCardDTO): Screenshot => {
+    const capturedDate = c.capturedAt
+      ? new Date(c.capturedAt)
+      : new Date(c.createdAt)
+    const timeStr = capturedDate
+      .toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: opts.timeFormat !== "24h",
+        ...(opts.timezone ? { timeZone: opts.timezone } : {}),
+      })
+      .toLowerCase()
+
+    const activityLevel = Math.round((Number(c.keyboardPct) + Number(c.mousePct)) / 2)
+    const apps = c.apps
+      ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
+      : []
+    const appIconUrls = c.apps
+      ? c.apps.reduce<Record<string, string>>((acc, a) => {
+          const key = a.appName.toLowerCase().replace(/\s+/g, "")
+          if (a.iconUrl) acc[key] = a.iconUrl
+          return acc
+        }, {})
+      : undefined
+    const appDisplayNames = c.apps
+      ? c.apps.reduce<Record<string, string>>((acc, a) => {
+          const key = a.appName.toLowerCase().replace(/\s+/g, "")
+          acc[key] = a.appName // keep the real, original name for display
+          return acc
+        }, {})
+      : undefined
+
+    return {
+      id: c.id,
+      time: timeStr,
+      imageUrl: c.thumbnailUrl || "",
+      activityLevel,
+      apps,
+      appIconUrls,
+      appDisplayNames,
+      isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0) && !c.thumbnailUrl,
+      isBlurred: c.isBlurred ?? false,
+      contractId: c.contractId ?? undefined,
+      keyboardPct: c.keyboardPct,
+      mousePct: c.mousePct,
+    }
+  }
+
+  // One capture = one screenshot per monitor. Collapse them so the grid gets
+  // one card per capture. Rows from the desktop app share a groupKey; older
+  // rows have none, but every monitor of one capture carries the identical
+  // timestamp, so that stands in for the key.
+  const captureGroups = new Map<string, ScreenshotCardDTO[]>()
+  for (const c of cards) {
+    const key = c.groupKey ?? `${c.userId}|${c.capturedAt ?? c.createdAt}`
+    if (!captureGroups.has(key)) captureGroups.set(key, [])
+    captureGroups.get(key)!.push(c)
+  }
+  // Primary card id → its capture's cards, default screen first. The desktop
+  // app numbers monitors "1", "2", "3" with the primary display as "1".
+  const screensByPrimary = new Map<string, ScreenshotCardDTO[]>()
+  for (const group of captureGroups.values()) {
+    group.sort((a, b) =>
+      (a.monitorId ?? "").localeCompare(b.monitorId ?? "", undefined, { numeric: true })
+    )
+    screensByPrimary.set(group[0].id, group)
+  }
+
   const blocks: TimeBlock[] = []
 
-  for (const [, { date, cards: hourCards }] of hourMap) {
+  for (const [, { date, cards: allHourCards }] of hourMap) {
+    const hourCards = allHourCards.filter((c) => screensByPrimary.has(c.id))
+    if (hourCards.length === 0) continue
     const tzOpts = opts.timezone ? { timeZone: opts.timezone } : {}
     const localeHour = date.toLocaleTimeString("en-US", {
       hour: "numeric",
@@ -457,12 +612,24 @@ function transformScreenshotsToTimeBlocks(
     const hourLabel = localeHour.replace(/:00/, "")
 
     const dateLocale = opts.dateFormat === "DD/MM/YYYY" ? "en-GB" : "en-US"
-    const dateLabel = date.toLocaleDateString(dateLocale, {
-      month: "short",
+    const dateParts = new Intl.DateTimeFormat(dateLocale, {
+      month: "long",
       day: "numeric",
       year: "numeric",
       ...tzOpts,
-    })
+    }).formatToParts(date)
+    const part = (t: Intl.DateTimeFormatPartTypes) =>
+      dateParts.find((p) => p.type === t)?.value ?? ""
+    const dayNum = Number(part("day"))
+    const ordinal =
+      dayNum % 100 >= 11 && dayNum % 100 <= 13
+        ? "th"
+        : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[dayNum % 10] ?? "th"
+    // "May 2nd, 2025" (design); DD/MM users get "2nd May 2025".
+    const dateLabel =
+      dateLocale === "en-GB"
+        ? `${dayNum}${ordinal} ${part("month")} ${part("year")}`
+        : `${part("month")} ${dayNum}${ordinal}, ${part("year")}`
 
     // Group by contractId within this hour
     const projectMap = new Map<string, ScreenshotCardDTO[]>()
@@ -475,35 +642,8 @@ function transformScreenshotsToTimeBlocks(
     const projects: ProjectBlock[] = []
     for (const [pid, pCards] of projectMap) {
       const screenshots: Screenshot[] = pCards.map((c) => {
-        const capturedDate = c.capturedAt
-          ? new Date(c.capturedAt)
-          : new Date(c.createdAt)
-        const timeStr = capturedDate
-          .toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-            hour12: opts.timeFormat !== "24h",
-            ...(opts.timezone ? { timeZone: opts.timezone } : {}),
-          })
-          .toLowerCase()
-
-        const activityLevel = Math.round((Number(c.keyboardPct) + Number(c.mousePct)) / 2)
-        const apps = c.apps
-          ? c.apps.map((a) => a.appName.toLowerCase().replace(/\s+/g, ""))
-          : []
-
-        return {
-          id: c.id,
-          time: timeStr,
-          imageUrl: c.thumbnailUrl || "",
-          activityLevel,
-          apps,
-          isNoActivity: activityLevel === 0 && (!c.apps || c.apps.length === 0) && !c.thumbnailUrl,
-          isBlurred: c.isBlurred ?? false,
-          contractId: c.contractId ?? undefined,
-          keyboardPct: c.keyboardPct,
-          mousePct: c.mousePct,
-        }
+        const screens = screensByPrimary.get(c.id)!.map(toScreenshot)
+        return { ...screens[0], screens }
       })
 
       projects.push({
@@ -554,15 +694,15 @@ function ScreenshotThumbnail({
 }) {
   return (
     <div
-      className={cn(
-        "flex-none w-[158px] p-1 rounded-xl transition-colors cursor-pointer",
-        selected
-          ? "bg-gray-100 border border-gray-200"
-          : "border border-transparent"
-      )}
+      className="min-w-0 cursor-pointer"
       onClick={() => bulkMode ? onBulkToggle?.(screenshot.id) : onSelect(screenshot.id)}
     >
-      <div className="relative aspect-[16/10] rounded-lg overflow-hidden">
+      <div
+        className={cn(
+          "relative aspect-[172/120] overflow-hidden rounded-md transition-shadow",
+          selected && "ring-2 ring-primary-500"
+        )}
+      >
         {bulkMode && (
           <div className="absolute top-1.5 left-1.5 z-10">
             <Checkbox
@@ -574,8 +714,8 @@ function ScreenshotThumbnail({
           </div>
         )}
         {screenshot.isNoActivity ? (
-          <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-            <span className="text-xs text-gray-400">No Activity</span>
+          <div className="flex h-full w-full items-center justify-center rounded-md border border-gray-200 bg-white">
+            <span className="text-xs text-gray-500">No Activity</span>
           </div>
         ) : screenshot.isBlurred ? (
           <div className="relative w-full h-full">
@@ -601,25 +741,31 @@ function ScreenshotThumbnail({
         )}
         {/* Duplicate badge */}
         {screenshot.isDuplicate && screenshot.duplicateCount && (
-          <div className="absolute bottom-1.5 right-1.5 bg-gray-800/80 text-white text-[10px] font-medium px-1.5 py-0.5 rounded flex items-center gap-0.5">
+          <div className="absolute bottom-2.5 left-0 flex items-center gap-1 rounded-r-md bg-gray-900/80 px-2 py-0.5 text-xs font-medium text-white">
             {screenshot.duplicateCount}x
-            <Image01 className="size-3" />
+            <Image01 className="size-4" />
           </div>
         )}
       </div>
       {/* Activity bar */}
-      {!screenshot.isNoActivity && (
-        <div className="h-1 bg-gray-200 rounded-full mt-1 overflow-hidden">
+      <div className="mt-[7px] h-1.5 overflow-hidden rounded-full bg-gray-200">
+        {!screenshot.isNoActivity && (
           <div
-            className="h-full bg-primary-500 rounded-full"
+            className="h-full rounded-full bg-primary-500"
             style={{ width: `${screenshot.activityLevel}%` }}
           />
-        </div>
-      )}
+        )}
+      </div>
       {/* Timestamp + app icons */}
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[11px] text-gray-400">{screenshot.time}</span>
-        {screenshot.apps.length > 0 && <AppIcons apps={screenshot.apps} />}
+      <div className="mt-2 flex h-5 items-center justify-between">
+        <span className="text-sm leading-5 text-dark-blue-400">{screenshot.time}</span>
+        {screenshot.apps.length > 0 && (
+          <AppIcons
+            apps={screenshot.apps}
+            iconUrls={screenshot.appIconUrls}
+            displayNames={screenshot.appDisplayNames}
+          />
+        )}
       </div>
     </div>
   )
@@ -644,7 +790,7 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-1.5 rounded-md border",
+        "flex h-9 items-center gap-3 rounded-md pl-3 pr-3",
         projectBarColors[project.projectColor]
       )}
     >
@@ -660,9 +806,9 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
             projectLabelColors[project.projectColor]
           )}
         >
-          <span className="inline-flex items-center gap-1 text-base font-semibold leading-6">
+          <span className="inline-flex items-center gap-2 text-base font-semibold leading-6">
             <span>{projectName}</span>
-            <ChevronDown className="mt-px size-3.5 shrink-0" />
+            <ChevronDown className="size-4 shrink-0" />
           </span>
         </DropdownPopoverTrigger>
         <DropdownPopoverContent
@@ -715,7 +861,7 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
         </DropdownPopoverContent>
       </DropdownPopover>
 
-      <div className="h-4 w-px bg-gray-300/70" />
+      <div className="h-[18px] w-px shrink-0 bg-black/10" />
 
       <DropdownPopover
         selected={taskName}
@@ -724,9 +870,14 @@ function ProjectBar({ project }: { project: ProjectBlock }) {
         }}
       >
         <DropdownPopoverTrigger className="h-auto w-auto min-w-0 flex-1 justify-start border-0 bg-transparent p-0 text-left shadow-none ring-0 hover:bg-transparent data-[state=open]:border-0 data-[state=open]:bg-transparent data-[state=open]:ring-0">
-          <span className="inline-flex min-w-0 items-center gap-1.5 text-[14px] leading-6 text-gray-500">
+          <span
+            className={cn(
+              "inline-flex min-w-0 items-center gap-2 text-base leading-6",
+              projectTaskColors[project.projectColor]
+            )}
+          >
             <span className="truncate">{taskName}</span>
-            <Edit03 className="mt-px size-3.5 shrink-0 text-gray-400" />
+            <Edit03 className="size-[15px] shrink-0" />
           </span>
         </DropdownPopoverTrigger>
         <DropdownPopoverContent
@@ -791,6 +942,8 @@ function TimeBlockCard({
   bulkMode,
   selectedScreenshots,
   onBulkToggle,
+  showCheckbox,
+  onToggleBlock,
 }: {
   block: TimeBlock
   selectedScreenshotId: string | null
@@ -798,43 +951,75 @@ function TimeBlockCard({
   bulkMode?: boolean
   selectedScreenshots?: Set<string>
   onBulkToggle?: (id: string) => void
+  showCheckbox?: boolean
+  onToggleBlock?: (ids: string[], checked: boolean) => void
 }) {
+  const blockIds = block.projects.flatMap((p) => p.screenshots.map((s) => s.id))
+  const blockChecked =
+    blockIds.length > 0 && blockIds.every((id) => selectedScreenshots?.has(id))
+  // Each bar sits over its own screenshots in the six-column grid; the last
+  // bar runs to the end of the row. Past six captures the columns no longer
+  // line up, so the bars just share the row.
+  const shotCount = blockIds.length
+  const alignBars = block.projects.length > 1 && shotCount <= 6
+  const barSpans = block.projects.map((p, i) =>
+    i === block.projects.length - 1
+      ? 6 - block.projects.slice(0, i).reduce((n, q) => n + q.screenshots.length, 0)
+      : p.screenshots.length
+  )
+
   return (
-    <div className="py-4">
+    <div>
       {/* Block header */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <h3 className="text-xl font-bold text-dark-blue-400">{block.hour}</h3>
-          <span className="text-sm text-gray-400">{block.date}</span>
+      <div className="flex h-9 items-center justify-between">
+        <div className="flex items-center gap-2">
+          {showCheckbox && (
+            <div className="flex size-9 items-center justify-center">
+              <Checkbox
+                checked={blockChecked}
+                onCheckedChange={(checked) => onToggleBlock?.(blockIds, checked === true)}
+                size="md"
+                className="hover:ring-0 active:ring-0"
+              />
+            </div>
+          )}
+          <div className="flex items-baseline gap-2">
+            <h3 className="text-2xl font-bold text-dark-blue-400">{block.hour}</h3>
+            <span className="text-base text-dark-blue-400">{block.date}</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           {block.isManualTime && (
-            <span className="text-sm text-gray-400">
-              Manual time{" "}
-              <span className="font-bold text-primary-500">
-                {block.manualDuration}
-              </span>
-            </span>
+            <Badge size="lg" className="rounded-md text-dark-blue-400">
+              Manual time <span className="font-bold">{block.manualDuration}</span>
+            </Badge>
           )}
-          <span className="text-sm font-medium text-dark-blue-400">
-            {block.totalTime}
-          </span>
+          <span className="text-base text-dark-blue-400">{block.totalTime}</span>
         </div>
       </div>
 
       {/* Project bars + screenshots */}
-      <div className="space-y-4">
-        {/* Render project bars in a row if multiple */}
-        <div className="flex gap-2">
-          {block.projects.map((project, i) => (
-            <div key={i} className="flex-1">
-              <ProjectBar project={project} />
-            </div>
-          ))}
-        </div>
+      <div className="mt-4">
+        {alignBars ? (
+          <div className="grid grid-cols-6 gap-x-6">
+            {block.projects.map((project, i) => (
+              <div key={i} className={barColSpan[barSpans[i]] ?? "col-span-1"}>
+                <ProjectBar project={project} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex gap-6">
+            {block.projects.map((project, i) => (
+              <div key={i} className="min-w-0 flex-1">
+                <ProjectBar project={project} />
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* Screenshots row */}
-        <div className="flex gap-3 overflow-x-auto pb-1">
+        {/* Screenshots — at most six per row, wrapping instead of scrolling */}
+        <div className="mt-[17px] grid grid-cols-6 gap-6">
           {block.projects.flatMap((project, pi) =>
             project.screenshots.map((screenshot, si) => (
               <ScreenshotThumbnail
@@ -2093,6 +2278,10 @@ function ScreenshotDetailsDialog({
     : -1
   const current = currentIndex >= 0 ? flatScreenshots[currentIndex] : null
   const total = flatScreenshots.length
+  // Which monitor of the open capture is on screen; back to the default
+  // screen whenever another capture is opened.
+  const [screenIndex, setScreenIndex] = useState(0)
+  useEffect(() => setScreenIndex(0), [openId])
 
   const goPrev = () => {
     if (currentIndex > 0)
@@ -2104,7 +2293,8 @@ function ScreenshotDetailsDialog({
   }
 
   if (!current) return null
-  const s = current.screenshot
+  const screens = current.screenshot.screens ?? [current.screenshot]
+  const s = screens[screenIndex] ?? screens[0]
   const keyboardActivity = s.keyboardPct ?? s.activityLevel
   const mouseActivity =
     s.mousePct ?? Math.max(0, Math.round(s.activityLevel * 0.7))
@@ -2265,6 +2455,34 @@ function ScreenshotDetailsDialog({
                     <ChevronRight className="size-5" />
                   </button>
 
+                  {/* Monitor switcher (bottom-left overlay) — one button per
+                      screen captured at this moment, default screen first */}
+                  {screens.length > 1 && (
+                    <div className="absolute bottom-[15px] left-[15px] flex items-center gap-1">
+                      <div className="flex items-center px-3 py-2.5">
+                        <Monitor01 className="size-5 text-white" />
+                      </div>
+                      <ToggleGroupRoot
+                        value={[String(screenIndex)]}
+                        onValueChange={({ value }: { value: string[] }) => {
+                          if (value[0] !== undefined) setScreenIndex(Number(value[0]))
+                        }}
+                        className="rounded-[5px] border-gray-300 shadow-xs"
+                      >
+                        {screens.map((screen, i) => (
+                          <ToggleGroupItem
+                            key={screen.id}
+                            value={String(i)}
+                            aria-label={`Screen ${i + 1}`}
+                            className="px-4 py-2.5 bg-white text-gray-700 border-r border-gray-300 last:border-r-0 data-[state=on]:bg-gray-200 data-[state=on]:text-gray-700"
+                          >
+                            {i + 1}
+                          </ToggleGroupItem>
+                        ))}
+                      </ToggleGroupRoot>
+                    </div>
+                  )}
+
                   {/* Floating action icon row (bottom-right overlay) — talent/admin only */}
                   {!isClient && <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-white rounded-lg shadow-md border border-gray-200 p-1">
                     <Tooltip>
@@ -2362,7 +2580,11 @@ function ScreenshotDetailsDialog({
                             {f.screenshot.time}
                           </span>
                           {f.screenshot.apps.length > 0 && (
-                            <AppIcons apps={f.screenshot.apps} />
+                            <AppIcons
+                              apps={f.screenshot.apps}
+                              iconUrls={f.screenshot.appIconUrls}
+                              displayNames={f.screenshot.appDisplayNames}
+                            />
                           )}
                         </div>
                       </button>
@@ -2475,13 +2697,17 @@ function ScreenshotDetailsDialog({
                     <div className="space-y-2">
                       {s.apps.map((app, i) => {
                         const info = appDisplay[app] || {
-                          name: app,
+                          name: s.appDisplayNames?.[app] ?? app,
                           color: "bg-gray-400",
                         }
                         return (
                           <div key={i} className="flex items-center gap-2.5">
                             <div className="size-5 flex-none flex items-center justify-center">
-                              <AppIcon app={app} />
+                              <AppIcon
+                                app={app}
+                                iconUrl={s.appIconUrls?.[app]}
+                                displayName={s.appDisplayNames?.[app]}
+                              />
                             </div>
                             <span className="text-sm text-dark-blue-400">
                               {info.name}
@@ -2868,7 +3094,7 @@ export default function TimeTrackingPage() {
     (user as any)?.role?.toUpperCase?.() === "CLIENT" ? ROLE.CLIENT
     : (user as any)?.role?.toUpperCase?.() === "ADMIN" ? ROLE.ADMIN
     : ROLE.TALENT
-  const [viewAsRole, setViewAsRole] = useState<ROLE>(detectedRole)
+  const viewAsRole = detectedRole
   const isClient = viewAsRole === ROLE.CLIENT
   const isAdmin = viewAsRole === ROLE.ADMIN
   const isTalent = viewAsRole === ROLE.TALENT
@@ -3044,10 +3270,14 @@ export default function TimeTrackingPage() {
       // Find the next screenshot to navigate to before refreshing
       const currentIdx = flatScreenshots.findIndex(f => f.screenshot.id === id)
       const nextScreenshot = flatScreenshots[currentIdx + 1] || flatScreenshots[currentIdx - 1]
-      
+
       // Refresh data
       await fetchScreenshots()
-      
+
+      // A second or third monitor was deleted — the capture itself is still
+      // there, so stay on it.
+      if (currentIdx === -1) return
+
       // Navigate to next screenshot or close if none left
       if (nextScreenshot) {
         setSelectedScreenshotId(nextScreenshot.screenshot.id)
@@ -3124,7 +3354,7 @@ export default function TimeTrackingPage() {
     if (selectedScreenshots.size === 0) return
     if (!confirm(`Delete ${selectedScreenshots.size} screenshot(s)? This cannot be undone.`)) return
     try {
-      for (const id of selectedScreenshots) {
+      for (const id of withAllScreens(selectedScreenshots)) {
         await deleteScreenshot(id)
       }
       toast({ title: "Deleted", description: `${selectedScreenshots.size} screenshot(s) deleted.` })
@@ -3139,7 +3369,7 @@ export default function TimeTrackingPage() {
   const handleBulkBlur = async () => {
     if (selectedScreenshots.size === 0) return
     try {
-      for (const id of selectedScreenshots) {
+      for (const id of withAllScreens(selectedScreenshots)) {
         await blurScreenshot(id)
       }
       toast({ title: "Blurred", description: `${selectedScreenshots.size} screenshot(s) blurred.` })
@@ -3154,7 +3384,7 @@ export default function TimeTrackingPage() {
   const handleBulkTransfer = async (contractId: string, taskId?: string) => {
     if (selectedScreenshots.size === 0) return
     try {
-      await bulkTransferScreenshots(Array.from(selectedScreenshots), contractId, taskId)
+      await bulkTransferScreenshots(withAllScreens(selectedScreenshots), contractId, taskId)
       toast({ title: "Transferred", description: `${selectedScreenshots.size} screenshot(s) moved successfully.` })
       setSelectedScreenshots(new Set())
       setBulkSelectionEnabled(false)
@@ -3169,6 +3399,13 @@ export default function TimeTrackingPage() {
     () => flattenScreenshots(timeBlocks),
     [timeBlocks]
   )
+  // A grid card stands for every monitor of its capture, so bulk actions on
+  // it apply to all of them, not only the default screen.
+  const withAllScreens = (ids: Set<string>) =>
+    Array.from(ids).flatMap((id) => {
+      const card = flatScreenshots.find((f) => f.screenshot.id === id)
+      return card?.screenshot.screens?.map((sc) => sc.id) ?? [id]
+    })
   const appliedChips = getAppliedChips(appliedFilters)
   const totalActiveFilters = Object.values(appliedFilters).reduce(
     (sum, arr) => sum + arr.length,
@@ -3198,18 +3435,18 @@ export default function TimeTrackingPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:py-8 min-[1024px]:pl-[calc(var(--sidebar-content-pl,274px)-18px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-8 overflow-hidden">
           {/* ── Header ── */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <h1 className="text-xl font-bold text-dark-blue-400">
-                Total time <span className="text-2xl">{totalTime}</span>
+          <div className="flex h-10 items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-normal text-dark-blue-400">
+                Total time <span className="font-bold">{totalTime}</span>
               </h1>
               {manualTimeLabel && (
-                <span className="text-sm text-gray-400">
-                  + Manual time{" "}
-                  <span className="font-bold text-primary-500">{manualTimeLabel}</span>
-                </span>
+                <Badge size="lg" className="gap-x-1.5 rounded-md text-dark-blue-400">
+                  <Plus className="size-4" />
+                  Manual time <span className="font-bold">{manualTimeLabel}</span>
+                </Badge>
               )}
               {/* US-89: only shown when a single contract is selected — with
                   "all" selected, contracts can have different rates, and
@@ -3223,12 +3460,13 @@ export default function TimeTrackingPage() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {!isClient && (
                 <Button
-                  variant="outlined"
+                  variant="ghost"
                   visual="gray"
                   size="sm"
+                  className="text-gray-500"
                   leftIcon={<Plus className="size-4" />}
                   onClick={() => setShowManualTimeDialog(true)}
                 >
@@ -3236,17 +3474,20 @@ export default function TimeTrackingPage() {
                 </Button>
               )}
               <Button
+                variant="outlined"
+                visual="primary"
                 size="sm"
-                visual="error"
+                className="border-2 border-primary-500 bg-white text-base text-primary-500 hover:bg-primary-50"
                 leftIcon={<Clock className="size-4" />}
                 onClick={() => setShowDownloadTracker(true)}
               >
                 Log Time
               </Button>
               <IconButton
-                variant="ghost"
+                variant="outlined"
                 visual="gray"
                 size="sm"
+                className="border-gray-200 bg-white"
                 onClick={() =>
                   toast({
                     title: "Help",
@@ -3258,29 +3499,20 @@ export default function TimeTrackingPage() {
                 <HelpCircle className="size-4" />
               </IconButton>
               <IconButton
-                variant="ghost"
+                variant="outlined"
                 visual="gray"
                 size="sm"
+                className="border-gray-200 bg-white"
                 onClick={() => setShowSettingsDialog(true)}
               >
                 <Settings02 className="size-4" />
               </IconButton>
-              {/* DEV: Role switcher for testing client/admin views */}
-              <select
-                value={viewAsRole}
-                onChange={(e) => setViewAsRole(e.target.value as ROLE)}
-                className="h-8 rounded-md border border-dashed border-amber-400 bg-amber-50 px-2 text-xs font-medium text-amber-700"
-              >
-                <option value="TALENT">👷 Talent</option>
-                <option value="CLIENT">👤 Client</option>
-                <option value="ADMIN">🛡️ Admin</option>
-              </select>
             </div>
           </div>
 
           {/* ── Filter bar ── */}
-          <div className="flex items-center justify-between mt-5 gap-3">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mt-6 gap-3">
+            <div className="flex items-center gap-3">
               <div
                 className={cn(
                   buttonVariants({
@@ -3288,7 +3520,7 @@ export default function TimeTrackingPage() {
                     visual: "gray",
                     size: "sm",
                   }),
-                  "min-w-[56px] justify-between bg-white px-2.5",
+                  "w-[62px] justify-start gap-x-2 border-gray-200 bg-white px-2",
                   isClient && "hidden"
                 )}
               >
@@ -3298,9 +3530,10 @@ export default function TimeTrackingPage() {
                     setBulkSelectionEnabled(checked === true)
                     if (!checked) setSelectedScreenshots(new Set())
                   }}
+                  size="md"
                   className="hover:ring-0 active:ring-0"
                 />
-                <ChevronDown className="size-4 text-gray-500" />
+                <ChevronDown className="size-[18px] text-gray-500" />
               </div>
               {/* Bulk action bar */}
               {/* Bulk action bar — talent/admin only */}
@@ -3358,26 +3591,22 @@ export default function TimeTrackingPage() {
                   variant="outlined"
                   visual="gray"
                   size="sm"
-                  className="bg-white"
-                  leftIcon={<FilterLines className="size-4" />}
+                  className="border-gray-200 bg-white px-3 text-dark-blue-400"
+                  leftIcon={
+                    totalActiveFilters > 0 ? (
+                      <Badge visual="primary" variant="circular" className="size-5 p-0">
+                        {totalActiveFilters}
+                      </Badge>
+                    ) : undefined
+                  }
                 >
-                  <span>Filter</span>
-                  <span
-                    className={cn(
-                      "inline-flex items-center justify-center overflow-hidden rounded-full bg-primary-500 text-white text-[10px] font-semibold transition-all duration-200 ease-out",
-                      totalActiveFilters > 0
-                        ? "size-4 ml-1.5 opacity-100"
-                        : "size-0 ml-0 opacity-0"
-                    )}
-                  >
-                    {totalActiveFilters > 0 ? totalActiveFilters : ""}
-                  </span>
+                  Filter
                 </Button>
               </FilterPopover>
 
               {/* Contract filter */}
               <Select value={contractFilter} onValueChange={setContractFilter}>
-                <SelectTrigger className="h-9 w-[160px] bg-white">
+                <SelectTrigger className="h-9 w-auto max-w-[240px] gap-x-2 border-gray-200 bg-white font-semibold text-dark-blue-400 shadow-xs [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left [&>svg]:shrink-0">
                   <SelectValue placeholder="All Contracts" />
                 </SelectTrigger>
                 <SelectContent>
@@ -3412,8 +3641,8 @@ export default function TimeTrackingPage() {
                     variant="outlined"
                     visual="gray"
                     size="sm"
-                    className="bg-white"
-                    leftIcon={<Calendar className="size-4" />}
+                    className="border-gray-200 bg-white text-dark-blue-400"
+                    leftIcon={<CalendarPlus02 className="size-5" />}
                   >
                     {dateRange}
                   </Button>
@@ -3457,17 +3686,15 @@ export default function TimeTrackingPage() {
               </Popover>
             </div>
 
-            <div className="flex items-center gap-2">
-              <IconButton variant="ghost" visual="gray" size="sm">
-                <SwitchVertical01 className="size-4" />
-              </IconButton>
+            <div className="flex items-center gap-6">
+              <SortAs className="size-6 text-gray-500" />
 
               {/* Timezone */}
               <Select value={timezone} onValueChange={(val) => {
                 const ianaKey = Object.entries(timezoneDisplayMap).find(([, v]) => v === val)?.[0]
                 if (ianaKey) setUserTimezone(ianaKey)
               }}>
-                <SelectTrigger className="w-[200px] h-9 bg-white">
+                <SelectTrigger className="h-9 w-auto gap-x-2 border-gray-200 bg-white font-semibold text-dark-blue-400 shadow-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -3484,57 +3711,60 @@ export default function TimeTrackingPage() {
             className={cn(
               "grid transition-all duration-300 ease-out",
               appliedChips.length > 0
-                ? "grid-rows-[1fr] opacity-100 mt-3"
+                ? "grid-rows-[1fr] opacity-100 mt-6"
                 : "grid-rows-[0fr] opacity-0 mt-0"
             )}
           >
             <div className="overflow-hidden">
-              <div className="flex items-center gap-2 flex-wrap">
-                {appliedChips.map((chip, i) => (
-                  <span
+              <div className="flex items-center gap-3 flex-wrap">
+                {appliedChips.map((chip) => (
+                  <Badge
                     key={`${chip.category}-${chip.value ?? "count"}`}
-                    className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-1 rounded-full bg-primary-50 text-primary-600 text-xs font-medium animate-in fade-in slide-in-from-left-2 zoom-in-95 duration-200"
+                    visual="primary"
+                    className="h-9 gap-x-3 rounded-md px-3 text-base animate-in fade-in slide-in-from-left-2 zoom-in-95 duration-200"
                   >
                     {chip.count !== undefined && (
-                      <span className="size-4 rounded-full bg-primary-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                      <Badge visual="primary" variant="circular" className="size-5 p-0 bg-white">
                         {chip.count}
-                      </span>
+                      </Badge>
                     )}
-                    <span>{chip.label}</span>
-                    <button
-                      type="button"
+                    {chip.label}
+                    <BadgeCloseButton
                       onClick={() => removeChip(chip)}
-                      className="size-4 rounded-full flex items-center justify-center hover:bg-primary-100"
                       aria-label={`Remove ${chip.label}`}
                     >
-                      <X className="size-3" />
-                    </button>
-                  </span>
+                      <X className="size-4" />
+                    </BadgeCloseButton>
+                  </Badge>
                 ))}
                 <FilterPopover
                   applied={appliedFilters}
                   onChange={setAppliedFilters}
                 >
-                  <button
-                    type="button"
-                    className="text-xs text-primary-500 hover:text-primary-600 font-medium"
+                  <Button
+                    variant="filled"
+                    visual="gray"
+                    size="sm"
+                    className="bg-gray-100 px-3 text-base font-medium text-gray-500 shadow-none hover:bg-gray-200"
+                    leftIcon={<Plus className="size-5" />}
                   >
-                    + Add Filter
-                  </button>
+                    Add Filter
+                  </Button>
                 </FilterPopover>
-                <button
-                  type="button"
-                  className="text-xs text-gray-400 hover:text-gray-600 ml-2"
+                <Button
+                  variant="link"
+                  visual="primary"
+                  className="text-base"
                   onClick={() => setAppliedFilters(emptyAppliedFilters)}
                 >
                   Clear All
-                </button>
+                </Button>
               </div>
             </div>
           </div>
 
           {/* ── Time blocks ── */}
-          <div className="mt-4 divide-y divide-gray-200">
+          <div className="mt-6 space-y-8">
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <div className="flex flex-col items-center gap-3">
@@ -3561,6 +3791,18 @@ export default function TimeTrackingPage() {
                   bulkMode={bulkSelectionEnabled}
                   selectedScreenshots={selectedScreenshots}
                   onBulkToggle={toggleScreenshotSelection}
+                  showCheckbox={!isClient}
+                  onToggleBlock={(ids, checked) => {
+                    setBulkSelectionEnabled(true)
+                    setSelectedScreenshots((prev) => {
+                      const next = new Set(prev)
+                      for (const id of ids) {
+                        if (checked) next.add(id)
+                        else next.delete(id)
+                      }
+                      return next
+                    })
+                  }}
                 />
               ))
             )}
