@@ -199,3 +199,31 @@ export class LegacyVerificationPathRetiredException extends DomainException {
     );
   }
 }
+
+// Free KYC (Didit-hosted) start/resume gate: a current, server-recorded
+// home-country confirmation is required, and it can't coexist with active
+// Travel Mode / a temporary-travel classification.
+export class HomeCountryConfirmationRequiredException extends DomainException {
+  readonly code = 'HOME_COUNTRY_CONFIRMATION_REQUIRED';
+  constructor(details?: Record<string, unknown>) {
+    super('Please confirm your home country before verifying your identity.', HttpStatus.CONFLICT, details);
+  }
+}
+
+// The profile's current identity-verification status doesn't allow starting
+// a new hosted session (already verified, awaiting review, or blocked).
+export class KycNotStartableException extends DomainException {
+  readonly code = 'IDENTITY_VERIFICATION_NOT_STARTABLE';
+  constructor(details?: Record<string, unknown>) {
+    super('Identity verification cannot be started right now.', HttpStatus.CONFLICT, details);
+  }
+}
+
+// 404 on purpose: Didit retries a 404 (not a 4xx), which covers the narrow
+// race where a webhook arrives before our own session row is committed.
+export class UnknownKycSessionException extends DomainException {
+  readonly code = 'UNKNOWN_KYC_SESSION';
+  constructor(details?: Record<string, unknown>) {
+    super('No hosted verification session matches this webhook.', HttpStatus.NOT_FOUND, details);
+  }
+}

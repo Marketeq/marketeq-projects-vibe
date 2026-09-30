@@ -88,3 +88,17 @@ export enum BiometricSessionStatus {
   IN_REVIEW = 'in_review',
   EXPIRED = 'expired',
 }
+
+// Free KYC (Didit-hosted workflow) session lifecycle as tracked by this
+// service. Mapped from Didit's documented session statuses in
+// free-kyc.service.ts — an unrecognized Didit status never maps to APPROVED.
+export enum HostedKycSessionStatus {
+  CREATED = 'created',
+  IN_PROGRESS = 'in_progress',
+  IN_REVIEW = 'in_review',
+  APPROVED = 'approved',
+  DECLINED = 'declined',
+  ABANDONED = 'abandoned',
+  EXPIRED = 'expired',
+  KYC_EXPIRED = 'kyc_expired',
+}

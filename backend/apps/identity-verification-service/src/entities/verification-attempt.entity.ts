@@ -55,16 +55,20 @@ export class VerificationAttempt {
     type: 'enum',
     enum: CaptureMethod,
     enumName: 'capture_method_enum',
+    // Null for a Didit-hosted (Free KYC) attempt — Didit holds the capture.
+    nullable: true,
   })
-  attemptMethod!: CaptureMethod;
+  attemptMethod!: CaptureMethod | null;
 
   @Column({
     name: 'attempt_document_type',
     type: 'enum',
     enum: DocumentType,
     enumName: 'document_type_enum',
+    // Null for a Didit-hosted (Free KYC) attempt — Didit holds the document.
+    nullable: true,
   })
-  attemptDocumentType!: DocumentType;
+  attemptDocumentType!: DocumentType | null;
 
   @Column({ name: 'attempt_outcome', type: 'varchar', length: 32 })
   attemptOutcome!: string;

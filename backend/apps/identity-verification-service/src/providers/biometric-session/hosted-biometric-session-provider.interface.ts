@@ -29,6 +29,29 @@ export interface CreateHostedBiometricSessionInput {
   vendorData: string;
 }
 
+export interface CreateKycSessionInput {
+  workflowId: string;
+  // Opaque internal reference (random UUID) — never a user id or PII.
+  vendorData: string;
+  // Where Didit redirects the browser afterwards. Informational only; the
+  // redirect is never treated as proof of any outcome.
+  callbackUrl: string;
+}
+
+// The ONLY fields read from a session-decision response. Everything else in
+// that body (it contains personal data) is discarded inside the provider.
+export interface HostedSessionDecisionSummary {
+  sessionId: string;
+  status: string;
+  vendorData: string | null;
+  workflowId: string | null;
+  // `environment` is present in Didit's decision response but undocumented;
+  // `application_id` is not returned at all today. Both are optional and are
+  // validated by the caller only when present.
+  environment: string | null;
+  applicationId: string | null;
+}
+
 export interface CreateHostedBiometricSessionResult {
   sessionId: string;
   url: string;
@@ -48,6 +71,13 @@ export interface HostedBiometricSessionProvider {
    * lookup — called once, when "Begin verifying" is clicked — never a
    * recurring poll.
    */
+  createKycSession(input: CreateKycSessionInput): Promise<CreateHostedBiometricSessionResult>;
+
+  // Trusted server-to-server read of a session's current decision status
+  // (GET /v3/session/{id}/decision/). Used only as a fallback reconciliation
+  // by FreeKycService; the signed webhook remains the primary mechanism.
+  getSessionDecision(sessionId: string): Promise<HostedSessionDecisionSummary>;
+
   fetchPortraitFromDocumentCheckSession(requestId: string): Promise<string | null>;
 }
 

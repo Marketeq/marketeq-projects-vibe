@@ -3,8 +3,12 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { requestIdMiddleware } from './common/middleware/request-id.middleware';
+import { assertRequiredConfig } from './common/config/required-config';
 
 async function bootstrap() {
+  // Fails fast (variable names only) if Free KYC configuration is missing.
+  assertRequiredConfig();
+
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   // Dev-only: the Sandbox Didit test harness page

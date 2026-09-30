@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   CreateHostedBiometricSessionInput,
+  CreateKycSessionInput,
+  HostedSessionDecisionSummary,
   CreateHostedBiometricSessionResult,
   HostedBiometricSessionProvider,
 } from './hosted-biometric-session-provider.interface';
 import {
   AmbiguousVendorOutcomeError,
+  HostedSessionNotFoundError,
   InvalidSessionCreationRequestError,
   MalformedVendorResponseError,
   VendorAuthOrCreditError,
@@ -21,6 +24,9 @@ import {
 // where that ceiling is gated), so this bound exists for the same
 // "ambiguous vs. definite failure" honesty, not to protect a reservation.
 const FETCH_TIMEOUT_MS = 30 * 1000;
+// Short, for the read-only reconciliation lookup that runs inside a user's
+// start request (a hung lookup must fail closed quickly, not hold the lock).
+const DECISION_TIMEOUT_MS = 5 * 1000;
 
 // Adapter for Didit's hosted session creation (POST /v3/session/) and
 // decision lookup (GET /v3/session/{id}/decision/), verified against
@@ -41,16 +47,82 @@ export class DiditHostedBiometricSessionProvider implements HostedBiometricSessi
   async createSession(
     input: CreateHostedBiometricSessionInput,
   ): Promise<CreateHostedBiometricSessionResult> {
+    return this.postCreateSession({
+      workflow_id: input.workflowId,
+      portrait_image: input.portraitImageBase64,
+      vendor_data: input.vendorData,
+    });
+  }
+
+  // Free KYC: a hosted workflow session where Didit runs document selection,
+  // capture, liveness and face match itself. `callback` is where Didit
+  // redirects the browser afterwards (it appends verificationSessionId and
+  // status — never trusted by this service). Per Didit's documented
+  // behavior, calling this again with the same vendor_data while an
+  // unfinished session exists returns that existing session (still 201)
+  // instead of creating a duplicate; terminal sessions are never reused.
+  async createKycSession(input: CreateKycSessionInput): Promise<CreateHostedBiometricSessionResult> {
+    return this.postCreateSession({
+      workflow_id: input.workflowId,
+      vendor_data: input.vendorData,
+      callback: input.callbackUrl,
+    });
+  }
+
+  // Fail-closed read of one session's current status. Only the fields named in
+  // HostedSessionDecisionSummary are kept; the body (personal data) is never
+  // returned, logged or put in an error. 404 -> HostedSessionNotFoundError;
+  // timeout / network / 5xx / unexpected status -> VendorTransportError.
+  async getSessionDecision(sessionId: string): Promise<HostedSessionDecisionSummary> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/v3/session/${encodeURIComponent(sessionId)}/decision/`, {
+        headers: { 'x-api-key': this.apiKey as string },
+        signal: AbortSignal.timeout(DECISION_TIMEOUT_MS),
+      });
+    } catch (cause) {
+      // A read has no "did it happen?" ambiguity — a plain transport failure.
+      throw new VendorTransportError(cause);
+    }
+
+    if (response.status === 404) throw new HostedSessionNotFoundError();
+    if (response.status === 401 || response.status === 403) {
+      throw new VendorAuthOrCreditError('invalid_api_key', undefined);
+    }
+    if (response.status === 429) {
+      const retryAfterHeader = response.headers.get('retry-after');
+      const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+      throw new VendorRateLimitedError(Number.isFinite(retryAfterSeconds) ? retryAfterSeconds : undefined);
+    }
+    if (response.status !== 200) {
+      throw new VendorTransportError(new Error(`Unexpected Didit status ${response.status}`));
+    }
+
+    const body = await this.safeJson(response);
+    if (!this.isRecord(body)) throw new MalformedVendorResponseError('body_not_an_object');
+    if (typeof body.session_id !== 'string' || typeof body.status !== 'string') {
+      throw new MalformedVendorResponseError('missing_session_id_or_status');
+    }
+    const optionalString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+    return {
+      sessionId: body.session_id,
+      status: body.status,
+      vendorData: optionalString(body.vendor_data),
+      workflowId: optionalString(body.workflow_id),
+      environment: optionalString(body.environment),
+      applicationId: optionalString(body.application_id),
+    };
+  }
+
+  private async postCreateSession(
+    requestBody: Record<string, unknown>,
+  ): Promise<CreateHostedBiometricSessionResult> {
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}/v3/session/`, {
         method: 'POST',
         headers: { 'x-api-key': this.apiKey as string, 'content-type': 'application/json' },
-        body: JSON.stringify({
-          workflow_id: input.workflowId,
-          portrait_image: input.portraitImageBase64,
-          vendor_data: input.vendorData,
-        }),
+        body: JSON.stringify(requestBody),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
     } catch (cause) {

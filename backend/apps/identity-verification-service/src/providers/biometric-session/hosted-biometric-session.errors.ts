@@ -32,3 +32,11 @@ export class InvalidSessionCreationRequestError extends HostedBiometricSessionEr
     super('Didit rejected the hosted-session creation request');
   }
 }
+
+// GET /v3/session/{id}/decision/ answered 404: no session with that id exists
+// for this application. Carries no response content.
+export class HostedSessionNotFoundError extends HostedBiometricSessionError {
+  constructor() {
+    super('Didit has no session with the stored id for this application');
+  }
+}
