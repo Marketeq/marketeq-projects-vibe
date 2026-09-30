@@ -14,9 +14,11 @@ import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { TwoStageVerificationService } from '../services/two-stage-verification.service';
+import { FreeKycService } from '../services/free-kyc.service';
+import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
-import { extractClientIp } from '../common/utils/extract-client-ip';
+import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
@@ -44,6 +46,7 @@ export class IdentityVerificationController {
   constructor(
     private readonly service: IdentityVerificationService,
     private readonly twoStageService: TwoStageVerificationService,
+    private readonly freeKycService: FreeKycService,
   ) {}
 
   // Standalone gate the frontend calls before location verification
@@ -61,7 +64,7 @@ export class IdentityVerificationController {
   @Get('me')
   @UseGuards(VpnProxyCheckGuard)
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
-    const profile = await this.service.getOrCreateProfile(req.userId, extractClientIp(req));
+    const profile = await this.service.getOrCreateProfile(req.userId, getEffectiveClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
@@ -69,7 +72,7 @@ export class IdentityVerificationController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(VpnProxyCheckGuard)
   async confirmHomeCountry(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
-    const profile = await this.service.confirmHomeCountry(req.userId, extractClientIp(req));
+    const profile = await this.service.confirmHomeCountry(req.userId, getEffectiveClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
@@ -158,7 +161,7 @@ export class IdentityVerificationController {
     @Req() req: AuthenticatedRequest,
     @Param('documentId') documentId: string,
   ): Promise<VerificationSessionResponseDto> {
-    return this.service.startVerificationSession(req.userId, documentId, extractClientIp(req));
+    return this.service.startVerificationSession(req.userId, documentId, getEffectiveClientIp(req));
   }
 
   // Stage 1 of the two-stage Didit integration: standalone document check.
@@ -200,6 +203,17 @@ export class IdentityVerificationController {
   ): Promise<TwoStageStatusResponseDto> {
     const status = await this.twoStageService.getTwoStageStatus(req.userId, documentId);
     return TwoStageStatusResponseDto.from(status);
+  }
+
+  // Free KYC: start (or resume) the Didit-hosted verification session. Runs
+  // the same VPN/proxy guard as every other advancing action BEFORE any
+  // session is created or returned. Returns only the validated redirect URL.
+  @Post('kyc-sessions')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(VpnProxyCheckGuard)
+  async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startOrResume(req.userId);
   }
 
   @Get('documents')

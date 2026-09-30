@@ -11,6 +11,8 @@ import { PendingVerificationSession } from './entities/pending-verification-sess
 import { BiometricSession } from './entities/biometric-session.entity';
 import { ProcessedWebhookEvent } from './entities/processed-webhook-event.entity';
 import { AttemptReservation } from './entities/attempt-reservation.entity';
+import { HostedKycSession } from './entities/hosted-kyc-session.entity';
+import { FreeKycService } from './services/free-kyc.service';
 import { IdentityVerificationController } from './controllers/identity-verification.controller';
 import { IdentityVerificationInternalController } from './controllers/identity-verification-internal.controller';
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
@@ -50,6 +52,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
       BiometricSession,
       ProcessedWebhookEvent,
       AttemptReservation,
+      HostedKycSession,
     ]),
     ScheduleModule.forRoot(),
     // TRVG2 §6.2 confirms the document-submission endpoint must be
@@ -72,6 +75,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
   providers: [
     IdentityVerificationService,
     TwoStageVerificationService,
+    FreeKycService,
     TravelModeReminderJob,
     StatusAutoClearJob,
     VpnProxyCheckGuard,

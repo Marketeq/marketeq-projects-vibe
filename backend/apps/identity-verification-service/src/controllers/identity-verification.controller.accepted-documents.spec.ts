@@ -15,7 +15,7 @@ describe('IdentityVerificationController GET accepted-documents', () => {
   const buildController = (provider = new CatalogDocumentCoverageProvider()) => {
     const service = Object.create(IdentityVerificationService.prototype) as IdentityVerificationService;
     (service as any).documentCoverageProvider = provider;
-    return new IdentityVerificationController(service as any, {} as any);
+    return new IdentityVerificationController(service as any, {} as any, {} as any);
   };
   const query = (issuingCountry: string) => plainToInstance(AcceptedDocumentsRequestDto, { issuingCountry });
 
