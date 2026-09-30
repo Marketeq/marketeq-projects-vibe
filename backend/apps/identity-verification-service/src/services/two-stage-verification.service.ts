@@ -250,6 +250,13 @@ export class TwoStageVerificationService {
         document.expirationDate = result.expirationDate;
       }
 
+      // Scanned driver's licences carry no issuingState at submission time
+      // (SubmitDocumentRequestDto); backfill it from Didit's extraction, never
+      // overwriting a value already stored.
+      if (!document.issuingState && result.issuingState) {
+        document.issuingState = result.issuingState;
+      }
+
       const saved =
         !document.documentNumber && result.documentNumber
           ? await this.backfillDocumentNumberCheckDuplicateAndSave(document, result.documentNumber)

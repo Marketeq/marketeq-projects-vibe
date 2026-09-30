@@ -95,3 +95,41 @@ describe('SubmitDocumentRequestDto — expirationDate', () => {
     },
   );
 });
+
+describe('SubmitDocumentRequestDto — issuingState', () => {
+  const base = {
+    documentType: DocumentType.DRIVERS_LICENCE,
+    issuingCountry: 'US',
+    documentImageReference: 'identity-documents/profile-1/scan.jpg',
+  };
+  const issuingStateError = async (payload: Record<string, unknown>) =>
+    (await validate(plainToInstance(SubmitDocumentRequestDto, payload))).find(
+      (e) => e.property === 'issuingState',
+    );
+
+  it('does not require issuingState for a scanned drivers_licence', async () => {
+    expect(await issuingStateError({ ...base, captureMethod: CaptureMethod.SCAN })).toBeUndefined();
+  });
+
+  it('requires issuingState for a manual_entry drivers_licence', async () => {
+    expect(
+      await issuingStateError({ ...base, captureMethod: CaptureMethod.MANUAL_ENTRY, documentNumber: 'X1' }),
+    ).toBeDefined();
+  });
+
+  it('accepts a supplied issuingState for a manual_entry drivers_licence', async () => {
+    expect(
+      await issuingStateError({ ...base, captureMethod: CaptureMethod.MANUAL_ENTRY, issuingState: 'CA' }),
+    ).toBeUndefined();
+  });
+
+  it('still rejects an empty issuingState on the scan path', async () => {
+    expect(await issuingStateError({ ...base, captureMethod: CaptureMethod.SCAN, issuingState: '' })).toBeDefined();
+  });
+
+  it('does not require issuingState for non-licence documents', async () => {
+    expect(
+      await issuingStateError({ ...base, documentType: DocumentType.PASSPORT, captureMethod: CaptureMethod.MANUAL_ENTRY }),
+    ).toBeUndefined();
+  });
+});

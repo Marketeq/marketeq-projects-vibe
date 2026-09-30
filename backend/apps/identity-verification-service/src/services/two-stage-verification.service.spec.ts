@@ -438,6 +438,49 @@ describe('TwoStageVerificationService', () => {
       expect(result.expirationDate).toBeNull();
     });
 
+    it('backfills an empty issuingState from the vendor extraction', async () => {
+      const { service } = buildService({
+        documentRepository: {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'doc-1', profileId: 'profile-1', issuingCountry: 'US', documentType: 'drivers_licence',
+            documentImageReference: 'front-key', backImageReference: null, issuingState: null,
+            documentNumber: 'ALREADY-SET', expirationDate: null, documentCheckStatus: null, documentCheckImageHash: null,
+          }),
+          save: jest.fn((d: any) => Promise.resolve(d)),
+        },
+        documentCheckProvider: {
+          checkDocument: jest.fn().mockResolvedValue({
+            requestId: 'req-1', status: 'Approved', warnings: [], portraitImage: 'x',
+            documentNumber: null, expirationDate: null, issuingState: 'CA',
+          }),
+        },
+      });
+      const result = await service.checkDocumentWithVendor('user-1', 'doc-1');
+      expect(result.issuingState).toBe('CA');
+    });
+
+    it('never overwrites an already-known issuingState, and leaves null when the vendor has none', async () => {
+      const build = (issuingState: string | null, vendorState: string | null) =>
+        buildService({
+          documentRepository: {
+            findOne: jest.fn().mockResolvedValue({
+              id: 'doc-1', profileId: 'profile-1', issuingCountry: 'US', documentType: 'drivers_licence',
+              documentImageReference: 'front-key', backImageReference: null, issuingState,
+              documentNumber: 'ALREADY-SET', expirationDate: null, documentCheckStatus: null, documentCheckImageHash: null,
+            }),
+            save: jest.fn((d: any) => Promise.resolve(d)),
+          },
+          documentCheckProvider: {
+            checkDocument: jest.fn().mockResolvedValue({
+              requestId: 'req-1', status: 'Approved', warnings: [], portraitImage: 'x',
+              documentNumber: null, expirationDate: null, issuingState: vendorState,
+            }),
+          },
+        }).service;
+      expect((await (await build('NY', 'CA')).checkDocumentWithVendor('user-1', 'doc-1')).issuingState).toBe('NY');
+      expect((await (await build(null, null)).checkDocumentWithVendor('user-1', 'doc-1')).issuingState).toBeNull();
+    });
+
     it('never overwrites an already-known documentNumber with the vendor extraction', async () => {
       const { service, queryRunner } = buildService({
         documentRepository: {

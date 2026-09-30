@@ -148,14 +148,36 @@ export class IdentityVerificationService {
     userId: string,
     ipAddress?: string | null,
   ): Promise<IdentityVerificationProfile> {
-    const profile = await this.getOrCreateProfile(userId, ipAddress);
-    if (!profile.detectedCountry) {
+    // The country being confirmed is ALWAYS resolved server-side from the
+    // current request IP right now — never a value supplied by the client,
+    // and never the stored first-ever detection (getOrCreateProfile only
+    // fills detectedCountry once). Detected location, verified home country,
+    // confirmation time and verified status are all written from that one
+    // result in a single save.
+    const detected = ipAddress ? await this.locationProvider.resolve({ ipAddress }) : null;
+    if (!detected) {
       throw new NoDetectedLocationException();
     }
+
+    const existing = await this.profileRepository.findOne({ where: { userId } });
+    const profile = existing ?? this.profileRepository.create({ userId });
     const previousCountry = profile.verifiedHomeCountry;
     const isFirstConfirmation = profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED;
 
-    profile.verifiedHomeCountry = profile.detectedCountry;
+    // A successful, server-verified home-country confirmation ends any
+    // Travel Mode: cleared in the SAME single save as the confirmation, and
+    // only reached after the live location lookup succeeded (a failed lookup
+    // throws above and leaves the travel state untouched).
+    profile.travelModeActive = false;
+    profile.travelClassification = null;
+    profile.declaredDuration = null;
+    profile.travelModeActivatedAt = null;
+    profile.nextTravelReminderAt = null;
+
+    profile.detectedCountry = detected.countryCode;
+    profile.detectedRegionState = detected.regionState;
+    profile.detectedCity = detected.city;
+    profile.verifiedHomeCountry = detected.countryCode;
     profile.verifiedHomeCountryConfirmedAt = new Date();
     profile.locationVerificationStatus = LocationVerificationStatus.VERIFIED;
     const saved = await this.profileRepository.save(profile);

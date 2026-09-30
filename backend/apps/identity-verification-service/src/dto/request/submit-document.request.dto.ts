@@ -61,11 +61,18 @@ export class SubmitDocumentRequestDto {
   @IsNotPastDate()
   expirationDate?: string;
 
-  @ValidateIf((o) => o.documentType === DocumentType.DRIVERS_LICENCE)
+  // Required only when the user types the licence in directly
+  // (captureMethod: manual_entry). For captureMethod: scan it is optional —
+  // Didit's document-check extracts issuing_state from the images and
+  // TwoStageVerificationService.checkDocumentWithVendor backfills it onto
+  // this row. Whenever a value IS supplied (any path) it must be non-empty.
+  @ValidateIf(
+    (o) =>
+      (o.documentType === DocumentType.DRIVERS_LICENCE && o.captureMethod === CaptureMethod.MANUAL_ENTRY) ||
+      o.issuingState !== undefined,
+  )
   @IsString()
   @IsNotEmpty({ message: 'issuingState is required when documentType is drivers_licence' })
-  @ValidateIf((o) => o.documentType !== DocumentType.DRIVERS_LICENCE)
-  @IsOptional()
   issuingState?: string;
 
   @IsEnum(CaptureMethod, { message: 'captureMethod must be one of: scan, manual_entry' })

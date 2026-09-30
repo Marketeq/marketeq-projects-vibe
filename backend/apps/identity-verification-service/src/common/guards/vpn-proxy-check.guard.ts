@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Inject, Injectable, Logger } from '@nestjs/common';
 import { Request } from 'express';
-import { extractClientIp } from '../utils/extract-client-ip';
+import { getEffectiveClientIp } from '../utils/effective-client-ip';
 import {
   VPN_PROXY_DETECTION_PROVIDER,
   VpnProxyDetectionProvider,
@@ -36,7 +36,7 @@ export class VpnProxyCheckGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const ipAddress = extractClientIp(request);
+    const ipAddress = getEffectiveClientIp(request);
 
     let result: VpnProxyDetectionResult;
     try {
