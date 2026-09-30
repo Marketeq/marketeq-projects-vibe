@@ -5956,12 +5956,36 @@ const ProjectScope = ({
       const taskDays = (((phase as any)?.rows ?? []) as any[])
         .map((row: any) => {
           const dur = row?.duration
-          if (!dur) return 0
-          const val = Number(dur.value) || 0
-          if (val <= 0) return 0
-          if (dur.type === "weeks") return val * 7
-          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-          return val
+          // QA-200/PMCM-397: this only handled "weeks" and "hours",
+          // silently treating a "months" duration as raw days (e.g. "2
+          // months" counted as 2 days) and giving up entirely (0) on any
+          // row whose duration didn't arrive as the {value, type} object —
+          // never falling back to estimatedHours the way
+          // estimateScopeBudgetCents (this same memo's budget calculation,
+          // a few lines below) already does. Matched here to that
+          // reference implementation.
+          if (dur && typeof dur === "object") {
+            const val = Number(dur.value) || 0
+            if (val > 0) {
+              if (dur.type === "weeks") return val * 7
+              if (dur.type === "months") return val * 30
+              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+              return val
+            }
+          }
+          if (typeof dur === "string" && dur.trim()) {
+            const [rv, ru] = dur.trim().split(/\s+/)
+            const v = Number(rv) || 0
+            const u = (ru || "days").toLowerCase()
+            if (v > 0) {
+              if (u.startsWith("week")) return v * 7
+              if (u.startsWith("month")) return v * 30
+              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+              return v
+            }
+          }
+          const hrs = Number(row?.estimatedHours) || 0
+          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
         })
         .filter((d: number) => d > 0)
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
