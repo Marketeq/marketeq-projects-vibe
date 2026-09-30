@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, Suspense, useEffect, useRef, useState } from "react"
+import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -8,6 +8,7 @@ import {
   resolveDashboardRoute,
   useAuth,
 } from "@/contexts/auth"
+import { DAY_PERIODS, TIMES } from "@/utils/constants"
 import { SupportAPI } from "@/service/http/support"
 import { UserAPI } from "@/service/http/user"
 import { AuthAPI } from "@/service/http/auth"
@@ -42,6 +43,7 @@ import {
 import { ErrorMessage as HookFormErrorMessage } from "@hookform/error-message"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { SubmitHandler, useForm } from "react-hook-form"
+import { format } from "date-fns"
 import { z } from "zod"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { MarketeqLogo } from "@/components/icons/marketeq-logo"
@@ -162,6 +164,49 @@ const SCHEDULE_TEXT_FIELDS = [
   { id: "name", label: "Name", placeholder: "John Doe" },
   { id: "email", label: "Email", placeholder: "you@me.com" },
 ] as const
+
+/**
+ * The options behind Preferred Date.
+ *
+ * Weekdays only, starting tomorrow: this books a call with a person, and
+ * offering today invites a request nobody can action by the time it is read.
+ * Thirty is far enough ahead to be useful without turning the list into a
+ * scroll.
+ *
+ * The value is an ISO date and the label is what DatePicker renders elsewhere
+ * in the app, so the two read the same. A dropdown is also what makes the
+ * stored value trustworthy: the field used to be free text, where `99/99/9999`
+ * and `banana` both passed.
+ */
+/**
+ * Closes the only three gaps between SelectTrigger and the Input fields it sits
+ * beside: font size, shadow, and the icon colour. Height, radius, border,
+ * padding and placeholder colour already match. Same override the Security
+ * Questions modal uses, kept in one place because three triggers share it.
+ */
+const SCHEDULE_SELECT_CLASS =
+  "w-full text-base text-dark-blue-400 shadow-xs [&_svg]:size-4 [&_svg]:text-gray-400"
+
+const SCHEDULE_DATE_COUNT = 30
+
+const buildScheduleDates = (): { value: string; label: string }[] => {
+  const options: { value: string; label: string }[] = []
+  const cursor = new Date()
+  cursor.setHours(0, 0, 0, 0)
+
+  while (options.length < SCHEDULE_DATE_COUNT) {
+    cursor.setDate(cursor.getDate() + 1)
+    const day = cursor.getDay()
+    if (day === 0 || day === 6) continue
+
+    options.push({
+      value: format(cursor, "yyyy-MM-dd"),
+      label: format(cursor, "LLL d, yyyy"),
+    })
+  }
+
+  return options
+}
 
 type SecurityQuestion = { id: string; prompt: string }
 
@@ -286,12 +331,17 @@ function ForgotPassword() {
   const [isCallUsOpen, setIsCallUsOpen] = useState(false)
   const [isEmailUsOpen, setIsEmailUsOpen] = useState(false)
   const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  // `date` is an ISO yyyy-MM-dd, `time` an "hh:mm" from TIMES and `dayPeriod`
+  // an AM/PM from DAY_PERIODS. The two time halves are separate because the
+  // design system models them that way; they are joined back together on
+  // submit, so the endpoint's payload is unchanged.
   const [scheduleForm, setScheduleForm] = useState({
     name: "",
     email: "",
     phone: "",
     date: "",
     time: "",
+    dayPeriod: "",
   })
   // Same 371x258 screen as the message confirmation -- the two Figmas are
   // identical bar the wording, so it is parameterised rather than duplicated.
@@ -756,12 +806,18 @@ function ForgotPassword() {
     value: string
   ) => setScheduleForm((prev) => ({ ...prev, [field]: value }))
 
+  // Built once. The list is only ever rendered inside SelectContent, which
+  // Radix portals and mounts on open, so it is never part of the server render
+  // and cannot produce a hydration mismatch across a midnight boundary.
+  const scheduleDates = useMemo(buildScheduleDates, [])
+
   // isPhoneValid comes from the same design-system module as the input, so the
   // rule here is the one Settings already enforces rather than a second guess.
   const canScheduleCall =
     scheduleForm.name.trim() !== "" &&
-    scheduleForm.date.trim() !== "" &&
-    scheduleForm.time.trim() !== "" &&
+    scheduleForm.date !== "" &&
+    scheduleForm.time !== "" &&
+    scheduleForm.dayPeriod !== "" &&
     isPhoneValid(scheduleForm.phone) &&
     z.string().email().safeParse(scheduleForm.email.trim()).success
 
@@ -769,10 +825,11 @@ function ForgotPassword() {
    * Posts the call request to notification-service, which emails it to the
    * support inbox for a human to action.
    *
-   * This is a REQUEST, not a booking: nothing is reserved in a calendar, and
-   * the date and time are relayed as the free text the form collected, with no
-   * timezone attached. The confirmation copy must not promise more than that
-   * until a real scheduling integration exists — see
+   * This is a REQUEST, not a booking: nothing is reserved in a calendar. The
+   * date and time are now picked rather than typed, so what is relayed always
+   * parses — but **no timezone is attached**, so "2:30 PM" still means nothing
+   * definite to whoever reads it. The confirmation copy must not promise more
+   * than that until a real scheduling integration exists — see
    * docs/ACCOUNT_RECOVERY_NOTES.md §4.6.
    */
   const handleScheduleSubmit = async () => {
@@ -782,8 +839,11 @@ function ForgotPassword() {
         name: scheduleForm.name.trim(),
         email: scheduleForm.email.trim(),
         phone: scheduleForm.phone.trim(),
-        date: scheduleForm.date.trim(),
-        time: scheduleForm.time.trim(),
+        date: scheduleForm.date,
+        // Recombined here rather than stored joined, so the two Selects stay
+        // independently controlled. The endpoint takes `time` as free text, so
+        // this needs no contract change.
+        time: `${scheduleForm.time} ${scheduleForm.dayPeriod}`,
       })
       setIsScheduleOpen(false)
       setSupportSentKind("call")
@@ -1812,62 +1872,115 @@ function ForgotPassword() {
                         </div>
                       </div>
 
-                      {/* Free text, not pickers. The Figma draws a 44px field
-                          with a trailing 16px glyph and a typed MM/DD/YYYY
-                          placeholder; DatePicker is a 40px Button+Popover with
-                          a LEADING indicator and a hardcoded trailing chevron,
-                          and TimeField is segmented -- neither matches without
-                          editing read-only component source.
-                          Consequence: nothing validates these. canScheduleCall
-                          only checks they are non-empty, so 99/99/9999 passes,
-                          and no timezone is captured anywhere. Must be resolved
-                          before the booking endpoint is built -- its payload
-                          depends on it. See docs/ACCOUNT_RECOVERY_NOTES.md
-                          §4.6. */}
+                      {/* Pickers, not free text. Both are Select, which is
+                          what the design system offers for these: the "Time
+                          Selector" story is a Select over TIMES, and
+                          DAY_PERIODS sits beside it in the same constants
+                          module. onboarding/talent renders the same joined
+                          pair.
+                          SelectTrigger is already the same 44px h-11
+                          rounded-[5px] border-gray-300 px-[14px] box as Input,
+                          with a trailing 16px indicator -- exactly the field
+                          the Figma draws. The className closes the only three
+                          gaps (text-base, shadow-xs, icon colour) the same way
+                          the Security Questions modal above does, and
+                          indicator={false} swaps the built-in chevron for the
+                          Figma's calendar and clock glyphs. No component
+                          source is touched.
+                          DatePicker and TimeField were the obvious candidates
+                          and neither fits: both render 40px, DatePicker puts
+                          its icon leading with a hardcoded trailing chevron,
+                          and TimeField is segmented. See
+                          docs/ACCOUNT_RECOVERY_NOTES.md §4.6. */}
                       <div className="flex w-full shrink-0 items-start gap-6">
-                        {(
-                          [
-                            {
-                              id: "date",
-                              label: "Preferred Date",
-                              placeholder: "MM/DD/YYYY",
-                              icon: Calendar,
-                            },
-                            {
-                              id: "time",
-                              label: "Preferred Time",
-                              placeholder: "HH:MM AM/PM",
-                              icon: Clock,
-                            },
-                          ] as const
-                        ).map(({ id, label, placeholder, icon: Icon }) => (
-                          <div
-                            key={id}
-                            className="flex flex-1 flex-col items-start gap-1.5"
+                        <div className="flex flex-1 flex-col items-start gap-1.5">
+                          <Label size="sm" className="text-dark-blue-400">
+                            Preferred Date
+                          </Label>
+                          <Select
+                            value={scheduleForm.date || undefined}
+                            onValueChange={(value) =>
+                              updateScheduleForm("date", value)
+                            }
                           >
-                            <Label
-                              htmlFor={`schedule-${id}`}
-                              size="sm"
-                              className="text-dark-blue-400"
+                            <SelectTrigger
+                              indicator={false}
+                              className={SCHEDULE_SELECT_CLASS}
                             >
-                              {label}
-                            </Label>
-                            <InputGroup className="w-full">
-                              <Input
-                                id={`schedule-${id}`}
-                                placeholder={placeholder}
-                                className="pr-9"
-                                value={scheduleForm[id]}
-                                onChange={(event) =>
-                                  updateScheduleForm(id, event.target.value)
-                                }
-                              />
-                              <InputRightElement>
-                                <Icon className="size-4 text-gray-400" />
-                              </InputRightElement>
-                            </InputGroup>
+                              <SelectValue placeholder="Select a date" />
+                              <Calendar className="size-4 shrink-0 text-gray-400" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scheduleDates.map(({ value, label }) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="flex flex-1 flex-col items-start gap-1.5">
+                          <Label size="sm" className="text-dark-blue-400">
+                            Preferred Time
+                          </Label>
+                          {/* Joined into one control, the way onboarding draws
+                              it: the hour select loses its right radius and the
+                              period select its left, and the shared edge is one
+                              border rather than two. */}
+                          <div className="flex w-full items-center">
+                            <Select
+                              value={scheduleForm.time || undefined}
+                              onValueChange={(value) =>
+                                updateScheduleForm("time", value)
+                              }
+                            >
+                              <SelectTrigger
+                                indicator={false}
+                                className={cn(
+                                  SCHEDULE_SELECT_CLASS,
+                                  "flex-1 rounded-r-none"
+                                )}
+                              >
+                                <SelectValue placeholder="Time" />
+                                <Clock className="size-4 shrink-0 text-gray-400" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TIMES.map((time) => (
+                                  <SelectItem key={time} value={time}>
+                                    {time}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* Keeps its chevron. The clock already says what
+                                the pair is for; without an affordance here the
+                                AM/PM half reads as a static label. */}
+                            <Select
+                              value={scheduleForm.dayPeriod || undefined}
+                              onValueChange={(value) =>
+                                updateScheduleForm("dayPeriod", value)
+                              }
+                            >
+                              <SelectTrigger
+                                className={cn(
+                                  SCHEDULE_SELECT_CLASS,
+                                  "w-[86px] shrink-0 rounded-l-none border-l-0"
+                                )}
+                              >
+                                <SelectValue placeholder="AM" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DAY_PERIODS.map((dayPeriod) => (
+                                  <SelectItem key={dayPeriod} value={dayPeriod}>
+                                    {dayPeriod}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
-                        ))}
+                        </div>
                       </div>
                     </div>
                   </div>
