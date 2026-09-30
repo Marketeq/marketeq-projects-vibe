@@ -5968,13 +5968,25 @@ const ProjectScope = ({
       }
     }
     const computedCents = estimateScopeBudgetCents(scopePhases)
+    // QA-178/PMCM-397: always prefer the freshly-computed total.
+    // pricingBudgetCents only updates ~1.5-2s after a change, via the
+    // debounced ReplaceProjectScope round-trip (see the ReplaceProjectScope
+    // callers below) — so any edit made before that round-trip lands, or
+    // any edit made again in that window, was masked by a stale number.
+    // This is what made phase deletion look broken while task deletion
+    // looked fine: both mutate `phases` through the same setPhases path
+    // and land in this same memo, but by the time a *later* edit (e.g. a
+    // phase delete) ran, an *earlier* edit's round-trip had already primed
+    // a stale positive pricingBudgetCents that outranked anything computed
+    // live afterward — including the AC's "reset to zero when every phase
+    // is deleted" case, since a stale positive number would win over a
+    // correctly-computed 0.
     return {
-      budgetTotalCents:
-        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      budgetTotalCents: computedCents,
       durationLabel: label,
       durationDays: totalDays,
     }
-  }, [phases, pricingBudgetCents])
+  }, [phases])
 
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
