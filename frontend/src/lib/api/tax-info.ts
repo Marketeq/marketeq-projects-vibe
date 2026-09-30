@@ -1,5 +1,6 @@
 // frontend/src/lib/api/tax-info.ts
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "../csrf"
 
 export type TaxInfo = {
   exists: boolean
@@ -65,7 +66,7 @@ export async function saveTaxInfo(
 ): Promise<TaxInfo> {
   const res = await fetch(`${base()}/user/tax-info`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeader("PUT") },
     credentials: "include",
     body: JSON.stringify(patch),
   })
@@ -80,7 +81,7 @@ export async function saveTaxInfo(
 export async function submitTaxInfo(): Promise<TaxInfo> {
   const res = await fetch(`${base()}/user/tax-info/submit`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeader("POST") },
     credentials: "include",
   })
   if (!res.ok) {

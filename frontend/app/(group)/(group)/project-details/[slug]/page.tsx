@@ -84,6 +84,7 @@ import {
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
@@ -1547,6 +1548,7 @@ export default function ProjectDetails({
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
+      headers: csrfHeader("POST"),
     }).catch(() => {})
   }, [project?.id, isPreview])
 

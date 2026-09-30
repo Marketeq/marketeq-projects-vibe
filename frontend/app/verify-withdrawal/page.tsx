@@ -17,6 +17,7 @@ import { Button } from "@/components/ui"
 import { Bank, Check, X } from "@blend-metrics/icons"
 
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 
 // Routed through api-gateway — access_token is an HttpOnly cookie, invisible to
 // JS, so it can't be read here to build a manual Authorization header. The
@@ -70,7 +71,7 @@ function VerifyWithdrawal() {
       const res = await fetch(`${PAYOUT_SERVICE_URL}/payouts/${id}/resend-verification`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeader("POST") },
         body: JSON.stringify({ redirectUrl: `${window.location.origin}/verify-withdrawal` }),
       })
       if (res.ok) { setResendResult("sent"); return }

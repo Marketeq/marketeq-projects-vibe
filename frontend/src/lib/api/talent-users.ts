@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from "react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "../csrf"
 
 export interface TalentUser {
   id: string
@@ -264,7 +265,7 @@ export function useRecommendedTalentUsers(
     setIsLoading(true)
     fetch(`${apiBase}/public/talent/recommendations`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeader("POST") },
       body: JSON.stringify(request),
     })
       .then(async (response) => {

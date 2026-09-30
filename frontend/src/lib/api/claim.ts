@@ -1,5 +1,6 @@
 // frontend/src/lib/api/claim.ts
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "../csrf"
 
 const apiBase = () =>
   (getPublicApiUrl() || "http://localhost:4000").replace(/\/$/, "")
@@ -19,7 +20,7 @@ async function claimListing(kind: "project" | "service", id: string): Promise<vo
   const base = kind === "service" ? "services" : "projects"
   const res = await fetch(`${apiBase()}/v1/${base}/${id}/claim`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...csrfHeader("POST") },
     credentials: "include",
   })
 

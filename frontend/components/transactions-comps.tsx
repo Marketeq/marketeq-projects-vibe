@@ -68,6 +68,7 @@ import {
 } from "date-fns"
 import { QRCodeSVG } from "qrcode.react"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 import {
   Accordion,
   AccordionItem,
@@ -1364,6 +1365,7 @@ async function payoutFetch(
   return fetch(`${PAYOUT_SERVICE_BASE}${path}`, {
     ...init,
     credentials: "include",
+    headers: { ...Object.fromEntries(new Headers(init.headers).entries()), ...csrfHeader(init.method) },
   })
 }
 interface DepositMethodOption {

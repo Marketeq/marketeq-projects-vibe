@@ -40,6 +40,9 @@ export class Session {
   @Column({ default: '' })
   ipAddress: string;
 
+  @Column('varchar', { nullable: true })
+  csrfToken?: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

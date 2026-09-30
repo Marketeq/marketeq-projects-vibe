@@ -43,7 +43,7 @@ import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
-type JwtPair = { access_token: string; refresh_token: string };
+type JwtPair = { access_token: string; refresh_token: string; csrfToken?: string };
 type SyncUserProfilePayload = {
   id: string;
   email: string;
@@ -71,7 +71,7 @@ type AuthUserPayload = {
 };
 
 type LoginResult =
-  | (JwtPair & { sessionId: string; user: AuthUserPayload })
+  | (JwtPair & { sessionId: string; csrfToken: string; user: AuthUserPayload })
   | { requiresTwoFactor: true; partialToken: string; twoFactorMethod: string };
 
 type SyncRetryItem = {
@@ -212,11 +212,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       sessionId,
     });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user),
     };
   }
@@ -267,11 +268,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       sessionId,
     });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user),
     };
   }
@@ -508,11 +510,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const rememberMe = dto.rememberMe ?? false;
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user),
     };
   }
@@ -522,7 +525,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
    * Disabled in production. Behaves identically to real login (same token format,
    * same gateway verification) so local dev matches cloud behavior exactly.
    */
-  async devLogin(email: string, userAgent = '', ipAddress = ''): Promise<JwtPair & { sessionId: string; user: AuthUserPayload }> {
+  async devLogin(email: string, userAgent = '', ipAddress = ''): Promise<JwtPair & { sessionId: string; csrfToken: string; user: AuthUserPayload }> {
     if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEV_LOGIN !== 'true') {
       throw new UnauthorizedException('Dev login is not available in production');
     }
@@ -557,11 +560,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user),
     };
   }
@@ -756,12 +760,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const sessionId = randomUUID();
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId });
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       success: true,
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user),
     };
   }
@@ -1049,11 +1054,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       sessionId,
     });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user, {
         firstName,
         lastName,
@@ -1182,11 +1188,12 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       sessionId,
     });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
       sessionId,
+      csrfToken,
       user: this.serializeUser(user, {
         firstName,
         lastName,
@@ -1232,12 +1239,14 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       const rememberMe = payload.rememberMe ?? false;
       const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
 
+      const csrfToken = randomBytes(32).toString('hex');
       session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
+      session.csrfToken = csrfToken;
       session.lastActiveAt = new Date();
       session.expiresAt = new Date(Date.now() + this.refreshTtlMs(rememberMe));
       await this.sessionRepository.save(session);
 
-      return { ...newTokens, sessionId: payload.sid };
+      return { ...newTokens, sessionId: payload.sid, csrfToken };
     }
 
     return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
@@ -1265,6 +1274,25 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     return { success: true };
+  }
+
+  async getCsrfToken(sessionId: string): Promise<{ csrfToken: string }> {
+    const session = await this.sessionRepository.findOne({
+      where: { id: sessionId },
+      select: ['id', 'csrfToken'],
+    });
+
+    if (!session?.csrfToken) {
+      // Generate a token for sessions created before CSRF was added
+      const csrfToken = randomBytes(32).toString('hex');
+      if (session) {
+        session.csrfToken = csrfToken;
+        await this.sessionRepository.save(session);
+      }
+      return { csrfToken };
+    }
+
+    return { csrfToken: session.csrfToken };
   }
 
   async getSessions(userId: string, currentSessionId?: string): Promise<SessionResponseDto[]> {
@@ -1496,9 +1524,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const rememberMe = payload.rememberMe ?? false;
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
 
-    await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
-    return { ...tokens, sessionId, user: this.serializeUser(user) };
+    return { ...tokens, sessionId, csrfToken, user: this.serializeUser(user) };
   }
 
   async regenerateBackupCodes(userId: string, code: string) {
@@ -1752,9 +1780,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     userAgent: string;
     ipAddress: string;
     rememberMe?: boolean;
-  }): Promise<void> {
+  }): Promise<string> {
     const hash = createHash('sha256').update(params.refreshToken).digest('hex');
     const expiresAt = new Date(Date.now() + this.refreshTtlMs(params.rememberMe ?? false));
+    const csrfToken = randomBytes(32).toString('hex');
 
     const parser = new UAParser(params.userAgent);
     const browser = parser.getBrowser();
@@ -1774,8 +1803,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       : device.type === 'tablet' ? 'tablet'
       : 'desktop';
     session.ipAddress = params.ipAddress;
+    session.csrfToken = csrfToken;
     session.expiresAt = expiresAt;
     await this.sessionRepository.save(session);
+    return csrfToken;
   }
 
   private parseExpiresInMs(value: string): number {

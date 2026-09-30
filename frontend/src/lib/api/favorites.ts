@@ -1,5 +1,6 @@
 // frontend/src/lib/api/favorites.ts
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { getCsrfToken } from "../csrf"
 
 const favoritesApiBase = () => {
   const explicit = process.env.NEXT_PUBLIC_FAVORITES_API_URL?.trim()
@@ -9,9 +10,13 @@ const favoritesApiBase = () => {
   return `${apiBase.replace(/\/$/, "")}/favorites`
 }
 
-function authHeaders(): HeadersInit {
+function authHeaders(method?: string): HeadersInit {
+  const token = getCsrfToken()
   return {
     "Content-Type": "application/json",
+    ...(token && method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)
+      ? { "X-CSRF-Token": token }
+      : {}),
   }
 }
 
@@ -66,7 +71,7 @@ export async function createGroup(
   try {
     const res = await fetch(`${favoritesApiBase()}/groups`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders("POST"),
       credentials: "include",
       body: JSON.stringify(dto),
     })
@@ -102,7 +107,7 @@ export async function renameGroup(
   try {
     const res = await fetch(`${favoritesApiBase()}/groups/${groupId}`, {
       method: "PATCH",
-      headers: authHeaders(),
+      headers: authHeaders("PATCH"),
       credentials: "include",
       body: JSON.stringify(dto),
     })
@@ -119,7 +124,7 @@ export async function deleteGroup(groupId: string): Promise<boolean> {
   try {
     const res = await fetch(`${favoritesApiBase()}/groups/${groupId}`, {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: authHeaders("DELETE"),
       credentials: "include",
     })
     return res.ok
@@ -172,7 +177,7 @@ export async function addFavorite(
   try {
     const res = await fetch(favoritesApiBase(), {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders("POST"),
       credentials: "include",
       body: JSON.stringify(dto),
     })
@@ -192,7 +197,7 @@ export async function moveFavorite(
   try {
     const res = await fetch(`${favoritesApiBase()}/${favoriteId}`, {
       method: "PATCH",
-      headers: authHeaders(),
+      headers: authHeaders("PATCH"),
       credentials: "include",
       body: JSON.stringify(dto),
     })
@@ -209,7 +214,7 @@ export async function removeFavorite(favoriteId: string): Promise<boolean> {
   try {
     const res = await fetch(`${favoritesApiBase()}/${favoriteId}`, {
       method: "DELETE",
-      headers: authHeaders(),
+      headers: authHeaders("DELETE"),
       credentials: "include",
     })
     return res.ok
