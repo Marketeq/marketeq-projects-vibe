@@ -288,12 +288,22 @@ const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   responsibilities: 100,
 };
 
+// Title is capped in characters; the long-form fields are capped in words.
+const SMART_ASSISTANT_WORD_LIMITED_FIELDS: SmartAssistantEditableField[] = [
+  "overview",
+  "benefits",
+  "responsibilities",
+];
+
 const clampSmartAssistantFieldValue = (
   field: SmartAssistantEditableField,
   value: string,
 ) => {
   const maxLength = SMART_ASSISTANT_FIELD_MAX_LENGTH[field];
   const normalized = value.replace(/\s+/g, " ").trim();
+  if (SMART_ASSISTANT_WORD_LIMITED_FIELDS.includes(field)) {
+    return normalized.split(" ").slice(0, maxLength).join(" ");
+  }
   if (normalized.length <= maxLength) return normalized;
 
   const truncated = normalized.slice(0, maxLength).trim();
@@ -14387,7 +14397,12 @@ const renderNdaPreviewDialog = (
 const useDynamicFinalReviewSkills = () => {
   const [skills, setSkills] = useState(finalReviewSkills)
   const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false)
+  const [isSkillAutocompleteOpen, setSkillAutocompleteOpen] = useState(false)
+  const [skillOptions, setSkillOptions] = useState<string[]>(
+    FALLBACK_SKILL_OPTIONS
+  )
   const [draftSkill, setDraftSkill] = useState("")
+  const skillRequestRef = useRef(0)
 
   const addSkill = () => {
     setDraftSkill("")
@@ -14396,8 +14411,35 @@ const useDynamicFinalReviewSkills = () => {
 
   const closeAddSkillDialog = () => {
     setAddSkillDialogOpen(false)
+    setSkillAutocompleteOpen(false)
     setDraftSkill("")
   }
+
+  const loadSkillOptions = useCallback(async (query: string) => {
+    const requestId = skillRequestRef.current + 1
+    skillRequestRef.current = requestId
+
+    try {
+      const response = await AutocompleteAPI.getByType("skills", query, 500)
+      if (skillRequestRef.current !== requestId) return
+
+      const nextOptions = Array.isArray(response?.data)
+        ? getUniqueOptions(
+            response.data
+              .map((item: AutocompleteTypeSuggestion) =>
+                normalizeAutocompleteLabel(item)
+              )
+              .filter(Boolean)
+          )
+        : []
+
+      setSkillOptions(nextOptions.length ? nextOptions : FALLBACK_SKILL_OPTIONS)
+    } catch {
+      if (skillRequestRef.current === requestId) {
+        setSkillOptions(FALLBACK_SKILL_OPTIONS)
+      }
+    }
+  }, [])
 
   const saveSkill = () => {
     const nextSkill = draftSkill.trim()
@@ -14433,31 +14475,53 @@ const useDynamicFinalReviewSkills = () => {
       }}
     >
       <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-        <DialogHeader>
-          <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-            Add Skill
-          </DialogTitle>
-          <DialogDescription className="text-sm leading-5 text-gray-500">
-            Enter a skill to add to this role.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-2">
-          <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-            Skill
-          </Label>
-          <Input
-            className="mt-2 h-11"
-            placeholder="e.g. React"
-            value={draftSkill}
-            onChange={(event) => setDraftSkill(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault()
-                saveSkill()
+        <Combobox
+          className="w-full"
+          value={draftSkill}
+          onChange={(value) => {
+            setDraftSkill(String(value ?? ""))
+            setSkillAutocompleteOpen(false)
+          }}
+          nullable
+        >
+          <ComboboxTrigger>
+            <ComboboxInput
+              className="h-11 w-full"
+              placeholder="Search skill"
+              value={draftSkill}
+              onChange={(event) => {
+                const nextValue = event.target.value
+                setDraftSkill(nextValue)
+                setSkillAutocompleteOpen(true)
+                void loadSkillOptions(nextValue)
+              }}
+              onFocus={() => {
+                setSkillAutocompleteOpen(true)
+                void loadSkillOptions("")
+              }}
+              onBlur={() =>
+                setTimeout(() => setSkillAutocompleteOpen(false), 150)
               }
-            }}
-          />
-        </div>
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  saveSkill()
+                }
+              }}
+            />
+          </ComboboxTrigger>
+          {isSkillAutocompleteOpen && skillOptions.length > 0 ? (
+            <ComboboxOptions className="max-h-[180px] w-full overflow-hidden">
+              <ScrollArea viewportClassName="max-h-[180px]">
+                {skillOptions.map((option) => (
+                  <ComboboxOption key={option} value={option}>
+                    {option}
+                  </ComboboxOption>
+                ))}
+              </ScrollArea>
+            </ComboboxOptions>
+          ) : null}
+        </Combobox>
         <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
           <Button
             type="button"
@@ -14853,6 +14917,10 @@ const useRoleDescriptionPersistence = ({
     roleTitle,
     skills,
   ])
+
+  if (!jobListingId || !roleTitle) return true
+
+  return loadedPersistenceKey === `${jobListingId}:${roleTitle}`
 }
 
 const ReviewEditableTags = ({
@@ -15364,6 +15432,7 @@ const FinalServiceReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
+      didGenerateRoleDescriptionsRef.current = true
       if (draft.overview !== undefined) {
         setDetails((current) => ({ ...current, description: draft.overview }))
       }
@@ -15382,7 +15451,7 @@ const FinalServiceReviewStep = ({
     },
     [setDetails, setSkills]
   )
-  useRoleDescriptionPersistence({
+  const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
     roleTitle: selectedRole,
@@ -15395,6 +15464,7 @@ const FinalServiceReviewStep = ({
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!isRoleDescriptionLoaded) return
     if (!selectedRole || roleOptions.length === 0) return
     if (responsibilities) return
     didGenerateRoleDescriptionsRef.current = true
@@ -15440,6 +15510,7 @@ const FinalServiceReviewStep = ({
     void generateRoleDescriptions()
   }, [
     details.description,
+    isRoleDescriptionLoaded,
     jobListingId,
     roleOptions,
     responsibilities,
@@ -15934,6 +16005,7 @@ const FinalProjectReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
+      didGenerateRoleDescriptionsRef.current = true
       if (draft.overview !== undefined) {
         setDetails((current) => ({ ...current, description: draft.overview }))
       }
@@ -15952,7 +16024,7 @@ const FinalProjectReviewStep = ({
     },
     [setDetails, setSkills]
   )
-  useRoleDescriptionPersistence({
+  const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
     roleTitle: selectedRole,
@@ -15965,6 +16037,7 @@ const FinalProjectReviewStep = ({
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!isRoleDescriptionLoaded) return
     if (!selectedRole || roleOptions.length === 0) return
     if (responsibilities) return
     didGenerateRoleDescriptionsRef.current = true
@@ -16010,6 +16083,7 @@ const FinalProjectReviewStep = ({
     void generateRoleDescriptions()
   }, [
     details.description,
+    isRoleDescriptionLoaded,
     jobListingId,
     roleOptions,
     responsibilities,

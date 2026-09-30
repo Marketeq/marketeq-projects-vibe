@@ -469,7 +469,7 @@ export class JobListingAiService {
     }
 
     if (["overview", "benefits", "responsibilities"].includes(field)) {
-      return this.limitCharacters(safeValue, 100);
+      return this.limitWords(safeValue, 100);
     }
 
     return this.stripMarkdown(safeValue);
@@ -558,9 +558,9 @@ export class JobListingAiService {
   ): RoleDescriptionOutput {
     return {
       roleTitle: role.roleTitle,
-      overview: this.limitCharacters(role.overview ?? "", 100),
-      benefits: this.limitCharacters(role.benefits ?? "", 100),
-      responsibilities: this.limitCharacters(role.responsibilities ?? "", 100),
+      overview: this.limitWords(role.overview ?? "", 100),
+      benefits: this.limitWords(role.benefits ?? "", 100),
+      responsibilities: this.limitWords(role.responsibilities ?? "", 100),
       skills: Array.isArray(role.skills) ? role.skills.slice(0, 10) : [],
     };
   }
@@ -1600,9 +1600,9 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
             content:
               "You write professional job listing descriptions for freelance roles. " +
               'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-              '"responsibilities": "string (max 100 characters)", ' +
-              '"overview": "string (max 100 characters)", ' +
-              '"benefits": "string (max 100 characters)", ' +
+              '"responsibilities": "string (2-4 sentences, at most 100 words)", ' +
+              '"overview": "string (2-4 sentences, at most 100 words)", ' +
+              '"benefits": "string (2-4 sentences, at most 100 words)", ' +
               '"skills": ["string"] (5-10 skills) }] }. ' +
               "overview and benefits describe the project/service as a whole, not the specific role. " +
               "responsibilities are specific to the role. " +
@@ -1990,7 +1990,10 @@ ${input.command}
     updatedValue: string;
     suggestions: string[];
   }> {
-    const limitInstruction = "updatedValue must not exceed 100 characters. ";
+    const limitInstruction =
+      input.field === "title"
+        ? "updatedValue must not exceed 100 characters. "
+        : "updatedValue must not exceed 100 words. ";
     const titleInstruction =
       input.field === "title"
         ? "For title edits, create a specific, client-ready listing title from the context. Do not repeat the command or current title. "
