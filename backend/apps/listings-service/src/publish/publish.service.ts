@@ -1641,6 +1641,14 @@ export class PublishService {
   // same as every other mutating project endpoint in this service.
   async softDelete(userId: string, id: string): Promise<void> {
     await this.ensureProjectOwnership(id, userId);
+    // Unpublish before deleting. search-service's DB fallback lists
+    // listings by raw SQL on status = 'published' with no deletedAt check,
+    // and this service never removes them from Algolia — a deleted listing
+    // left as 'published' stays in marketplace search, linking to a 404.
+    await this.projectRepository.update(id, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
     await this.projectRepository.softDelete(id);
   }
 
