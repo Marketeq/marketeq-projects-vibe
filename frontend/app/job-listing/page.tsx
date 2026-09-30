@@ -15393,9 +15393,37 @@ const FinalServiceReviewStep = ({
             </div>
 
             <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Include a Non-Disclosure Agreement (NDA)?
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+                  Include a Non-Disclosure Agreement (NDA)?
+                </h2>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="link"
+                        visual="gray"
+                        aria-label="Show NDA details"
+                        className="size-4 cursor-default p-0 text-gray-400"
+                      >
+                        <AlertCircle className="size-4 shrink-0" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="right"
+                      align="center"
+                      sideOffset={12}
+                      className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                    >
+                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                      Non-Disclosure Agreement protects your confidential info
+                      by requiring each team member to sign before starting
+                      work.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="mt-2 text-sm leading-5 text-gray-500">
                 We&apos;ll generate one with your company name. Each team member
                 will receive and sign it before starting the project.
@@ -15859,7 +15887,32 @@ const FinalProjectReviewStep = ({
                       <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
                         Include a Non-Disclosure Agreement (NDA)?
                       </h2>
-                      <AlertCircle className="size-4 shrink-0 text-gray-400" />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              aria-label="Show NDA details"
+                              className="size-4 cursor-default p-0 text-gray-400"
+                            >
+                              <AlertCircle className="size-4 shrink-0" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            Non-Disclosure Agreement protects your confidential
+                            info by requiring each team member to sign before
+                            starting work.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
                     <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
                       We&apos;ll generate one with your company name. Each team
