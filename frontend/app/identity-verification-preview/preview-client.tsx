@@ -254,6 +254,14 @@ export function IdentityVerificationPreviewClient() {
         detectedLocation={MOCK_DETECTED_LOCATION}
         initialState={entryPoint}
         simulateUploadForPreview
+        simulateFreeKycForPreview
+        onSimulatedFreeKycStart={() =>
+          setSimulatedNote(
+            "Simulated only — no home-country confirmation and no Didit " +
+              "session was created. The real Free KYC path runs only from " +
+              "the authenticated /talent-dashboard."
+          )
+        }
         verificationContext={verificationContext}
         onBeginVerifying={handleBeginVerifying}
       />

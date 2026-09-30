@@ -59,6 +59,29 @@ export const IdentityVerificationAPI = {
       data: { issuingCountry: string; acceptedDocumentTypes: string[] }
     }>,
 
+  // Free KYC: starts (or resumes) the Didit-hosted verification session.
+  // Server-side it requires a fresh home-country confirmation and runs the
+  // VPN/proxy guard first. Returns only a Didit https URL to redirect to —
+  // see src/lib/api/free-kyc.ts, which validates it again before redirecting.
+  startFreeKyc: () =>
+    AxiosRequest.post("/v1/identity-verification/kyc-sessions", {}) as Promise<{
+      data: { url: string }
+    }>,
+
+  // Travel branch — persists what the existing (unchanged) travel UI already
+  // shows. Classification must be recorded before duration.
+  recordTravelClassification: (
+    classification: "temporarily_traveling" | "permanently_relocated"
+  ) =>
+    AxiosRequest.post("/v1/identity-verification/travel-classification", {
+      classification,
+    }),
+
+  recordTravelDuration: (
+    duration: "a_few_days" | "one_to_two_weeks" | "more_than_two_weeks" | "not_sure"
+  ) =>
+    AxiosRequest.post("/v1/identity-verification/travel-duration", { duration }),
+
   // Real R2 presigned-upload-URL request. The actual file bytes are then
   // PUT directly to `uploadUrl` by the caller — never routed through our
   // own backend.

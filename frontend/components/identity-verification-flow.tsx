@@ -114,6 +114,12 @@ import { Spinner } from "@/components/ui/spinner/spinner"
 import { useStateMachine } from "@/utils/hooks"
 import type { DetectedLocation } from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
+import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-kyc"
+import {
+  recordTravelClassification,
+  recordTravelDuration,
+  type TravelModeDeps,
+} from "@/src/lib/api/travel-mode-backend"
 import {
   scheduleTravelModeReminderMock,
   type TravelDuration,
@@ -365,7 +371,7 @@ const DetectedLocationMap = ({
           </div>
         )}
         {state === "ready" && (
-          <p className="absolute bottom-0 right-0 z-[1000] rounded-tl bg-white/80 px-1.5 py-0.5 text-[10px] leading-4 text-gray-700">
+          <p className="absolute bottom-0 right-0 z-[1000] rounded-tl bg-white/80 px-1 py-0 text-[8px] leading-[10px] text-gray-700">
             <a
               href="https://locationiq.com/"
               target="_blank"
@@ -526,6 +532,8 @@ export function IdentityVerificationFlow({
   onBeginVerifying,
   initialState,
   simulateUploadForPreview,
+  simulateFreeKycForPreview,
+  onSimulatedFreeKycStart,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -555,6 +563,13 @@ export function IdentityVerificationFlow({
   // additionally gated on NODE_ENV === "development" below, so it can never
   // take effect in a production build even if a caller passes it.
   simulateUploadForPreview?: boolean
+  // Development preview only (app/identity-verification-preview/): makes
+  // "Yes, this is my home country" run the supplied stub instead of the real
+  // confirmation + Free KYC session. Gated on NODE_ENV === "development"
+  // below, off by default, and never passed by any real caller — the
+  // authenticated /talent-dashboard path always performs the real calls.
+  simulateFreeKycForPreview?: boolean
+  onSimulatedFreeKycStart?: () => void
 }) {
   const getIsMounted = useMountedState()
   const simulateUpload =
@@ -785,7 +800,63 @@ export function IdentityVerificationFlow({
     guideBox: BACK_SCAN_GUIDE_BOX,
   })
 
+  // "Yes, this is my home country": complete the server-side confirmation,
+  // then hand the browser to Didit's hosted Free KYC. Replaces the custom
+  // country / document / scan / face-handoff screens on this path (their
+  // components and states are kept, just no longer reachable from here).
+  const [startingFreeKyc, setStartingFreeKyc] = useState(false)
+  const startingFreeKycRef = useRef(false)
+  const handleHomeCountryYes = async () => {
+    if (startingFreeKycRef.current) return
+    startingFreeKycRef.current = true
+    setStartingFreeKyc(true)
+    const outcome = await runHomeCountryYes({
+      simulate:
+        simulateFreeKycForPreview === true &&
+        process.env.NODE_ENV === "development",
+      onSimulated: onSimulatedFreeKycStart,
+      getDeps: async () => {
+        const { IdentityVerificationAPI } = await import(
+          "@/service/http/identity-verification"
+        )
+        return {
+          confirmHomeCountry: () => IdentityVerificationAPI.confirmHomeCountry(),
+          startFreeKyc: () => IdentityVerificationAPI.startFreeKyc(),
+          redirect: (url: string) => window.location.assign(url),
+        }
+      },
+    })
+    if (outcome !== "redirected" && getIsMounted()) {
+      startingFreeKycRef.current = false
+      setStartingFreeKyc(false)
+    }
+  }
+
+  // Travel branch: persists what the unchanged travel screens collect. The
+  // classification request is kept so the duration is sent only after it.
+  const travelModeDeps = async (): Promise<TravelModeDeps> => {
+    const { IdentityVerificationAPI } = await import(
+      "@/service/http/identity-verification"
+    )
+    return {
+      recordTravelClassification: (c) =>
+        IdentityVerificationAPI.recordTravelClassification(c),
+      recordTravelDuration: (d) => IdentityVerificationAPI.recordTravelDuration(d),
+    }
+  }
+  const travelClassificationRef = useRef<Promise<void> | undefined>(undefined)
+  const persistTravelClassification = (
+    classification: "temporarily_traveling" | "permanently_relocated"
+  ) => {
+    travelClassificationRef.current = travelModeDeps().then((deps) =>
+      recordTravelClassification(deps, classification)
+    )
+  }
+
   const activateTravelMode = () => {
+    void travelModeDeps().then((deps) =>
+      recordTravelDuration(deps, travelDuration, travelClassificationRef.current)
+    )
     setTravelModeNotificationOpen(true)
     onOpenChange(false)
     scheduleTravelModeReminderMock(travelDuration, () => {
@@ -933,7 +1004,8 @@ export function IdentityVerificationFlow({
                 className="bg-primary-50 hover:bg-primary-500 hover:text-white"
                 size="md"
                 variant="ghost"
-                onClick={() => send("NEXT")}
+                disabled={startingFreeKyc}
+                onClick={() => void handleHomeCountryYes()}
               >
                 Yes, this is my home country
               </Button>
@@ -1660,7 +1732,10 @@ export function IdentityVerificationFlow({
 
           <div className="mt-8 space-y-2">
             <button
-              onClick={() => send("NEXT")}
+              onClick={() => {
+                persistTravelClassification("temporarily_traveling")
+                send("NEXT")
+              }}
               className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
             >
               <div className="inline-flex items-center gap-x-3">
@@ -1673,7 +1748,10 @@ export function IdentityVerificationFlow({
               <ChevronRight className="size-5 text-gray-500" />
             </button>
             <button
-              onClick={() => send("RELOCATED")}
+              onClick={() => {
+                persistTravelClassification("permanently_relocated")
+                send("RELOCATED")
+              }}
               className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
             >
               <div className="inline-flex items-center gap-x-3">
