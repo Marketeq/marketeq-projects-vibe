@@ -187,6 +187,43 @@ const SCHEDULE_TEXT_FIELDS = [
 const SCHEDULE_SELECT_CLASS =
   "w-full text-base text-dark-blue-400 shadow-xs [&_svg]:size-4 [&_svg]:text-gray-400"
 
+/**
+ * Tames the country dropdown inside PhoneNumberInput.
+ *
+ * react-international-phone renders that list as a plain absolutely-positioned
+ * <ul> — it is not portalled, and the component itself is read-only design
+ * system source, so everything here is done from the wrapper this page owns.
+ * The arbitrary variants beat the library's own rules on specificity (two
+ * classes against one), so no !important is needed and stylesheet order does
+ * not matter.
+ *
+ * 176px is the ceiling that matters: the phone field's dropdown opens at y=258
+ * inside a 352px field box that is followed by a 50px gap and a 36px button
+ * row, so 176 lands at 434 against an inner bottom of 438. It cannot reach the
+ * modal's edge, and the list scrolls inside itself instead. The library's own
+ * 200px would clear the buttons and crowd the border.
+ *
+ * The rest just brings it in line with SelectContent, which is the other
+ * dropdown on this screen: same radius, border, shadow and thin scrollbar
+ * rather than the library's always-visible track and hard 2px/16px shadow.
+ *
+ * Every class is written out in full and none is assembled from a prefix.
+ * Tailwind's JIT scans source text for whole class names, so a variant built by
+ * concatenation at runtime is never generated and the rule silently does not
+ * exist — which looks exactly like the override not working.
+ */
+const PHONE_DROPDOWN_CLASS = [
+  "[&_.react-international-phone-country-selector-dropdown]:max-h-[176px]",
+  "[&_.react-international-phone-country-selector-dropdown]:overflow-y-auto",
+  "[&_.react-international-phone-country-selector-dropdown]:z-20",
+  "[&_.react-international-phone-country-selector-dropdown]:rounded-lg",
+  "[&_.react-international-phone-country-selector-dropdown]:border",
+  "[&_.react-international-phone-country-selector-dropdown]:border-gray-100",
+  "[&_.react-international-phone-country-selector-dropdown]:shadow-lg",
+  "[&_.react-international-phone-country-selector-dropdown]:scrollbar-thin",
+  "[&_.react-international-phone-country-selector-dropdown]:scrollbar-thumb-gray-200",
+].join(" ")
+
 const SCHEDULE_DATE_COUNT = 30
 
 const buildScheduleDates = (): { value: string; label: string }[] => {
@@ -1792,9 +1829,21 @@ function ForgotPassword() {
                   50 + 440 + 50 + 36 + 50 = 626, on a 550px column.
                   The 440 column is 56 (heading) + 32 + 352 (fields), and the
                   352 field box is 70 + 24 + 70 + 24 + 70 + 24 + 70 = 352.
-                  Same -mb-1/pb-1 trick as Email Us: content and container are
-                  exactly equal, so without it the last row's shadow-xs is
-                  shaved by the scroll clip. */}
+                  The field box does NOT scroll, unlike Email Us's. The phone
+                  country dropdown is an absolutely-positioned list rather than
+                  a portal, so an overflow-y-auto ancestor both clipped it and
+                  counted it toward the scroll height -- opening it put a
+                  scrollbar on the form and cut the list off. With
+                  overflow-visible it lays over the fields below instead, which
+                  is what a dropdown should do, and PHONE_DROPDOWN_CLASS caps it
+                  so it still cannot reach the modal's edge.
+                  Nothing is lost by dropping the scroll: the 352 above is
+                  exact, so it never had anything to scroll. The -mb-1/pb-1 pair
+                  went with it -- it existed only to keep the last row's
+                  shadow-xs off the clip boundary, and there is no longer a
+                  boundary. On a viewport under ~690px the modal's
+                  max-h-[calc(100vh-4rem)] now crops the form rather than
+                  scrolling it. */}
               <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
                 <DialogContent
                   dialogOverlay={<DialogOverlay className="bg-transparent" />}
@@ -1811,7 +1860,7 @@ function ForgotPassword() {
                       </DialogDescription>
                     </div>
 
-                    <div className="-mb-1 flex min-h-0 w-full flex-1 flex-col items-start gap-6 overflow-y-auto pb-1 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+                    <div className="flex min-h-0 w-full flex-1 flex-col items-start gap-6 overflow-visible">
                       {SCHEDULE_TEXT_FIELDS.map(
                         ({ id, label, placeholder }) => (
                           <div
@@ -1858,7 +1907,12 @@ function ForgotPassword() {
                         <Label size="sm" className="text-dark-blue-400">
                           Phone Number
                         </Label>
-                        <div className="w-full rounded-[5px] shadow-xs [--react-international-phone-height:44px]">
+                        <div
+                          className={cn(
+                            "w-full rounded-[5px] shadow-xs [--react-international-phone-height:44px]",
+                            PHONE_DROPDOWN_CLASS
+                          )}
+                        >
                           <PhoneNumberInput
                             defaultCountry="us"
                             placeholder="(555) 555-5555"
