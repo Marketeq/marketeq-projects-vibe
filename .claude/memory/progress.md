@@ -28,6 +28,7 @@
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
+- api-gateway rate limiting (Security Tasklist (Revised) item #5) — implemented in monitor mode on branch `security/gateway-rate-limiting`; enforcement waits on the Render proxy-hop check and a one-week baseline. See services/api-gateway.md
 
 ## Available Now (no blocking dependencies)
 These can be built immediately in parallel:

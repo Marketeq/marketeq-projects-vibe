@@ -21,6 +21,8 @@ import { JwtStrategy } from './guards/jwt-auth.guard'
 import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
+import { RateLimitService } from './rate-limit/rate-limit.service'
+import { PostAuthRateLimitMiddleware } from './rate-limit/rate-limit.middleware'
 
 @Module({
   imports: [
@@ -63,7 +65,7 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
       },
     }),
   ],
-  providers: [ProxyService, JwtStrategy, CheckoutDraftGatewayService],
+  providers: [ProxyService, JwtStrategy, CheckoutDraftGatewayService, RateLimitService],
   controllers: [
     TalentUploadController,
     ResumeUploadController,
@@ -78,8 +80,14 @@ import { LoggingMiddleware } from './middleware/logging.middleware'
 })
 export class ApiGatewayModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
+    // Order matters. Per-IP rate limiting is NOT here: it runs earlier, in
+    // main.ts (after CORS, before body parsing), so malformed and flooding
+    // requests are counted before the gateway spends anything on them.
+    // PostAuthRateLimitMiddleware must stay after JwtMiddleware, because its
+    // per-user limits key on the verified token's user id.
     consumer.apply(LoggingMiddleware).forRoutes('*')
     consumer.apply(CsrfOriginMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
+    consumer.apply(PostAuthRateLimitMiddleware).forRoutes('*')
   }
 }

@@ -33,7 +33,10 @@ services:
       - key: NODE_ENV
         value: production
       - key: FRONTEND_URL
-        value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app,http://localhost:3000
+        # localhost removed: a localhost origin here is trusted by CORS and the
+        # CSRF check against live data. The gateway now also strips it in
+        # production (ALLOW_LOCALHOST_ORIGIN=true overrides, temporarily).
+        value: https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,https://dev-marketeq-projects.vercel.app,https://marketeq-mvp-live.vercel.app,https://marketeq-mvp-dev.vercel.app,https://marketeq-mvp-staging.vercel.app
       # Eleven services read REDIS_URL. It was absent from this blueprint and
       # from the deployed environment, so every one of them fell back to
       # localhost and logged a connection refusal roughly 958 times per log
@@ -43,6 +46,17 @@ services:
           type: keyvalue
           name: marketeq-keyvalue
           property: connectionString
+      # api-gateway request rate limiting. monitor = over-limit requests are
+      # logged as WOULD_BLOCK but still served; enforce = they get a 429.
+      # Confirm RATE_LIMIT_TRUSTED_PROXY_HOPS against the x-forwarded-for
+      # count the gateway logs on startup traffic before switching to enforce.
+      - key: RATE_LIMIT_MODE
+        value: monitor
+      # CSRF: monitor logs cookie-authenticated writes that arrive with no
+      # Origin header; enforce rejects them. Unknown origins are rejected in
+      # both modes (unchanged behaviour).
+      - key: CSRF_STRICT_MODE
+        value: monitor
       - fromGroup: marketeq-secrets
 
   # ── Shared key value store ──

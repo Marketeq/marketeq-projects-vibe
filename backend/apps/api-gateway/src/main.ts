@@ -2,10 +2,13 @@ import { NestFactory } from '@nestjs/core'
 import { ValidationPipe, Logger } from '@nestjs/common'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import * as cookieParser from 'cookie-parser'
+import helmet from 'helmet'
 import { json, urlencoded } from 'express'
 import type { Request, Response, NextFunction } from 'express'
 import { ApiGatewayModule } from './api-gateway.module'
 import { GlobalExceptionFilter } from './filters/global-exception.filter'
+import { RateLimitService } from './rate-limit/rate-limit.service'
+import { createPreAuthRateLimit } from './rate-limit/rate-limit.middleware'
 
 async function bootstrap() {
   // bodyParser: false — Nest's own hidden default body-parser would otherwise
@@ -15,6 +18,120 @@ async function bootstrap() {
   // readable"). main.ts already owns body parsing explicitly for every path.
   const app = await NestFactory.create(ApiGatewayModule, { bodyParser: false })
   const logger = new Logger('ApiGateway')
+
+  // Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
+  // at the single public entry point for all external traffic. Matches the
+  // bare helmet() defaults already used in portfolio-service and
+  // time-tracking-service; kept before body-parsing/CORS so headers are set
+  // on every response, including error responses from the global filter.
+  app.use(helmet())
+
+  // CORS before everything below it: a 429 from the rate limiter (or any
+  // other early rejection) must carry the CORS headers, or a browser reports
+  // it as a CORS failure instead of showing the real status to the user.
+  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, '')
+  const isProd = process.env.NODE_ENV === 'production'
+  const allowLocalhostOrigin =
+    (process.env.ALLOW_LOCALHOST_ORIGIN || '').toLowerCase() === 'true'
+  const isLocalhostOrigin = (value: string) => {
+    try {
+      const { hostname } = new URL(value)
+      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+    } catch {
+      return false
+    }
+  }
+
+  const configuredOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean)
+
+  if (configuredOrigins.length === 0) {
+    throw new Error('FRONTEND_URL is not defined')
+  }
+
+  // A localhost origin trusted in production means a page running on a
+  // victim's own machine can read authenticated responses from live data
+  // (requests carry cookies: credentials are on). FRONTEND_URL carries one
+  // today, and localhost:3000 also used to be appended unconditionally, in
+  // every environment. Both are dropped in production now; local development
+  // is expected to run against a local backend (see README), and
+  // ALLOW_LOCALHOST_ORIGIN=true restores it for a deliberate, temporary case.
+  const allowedOrigins =
+    isProd && !allowLocalhostOrigin
+      ? configuredOrigins.filter((o) => !isLocalhostOrigin(o))
+      : [...new Set([...configuredOrigins, 'http://localhost:3000'])]
+
+  if (isProd && allowedOrigins.length !== configuredOrigins.length) {
+    logger.warn(
+      'Dropped localhost origin(s) from the production CORS allow-list; ' +
+        'remove them from FRONTEND_URL, or set ALLOW_LOCALHOST_ORIGIN=true to keep them',
+    )
+  }
+
+  if (allowedOrigins.length === 0) {
+    throw new Error('FRONTEND_URL contains no usable origins')
+  }
+
+  const vercelPreviewPattern = process.env.VERCEL_PREVIEW_ORIGIN_REGEX
+    ? new RegExp(process.env.VERCEL_PREVIEW_ORIGIN_REGEX)
+    : /^(?:[a-z0-9-]+-)?marketeq-projects(?:-[a-z0-9-]+)?\.vercel\.app$/
+
+  // vercel.app is a shared domain: anyone can deploy a project whose hostname
+  // matches this pattern, and a matching origin is allowed to read
+  // authenticated responses. Preview access stays on by default so preview
+  // deployments keep working, but every match in production is logged (once)
+  // so the real users of it can be identified and listed explicitly in
+  // FRONTEND_URL — after which set CORS_ALLOW_VERCEL_PREVIEWS=false.
+  const allowVercelPreviews =
+    (process.env.CORS_ALLOW_VERCEL_PREVIEWS || 'true').toLowerCase() !== 'false'
+  let warnedPreviewOrigin = false
+
+  const isMarketeqVercelPreview = (origin: string) => {
+    if (!allowVercelPreviews) return false
+    try {
+      const url = new URL(origin)
+      const matched = url.protocol === 'https:' && vercelPreviewPattern.test(url.hostname)
+      if (matched && isProd && !warnedPreviewOrigin) {
+        warnedPreviewOrigin = true
+        logger.warn(
+          `CORS allowed a Vercel preview origin in production by pattern: ${origin} — ` +
+            'list real preview origins in FRONTEND_URL and set CORS_ALLOW_VERCEL_PREVIEWS=false',
+        )
+      }
+      return matched
+    } catch {
+      return false
+    }
+  }
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true)
+
+      const normalizedOrigin = normalizeOrigin(origin)
+      const allowed =
+        allowedOrigins.includes(normalizedOrigin) ||
+        isMarketeqVercelPreview(normalizedOrigin)
+
+      if (allowed) return callback(null, true)
+
+      logger.warn(`CORS blocked origin: ${origin}`)
+      callback(null, false)
+    },
+    credentials: true,
+  })
+
+  // Per-IP rate limiting runs here, ahead of body parsing, so a flood is
+  // counted and turned away before the gateway spends anything on it. It also
+  // closes a gap found in testing: a request with a malformed JSON body fails
+  // inside express's json() parser, so when the limiter ran later (as module
+  // middleware) those requests were never counted at all and an attacker could
+  // flood with broken payloads unseen. Per-user limits stay in
+  // PostAuthRateLimitMiddleware, which needs the verified token from
+  // JwtMiddleware.
+  app.use(createPreAuthRateLimit(app.get(RateLimitService)))
 
   // Stripe/Ramp webhook signature verification (in payout-service) needs the
   // exact original request bytes — the global json() parser below re-parses
@@ -52,49 +169,6 @@ async function bootstrap() {
   app.use(cookieParser())
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
   app.useGlobalFilters(new GlobalExceptionFilter())
-  const normalizeOrigin = (value: string) => value.trim().replace(/\/$/, '')
-  const allowedOrigins = (process.env.FRONTEND_URL || '')
-    .split(',')
-    .map(normalizeOrigin)
-    .filter(Boolean)
-
-  if (!allowedOrigins.includes('http://localhost:3000')) {
-    allowedOrigins.push('http://localhost:3000')
-  }
-
-  if (allowedOrigins.length === 0) {
-    throw new Error('FRONTEND_URL is not defined')
-  }
-
-  const vercelPreviewPattern = process.env.VERCEL_PREVIEW_ORIGIN_REGEX
-    ? new RegExp(process.env.VERCEL_PREVIEW_ORIGIN_REGEX)
-    : /^(?:[a-z0-9-]+-)?marketeq-projects(?:-[a-z0-9-]+)?\.vercel\.app$/
-
-  const isMarketeqVercelPreview = (origin: string) => {
-    try {
-      const url = new URL(origin)
-      return url.protocol === 'https:' && vercelPreviewPattern.test(url.hostname)
-    } catch {
-      return false
-    }
-  }
-
-  app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true)
-
-      const normalizedOrigin = normalizeOrigin(origin)
-      const allowed =
-        allowedOrigins.includes(normalizedOrigin) ||
-        isMarketeqVercelPreview(normalizedOrigin)
-
-      if (allowed) return callback(null, true)
-
-      logger.warn(`CORS blocked origin: ${origin}`)
-      callback(null, false)
-    },
-    credentials: true,
-  })
 
   // RMQ consumers for cms.events fan-out — one connectMicroservice call per
   // queue (NestJS Transport.RMQ binds 1:1 with the queue). cms-service

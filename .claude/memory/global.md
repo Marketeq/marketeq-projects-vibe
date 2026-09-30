@@ -32,6 +32,8 @@ This is the catch-all for project conventions, environment setup, shared decisio
 - ALGOLIA_API_KEY
 - GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
 - LINKEDIN_CLIENT_ID / LINKEDIN_CLIENT_SECRET
+- REDIS_URL (api-gateway rate-limit counters, caches, BullMQ)
+- RATE_LIMIT_MODE / RATE_LIMIT_TRUSTED_PROXY_HOPS / RATE_LIMIT_IP_ALLOWLIST / RATE_LIMIT_<RULE>_LIMIT / RATE_LIMIT_<RULE>_WINDOW_SEC (api-gateway only; see docs/md/API Gateway/API Gateway — Rate Limiting (Implementation Notes).md)
 
 ## Shared Module Location
 /backend/shared/ — guards, decorators, DTOs, utilities reused across services
@@ -65,3 +67,4 @@ This is the catch-all for project conventions, environment setup, shared decisio
 - Before any branch switch, branch restore, reset-like action, or recovery action, verify that the exact visible local work is safely preserved on the current local branch and that the user explicitly wants the branch change.
 - If recovery is ever needed, restore the exact local source files first. Do not substitute a different branch snapshot and present it as equivalent local state.
 - During active editing sessions, keep local branch continuity stable: same branch, same working context, explicit saves, and no silent checkout changes.
+- Never key security decisions (rate limits, IP allow-lists, lockouts) on the leftmost `x-forwarded-for` entry: the client controls it. Use the entry written by the outermost trusted proxy (see api-gateway `src/rate-limit/client-ip.ts`).
