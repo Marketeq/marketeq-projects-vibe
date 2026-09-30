@@ -244,7 +244,12 @@ export const ProjectAPI = {
         `${LISTINGS_BASE}/publish/project/slug/${slug}`
       )
       if (res?.data) return res
-    } catch {
+    } catch (err: any) {
+      // QA-196/PMCM-402: a 403 means the listing exists but this user isn't
+      // on its team — that has to reach the caller so it can show an
+      // "unauthorized" state instead of silently treating it the same as a
+      // genuine 404 and falling through to creating a brand-new draft.
+      if (err?.response?.status === 403) throw err
       // not found
     }
     return null

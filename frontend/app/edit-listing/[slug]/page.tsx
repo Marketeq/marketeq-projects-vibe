@@ -20,6 +20,7 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -9068,6 +9069,9 @@ function PublishProject({
     }
   }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [isAccessDenied, setIsAccessDenied] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [faqs, setFaqs] = useState<WizardFaq[]>([])
   const [faqModerationError, setFaqModerationError] = useState<string | null>(
@@ -9196,7 +9200,15 @@ function PublishProject({
         if (slug) {
           try {
             response = await ProjectAPI.GetProjectBySlug(slug)
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // that must stop here, not fall through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             response = null
           }
         }
@@ -9206,7 +9218,15 @@ function PublishProject({
           const urlParams = new URLSearchParams(window.location.search)
           const existingDraftId = urlParams.get("draftId")
           if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-            response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            try {
+              response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            } catch (err: any) {
+              if (err?.response?.status === 403) {
+                setIsAccessDenied(true)
+                return
+              }
+              throw err
+            }
           }
         }
 
@@ -9214,7 +9234,11 @@ function PublishProject({
         if (!response?.data && slug && UUID_PATTERN.test(slug)) {
           try {
             response = await ProjectAPI.GetProjectDraft(slug)
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             // fall through to create a fresh draft below
           }
         }
@@ -9853,6 +9877,35 @@ function PublishProject({
     router.push("/my-listings")
   }, [toggleIsSaveExitDialogOpen, router])
 
+  // QA-196/PMCM-402: reusing the same "not found" empty-state pattern
+  // already used on the public listing page and the my-listings editor
+  // (centered AlertCircle + heading + description + button) rather than
+  // inventing a new one, per the design-system reuse rule.
+  if (isAccessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask the
+            listing owner to add you to the team if you should be able to
+            edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
       <div className="h-[70px] border-b border-gray-200 flex items-center pr-[17px] pl-8">
@@ -9968,19 +10021,10 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
-  const router = useRouter()
-  const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -9992,12 +10036,13 @@ export default function PublishRootProject() {
     return null
   }
 
-  if (!isAuthLoading && !user) {
-    return null
-  }
-
+  // PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+  // full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+  // requires everywhere on listing pages. AuthenticatedRoute gives the same
+  // "protected route" behavior (spinner, then the modal, then the page)
+  // every other gated route already uses, with no full-page redirect.
   return (
-    <>
+    <AuthenticatedRoute>
       <PublishProject
         slug={params.slug}
         projectInfo={<ProjectInfo />}
@@ -10005,6 +10050,6 @@ export default function PublishRootProject() {
         projectScope={<ProjectScope />}
       />
       <Toaster />
-    </>
+    </AuthenticatedRoute>
   )
 }

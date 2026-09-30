@@ -916,6 +916,28 @@ export default function ProjectDetails({
   const params = useParams()
   const router = useRouter()
   const { user, openAuthModal } = useAuth()
+  // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
+  // expose a callback/promise for "and then do X on success". The signal
+  // it does expose, without touching its internals, is `user` itself: it
+  // flips from falsy to a real object the moment a login (any method)
+  // succeeds. Remembering the action here and firing it on that flip is
+  // what makes Start Project / Ask a Question / Save resume instead of
+  // stranding the visitor on the listing after they log in.
+  const pendingActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignIn = React.useCallback(
+    (action: () => void) => {
+      pendingActionRef.current = action
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (user?.id && pendingActionRef.current) {
+      const action = pendingActionRef.current
+      pendingActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
   const [refetchKey, setRefetchKey] = React.useState(0)
@@ -943,6 +965,8 @@ export default function ProjectDetails({
   const [askErrored, setAskErrored] = React.useState(false)
   const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
   const [askModalOpen, setAskModalOpen] = React.useState(false)
+  const [startProjectDialogOpen, setStartProjectDialogOpen] =
+    React.useState(false)
   const [lightboxOpen, setLightboxOpen] = React.useState(false)
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
   const toggleShareWindow = useShareWindowStore((s) => s.toggle)
@@ -974,19 +998,19 @@ export default function ProjectDetails({
   const openLiveChat = React.useCallback(
     (question?: string) => {
       if (!user?.id) {
-        openAuthModal("sign-in")
+        promptSignIn(() => openLiveChat(question))
         return
       }
       if (question !== undefined) setPendingQuestion(question)
       setSelected("Live Chat")
     },
-    [user?.id, openAuthModal]
+    [user?.id, promptSignIn]
   )
 
   const handleAsk = React.useCallback(() => {
     if (!user?.id) {
       setAskModalOpen(false)
-      openAuthModal("sign-in")
+      promptSignIn(() => handleAsk())
       return
     }
     if (pendingQuestion.trim()) {
@@ -996,7 +1020,7 @@ export default function ProjectDetails({
       setAskErrored(true)
       setShowAskErrorMsg(true)
     }
-  }, [user?.id, pendingQuestion, openLiveChat, openAuthModal])
+  }, [user?.id, pendingQuestion, openLiveChat, promptSignIn])
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -1236,7 +1260,7 @@ export default function ProjectDetails({
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
-      openAuthModal("sign-in")
+      promptSignIn(() => handleFavoriteToggle(pressed))
       return
     }
     setIsFavorited(pressed)
@@ -2987,7 +3011,7 @@ export default function ProjectDetails({
                                   visual="gray"
                                   onClick={() => {
                                     if (!user?.id) {
-                                      openAuthModal("sign-in")
+                                      promptSignIn(() => setAskModalOpen(true))
                                       return
                                     }
                                     setAskModalOpen(true)
@@ -5601,7 +5625,10 @@ export default function ProjectDetails({
               </div>
 
               {!isOwnerViewing && (
-                <Dialog>
+                <Dialog
+                  open={startProjectDialogOpen}
+                  onOpenChange={setStartProjectDialogOpen}
+                >
                   <DialogTrigger asChild>
                     <Button
                       size="lg"
@@ -5610,7 +5637,7 @@ export default function ProjectDetails({
                       onClick={(e) => {
                         if (!user?.id) {
                           e.preventDefault()
-                          openAuthModal("sign-in")
+                          promptSignIn(() => setStartProjectDialogOpen(true))
                         }
                       }}
                     >
