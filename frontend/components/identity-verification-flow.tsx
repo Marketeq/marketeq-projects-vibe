@@ -219,7 +219,7 @@ const DotSpinner = ({ size = 56 }: { size?: number }) => {
 // terms require a link back on the free plan; OpenStreetMap's data license
 // separately requires its own credit). Leaflet's in-map attribution control
 // is turned off to match the Figma map, and the same credit is rendered as a
-// caption directly below the map instead — never removed.
+// compact overlay in the map's bottom-right corner instead — never removed.
 const LEAFLET_VERSION = "1.9.4" // pinned to the installed leaflet package.json version
 
 // Red location pin (Figma, all-layers CSS) — 20.91×30 box, #EA4335 body with an
@@ -364,27 +364,29 @@ const DetectedLocationMap = ({
             )}
           </div>
         )}
+        {state === "ready" && (
+          <p className="absolute bottom-0 right-0 z-[1000] rounded-tl bg-white/80 px-1.5 py-0.5 text-[10px] leading-4 text-gray-700">
+            <a
+              href="https://locationiq.com/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Search by LocationIQ.com
+            </a>{" "}
+            | ©{" "}
+            <a
+              href="https://www.openstreetmap.org/copyright"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              OpenStreetMap
+            </a>{" "}
+            contributors
+          </p>
+        )}
       </div>
-      <p className="mt-1 text-xs text-gray-500">
-        <a
-          href="https://locationiq.com/"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          Search by LocationIQ.com
-        </a>{" "}
-        | ©{" "}
-        <a
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-          className="underline"
-        >
-          OpenStreetMap
-        </a>{" "}
-        contributors
-      </p>
     </div>
   )
 }
