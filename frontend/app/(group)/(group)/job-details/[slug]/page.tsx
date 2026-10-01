@@ -1526,7 +1526,7 @@ export default function JobDetailsPage({
                     </span>
                   </span>
                   <NextLink
-                      href={`/checkout/${slug}/project-details`}
+                      href={`/checkout/project-details?listingId=${encodeURIComponent(slug)}`}
                     className="shrink-0 whitespace-nowrap text-[12px] font-medium leading-6 text-primary-500 hover:underline"
                   >
                     View Details

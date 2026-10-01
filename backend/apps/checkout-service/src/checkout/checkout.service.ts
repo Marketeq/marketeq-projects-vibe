@@ -130,8 +130,9 @@ export class CheckoutService {
       paymentMethod: dto.paymentMethod as any,
       totalAmount: dto.totalAmount,
       walletAmountUsed,
-      giftCardAmountUsed,
-      giftCardCode: dto.giftCardCode,
+      appliedGiftCards: dto.giftCardCode
+        ? [{ code: dto.giftCardCode, amountUsed: giftCardAmountUsed }]
+        : null,
       splitPaymentEnabled: dto.splitPaymentEnabled,
       initialPaymentAmount: dto.initialPaymentAmount,
       installmentPlan: (dto.installmentPlanOption as any) || 'full',

@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  useParams,
   usePathname,
   useRouter,
   useSearchParams,
@@ -227,15 +226,16 @@ const PaymentMethodIcon = ({ method }: { method: PaymentMethodSummary }) => {
 }
 
 export default function ConfirmationPage() {
-  const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
+  const slugParamName = isTalentCheckout ? "username" : "listingId"
+  const slug = searchParams.get(slugParamName) ?? ""
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
+  const slugQuery = `${slugParamName}=${safeSlugSegment}`
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
@@ -523,17 +523,17 @@ export default function ConfirmationPage() {
 
   const handleEditPaymentMethods = React.useCallback(() => {
     const nextUrl = searchParams.toString()
-      ? `${basePath}/${safeSlugSegment}/payment?${searchParams.toString()}`
-      : `${basePath}/${safeSlugSegment}/payment`
+      ? `${basePath}/payment?${searchParams.toString()}`
+      : `${basePath}/payment?${slugQuery}`
     router.push(nextUrl)
-  }, [basePath, router, safeSlugSegment, searchParams])
+  }, [basePath, router, slugQuery, searchParams])
 
   const handleEditProjectDetails = React.useCallback(() => {
     const nextUrl = searchParams.toString()
-      ? `${basePath}/${safeSlugSegment}/project-details?${searchParams.toString()}`
-      : `${basePath}/${safeSlugSegment}/project-details`
+      ? `${basePath}/project-details?${searchParams.toString()}`
+      : `${basePath}/project-details?${slugQuery}`
     router.push(nextUrl)
-  }, [basePath, router, safeSlugSegment, searchParams])
+  }, [basePath, router, slugQuery, searchParams])
 
   const handleSubmitPayment = () => {
     if (hasSubmittedOrder) return
@@ -563,7 +563,7 @@ export default function ConfirmationPage() {
     window.setTimeout(() => {
       window.sessionStorage.setItem(submittedOrderStorageKey, "true")
       setHasSubmittedOrder(true)
-      router.push(`${basePath}/${safeSlugSegment}/confirmation`)
+      router.push(`${basePath}/confirmation?${slugQuery}`)
     }, 300)
   }
 

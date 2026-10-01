@@ -8,7 +8,9 @@ import {
 
 export type PaymentMethod = 'card' | 'ach' | 'wire' | 'klarna';
 export type PaymentStatus =
-  'pending' | 'success' | 'failed' | 'cancelled' | 'refunded';
+  'pending' | 'success' | 'failed' | 'cancelled' | 'refunded' | 'expired';
+export type AppliedGiftCard = { code: string; amountUsed: number };
+export type AppliedPromo = { code: string; discountAmount: number };
 export type InstallmentPlan = 'full' | 'monthly' | 'biweekly';
 
 @Entity('checkout_sessions')
@@ -43,7 +45,7 @@ export class CheckoutSession {
 
   @Column({
     type: 'enum',
-    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded'],
+    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded', 'expired'],
     default: 'pending',
   })
   status: PaymentStatus;
@@ -61,12 +63,6 @@ export class CheckoutSession {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   walletAmountUsed: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  giftCardAmountUsed: number;
-
-  @Column({ nullable: true })
-  giftCardCode: string;
-
   @Column({ default: false })
   splitPaymentEnabled: boolean;
 
@@ -78,6 +74,12 @@ export class CheckoutSession {
 
   @Column({ type: 'jsonb', nullable: true })
   stripeMetadata: Record<string, unknown>;
+
+  @Column({ type: 'jsonb', nullable: true })
+  appliedGiftCards: AppliedGiftCard[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  appliedPromos: AppliedPromo[] | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -13,6 +13,8 @@ import { SavedBankAccount } from './checkout/entities/saved-bank-account.entity'
 import { WireTransfer } from './checkout/entities/wire-transfer.entity';
 import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
 import { CheckoutDraft } from './checkout/entities/checkout-draft.entity';
+import { CheckoutDraftPhaseEntity } from './checkout/entities/checkout-draft-phase.entity';
+import { CheckoutDraftTaskEntity } from './checkout/entities/checkout-draft-task.entity';
 import { CheckoutService } from './checkout/checkout.service';
 import { CheckoutDraftService } from './checkout/checkout-draft.service';
 import { CheckoutSummaryService } from './checkout/checkout-summary.service';
@@ -34,7 +36,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
         CheckoutSession, Wallet, GiftCard,
         WalletTransaction, PaymentFailure, InstallmentPayment,
         SavedBankAccount, WireTransfer, StripeMetadata,
-        CheckoutDraft,
+        CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
       ],
       synchronize: false,
       migrationsRun: true,
@@ -45,7 +47,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       CheckoutSession, Wallet, GiftCard,
       WalletTransaction, PaymentFailure, InstallmentPayment,
       SavedBankAccount, WireTransfer, StripeMetadata,
-      CheckoutDraft,
+      CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
     ]),
     HttpModule,
     ...(process.env.RABBITMQ_URL

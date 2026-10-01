@@ -37,12 +37,6 @@ export const titleizeCheckoutSlug = (value: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
 
-const getProjectCandidates = (slug: string): string[] => {
-  const parts = slug.split("-")
-  const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : slug
-  return Array.from(new Set([slug, stripped]))
-}
-
 const getTeamMemberCount = (project: any): number | null => {
   // `team` is the real, currently-assigned roster (resolved from
   // teamMemberIds server-side) — trust it whenever it's present, even when
@@ -221,27 +215,27 @@ const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary =
 })
 
 export const getCheckoutProjectSummary = async (
-  slug: string,
+  listingId: string,
   signal?: AbortSignal
 ): Promise<CheckoutProjectSummary | null> => {
+  if (!listingId) return null
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
+  const id = encodeURIComponent(listingId)
 
-  for (const candidate of getProjectCandidates(slug)) {
-    const projectResponse = await fetch(
-      `${apiBase}/v1/projects/slug/${candidate}`,
-      { signal }
-    )
-    if (projectResponse.ok) {
-      return mapProjectSummary(await projectResponse.json(), candidate)
-    }
+  const projectResponse = await fetch(`${apiBase}/v1/projects/slug/${id}`, {
+    signal,
+    credentials: "include",
+  })
+  if (projectResponse.ok) {
+    return mapProjectSummary(await projectResponse.json(), "")
+  }
 
-    const serviceResponse = await fetch(
-      `${apiBase}/v1/services/slug/${candidate}`,
-      { signal }
-    )
-    if (serviceResponse.ok) {
-      return mapProjectSummary(await serviceResponse.json(), candidate)
-    }
+  const serviceResponse = await fetch(`${apiBase}/v1/services/slug/${id}`, {
+    signal,
+    credentials: "include",
+  })
+  if (serviceResponse.ok) {
+    return mapProjectSummary(await serviceResponse.json(), "")
   }
 
   return null

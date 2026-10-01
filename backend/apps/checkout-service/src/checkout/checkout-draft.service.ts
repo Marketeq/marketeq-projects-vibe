@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -55,25 +55,4 @@ export class CheckoutDraftService {
     @InjectRepository(CheckoutDraft)
     private readonly repo: Repository<CheckoutDraft>,
   ) {}
-
-  async commit(
-    clientId: string,
-    listingId: string,
-    seed: { phases?: ScopeSeedPhase[]; projectCost?: number | null },
-  ): Promise<CheckoutDraft> {
-    if (!clientId || !listingId) {
-      throw new BadRequestException('clientId and listingId are required');
-    }
-
-    const existing = await this.repo.findOne({ where: { clientId, listingId } });
-    if (existing) return existing;
-
-    const draft = this.repo.create({
-      clientId,
-      listingId,
-      phases: normalizeSeedPhases(seed.phases ?? []),
-      projectCost: seed.projectCost ?? null,
-    });
-    return this.repo.save(draft);
-  }
 }

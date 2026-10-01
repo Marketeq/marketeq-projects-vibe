@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  useParams,
   usePathname,
   useRouter,
   useSearchParams,
@@ -962,15 +961,16 @@ const savedBillingAddresses: Array<{
 }> = []
 
 export default function PaymentPage() {
-  const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const slug = params.slug as string
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
+  const slugParamName = isTalentCheckout ? "username" : "listingId"
+  const slug = searchParams.get(slugParamName) ?? ""
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
+  const slugQuery = `${slugParamName}=${safeSlugSegment}`
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
@@ -2033,8 +2033,8 @@ export default function PaymentPage() {
   const navigateToReview = () => {
     const nextSearchParams = new URLSearchParams(searchParams.toString())
     const nextUrl = nextSearchParams.toString()
-      ? `${basePath}/${safeSlugSegment}/review?${nextSearchParams.toString()}`
-      : `${basePath}/${safeSlugSegment}/review`
+      ? `${basePath}/review?${nextSearchParams.toString()}`
+      : `${basePath}/review?${slugQuery}`
     router.push(nextUrl)
   }
 
@@ -2566,7 +2566,7 @@ export default function PaymentPage() {
       const nextSearchParams = new URLSearchParams(searchParams.toString())
       nextSearchParams.set("paymentMethod", "klarna")
       nextSearchParams.set("paymentIntentId", intent.paymentIntentId)
-      const returnUrl = `${window.location.origin}${basePath}/${safeSlugSegment}/review?${nextSearchParams.toString()}`
+      const returnUrl = `${window.location.origin}${basePath}/review?${nextSearchParams.toString()}`
 
       const result = await stripe.confirmKlarnaPayment(intent.clientSecret, {
         payment_method: {
@@ -4712,7 +4712,7 @@ export default function PaymentPage() {
               variant="link"
               visual="gray"
               onClick={() =>
-                router.push(`${basePath}/${safeSlugSegment}/project-details`)
+                router.push(`${basePath}/project-details?${slugQuery}`)
               }
             >
               <ArrowLeft className="size-[15px] group-hover:-translate-x-1 transition duration-300" />{" "}

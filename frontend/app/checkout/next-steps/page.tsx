@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import {
   AlertCircle,
@@ -80,10 +80,12 @@ const checklistItems: ChecklistItem[] = [
 ]
 
 export default function NextStepsPage() {
-  const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
   const { isAuthChecked, isLoading, user } = useAuth()
-  const slug = safeDecodeSlug(params.slug as string)
+  const slug = safeDecodeSlug(
+    searchParams.get("listingId") ?? searchParams.get("username") ?? ""
+  )
   const [loadState, setLoadState] = React.useState<LoadState>("loading")
   const [toastMessage, setToastMessage] = React.useState("")
   const [sessionExpired, setSessionExpired] = React.useState(false)

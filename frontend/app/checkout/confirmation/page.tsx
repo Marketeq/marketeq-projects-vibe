@@ -1,18 +1,13 @@
 import { redirect } from "next/navigation"
 
 type ConfirmationPageProps = {
-  params: Promise<{ slug: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
 export default async function CheckoutConfirmationPage({
-  params,
   searchParams,
 }: ConfirmationPageProps) {
-  const [{ slug }, confirmationParams] = await Promise.all([
-    params,
-    searchParams,
-  ])
+  const confirmationParams = await searchParams
   const nextSearchParams = new URLSearchParams()
 
   Object.entries(confirmationParams).forEach(([key, value]) => {
@@ -24,7 +19,5 @@ export default async function CheckoutConfirmationPage({
   })
 
   const query = nextSearchParams.toString()
-  redirect(
-    `/checkout/${encodeURIComponent(slug)}/success${query ? `?${query}` : ""}`
-  )
+  redirect(`/checkout/success${query ? `?${query}` : ""}`)
 }
