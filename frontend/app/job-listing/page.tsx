@@ -14433,9 +14433,20 @@ const NdaPreviewDialog = ({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-[640px] overflow-hidden p-0">
-        <DialogHeader className="border-b border-gray-200 px-6 py-4">
-          <DialogTitle>NDA Sample</DialogTitle>
+      <DialogContent className="max-w-[600px] overflow-hidden p-0 [&>button]:hidden">
+        <DialogHeader className="flex h-[60px] flex-row items-center justify-between gap-2 border-b border-gray-200 px-8 py-4">
+          <DialogTitle className="flex-1 text-lg font-semibold leading-7 text-dark-blue-400">
+            NDA Sample
+          </DialogTitle>
+          <DialogClose asChild>
+            <button
+              type="button"
+              className="flex size-6 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500 focus-visible:outline-none"
+              aria-label="Close NDA preview"
+            >
+              <X2 className="size-6" />
+            </button>
+          </DialogClose>
         </DialogHeader>
         <div className="max-h-[640px] overflow-y-auto bg-gray-100 px-8 py-6">
           {isLoading ? (
@@ -14488,13 +14499,6 @@ const NdaPreviewDialog = ({
             </p>
           ) : null}
         </div>
-        <DialogFooter className="border-t border-gray-200 px-6 py-4">
-          <DialogClose asChild>
-            <Button type="button" variant="outlined" visual="gray">
-              Close
-            </Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -21993,7 +21997,26 @@ function PublishProject({
       if (nonTextChanged) {
         cleanups.push(
           enqueueSave(async () => {
-            await JobListingAPI.Update(jobListingId, nonTextPayload);
+            const updateResponse = await JobListingAPI.Update(
+              jobListingId,
+              nonTextPayload,
+            );
+            const updatedListing = updateResponse?.data;
+            if (typeof updatedListing?.ndaDocumentId === "string") {
+              setJobListingDraftDetails((current) =>
+                current.ndaDocumentId === updatedListing.ndaDocumentId
+                  ? current
+                  : { ...current, ndaDocumentId: updatedListing.ndaDocumentId },
+              );
+            }
+            if (updatedListing?.ndaStatus === "FAILED") {
+              toast({
+                title:
+                  updatedListing.ndaMessage ||
+                  "We could not generate the NDA. Please try again.",
+                variant: "destructive",
+              });
+            }
             await JobListingAPI.UpdateBasicInformation(
               jobListingId,
               nonTextBasicInfoPayload,

@@ -49,14 +49,15 @@ export class JobListingPublishService {
 
   // ── NDA ──────────────────────────────────────────────────────────────────────
 
-  async handleNdaToggle(listingId: string, ndaEnabled: boolean): Promise<void> {
-    if (!ndaEnabled) {
-      // NDA disabled — clear the document ID.
-      await this.repo.update(listingId, { ndaEnabled: false, ndaDocumentId: null });
-      return;
-    }
-
-    // NDA enabled — fetch listing and client info, then generate NDA document.
+  // Turning NDA on persists the toggle first, then asks legal-service to
+  // generate the document. A generation failure never fails the toggle: the
+  // caller gets { ndaStatus: "FAILED" } so the UI can offer a retry. Turning
+  // NDA off keeps ndaDocumentId (legal-service's generate is idempotent per
+  // client + listing, so re-enabling reuses the same document).
+  async handleNdaToggle(
+    listingId: string,
+    ndaEnabled: boolean,
+  ): Promise<{ ndaStatus: 'OK' | 'FAILED'; message?: string }> {
     const listing = await this.repo.findOne({
       where: { id: listingId },
       relations: ['basicInformation'],
@@ -66,32 +67,41 @@ export class JobListingPublishService {
       throw new NotFoundException({ code: 'JL_NOT_FOUND', message: 'Listing not found.' });
     }
 
-    const clientResponse = await firstValueFrom(
-      this.http.get(
-        `${this.config.get('USER_SERVICE_URL')}/v1/users/${listing.clientUserId}`,
-      ),
-    );
+    await this.repo.update(listingId, { ndaEnabled });
 
-    const client = clientResponse.data;
+    if (!ndaEnabled || listing.ndaDocumentId) {
+      return { ndaStatus: 'OK' };
+    }
 
-    const ndaResponse = await firstValueFrom(
-      this.http.post(
-        `${this.config.get('LEGAL_SERVICE_URL')}/v1/nda/generate`,
-        {
-          listingId,
-          clientUserId:  listing.clientUserId,
-          clientName:    client.legalName,
-          companyName:   client.companyName  ?? null,
-          jobTitle:      client.jobTitle     ?? null,
-          listingTitle:  listing.basicInformation?.[0]?.title ?? null,
-        },
-      ),
-    );
+    try {
+      // legal-service resolves the client's display name from user-service itself.
+      const ndaResponse = await firstValueFrom(
+        this.http.post<{ documentId: string }>(
+          `${this.config.get('LEGAL_SERVICE_URL')}/v1/nda/generate`,
+          {
+            jobListingId: listingId,
+            clientUserId: listing.clientUserId,
+            listingTitle: listing.basicInformation?.[0]?.title?.slice(0, 100) || undefined,
+          },
+          {
+            headers: {
+              'x-internal-api-secret': this.config.get<string>('INTERNAL_API_SECRET') ?? '',
+            },
+          },
+        ),
+      );
 
-    await this.repo.update(listingId, {
-      ndaEnabled:    true,
-      ndaDocumentId: ndaResponse.data.documentId,
-    });
+      await this.repo.update(listingId, { ndaDocumentId: ndaResponse.data.documentId });
+      return { ndaStatus: 'OK' };
+    } catch (error) {
+      this.logger.warn(
+        `NDA generation failed for listing ${listingId}: ${(error as Error).message}`,
+      );
+      return {
+        ndaStatus: 'FAILED',
+        message: 'We could not generate the NDA. Please try again.',
+      };
+    }
   }
 
   // ── Pre-publish validation ────────────────────────────────────────────────────

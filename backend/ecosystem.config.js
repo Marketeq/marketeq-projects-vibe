@@ -71,6 +71,9 @@ module.exports = {
     // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
     svc('resume-parsing-service', 3028),
     svc('location-service', 3030),
+    // Port must match LEGAL_SERVICE_URL (listings-service) and the api-gateway
+    // default in proxy.controller.ts. legal-service's own default is 3015.
+    svc('legal-service', 3032),
     {
       name: 'cms-service',
       script: npmLauncher,

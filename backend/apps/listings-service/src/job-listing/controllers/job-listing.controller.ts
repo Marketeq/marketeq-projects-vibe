@@ -164,17 +164,21 @@ export class JobListingController {
   ) {
     const existing = await this.jobListingService.findOneInternal(id);
     const updateDto: UpdateJobListingDto = { ...dto };
+    let nda: { ndaStatus: "OK" | "FAILED"; message?: string } | undefined;
 
     if (dto.ndaEnabled !== undefined) {
-      if (existing.contractType === "existing") {
-        delete updateDto.ndaEnabled;
-      } else {
-        await this.publishService.handleNdaToggle(id, dto.ndaEnabled);
-        delete updateDto.ndaEnabled;
+      if (existing.contractType !== "existing") {
+        nda = await this.publishService.handleNdaToggle(id, dto.ndaEnabled);
       }
+      delete updateDto.ndaEnabled;
     }
 
-    return this.jobListingService.update(this.getUserId(req), id, updateDto);
+    const updated = await this.jobListingService.update(
+      this.getUserId(req),
+      id,
+      updateDto,
+    );
+    return nda ? { ...updated, ndaStatus: nda.ndaStatus, ndaMessage: nda.message } : updated;
   }
 
   // ── PATCH /v1/job-listings/:id/basic-information ─────────────
