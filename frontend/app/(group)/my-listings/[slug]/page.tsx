@@ -1789,13 +1789,23 @@ function ProjectDetailsInner() {
                 title: backendErrorMessage(err),
                 variant: "destructive",
               })
-            } else {
+            } else if (err?.response?.status === 503) {
+              // Moderation service itself is down, not a rejection of the
+              // file — the file is still good, just unverified, so a local
+              // preview is a reasonable stand-in until it can be checked.
               finalUrl = URL.createObjectURL(file)
               toast({
-                title:
-                  err?.response?.status === 503
-                    ? "Image moderation service unavailable. Showing local preview."
-                    : "Failed to upload image. Showing local preview.",
+                title: "Image moderation service unavailable. Showing local preview.",
+                variant: "destructive",
+              })
+            } else {
+              // QA-220/PMCM-403: every other failure here — including the
+              // backend's file-size/type validation rejection — means the
+              // file was never accepted. Previously this fell into the same
+              // branch as the 503 case above and showed a local preview of
+              // an image that was never actually uploaded.
+              toast({
+                title: backendErrorMessage(err) || "Failed to upload image. Please try again.",
                 variant: "destructive",
               })
             }
@@ -1956,14 +1966,24 @@ function ProjectDetailsInner() {
         console.error("Failed to upload featured image:", err)
         if (isModerationRejection(err)) {
           toast({ title: backendErrorMessage(err), variant: "destructive" })
-        } else {
+        } else if (err?.response?.status === 503) {
+          // Moderation service itself is down, not a rejection of the
+          // file — the file is still good, just unverified, so a local
+          // preview is a reasonable stand-in until it can be checked.
           const localUrl = URL.createObjectURL(file)
           setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
           toast({
-            title:
-              err?.response?.status === 503
-                ? "Image moderation service unavailable. Showing local preview."
-                : "Failed to upload featured image. Showing local preview.",
+            title: "Image moderation service unavailable. Showing local preview.",
+            variant: "destructive",
+          })
+        } else {
+          // QA-220/PMCM-403: every other failure here — including the
+          // backend's file-size/type validation rejection — means the
+          // file was never accepted. Previously this fell into the same
+          // branch as the 503 case above and showed a local preview of
+          // an image that was never actually uploaded.
+          toast({
+            title: backendErrorMessage(err) || "Failed to upload featured image. Please try again.",
             variant: "destructive",
           })
         }
