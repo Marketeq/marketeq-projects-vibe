@@ -20,6 +20,7 @@ import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
 import {
+  PROJECT_TYPE_OPTIONS,
   TEAM_SEED_LISTINGS,
 } from "@/src/lib/my-listings"
 import {
@@ -374,16 +375,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Mobile App",
-  "Desktop App",
-  "API / Backend",
-  "Plugin / Extension",
-  "SaaS Platform",
-  "Other",
-]
 
 const toEmbedUrl = (raw?: string | null): string => {
   if (!raw) return ""
