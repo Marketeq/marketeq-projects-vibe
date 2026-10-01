@@ -2059,6 +2059,52 @@ const plainTextFromRichTextHtml = (value: string) => {
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length;
 
+const escapeHtmlText = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+const replaceFirstTextInRichTextHtml = (
+  html: string,
+  selectedText: string,
+  replacementText: string
+) => {
+  const trimmedSelectedText = selectedText.trim();
+
+  if (!trimmedSelectedText || !replacementText.trim()) return html;
+
+  if (typeof window === "undefined") {
+    return html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+  }
+
+  const container = window.document.createElement("div");
+  container.innerHTML = html;
+
+  const walker = window.document.createTreeWalker(
+    container,
+    window.NodeFilter.SHOW_TEXT
+  );
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const textContent = currentNode.textContent ?? "";
+    const matchIndex = textContent.indexOf(trimmedSelectedText);
+
+    if (matchIndex !== -1) {
+      currentNode.textContent =
+        textContent.slice(0, matchIndex) +
+        replacementText +
+        textContent.slice(matchIndex + trimmedSelectedText.length);
+      return container.innerHTML;
+    }
+
+    currentNode = walker.nextNode();
+  }
+
+  return html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+};
+
 const STEP_TWO_WORD_LIMIT = 100;
 const NEGATIVE_BUDGET_ERROR = "Budget cannot be negative";
 
@@ -14265,9 +14311,16 @@ type FinalReviewAssistantHistoryItem = {
   id: string
   prompt: string
   field: SmartAssistantEditableField
+  selectedText?: string
+  insertText?: (text: string) => void
   result?: string
   suggestions?: string[]
   status: "pending" | "success" | "error"
+}
+
+type FinalReviewSmartAssistantSelection = {
+  selectedText: string
+  insertText: (text: string) => void
 }
 
 const getFinalReviewAssistantResultText = (
@@ -14612,6 +14665,7 @@ const FinalReviewRichTextField = ({
   compact = false,
   onChange,
   onActivate,
+  onSmartAssistant,
 }: {
   title: string
   initialValue?: string
@@ -14620,6 +14674,7 @@ const FinalReviewRichTextField = ({
   compact?: boolean
   onChange?: (value: string) => void
   onActivate?: () => void
+  onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => {
   const [value, setValue] = useState(initialValue)
 
@@ -14635,6 +14690,26 @@ const FinalReviewRichTextField = ({
   const handleChange = (html: string) => {
     setValue(html)
     onChange?.(html)
+  }
+
+  const handleSmartAssistant = (
+    selection: FinalReviewSmartAssistantSelection
+  ) => {
+    onSmartAssistant?.({
+      ...selection,
+      insertText: (replacementText: string) => {
+        setValue((currentValue) => {
+          const nextValue = replaceFirstTextInRichTextHtml(
+            currentValue,
+            selection.selectedText,
+            replacementText
+          )
+          onChange?.(nextValue)
+          return nextValue
+        })
+        selection.insertText(replacementText)
+      },
+    })
   }
 
   return (
@@ -14693,6 +14768,7 @@ const FinalReviewRichTextField = ({
         hideImageButton={compact}
         showToolbarOnFocus={compact}
         toolbarVariant={compact ? "final-review" : "full"}
+        onSmartAssistant={handleSmartAssistant}
       />
     </div>
   )
@@ -14706,6 +14782,7 @@ const FinalReviewTextSection = ({
   children,
   compact = false,
   onActivate,
+  onSmartAssistant,
 }: {
   title: string
   initialValue?: string
@@ -14714,6 +14791,7 @@ const FinalReviewTextSection = ({
   children?: React.ReactNode
   compact?: boolean
   onActivate?: () => void
+  onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => (
   <div
     className={
@@ -14729,6 +14807,7 @@ const FinalReviewTextSection = ({
       onChange={onChange}
       compact={compact}
       onActivate={onActivate}
+      onSmartAssistant={onSmartAssistant}
     />
     {children}
   </div>
@@ -14748,7 +14827,159 @@ const useFinalReviewSmartAssistant = ({
   const [message, setMessage] = useState("")
   const [result, setResult] = useState("")
   const [history, setHistory] = useState<FinalReviewAssistantHistoryItem[]>([])
+  const [selectedText, setSelectedText] = useState("")
+  const selectedTextInsertRef = useRef<((text: string) => void) | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  const populateSelectedText = useCallback(
+    (payload: FinalReviewSmartAssistantSelection) => {
+      const trimmedText = payload.selectedText.trim()
+
+      if (!trimmedText) return
+
+      selectedTextInsertRef.current = payload.insertText
+      setSelectedText(trimmedText)
+      setMessage("Shorten it")
+    },
+    []
+  )
+
+  const clearSelectedText = useCallback(() => {
+    selectedTextInsertRef.current = null
+    setSelectedText("")
+  }, [])
+
+  const completeHistoryItem = useCallback(
+    (
+      historyId: string,
+      nextResult: string,
+      status: FinalReviewAssistantHistoryItem["status"],
+      suggestions: string[] = []
+    ) => {
+      setResult(nextResult)
+      setHistory((currentHistory) =>
+        currentHistory.map((item) =>
+          item.id === historyId
+            ? { ...item, result: nextResult, suggestions, status }
+            : item
+        )
+      )
+    },
+    []
+  )
+
+  const startHistoryItem = useCallback(
+    (
+      prompt: string,
+      field: SmartAssistantEditableField,
+      selectedTextSnapshot?: string,
+      insertText?: (text: string) => void
+    ) => {
+      const historyId = `final-review-assistant-${getId()}`
+      setHistory((currentHistory) =>
+        [
+          ...currentHistory,
+          {
+            id: historyId,
+            prompt,
+            field,
+            selectedText: selectedTextSnapshot,
+            insertText,
+            status: "pending" as const,
+          },
+        ].slice(-20)
+      )
+
+      return historyId
+    },
+    []
+  )
+
+  const shortenSelectedText = useCallback(
+    async (command: string, field: SmartAssistantEditableField) => {
+      const trimmedCommand = command.trim()
+      const selectedTextSnapshot = selectedText.trim()
+
+      if (!trimmedCommand || !selectedTextSnapshot) {
+        return
+      }
+
+      const historyId = startHistoryItem(
+        trimmedCommand,
+        field,
+        selectedTextSnapshot,
+        selectedTextInsertRef.current ?? undefined
+      )
+      setIsLoading(true)
+      setResult("")
+      setMessage("")
+
+      try {
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+
+        if (!listingId) {
+          completeHistoryItem(
+            historyId,
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+            "error"
+          )
+          return
+        }
+
+        const response = await JobListingAPI.ShortenSmartAssistantText(
+          listingId,
+          {
+            selectedText: selectedTextSnapshot,
+            fieldContext: field,
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          shortenedText?: string
+          updatedText?: string
+          result?: string
+          message?: string
+        }
+
+        if (data.aiStatus === "AI_UNAVAILABLE") {
+          completeHistoryItem(
+            historyId,
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+            "error"
+          )
+          return
+        }
+
+        const shortenedText =
+          data.shortenedText ?? data.updatedText ?? data.result ?? data.message
+
+        if (shortenedText) {
+          completeHistoryItem(historyId, shortenedText, "success")
+          clearSelectedText()
+          return
+        }
+
+        completeHistoryItem(
+          historyId,
+          "Smart Assistant did not return shortened text.",
+          "error"
+        )
+      } catch (error) {
+        console.error("Smart Assistant selected text shorten failed", error)
+        completeHistoryItem(historyId, "Smart Assistant is temporarily unavailable.", "error")
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [
+      completeHistoryItem,
+      clearSelectedText,
+      ensureJobListingDraft,
+      jobListingId,
+      selectedText,
+      startHistoryItem,
+    ]
+  )
 
   const run = useCallback(
     async (command: string, field: SmartAssistantEditableField) => {
@@ -14758,42 +14989,22 @@ const useFinalReviewSmartAssistant = ({
         return
       }
 
-      const historyId = `final-review-assistant-${getId()}`
-      setHistory((currentHistory) =>
-        [
-          ...currentHistory,
-          {
-            id: historyId,
-            prompt: trimmedCommand,
-            field,
-            status: "pending" as const,
-          },
-        ].slice(-20)
-      )
+      if (selectedText.trim()) {
+        await shortenSelectedText(trimmedCommand, field)
+        return
+      }
+
+      const historyId = startHistoryItem(trimmedCommand, field)
       setIsLoading(true)
       setResult("")
       setMessage("")
-
-      const completeHistoryItem = (
-        nextResult: string,
-        status: FinalReviewAssistantHistoryItem["status"],
-        suggestions: string[] = []
-      ) => {
-        setResult(nextResult)
-        setHistory((currentHistory) =>
-          currentHistory.map((item) =>
-            item.id === historyId
-              ? { ...item, result: nextResult, suggestions, status }
-              : item
-          )
-        )
-      }
 
       try {
         const listingId = jobListingId ?? (await ensureJobListingDraft?.())
 
         if (!listingId) {
           completeHistoryItem(
+            historyId,
             "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
             "error"
           )
@@ -14816,6 +15027,7 @@ const useFinalReviewSmartAssistant = ({
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
           completeHistoryItem(
+            historyId,
             data.message ?? "Smart Assistant is temporarily unavailable.",
             "error"
           )
@@ -14829,6 +15041,7 @@ const useFinalReviewSmartAssistant = ({
           )
           onApply(field, updatedValue)
           completeHistoryItem(
+            historyId,
             getFinalReviewAssistantResultText(
               data,
               "Smart Assistant updated this section."
@@ -14840,17 +15053,27 @@ const useFinalReviewSmartAssistant = ({
         }
 
         completeHistoryItem(
+          historyId,
           "Smart Assistant did not return an update for this section.",
           "error"
         )
       } catch (error) {
         console.error("Smart Assistant field edit failed", error)
-        completeHistoryItem("Smart Assistant is temporarily unavailable.", "error")
+        completeHistoryItem(historyId, "Smart Assistant is temporarily unavailable.", "error")
       } finally {
         setIsLoading(false)
       }
     },
-    [ensureJobListingDraft, getValue, jobListingId, onApply]
+    [
+      completeHistoryItem,
+      ensureJobListingDraft,
+      getValue,
+      jobListingId,
+      onApply,
+      selectedText,
+      shortenSelectedText,
+      startHistoryItem,
+    ]
   )
 
   return {
@@ -14858,6 +15081,9 @@ const useFinalReviewSmartAssistant = ({
     setMessage,
     result,
     history,
+    selectedText,
+    populateSelectedText,
+    clearSelectedText,
     isLoading,
     run,
   }
@@ -16476,6 +16702,10 @@ const FinalProjectReviewStep = ({
                   initialValue={details.description ?? ""}
                   placeholder="Add the project overview"
                   onActivate={() => setActiveAssistantField("overview")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("overview")
+                    projectAssistant.populateSelectedText(selection)
+                  }}
                   onChange={(value) =>
                     setDetails((current) => ({
                       ...current,
@@ -16489,6 +16719,10 @@ const FinalProjectReviewStep = ({
                   initialValue={details.successCriteria ?? ""}
                   placeholder="Add benefits for joining this project"
                   onActivate={() => setActiveAssistantField("benefits")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("benefits")
+                    projectAssistant.populateSelectedText(selection)
+                  }}
                   onChange={(value) =>
                     setDetails((current) => ({
                       ...current,
@@ -16544,6 +16778,10 @@ const FinalProjectReviewStep = ({
                       onActivate={() =>
                         setActiveAssistantField("responsibilities")
                       }
+                      onSmartAssistant={(selection) => {
+                        setActiveAssistantField("responsibilities")
+                        projectAssistant.populateSelectedText(selection)
+                      }}
                       onChange={setResponsibilities}
                     />
 
@@ -16685,17 +16923,32 @@ const FinalProjectReviewStep = ({
                           </div>
                         )}
                         {isLatest && item.status !== "pending" ? (
-                          <Button
-                            type="button"
-                            className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
-                            disabled={projectAssistant.isLoading}
-                            onClick={() =>
-                              projectAssistant.run(item.prompt, item.field)
-                            }
-                          >
-                            <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
-                            Retry
-                          </Button>
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500"
+                                onClick={() => item.insertText?.(item.result!)}
+                              >
+                                <Type className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                              disabled={projectAssistant.isLoading}
+                              onClick={() =>
+                                projectAssistant.run(item.prompt, item.field)
+                              }
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
                         ) : null}
                       </div>
                     )
@@ -16757,9 +17010,33 @@ const FinalProjectReviewStep = ({
                   ) : null}
                 </div>
               ) : null}
-              <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
+              <div
+                className={cn(
+                  "flex w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  projectAssistant.selectedText ? "h-[148px]" : "h-[100px]"
+                )}
+              >
+                {projectAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <FileIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
+                      “{projectAssistant.selectedText}
+                    </p>
+                    <button
+                      type="button"
+                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={projectAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </button>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    projectAssistant.selectedText ? "h-5" : "h-10"
+                  )}
                   placeholder="I want to change..."
                   value={projectAssistant.message}
                   onChange={(event) =>

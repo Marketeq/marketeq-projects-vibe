@@ -160,6 +160,18 @@ export const JobListingAPI = {
       data,
     ),
 
+  ShortenSmartAssistantText: (
+    id: string,
+    data: {
+      selectedText: string;
+      fieldContext: string;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/shorten`),
+      data,
+    ),
+
   GenerateTools: (
     id: string,
     data: {

@@ -570,6 +570,7 @@ const RichTextToolbar = ({
   isFontMenuOpen,
   onFontMenuOpenChange,
   onFontMenuTriggerMouseDown,
+  onSmartAssistant,
   getSelectionSnapshot,
   isPinned,
   onTogglePinned,
@@ -582,6 +583,10 @@ const RichTextToolbar = ({
   isFontMenuOpen: boolean
   onFontMenuOpenChange: (open: boolean) => void
   onFontMenuTriggerMouseDown: () => void
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
   getSelectionSnapshot: () => { from: number; to: number } | null
   isPinned: boolean
   onTogglePinned: () => void
@@ -687,6 +692,25 @@ const RichTextToolbar = ({
     }
 
     chain.setTextSelection({ from: cursorFrom, to: cursorTo }).run()
+  }
+
+  const handleSmartAssistantClick = () => {
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, "\n").trim()
+
+    if (!selectedText) return
+
+    onSmartAssistant?.({
+      selectedText,
+      insertText: (text: string) => {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from, to })
+          .insertContent(text)
+          .run()
+      },
+    })
   }
 
   const getActiveInlineMarks = () => ({
@@ -1047,6 +1071,7 @@ const RichTextToolbar = ({
             <button
               type="button"
               onMouseDown={preventToolbarFocusChange}
+              onClick={handleSmartAssistantClick}
               className="inline-flex h-[25px] shrink-0 items-center justify-center gap-x-1 rounded-[4px] px-2 text-xs leading-none text-white/75 hover:bg-white/15 hover:text-white active:bg-white/15 active:text-white transition duration-300 focus-visible:outline-none"
             >
               <MagicWand01 className="size-4 shrink-0" />
@@ -1107,6 +1132,7 @@ const ActiveEditor = ({
   onUploadImage,
   toolbarVariant = "full",
   showToolbarOnFocus = false,
+  onSmartAssistant,
 }: {
   defaultValue: string
   editorClassName?: string
@@ -1135,6 +1161,10 @@ const ActiveEditor = ({
   toolbarVariant?: "full" | "simple" | "final-review"
   /** Shows the floating text toolbar as soon as the editor receives focus. */
   showToolbarOnFocus?: boolean
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -2316,6 +2346,7 @@ const ActiveEditor = ({
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(false)}
             variant={toolbarVariant}
+            onSmartAssistant={onSmartAssistant}
           />
           {stickyToolbar && stickyToolbarActions ? (
             <div className="flex items-center gap-x-1.5 shrink-0 ml-3">
@@ -2354,6 +2385,7 @@ const ActiveEditor = ({
                 isPinned={isToolbarPinned}
                 onTogglePinned={() => handleToolbarPinnedChange(true)}
                 variant={toolbarVariant}
+                onSmartAssistant={onSmartAssistant}
               />
             </div>,
             document.body
@@ -2439,6 +2471,7 @@ const RichTextEditor = ({
   hideImageButton = false,
   toolbarVariant = "full",
   showToolbarOnFocus = false,
+  onSmartAssistant,
 }: {
   defaultValue?: string
   placeholder?: string
@@ -2467,6 +2500,10 @@ const RichTextEditor = ({
    * Defaults to "full" everywhere else.
    */
   toolbarVariant?: "full" | "simple" | "final-review"
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
 }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [internalFullscreenOpen, setInternalFullscreenOpen] = useState(false)
@@ -2732,6 +2769,7 @@ const RichTextEditor = ({
       onUploadImage={onUploadImage}
       toolbarVariant={toolbarVariant}
       showToolbarOnFocus={showToolbarOnFocus}
+      onSmartAssistant={onSmartAssistant}
     />
   ) : (
     <div
