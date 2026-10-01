@@ -554,15 +554,61 @@ export class JobListingAiService {
   }
 
   private normalizeRoleDescriptionOutput(
-    role: RoleDescriptionOutput,
+    role: Omit<RoleDescriptionOutput, "responsibilities"> & {
+      responsibilities: string | string[];
+    },
   ): RoleDescriptionOutput {
     return {
       roleTitle: role.roleTitle,
       overview: this.limitWords(role.overview ?? "", 100),
       benefits: this.limitWords(role.benefits ?? "", 100),
-      responsibilities: this.limitWords(role.responsibilities ?? "", 100),
+      responsibilities: this.toBulletListHtml(role.responsibilities, 100),
       skills: Array.isArray(role.skills) ? role.skills.slice(0, 10) : [],
     };
+  }
+
+  // Rich text HTML (<ul><li>…) -> one plain line per block, for prompting.
+  private richTextToPlainLines(html: string): string {
+    return (html ?? "")
+      .replace(/<\/(li|p|div|h[1-6])>|<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // Accepts the model's responsibilities as an array of bullets (preferred) or
+  // a string with one bullet per line, and returns an HTML <ul> for the rich
+  // text editor, capped at maxWords words in total.
+  private toBulletListHtml(value: unknown, maxWords: number): string {
+    const rawItems: string[] = Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : typeof value === "string"
+        ? value.split(/\r?\n/)
+        : [];
+
+    const items: string[] = [];
+    let remainingWords = maxWords;
+    for (const rawItem of rawItems) {
+      if (remainingWords <= 0) break;
+      const text = this.limitWords(
+        rawItem.replace(/^\s*(?:[-*+•]|\d+[.)])\s+/, ""),
+        remainingWords,
+      );
+      if (!text) continue;
+      items.push(text);
+      remainingWords -= text.split(/\s+/).length;
+    }
+
+    if (items.length === 0) return "";
+    const escape = (text: string) =>
+      text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<ul>${items.map((item) => `<li><p>${escape(item)}</p></li>`).join("")}</ul>`;
   }
 
   // Coerce to one of the 56 countries job-listing-budget.service.ts's
@@ -1590,7 +1636,13 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       tasks: string[];
     }>;
   }): Promise<RoleDescriptionOutput[]> {
-    const result = await this.call<{ roles: RoleDescriptionOutput[] }>(
+    const result = await this.call<{
+      roles: Array<
+        Omit<RoleDescriptionOutput, "responsibilities"> & {
+          responsibilities: string | string[];
+        }
+      >;
+    }>(
       {
         maxTokens: 6144,
         temperature: 0.4,
@@ -1600,7 +1652,7 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
             content:
               "You write professional job listing descriptions for freelance roles. " +
               'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-              '"responsibilities": "string (2-4 sentences, at most 100 words)", ' +
+              '"responsibilities": ["string"] (4-6 bullet points, one short responsibility each, at most 100 words in total, no bullet characters or numbering), ' +
               '"overview": "string (2-4 sentences, at most 100 words)", ' +
               '"benefits": "string (2-4 sentences, at most 100 words)", ' +
               '"skills": ["string"] (5-10 skills) }] }. ' +
@@ -1991,10 +2043,13 @@ ${input.command}
     summary: string;
     suggestions: string[];
   }> {
+    const isBulletField = input.field === "responsibilities";
     const limitInstruction =
       input.field === "title"
         ? "updatedValue must not exceed 100 characters. "
-        : "updatedValue must not exceed 100 words. ";
+        : isBulletField
+          ? "updatedValue is a JSON array of 4-6 strings, one short responsibility per bullet point, with no bullet characters or numbering, at most 100 words in total. Always return bullet points, even if the command asks for a paragraph. "
+          : "updatedValue must not exceed 100 words. ";
     const titleInstruction =
       input.field === "title"
         ? "For title edits, create a specific, client-ready listing title from the context. Do not repeat the command or current title. "
@@ -2012,7 +2067,7 @@ ${input.command}
       : "No additional listing context provided.";
 
     const result = await this.call<{
-      updatedValue: string;
+      updatedValue: string | string[];
       summary?: string;
       suggestions: string[];
     }>(
@@ -2024,7 +2079,7 @@ ${input.command}
             role: "system",
             content:
               `You are a Smart Assistant editing a ${input.field} field for a freelance job listing. ` +
-              `Respond only with JSON: { "updatedValue": "string", "summary": "string", "suggestions": ["string"] }. ` +
+              `Respond only with JSON: { "updatedValue": ${isBulletField ? '["string"]' : '"string"'}, "summary": "string", "suggestions": ["string"] }. ` +
               limitInstruction +
               `summary is one short plain-English sentence (at most 30 words) telling the user what you changed in the ${input.field} and why, written in the past tense. Do not quote updatedValue in full. ` +
               titleInstruction +
@@ -2036,7 +2091,9 @@ ${input.command}
             role: "user",
             content: [
               `Current ${input.field}:`,
-              input.currentValue,
+              isBulletField
+                ? this.richTextToPlainLines(input.currentValue)
+                : input.currentValue,
               "",
               "Listing context:",
               contextLines,
@@ -2050,12 +2107,15 @@ ${input.command}
     );
 
     return {
-      updatedValue: this.normalizeSmartAssistantFieldValue(
-        input.field,
-        result.updatedValue,
-        input.currentValue,
-        input.context,
-      ),
+      updatedValue: isBulletField
+        ? this.toBulletListHtml(result.updatedValue, 100) ||
+          input.currentValue
+        : this.normalizeSmartAssistantFieldValue(
+            input.field,
+            result.updatedValue as string,
+            input.currentValue,
+            input.context,
+          ),
       summary:
         this.limitWords(result.summary ?? "", 30) ||
         `Updated the ${input.field}.`,
