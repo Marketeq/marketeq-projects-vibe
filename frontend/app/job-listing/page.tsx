@@ -14164,53 +14164,7 @@ const ProjectScopeEditStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch px-5 pb-5 pt-3">
-              {projectAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-[282px] flex-col items-start gap-3 self-stretch">
-                  <button
-                    type="button"
-                    className="flex h-[18px] w-[282px] items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
-                    onClick={() =>
-                      setShowProjectAssistantFollowUps((isVisible) => !isVisible)
-                    }
-                  >
-                    <span className="flex-1">
-                      {showProjectAssistantFollowUps
-                        ? "Use this suggestions"
-                        : "Follow-up suggestions"}
-                    </span>
-                    <ChevronDown
-                      className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
-                        showProjectAssistantFollowUps && "rotate-180"
-                      )}
-                    />
-                  </button>
-                  {showProjectAssistantFollowUps ? (
-                    <div className="flex w-[282px] flex-wrap items-start gap-2 self-stretch">
-                      {projectAssistantFollowUpSuggestions.map((suggestion) => (
-                        <Button
-                          key={suggestion}
-                          type="button"
-                          variant="outlined"
-                          visual="gray"
-                          className="h-10 shrink-0 justify-center rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium leading-5 text-dark-blue-400 shadow-xs hover:bg-white hover:text-dark-blue-400"
-                          disabled={projectAssistant.isLoading}
-                          onClick={() =>
-                            projectAssistant.run(
-                              suggestion,
-                              latestProjectAssistantItem?.field ??
-                                activeAssistantField
-                            )
-                          }
-                        >
-                          {suggestion}
-                        </Button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
               <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
                   className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
@@ -16780,8 +16734,10 @@ const FinalProjectReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getProjectAssistantSuggestionWidthClass(suggestion)
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getProjectAssistantSuggestionWidthClass(
+                              suggestion
+                            ) || "w-fit"
                           )}
                           disabled={projectAssistant.isLoading}
                           onClick={() =>
@@ -16792,7 +16748,9 @@ const FinalProjectReviewStep = ({
                             )
                           }
                         >
-                          <span className="h-5 shrink-0">{suggestion}</span>
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
                         </Button>
                       ))}
                     </div>
