@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CheckoutDraftGatewayService } from './checkout-draft.service';
@@ -18,6 +18,38 @@ export class CheckoutDraftController {
   // forwarding the raw Authorization header — checkout-service now trusts
   // this call via INTERNAL_SERVICE_TOKEN (InternalTokenGuard) rather than
   // re-validating a user JWT itself.
+  @Post('listings/:listingId/draft')
+  @UseGuards(JwtAuthGuard)
+  createDraft(@Param('listingId') listingId: string, @Req() req: Request) {
+    const clientId = (req as any).user?.userId as string;
+
+    return this.checkoutDraftService.createDraft(listingId, clientId);
+  }
+
+  @Get('listings/:listingId/draft')
+  @UseGuards(JwtAuthGuard)
+  getDraft(@Param('listingId') listingId: string, @Req() req: Request) {
+    const clientId = (req as any).user?.userId as string;
+
+    return this.checkoutDraftService.getDraft(listingId, clientId);
+  }
+
+  @Get('drafts/:draftId/scope')
+  @UseGuards(JwtAuthGuard)
+  getDraftScope(@Param('draftId') draftId: string, @Req() req: Request) {
+    const clientId = (req as any).user?.userId as string;
+
+    return this.checkoutDraftService.getDraftScope(draftId, clientId);
+  }
+
+  @Get('drafts/:draftId/team')
+  @UseGuards(JwtAuthGuard)
+  getDraftTeam(@Param('draftId') draftId: string, @Req() req: Request) {
+    const clientId = (req as any).user?.userId as string;
+
+    return this.checkoutDraftService.getDraftTeam(draftId, clientId);
+  }
+
   @Get('listings/:listingId/summary')
   @UseGuards(JwtAuthGuard)
   getListingSummary(@Param('listingId') listingId: string, @Req() req: any) {

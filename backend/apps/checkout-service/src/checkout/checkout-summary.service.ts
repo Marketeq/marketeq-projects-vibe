@@ -52,6 +52,35 @@ type PricingBudgetRoleResult = {
   noData: boolean;
 };
 
+export type ListingTeamMember = {
+  id: string;
+  name: string;
+  username: string | null;
+  avatarUrl: string | null;
+  role: string | null;
+  location: string | null;
+  rate: number | null;
+  experienceLevel: string | null;
+  status: string | null;
+};
+
+export type UserProfileSummary = {
+  firstName: string;
+  lastName: string;
+  username: string | null;
+  avatarUrl: string | null;
+  location: string | null;
+  rate: number | null;
+};
+
+export type OpenRoleRateRequest = {
+  roleKey: string;
+  roleTitle: string;
+  location: string | null;
+  experience: string | null;
+  estimatedHours: number;
+};
+
 const normalizeRoleKey = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, ' ');
 
@@ -100,6 +129,7 @@ export class CheckoutSummaryService {
   private readonly logger = new Logger(CheckoutSummaryService.name);
   private readonly listingsUrl: string;
   private readonly pricingUrl: string;
+  private readonly userUrl: string;
   private readonly jwtSecret?: string;
 
   constructor(
@@ -110,6 +140,8 @@ export class CheckoutSummaryService {
       config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
     this.pricingUrl =
       config.get<string>('PRICING_SERVICE_URL') || 'http://localhost:3029';
+    this.userUrl =
+      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
     this.jwtSecret = config.get<string>('JWT_SECRET');
   }
 
@@ -269,7 +301,91 @@ export class CheckoutSummaryService {
     };
   }
 
-  private async fetchProject(listingId: string): Promise<any> {
+  async fetchListingTeam(listingId: string): Promise<ListingTeamMember[]> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get(
+          `${this.listingsUrl}/v1/projects/slug/${encodeURIComponent(listingId)}`,
+        ),
+      );
+      return Array.isArray(response.data?.team) ? response.data.team : [];
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch team for listing ${listingId}: ${(err as AxiosError).message}`,
+      );
+      return [];
+    }
+  }
+
+  async fetchUserProfile(userId: string): Promise<UserProfileSummary | null> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get(`${this.userUrl}/internal/users/${userId}`, {
+          timeout: 5_000,
+        }),
+      );
+      const user = response.data;
+      return {
+        firstName: user?.firstName ?? '',
+        lastName: user?.lastName ?? '',
+        username: user?.username ?? null,
+        avatarUrl: user?.avatarUrl ?? null,
+        location: user?.location ?? null,
+        rate: user?.rate != null ? Number(user.rate) : null,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch user ${userId}: ${(err as AxiosError).message}`,
+      );
+      return null;
+    }
+  }
+
+  async estimateRoleRates(
+    roles: OpenRoleRateRequest[],
+  ): Promise<Map<string, number | null>> {
+    const rates = new Map<string, number | null>();
+    roles.forEach((role) => rates.set(role.roleKey, null));
+
+    const priceable = roles.filter((role) => role.location);
+    if (priceable.length === 0 || !this.jwtSecret) return rates;
+
+    try {
+      const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
+        expiresIn: '5m',
+      });
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.pricingUrl}/v1/budget/calculate`,
+          {
+            roles: priceable.map((role) => ({
+              roleTitle: role.roleTitle,
+              location: role.location,
+              experienceLevel: normalizeExperience(role.experience),
+              estimatedHours: Math.max(1, Math.round(role.estimatedHours)),
+            })),
+          },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 5_000 },
+        ),
+      );
+      const results = response.data?.roles as
+        | PricingBudgetRoleResult[]
+        | undefined;
+      if (Array.isArray(results) && results.length === priceable.length) {
+        priceable.forEach((role, index) => {
+          const cents = results[index]?.hourlyRateUsdCents;
+          rates.set(role.roleKey, typeof cents === 'number' ? cents / 100 : null);
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to estimate open role rates: ${(err as AxiosError).message}`,
+      );
+    }
+    return rates;
+  }
+
+  async fetchProject(listingId: string): Promise<any> {
     try {
       const response = await firstValueFrom(
         this.http.get(`${this.listingsUrl}/v1/projects/${listingId}`),

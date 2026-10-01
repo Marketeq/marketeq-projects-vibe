@@ -5,6 +5,8 @@ import {
   Param,
   Body,
   Req,
+  BadRequestException,
+  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
   RawBodyRequest,
@@ -13,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { CheckoutService } from "./checkout.service";
 import { CheckoutSummaryService } from "./checkout-summary.service";
+import { CheckoutDraftService } from "./checkout-draft.service";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
 import { InternalTokenGuard } from "../guards/internal-token.guard";
@@ -42,7 +45,48 @@ export class CheckoutController {
     private readonly checkoutService: CheckoutService,
     private readonly stripeService: StripeService,
     private readonly checkoutSummaryService: CheckoutSummaryService,
+    private readonly checkoutDraftService: CheckoutDraftService,
   ) {}
+
+  @Post("listings/:listingId/draft")
+  @UseGuards(InternalTokenGuard)
+  createListingDraft(
+    @Param('listingId') listingId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.createDraft(clientId, listingId);
+  }
+
+  @Get("listings/:listingId/draft")
+  @UseGuards(InternalTokenGuard)
+  getListingDraft(
+    @Param('listingId') listingId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.getDraft(clientId, listingId);
+  }
+
+  @Get("drafts/:draftId/scope")
+  @UseGuards(InternalTokenGuard)
+  getDraftScope(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.getScope(clientId, draftId);
+  }
+
+  @Get("drafts/:draftId/team")
+  @UseGuards(InternalTokenGuard)
+  getDraftTeam(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.getTeam(clientId, draftId);
+  }
 
   @Get("listings/:listingId/summary")
   @UseGuards(InternalTokenGuard)

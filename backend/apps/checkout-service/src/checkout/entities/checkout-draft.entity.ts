@@ -11,23 +11,6 @@ import {
 } from 'typeorm';
 import { CheckoutSession } from './checkout-session.entity';
 
-export type CheckoutDraftTask = {
-  id: string;
-  title: string;
-  description: string | null;
-  roleName: string | null;
-  location: string[] | null;
-  experienceLevel: string | null;
-  estimatedHours: number | null;
-};
-
-export type CheckoutDraftPhase = {
-  id: string;
-  phaseName: string;
-  order: number;
-  tasks: CheckoutDraftTask[];
-};
-
 @Entity('checkout_drafts')
 @Unique(['clientId', 'listingId'])
 export class CheckoutDraft {
@@ -45,6 +28,18 @@ export class CheckoutDraft {
 
   @Column({ type: 'timestamptz', nullable: true })
   sourceListingUpdatedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  title: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  mediaUrl: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  durationDays: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  teamMemberCount: number | null;
 
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   giftCardCodes: string[];

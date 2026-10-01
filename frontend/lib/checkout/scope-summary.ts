@@ -15,6 +15,8 @@ export type CheckoutDraftPhase = {
   id: string
   phaseName: string
   order: number
+  startDay?: number
+  endDay?: number
   tasks: CheckoutDraftTask[]
 }
 
@@ -24,21 +26,34 @@ export type CheckoutScopeSummary = {
   projectCost: number | null
 }
 
-// Reads from the checkout draft (seeded once from the listing's scope via
-// the api-gateway, see checkout-draft.service.ts on the gateway). Read-only
-// for now — nothing writes back to the draft yet.
 export const getCheckoutScopeSummary = async (
-  listingId: string
+  draftId: string
 ): Promise<CheckoutScopeSummary | null> => {
   try {
-    const response = await CheckoutAPI.GetListingSummary(listingId)
-    const draft = response.data?.draft
-    if (!draft) return null
+    const response = await CheckoutAPI.GetDraftScope(draftId)
+    const data = response.data
+    if (!data || !Array.isArray(data.phases)) return null
 
     return {
-      draftId: draft.id,
-      phases: Array.isArray(draft.phases) ? draft.phases : [],
-      projectCost: typeof draft.projectCost === "number" ? draft.projectCost : null,
+      draftId: data.draftId,
+      phases: data.phases.map((phase: any) => ({
+        id: phase.id,
+        phaseName: phase.title,
+        order: phase.order,
+        startDay: phase.startDay,
+        endDay: phase.endDay,
+        tasks: (phase.tasks ?? []).map((task: any) => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          roleName: task.roleName,
+          assigneeUserId: task.assigneeUserId,
+          location: task.location,
+          experienceLevel: task.experienceLevel,
+          estimatedHours: task.durationHours,
+        })),
+      })),
+      projectCost: null,
     }
   } catch {
     return null

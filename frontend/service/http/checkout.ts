@@ -58,6 +58,18 @@ export const CheckoutAPI = {
 
   GetWalletBalance: () => AxiosRequest.get("/v1/checkout/wallet/balance"),
 
+  GetListingDraft: (listingId: string) =>
+    AxiosRequest.get(`/v1/checkout/listings/${listingId}/draft`),
+
+  CreateListingDraft: (listingId: string) =>
+    AxiosRequest.post(`/v1/checkout/listings/${listingId}/draft`, {}),
+
+  GetDraftScope: (draftId: string) =>
+    AxiosRequest.get(`/v1/checkout/drafts/${draftId}/scope`),
+
+  GetDraftTeam: (draftId: string) =>
+    AxiosRequest.get(`/v1/checkout/drafts/${draftId}/team`),
+
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
 
