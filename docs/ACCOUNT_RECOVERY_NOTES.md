@@ -315,7 +315,18 @@ on the sixth attempt.
 
 `security_question_answers` in auth-service holds one row per answered question:
 `userId`, `questionId`, a bcrypt `answerHash`, unique on `(userId, questionId)`.
-Migration `1772600000000-CreateSecurityQuestionAnswers`.
+Migration `1772700000000-CreateSecurityQuestionAnswers`.
+
+> Renamed from `1772600000000` on 2026-10-02. CSRF Phase 3 (`47fb33a9`) landed on
+> `dev-main` with `1772600000000-AddCsrfTokenToSessions` — the same timestamp, in
+> the same directory. Git sees two filenames and reports no conflict, so neither
+> the merge nor any CI gate catches it. Both would still have run, since TypeORM
+> tracks executed migrations by class name and the two touch unrelated tables,
+> but the ordering between them is arbitrary and `migration:revert` takes "the
+> last" by timestamp — so a revert could have dropped the wrong one. Theirs was
+> already merged, so ours moved. The migration is written with `IF NOT EXISTS`
+> throughout, so re-running it against a database that already had the table is
+> a no-op.
 
 **Answers are hashed, not encrypted.** They are only ever compared, never read
 back or displayed — the same argument as a password. There is no endpoint that
