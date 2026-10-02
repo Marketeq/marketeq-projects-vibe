@@ -33,7 +33,11 @@ export type MyListingStatus = (typeof MY_LISTING_STATUSES)[number]
 // the wizard doesn't have, e.g. a generic "Other"). projectType itself is
 // a free-form string column with no backend enum, so there's no authority
 // to check against beyond the two frontends agreeing — this is now that
-// single shared list both pages import.
+// single shared list both pages import. It also keeps the inline editor's
+// two extra values, "Plugin / Extension" and "Other": live listings already
+// store "Other", and any value missing from this list makes the inline
+// editor show "Select Project Type" and block re-publishing until the owner
+// picks a different type.
 export const PROJECT_TYPE_OPTIONS = [
   "Website",
   "Web App",
@@ -44,8 +48,10 @@ export const PROJECT_TYPE_OPTIONS = [
   "E-commerce Store",
   "Landing Page",
   "Chrome Extension",
+  "Plugin / Extension",
   "CLI Tool",
   "Game",
+  "Other",
 ]
 
 export interface MyListing {
