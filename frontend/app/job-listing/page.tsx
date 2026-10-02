@@ -14310,6 +14310,27 @@ const ArticleTextIcon = ({ className }: { className?: string }) => (
   </svg>
 )
 
+const VariableInsertIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="12"
+    height="12"
+    viewBox="0 0 12 12"
+    fill="none"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M1.5 3.25c0-.414.336-.75.75-.75h5.5c.414 0 .75.336.75.75V5H7.25V3.75h-4.5v4.5h4.5V7H8.5v1.75c0 .414-.336.75-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z"
+      fill="currentColor"
+    />
+    <path
+      d="M7 4.75 10.75 6.5 7 8.25v-1.2H4.75v-1.1H7v-1.2Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+
 const ndaPreviewSections = [
   {
     title: "Parties",
@@ -14345,6 +14366,7 @@ type FinalReviewAssistantHistoryItem = {
   field: SmartAssistantEditableField
   selectedText?: string
   insertText?: (text: string) => void
+  inserted?: boolean
   result?: string
   suggestions?: string[]
   status: "pending" | "success" | "error"
@@ -14956,6 +14978,14 @@ const useFinalReviewSmartAssistant = ({
     []
   )
 
+  const markHistoryItemInserted = useCallback((historyId: string) => {
+    setHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === historyId ? { ...item, inserted: true } : item
+      )
+    )
+  }, [])
+
   const startHistoryItem = useCallback(
     (
       prompt: string,
@@ -15174,6 +15204,7 @@ const useFinalReviewSmartAssistant = ({
     clearSelectedText,
     isLoading,
     run,
+    markHistoryItemInserted,
   }
 }
 
@@ -17090,16 +17121,22 @@ const FinalProjectReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500"
-                                onClick={() => item.insertText?.(item.result!)}
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return
+
+                                  item.insertText?.(item.result)
+                                  projectAssistant.markHistoryItemInserted(item.id)
+                                }}
                               >
-                                <Type className="size-3 shrink-0 text-primary-500" />
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
                                 Insert
                               </Button>
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
                                 projectAssistant.run(item.prompt, item.field)
