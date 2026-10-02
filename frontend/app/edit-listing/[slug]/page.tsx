@@ -30,7 +30,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
+import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -733,20 +733,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Web App",
-  "Mobile App",
-  "Desktop App",
-  "SaaS Platform",
-  "API / Backend",
-  "E-commerce Store",
-  "Landing Page",
-  "Chrome Extension",
-  "CLI Tool",
-  "Game",
-] as const
 
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
