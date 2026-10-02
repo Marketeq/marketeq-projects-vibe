@@ -111,6 +111,7 @@ interface GroqCallOptions {
   messages: GroqMessage[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
 const DEFAULT_GROQ_MAX_TOKENS = 2048;
@@ -1169,7 +1170,8 @@ export class JobListingAiService {
         response_format: { type: "json_object" },
       };
       if (REASONING_MODEL_PATTERN.test(model)) {
-        requestBody.reasoning_effort = GROQ_REASONING_EFFORT;
+        requestBody.reasoning_effort =
+          options.reasoningEffort ?? GROQ_REASONING_EFFORT;
       }
 
       const response = await firstValueFrom(
@@ -1646,19 +1648,33 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       {
         maxTokens: 6144,
         temperature: 0.4,
+        reasoningEffort: "low",
         messages: [
           {
             role: "system",
             content:
               "You write professional job listing descriptions for freelance roles. " +
               'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-              '"responsibilities": ["string"] (4-6 bullet points, one short responsibility each, at most 100 words in total, no bullet characters or numbering), ' +
+              '"responsibilities": ["string"] (one responsibility per item, between 85 and 100 words in total across all items, so more items means each one is shorter, no bullet characters or numbering), ' +
               '"overview": "string (2-4 sentences, at most 100 words)", ' +
               '"benefits": "string (2-4 sentences, at most 100 words)", ' +
               '"skills": ["string"] (5-10 skills) }] }. ' +
               "overview and benefits describe the project/service as a whole, not the specific role. " +
-              "responsibilities are specific to the role. " +
-              "Write in second person (You will...). Do not use markdown.",
+              "responsibilities are specific to the role: each item is a concrete duty that this role " +
+              "performs, grounded in the role title, experience level, work schedule and its listed tasks, " +
+              "and the project description. Start each item with an action verb in the imperative or " +
+              "present form (for example \"Design…\", \"Build…\", \"Review…\"). Never start with " +
+              "\"You will\", \"You'll\", \"You are\" or any pronoun, and do not use generic filler " +
+              "that could apply to any role. Do not invent duties unrelated to the role or the project. " +
+              "Choose the number of responsibilities per role (between 3 and 7) from the role itself: " +
+              "roughly one item per distinct task listed for that role, merging closely related tasks; " +
+              "when no tasks are listed, infer the scope from the role title and seniority. " +
+              "A narrow role gets 3 or 4 detailed items (about 25 words each) and a broad role gets 6 or 7 items (about 14 words each). " +
+              "Use the available space: aim for 85 to 100 words in total, adding detail about the scope, deliverables, collaborators and outcomes of each task. " +
+              "Only name tools, technologies, vendors, metrics or percentages that appear in the project description or the role's listed tasks; never invent any, and never mention a tool just because it is typical for the role. " +
+              "Never exceed 100 words, and never output an empty item. " +
+              "Do NOT default to 5 items. Roles in the same response must not all have the same count. " +
+              "overview and benefits are written in second person (You will...). Do not use markdown.",
           },
           {
             role: "user",
