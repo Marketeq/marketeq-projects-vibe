@@ -43,6 +43,11 @@ import {
 import { assertDiditHostedUrl, InvalidHostedUrlError } from '../common/utils/validate-didit-hosted-url';
 import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit/account-wide-attempt-count';
 import {
+  getHostedKycCycleAttemptCount,
+  hasFailedFinalCooldownElapsed,
+  HostedKycCycleRepositories,
+} from '../common/attempt-limit/hosted-kyc-attempt-cycle';
+import {
   HomeCountryConfirmationRequiredException,
   InvalidWebhookSignatureException,
   KycNotStartableException,
@@ -137,6 +142,10 @@ export class FreeKycService {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'no_profile' });
 
+    // Runs under the per-profile advisory lock held by startOrResume, so
+    // concurrent starts cannot both leave failed_final or create two sessions.
+    profile = await this.endElapsedFailedFinalCooldown(profile);
+
     this.assertStatusAllowsStart(profile);
 
     const active = await this.sessionRepository.findOne({
@@ -167,12 +176,37 @@ export class FreeKycService {
 
     this.assertHomeCountryConfirmed(profile, { requireFresh: true });
 
-    // One counter: the repository's existing account-wide attempt total
-    // (attempts + pending sessions + checked documents + reservations).
-    const attemptTotal = await getAccountWideAttemptCount(this.attemptRepos(), profileId);
+    // Attempts in the CURRENT retry cycle only: hosted-session attempts since
+    // the last final failure or approval. Historical rows stay stored but no
+    // longer count once a cycle closes, and legacy document-pipeline rows are
+    // never counted here (see common/attempt-limit/hosted-kyc-attempt-cycle.ts).
+    const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
     return this.createNew(profile);
+  }
+
+  /**
+   * Lazy cooldown: a failed_final profile becomes eligible the moment its
+   * 24-hour cooldown has elapsed, without waiting for the daily 09:00 sweep
+   * (which remains as background cleanup and makes the same transition).
+   * Before that — or when failed_final_at is missing, invalid or in the future —
+   * the profile is returned unchanged, so starting stays blocked with the
+   * retry-limit response (fail closed). Only the status is moved back to
+   * unstarted; attempt rows are never touched, and the new retry cycle starts
+   * empty because the final decline already closed the previous cycle.
+   */
+  private async endElapsedFailedFinalCooldown(
+    profile: IdentityVerificationProfile,
+  ): Promise<IdentityVerificationProfile> {
+    if (profile.identityVerificationStatus !== IdentityVerificationStatus.FAILED_FINAL) return profile;
+    if (!hasFailedFinalCooldownElapsed(profile.failedFinalAt, Date.now())) return profile;
+
+    profile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
+    profile.failedFinalAt = null;
+    await this.profileRepository.save(profile);
+    this.logger.log('failed_final cooldown elapsed — a fresh retry cycle begins.');
+    return profile;
   }
 
   // ---------------------------------------------------------------------
@@ -410,6 +444,16 @@ export class FreeKycService {
     };
   }
 
+  // Repositories for the hosted-session retry-cycle counter, optionally bound
+  // to a transaction. (attemptRepos above is retained for the shared legacy
+  // counter; hosted Free KYC no longer uses it for its limit.)
+  private cycleRepos(manager?: EntityManager): HostedKycCycleRepositories {
+    return {
+      sessionRepository: manager ? manager.getRepository(HostedKycSession) : this.sessionRepository,
+      attemptRepository: manager ? manager.getRepository(VerificationAttempt) : this.attemptRepository,
+    };
+  }
+
   // ---------------------------------------------------------------------
   // Webhook
   // ---------------------------------------------------------------------
@@ -538,6 +582,9 @@ export class FreeKycService {
 
   private isBlockedTerminalTransition(current: HostedKycSessionStatus, next: HostedKycSessionStatus): boolean {
     if (current === next) return false;
+    // "Kyc Expired" only ever follows an approval: for any session that was not
+    // approved it is inconsistent with our record and must change nothing.
+    if (next === HostedKycSessionStatus.KYC_EXPIRED && current !== HostedKycSessionStatus.APPROVED) return true;
     switch (current) {
       case HostedKycSessionStatus.APPROVED:
         return next !== HostedKycSessionStatus.KYC_EXPIRED;
@@ -555,7 +602,13 @@ export class FreeKycService {
     status: HostedKycSessionStatus,
   ): Promise<void> {
     const profileRepository = manager.getRepository(IdentityVerificationProfile);
-    const profile = await profileRepository.findOne({ where: { id: session.profileId } });
+    // The profile row is locked for the rest of the transaction so cycle
+    // counting and the status write are atomic even if two sessions of the same
+    // profile are ever processed at once.
+    const profile = await profileRepository.findOne({
+      where: { id: session.profileId },
+      lock: { mode: 'pessimistic_write' },
+    });
     if (!profile) return;
     const current = profile.identityVerificationStatus;
 
@@ -578,7 +631,9 @@ export class FreeKycService {
         const attemptRepository = manager.getRepository(VerificationAttempt);
         const alreadyCounted = await attemptRepository.findOne({ where: { vendorSessionId: session.diditSessionId } });
         if (!alreadyCounted) {
-          const before = await getAccountWideAttemptCount(this.attemptRepos(manager), profile.id);
+          // Attempts already used in the current retry cycle (this session's own
+          // row does not exist yet, so it is not counted).
+          const before = await getHostedKycCycleAttemptCount(this.cycleRepos(manager), profile.id);
           await attemptRepository.insert({
             profileId: profile.id,
             documentId: null,
@@ -607,14 +662,24 @@ export class FreeKycService {
         break;
       case HostedKycSessionStatus.ABANDONED:
       case HostedKycSessionStatus.EXPIRED:
-        // The session ended without a decision: consumes no attempt.
-        if (current === IdentityVerificationStatus.IN_PROGRESS) {
+        // The session ended without a decision: consumes no attempt, and the
+        // profile returns to a startable state whether it was in progress or
+        // waiting in review (a pending profile is not startable, so leaving it
+        // pending would strand the account).
+        if (
+          current === IdentityVerificationStatus.IN_PROGRESS ||
+          current === IdentityVerificationStatus.PENDING
+        ) {
           profile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
         }
         break;
       case HostedKycSessionStatus.KYC_EXPIRED:
-        profile.identityVerificationStatus = IdentityVerificationStatus.EXPIRED;
-        profile.expiredAt = new Date();
+        // Only a previously verified profile can expire; anything else is
+        // inconsistent with our record and changes nothing.
+        if (current === IdentityVerificationStatus.VERIFIED) {
+          profile.identityVerificationStatus = IdentityVerificationStatus.EXPIRED;
+          profile.expiredAt = new Date();
+        }
         break;
     }
     await profileRepository.save(profile);

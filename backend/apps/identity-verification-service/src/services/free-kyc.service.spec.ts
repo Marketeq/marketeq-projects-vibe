@@ -54,7 +54,11 @@ describe('FreeKycService', () => {
   function build(opts: {
     profile?: any;
     activeSession?: any;
+    // Attempts already used in the CURRENT retry cycle (declined hosted sessions
+    // that each have one attempt row, none yet closing the cycle).
     attemptCount?: number;
+    // Full hosted-session / attempt history, for cycle tests (overrides attemptCount).
+    history?: { sessions: any[]; attempts: any[] };
     providerResult?: any;
     providerError?: Error;
     session?: any;
@@ -64,6 +68,16 @@ describe('FreeKycService', () => {
     decisionError?: Error;
   } = {}) {
     const profile = opts.profile === undefined ? confirmedProfile() : opts.profile;
+    const history = opts.history ?? {
+      sessions: Array.from({ length: opts.attemptCount ?? 0 }, (_v, i) => ({
+        id: `hist-row-${i + 1}`,
+        profileId: 'profile-1',
+        diditSessionId: `hist-${i + 1}`,
+        status: HostedKycSessionStatus.DECLINED,
+        createdAt: new Date(Date.UTC(2020, 0, 1, 0, 0, i)),
+      })),
+      attempts: Array.from({ length: opts.attemptCount ?? 0 }, (_v, i) => ({ vendorSessionId: `hist-${i + 1}` })),
+    };
     const profileRepository = {
       findOne: jest.fn().mockResolvedValue(profile),
       save: jest.fn((p: any) => Promise.resolve(p)),
@@ -73,11 +87,13 @@ describe('FreeKycService', () => {
         if (q?.where?.diditSessionId) return opts.session ?? null;
         return opts.activeSession ?? null;
       }),
+      find: jest.fn().mockImplementation(async () => history.sessions),
       create: jest.fn((d: any) => ({ id: 'row-1', ...d })),
       save: jest.fn((d: any) => Promise.resolve(d)),
     };
     const attemptRepository = {
       count: jest.fn().mockResolvedValue(opts.attemptCount ?? 0),
+      find: jest.fn().mockImplementation(async () => history.attempts),
       findOne: jest.fn().mockResolvedValue(opts.existingAttempt ?? null),
       insert: jest.fn().mockResolvedValue(undefined),
     };
@@ -303,8 +319,11 @@ describe('FreeKycService', () => {
       await expect(service.startOrResume('user-1')).rejects.toBeInstanceOf(RetryLimitExceededException);
     });
 
-    it('enforces the existing three-attempt account limit BEFORE creating a new session', async () => {
-      const { service, provider } = build({ attemptCount: 3 });
+    it('refuses a new session after the third decline of a cycle (failed_final) BEFORE calling Didit', async () => {
+      const { service, provider } = build({
+        attemptCount: 3,
+        profile: confirmedProfile({ identityVerificationStatus: IdentityVerificationStatus.FAILED_FINAL }),
+      });
       await expect(service.startOrResume('user-1')).rejects.toBeInstanceOf(RetryLimitExceededException);
       expect(provider.createKycSession).not.toHaveBeenCalled();
     });
@@ -486,9 +505,13 @@ describe('FreeKycService', () => {
         expect(h.provider.createKycSession).not.toHaveBeenCalled();
       });
 
-      it('Declined with the account already at the limit → still no new session', async () => {
-        const { h } = setup('Declined', { attemptCount: 3 });
+      it('Declined arriving after the profile is already failed_final → no extra attempt and still no new session', async () => {
+        const { h } = setup('Declined', {
+          attemptCount: 3,
+          profile: inProgressProfile({ identityVerificationStatus: IdentityVerificationStatus.FAILED_FINAL }),
+        });
         await expect(h.service.startOrResume('user-1')).rejects.toBeInstanceOf(RetryLimitExceededException);
+        expect(h.attemptRepository.insert).not.toHaveBeenCalled();
         expect(h.provider.createKycSession).not.toHaveBeenCalled();
       });
 
