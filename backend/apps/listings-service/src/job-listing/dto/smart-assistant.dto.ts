@@ -147,3 +147,24 @@ export class ShortenSelectedTextDto {
   @MaxLength(10000)
   fieldContext: string;
 }
+
+export class EditSelectedTextDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  command: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(10000)
+  selectedText: string;
+
+  @IsString()
+  @IsIn(['title', 'overview', 'benefits', 'responsibilities'])
+  fieldContext: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  fullFieldValue?: string;
+}

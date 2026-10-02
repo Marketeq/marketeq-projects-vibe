@@ -2164,4 +2164,44 @@ ${input.command}
       "shorten_text",
     );
   }
+
+  async editSelectedText(input: {
+    command: string;
+    selectedText: string;
+    fieldContext: string;
+    fullFieldValue?: string;
+  }): Promise<{ updatedText: string }> {
+    const fullFieldContext = input.fullFieldValue?.trim()
+      ? input.fullFieldValue
+      : "No full field value provided.";
+
+    return this.call<{ updatedText: string }>(
+      {
+        maxTokens: 2048,
+        temperature: 0.4,
+        messages: [
+          {
+            role: "system",
+            content:
+              'You edit selected text from a job listing field using the user command. Respond only with JSON: { "updatedText": "string" }. Return only the replacement text for the selected text, not the full field. Preserve the original meaning unless the command explicitly asks to change meaning, tone, emphasis, audience, or scope. Do not use markdown.',
+          },
+          {
+            role: "user",
+            content: [
+              `Field: ${input.fieldContext}`,
+              "",
+              "Full field value for context:",
+              fullFieldContext,
+              "",
+              "Selected text to edit:",
+              input.selectedText,
+              "",
+              `Command: ${input.command}`,
+            ].join("\n"),
+          },
+        ],
+      },
+      "edit_selected_text",
+    );
+  }
 }

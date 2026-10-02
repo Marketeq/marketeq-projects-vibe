@@ -172,6 +172,20 @@ export const JobListingAPI = {
       data,
     ),
 
+  EditSmartAssistantSelectedText: (
+    id: string,
+    data: {
+      command: string;
+      selectedText: string;
+      fieldContext: "title" | "overview" | "benefits" | "responsibilities";
+      fullFieldValue?: string;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/edit-selection`),
+      data,
+    ),
+
   GenerateTools: (
     id: string,
     data: {

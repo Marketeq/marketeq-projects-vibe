@@ -14952,7 +14952,7 @@ const useFinalReviewSmartAssistant = ({
 
       selectedTextInsertRef.current = payload.insertText
       setSelectedText(trimmedText)
-      setMessage("Shorten it")
+      setMessage("")
     },
     []
   )
@@ -15032,7 +15032,7 @@ const useFinalReviewSmartAssistant = ({
     []
   )
 
-  const shortenSelectedText = useCallback(
+  const editSelectedText = useCallback(
     async (command: string, field: SmartAssistantEditableField) => {
       const trimmedCommand = command.trim()
       const selectedTextSnapshot = selectedText.trim()
@@ -15063,16 +15063,17 @@ const useFinalReviewSmartAssistant = ({
           return
         }
 
-        const response = await JobListingAPI.ShortenSmartAssistantText(
+        const response = await JobListingAPI.EditSmartAssistantSelectedText(
           listingId,
           {
+            command: trimmedCommand,
             selectedText: selectedTextSnapshot,
             fieldContext: field,
+            fullFieldValue: getValue(field),
           }
         )
         const data = response.data as {
           aiStatus?: "OK" | "AI_UNAVAILABLE"
-          shortenedText?: string
           updatedText?: string
           result?: string
           message?: string
@@ -15087,22 +15088,21 @@ const useFinalReviewSmartAssistant = ({
           return
         }
 
-        const shortenedText =
-          data.shortenedText ?? data.updatedText ?? data.result ?? data.message
+        const updatedText = data.updatedText ?? data.result ?? data.message
 
-        if (shortenedText) {
-          completeHistoryItem(historyId, shortenedText, "success")
+        if (updatedText) {
+          completeHistoryItem(historyId, updatedText, "success")
           clearSelectedText()
           return
         }
 
         completeHistoryItem(
           historyId,
-          "Smart Assistant did not return shortened text.",
+          "Smart Assistant did not return updated text.",
           "error"
         )
       } catch (error) {
-        console.error("Smart Assistant selected text shorten failed", error)
+        console.error("Smart Assistant selected text edit failed", error)
         completeHistoryItem(historyId, "Smart Assistant is temporarily unavailable.", "error")
       } finally {
         setIsLoading(false)
@@ -15112,6 +15112,7 @@ const useFinalReviewSmartAssistant = ({
       completeHistoryItem,
       clearSelectedText,
       ensureJobListingDraft,
+      getValue,
       jobListingId,
       selectedText,
       startHistoryItem,
@@ -15127,7 +15128,7 @@ const useFinalReviewSmartAssistant = ({
       }
 
       if (selectedText.trim()) {
-        await shortenSelectedText(trimmedCommand, field)
+        await editSelectedText(trimmedCommand, field)
         return
       }
 
@@ -15208,7 +15209,7 @@ const useFinalReviewSmartAssistant = ({
       jobListingId,
       onApply,
       selectedText,
-      shortenSelectedText,
+      editSelectedText,
       startHistoryItem,
     ]
   )
@@ -15238,16 +15239,17 @@ const useFinalReviewSmartAssistant = ({
         }
 
         if (item.selectedText) {
-          const response = await JobListingAPI.ShortenSmartAssistantText(
+          const response = await JobListingAPI.EditSmartAssistantSelectedText(
             listingId,
             {
+              command: trimmedCommand,
               selectedText: item.selectedText,
               fieldContext: item.field,
+              fullFieldValue: getValue(item.field),
             }
           )
           const data = response.data as {
             aiStatus?: "OK" | "AI_UNAVAILABLE"
-            shortenedText?: string
             updatedText?: string
             result?: string
             message?: string
@@ -15262,13 +15264,12 @@ const useFinalReviewSmartAssistant = ({
             return
           }
 
-          const shortenedText =
-            data.shortenedText ?? data.updatedText ?? data.result ?? data.message
+          const updatedText = data.updatedText ?? data.result ?? data.message
 
           completeHistoryItem(
             item.id,
-            shortenedText ?? "Smart Assistant did not return shortened text.",
-            shortenedText ? "success" : "error"
+            updatedText ?? "Smart Assistant did not return updated text.",
+            updatedText ? "success" : "error"
           )
           return
         }
@@ -17403,7 +17404,11 @@ const FinalProjectReviewStep = ({
                     "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
                     projectAssistant.selectedText ? "h-5" : "h-10"
                   )}
-                  placeholder="I want to change..."
+                  placeholder={
+                    projectAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={projectAssistant.message}
                   onChange={(event) =>
                     projectAssistant.setMessage(event.target.value)

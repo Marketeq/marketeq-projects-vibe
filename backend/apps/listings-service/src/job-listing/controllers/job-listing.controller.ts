@@ -29,6 +29,7 @@ import { PresignBriefUploadDto } from "../dto/presign-brief-upload.dto";
 import { ListJobListingsQueryDto } from "../dto/list-job-listings-query.dto";
 import { CreateRoleRowDto } from "../dto/create-role-row.dto";
 import {
+  EditSelectedTextDto,
   ShortenSelectedTextDto,
   SmartAssistantDto,
   SmartAssistantScopeDto,
@@ -777,6 +778,31 @@ export class JobListingController {
         return {
           aiStatus: "AI_UNAVAILABLE",
           shortenedText: dto.selectedText,
+          message: error.message,
+          fallback: { selectedText: dto.selectedText },
+        };
+      }
+      throw error;
+    }
+  }
+
+  @Post(":id/smart-assistant/edit-selection")
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.OK)
+  async editSelectedText(
+    @Param("id") id: string,
+    @Body() dto: EditSelectedTextDto,
+  ): Promise<Record<string, unknown>> {
+    await this.jobListingService.findOneInternal(id);
+
+    try {
+      const result = await this.aiService.editSelectedText(dto);
+      return { aiStatus: "OK", ...result };
+    } catch (error) {
+      if (error instanceof GroqUnavailableException) {
+        return {
+          aiStatus: "AI_UNAVAILABLE",
+          updatedText: dto.selectedText,
           message: error.message,
           fallback: { selectedText: dto.selectedText },
         };

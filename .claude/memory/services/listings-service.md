@@ -51,3 +51,4 @@ Team entity also has: `logo`, `specializations[]`, `completedProjects`
 - `STRAPI_SYNC_TOKEN` env var renamed to `CMS_SYNC_TOKEN`
 - `synchronize: true` in app.module.ts — auto-creates/updates tables (dev only, set to false before prod)
 - Two `project` table representations: `project` (TypeORM entity) and `projects` (used by cms-projects controller). The cms-projects controller reads from `projects`.
+- 2026-10-02: Added `POST /v1/job-listings/:id/smart-assistant/edit-selection` for non-persisting selected-text Smart Assistant edits. It returns replacement text only; frontend applies insertion locally.
