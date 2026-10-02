@@ -30,7 +30,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
+import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -733,20 +733,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Web App",
-  "Mobile App",
-  "Desktop App",
-  "SaaS Platform",
-  "API / Backend",
-  "E-commerce Store",
-  "Landing Page",
-  "Chrome Extension",
-  "CLI Tool",
-  "Game",
-] as const
 
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
@@ -9114,6 +9100,15 @@ function PublishProject({
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
+  // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
+  // saveMedia had no ref here and its effect's cleanup only cleared the
+  // interval — a media change made within the ~2s polling window, followed
+  // by navigating to the other editor (or a hard reload before the next
+  // tick), was silently dropped: never reaches the backend, so whichever
+  // editor loads next hydrates the pre-change media. Reusing the same
+  // flush-on-unmount/flush-on-unload pattern every sibling autosave here
+  // already has.
+  const saveMediaRef = useRef<() => Promise<void>>(async () => {})
   const lastFaqsPayloadRef = useRef<string>("")
   const faqsRef = useRef<WizardFaq[]>([])
   const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
@@ -9650,6 +9645,7 @@ function PublishProject({
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveMediaRef.current()
       void saveFaqsRef.current()
       void saveVideoRef.current()
     }
@@ -9805,11 +9801,16 @@ function PublishProject({
       }
     }
 
+    saveMediaRef.current = saveMedia
+
     const interval = setInterval(() => {
       void saveMedia()
     }, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveMedia()
+    }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(

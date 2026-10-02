@@ -20,6 +20,7 @@ import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
 import {
+  PROJECT_TYPE_OPTIONS,
   TEAM_SEED_LISTINGS,
 } from "@/src/lib/my-listings"
 import {
@@ -374,16 +375,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Mobile App",
-  "Desktop App",
-  "API / Backend",
-  "Plugin / Extension",
-  "SaaS Platform",
-  "Other",
-]
 
 const toEmbedUrl = (raw?: string | null): string => {
   if (!raw) return ""
@@ -1634,6 +1625,16 @@ function ProjectDetailsInner() {
         ) < 3,
         (project.industries || []).length < 1,
         !project.faqs || project.faqs.length === 0,
+        // QA-206/PMCM-403: mirrors the wizard's Team step validity
+        // (QA-198/PMCM-395 — the owner alone satisfies this, the same as
+        // the wizard's `teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)`)
+        // so both editors gate publish on the same Team requirement instead
+        // of this editor silently skipping it.
+        !(
+          (Array.isArray(project.teamMemberIds)
+            ? project.teamMemberIds.length > 0
+            : false) || Boolean(user?.id)
+        ),
       ].some(Boolean)
     : false
 
@@ -1664,6 +1665,12 @@ function ProjectDetailsInner() {
           project.deliverables.length > 0
         ) && "scope",
         (!project.faqs || project.faqs.length === 0) && "FAQ's",
+        // QA-206/PMCM-403: same Team requirement as hasPublishBlockingErrors above.
+        !(
+          (Array.isArray(project.teamMemberIds)
+            ? project.teamMemberIds.length > 0
+            : false) || Boolean(user?.id)
+        ) && "a team member",
       ].filter(Boolean) as string[])
     : []
 
