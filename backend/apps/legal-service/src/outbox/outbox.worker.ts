@@ -42,10 +42,19 @@ export class OutboxWorker implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(
-      () => void this.publishPending(),
-      this.POLL_INTERVAL_MS,
-    );
+    // A rejection escaping this timer is unhandled and exits the whole
+    // process (Node's default), so a dropped DB connection during one poll
+    // would take legal-service down. Log it instead: rows stay 'pending' and
+    // the next tick retries them.
+    this.timer = setInterval(() => {
+      this.publishPending().catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Outbox poll failed: ${message}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      });
+    }, this.POLL_INTERVAL_MS);
     this.logger.log(
       `OutboxWorker started — polling every ${this.POLL_INTERVAL_MS / 1000}s`,
     );

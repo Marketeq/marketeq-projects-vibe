@@ -13,6 +13,6 @@ export class CheckoutDraftController {
   @Get('listings/:listingId/summary')
   @UseGuards(JwtAuthGuard)
   getListingSummary(@Param('listingId') listingId: string, @Req() req: any) {
-    return this.checkoutDraftService.getListingSummary(listingId, req.user.sub);
+    return this.checkoutDraftService.getListingSummary(listingId, req.user.userId);
   }
 }

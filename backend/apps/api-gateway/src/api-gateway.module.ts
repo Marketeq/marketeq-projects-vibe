@@ -19,6 +19,7 @@ import { CheckoutDraftController } from './checkout-draft/checkout-draft.control
 import { CheckoutDraftGatewayService } from './checkout-draft/checkout-draft.service'
 import { JwtStrategy } from './guards/jwt-auth.guard'
 import { CsrfOriginMiddleware } from './middleware/csrf-origin.middleware'
+import { CsrfTokenMiddleware } from './middleware/csrf-token.middleware'
 import { JwtMiddleware } from './middleware/jwt.middleware'
 import { LoggingMiddleware } from './middleware/logging.middleware'
 
@@ -81,5 +82,6 @@ export class ApiGatewayModule implements NestModule {
     consumer.apply(LoggingMiddleware).forRoutes('*')
     consumer.apply(CsrfOriginMiddleware).forRoutes('*')
     consumer.apply(JwtMiddleware).forRoutes('*')
+    consumer.apply(CsrfTokenMiddleware).forRoutes('*')
   }
 }

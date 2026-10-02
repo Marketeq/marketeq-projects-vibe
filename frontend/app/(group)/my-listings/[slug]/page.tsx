@@ -20,6 +20,7 @@ import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { TeamsAPI } from "@/service/http/teams"
 import {
+  PROJECT_TYPE_OPTIONS,
   TEAM_SEED_LISTINGS,
 } from "@/src/lib/my-listings"
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, getIsNotEmpty, noop, toPxIfNumber } from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
@@ -373,16 +375,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Mobile App",
-  "Desktop App",
-  "API / Backend",
-  "Plugin / Extension",
-  "SaaS Platform",
-  "Other",
-]
 
 const toEmbedUrl = (raw?: string | null): string => {
   if (!raw) return ""
@@ -1428,16 +1420,16 @@ function SortableGalleryItem({
   )
 }
 
-export default function ProjectDetails() {
+// PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+// full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+// requires everywhere on listing pages. The default export below wraps this
+// in AuthenticatedRoute instead, matching every other gated route (spinner,
+// then the modal, then the page — no full-page redirect).
+function ProjectDetailsInner() {
   const params = useParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
-  React.useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
+  const { user } = useAuth()
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1468,6 +1460,9 @@ export default function ProjectDetails() {
     scope: [],
   })
   const [loading, setLoading] = React.useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [accessDenied, setAccessDenied] = React.useState(false)
   const [hasChanges, setHasChanges] = React.useState(false)
 
   // Warn on browser tab close/refresh with unsaved changes
@@ -1630,6 +1625,16 @@ export default function ProjectDetails() {
         ) < 3,
         (project.industries || []).length < 1,
         !project.faqs || project.faqs.length === 0,
+        // QA-206/PMCM-403: mirrors the wizard's Team step validity
+        // (QA-198/PMCM-395 — the owner alone satisfies this, the same as
+        // the wizard's `teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)`)
+        // so both editors gate publish on the same Team requirement instead
+        // of this editor silently skipping it.
+        !(
+          (Array.isArray(project.teamMemberIds)
+            ? project.teamMemberIds.length > 0
+            : false) || Boolean(user?.id)
+        ),
       ].some(Boolean)
     : false
 
@@ -1660,6 +1665,12 @@ export default function ProjectDetails() {
           project.deliverables.length > 0
         ) && "scope",
         (!project.faqs || project.faqs.length === 0) && "FAQ's",
+        // QA-206/PMCM-403: same Team requirement as hasPublishBlockingErrors above.
+        !(
+          (Array.isArray(project.teamMemberIds)
+            ? project.teamMemberIds.length > 0
+            : false) || Boolean(user?.id)
+        ) && "a team member",
       ].filter(Boolean) as string[])
     : []
 
@@ -1785,13 +1796,23 @@ export default function ProjectDetails() {
                 title: backendErrorMessage(err),
                 variant: "destructive",
               })
-            } else {
+            } else if (err?.response?.status === 503) {
+              // Moderation service itself is down, not a rejection of the
+              // file — the file is still good, just unverified, so a local
+              // preview is a reasonable stand-in until it can be checked.
               finalUrl = URL.createObjectURL(file)
               toast({
-                title:
-                  err?.response?.status === 503
-                    ? "Image moderation service unavailable. Showing local preview."
-                    : "Failed to upload image. Showing local preview.",
+                title: "Image moderation service unavailable. Showing local preview.",
+                variant: "destructive",
+              })
+            } else {
+              // QA-220/PMCM-403: every other failure here — including the
+              // backend's file-size/type validation rejection — means the
+              // file was never accepted. Previously this fell into the same
+              // branch as the 503 case above and showed a local preview of
+              // an image that was never actually uploaded.
+              toast({
+                title: backendErrorMessage(err) || "Failed to upload image. Please try again.",
                 variant: "destructive",
               })
             }
@@ -1952,14 +1973,24 @@ export default function ProjectDetails() {
         console.error("Failed to upload featured image:", err)
         if (isModerationRejection(err)) {
           toast({ title: backendErrorMessage(err), variant: "destructive" })
-        } else {
+        } else if (err?.response?.status === 503) {
+          // Moderation service itself is down, not a rejection of the
+          // file — the file is still good, just unverified, so a local
+          // preview is a reasonable stand-in until it can be checked.
           const localUrl = URL.createObjectURL(file)
           setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
           toast({
-            title:
-              err?.response?.status === 503
-                ? "Image moderation service unavailable. Showing local preview."
-                : "Failed to upload featured image. Showing local preview.",
+            title: "Image moderation service unavailable. Showing local preview.",
+            variant: "destructive",
+          })
+        } else {
+          // QA-220/PMCM-403: every other failure here — including the
+          // backend's file-size/type validation rejection — means the
+          // file was never accepted. Previously this fell into the same
+          // branch as the 503 case above and showed a local preview of
+          // an image that was never actually uploaded.
+          toast({
+            title: backendErrorMessage(err) || "Failed to upload featured image. Please try again.",
             variant: "destructive",
           })
         }
@@ -3060,12 +3091,26 @@ export default function ProjectDetails() {
         Math.round((Number(project.budget) || 0) * 100)
       const pricingCents = Number(project.budgetUsdCents) || 0
       const computedCents = estimateScopeBudgetCents(phases)
-      const budgetTotalCents =
-        pricingCents > 0
+      // QA-178/PMCM-397: pricingCents only updates ~1.5s after a change,
+      // via handleScopeChange's debounced ReplaceProjectScope round-trip —
+      // so preferring it over computedCents (the old order) masked every
+      // edit made before that round-trip landed, or made again inside that
+      // window. This is what made phase deletion look broken while task
+      // deletion looked fine: both mutate scope through the identical
+      // onPhasesChange -> handleScopeChange path and land in this same
+      // memo, but by the time a *later* edit (e.g. a phase delete) ran, an
+      // *earlier* edit's round-trip had already primed a stale positive
+      // pricingCents that outranked anything computed live afterward —
+      // including the AC's "reset to zero when every phase is deleted"
+      // case. Once scope has actually been loaded (project.scope is a real
+      // array, even an empty one), the live computation is authoritative;
+      // storedCents/pricingCents only apply before scope has loaded at all.
+      const hasScope = Array.isArray(project.scope)
+      const budgetTotalCents = hasScope
+        ? computedCents
+        : pricingCents > 0
           ? pricingCents
-          : computedCents > 0
-            ? computedCents
-            : storedCents
+          : storedCents
 
       return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
     }, [
@@ -3442,7 +3487,16 @@ export default function ProjectDetails() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // stop here instead of falling through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // draft not found by ID — fall through
           }
         }
@@ -3462,7 +3516,12 @@ export default function ProjectDetails() {
               setLoading(false)
               return
             }
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setAccessDenied(true)
+              setLoading(false)
+              return
+            }
             // not found — try next candidate
           }
         }
@@ -3566,10 +3625,6 @@ export default function ProjectDetails() {
   const projectStaticContent = React.useMemo<ProjectStaticContent>(() => {
     return buildProjectStaticContentFromGateway(project?.projectStaticContent)
   }, [project?.projectStaticContent])
-
-  if (!isAuthLoading && !user) {
-    return null
-  }
 
   if (loading) {
     return (
@@ -3708,6 +3763,31 @@ export default function ProjectDetails() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask
+            the listing owner to add you to the team if you should be able
+            to edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
           </div>
         </div>
       </div>
@@ -10587,5 +10667,13 @@ export default function ProjectDetails() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+export default function ProjectDetails() {
+  return (
+    <AuthenticatedRoute>
+      <ProjectDetailsInner />
+    </AuthenticatedRoute>
   )
 }

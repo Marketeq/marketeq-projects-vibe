@@ -152,6 +152,17 @@ export class PublishService {
     }
   }
 
+  // QA-196/PMCM-402: "ownership" here also covers anyone on the listing's
+  // own team roster (teamMemberIds), not only its literal creator — the
+  // editor is expected to be usable by the whole team the owner staffed on
+  // this listing, matching the AC's "can access it normally".
+  private isProjectMember(project: Project, userId: string): boolean {
+    if (project.userId === userId) return true;
+    return (project.teamMemberIds ?? [])
+      .map((id) => String(id))
+      .includes(String(userId));
+  }
+
   private async ensureProjectOwnership(
     projectId: string,
     userId: string,
@@ -162,7 +173,7 @@ export class PublishService {
       throw new NotFoundException('Project not found');
     }
 
-    if (project.userId !== userId) {
+    if (!this.isProjectMember(project, userId)) {
       throw new ForbiddenException('You do not have access to this project');
     }
 
@@ -792,6 +803,9 @@ export class PublishService {
     if (dto.teamMemberIds !== undefined) {
       payload.teamMemberIds = dto.teamMemberIds;
     }
+    if (dto.pendingInviteEmails !== undefined) {
+      payload.pendingInviteEmails = dto.pendingInviteEmails;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -802,9 +816,19 @@ export class PublishService {
   }
 
   async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
-    const project = await this.projectRepository.findBySlug(slug, userId);
+    const project = await this.projectRepository.findBySlug(slug);
     if (!project) {
       throw new NotFoundException('Project not found');
+    }
+
+    // QA-196/PMCM-402: findBySlug used to filter by userId at the query
+    // level, so the row simply never came back for anyone but the literal
+    // creator — including a real team member on this listing. The lookup
+    // above is unscoped; the access check now happens explicitly here so a
+    // team member sees the real listing and a stranger gets a 403 instead
+    // of both silently falling through to "not found".
+    if (!this.isProjectMember(project, userId)) {
+      throw new ForbiddenException('You do not have access to this project');
     }
 
     const media = await this.mediaRepository.find({ projectId: project.id });
@@ -1610,7 +1634,21 @@ export class PublishService {
   //   // return this.projectRepository.update(id, clonedPayload);
   // }
 
-  async softDelete(id: Project['id']): Promise<void> {
+  // QA-202/PMCM-403: this existed but was never wired to a controller route
+  // — "Delete project" on the dashboard card menu had nowhere to call. Also
+  // had no authorization check at all (would soft-delete any project by id
+  // for any authenticated caller); ensureProjectOwnership now gates it the
+  // same as every other mutating project endpoint in this service.
+  async softDelete(userId: string, id: string): Promise<void> {
+    await this.ensureProjectOwnership(id, userId);
+    // Unpublish before deleting. search-service's DB fallback lists
+    // listings by raw SQL on status = 'published' with no deletedAt check,
+    // and this service never removes them from Algolia — a deleted listing
+    // left as 'published' stays in marketplace search, linking to a 404.
+    await this.projectRepository.update(id, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
     await this.projectRepository.softDelete(id);
   }
 

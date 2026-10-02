@@ -24,6 +24,36 @@ export const MY_LISTING_STATUSES = [
 
 export type MyListingStatus = (typeof MY_LISTING_STATUSES)[number]
 
+// QA-204/PMCM-403: edit-listing/[slug]/page.tsx (the full wizard) and
+// my-listings/[slug]/page.tsx (the inline editor) each defined their own
+// "Project Type" options locally and had drifted apart — the wizard's list
+// is the older, more deliberately-maintained one (unchanged since it was
+// first added; the inline editor's is a later, independently-written
+// near-duplicate missing several of the wizard's options and adding ones
+// the wizard doesn't have, e.g. a generic "Other"). projectType itself is
+// a free-form string column with no backend enum, so there's no authority
+// to check against beyond the two frontends agreeing — this is now that
+// single shared list both pages import. It also keeps the inline editor's
+// two extra values, "Plugin / Extension" and "Other": live listings already
+// store "Other", and any value missing from this list makes the inline
+// editor show "Select Project Type" and block re-publishing until the owner
+// picks a different type.
+export const PROJECT_TYPE_OPTIONS = [
+  "Website",
+  "Web App",
+  "Mobile App",
+  "Desktop App",
+  "SaaS Platform",
+  "API / Backend",
+  "E-commerce Store",
+  "Landing Page",
+  "Chrome Extension",
+  "Plugin / Extension",
+  "CLI Tool",
+  "Game",
+  "Other",
+]
+
 export interface MyListing {
   id: string
   title: string
