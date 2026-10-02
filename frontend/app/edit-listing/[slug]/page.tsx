@@ -9100,6 +9100,15 @@ function PublishProject({
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
   const lastMediaPayloadRef = useRef<string>("")
+  // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
+  // saveMedia had no ref here and its effect's cleanup only cleared the
+  // interval — a media change made within the ~2s polling window, followed
+  // by navigating to the other editor (or a hard reload before the next
+  // tick), was silently dropped: never reaches the backend, so whichever
+  // editor loads next hydrates the pre-change media. Reusing the same
+  // flush-on-unmount/flush-on-unload pattern every sibling autosave here
+  // already has.
+  const saveMediaRef = useRef<() => Promise<void>>(async () => {})
   const lastFaqsPayloadRef = useRef<string>("")
   const faqsRef = useRef<WizardFaq[]>([])
   const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
@@ -9636,6 +9645,7 @@ function PublishProject({
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveMediaRef.current()
       void saveFaqsRef.current()
       void saveVideoRef.current()
     }
@@ -9791,11 +9801,16 @@ function PublishProject({
       }
     }
 
+    saveMediaRef.current = saveMedia
+
     const interval = setInterval(() => {
       void saveMedia()
     }, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveMedia()
+    }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(
