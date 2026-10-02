@@ -230,6 +230,9 @@ export class ProxyController {
       // the 3028 default is the ecosystem.config.js port used by local PM2.
       'resume-parsing-service': process.env.RESUME_PARSING_SERVICE_URL || 'http://localhost:3028',
       'location-service': process.env.LOCATION_SERVICE_URL || 'http://localhost:3036',
+      // boot-all.js runs this on 3035 and sets IDENTITY_VERIFICATION_SERVICE_URL to
+      // match; the 3019 default is the service's own `PORT ?? 3019` for local runs.
+      'identity-verification-service': process.env.IDENTITY_VERIFICATION_SERVICE_URL || 'http://localhost:3019',
     }
 
     const results: Record<string, { status: string; code: number }> = {}
