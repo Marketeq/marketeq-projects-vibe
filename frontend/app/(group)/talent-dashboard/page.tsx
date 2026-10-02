@@ -27,6 +27,17 @@ import {
   RESULT_POLL_MAX_ATTEMPTS,
 } from "@/src/lib/api/identity-verification-status"
 import {
+  cooldownRetryAt,
+  decideGate,
+  formatRetryAt,
+  gateRouteForFlowState,
+  startIdentityOnlyForDashboard,
+} from "@/src/lib/api/identity-next-step"
+import {
+  isPasswordSetupRequired,
+  shouldStartIdentityCheck,
+} from "@/src/lib/api/identity-check-gate"
+import {
   createReturnReconciler,
   fetchIdentityVerificationSummary,
   shouldShowSuccessModal,
@@ -64,6 +75,11 @@ import {
   IconButton,
   ScrollArea,
   ScrollBar,
+  Toast,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
 } from "@/components/ui"
 import { StatusDialog } from "@/app/(group)/complete-profile/page"
 
@@ -96,8 +112,7 @@ export default function TalentDashboard() {
       hasPassword?: boolean
     }
 
-    const needsPasswordSetup =
-      safeUser?.provider === "EMAIL" && !safeUser?.hasPassword
+    const needsPasswordSetup = isPasswordSetupRequired(safeUser)
 
     if (safeUser && needsPasswordSetup) {
       setShowSecurityModal(true)
@@ -148,6 +163,23 @@ export default function TalentDashboard() {
   const identityStatusCheckStartedRef = useRef(false)
 
   const runIdentityVerificationCheck = useCallback(async () => {
+    // The backend's nextAction decides whether the gate is due: it opens for every
+    // state that needs the user to act (not started, a rejected attempt with attempts
+    // left, an unfinished session, an expired verification, a location to confirm)
+    // and stays closed for in review, waiting for a retry window, and complete.
+    const summary = await fetchIdentityVerificationSummary()
+    const decision = decideGate(summary)
+    if (decision.kind === "open") {
+      setGateReason(decision.reason)
+      setVerificationGateOpen(true)
+      return
+    }
+    if (decision.kind === "closed") {
+      setVerificationGateOpen(false)
+      setCooldownRetryTime(cooldownRetryAt(summary))
+      return
+    }
+    // An older server with no usable nextAction: the pre-existing status check.
     const status = await checkIdentityVerificationStatus()
     const reason = gateReasonForStatus(status)
     if (!reason) {
@@ -180,6 +212,19 @@ export default function TalentDashboard() {
   // refresh remain as fallbacks (GET only — never another reconcile). Nothing is read
   // from the URL Didit returns to, and no attempt/cooldown/status rule lives here.
   const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
+  // Success alert (Figma node 13101-47566): shown only AFTER the user clicks the
+  // success modal's own Done button, never while the modal is open.
+  const [successAlertOpen, setSuccessAlertOpen] = useState(false)
+  // "You've used all three attempts": the retry time (ISO) while the backend says to
+  // wait for a retry window, else null. Closing it only hides it for this view; a
+  // fresh backend answer shows it again.
+  const [cooldownRetryTime, setCooldownRetryTime] = useState<string | null>(null)
+  const retryWhen = formatRetryAt(cooldownRetryTime)
+  // The modal's existing Done button: close the modal, then show the alert.
+  const handleSuccessDone = () => {
+    setVerifiedModalOpen(false)
+    setSuccessAlertOpen(true)
+  }
   // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
   const returnReconcilerRef = useRef<ReturnType<
     typeof createReturnReconciler
@@ -199,6 +244,17 @@ export default function TalentDashboard() {
         clearAwaitingResult(window.localStorage)
         setVerificationGateOpen(false)
         setVerifiedModalOpen(true)
+        return
+      }
+      // The box may have opened from an earlier read, before this result landed
+      // (e.g. an unfinished session that has since ended). Re-evaluate it from the
+      // same backend answer so a stale box closes on its own.
+      if (decideGate(summary).kind === "closed") setVerificationGateOpen(false)
+      // Waiting out a retry window (the third rejection): show the retry time and
+      // stop polling — nothing more is coming until then.
+      const retryAt = cooldownRetryAt(summary)
+      if (retryAt) {
+        setCooldownRetryTime(retryAt)
         return
       }
       // Anything else — including an unknown or missing nextAction — shows nothing
@@ -236,14 +292,28 @@ export default function TalentDashboard() {
     }
   }, [user])
 
+  // The Identity Verification check (which may open AccountVerificationGate) waits
+  // for the "Secure your account" dialog: not while the authenticated user still
+  // needs a password (a failed save or a Cancel therefore never opens verification),
+  // and not while that dialog is still open (it keeps its success step until the
+  // user clicks Close). The once-only ref is set only when the check really starts,
+  // so waiting never consumes it.
   useEffect(() => {
     if (!user) return
     const role = resolveDashboardRole(user)
-    if (role !== ROLE.TALENT) return
-    if (identityStatusCheckStartedRef.current) return
+    if (
+      !shouldStartIdentityCheck({
+        user,
+        isTalent: role === ROLE.TALENT,
+        securityDialogOpen: showSecurityModal,
+        alreadyStarted: identityStatusCheckStartedRef.current,
+      })
+    ) {
+      return
+    }
     identityStatusCheckStartedRef.current = true
     void runIdentityVerificationCheck()
-  }, [user, runIdentityVerificationCheck])
+  }, [user, showSecurityModal, runIdentityVerificationCheck])
 
   // Real required check, attempted only on "Verify My Account" / Retry.
   // Never fakes a clean result and never marks anything verified itself —
@@ -256,8 +326,37 @@ export default function TalentDashboard() {
     setVpnProxyResult(outcome)
 
     if (outcome === "none") {
-      setConnectionCheckState("idle")
       setVpnProxyModalOpen(false)
+      // Ask only for what is still missing. The backend's CURRENT nextAction (read
+      // now, not when the gate opened — its 15-minute confirmation window may have
+      // run out since) says whether location or Didit is due. When Didit is due,
+      // skip the location step and go straight to Didit; if the backend still wants
+      // the home country confirmed, or the route is location, use the normal flow.
+      const summary = await fetchIdentityVerificationSummary()
+      if (decideGate(summary).kind === "closed") {
+        // Nothing is due any more (in review, waiting for a retry window, or
+        // complete): the box on screen was out of date. Close it — never open the
+        // location flow for an account the backend says has nothing to do.
+        setConnectionCheckState("idle")
+        setVerificationGateOpen(false)
+        setCooldownRetryTime(cooldownRetryAt(summary))
+        return
+      }
+      if (summary && gateRouteForFlowState(summary.flowState) === "identity") {
+        const started = await startIdentityOnlyForDashboard()
+        if (started === "redirected") return // the button stays on "Checking..." while the browser leaves
+        if (started === "not_startable") {
+          setConnectionCheckState("idle")
+          void runIdentityVerificationCheck()
+          return
+        }
+        if (started === "failed") {
+          setConnectionCheckState("idle")
+          return
+        }
+        // "needs_location": fall through to the normal location step below
+      }
+      setConnectionCheckState("idle")
       setVerificationGateOpen(false)
       // Explicit user action (Verify My Account / Retry): the only place the
       // browser's location permission is requested.
@@ -281,7 +380,7 @@ export default function TalentDashboard() {
     setConnectionCheckState("idle")
     setVerificationGateOpen(false)
     setVpnProxyModalOpen(true)
-  }, [])
+  }, [runIdentityVerificationCheck])
 
   // Exact copy/markup from the Storybook reference
   // (stories/identity-verification-entire.stories.tsx: VPNDetected,
@@ -387,10 +486,67 @@ export default function TalentDashboard() {
           </DialogDescription>
 
           <div className="mt-[50px] grid">
-            <Button onClick={() => setVerifiedModalOpen(false)}>Done</Button>
+            <Button onClick={handleSuccessDone}>Done</Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={cooldownRetryTime !== null}
+        onOpenChange={(open) => {
+          if (!open) setCooldownRetryTime(null)
+        }}
+      >
+        <DialogContent className="w-[469px] pt-[50px]">
+          <div className="flex items-center justify-center">
+            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-6" />
+            </div>
+          </div>
+
+          <h1 className="mt-5 text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+            You’ve used all three attempts
+          </h1>
+
+          <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+            {retryWhen &&
+              `You can try again on ${retryWhen.date} at ${retryWhen.time}. Nothing is lost — your account stays as it is until then.`}
+          </DialogDescription>
+        </DialogContent>
+      </Dialog>
+
+      <ToastProvider duration={5000} swipeDirection="right">
+        <Toast
+          open={successAlertOpen}
+          onOpenChange={setSuccessAlertOpen}
+          className="relative w-[400px] max-w-full items-start gap-5 space-x-0 rounded-xl border border-gray-100 bg-white p-4 text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)] data-[state=open]:sm:slide-in-from-top-full"
+        >
+          <div className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+            <CheckCircle className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+            <ToastTitle className="text-sm font-semibold leading-5 text-gray-900">
+              All set! Your identity and location are verified.
+            </ToastTitle>
+            <ToastDescription className="text-sm font-normal leading-5 text-gray-600">
+              You now have full access to all features.
+            </ToastDescription>
+          </div>
+
+          <IconButton
+            className="absolute right-2 top-2 size-9 text-gray-500"
+            size="md"
+            visual="gray"
+            variant="ghost"
+            onClick={() => setSuccessAlertOpen(false)}
+          >
+            <X className="size-5" />
+          </IconButton>
+        </Toast>
+
+        <ToastViewport className="top-5 right-5 left-auto bottom-auto w-auto max-w-[400px] flex-col gap-3 p-0 sm:top-5 sm:right-5 sm:left-auto sm:bottom-auto sm:flex-col md:max-w-[400px]" />
+      </ToastProvider>
 
       <AccountVerificationGate
         open={verificationGateOpen}
