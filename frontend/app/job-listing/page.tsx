@@ -14275,8 +14275,14 @@ const finalReviewRichTextEditorContentClassName =
 const finalReviewCompactRichTextEditorClassName =
   "h-[174px] w-full self-stretch rounded-lg border border-gray-300 bg-white px-4 py-3 shadow-[0px_1px_2px_rgba(16,24,40,.05)] transition-colors focus-within:border-primary-500"
 
+const finalReviewExpandedRichTextEditorClassName =
+  "h-[494px] w-full self-stretch rounded-lg border border-gray-300 bg-white px-4 py-3 shadow-[0px_1px_2px_rgba(16,24,40,.05)] transition-colors focus-within:border-primary-500"
+
 const finalReviewCompactRichTextEditorContentClassName =
-  "h-[150px] max-h-[150px] min-h-[150px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden text-base leading-6 text-dark-blue-400 break-words scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg [overflow-wrap:anywhere] [word-break:break-word] [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+  "h-[150px] max-h-[150px] min-h-[150px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden pr-3 text-base leading-6 text-dark-blue-400 break-words [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-wrap:anywhere] [word-break:break-word] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300 [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+
+const finalReviewExpandedRichTextEditorContentClassName =
+  "h-[470px] max-h-[470px] min-h-[470px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden pr-3 text-base leading-6 text-dark-blue-400 break-words [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-wrap:anywhere] [word-break:break-word] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300 [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[470px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
 
 const FinalReviewShimmerBlock = ({ className }: { className: string }) => (
   <span
@@ -14285,6 +14291,23 @@ const FinalReviewShimmerBlock = ({ className }: { className: string }) => (
   >
     <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
   </span>
+)
+
+const ArticleTextIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M4.167 2.5h11.666c.92 0 1.667.746 1.667 1.667v11.666c0 .92-.746 1.667-1.667 1.667H4.167c-.92 0-1.667-.746-1.667-1.667V4.167c0-.92.746-1.667 1.667-1.667Zm0 1.667v11.666h11.666V4.167H4.167Zm2.5 2.5h6.666v1.666H6.667V6.667Zm0 3.333h6.666v1.667H6.667V10Zm0 3.333H10V15H6.667v-1.667Z"
+      fill="currentColor"
+    />
+  </svg>
 )
 
 const ndaPreviewSections = [
@@ -14692,10 +14715,29 @@ const FinalReviewRichTextField = ({
   onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => {
   const [value, setValue] = useState(initialValue)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const fieldRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setValue(initialValue)
   }, [initialValue])
+
+  useEffect(() => {
+    if (!compact || !isExpanded) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && fieldRef.current?.contains(target)) return
+
+      setIsExpanded(false)
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+    }
+  }, [compact, isExpanded])
 
   const plainTextValue = plainTextFromRichTextHtml(value)
   const count = compact
@@ -14729,13 +14771,27 @@ const FinalReviewRichTextField = ({
 
   return (
     <div
-      className={
-        compact
-          ? "flex h-[200px] w-full flex-col items-start gap-1.5 self-stretch p-0"
-          : undefined
-      }
-      onFocusCapture={onActivate}
-      onClick={onActivate}
+      ref={fieldRef}
+      className={cn(
+        compact &&
+          "flex w-full flex-col items-start gap-1.5 self-stretch p-0 transition-[height] duration-200",
+        compact && (isExpanded ? "h-[520px]" : "h-[200px]")
+      )}
+      onFocusCapture={() => {
+        if (compact) setIsExpanded(true)
+        onActivate?.()
+      }}
+      onBlurCapture={(event) => {
+        if (!compact) return
+        const nextFocusedElement = event.relatedTarget as Node | null
+        if (!nextFocusedElement || !event.currentTarget.contains(nextFocusedElement)) {
+          setIsExpanded(false)
+        }
+      }}
+      onClick={() => {
+        if (compact) setIsExpanded(true)
+        onActivate?.()
+      }}
     >
       <div
         className={
@@ -14778,13 +14834,17 @@ const FinalReviewRichTextField = ({
           placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
           className={
             compact
-              ? finalReviewCompactRichTextEditorClassName
+              ? isExpanded
+                ? finalReviewExpandedRichTextEditorClassName
+                : finalReviewCompactRichTextEditorClassName
               : finalReviewRichTextEditorClassName
           }
           toolbarClassName="left-4"
           editorClassName={
             compact
-              ? finalReviewCompactRichTextEditorContentClassName
+              ? isExpanded
+                ? finalReviewExpandedRichTextEditorContentClassName
+                : finalReviewCompactRichTextEditorContentClassName
               : finalReviewRichTextEditorContentClassName
           }
           onUpdate={handleChange}
@@ -17118,7 +17178,7 @@ const FinalProjectReviewStep = ({
               >
                 {projectAssistant.selectedText ? (
                   <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
-                    <FileIcon className="size-5 shrink-0 text-gray-400" />
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
                     <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
                       “{projectAssistant.selectedText}
                     </p>
