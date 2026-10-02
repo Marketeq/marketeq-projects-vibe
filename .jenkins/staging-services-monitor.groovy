@@ -230,11 +230,18 @@ except Exception as e:
                             # job would stay UNSTABLE forever on faults already fixed,
                             # which is the alert fatigue this stage exists to prevent.
                             SINCE=$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-15M +%Y-%m-%dT%H:%M:%SZ)
-                            curl -s -m 45 -H "Authorization: Bearer $RENDER_TOKEN" "https://api.render.com/v1/logs?ownerId=${RENDER_OWNER_ID}&resource=${RENDER_SERVICE_ID}&limit=300&text=ERROR&startTime=${SINCE}" -o /tmp/backend-errors.json || echo '{"logs":[]}' > /tmp/backend-errors.json
-                            echo "scanning backend errors since ${SINCE}"
+                            # Keep the HTTP status. curl -s exits 0 on a 503, so a
+                            # fallback on curl's exit code never fires: when Render's
+                            # log store (Loki) is down the API answers 503 "failed to
+                            # query loki", and this stage used to read that as an empty
+                            # log and report "No application errors" (2026-10-02).
+                            rm -f /tmp/log-scan-status.txt
+                            LOG_HTTP=$(curl -s -m 45 -o /tmp/backend-errors.json -w '%{http_code}' -H "Authorization: Bearer $RENDER_TOKEN" "https://api.render.com/v1/logs?ownerId=${RENDER_OWNER_ID}&resource=${RENDER_SERVICE_ID}&limit=300&text=ERROR&startTime=${SINCE}") || LOG_HTTP=000
+                            export LOG_HTTP
+                            echo "scanning backend errors since ${SINCE} (logs API http ${LOG_HTTP})"
 
                             python3 - > /tmp/app-errors.txt <<'PY'
-import json, re, collections
+import json, os, re, collections
 ESC = chr(27)
 
 def strip(text):
@@ -250,10 +257,22 @@ def strip(text):
             i += 1
     return "".join(out)
 
+# Only a 200 carrying a "logs" list is a scan. Anything else -- Loki down
+# (503), a rejected token (401), a timeout (000) -- means the scan did not
+# run, and an empty result from it must not be reported as "no errors".
+http = os.environ.get("LOG_HTTP", "000")
 try:
-    logs = json.load(open("/tmp/backend-errors.json")).get("logs", [])
+    body = json.load(open("/tmp/backend-errors.json"))
 except Exception:
-    logs = []
+    body = None
+if http != "200" or not isinstance(body, dict) or not isinstance(body.get("logs"), list):
+    reason = "http " + http
+    if isinstance(body, dict) and body.get("message"):
+        reason += ": " + " ".join(str(body["message"]).split())[:160]
+    open("/tmp/log-scan-status.txt", "w").write(reason)
+    raise SystemExit(0)
+open("/tmp/log-scan-status.txt", "w").write("ok")
+logs = body["logs"]
 
 pattern = re.compile("ExceptionsHandler|EncryptionService|QueryFailedError|GlobalExceptionFilter")
 # Uptime probes hit / unauthenticated and log a 401 or 404 every time. They are
@@ -270,8 +289,16 @@ for message, n in counts.most_common(8):
     print(str(n) + "x " + message)
 PY
                         '''
+                        def scanStatus = readFile('/tmp/log-scan-status.txt').trim()
                         def hits = readFile('/tmp/app-errors.txt').trim()
-                        if (hits) {
+                        if (scanStatus != 'ok') {
+                            // Same rule as Pending Migrations below: a check that
+                            // did not run is not an all clear.
+                            env.APP_ERRORS = ''
+                            echo "Application error scan DID NOT RUN (logs API ${scanStatus}). This is not an all clear."
+                            currentBuild.result = 'UNSTABLE'
+                            currentBuild.description = ((currentBuild.description ?: '') + ' log scan unavailable').trim()
+                        } else if (hits) {
                             env.APP_ERRORS = hits
                             echo "Application errors present in the backend log:"
                             echo hits
