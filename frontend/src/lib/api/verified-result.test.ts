@@ -170,7 +170,7 @@ describe("dashboard wiring and Figma/Storybook fidelity (source guards)", () => 
   it("shows the modal only from the checked server result and clears the flag first", () => {
     assert.match(
       page,
-      /isIdentityAndLocationVerified\(summary\)\) \{\s+clearAwaitingResult\(window\.localStorage\)[\s\S]*?setVerifiedModalOpen\(true\)/
+      /shouldShowSuccessModal\(summary\)\) \{\s+clearAwaitingResult\(window\.localStorage\)[\s\S]*?setVerifiedModalOpen\(true\)/
     )
     assert.ok(page.includes('document.addEventListener("visibilitychange"'))
     assert.ok(page.includes("RESULT_POLL_MAX_ATTEMPTS"))

@@ -19,15 +19,19 @@ import {
 } from "@/src/lib/api/vpn-proxy-detection"
 import {
   checkIdentityVerificationStatus,
-  checkVerificationSummary,
   clearAwaitingResult,
   gateReasonForStatus,
   hasAwaitingResult,
   IDENTITY_STATUS_REFRESHED_EVENT,
-  isIdentityAndLocationVerified,
   RESULT_POLL_INTERVAL_MS,
   RESULT_POLL_MAX_ATTEMPTS,
 } from "@/src/lib/api/identity-verification-status"
+import {
+  createReturnReconciler,
+  fetchIdentityVerificationSummary,
+  shouldShowSuccessModal,
+  type IdentityVerificationSummaryView,
+} from "@/src/lib/api/identity-verification-state"
 import {
   getDetectedLocation,
   type DetectedLocation,
@@ -168,12 +172,18 @@ export default function TalentDashboard() {
       window.removeEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
   }, [])
 
-  // "You're all set!" — shown once, only to a browser that went to Didit and
-  // came back, and only when the server says BOTH identity and location are
-  // verified. The result is read from the server (never from the URL Didit
-  // returns to), rechecked briefly because the webhook can land a moment after
-  // the return, and again whenever the tab becomes visible.
+  // "You're all set!" — shown once, only to a browser that went to Didit and came
+  // back. On that return the dashboard reconciles ONCE (POST, no session id from the
+  // browser) and then reads GET /me: the backend's nextAction is the authoritative
+  // state and "complete" is the only thing that opens this dialog. The webhook can
+  // still land a moment later, so the bounded /me recheck and the tab-visibility
+  // refresh remain as fallbacks (GET only — never another reconcile). Nothing is read
+  // from the URL Didit returns to, and no attempt/cooldown/status rule lives here.
   const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
+  // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
+  const returnReconcilerRef = useRef<ReturnType<
+    typeof createReturnReconciler
+  > | null>(null)
 
   useEffect(() => {
     if (!user) return
@@ -183,30 +193,41 @@ export default function TalentDashboard() {
     let timer: ReturnType<typeof setTimeout> | undefined
     let attempts = 0
 
-    const check = async () => {
-      if (cancelled || !hasAwaitingResult(window.localStorage)) return
-      const summary = await checkVerificationSummary()
+    const apply = (summary: IdentityVerificationSummaryView | null) => {
       if (cancelled) return
-      if (isIdentityAndLocationVerified(summary)) {
+      if (shouldShowSuccessModal(summary)) {
         clearAwaitingResult(window.localStorage)
         setVerificationGateOpen(false)
         setVerifiedModalOpen(true)
         return
       }
+      // Anything else — including an unknown or missing nextAction — shows nothing
+      // new yet; keep waiting (bounded) for the webhook.
       attempts += 1
       if (attempts < RESULT_POLL_MAX_ATTEMPTS) {
-        timer = setTimeout(() => void check(), RESULT_POLL_INTERVAL_MS)
+        timer = setTimeout(() => void poll(), RESULT_POLL_INTERVAL_MS)
       }
+    }
+
+    const poll = async () => {
+      if (cancelled || !hasAwaitingResult(window.localStorage)) return
+      apply(await fetchIdentityVerificationSummary())
     }
 
     const onVisible = () => {
       if (document.visibilityState !== "visible") return
       attempts = 0
       if (timer) clearTimeout(timer)
-      void check()
+      void poll()
     }
 
-    void check()
+    if (hasAwaitingResult(window.localStorage)) {
+      returnReconcilerRef.current ??= createReturnReconciler({
+        awaitingStorage: window.localStorage,
+        markerStorage: window.sessionStorage,
+      })
+      void returnReconcilerRef.current.run().then((result) => apply(result.summary))
+    }
     document.addEventListener("visibilitychange", onVisible)
     return () => {
       cancelled = true

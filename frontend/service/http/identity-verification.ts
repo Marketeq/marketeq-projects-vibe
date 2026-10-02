@@ -1,5 +1,20 @@
 import AxiosRequest from ".."
 
+// Stable, append-only backend contract (see backend verification-summary.ts). The
+// frontend maps these in src/lib/api/identity-verification-state.ts and never
+// re-derives them from statuses, attempts, cooldowns or confirmation age.
+export type IdentityVerificationNextAction =
+  | "confirm_location"
+  | "start_identity"
+  | "continue_identity"
+  | "await_review"
+  | "retry_identity"
+  | "wait_for_retry"
+  | "reverify_identity"
+  | "complete"
+
+export type KycReconcileOutcome = "no_active_session" | "unchanged" | "updated"
+
 export interface IdentityVerificationProfileStatus {
   verifiedHomeCountry: string | null
   detectedCountry: string | null
@@ -13,6 +28,17 @@ export interface IdentityVerificationProfileStatus {
   identityRejectionReason: string | null
   locationVerificationStatus: string
   reconfirmationRequired: boolean
+  // Append-only summary fields. Optional because only GET /me carries all of them
+  // (other endpoints returning this shape omit the ones that need session data,
+  // and an older server omits them all). Parsed defensively; never trusted blindly.
+  fullyVerified?: boolean
+  attemptsUsed?: number
+  attemptsRemaining?: number
+  maxAttempts?: number
+  canRetry?: boolean
+  retryAvailableAt?: string | null
+  hasActiveSession?: boolean
+  nextAction?: IdentityVerificationNextAction
 }
 
 export const IdentityVerificationAPI = {
@@ -102,6 +128,15 @@ export const IdentityVerificationAPI = {
   startFreeKyc: () =>
     AxiosRequest.post("/v1/identity-verification/kyc-sessions", {}) as Promise<{
       data: { url: string }
+    }>,
+
+  // Fallback for a lost or delayed Didit webhook: asks the backend to check the
+  // CALLER'S OWN stored session with Didit. POST because it may update state; no
+  // body and no session id — the server resolves the session itself. Returns only a
+  // fixed outcome; re-read the real state from getMyStatus afterwards.
+  reconcileKycSession: () =>
+    AxiosRequest.post("/v1/identity-verification/kyc-sessions/reconcile", null) as Promise<{
+      data: { outcome: KycReconcileOutcome }
     }>,
 
   // Travel branch — persists what the existing (unchanged) travel UI already
