@@ -15868,7 +15868,8 @@ const ReviewEditableTitle = ({
   const methods = useProjectInfoContext()
   const value = useWatch({ control: methods.control, name: "title" }) ?? ""
   const titleHasError = methods.getFieldState("title").invalid
-  const isProjectTitle = label === "Project Title"
+  const usesReviewTitleStyle =
+    label === "Project Title" || label === "Service Title"
 
   const updateTitle = useCallback(
     (nextTitle: string) => {
@@ -15887,14 +15888,14 @@ const ReviewEditableTitle = ({
   return (
     <div
       className={
-        isProjectTitle
+        usesReviewTitleStyle
           ? "flex h-[70px] w-full flex-col items-start gap-1.5 self-stretch p-0"
           : undefined
       }
     >
       <Label
         className={
-          isProjectTitle
+          usesReviewTitleStyle
             ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
             : "text-sm leading-5 text-gray-500"
         }
@@ -15903,12 +15904,12 @@ const ReviewEditableTitle = ({
       </Label>
       {isLoading ? (
         <FinalReviewShimmerBlock
-          className={isProjectTitle ? "h-11 w-full rounded-[5px]" : "mt-1.5 h-11 w-full rounded-[5px]"}
+          className={usesReviewTitleStyle ? "h-11 w-full rounded-[5px]" : "mt-1.5 h-11 w-full rounded-[5px]"}
         />
       ) : (
         <Input
           className={
-            isProjectTitle
+            usesReviewTitleStyle
               ? "h-11 w-full rounded-[5px] px-[14px] py-2.5 text-base leading-6 font-normal text-dark-blue-400 shadow-[0px_1px_2px_rgba(16,24,40,.05)]"
               : "mt-1.5"
           }
@@ -16028,6 +16029,14 @@ const FinalServiceReviewStep = ({
   const roleOptions = useMemo(
     () => getScopeRoleOptions(projectScopeState),
     [projectScopeState]
+  )
+  const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
+  const visibleRoleOptions = showAllRoleOptions
+    ? roleOptions
+    : roleOptions.slice(0, 4)
+  const remainingRoleCount = Math.max(
+    0,
+    roleOptions.length - visibleRoleOptions.length
   )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
@@ -16185,6 +16194,8 @@ const FinalServiceReviewStep = ({
       setDetails((current) => ({ ...current, ndaEnabled: false }))
     }
   }, [details.ndaEnabled, setDetails])
+  const isRoleDescriptionLoading =
+    serviceAssistant.isLoading && !responsibilities
 
   return (
     <ScrollArea
@@ -16204,20 +16215,13 @@ const FinalServiceReviewStep = ({
               ahead and publish, or make quick edits if needed.
             </p>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Basic Information
-              </h2>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex w-full flex-col items-start gap-6 p-6 min-[1180px]:h-[440px]">
+                <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  Basic Information
+                </h2>
                 <ReviewEditableTitle label="Service Title" />
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Job Type
-                  </Label>
-                  <Input className="mt-1.5" value="Website" readOnly />
-                </div>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <ReviewJobTypeSelect />
                 <ReviewEditableTags
                   fieldName="industry"
                   label="Industries"
@@ -16235,173 +16239,226 @@ const FinalServiceReviewStep = ({
                   max={10}
                 />
               </div>
-            </div>
 
-            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex items-center gap-2">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                  Include a Non-Disclosure Agreement (NDA)?
-                </h2>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
+              <div className="flex w-full flex-col items-start gap-4 border-t border-gray-200 bg-white p-6 min-[1180px]:h-[224px]">
+                <div className="flex h-24 w-full flex-col items-start gap-3 self-stretch p-0">
+                  <div className="flex h-11 w-full flex-col items-start gap-1 self-stretch p-0">
+                    <div className="flex h-5 items-center justify-center gap-2 p-0">
+                      <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
+                        Include a Non-Disclosure Agreement (NDA)?
+                      </h2>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              aria-label="Show NDA details"
+                              className="size-4 cursor-default p-0 text-gray-400"
+                            >
+                              <AlertCircle className="size-4 shrink-0" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            Non-Disclosure Agreement protects your confidential
+                            info by requiring each team member to sign before
+                            starting work.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                      We&apos;ll generate one with your company name. Each team
+                      member will receive and sign it before starting the
+                      project.
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-full items-start gap-2 self-stretch p-0">
+                    {[
+                      { value: "yes" as const, label: "Yes, Include NDA" },
+                      { value: "no" as const, label: "No NDA" },
+                    ].map((option) => (
+                      <Button
+                        key={option.value}
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className={cn(
+                          "h-10 rounded-[52px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white",
+                          ndaChoice === option.value &&
+                            "border-2 border-primary-500 bg-primary-25 hover:bg-primary-25"
+                        )}
+                        onClick={() => {
+                          setNdaChoice(option.value)
+                          setDetails((current) => ({
+                            ...current,
+                            ndaEnabled: option.value === "yes",
+                          }))
+                        }}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                {ndaChoice === "yes" ? (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                    <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                    <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
+                      Your Non-Disclosure Agreement (NDA) has been created. Feel
+                      free to review it.
+                    </p>
+                    {renderNdaPreviewDialog(
                       <Button
                         type="button"
-                        variant="link"
-                        visual="gray"
-                        aria-label="Show NDA details"
-                        className="size-4 cursor-default p-0 text-gray-400"
+                        className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
+                        variant="outlined"
+                        visual="primary"
                       >
-                        <AlertCircle className="size-4 shrink-0" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="right"
-                      align="center"
-                      sideOffset={12}
-                      className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
-                    >
-                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
-                      Non-Disclosure Agreement protects your confidential info
-                      by requiring each team member to sign before starting
-                      work.
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                We&apos;ll generate one with your company name. Each team member
-                will receive and sign it before starting the project.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {[
-                  { value: "yes" as const, label: "Yes, Include NDA" },
-                  { value: "no" as const, label: "No NDA" },
-                ].map((option) => (
-                  <Button
-                    key={option.value}
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className={cn(
-                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
-                      ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
+                        View NDA
+                      </Button>,
+                      ndaDocumentId
                     )}
-                    onClick={() => {
-                      setNdaChoice(option.value)
-                      setDetails((current) => ({
-                        ...current,
-                        ndaEnabled: option.value === "yes",
-                      }))
-                    }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
+                  </div>
+                ) : (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-warning-50 p-4 text-xs leading-[18px] font-normal text-dark-blue-400">
+                    {NDA_OFF_WARNING}
+                  </div>
+                )}
               </div>
-              {ndaChoice === "yes" ? (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  Your Non-Disclosure Agreement (NDA) has been created. Feel
-                  free to review it.{" "}
-                  {renderNdaPreviewDialog(
-                    <Button
-                      type="button"
-                      className="h-7 px-2"
-                      variant="link"
-                      visual="primary"
-                    >
-                      View NDA
-                    </Button>,
-                    ndaDocumentId
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-warning-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  {NDA_OFF_WARNING}
-                </div>
-              )}
             </div>
 
-            <div className="mt-6 space-y-4">
-              <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Description
-              </h2>
-              <FinalReviewTextSection
-                title="Overview"
-                initialValue={overview}
-                placeholder="Add the service overview"
-                onChange={setOverview}
-              />
-              <FinalReviewTextSection
-                title="Benefits"
-                initialValue={benefits}
-                placeholder="Add benefits for joining this service"
-                onChange={setBenefits}
-              />
+            <div className="mt-6 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6 min-[1180px]:min-h-[976px]">
+              <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
+                <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
+                  Description
+                </h2>
+              </div>
+              <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                <FinalReviewTextSection
+                  compact
+                  title="Overview"
+                  initialValue={overview}
+                  placeholder="Add the service overview"
+                  isLoading={isRoleDescriptionLoading}
+                  onSmartAssistant={(selection) =>
+                    serviceAssistant.populateSelectedText(selection)
+                  }
+                  onChange={setOverview}
+                />
+                <FinalReviewTextSection
+                  compact
+                  title="Benefits"
+                  initialValue={benefits}
+                  placeholder="Add benefits for joining this service"
+                  isLoading={isRoleDescriptionLoading}
+                  onSmartAssistant={(selection) =>
+                    serviceAssistant.populateSelectedText(selection)
+                  }
+                  onChange={setBenefits}
+                />
 
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                <div className="flex flex-wrap gap-2">
-                  {roleOptions.map((role) => (
-                    <Button
-                      key={role}
-                      variant="outlined"
-                      visual="gray"
-                      type="button"
-                      className={cn(
-                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
-                        selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50"
-                      )}
-                      onClick={() => setSelectedRole(role)}
-                    >
-                      {role}
-                    </Button>
-                  ))}
-                </div>
-
-                <div className="mt-5">
-                  <FinalReviewRichTextField
-                    title="Responsibilities"
-                    initialValue={responsibilities}
-                    placeholder={`Add responsibilities for ${selectedRole}`}
-                    onChange={setResponsibilities}
-                  />
-                </div>
-
-                <div className="mt-5">
-                  <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
-                    Skills
-                  </h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {skills.map((skill) => (
-                      <Badge
-                        key={skill}
-                        size="md"
+                <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
+                  <div
+                    className={cn(
+                      "flex w-full items-start gap-2 self-stretch p-0",
+                      showAllRoleOptions
+                        ? "flex-wrap"
+                        : "h-10 flex-nowrap overflow-hidden"
+                    )}
+                  >
+                    {visibleRoleOptions.map((role) => (
+                      <Button
+                        key={role}
+                        variant="outlined"
                         visual="gray"
-                        className="border border-gray-200 bg-white"
+                        type="button"
+                        className={cn(
+                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                          selectedRole === role &&
+                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500"
+                        )}
+                        onClick={() => setSelectedRole(role)}
                       >
-                        {skill}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          type="button"
-                          className="ml-2 text-gray-400"
-                          onClick={() => removeSkill(skill)}
-                          aria-label={`Remove ${skill}`}
-                        >
-                          <X className="size-3" />
-                        </Button>
-                      </Badge>
+                        {role}
+                      </Button>
                     ))}
-                    <Button
-                      className="h-7"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={addSkill}
-                    >
-                      Add Skill
-                    </Button>
+                    {remainingRoleCount > 0 ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                        onClick={() => setShowAllRoleOptions(true)}
+                      >
+                        + {remainingRoleCount} More
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                    <FinalReviewRichTextField
+                      compact
+                      title="Responsibilities"
+                      initialValue={responsibilities}
+                      placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isRoleDescriptionLoading}
+                      onSmartAssistant={(selection) =>
+                        serviceAssistant.populateSelectedText(selection)
+                      }
+                      onChange={setResponsibilities}
+                    />
+
+                    <div className="flex w-full flex-col items-start gap-1.5 self-stretch pb-6">
+                      <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
+                        Skills
+                      </h3>
+                      {isRoleDescriptionLoading ? (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          <FinalReviewShimmerBlock className="h-10 w-[178px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[136px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[152px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[120px] rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          {skills.map((skill) => (
+                            <Badge
+                              key={skill}
+                              size="md"
+                              visual="gray"
+                              className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
+                            >
+                              {skill}
+                              <BadgeCloseButton
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                aria-label={`Remove ${skill}`}
+                                className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                              >
+                                <X2 className="size-4" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          ))}
+                          <Button
+                            className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                            variant="outlined"
+                            visual="primary"
+                            onClick={addSkill}
+                          >
+                            Add Skill
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
