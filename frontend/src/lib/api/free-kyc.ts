@@ -9,6 +9,10 @@
 // only ever re-reads authoritative status from our backend (GET /me).
 //
 // The travel branch ("No, I'm currently traveling") never calls any of this.
+import {
+  IDENTITY_STATUS_REFRESHED_EVENT,
+  markAwaitingResult,
+} from "./identity-verification-status"
 
 export interface FreeKycDeps {
   // POST /v1/identity-verification/home-country/confirm — the backend
@@ -17,6 +21,52 @@ export interface FreeKycDeps {
   // POST /v1/identity-verification/kyc-sessions — VPN/proxy guarded.
   startFreeKyc: () => Promise<{ data: { url: string } }>
   redirect: (url: string) => void
+  // Re-read GET /v1/identity-verification/me. Defaults to the real client.
+  refreshIdentityStatus?: () => Promise<string>
+  // Told the refreshed status. Defaults to a window event the dashboard
+  // listens for, since the flow component that calls this is read-only.
+  publishStatus?: (status: string) => void
+  // Called just before the browser leaves for Didit, so the dashboard knows to
+  // show a result when this browser comes back. Defaults to a localStorage flag.
+  markAwaitingResult?: () => void
+}
+
+const NOT_STARTABLE_CODE = "IDENTITY_VERIFICATION_NOT_STARTABLE"
+
+function isNotStartable(error: unknown): boolean {
+  const e = error as {
+    response?: {
+      status?: number
+      data?: { code?: string; error?: { code?: string } }
+    }
+  }
+  const data = e?.response?.data
+  return (
+    e?.response?.status === 409 &&
+    (data?.code === NOT_STARTABLE_CODE ||
+      data?.error?.code === NOT_STARTABLE_CODE)
+  )
+}
+
+async function defaultRefreshIdentityStatus(): Promise<string> {
+  const { checkIdentityVerificationStatus } =
+    await import("./identity-verification-status")
+  return checkIdentityVerificationStatus()
+}
+
+function defaultMarkAwaitingResult(): void {
+  markAwaitingResult(
+    typeof window === "undefined" ? undefined : window.localStorage
+  )
+}
+
+function defaultPublishStatus(status: string): void {
+  if (typeof window === "undefined") return
+  window.dispatchEvent(
+    new CustomEvent(IDENTITY_STATUS_REFRESHED_EVENT, {
+      detail: { status },
+    })
+  )
 }
 
 // Only a plain https URL on a Didit hostname may be navigated to.
@@ -46,7 +96,7 @@ export function isDiditHostedUrl(value: unknown): value is string {
   )
 }
 
-export type FreeKycOutcome = "redirected" | "failed"
+export type FreeKycOutcome = "redirected" | "failed" | "not_startable"
 
 // No Figma state exists for a failure here (VPN block, unavailable vendor,
 // confirmation rejected, …), so this stays on the current screen and logs
@@ -61,9 +111,26 @@ export async function confirmHomeCountryAndStartFreeKyc(
     if (!isDiditHostedUrl(data?.url)) {
       throw new Error("Free KYC returned an invalid redirect URL.")
     }
+    ;(deps.markAwaitingResult ?? defaultMarkAwaitingResult)()
     deps.redirect(data.url)
     return "redirected"
   } catch (error) {
+    if (isNotStartable(error)) {
+      // The account can't start (e.g. already verified): re-read the real
+      // status instead of retrying, and let the dashboard react to it.
+      try {
+        const status = await (
+          deps.refreshIdentityStatus ?? defaultRefreshIdentityStatus
+        )()
+        ;(deps.publishStatus ?? defaultPublishStatus)(status)
+      } catch (refreshError) {
+        console.error(
+          "[identity-verification] Status refresh failed",
+          refreshError
+        )
+      }
+      return "not_startable"
+    }
     console.error("[identity-verification] Free KYC start failed", error)
     return "failed"
   }

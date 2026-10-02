@@ -5,13 +5,29 @@ import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
-import { AlertTriangle, ChevronRight, RefreshCw, X } from "@blend-metrics/icons"
+import {
+  AlertTriangle,
+  CheckCircle,
+  ChevronRight,
+  RefreshCw,
+  X,
+} from "@blend-metrics/icons"
 import SecuritySettingsStepper from "@/components/security-settings"
 import {
   checkVpnProxy,
   type VpnProxyDetectionOutcome,
 } from "@/src/lib/api/vpn-proxy-detection"
-import { checkIdentityVerificationStatus } from "@/src/lib/api/identity-verification-status"
+import {
+  checkIdentityVerificationStatus,
+  checkVerificationSummary,
+  clearAwaitingResult,
+  gateReasonForStatus,
+  hasAwaitingResult,
+  IDENTITY_STATUS_REFRESHED_EVENT,
+  isIdentityAndLocationVerified,
+  RESULT_POLL_INTERVAL_MS,
+  RESULT_POLL_MAX_ATTEMPTS,
+} from "@/src/lib/api/identity-verification-status"
 import {
   getDetectedLocation,
   type DetectedLocation,
@@ -129,18 +145,75 @@ export default function TalentDashboard() {
 
   const runIdentityVerificationCheck = useCallback(async () => {
     const status = await checkIdentityVerificationStatus()
-    if (status === "unavailable") {
-      setGateReason("status_unavailable")
-      setVerificationGateOpen(true)
-      return
-    }
-    if (status !== "unstarted") {
+    const reason = gateReasonForStatus(status)
+    if (!reason) {
       setVerificationGateOpen(false)
       return
     }
-    setGateReason("unstarted")
+    setGateReason(reason)
     setVerificationGateOpen(true)
   }, [])
+
+  // A start attempt rejected as not startable re-reads the real status
+  // (free-kyc.ts). A verified account closes the gate and the flow.
+  useEffect(() => {
+    const onRefreshed = (event: Event) => {
+      const status = (event as CustomEvent<{ status?: string }>).detail?.status
+      if (status !== "verified") return
+      setVerificationGateOpen(false)
+      setIdentityFlowOpen(false)
+    }
+    window.addEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
+    return () =>
+      window.removeEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
+  }, [])
+
+  // "You're all set!" — shown once, only to a browser that went to Didit and
+  // came back, and only when the server says BOTH identity and location are
+  // verified. The result is read from the server (never from the URL Didit
+  // returns to), rechecked briefly because the webhook can land a moment after
+  // the return, and again whenever the tab becomes visible.
+  const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (!user) return
+    if (resolveDashboardRole(user) !== ROLE.TALENT) return
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+
+    const check = async () => {
+      if (cancelled || !hasAwaitingResult(window.localStorage)) return
+      const summary = await checkVerificationSummary()
+      if (cancelled) return
+      if (isIdentityAndLocationVerified(summary)) {
+        clearAwaitingResult(window.localStorage)
+        setVerificationGateOpen(false)
+        setVerifiedModalOpen(true)
+        return
+      }
+      attempts += 1
+      if (attempts < RESULT_POLL_MAX_ATTEMPTS) {
+        timer = setTimeout(() => void check(), RESULT_POLL_INTERVAL_MS)
+      }
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      attempts = 0
+      if (timer) clearTimeout(timer)
+      void check()
+    }
+
+    void check()
+    document.addEventListener("visibilitychange", onVisible)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+      document.removeEventListener("visibilitychange", onVisible)
+    }
+  }, [user])
 
   useEffect(() => {
     if (!user) return
@@ -165,7 +238,9 @@ export default function TalentDashboard() {
       setConnectionCheckState("idle")
       setVpnProxyModalOpen(false)
       setVerificationGateOpen(false)
-      const location = await getDetectedLocation()
+      // Explicit user action (Verify My Account / Retry): the only place the
+      // browser's location permission is requested.
+      const location = await getDetectedLocation({ useBrowserLocation: true })
       setDetectedLocation(location)
       setIdentityFlowOpen(true)
       return
@@ -270,6 +345,28 @@ export default function TalentDashboard() {
               <RefreshCw className="size-[15px]" />
               Reload
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={verifiedModalOpen} onOpenChange={setVerifiedModalOpen}>
+        <DialogContent className="max-w-[456px] pt-[50px]">
+          <div className="flex items-center justify-center">
+            <div className="size-12 rounded-full border-[8px] inline-flex items-center justify-center text-success-600 border-success-50 bg-success-100">
+              <CheckCircle className="size-6" />
+            </div>
+          </div>
+
+          <h1 className="text-lg text-center text-dark-blue-400 mt-5 font-semibold leading-7">
+            You’re all set!
+          </h1>
+          <DialogDescription className="text-sm text-center text-dark-blue-400 leading-5 mt-2">
+            Your identity and location have been successfully verified. You can
+            now access all platform features.
+          </DialogDescription>
+
+          <div className="mt-[50px] grid">
+            <Button onClick={() => setVerifiedModalOpen(false)}>Done</Button>
           </div>
         </DialogContent>
       </Dialog>

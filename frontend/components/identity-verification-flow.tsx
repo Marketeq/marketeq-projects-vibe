@@ -1004,7 +1004,9 @@ export function IdentityVerificationFlow({
                 className="bg-primary-50 hover:bg-primary-500 hover:text-white"
                 size="md"
                 variant="ghost"
-                disabled={startingFreeKyc}
+                disabled={
+                  startingFreeKyc || detectedLocation.locationMismatch === true
+                }
                 onClick={() => void handleHomeCountryYes()}
               >
                 Yes, this is my home country

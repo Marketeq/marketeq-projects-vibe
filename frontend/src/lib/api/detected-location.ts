@@ -1,71 +1,27 @@
 // frontend/src/lib/api/detected-location.ts
 //
-// Single current-location lookup, used for both the displayed text and the
-// map marker — one call, not two independently-timed sources. Previously
-// this combined identity-verification-service's GET /me
-// (detectedCity/RegionState/Country — persisted, set ONCE on first-ever
-// profile creation, never re-resolved) with location-service's live
-// resolve-ip (coordinates, fresh every call). That mixed a frozen snapshot
-// with a live value and could disagree with itself. This version reads
-// identity-verification-service's /me for display not at all — it reads
-// location-service's GET /location/resolve-ip, live, once per call, and
-// uses its country + coordinates for everything shown.
+// The verification dialog's detected location. It comes from ONE place: the
+// Identity Verification Service's GET /v1/identity-verification/detected-
+// location, which resolves the caller's IP server-side with the same
+// effective-client-IP logic home-country/confirm uses — so what the dialog
+// shows and what gets confirmed are one IP decision. This file never calls
+// location-service directly and never sends or receives an IP address.
 //
-// Deliberately does NOT also call GET /location/resolve-coordinates here.
-// That endpoint reverse-geocodes a lat/lon pair via LocationIQ to
-// municipality level, and LS-00 reserves it for GPS-based profile display —
-// a genuinely precise input this flow does not have. Feeding it the
-// *approximate*, city-level-at-best coordinates that resolve-ip derives
-// from an IP/MaxMind lookup would produce city/region text that reads as
-// precise but isn't backed by precise input — exactly the kind of
-// misleadingly-specific display this flow must not produce. So city/region
-// are populated only if resolve-ip's own response genuinely supplies them
-// (it doesn't today — location-service's IpResolution is
-// {ip, country, currency, timezone, coordinates} only, confirmed by reading
-// location.service.ts) and are otherwise left honestly empty, never
-// reverse-geocoded from an approximate coordinate as a way to fill them in.
+// City, region and coordinates are approximate and display-only; only the
+// country is ever used for identity decisions, and only on the server. This
+// file never touches persisted verification state.
 //
-// identity-verification-service's persisted detectedCountry/
-// verifiedHomeCountry/locationVerificationStatus are completely untouched by
-// this file — this is deliberate. Those fields drive verification
-// eligibility (confirmHomeCountry) and must only ever change via that
-// explicit action or a webhook outcome, never as a side effect of the
-// account viewing its current-location display. This file's
-// DetectedLocation is display-only, approximate, and never conflated with
-// confirmed residence or verification status.
-//
-// STILL BLOCKED pending the same unapproved gateway routing patch as before
-// (.claude/pending-review/proxy.service.cto-review.{patch,md}):
-// api-gateway's proxy.service.ts serviceMap has no entry for 'location', so
-// the call below currently 502s through the gateway ("Unknown service:
-// location"). This is not the only remaining gap, even once that patch
-// lands — see the two items below, neither fixed by this file:
-//   - Client-IP trust: the IP location-service resolves is whatever
-//     extractClientIp() picks off x-forwarded-for, and api-gateway's
-//     proxy.service.ts forwards an inbound x-forwarded-for chain from the
-//     browser and only appends its own view of the client afterward — it
-//     never strips a client-supplied prefix. X-Forwarded-For is not a
-//     forbidden header in the Fetch spec, so this is spoofable by any
-//     caller, browser or direct. Not verified fixed anywhere in this chain.
-//   - location-service access protection: GET /location/resolve-ip has no
-//     auth at all today (confirmed by reading location.controller.ts) —
-//     this is the existing status quo, not introduced or resolved here.
-//
-// Detection is IP-based only, never the browser Geolocation API — using
-// that would require browser permission for precise device location, which
-// Technical Architecture §11 explicitly scopes out for this service
-// ("country-level resolution only, not precise/coordinate-based").
-//
-// No hardcoded fallback location. Three distinct outcomes are surfaced,
-// never collapsed into one another:
-//   1. detected: true            — a real value, from a successful lookup.
-//   2. detected: false, serviceUnavailable: false — the lookup succeeded
-//      but genuinely found nothing (e.g. a private/loopback IP in dev).
-//   3. detected: false, serviceUnavailable: true  — the backend call itself
-//      failed (502, network error, an unexpected response shape) — not the
-//      same thing as "looked and found nothing," and must not be presented
-//      to the user as if it were the same honest-empty state.
-import { LocationAPI, type IpLocationResolution } from "@/service/http/location"
+// No hardcoded fallback location. Three distinct outcomes, never collapsed:
+//   1. detected: true            — a real value from a successful lookup.
+//   2. detected: false, serviceUnavailable: false — the lookup succeeded but
+//      found nothing (e.g. a private/loopback IP with no dev override).
+//   3. detected: false, serviceUnavailable: true  — the call itself failed
+//      (5xx, network error, an unexpected response shape).
+
+import {
+  getBrowserPosition,
+  type BrowserPositionResult,
+} from "./browser-geolocation"
 
 export interface DetectedLocation {
   city: string
@@ -77,6 +33,10 @@ export interface DetectedLocation {
   /** True only for a real, successfully resolved value. Never true for a
    *  hardcoded guess. */
   detected: boolean
+  /** True when the browser's GPS country disagreed with the server-derived IP
+   *  country. Nothing from the GPS result is shown, and the dialog must not let
+   *  the user confirm a home country on a conflicting signal. */
+  locationMismatch?: boolean
   /** True when the backend call itself failed (502/network error/an
    *  unexpected response shape/etc.), as opposed to succeeding with an
    *  empty result. See file header. */
@@ -136,29 +96,139 @@ function countryNameFromCode(countryCode: string): string {
   }
 }
 
+// Response of the Identity Verification Service's GET /detected-location.
+// Resolved server-side with the same effective client IP that
+// home-country/confirm uses; the IP itself is never returned. Display-only:
+// only the country is ever used for identity decisions, on the server.
+export interface DetectedLocationResponse {
+  countryCode: string | null
+  countryName: string | null
+  city: string | null
+  regionCode: string | null
+  regionName: string | null
+  latitude: number | null
+  longitude: number | null
+}
+
 // Content validation, distinct from axios/JSON-parse succeeding: a 200
 // response can still be structurally wrong (an HTML error page served with
-// a 200, a truncated body, a future location-service contract change) and
-// this is rendered straight to the user and fed to the map — so shape is
-// checked before any field is trusted, not just that parsing succeeded.
-function isValidIpLocationResolution(value: unknown): value is IpLocationResolution {
-  if (!value || typeof value !== "object") return false
+// a 200, a truncated body, a future contract change) and this is rendered
+// straight to the user and fed to the map — so shape is checked before any
+// field is trusted, not just that parsing succeeded.
+function isValidDetectedLocationResponse(
+  value: unknown
+): value is DetectedLocationResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false
   const body = value as Record<string, unknown>
 
-  if (body.country !== null && body.country !== undefined && typeof body.country !== "string") {
-    return false
+  for (const key of [
+    "countryCode",
+    "countryName",
+    "city",
+    "regionCode",
+    "regionName",
+  ]) {
+    const field = body[key]
+    if (field !== null && field !== undefined && typeof field !== "string") {
+      return false
+    }
   }
 
-  const coordinates = body.coordinates
-  if (coordinates !== null && coordinates !== undefined) {
-    if (!Array.isArray(coordinates) || coordinates.length !== 2) return false
-    const [lat, lon] = coordinates
-    if (typeof lat !== "number" || typeof lon !== "number") return false
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false
+  for (const [key, limit] of [
+    ["latitude", 90],
+    ["longitude", 180],
+  ] as const) {
+    const field = body[key]
+    if (field === null || field === undefined) continue
+    if (typeof field !== "number" || !Number.isFinite(field)) return false
+    if (field < -limit || field > limit) return false
   }
+  // A map pin needs both or neither.
+  if ((body.latitude == null) !== (body.longitude == null)) return false
 
   return true
+}
+
+export interface GetDetectedLocationOptions {
+  // The localStorage mock is ignored unless the caller opts in, so a stale
+  // mock can never make the dialog show a different location than the one
+  // the server will confirm. Only preview/Storybook may pass this.
+  allowDevMock?: boolean
+  // Ask the browser for its position (this triggers the permission prompt).
+  // ONLY an explicit user action — Verify My Account / Retry — may pass this;
+  // it must never run on page load.
+  useBrowserLocation?: boolean
+  // Test seams; default to the real browser API and service endpoints.
+  fetchLocation?: () => Promise<unknown>
+  getPosition?: () => Promise<BrowserPositionResult>
+  fetchGpsLocation?: (latitude: number, longitude: number) => Promise<unknown>
+}
+
+async function fetchServerLocation(): Promise<unknown> {
+  const { IdentityVerificationAPI } = await import(
+    "@/service/http/identity-verification"
+  )
+  const res = await IdentityVerificationAPI.getDetectedLocation()
+  return res.data
+}
+
+async function fetchServerGpsLocation(
+  latitude: number,
+  longitude: number
+): Promise<unknown> {
+  const { IdentityVerificationAPI } = await import(
+    "@/service/http/identity-verification"
+  )
+  const res = await IdentityVerificationAPI.resolveGpsLocation(
+    latitude,
+    longitude
+  )
+  return res.data
+}
+
+interface GpsLocationResponse extends DetectedLocationResponse {
+  status: "resolved" | "country_mismatch" | "unavailable"
+}
+
+function isValidGpsLocationResponse(
+  value: unknown
+): value is GpsLocationResponse {
+  if (!isValidDetectedLocationResponse(value)) return false
+  const status = (value as unknown as Record<string, unknown>).status
+  return (
+    status === "resolved" ||
+    status === "country_mismatch" ||
+    status === "unavailable"
+  )
+}
+
+// Builds the dialog's location from a validated server response. A location
+// shows as "detected" only when there is a real pin to show: with just a
+// country there is no city, no region and no map, so claiming "we detected
+// your location" next to a "couldn't detect your location" map would
+// contradict itself. In that case the server-derived country is kept (it still
+// drives document selection and home-country confirmation) but detected is
+// false. Coordinates are never fabricated or substituted with a country centre.
+function toDetectedLocation(
+  data: DetectedLocationResponse,
+  extra: Partial<DetectedLocation> = {}
+): DetectedLocation {
+  const countryCode = data.countryCode ?? null
+  if (!countryCode) {
+    return { ...UNDETECTED_LOCATION, ...extra }
+  }
+  const hasPin = data.latitude != null && data.longitude != null
+  return {
+    city: hasPin ? (data.city ?? "") : "",
+    region: hasPin ? (data.regionCode ?? data.regionName ?? "") : "",
+    countryCode,
+    countryName: data.countryName ?? countryNameFromCode(countryCode),
+    latitude: hasPin ? data.latitude : null,
+    longitude: hasPin ? data.longitude : null,
+    detected: hasPin,
+    serviceUnavailable: false,
+    ...extra,
+  }
 }
 
 /**
@@ -169,47 +239,52 @@ function isValidIpLocationResolution(value: unknown): value is IpLocationResolut
  *     latitude: 43.6532, longitude: -79.3832
  *   }))
  */
-export async function getDetectedLocation(): Promise<DetectedLocation> {
-  const override = readDevMockOverride()
-  if (override) return override
+export async function getDetectedLocation(
+  options: GetDetectedLocationOptions = {}
+): Promise<DetectedLocation> {
+  if (options.allowDevMock) {
+    const override = readDevMockOverride()
+    if (override) return override
+  }
 
-  let ipResult: { data: IpLocationResolution }
+  // Browser geolocation: only on explicit opt-in. Any shortfall (denied,
+  // unavailable, timeout, unsupported, a failed or inconclusive server call)
+  // falls through to the server-derived country-only path below.
+  if (options.useBrowserLocation) {
+    const position = await (options.getPosition ?? getBrowserPosition)()
+    if (position.status === "ok") {
+      try {
+        const gps = await (options.fetchGpsLocation ?? fetchServerGpsLocation)(
+          position.latitude,
+          position.longitude
+        )
+        if (isValidGpsLocationResponse(gps)) {
+          if (gps.status === "resolved") {
+            const resolved = toDetectedLocation(gps)
+            if (resolved.detected) return resolved
+          } else if (gps.status === "country_mismatch") {
+            return toDetectedLocation(
+              { ...gps, latitude: null, longitude: null },
+              { locationMismatch: true }
+            )
+          }
+        }
+      } catch {
+        // fall through to the country-only path
+      }
+    }
+  }
+
+  let data: unknown
   try {
-    ipResult = await LocationAPI.resolveIp()
+    data = await (options.fetchLocation ?? fetchServerLocation)()
   } catch {
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }
   }
 
-  if (!isValidIpLocationResolution(ipResult.data)) {
+  if (!isValidDetectedLocationResponse(data)) {
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }
   }
 
-  const countryCode = ipResult.data.country ?? null
-  if (!countryCode) {
-    return UNDETECTED_LOCATION
-  }
-
-  const coordinates = ipResult.data.coordinates ?? null
-  const latitude = coordinates ? coordinates[0] : null
-  const longitude = coordinates ? coordinates[1] : null
-
-  // location-service's resolve-ip contract has no region/city fields today
-  // (IpLocationResolution above mirrors it exactly: ip/country/currency/
-  // timezone/coordinates, nothing else) — so these stay honestly empty
-  // rather than being derived by reverse-geocoding the approximate
-  // coordinates above. See file header for why that derivation is
-  // deliberately not done here.
-  const city = ""
-  const region = ""
-
-  return {
-    city,
-    region,
-    countryCode,
-    countryName: countryNameFromCode(countryCode),
-    latitude,
-    longitude,
-    detected: true,
-    serviceUnavailable: false,
-  }
+  return toDetectedLocation(data)
 }

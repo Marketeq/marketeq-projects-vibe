@@ -8,6 +8,7 @@ import { describe, it } from "node:test"
 import {
   confirmHomeCountryAndStartFreeKyc,
   handleHomeCountryYes,
+  type FreeKycDeps,
   isDiditHostedUrl,
 } from "./free-kyc"
 import {
@@ -283,5 +284,182 @@ describe("flow wiring (source guard)", () => {
 
   it("never reads a verification result from the URL", () => {
     assert.equal(/searchParams|URLSearchParams|location\.search|verificationSessionId/.test(flow), false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Identity status: mock isolation, gate decision, and not-startable refresh
+// ---------------------------------------------------------------------------
+import {
+  checkIdentityVerificationStatus,
+  gateReasonForStatus,
+} from "./identity-verification-status"
+
+const MOCK_KEY = "__mock_identity_verification_status"
+
+function withMock<T>(value: string, fn: () => Promise<T>): Promise<T> {
+  const g = globalThis as any
+  const prevLs = g.localStorage
+  const prevEnv = process.env.NODE_ENV
+  g.localStorage = { getItem: (k: string) => (k === MOCK_KEY ? value : null) }
+  ;(process.env as any).NODE_ENV = "development"
+  return fn().finally(() => {
+    g.localStorage = prevLs
+    ;(process.env as any).NODE_ENV = prevEnv
+  })
+}
+
+describe("checkIdentityVerificationStatus mock handling", () => {
+  it("a stale localStorage mock cannot control the real dashboard", async () => {
+    let fetched = 0
+    const status = await withMock("unstarted", () =>
+      checkIdentityVerificationStatus({
+        fetchStatus: async () => {
+          fetched++
+          return "verified"
+        },
+      })
+    )
+    assert.equal(status, "verified")
+    assert.equal(fetched, 1)
+  })
+
+  it("the real dashboard page never opts into the mock", () => {
+    const page = readFileSync(
+      join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
+      "utf8"
+    )
+    assert.ok(!page.includes("allowDevMock"))
+  })
+
+  it("explicit preview mocking still works", async () => {
+    let fetched = 0
+    const status = await withMock("failed", () =>
+      checkIdentityVerificationStatus({
+        allowDevMock: true,
+        fetchStatus: async () => {
+          fetched++
+          return "verified"
+        },
+      })
+    )
+    assert.equal(status, "failed")
+    assert.equal(fetched, 0)
+  })
+
+  it("an unreachable status check is 'unavailable', never 'unstarted'", async () => {
+    const status = await checkIdentityVerificationStatus({
+      fetchStatus: async () => {
+        throw new Error("503")
+      },
+    })
+    assert.equal(status, "unavailable")
+  })
+})
+
+describe("gateReasonForStatus", () => {
+  it("a verified account does not open the start flow", () => {
+    assert.equal(gateReasonForStatus("verified"), null)
+  })
+  it("pending/in_progress/failed_final do not open it either", () => {
+    for (const s of ["pending", "in_progress", "failed_final"] as const) {
+      assert.equal(gateReasonForStatus(s), null)
+    }
+  })
+  it("unstarted and unavailable still open it", () => {
+    assert.equal(gateReasonForStatus("unstarted"), "unstarted")
+    assert.equal(gateReasonForStatus("unavailable"), "status_unavailable")
+  })
+})
+
+describe("409 IDENTITY_VERIFICATION_NOT_STARTABLE", () => {
+  const notStartable = {
+    response: {
+      status: 409,
+      data: { code: "IDENTITY_VERIFICATION_NOT_STARTABLE" },
+    },
+  }
+  const baseDeps = (over: Partial<FreeKycDeps> = {}): FreeKycDeps => ({
+    confirmHomeCountry: async () => ({}),
+    startFreeKyc: async () => {
+      throw notStartable
+    },
+    redirect: () => assert.fail("must not redirect"),
+    ...over,
+  })
+
+  it("triggers a status refresh and publishes the refreshed status", async () => {
+    let refreshed = 0
+    const published: string[] = []
+    const outcome = await quietly(() =>
+      confirmHomeCountryAndStartFreeKyc(
+        baseDeps({
+          refreshIdentityStatus: async () => {
+            refreshed++
+            return "verified"
+          },
+          publishStatus: (s) => published.push(s),
+        })
+      )
+    )
+    assert.equal(outcome, "not_startable")
+    assert.equal(refreshed, 1)
+    assert.deepEqual(published, ["verified"])
+  })
+
+  it("a refreshed verified status reaches the dashboard, which closes the flow", () => {
+    const page = readFileSync(
+      join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
+      "utf8"
+    )
+    assert.match(page, /IDENTITY_STATUS_REFRESHED_EVENT/)
+    assert.match(
+      page,
+      /status !== "verified"\) return\s+setVerificationGateOpen\(false\)\s+setIdentityFlowOpen\(false\)/
+    )
+  })
+
+  it("other errors (and other 409 codes) do not refresh", async () => {
+    let refreshed = 0
+    const deps = (err: unknown) =>
+      baseDeps({
+        startFreeKyc: async () => {
+          throw err
+        },
+        refreshIdentityStatus: async () => {
+          refreshed++
+          return "verified"
+        },
+        publishStatus: () => undefined,
+      })
+    assert.equal(
+      await quietly(() =>
+        confirmHomeCountryAndStartFreeKyc(deps(new Error("x")))
+      ),
+      "failed"
+    )
+    assert.equal(
+      await quietly(() =>
+        confirmHomeCountryAndStartFreeKyc(
+          deps({ response: { status: 409, data: { code: "OTHER" } } })
+        )
+      ),
+      "failed"
+    )
+    assert.equal(refreshed, 0)
+  })
+
+  it("a failing refresh stays on the current screen without throwing", async () => {
+    const outcome = await quietly(() =>
+      confirmHomeCountryAndStartFreeKyc(
+        baseDeps({
+          refreshIdentityStatus: async () => {
+            throw new Error("503")
+          },
+          publishStatus: () => assert.fail("nothing to publish"),
+        })
+      )
+    )
+    assert.equal(outcome, "not_startable")
   })
 })

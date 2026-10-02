@@ -21,6 +21,42 @@ export const IdentityVerificationAPI = {
       data: IdentityVerificationProfileStatus
     }>,
 
+  // Display-only location for the verification dialog, resolved server-side
+  // with the same effective client IP as confirmHomeCountry below. Returns no
+  // IP address. The browser never supplies or influences the IP.
+  getDetectedLocation: () =>
+    AxiosRequest.get("/v1/identity-verification/detected-location") as Promise<{
+      data: {
+        countryCode: string | null
+        countryName: string | null
+        city: string | null
+        regionCode: string | null
+        regionName: string | null
+        latitude: number | null
+        longitude: number | null
+      }
+    }>,
+
+  // Browser geolocation display. Sends ONLY the two coordinates (the server
+  // rejects any other field), reverse-geocodes server-side, and compares the
+  // place's country with the server-derived IP country. Never returns an IP.
+  resolveGpsLocation: (latitude: number, longitude: number) =>
+    AxiosRequest.post("/v1/identity-verification/detected-location/coordinates", {
+      latitude,
+      longitude,
+    }) as Promise<{
+      data: {
+        status: "resolved" | "country_mismatch" | "unavailable"
+        countryCode: string | null
+        countryName: string | null
+        city: string | null
+        regionCode: string | null
+        regionName: string | null
+        latitude: number | null
+        longitude: number | null
+      }
+    }>,
+
   confirmHomeCountry: () =>
     AxiosRequest.post("/v1/identity-verification/home-country/confirm", null),
 
