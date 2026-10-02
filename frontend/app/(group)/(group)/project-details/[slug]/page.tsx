@@ -9,7 +9,7 @@ import {
   isTalentAccount,
   NoTeamAssigned,
 } from "@/components/no-team-assigned"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
@@ -29,7 +29,13 @@ import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
 import { LightboxVideoPlayer } from "./lightbox-video-player"
 import { countryOf } from "@/lib/geo"
-import { cn, noop, toPxIfNumber } from "@/utils/functions"
+import {
+  DataEmoji,
+  EmojiProperties,
+  cn,
+  noop,
+  toPxIfNumber,
+} from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
   AlertCircle,
@@ -88,6 +94,7 @@ import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
+import { EmojiPicker } from "@/components/emoji-picker"
 import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
@@ -173,6 +180,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   useCarousel,
+  useToast,
 } from "@/components/ui"
 
 const CollapsibleCard = ({
@@ -306,6 +314,20 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   )
 }
 
+// PMCM-402/QA-221: ApiError.body is the raw response text — pull the
+// Nest exception's own `message` out of it so a specific rejection (e.g.
+// "Project has no team members available to chat with") reaches the user
+// instead of a generic string.
+const extractApiErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(err.body)
+      if (typeof parsed?.message === "string") return parsed.message
+    } catch {}
+  }
+  return fallback
+}
+
 const Chats = ({
   projectId,
   teamMemberIds = [],
@@ -318,10 +340,12 @@ const Chats = ({
   initialDraft?: string
 }) => {
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
+  const [sendingMedia, setSendingMedia] = React.useState(false)
   const [open, toggle] = useToggle(false)
   const router = useRouter()
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
+  const { toast } = useToast()
 
   const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
@@ -442,7 +466,23 @@ const Chats = ({
       return
     }
     setTextareaValue("")
-    const tid = await ensureThread()
+    let tid: string | null
+    try {
+      tid = await ensureThread()
+    } catch (err) {
+      // PMCM-402/QA-221: this previously propagated uncaught (e.g. the
+      // "View as Client" owner-preview case, where the only other
+      // "team member" is the owner themself, so the backend's
+      // self-excluded team list is empty and thread creation 400s) — the
+      // composer had already been cleared above, so the message just
+      // silently vanished with nothing sent and no feedback at all.
+      setTextareaValue(text)
+      toast({
+        title: extractApiErrorMessage(err, "Failed to send message. Please try again."),
+        variant: "destructive",
+      })
+      return
+    }
     if (!tid) return
     const saved = await apiFetch<{
       id: string
@@ -457,8 +497,101 @@ const Chats = ({
       setMessages((prev) =>
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
+    } else {
+      setTextareaValue(text)
+      toast({
+        title: "Failed to send message. Please try again.",
+        variant: "destructive",
+      })
     }
-  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue])
+  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue, toast])
+
+  const handleEmojiSelect = React.useCallback(
+    (emoji: DataEmoji) => {
+      const emojiChar = String.fromCodePoint(
+        ...emoji[EmojiProperties.unified]
+          .split("-")
+          .map((hex) => parseInt(hex, 16))
+      )
+      setTextareaValue((prev) => (prev || "") + emojiChar)
+    },
+    [setTextareaValue]
+  )
+
+  // PMCM-402/QA-221: the media dialog's Send button previously only closed
+  // the dialog (`toggle`) — the picked file was never actually uploaded or
+  // attached to any message, so nothing was ever sent.
+  const sendAttachment = React.useCallback(
+    async (file: File) => {
+      if (!myId) {
+        openAuthModal("sign-in")
+        return false
+      }
+      let tid: string | null
+      try {
+        tid = await ensureThread()
+      } catch (err) {
+        toast({
+          title: extractApiErrorMessage(err, "Failed to send attachment. Please try again."),
+          variant: "destructive",
+        })
+        return false
+      }
+      if (!tid) return false
+      const apiBase = getPublicApiUrl() || "http://localhost:4000"
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("threadId", tid)
+      try {
+        const res = await fetch(`${apiBase}/messaging/upload`, {
+          method: "POST",
+          credentials: "include",
+          headers: csrfHeader("POST"),
+          body: formData,
+        })
+        if (!res.ok) throw new Error(await res.text())
+        const result = await res.json()
+        const saved = result?.message
+        if (saved?.id) {
+          // The upload response returns the attachment beside the message,
+          // not inside it (only the Ably copy carries `attachments`). Merge
+          // it in, or the bubble renders empty and the Ably copy is then
+          // dropped as a duplicate id.
+          const withAttachment = {
+            ...saved,
+            attachments:
+              saved.attachments ??
+              (result.attachment ? [result.attachment] : []),
+          }
+          setMessages((prev) =>
+            prev.some((m) => m.id === saved.id)
+              ? prev
+              : [...prev, withAttachment]
+          )
+        }
+        return true
+      } catch (err) {
+        console.error("Failed to upload chat attachment:", err)
+        toast({
+          title: "Failed to send attachment. Please try again.",
+          variant: "destructive",
+        })
+        return false
+      }
+    },
+    [myId, ensureThread, openAuthModal, toast]
+  )
+
+  const handleSendMedia = React.useCallback(async () => {
+    if (!state?.length) return
+    setSendingMedia(true)
+    for (const item of state) {
+      await sendAttachment(item.data)
+    }
+    setSendingMedia(false)
+    setState(undefined)
+    toggle()
+  }, [state, sendAttachment, toggle])
 
   return (
     <div
@@ -557,14 +690,16 @@ const Chats = ({
         className="p-3 flex min-h-[68px] bg-white items-end gap-x-3 absolute bottom-0 inset-x-0"
       >
         <div className="flex items-center gap-x-1">
-          <IconButton
-            className="rounded-full text-gray-500"
-            visual="gray"
-            variant="ghost"
-            size="lg"
-          >
-            <Smile className="size-[22px]" />
-          </IconButton>
+          <EmojiPicker onEmojiSelect={handleEmojiSelect}>
+            <IconButton
+              className="rounded-full text-gray-500"
+              visual="gray"
+              variant="ghost"
+              size="lg"
+            >
+              <Smile className="size-[22px]" />
+            </IconButton>
+          </EmojiPicker>
 
           <Dialog open={open} onOpenChange={toggle}>
             <DialogTrigger asChild>
@@ -608,10 +743,10 @@ const Chats = ({
                 <Button
                   visual="primary"
                   variant="filled"
-                  disabled={!Boolean(state?.length)}
-                  onClick={Boolean(state?.length) ? toggle : noop}
+                  disabled={!Boolean(state?.length) || sendingMedia}
+                  onClick={Boolean(state?.length) ? handleSendMedia : noop}
                 >
-                  Send
+                  {sendingMedia ? "Sending..." : "Send"}
                 </Button>
               </div>
             </DialogContent>
