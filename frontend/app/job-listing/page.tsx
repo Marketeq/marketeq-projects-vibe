@@ -14739,8 +14739,10 @@ const FinalReviewRichTextField = ({
   const [value, setValue] = useState(initialValue)
   const [isExpanded, setIsExpanded] = useState(false)
   const fieldRef = useRef<HTMLDivElement | null>(null)
+  const valueRef = useRef(initialValue)
 
   useEffect(() => {
+    valueRef.current = initialValue
     setValue(initialValue)
   }, [initialValue])
 
@@ -14767,6 +14769,7 @@ const FinalReviewRichTextField = ({
     : getRichTextCharacterCount(value)
 
   const handleChange = (html: string) => {
+    valueRef.current = html
     setValue(html)
     onChange?.(html)
   }
@@ -14777,15 +14780,15 @@ const FinalReviewRichTextField = ({
     onSmartAssistant?.({
       ...selection,
       insertText: (replacementText: string) => {
-        setValue((currentValue) => {
-          const nextValue = replaceFirstTextInRichTextHtml(
-            currentValue,
-            selection.selectedText,
-            replacementText
-          )
-          onChange?.(nextValue)
-          return nextValue
-        })
+        const nextValue = replaceFirstTextInRichTextHtml(
+          valueRef.current,
+          selection.selectedText,
+          replacementText
+        )
+
+        valueRef.current = nextValue
+        setValue(nextValue)
+        onChange?.(nextValue)
         selection.insertText(replacementText)
       },
     })
@@ -17072,6 +17075,10 @@ const FinalProjectReviewStep = ({
                       .split(/\n+/)
                       .map((line) => line.replace(/^[-•]\s*/, "").trim())
                       .filter(Boolean)
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24)
+                    )
 
                     return (
                       <div
@@ -17079,9 +17086,26 @@ const FinalProjectReviewStep = ({
                         className="flex w-[282px] flex-col items-start gap-4 self-stretch"
                       >
                         <div className="flex w-[282px] justify-end">
-                          <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
-                            {item.prompt}
-                          </p>
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs font-normal leading-[18px] text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm font-normal leading-5 text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
                         </div>
                         {item.status === "pending" ? (
                           <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
