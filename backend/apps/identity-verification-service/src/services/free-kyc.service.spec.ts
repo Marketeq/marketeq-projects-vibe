@@ -356,10 +356,14 @@ describe('FreeKycService', () => {
       expect(provider.createKycSession).toHaveBeenCalledTimes(1);
     });
 
-    it('still refuses to resume while Travel Mode is active', async () => {
-      const { service, provider } = build({ activeSession: active(), profile: confirmedProfile({ travelModeActive: true, identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS }) });
-      await expect(service.startOrResume('user-1')).rejects.toBeInstanceOf(HomeCountryConfirmationRequiredException);
-      expect(provider.createKycSession).not.toHaveBeenCalled();
+    // Part 2: resuming an unfinished session needs no home-country confirmation of
+    // any kind; only creating a NEW session requires verified location, travel
+    // mode off and a fresh confirmation (covered under "new session" above).
+    it('resumes even while Travel Mode is active (only a NEW session requires travel mode off)', async () => {
+      const { service, provider, sessionRepository } = build({ activeSession: active(), profile: confirmedProfile({ travelModeActive: true, identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS }) });
+      await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+      expect(sessionRepository.create).not.toHaveBeenCalled();
     });
 
     it('tracks a different Didit session id returned for the same reference', async () => {

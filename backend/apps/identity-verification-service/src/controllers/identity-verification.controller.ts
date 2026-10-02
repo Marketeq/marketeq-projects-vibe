@@ -14,7 +14,7 @@ import { Request } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import { TwoStageVerificationService } from '../services/two-stage-verification.service';
-import { FreeKycService } from '../services/free-kyc.service';
+import { FreeKycService, KycReconcileOutcome } from '../services/free-kyc.service';
 import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
@@ -243,6 +243,21 @@ export class IdentityVerificationController {
   @UseGuards(VpnProxyCheckGuard)
   async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
     return this.freeKycService.startOrResume(req.userId);
+  }
+
+  // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the
+  // CALLER'S OWN stored unfinished session and applies the decision through the
+  // same transition logic as the signed webhook (which stays the primary path).
+  // POST because it may update state; no body or query is read — the browser
+  // never supplies a Didit session id. Carries no VpnProxyCheckGuard (it only
+  // reads vendor state and never advances a verification), and is throttled the
+  // same way as session start because every call can reach the vendor. Returns a
+  // fixed outcome only; the caller re-reads the real status from GET /me.
+  @Post('kyc-sessions/reconcile')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async reconcileKycSession(@Req() req: AuthenticatedRequest): Promise<{ outcome: KycReconcileOutcome }> {
+    return this.freeKycService.reconcileForUser(req.userId);
   }
 
   @Get('documents')

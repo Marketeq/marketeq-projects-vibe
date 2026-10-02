@@ -57,12 +57,21 @@ import {
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
 
-// A NEW hosted session requires a home-country confirmation no older than
-// this. Resuming an already-created active session does not (see
-// startOrResume) — but still requires the confirmation to be intact.
+// A NEW hosted session requires verified location, travel mode off and a
+// home-country confirmation no older than this. Resuming an already-created
+// active session requires none of them (see startOrResume).
 export const HOME_COUNTRY_CONFIRMATION_WINDOW_MS = 15 * 60 * 1000;
 
 const ACTIVE_SESSION_STATUSES = [HostedKycSessionStatus.CREATED, HostedKycSessionStatus.IN_PROGRESS];
+
+// Sessions that have not reached a final decision locally and can therefore be
+// reconciled with Didit: the two active statuses plus "in review" (a profile
+// waiting in review is not startable, so a lost decision webhook would strand it).
+const RECONCILABLE_SESSION_STATUSES = [...ACTIVE_SESSION_STATUSES, HostedKycSessionStatus.IN_REVIEW];
+
+// Fixed, value-free result of POST kyc-sessions/reconcile. The caller re-reads
+// the real status from GET /me; this never carries identifiers or statuses.
+export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
 
 // Didit's documented session statuses (docs.didit.me/integration/
 // verification-statuses), exact and case-sensitive. Anything not listed maps
@@ -162,9 +171,10 @@ export class FreeKycService {
       profile = (await this.profileRepository.findOne({ where: { id: profileId } })) ?? profile;
 
       if (ACTIVE_SESSION_STATUSES.includes(active.status)) {
-        // Still active at Didit: resume it. The freshness window does not
-        // apply, everything else does.
-        this.assertHomeCountryConfirmed(profile, { requireFresh: false });
+        // Still active at Didit: resume it. The session already belongs to this
+        // profile and was started under a valid confirmation, so resuming needs
+        // no (new) home-country confirmation at all. Only creating a NEW session
+        // requires verified location, travel mode off and a fresh confirmation.
         return this.resume(active);
       }
 
@@ -207,6 +217,39 @@ export class FreeKycService {
     await this.profileRepository.save(profile);
     this.logger.log('failed_final cooldown elapsed — a fresh retry cycle begins.');
     return profile;
+  }
+
+  /**
+   * Authenticated, user-triggered fallback for a lost or delayed Didit webhook
+   * (the signed webhook stays the primary path). The session is resolved
+   * server-side from the caller's own stored unfinished session — the browser
+   * never supplies a Didit session id. Runs under the same per-profile lock as
+   * start/resume, asks Didit for that exact session's decision, validates
+   * ownership (session, vendor reference, workflow, environment, application),
+   * and applies it through the same transition code as the webhook, so terminal
+   * protection, one-attempt-per-decline and idempotency are shared.
+   *
+   * Fails closed: any vendor failure, ownership or environment mismatch, or
+   * unusable status throws a fixed-reason error with NO state change — no
+   * replacement session is created and no attempt is consumed. A profile with
+   * nothing unfinished (including a terminal local session) is a no-op that
+   * does not call Didit.
+   */
+  async reconcileForUser(userId: string): Promise<{ outcome: KycReconcileOutcome }> {
+    const profile = await this.profileRepository.findOne({ where: { userId } });
+    if (!profile) return { outcome: 'no_active_session' };
+
+    return this.withProfileLock(profile.id, async () => {
+      const unfinished = await this.sessionRepository.findOne({
+        where: { profileId: profile.id, status: In(RECONCILABLE_SESSION_STATUSES) },
+        order: { createdAt: 'DESC' },
+      });
+      if (!unfinished) return { outcome: 'no_active_session' as const };
+
+      const before = unfinished.status;
+      await this.reconcileActiveSession(unfinished);
+      return { outcome: unfinished.status === before ? ('unchanged' as const) : ('updated' as const) };
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -528,7 +571,7 @@ export class FreeKycService {
           .insert({ eventId: event.event_id, sessionId: event.session_id });
       } catch (err) {
         if ((err as { code?: string }).code === '23505') {
-          this.logger.debug(`Duplicate webhook event ignored: ${event.event_id}`);
+          this.logger.debug('Duplicate webhook event ignored.');
           return;
         }
         throw err;
@@ -539,7 +582,7 @@ export class FreeKycService {
       // second; dropping the later one could lose the final decision. True
       // replays are already dropped by event_id above.
       if (session.lastEventTimestamp !== null && event.timestamp < Number(session.lastEventTimestamp)) {
-        this.logger.debug(`Out-of-order webhook event ignored for session ${event.session_id}`);
+        this.logger.debug('Out-of-order webhook event ignored.');
         return;
       }
 
