@@ -1,5 +1,7 @@
 import { FreeKycService, HOME_COUNTRY_CONFIRMATION_WINDOW_MS } from './free-kyc.service';
 import { computeDiditSignatureV2 } from '../providers/webhooks/didit-webhook-signature-v2';
+import { buildVerificationSummary } from '../common/status/verification-summary';
+import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -16,6 +18,7 @@ import {
 import {
   AmbiguousVendorOutcomeError,
   HostedSessionNotFoundError,
+  InvalidSessionCreationRequestError,
   MalformedVendorResponseError,
   VendorAuthOrCreditError,
   VendorRateLimitedError,
@@ -23,6 +26,8 @@ import {
 } from '../providers/biometric-session/hosted-biometric-session.errors';
 import {
   HomeCountryConfirmationRequiredException,
+  KycReconciliationUnavailableException,
+  VendorOutcomeUnknownException,
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
 
@@ -137,10 +142,23 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
     ]);
     const manager = { getRepository: (e: unknown) => byEntity.get(e) };
 
+    // Order of commit vs publish, so tests can prove events go out only after commit.
+    const order: string[] = [];
+    const published: Row[] = [];
+    const publisher = {
+      publish: jest.fn(async (e: Row) => {
+        order.push('publish');
+        published.push(e);
+      }),
+    };
     let txTail: Promise<unknown> = Promise.resolve();
     const dataSource = {
       transaction: jest.fn((cb: any) => {
-        const run = txTail.then(() => cb(manager));
+        const run = txTail.then(async () => {
+          const result = await cb(manager);
+          order.push('committed');
+          return result;
+        });
         txTail = run.catch(() => undefined);
         return run;
       }),
@@ -187,6 +205,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       empty as any,
       dataSource as any,
       provider as any,
+      publisher as any,
     );
     // Everything the service logs is captured so tests can prove no identifier leaks.
     const logged: string[] = [];
@@ -225,7 +244,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
         NOW_S,
       );
     };
-    return { service, profile, sessions, attempts, provider, sessionRepository, attemptRepository, dataSource, decide, webhook, logged };
+    return { service, profile, sessions, attempts, provider, sessionRepository, attemptRepository, dataSource, decide, webhook, logged, publisher, published, order, profileRepository };
   }
 
   const identity = (w: ReturnType<typeof world>) => w.profile.identityVerificationStatus;
@@ -268,11 +287,11 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
 
     it.each([
       ['stale confirmation', { verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - HOME_COUNTRY_CONFIRMATION_WINDOW_MS - 1) }, 'confirmation_stale'],
-      ['missing confirmation', { verifiedHomeCountryConfirmedAt: null }, 'not_confirmed'],
-      ['location not verified', { locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }, 'not_confirmed'],
-      ['no home country', { verifiedHomeCountry: null }, 'not_confirmed'],
-      ['travel mode active', { travelModeActive: true }, 'travel_mode'],
-      ['temporary-travel classification', { travelClassification: TravelClassification.TEMPORARILY_TRAVELING }, 'travel_mode'],
+      ['missing confirmation', { verifiedHomeCountryConfirmedAt: null }, 'confirmation_missing'],
+      ['location not verified', { locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }, 'location_not_verified'],
+      ['no home country', { verifiedHomeCountry: null }, 'confirmation_missing'],
+      ['travel mode active', { travelModeActive: true }, 'travel_mode_active'],
+      ['temporary-travel classification', { travelClassification: TravelClassification.TEMPORARILY_TRAVELING }, 'travel_mode_active'],
     ])('is blocked by %s and Didit is never called', async (_label, over, reason) => {
       const w = world({ profile: over });
       const r = await reasonOf(w.service.startOrResume('user-1'));
@@ -457,7 +476,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       const w = world({ profile: inProgressProfile(), sessions: [unfinished()] });
       w.decide('didit-1', error);
       const r = await reasonOf(w.service.reconcileForUser('user-1'));
-      expect(r?.type).toBeInstanceOf(VendorStageUnavailableException);
+      expect(r?.type).toBeInstanceOf(KycReconciliationUnavailableException);
       expect(r?.reason).toBe(reason);
       expect(sessionStatus(w)).toBe(HostedKycSessionStatus.IN_PROGRESS);
       expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
@@ -478,7 +497,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
     it('a failed reconcile followed by a good one still works once, with one attempt at most', async () => {
       const w = world({ profile: inProgressProfile(), sessions: [unfinished()] });
       w.decide('didit-1', new VendorTransportError(new Error('x')));
-      await expect(w.service.reconcileForUser('user-1')).rejects.toBeInstanceOf(VendorStageUnavailableException);
+      await expect(w.service.reconcileForUser('user-1')).rejects.toBeInstanceOf(KycReconciliationUnavailableException);
       w.decide('didit-1', { status: 'Declined' });
       await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'updated' });
       expect(w.attempts).toHaveLength(1);
@@ -500,7 +519,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       const w = world({ profile: inProgressProfile(), sessions: [unfinished()] });
       w.decide('didit-1', { status: 'Approved', ...decision });
       const r = await reasonOf(w.service.reconcileForUser('user-1'));
-      expect(r?.type).toBeInstanceOf(VendorStageUnavailableException);
+      expect(r?.type).toBeInstanceOf(KycReconciliationUnavailableException);
       expect(r?.reason).toBe(reason);
       expect(sessionStatus(w)).toBe(HostedKycSessionStatus.IN_PROGRESS);
       expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS); // never approved on a mismatched decision
@@ -522,7 +541,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       const w = world({ profile: inProgressProfile(), sessions: [unfinished()] });
       w.decide('didit-1', { status });
       const r = await reasonOf(w.service.reconcileForUser('user-1'));
-      expect(r?.type).toBeInstanceOf(VendorStageUnavailableException);
+      expect(r?.type).toBeInstanceOf(KycReconciliationUnavailableException);
       expect(r?.reason).toBe('decision_unusable_status');
       expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
     });
@@ -599,6 +618,194 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       for (const identifier of ['didit-1', 'evt-secret-id-1', 'evt-secret-id-2', REF, SECRET, 'user-1', 'profile-1']) {
         expect(all).not.toContain(identifier);
       }
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('summary after each reconciliation result (what the frontend will be told next)', () => {
+    const summaryOf = (w: ReturnType<typeof world>) =>
+      buildVerificationSummary({
+        identityStatus: w.profile.identityVerificationStatus,
+        locationStatus: w.profile.locationVerificationStatus,
+        failedFinalAt: w.profile.failedFinalAt,
+        hostedCycleAttempts: w.attempts.length,
+        hasActiveHostedSession: w.sessions.some((x) => x.status === HostedKycSessionStatus.CREATED || x.status === HostedKycSessionStatus.IN_PROGRESS),
+        verifiedHomeCountry: w.profile.verifiedHomeCountry,
+        verifiedHomeCountryConfirmedAt: w.profile.verifiedHomeCountryConfirmedAt,
+        travelModeActive: w.profile.travelModeActive,
+        travelClassification: w.profile.travelClassification,
+        nowMs: Date.now(),
+      });
+    const after = async (decision: string, over: Row = {}) => {
+      const w = world({ profile: inProgressProfile(over), sessions: [unfinished()] });
+      w.decide('didit-1', { status: decision });
+      await w.service.reconcileForUser('user-1');
+      return summaryOf(w);
+    };
+
+    it.each([
+      ['Approved', 'complete', { fullyVerified: true }],
+      ['Declined', 'retry_identity', { attemptsUsed: 1, attemptsRemaining: 2, canRetry: true }],
+      ['In Review', 'await_review', { canRetry: false }],
+      ['In Progress', 'continue_identity', { hasActiveSession: true }],
+      ['Abandoned', 'start_identity', { hasActiveSession: false }],
+      ['Expired', 'start_identity', { hasActiveSession: false }],
+    ])('Didit %s → nextAction %s', async (decision, nextAction, extra) => {
+      expect(await after(decision)).toMatchObject({ nextAction, ...extra });
+    });
+
+    it('a declined result with a stale confirmation asks to confirm location first, but still allows a retry', async () => {
+      const stale = new Date(T0.getTime() - HOME_COUNTRY_CONFIRMATION_WINDOW_MS - 1);
+      expect(await after('Declined', { verifiedHomeCountryConfirmedAt: stale })).toMatchObject({ nextAction: 'confirm_location', canRetry: true });
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('IDENTITY_VERIFIED event (published once, after commit, on a real transition only)', () => {
+    const ready = () => world({ profile: inProgressProfile(), sessions: [unfinished()] });
+
+    it('an approval webhook publishes exactly one event with only the fixed fields', async () => {
+      const w = ready();
+      await w.webhook('didit-1', 'Approved');
+      expect(w.published).toHaveLength(1);
+      expect(w.published[0]).toEqual({
+        eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
+        profileId: 'profile-1',
+        userId: 'user-1',
+        occurredAt: T0.toISOString(),
+      });
+      expect(Object.keys(w.published[0]).sort()).toEqual(['eventType', 'occurredAt', 'profileId', 'userId']); // no vendor data
+    });
+
+    it('is published only AFTER the transaction has committed', async () => {
+      const w = ready();
+      await w.webhook('didit-1', 'Approved');
+      expect(w.order).toEqual(['committed', 'publish']);
+    });
+
+    it('replayed and duplicate approvals never publish a second event', async () => {
+      const w = ready();
+      await w.webhook('didit-1', 'Approved', { eventId: 'evt-a', timestamp: NOW_S - 10 });
+      await w.webhook('didit-1', 'Approved', { eventId: 'evt-a', timestamp: NOW_S - 10 }); // same event id
+      await w.webhook('didit-1', 'Approved', { eventId: 'evt-b', timestamp: NOW_S - 5 }); // new id, same status
+      expect(w.published).toHaveLength(1);
+    });
+
+    it('reconciliation publishes it once; a repeat reconcile and a late webhook add nothing', async () => {
+      const w = ready();
+      w.decide('didit-1', { status: 'Approved' });
+      await w.service.reconcileForUser('user-1');
+      await w.service.reconcileForUser('user-1');
+      await w.webhook('didit-1', 'Approved');
+      expect(w.published).toHaveLength(1);
+      expect(w.order.slice(0, 2)).toEqual(['committed', 'publish']);
+    });
+
+    it('a webhook racing a reconciliation publishes exactly one event', async () => {
+      const w = ready();
+      w.decide('didit-1', { status: 'Approved' });
+      await Promise.all([w.webhook('didit-1', 'Approved'), w.service.reconcileForUser('user-1'), w.webhook('didit-1', 'Approved', { eventId: 'evt-x' })]);
+      expect(w.published).toHaveLength(1);
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+    });
+
+    it.each(['In Review', 'In Progress', 'Declined', 'Abandoned', 'Expired', 'Not Started'])('%s publishes nothing', async (status) => {
+      const w = ready();
+      await w.webhook('didit-1', status);
+      expect(w.published).toHaveLength(0);
+    });
+
+    it('an approval that does not change the profile publishes nothing (already verified, or blocked)', async () => {
+      for (const blocked of [IdentityVerificationStatus.VERIFIED, IdentityVerificationStatus.FAILED_FINAL, IdentityVerificationStatus.BLOCKED_DUPLICATE, IdentityVerificationStatus.BLOCKED_AGE]) {
+        const w = world({ profile: { identityVerificationStatus: blocked }, sessions: [unfinished()] });
+        await w.webhook('didit-1', 'Approved');
+        expect(w.published).toHaveLength(0);
+      }
+    });
+
+    it('a failed transaction publishes nothing', async () => {
+      const w = ready();
+      w.profileRepository.save.mockRejectedValueOnce(new Error('db down'));
+      await expect(w.webhook('didit-1', 'Approved')).rejects.toThrow('db down');
+      expect(w.published).toHaveLength(0);
+    });
+
+    it('a publish failure never fails the webhook or undoes the verification, and logs only fixed text', async () => {
+      const w = ready();
+      w.publisher.publish.mockRejectedValueOnce(new Error('broker down didit-1 user-1'));
+      await expect(w.webhook('didit-1', 'Approved')).resolves.toBeUndefined();
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(w.logged).toContain('identity_verified event publish failed.');
+      for (const id of ['didit-1', 'user-1', 'broker down']) expect(w.logged.join('\n')).not.toContain(id);
+    });
+
+    it('works without a configured publisher (the event is a notification, never part of the state change)', async () => {
+      const w = ready();
+      (w.service as any).events = undefined;
+      await expect(w.webhook('didit-1', 'Approved')).resolves.toBeUndefined();
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('which error code each action uses for a vendor failure (Part 3 invariant 7)', () => {
+    const codeOf = async (p: Promise<unknown>) => {
+      try {
+        await p;
+      } catch (e) {
+        return { code: (e as any).code as string, status: (e as any).getStatus?.() as number };
+      }
+      return null;
+    };
+    const transport = () => new VendorTransportError(new Error('x'));
+
+    it('reconciliation failures use KYC_RECONCILIATION_UNAVAILABLE (502)', async () => {
+      for (const error of [transport(), new HostedSessionNotFoundError(), new VendorRateLimitedError(2), new AmbiguousVendorOutcomeError(new Error('x'))]) {
+        const w = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+        w.decide('didit-1', error);
+        expect(await codeOf(w.service.reconcileForUser('user-1'))).toEqual({ code: 'KYC_RECONCILIATION_UNAVAILABLE', status: 502 });
+      }
+      const mismatch = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+      mismatch.decide('didit-1', { status: 'Approved', workflowId: 'wf-other' });
+      expect(await codeOf(mismatch.service.reconcileForUser('user-1'))).toEqual({ code: 'KYC_RECONCILIATION_UNAVAILABLE', status: 502 });
+    });
+
+    it('RESUME keeps VENDOR_STAGE_UNAVAILABLE (502) when the decision lookup fails or the decision does not match', async () => {
+      const lookup = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+      lookup.decide('didit-1', transport());
+      expect(await codeOf(lookup.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_STAGE_UNAVAILABLE', status: 502 });
+
+      const mismatch = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+      mismatch.decide('didit-1', { status: 'In Progress', workflowId: 'wf-other' });
+      expect(await codeOf(mismatch.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_STAGE_UNAVAILABLE', status: 502 });
+    });
+
+    it('RESUME keeps the vendor codes when re-opening the session at Didit fails', async () => {
+      const unavailable = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+      unavailable.provider.createKycSession.mockRejectedValueOnce(transport());
+      expect(await codeOf(unavailable.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_STAGE_UNAVAILABLE', status: 502 });
+
+      const unknown = world({ profile: inProgressProfile(), sessions: [unfinished()] });
+      unknown.provider.createKycSession.mockRejectedValueOnce(new AmbiguousVendorOutcomeError(new Error('x')));
+      expect(await codeOf(unknown.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_OUTCOME_UNKNOWN', status: 503 });
+    });
+
+    it('SESSION CREATION keeps VENDOR_STAGE_UNAVAILABLE (502) and VENDOR_OUTCOME_UNKNOWN (503)', async () => {
+      for (const error of [transport(), new VendorRateLimitedError(2), new InvalidSessionCreationRequestError({ detail: 'x' })]) {
+        const w = world();
+        w.provider.createKycSession.mockRejectedValueOnce(error);
+        expect(await codeOf(w.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_STAGE_UNAVAILABLE', status: 502 });
+        expect(w.sessions).toHaveLength(0);
+      }
+      const unknown = world();
+      unknown.provider.createKycSession.mockRejectedValueOnce(new AmbiguousVendorOutcomeError(new Error('x')));
+      expect(await codeOf(unknown.service.startOrResume('user-1'))).toEqual({ code: 'VENDOR_OUTCOME_UNKNOWN', status: 503 });
+      expect(unknown.sessions).toHaveLength(0);
+    });
+
+    it('the three exception classes are distinct, so no action can be mistaken for another', () => {
+      const codes = [new KycReconciliationUnavailableException(), new VendorStageUnavailableException(), new VendorOutcomeUnknownException()].map((e: any) => e.code);
+      expect(new Set(codes).size).toBe(3);
     });
   });
 

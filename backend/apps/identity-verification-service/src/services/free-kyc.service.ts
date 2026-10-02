@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -49,6 +49,7 @@ import {
 } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import {
   HomeCountryConfirmationRequiredException,
+  KycReconciliationUnavailableException,
   InvalidWebhookSignatureException,
   KycNotStartableException,
   RetryLimitExceededException,
@@ -56,6 +57,12 @@ import {
   VendorOutcomeUnknownException,
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
+import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
+import {
+  NOTIFICATION_EVENT_PUBLISHER,
+  NotificationEventPublisher,
+} from '../events/notification-event-publisher.interface';
+import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 
 // A NEW hosted session requires verified location, travel mode off and a
 // home-country confirmation no older than this. Resuming an already-created
@@ -72,6 +79,14 @@ const RECONCILABLE_SESSION_STATUSES = [...ACTIVE_SESSION_STATUSES, HostedKycSess
 // Fixed, value-free result of POST kyc-sessions/reconcile. The caller re-reads
 // the real status from GET /me; this never carries identifiers or statuses.
 export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
+
+// Filled inside a transition when the profile newly becomes verified, so the
+// IDENTITY_VERIFIED event is published only AFTER that transaction commits and only
+// for a real transition (a replay, a duplicate approval or a reconcile of an
+// already-verified profile never sets it).
+interface IdentityVerifiedSignal {
+  verified?: { profileId: string; userId: string };
+}
 
 // Didit's documented session statuses (docs.didit.me/integration/
 // verification-statuses), exact and case-sensitive. Anything not listed maps
@@ -128,6 +143,12 @@ export class FreeKycService {
     private readonly dataSource: DataSource,
     @Inject(HOSTED_BIOMETRIC_SESSION_PROVIDER)
     private readonly provider: HostedBiometricSessionProvider,
+    // Appended last so every earlier constructor position is unchanged. Optional so a
+    // missing publisher can never break a verification: the event is a notification,
+    // never part of the state change.
+    @Optional()
+    @Inject(NOTIFICATION_EVENT_PUBLISHER)
+    private readonly events?: NotificationEventPublisher,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -143,13 +164,13 @@ export class FreeKycService {
    */
   async startOrResume(userId: string): Promise<{ url: string }> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
-    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'no_profile' });
+    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
     return this.withProfileLock(profile.id, () => this.startOrResumeLocked(profile.id));
   }
 
   private async startOrResumeLocked(profileId: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
-    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'no_profile' });
+    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
 
     // Runs under the per-profile advisory lock held by startOrResume, so
     // concurrent starts cannot both leave failed_final or create two sessions.
@@ -247,7 +268,17 @@ export class FreeKycService {
       if (!unfinished) return { outcome: 'no_active_session' as const };
 
       const before = unfinished.status;
-      await this.reconcileActiveSession(unfinished);
+      try {
+        await this.reconcileActiveSession(unfinished);
+      } catch (err) {
+        // Same fail-closed behavior and fixed reason, under this action's own
+        // stable error code (the start/resume path keeps VENDOR_STAGE_UNAVAILABLE).
+        if (err instanceof VendorStageUnavailableException) {
+          const details = (err.getResponse() as { details?: Record<string, unknown> }).details;
+          throw new KycReconciliationUnavailableException(details);
+        }
+        throw err;
+      }
       return { outcome: unfinished.status === before ? ('unchanged' as const) : ('updated' as const) };
     });
   }
@@ -276,15 +307,35 @@ export class FreeKycService {
     }
     if (FreeKycService.RECONCILE_NO_CHANGE.has(mapped)) return;
 
+    const signal: IdentityVerifiedSignal = {};
     await this.dataSource.transaction(async (manager) => {
       const locked = await manager.getRepository(HostedKycSession).findOne({
         where: { id: active.id },
         lock: { mode: 'pessimistic_write' },
       });
       if (!locked) return;
-      await this.applyTransition(manager, locked, mapped, null);
+      await this.applyTransition(manager, locked, mapped, null, signal);
       active.status = locked.status;
     });
+    await this.publishIdentityVerified(signal);
+  }
+
+  // Published after the transaction has committed. A publish failure never fails
+  // the webhook or the reconcile (the state change already stands): it is logged
+  // with fixed text only. There is no outbox, so a crash between commit and
+  // publish can lose the event.
+  private async publishIdentityVerified(signal: IdentityVerifiedSignal): Promise<void> {
+    if (!signal.verified || !this.events) return;
+    try {
+      await this.events.publish({
+        eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
+        profileId: signal.verified.profileId,
+        userId: signal.verified.userId,
+        occurredAt: new Date().toISOString(),
+      });
+    } catch {
+      this.logger.warn('identity_verified event publish failed.');
+    }
   }
 
   private async fetchDecision(sessionId: string): Promise<HostedSessionDecisionSummary> {
@@ -357,21 +408,18 @@ export class FreeKycService {
     profile: IdentityVerificationProfile,
     options: { requireFresh: boolean },
   ): void {
-    if (
-      profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED ||
-      !profile.verifiedHomeCountry ||
-      !profile.verifiedHomeCountryConfirmedAt
-    ) {
-      throw new HomeCountryConfirmationRequiredException({ reason: 'not_confirmed' });
-    }
+    // Fixed reasons only (see common/errors/kyc-error-reasons.ts).
+    const fail = (reason: HomeCountryConfirmationReason): never => {
+      throw new HomeCountryConfirmationRequiredException({ reason });
+    };
+    if (profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED) fail('location_not_verified');
+    if (!profile.verifiedHomeCountry || !profile.verifiedHomeCountryConfirmedAt) fail('confirmation_missing');
     if (profile.travelModeActive || profile.travelClassification === TravelClassification.TEMPORARILY_TRAVELING) {
-      throw new HomeCountryConfirmationRequiredException({ reason: 'travel_mode' });
+      fail('travel_mode_active');
     }
     if (options.requireFresh) {
-      const age = Date.now() - profile.verifiedHomeCountryConfirmedAt.getTime();
-      if (age > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) {
-        throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_stale' });
-      }
+      const age = Date.now() - (profile.verifiedHomeCountryConfirmedAt as Date).getTime();
+      if (age > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
     }
   }
 
@@ -551,6 +599,7 @@ export class FreeKycService {
       return;
     }
 
+    const signal: IdentityVerifiedSignal = {};
     await this.dataSource.transaction(async (manager) => {
       const sessionRepository = manager.getRepository(HostedKycSession);
       const session = await sessionRepository.findOne({
@@ -593,8 +642,9 @@ export class FreeKycService {
         return;
       }
 
-      await this.applyTransition(manager, session, mapped, String(event.timestamp));
+      await this.applyTransition(manager, session, mapped, String(event.timestamp), signal);
     });
+    await this.publishIdentityVerified(signal);
   }
 
   /**
@@ -611,6 +661,7 @@ export class FreeKycService {
     session: HostedKycSession,
     status: HostedKycSessionStatus,
     eventTimestamp: string | null,
+    signal: IdentityVerifiedSignal,
   ): Promise<boolean> {
     if (this.isBlockedTerminalTransition(session.status, status)) {
       this.logger.debug('Status change would regress a finished session — ignored.');
@@ -619,7 +670,7 @@ export class FreeKycService {
     session.status = status;
     if (eventTimestamp !== null) session.lastEventTimestamp = eventTimestamp;
     await manager.getRepository(HostedKycSession).save(session);
-    await this.applyProfileOutcome(manager, session, status);
+    await this.applyProfileOutcome(manager, session, status, signal);
     return true;
   }
 
@@ -643,6 +694,7 @@ export class FreeKycService {
     manager: EntityManager,
     session: HostedKycSession,
     status: HostedKycSessionStatus,
+    signal: IdentityVerifiedSignal,
   ): Promise<void> {
     const profileRepository = manager.getRepository(IdentityVerificationProfile);
     // The profile row is locked for the rest of the transaction so cycle
@@ -668,7 +720,10 @@ export class FreeKycService {
 
     switch (status) {
       case HostedKycSessionStatus.APPROVED:
+        // Reached only when the profile was not already verified (guarded above),
+        // so this is a real transition: announce it once the transaction commits.
         profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
+        signal.verified = { profileId: profile.id, userId: profile.userId };
         break;
       case HostedKycSessionStatus.DECLINED: {
         const attemptRepository = manager.getRepository(VerificationAttempt);

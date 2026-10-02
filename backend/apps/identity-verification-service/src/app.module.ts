@@ -13,6 +13,7 @@ import { ProcessedWebhookEvent } from './entities/processed-webhook-event.entity
 import { AttemptReservation } from './entities/attempt-reservation.entity';
 import { HostedKycSession } from './entities/hosted-kyc-session.entity';
 import { FreeKycService } from './services/free-kyc.service';
+import { VerificationSummaryService } from './services/verification-summary.service';
 import { IdentityVerificationController } from './controllers/identity-verification.controller';
 import { IdentityVerificationInternalController } from './controllers/identity-verification-internal.controller';
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
@@ -76,6 +77,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     IdentityVerificationService,
     TwoStageVerificationService,
     FreeKycService,
+    VerificationSummaryService,
     TravelModeReminderJob,
     StatusAutoClearJob,
     VpnProxyCheckGuard,

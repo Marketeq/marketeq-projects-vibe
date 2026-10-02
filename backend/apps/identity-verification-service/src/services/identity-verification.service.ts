@@ -67,9 +67,11 @@ import {
 } from '../events/notification-event-publisher.interface';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit/account-wide-attempt-count';
+import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
+import { NextAction } from '../common/status/verification-summary';
+import { VerificationSummaryService } from './verification-summary.service';
 
 const FIRST_REMINDER_DELAY_MS = 5 * 60 * 1000;
-const FAILED_FINAL_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export interface InternalCallerStatus {
   identityVerificationStatus: IdentityVerificationStatus;
@@ -77,7 +79,17 @@ export interface InternalCallerStatus {
   isVerified: boolean;
   gateOpen: boolean;
   inGrace: boolean;
+  // Hosted Free KYC attempts in the current retry cycle (3 while a final failure
+  // is cooling down) — no longer the all-rows count across every pipeline.
   attemptCount: number;
+  // Backward-compatible summary additions (see common/status/verification-summary.ts).
+  fullyVerified: boolean;
+  nextAction: NextAction;
+  attemptsRemaining: number;
+  maxAttempts: number;
+  canRetry: boolean;
+  retryAvailableAt: string | null;
+  hasActiveSession: boolean;
   failureReason: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -112,6 +124,8 @@ export class IdentityVerificationService {
     private readonly objectStorageProvider: ObjectStorageProvider,
     @Inject(NOTIFICATION_EVENT_PUBLISHER)
     private readonly events: NotificationEventPublisher,
+    // Appended last so every earlier constructor position is unchanged.
+    private readonly verificationSummary: VerificationSummaryService,
   ) {}
 
   // --- Profile lifecycle ---
@@ -509,11 +523,18 @@ export class IdentityVerificationService {
   // team owner may see) is the calling service's responsibility, not
   // this one's (Doc 04 §8b, TRVG2 §6) — this method returns the full,
   // confirmed internal shape to an already-authorized internal caller.
+  /** Backward-compatible summary for the account holder's own /me response. */
+  getVerificationSummary(profile: IdentityVerificationProfile) {
+    return this.verificationSummary.summarize(profile);
+  }
+
   async getStatusForInternalCaller(userId: string): Promise<InternalCallerStatus> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
     if (!profile) throw new ProfileNotFoundException();
 
-    const attemptCount = await this.getAccountWideAttemptCount(profile.id);
+    // Hosted Free KYC current-cycle count and the stable next action. The old
+    // all-rows counter (every pipeline, never reset) is deliberately not used here.
+    const summary = await this.verificationSummary.summarize(profile);
     const isVerified =
       profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
@@ -528,7 +549,14 @@ export class IdentityVerificationService {
       isVerified,
       gateOpen,
       inGrace,
-      attemptCount,
+      attemptCount: summary.attemptsUsed,
+      fullyVerified: summary.fullyVerified,
+      nextAction: summary.nextAction,
+      attemptsRemaining: summary.attemptsRemaining,
+      maxAttempts: summary.maxAttempts,
+      canRetry: summary.canRetry,
+      retryAvailableAt: summary.retryAvailableAt,
+      hasActiveSession: summary.hasActiveSession,
       failureReason: coarseFailureReason(profile.identityVerificationStatus),
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,

@@ -2,6 +2,7 @@ import {
   IdentityVerificationStatus,
   LocationVerificationStatus,
 } from '../../entities/enums/identity-verification.enums';
+import { NextAction } from '../../common/status/verification-summary';
 
 // TRVG2 §6.1 ("Internal and support access"): read-only, metadata-only.
 // Never document images, raw vendor payloads, document_ref, or the raw
@@ -18,7 +19,18 @@ export class InternalStatusResponseDto {
   isVerified!: boolean;
   gateOpen!: boolean;
   inGrace!: boolean;
+  // Hosted Free KYC attempts in the current retry cycle (3 while a final failure
+  // is cooling down). Previously an all-rows count across every pipeline.
   attemptCount!: number;
+  // Backward-compatible summary additions; fullyVerified equals isVerified and
+  // requires identity AND location verified (it ignores the grace window).
+  fullyVerified!: boolean;
+  nextAction!: NextAction;
+  attemptsRemaining!: number;
+  maxAttempts!: number;
+  canRetry!: boolean;
+  retryAvailableAt!: string | null;
+  hasActiveSession!: boolean;
   failureReason!: string | null;
   createdAt!: Date;
   updatedAt!: Date;

@@ -1,4 +1,9 @@
 import { IdentityVerificationService } from './identity-verification.service';
+import { VerificationSummaryService } from './verification-summary.service';
+import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { HostedKycSessionStatus } from '../entities/enums/identity-verification.enums';
 import {
   AttemptOutcome,
   DocumentType,
@@ -59,6 +64,8 @@ describe('IdentityVerificationService', () => {
     reservationRepository?: Record<string, jest.Mock>;
     vpnProxyResult?: VpnProxyDetectionResult;
     documentCoverageProvider?: { getAcceptedDocumentTypes: jest.Mock };
+    hostedSessions?: any[];
+    hostedAttempts?: any[];
   } = {}) => {
     const queryRunner = overrides.queryRunner ?? buildFakeQueryRunner();
     const dataSource = { createQueryRunner: jest.fn().mockReturnValue(queryRunner) };
@@ -112,6 +119,20 @@ describe('IdentityVerificationService', () => {
       getAcceptedDocumentTypes: jest.fn().mockResolvedValue(Object.values(DocumentType)),
     };
 
+    // Hosted Free KYC data feeding the verification summary (the legacy repositories
+    // above are intentionally NOT what the internal attempt count reads any more).
+    const hostedSessions = overrides.hostedSessions ?? [];
+    const hostedAttempts = overrides.hostedAttempts ?? [];
+    const verificationSummary = new VerificationSummaryService(
+      {
+        find: jest.fn().mockResolvedValue(hostedSessions),
+        findOne: jest.fn().mockImplementation(async () =>
+          hostedSessions.find((x: any) => x.status === HostedKycSessionStatus.CREATED || x.status === HostedKycSessionStatus.IN_PROGRESS) ?? null,
+        ),
+      } as any,
+      { find: jest.fn().mockResolvedValue(hostedAttempts) } as any,
+    );
+
     const service = new IdentityVerificationService(
       profileRepository as any,
       documentRepository as any,
@@ -125,6 +146,7 @@ describe('IdentityVerificationService', () => {
       locationProvider as any,
       objectStorageProvider as any,
       events as any,
+      verificationSummary,
     );
 
     return {
@@ -272,6 +294,95 @@ describe('IdentityVerificationService', () => {
 
       expect(status.inGrace).toBe(false);
       expect(status.gateOpen).toBe(false);
+    });
+  });
+
+  describe('getStatusForInternalCaller — hosted attempt count and summary (Part 3)', () => {
+    const profileWith = (over: Record<string, unknown> = {}) =>
+      ({
+        id: 'profile-1',
+        identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+        locationVerificationStatus: LocationVerificationStatus.VERIFIED,
+        expiredAt: null,
+        failedFinalAt: null,
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+        ...over,
+      }) as unknown as IdentityVerificationProfile;
+    const declined = (n: number) => ({
+      id: `h${n}`, profileId: 'profile-1', diditSessionId: `hist-${n}`,
+      status: HostedKycSessionStatus.DECLINED, createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, n)),
+    });
+
+    it('attemptCount is the hosted current-cycle count, not the old all-rows count', async () => {
+      // The legacy repositories report many rows, none of which is a hosted session.
+      const { service } = buildService({
+        profileRepository: { findOne: jest.fn().mockResolvedValue(profileWith()) },
+        attemptRepository: { count: jest.fn().mockResolvedValue(7) },
+        pendingSessionRepository: { count: jest.fn().mockResolvedValue(3) },
+        documentRepository: { count: jest.fn().mockResolvedValue(4) },
+        hostedSessions: [declined(1), declined(2)],
+        hostedAttempts: [{ vendorSessionId: 'hist-1' }, { vendorSessionId: 'hist-2' }],
+      });
+      const status = await service.getStatusForInternalCaller('user-1');
+      expect(status.attemptCount).toBe(2);
+      expect(status.attemptsRemaining).toBe(1);
+      expect(status.maxAttempts).toBe(3);
+    });
+
+    it('legacy rows alone give zero hosted attempts', async () => {
+      const { service } = buildService({
+        profileRepository: { findOne: jest.fn().mockResolvedValue(profileWith()) },
+        attemptRepository: { count: jest.fn().mockResolvedValue(9) },
+      });
+      expect((await service.getStatusForInternalCaller('user-1')).attemptCount).toBe(0);
+    });
+
+    it('fullyVerified requires BOTH identity and location, and ignores the grace window', async () => {
+      const cases: Array<[Record<string, unknown>, boolean]> = [
+        [{ identityVerificationStatus: IdentityVerificationStatus.VERIFIED }, true],
+        [{ identityVerificationStatus: IdentityVerificationStatus.VERIFIED, locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }, false],
+        [{ identityVerificationStatus: IdentityVerificationStatus.PENDING }, false],
+        [{ identityVerificationStatus: IdentityVerificationStatus.EXPIRED, expiredAt: new Date(Date.now() - 24 * 60 * 60 * 1000) }, false], // in grace: gateOpen true, fullyVerified false
+      ];
+      for (const [over, expected] of cases) {
+        const { service } = buildService({ profileRepository: { findOne: jest.fn().mockResolvedValue(profileWith(over)) } });
+        const status = await service.getStatusForInternalCaller('user-1');
+        expect(status.fullyVerified).toBe(expected);
+        expect(status.isVerified).toBe(expected); // existing field unchanged and consistent
+      }
+    });
+
+    it('exposes the stable nextAction and keeps every pre-existing field', async () => {
+      const { service } = buildService({
+        profileRepository: { findOne: jest.fn().mockResolvedValue(profileWith({ identityVerificationStatus: IdentityVerificationStatus.PENDING })) },
+      });
+      const status = await service.getStatusForInternalCaller('user-1');
+      expect(status.nextAction).toBe('await_review');
+      for (const key of ['identityVerificationStatus', 'locationVerificationStatus', 'isVerified', 'gateOpen', 'inGrace', 'attemptCount', 'failureReason', 'createdAt', 'updatedAt']) {
+        expect(status).toHaveProperty(key);
+      }
+    });
+  });
+
+  describe('FAILED_FINAL cooldown has a single source (the hosted retry-cycle helper)', () => {
+    it('the daily sweep uses exactly the helper\'s 24-hour cutoff', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-01T12:00:00.000Z'), doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+      try {
+        const find = jest.fn().mockResolvedValue([]);
+        const { service } = buildService({ profileRepository: { find } });
+        await service.clearExpiredFailedFinal();
+        const cutoff: Date = find.mock.calls[0][0].where.failedFinalAt.value;
+        expect(cutoff.getTime()).toBe(Date.now() - FAILED_FINAL_COOLDOWN_MS);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('the service no longer defines its own copy of the constant', () => {
+      const source = readFileSync(join(__dirname, 'identity-verification.service.ts'), 'utf8');
+      expect(source).not.toMatch(/const FAILED_FINAL_COOLDOWN_MS\s*=/);
+      expect(source).toMatch(/import \{ FAILED_FINAL_COOLDOWN_MS \} from '..\/common\/attempt-limit\/hosted-kyc-attempt-cycle'/);
     });
   });
 

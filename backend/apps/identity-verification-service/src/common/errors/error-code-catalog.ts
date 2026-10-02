@@ -189,7 +189,16 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     source: 'Free KYC — FreeKycService.startOrResume.',
     callerAudience: 'end-user',
     safeToDisplayVerbatim: true,
-    messagingNote: 'Message is a plain, user-safe sentence; details.reason names which condition failed.',
+    messagingNote: 'Message is a plain, user-safe sentence; details.reason is one of the fixed values location_not_verified, confirmation_missing, travel_mode_active, confirmation_stale (see kyc-error-reasons.ts).',
+  },
+  {
+    code: 'KYC_RECONCILIATION_UNAVAILABLE',
+    httpStatus: 502,
+    meaning: 'The authenticated reconcile action could not get a trustworthy decision from Didit for the caller\'s own stored session (vendor failure, or a decision that did not match the stored session, workflow or environment). Fail-closed: nothing changed, no session created, no attempt consumed.',
+    source: 'Free KYC — FreeKycService.reconcileForUser (POST kyc-sessions/reconcile).',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is generic; details.reason is a fixed vendor-error class name or decision_* code, never a value, id or vendor body.',
   },
   {
     code: 'IDENTITY_VERIFICATION_NOT_STARTABLE',

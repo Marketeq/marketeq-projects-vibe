@@ -9,7 +9,7 @@ import { FreeKycService } from '../services/free-kyc.service';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { AllExceptionsFilter } from '../common/filters/all-exceptions.filter';
-import { VendorStageUnavailableException } from '../common/errors/domain-exceptions';
+import { KycReconciliationUnavailableException } from '../common/errors/domain-exceptions';
 
 // HTTP contract of POST /v1/identity-verification/kyc-sessions/reconcile: the
 // real controller, validation pipe and exception filter over a mocked service.
@@ -93,11 +93,11 @@ describe('POST /v1/identity-verification/kyc-sessions/reconcile (HTTP contract)'
     expect(vpnGuard.canActivate).toHaveBeenCalledTimes(1);
   });
 
-  it('a vendor failure is a fixed 502 VENDOR_STAGE_UNAVAILABLE that leaks no vendor body, session id or reference', async () => {
-    freeKyc.reconcileForUser.mockRejectedValueOnce(new VendorStageUnavailableException({ reason: 'VendorTransportError' }));
+  it('a vendor failure is a fixed 502 KYC_RECONCILIATION_UNAVAILABLE that leaks no vendor body, session id or reference', async () => {
+    freeKyc.reconcileForUser.mockRejectedValueOnce(new KycReconciliationUnavailableException({ reason: 'VendorTransportError' }));
     const res = await request(app.getHttpServer()).post(ROUTE).send({});
     expect(res.status).toBe(502);
-    expect(res.body.code).toBe('VENDOR_STAGE_UNAVAILABLE');
+    expect(res.body.code).toBe('KYC_RECONCILIATION_UNAVAILABLE');
     const text = JSON.stringify(res.body);
     for (const leak of ['didit-', 'verify.didit.me', 'api_key', 'Bearer']) expect(text).not.toContain(leak);
   });

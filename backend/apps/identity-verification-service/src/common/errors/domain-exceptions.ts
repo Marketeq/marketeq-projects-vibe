@@ -149,6 +149,18 @@ export class VendorStageUnavailableException extends DomainException {
   }
 }
 
+// The authenticated reconcile action (POST kyc-sessions/reconcile) could not
+// get a trustworthy answer from the vendor — a lookup failure, or a decision
+// that did not demonstrably belong to the caller's own session. Fail-closed:
+// nothing was changed. details.reason is one of the fixed reasons only (a vendor
+// error class name or a decision_* ownership code), never a value.
+export class KycReconciliationUnavailableException extends DomainException {
+  readonly code = 'KYC_RECONCILIATION_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super('We could not check your verification right now. Try again shortly.', HttpStatus.BAD_GATEWAY, details);
+  }
+}
+
 // Distinct from VendorStageUnavailableException: no HTTP response was
 // ever received (network failure, or the adapter's own request timeout
 // aborting a hung connection — see AmbiguousVendorOutcomeError), so

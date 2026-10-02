@@ -68,7 +68,8 @@ export class IdentityVerificationController {
   @UseGuards(VpnProxyCheckGuard)
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.getOrCreateProfile(req.userId, getEffectiveClientIp(req));
-    return ProfileStatusResponseDto.fromEntity(profile);
+    const summary = await this.service.getVerificationSummary(profile);
+    return ProfileStatusResponseDto.fromEntity(profile, summary);
   }
 
   // Display-only location for the verification dialog. Uses the same

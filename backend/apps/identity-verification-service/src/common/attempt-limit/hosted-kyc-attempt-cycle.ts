@@ -43,6 +43,13 @@ export function hasFailedFinalCooldownElapsed(failedFinalAt: unknown, nowMs: num
   return nowMs - at >= FAILED_FINAL_COOLDOWN_MS;
 }
 
+// Sessions that count as an unfinished hosted session for "is there something to
+// resume" decisions (kept here so the summary and the start path agree).
+export const ACTIVE_HOSTED_SESSION_STATUSES: HostedKycSessionStatus[] = [
+  HostedKycSessionStatus.CREATED,
+  HostedKycSessionStatus.IN_PROGRESS,
+];
+
 export interface CycleSession {
   id?: string;
   diditSessionId: string;

@@ -273,10 +273,10 @@ describe('FreeKycService', () => {
     });
 
     it.each([
-      ['no profile', null, 'no_profile'],
-      ['location never verified', confirmedProfile({ locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }), 'not_confirmed'],
-      ['no verified country', confirmedProfile({ verifiedHomeCountry: null }), 'not_confirmed'],
-      ['no confirmation timestamp', confirmedProfile({ verifiedHomeCountryConfirmedAt: null }), 'not_confirmed'],
+      ['no profile', null, 'confirmation_missing'],
+      ['location never verified', confirmedProfile({ locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }), 'location_not_verified'],
+      ['no verified country', confirmedProfile({ verifiedHomeCountry: null }), 'confirmation_missing'],
+      ['no confirmation timestamp', confirmedProfile({ verifiedHomeCountryConfirmedAt: null }), 'confirmation_missing'],
     ])('rejects: %s', async (_n, profile, reason) => {
       const { service, provider } = build({ profile });
       const r = await reasonOf(service.startOrResume('user-1'));
@@ -289,13 +289,13 @@ describe('FreeKycService', () => {
       const { service, provider } = build({ profile: confirmedProfile({ travelModeActive: true, travelClassification: TravelClassification.TEMPORARILY_TRAVELING }) });
       const r = await reasonOf(service.startOrResume('user-1'));
       expect(r?.type).toBeInstanceOf(HomeCountryConfirmationRequiredException);
-      expect(r?.reason).toBe('travel_mode');
+      expect(r?.reason).toBe('travel_mode_active');
       expect(provider.createKycSession).not.toHaveBeenCalled();
     });
 
     it('rejects a temporary-travel classification even if travel mode is not currently active', async () => {
       const { service } = build({ profile: confirmedProfile({ travelClassification: TravelClassification.TEMPORARILY_TRAVELING }) });
-      expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode');
+      expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
     });
 
     it('allows a profile whose travel state is cleared (travel ended: not active, no temporary classification)', async () => {
