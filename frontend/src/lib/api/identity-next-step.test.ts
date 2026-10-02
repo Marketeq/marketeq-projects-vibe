@@ -4,9 +4,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import {
-  decideGate,
   gateRouteForFlowState,
+  shouldOpenFirstTimeGate,
+  shouldShowProfileBanner,
   startIdentityOnly,
+  verifyActionFor,
   type StartIdentityOnlyDeps,
 } from "./identity-next-step"
 import { NEXT_ACTIONS, mapNextActionToFlowState, parseIdentityVerificationSummary } from "./identity-verification-state"
@@ -43,27 +45,79 @@ describe("which step the box asks for (driven only by the backend nextAction)", 
   })
 })
 
-describe("when the box opens on the dashboard", () => {
-  it("opens (existing 'not public' copy) whenever the user has something to do", () => {
-    for (const action of ["confirm_location", "start_identity", "continue_identity", "retry_identity", "reverify_identity"]) {
-      assert.deepEqual(decideGate(summaryFor(action)), { kind: "open", reason: "unstarted" }, action)
+describe("what Verify My Account does (the backend's CURRENT state only)", () => {
+  const withRetry = (nextAction: string, retryAvailableAt: string | null) =>
+    parseIdentityVerificationSummary({ nextAction, retryAvailableAt, attemptsUsed: 3, attemptsRemaining: 0, maxAttempts: 3 })
+
+  it("confirm_location → the existing location flow", () => {
+    assert.deepEqual(verifyActionFor(summaryFor("confirm_location")), { kind: "location" })
+  })
+  it("start_identity, continue_identity, retry_identity and reverify_identity → Didit", () => {
+    for (const a of ["start_identity", "continue_identity", "retry_identity", "reverify_identity"]) {
+      assert.deepEqual(verifyActionFor(summaryFor(a)), { kind: "didit" }, a)
     }
   })
+  it("wait_for_retry with a valid retry time → the limit dialog, with that exact time", () => {
+    assert.deepEqual(verifyActionFor(withRetry("wait_for_retry", "2026-10-03T14:17:00.000Z")), { kind: "limit", retryAt: "2026-10-03T14:17:00.000Z" })
+  })
+  it("wait_for_retry WITHOUT a valid retry time → closes (no dialog, no session)", () => {
+    for (const bad of [null, "", "garbage"]) assert.deepEqual(verifyActionFor(withRetry("wait_for_retry", bad)), { kind: "close" })
+  })
+  it("await_review, complete, unknown and unreadable → close the actionable surface and start nothing", () => {
+    for (const a of ["await_review", "complete", "something_new", undefined, null, 7]) {
+      assert.deepEqual(verifyActionFor(summaryFor(a)), { kind: "close" }, String(a))
+    }
+    assert.deepEqual(verifyActionFor(null), { kind: "close" })
+  })
+})
 
-  it("stays closed while in review, waiting for a retry window, or complete", () => {
-    for (const action of ["await_review", "wait_for_retry", "complete"]) {
-      assert.deepEqual(decideGate(summaryFor(action)), { kind: "closed" }, action)
+describe("banner visibility table (profile not public)", () => {
+  const table: Array<[string, boolean]> = [
+    ["confirm_location", true],
+    ["start_identity", true],
+    ["continue_identity", true],
+    ["retry_identity", true],
+    ["reverify_identity", true],
+    ["await_review", false],
+    ["wait_for_retry", false],
+    ["complete", false],
+  ]
+  for (const [action, shown] of table) {
+    it(`${action} → ${shown ? "shown" : "hidden"}`, () => {
+      assert.equal(shouldShowProfileBanner(summaryFor(action)), shown)
+    })
+  }
+  it("wait_for_retry never shows it, even with a valid retry time", () => {
+    const s = parseIdentityVerificationSummary({ nextAction: "wait_for_retry", retryAvailableAt: "2026-10-03T14:17:00.000Z" })
+    assert.equal(shouldShowProfileBanner(s), false)
+  })
+  it("an unknown value, a missing nextAction and an unreadable status hide it", () => {
+    for (const bad of ["something_new", undefined, null, ""]) assert.equal(shouldShowProfileBanner(summaryFor(bad)), false)
+    assert.equal(shouldShowProfileBanner(null), false)
+  })
+  it("banner visibility and the Verify action can never disagree: shown exactly when the action is location or didit", () => {
+    for (const a of [...NEXT_ACTIONS, "something_new"]) {
+      const s = summaryFor(a)
+      const kind = verifyActionFor(s).kind
+      assert.equal(shouldShowProfileBanner(s), kind === "location" || kind === "didit", a)
     }
   })
+})
 
-  it("an unreachable status opens the existing neutral 'status unavailable' copy", () => {
-    assert.deepEqual(decideGate(null), { kind: "open", reason: "status_unavailable" })
+describe("the first-time modal gate (existing AccountVerificationGate)", () => {
+  it("opens on load only for a first verification: confirm_location and start_identity", () => {
+    assert.equal(shouldOpenFirstTimeGate(summaryFor("confirm_location")), true)
+    assert.equal(shouldOpenFirstTimeGate(summaryFor("start_identity")), true)
   })
-
-  it("an answer with no usable nextAction falls back to the pre-existing status check", () => {
-    for (const bad of [undefined, null, "", "something_new", 7]) {
-      assert.deepEqual(decideGate(summaryFor(bad)), { kind: "fallback" })
+  it("is NOT reused for rejected, resumed or re-verifying users (they get the banner)", () => {
+    for (const a of ["retry_identity", "continue_identity", "reverify_identity"]) {
+      assert.equal(shouldOpenFirstTimeGate(summaryFor(a)), false, a)
+      assert.equal(shouldShowProfileBanner(summaryFor(a)), true, a)
     }
+  })
+  it("never opens for review, the cooldown, complete, unknown or unreadable", () => {
+    for (const a of ["await_review", "wait_for_retry", "complete", "something_new", undefined]) assert.equal(shouldOpenFirstTimeGate(summaryFor(a)), false)
+    assert.equal(shouldOpenFirstTimeGate(null), false)
   })
 })
 
@@ -135,61 +189,43 @@ describe("startIdentityOnly: Didit only, no location step", () => {
   })
 })
 
-describe("the third-rejection regression: a stale box must not open the location flow", () => {
-  it("failed_final / wait_for_retry resolves to a closed box, so neither the load check nor the button can open a flow", () => {
-    const s = summaryFor("wait_for_retry")
-    assert.deepEqual(decideGate(s), { kind: "closed" })
-    assert.equal(gateRouteForFlowState(s!.flowState), null)
-  })
-  it("an unreadable or unrecognised answer is not 'closed', so the old behavior still applies there", () => {
-    assert.notDeepEqual(decideGate(null), { kind: "closed" })
-    assert.notDeepEqual(decideGate(summaryFor("some_future_value")), { kind: "closed" })
-  })
-})
-
 describe("dashboard wiring and boundaries (source guards)", () => {
   const page = read("app", "(group)", "talent-dashboard", "page.tsx")
   const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// A start attempt rejected as not startable"))
   const handler = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("}, [runIdentityVerificationCheck])"))
 
-  it("the load-time check decides from the backend nextAction and keeps the old status check only as a fallback", () => {
+  it("the load check reads only the backend summary: banner, first-time gate and cooldown dialog come from it", () => {
     assert.ok(check.includes("const summary = await fetchIdentityVerificationSummary()"))
-    assert.ok(check.includes("const decision = decideGate(summary)"))
-    assert.ok(check.indexOf("decision.kind === \"open\"") < check.indexOf("checkIdentityVerificationStatus()"))
-    assert.ok(check.includes('decision.kind === "closed"'))
+    assert.ok(check.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
+    assert.ok(check.includes("setVerificationGateOpen(shouldOpenFirstTimeGate(summary))"))
+    assert.ok(check.includes("setCooldownRetryTime(cooldownRetryAt(summary))"))
+    assert.ok(!check.includes("checkIdentityVerificationStatus"), "no older status-check fallback")
   })
 
-  it("the button reads the CURRENT nextAction after the connection check, not a value from when the box opened", () => {
+  it("the button re-reads the backend AFTER the connection check, then acts on verifyActionFor", () => {
     const vpn = handler.indexOf("await checkVpnProxy()")
     const fresh = handler.indexOf("await fetchIdentityVerificationSummary()")
+    const decide = handler.indexOf("verifyActionFor(summary)")
     const didit = handler.indexOf("await startIdentityOnlyForDashboard()")
     const location = handler.indexOf("getDetectedLocation({ useBrowserLocation: true })")
-    assert.ok(vpn > -1 && fresh > vpn && didit > fresh && location > didit)
-    assert.ok(handler.includes('gateRouteForFlowState(summary.flowState) === "identity"'))
+    assert.ok(vpn > -1 && fresh > vpn && decide > fresh && didit > decide && location > didit)
   })
 
-  it("nothing due (in review, waiting for a retry window, complete) closes the box and never opens the location flow", () => {
-    const closed = handler.indexOf('decideGate(summary).kind === "closed"')
-    const flow = handler.indexOf("setIdentityFlowOpen(true)")
-    assert.ok(closed > -1 && closed < handler.indexOf("startIdentityOnlyForDashboard") && closed < flow)
-    assert.match(handler, /decideGate\(summary\)\.kind === "closed"\) \{[\s\S]*?setConnectionCheckState\("idle"\)\s+setVerificationGateOpen\(false\)\s+setCooldownRetryTime\(cooldownRetryAt\(summary\)\)\s+return\s+\}/)
+  it("limit → the approved dialog; close → closes banner and gate and starts nothing; didit → Didit only", () => {
+    assert.match(handler, /action\.kind === "limit"\) \{[\s\S]*?setProfileBannerShown\(false\)\s+setCooldownRetryTime\(action\.retryAt\)\s+return\s+\}/)
+    assert.match(handler, /action\.kind === "close"\) \{\s+setConnectionCheckState\("idle"\)\s+setVerificationGateOpen\(false\)\s+setProfileBannerShown\(false\)\s+return\s+\}/)
+    assert.ok(handler.includes('action.kind === "didit"'))
+    // neither limit nor close can reach a session start or the location flow
+    const limitClose = handler.slice(handler.indexOf('action.kind === "limit"'), handler.indexOf('action.kind === "didit"'))
+    assert.ok(!limitClose.includes("startIdentityOnlyForDashboard") && !limitClose.includes("setIdentityFlowOpen"))
   })
 
-  it("after a result arrives from the return reconcile or the polling, a stale box closes itself", () => {
-    const effect = page.slice(page.indexOf("const returnReconcilerRef"), page.indexOf("Real required check"))
-    assert.ok(effect.includes('if (decideGate(summary).kind === "closed") setVerificationGateOpen(false)'))
-    // success still wins first, and the polling bound is unchanged
-    assert.ok(effect.indexOf("shouldShowSuccessModal(summary)") < effect.indexOf('decideGate(summary).kind === "closed"'))
-    assert.ok(effect.includes("attempts < RESULT_POLL_MAX_ATTEMPTS"))
-  })
-
-  it("the location step is still reached for location, an unreadable status, and a stale confirmation", () => {
+  it("the location step is still reached for location and for a stale confirmation (needs_location)", () => {
     assert.ok(handler.includes('// "needs_location": fall through to the normal location step below'))
-    assert.ok(handler.includes("setIdentityFlowOpen(true)"))
     assert.equal((handler.match(/setIdentityFlowOpen\(true\)/g) ?? []).length, 1)
   })
 
-  it("not_startable re-checks the real state; failed stays on the box; a redirect leaves the button on its existing 'Checking...' state", () => {
+  it("not_startable re-checks the real state; failed stays put; a redirect leaves the button on its existing 'Checking...' state", () => {
     assert.match(handler, /started === "not_startable"\) \{\s+setConnectionCheckState\("idle"\)\s+void runIdentityVerificationCheck\(\)/)
     assert.match(handler, /started === "failed"\) \{\s+setConnectionCheckState\("idle"\)\s+return/)
     assert.ok(handler.includes('if (started === "redirected") return'))
@@ -201,9 +237,15 @@ describe("dashboard wiring and boundaries (source guards)", () => {
     assert.ok(handler.indexOf("checkVpnProxy()") < handler.indexOf("startIdentityOnlyForDashboard"))
   })
 
+  it("after a result arrives from the return reconcile or polling, banner and gate are refreshed from it; success still wins first", () => {
+    const effect = page.slice(page.indexOf("const returnReconcilerRef"), page.indexOf("Real required check"))
+    assert.ok(effect.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
+    assert.ok(effect.includes("if (!shouldShowProfileBanner(summary)) setVerificationGateOpen(false)"))
+    assert.ok(effect.indexOf("shouldShowSuccessModal(summary)") < effect.indexOf("setProfileBannerShown(shouldShowProfileBanner(summary))"))
+    assert.ok(effect.includes("attempts < RESULT_POLL_MAX_ATTEMPTS"))
+  })
+
   it("no routing rule is recreated in the frontend: no status, attempt, clock or confirmation-age logic", () => {
-    // The routing and Didit-start code. The retry-time formatter below the marker only
-    // displays a backend-supplied timestamp, so it is covered by cooldown-screen.test.ts.
     const full = read("src", "lib", "api", "identity-next-step.ts")
     const src = full.slice(0, full.indexOf("// Waiting for a retry window"))
     const code = src.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n")

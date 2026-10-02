@@ -37,24 +37,62 @@ export function gateRouteForFlowState(
   return ROUTE_BY_FLOW_STATE[flowState] ?? null
 }
 
-// What the dashboard does when it checks on load:
-//   open      → show the existing gate (`reason` picks its existing copy)
-//   closed    → show nothing
-//   fallback  → the server gave no usable nextAction (an older server); use the
-//               pre-existing status check instead
-export type GateDecision =
-  | { kind: "open"; reason: "unstarted" | "status_unavailable" }
-  | { kind: "closed" }
-  | { kind: "fallback" }
+// What "Verify My Account" does, and therefore whether the actionable surfaces (the
+// dashboard banner, the first-time gate) are shown at all. One function decides
+// both, from the backend's CURRENT answer only:
+//   location  → the existing location flow ("Yes, this is my home country")
+//   didit     → Didit only: start, resume the stored session, retry or re-verify
+//   limit     → the approved third-attempt dialog (backend says wait, with a valid
+//               retry time); no flow starts
+//   close     → nothing is actionable: in review, a wait without a retry time,
+//               complete, an unknown value, or an unreadable status. No session is
+//               started and no actionable surface is shown.
+export type VerifyAction =
+  | { kind: "location" }
+  | { kind: "didit" }
+  | { kind: "limit"; retryAt: string }
+  | { kind: "close" }
 
-export function decideGate(
+export function verifyActionFor(
   summary: IdentityVerificationSummaryView | null
-): GateDecision {
-  if (summary === null) return { kind: "open", reason: "status_unavailable" }
-  if (summary.flowState === "unknown") return { kind: "fallback" }
-  return gateRouteForFlowState(summary.flowState)
-    ? { kind: "open", reason: "unstarted" }
-    : { kind: "closed" }
+): VerifyAction {
+  if (!summary) return { kind: "close" }
+  if (summary.flowState === "wait-for-retry") {
+    const retryAt = cooldownRetryAt(summary)
+    return retryAt ? { kind: "limit", retryAt } : { kind: "close" }
+  }
+  const route = gateRouteForFlowState(summary.flowState)
+  if (route === "location") return { kind: "location" }
+  if (route === "identity") return { kind: "didit" }
+  return { kind: "close" }
+}
+
+// The dashboard banner is shown exactly for the actionable, incomplete states:
+// confirm_location, start_identity, continue_identity, retry_identity and
+// reverify_identity. Never for review, the cooldown, complete, unknown or an
+// unreadable status.
+export function shouldShowProfileBanner(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  const action = verifyActionFor(summary)
+  return action.kind === "location" || action.kind === "didit"
+}
+
+// The first-time modal gate (existing AccountVerificationGate) still opens on load
+// for a first-time verification only. Rejected, resumed and re-verifying users get
+// the banner alone.
+const GATE_MODAL_FLOW_STATES: IdentityFlowState[] = [
+  "confirm-location",
+  "start-identity",
+]
+
+export function shouldOpenFirstTimeGate(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  return (
+    shouldShowProfileBanner(summary) &&
+    GATE_MODAL_FLOW_STATES.includes(summary!.flowState)
+  )
 }
 
 // ---------------------------------------------------------------------------

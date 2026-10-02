@@ -7,6 +7,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
+  ArrowRight,
   CheckCircle,
   ChevronRight,
   RefreshCw,
@@ -18,9 +19,7 @@ import {
   type VpnProxyDetectionOutcome,
 } from "@/src/lib/api/vpn-proxy-detection"
 import {
-  checkIdentityVerificationStatus,
   clearAwaitingResult,
-  gateReasonForStatus,
   hasAwaitingResult,
   IDENTITY_STATUS_REFRESHED_EVENT,
   RESULT_POLL_INTERVAL_MS,
@@ -28,10 +27,11 @@ import {
 } from "@/src/lib/api/identity-verification-status"
 import {
   cooldownRetryAt,
-  decideGate,
   formatRetryAt,
-  gateRouteForFlowState,
+  shouldOpenFirstTimeGate,
+  shouldShowProfileBanner,
   startIdentityOnlyForDashboard,
+  verifyActionFor,
 } from "@/src/lib/api/identity-next-step"
 import {
   isPasswordSetupRequired,
@@ -50,7 +50,6 @@ import {
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
 import {
   AccountVerificationGate,
-  type AccountVerificationGateReason,
   type ConnectionCheckState,
 } from "@/components/account-verification-gate"
 import {
@@ -67,7 +66,13 @@ import {
   Welcome,
 } from "@/components/talent-dashboard-comps"
 import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   Button,
+  CloseButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -142,15 +147,18 @@ export default function TalentDashboard() {
   const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
 
   // Identity verification entry prompt (AccountVerificationGate, Figma node
-  // 13101-47588). Shown automatically on load/refresh whenever the real
-  // identity-verification status is "unstarted" OR couldn't be retrieved at
-  // all (`gateReason` distinguishes the two so the gate never claims the
-  // account is verified or unverified when the truth is simply unknown). A
-  // confirmed status other than "unstarted" (verified, pending, etc.) never
-  // opens the gate.
+  // 13101-47588). It opens automatically on load/refresh only for a FIRST
+  // verification (the backend says to confirm the location or start identity), and
+  // it also carries the in-place connection-check error state. Rejected, resumed
+  // and re-verifying users get the dashboard banner instead; an unreadable or
+  // unknown status opens nothing.
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
-  const [gateReason, setGateReason] =
-    useState<AccountVerificationGateReason>("unstarted")
+  // The dashboard banner ("Your profile is not public"): shown while the backend says
+  // the account is actionable and incomplete. Dismissing it is in-memory only — no
+  // storage, no request, no verification-state change; a refresh or later login
+  // shows it again if the backend still says so.
+  const [profileBannerShown, setProfileBannerShown] = useState(false)
+  const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
   // Tracks the real connection check attempted from inside the gate itself
   // ("Verify My Account" / its Retry). "unavailable" keeps the gate open and
   // renders the error+Retry state in place, per Chris's spec — it never
@@ -163,31 +171,15 @@ export default function TalentDashboard() {
   const identityStatusCheckStartedRef = useRef(false)
 
   const runIdentityVerificationCheck = useCallback(async () => {
-    // The backend's nextAction decides whether the gate is due: it opens for every
-    // state that needs the user to act (not started, a rejected attempt with attempts
-    // left, an unfinished session, an expired verification, a location to confirm)
-    // and stays closed for in review, waiting for a retry window, and complete.
+    // The backend's nextAction is the only input. The banner shows for the actionable,
+    // incomplete states; the first-time modal gate additionally opens for a first
+    // verification. In review, the cooldown, complete, an unknown value and an
+    // unreadable status show neither. While the backend says to wait for a retry
+    // window, only the approved third-attempt dialog is shown.
     const summary = await fetchIdentityVerificationSummary()
-    const decision = decideGate(summary)
-    if (decision.kind === "open") {
-      setGateReason(decision.reason)
-      setVerificationGateOpen(true)
-      return
-    }
-    if (decision.kind === "closed") {
-      setVerificationGateOpen(false)
-      setCooldownRetryTime(cooldownRetryAt(summary))
-      return
-    }
-    // An older server with no usable nextAction: the pre-existing status check.
-    const status = await checkIdentityVerificationStatus()
-    const reason = gateReasonForStatus(status)
-    if (!reason) {
-      setVerificationGateOpen(false)
-      return
-    }
-    setGateReason(reason)
-    setVerificationGateOpen(true)
+    setProfileBannerShown(shouldShowProfileBanner(summary))
+    setVerificationGateOpen(shouldOpenFirstTimeGate(summary))
+    setCooldownRetryTime(cooldownRetryAt(summary))
   }, [])
 
   // A start attempt rejected as not startable re-reads the real status
@@ -198,6 +190,7 @@ export default function TalentDashboard() {
       if (status !== "verified") return
       setVerificationGateOpen(false)
       setIdentityFlowOpen(false)
+      setProfileBannerShown(false)
     }
     window.addEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
     return () =>
@@ -243,13 +236,15 @@ export default function TalentDashboard() {
       if (shouldShowSuccessModal(summary)) {
         clearAwaitingResult(window.localStorage)
         setVerificationGateOpen(false)
+        setProfileBannerShown(false)
         setVerifiedModalOpen(true)
         return
       }
-      // The box may have opened from an earlier read, before this result landed
-      // (e.g. an unfinished session that has since ended). Re-evaluate it from the
-      // same backend answer so a stale box closes on its own.
-      if (decideGate(summary).kind === "closed") setVerificationGateOpen(false)
+      // The banner or gate may have opened from an earlier read, before this result
+      // landed (e.g. an unfinished session that has since ended, or a new rejection
+      // with attempts left). Re-evaluate them from the same backend answer.
+      setProfileBannerShown(shouldShowProfileBanner(summary))
+      if (!shouldShowProfileBanner(summary)) setVerificationGateOpen(false)
       // Waiting out a retry window (the third rejection): show the retry time and
       // stop polling — nothing more is coming until then.
       const retryAt = cooldownRetryAt(summary)
@@ -327,22 +322,28 @@ export default function TalentDashboard() {
 
     if (outcome === "none") {
       setVpnProxyModalOpen(false)
-      // Ask only for what is still missing. The backend's CURRENT nextAction (read
-      // now, not when the gate opened — its 15-minute confirmation window may have
-      // run out since) says whether location or Didit is due. When Didit is due,
-      // skip the location step and go straight to Didit; if the backend still wants
-      // the home country confirmed, or the route is location, use the normal flow.
+      // Ask only for what is still missing. The backend's state is re-read NOW, not
+      // trusted from when the banner or gate opened: location -> the existing location
+      // flow; start / resume / retry / re-verify -> Didit only; a wait with a retry
+      // time -> the approved limit dialog; anything else (in review, complete, an
+      // unknown value or an unreadable status) -> close the actionable surfaces and
+      // start nothing.
       const summary = await fetchIdentityVerificationSummary()
-      if (decideGate(summary).kind === "closed") {
-        // Nothing is due any more (in review, waiting for a retry window, or
-        // complete): the box on screen was out of date. Close it — never open the
-        // location flow for an account the backend says has nothing to do.
+      const action = verifyActionFor(summary)
+      if (action.kind === "limit") {
         setConnectionCheckState("idle")
         setVerificationGateOpen(false)
-        setCooldownRetryTime(cooldownRetryAt(summary))
+        setProfileBannerShown(false)
+        setCooldownRetryTime(action.retryAt)
         return
       }
-      if (summary && gateRouteForFlowState(summary.flowState) === "identity") {
+      if (action.kind === "close") {
+        setConnectionCheckState("idle")
+        setVerificationGateOpen(false)
+        setProfileBannerShown(false)
+        return
+      }
+      if (action.kind === "didit") {
         const started = await startIdentityOnlyForDashboard()
         if (started === "redirected") return // the button stays on "Checking..." while the browser leaves
         if (started === "not_startable") {
@@ -550,7 +551,7 @@ export default function TalentDashboard() {
 
       <AccountVerificationGate
         open={verificationGateOpen}
-        reason={gateReason}
+        reason="unstarted"
         connectionCheckState={connectionCheckState}
         onVerify={() => void handleVerifyMyAccount()}
         onRetryConnectionCheck={() => void handleVerifyMyAccount()}
@@ -570,6 +571,38 @@ export default function TalentDashboard() {
           <LeftSidebar />
           <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
             <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
+              {profileBannerShown && !profileBannerDismissed && (
+                // Welcome renders its header row inside a `md:contents` wrapper, so at
+                // md+ the column's space-y margin never reaches that row (a
+                // display:contents box has no margin). The banner therefore carries its
+                // own bottom gap: 32px from md up (Figma content column gap), and below
+                // md the wrapper is a normal box that already gets space-y-3 (12px).
+                <Alert variant="warning" className="md:mb-8">
+                  <AlertIcon>
+                    <AlertTriangle className="h-5 w-5" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle className="text-warning-600">
+                      Your profile is not public
+                    </AlertTitle>
+                    <AlertDescription>
+                      To access full platform features, please verify your account
+                    </AlertDescription>
+                    <div className="mt-3 flex items-center gap-x-3 text-sm font-semibold">
+                      <Button
+                        variant="link"
+                        className="h-5 gap-x-2 p-0 text-sm font-semibold leading-5 text-warning-600"
+                        disabled={connectionCheckState === "checking"}
+                        onClick={() => void handleVerifyMyAccount()}
+                      >
+                        Verify My Account
+                        <ArrowRight className="size-5" />
+                      </Button>
+                    </div>
+                  </AlertContent>
+                  <CloseButton onClick={() => setProfileBannerDismissed(true)} />
+                </Alert>
+              )}
               <Welcome onToggle={() => setIsOpen(true)} />
 
               <RecentListings />

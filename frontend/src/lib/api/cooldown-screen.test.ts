@@ -3,7 +3,8 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { cooldownRetryAt, decideGate, formatRetryAt } from "./identity-next-step"
+import { createHash } from "node:crypto"
+import { cooldownRetryAt, formatRetryAt, shouldShowProfileBanner, verifyActionFor } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
@@ -27,8 +28,9 @@ describe("when the 'You've used all three attempts' screen applies (backend data
   it("an unreadable status never shows it", () => {
     assert.equal(cooldownRetryAt(null), null)
   })
-  it("it is a closed-box state, so the 'Verify My Account' box and this screen never show together", () => {
-    assert.deepEqual(decideGate(summary({})), { kind: "closed" })
+  it("during the cooldown the general banner is never shown, only this screen's dialog", () => {
+    assert.equal(shouldShowProfileBanner(summary({})), false)
+    assert.deepEqual(verifyActionFor(summary({})), { kind: "limit", retryAt: "2026-10-03T14:17:00.000Z" })
   })
 })
 
@@ -90,6 +92,10 @@ describe("the screen: approved copy and the Figma frame 13101-47396", () => {
     }
   })
 
+  it("is byte-for-byte the approved dialog from commit 494827a0 (sha256 of the whole Dialog block)", () => {
+    assert.equal(createHash("sha256").update(dialog).digest("hex"), "a9990654da12b2635affedce07dd897d1a289adf461f7ac594712287b27a976b")
+  })
+
   it("closes with the Dialog's own Escape / outside click, and returns on the next backend answer", () => {
     assert.ok(dialog.includes("onOpenChange={(open) => {\n          if (!open) setCooldownRetryTime(null)"))
     assert.ok(!dialog.includes("preventDefault"))
@@ -99,10 +105,11 @@ describe("the screen: approved copy and the Figma frame 13101-47396", () => {
 describe("wiring: every place that reads the backend's answer feeds it", () => {
   const page = read("app", "(group)", "talent-dashboard", "page.tsx")
 
-  it("the load check, the return effect and the stale-box button all set it from cooldownRetryAt", () => {
-    assert.equal((page.match(/setCooldownRetryTime\(cooldownRetryAt\(summary\)\)/g) ?? []).length, 2)
-    assert.ok(page.includes("const retryAt = cooldownRetryAt(summary)"))
+  it("the load check, the return effect and the Verify action all feed the dialog from the backend's retry time", () => {
+    assert.equal((page.match(/setCooldownRetryTime\(cooldownRetryAt\(summary\)\)/g) ?? []).length, 1) // load check
+    assert.ok(page.includes("const retryAt = cooldownRetryAt(summary)")) // return from Didit
     assert.match(page, /if \(retryAt\) \{\s+setCooldownRetryTime\(retryAt\)\s+return\s+\}/)
+    assert.ok(page.includes("setCooldownRetryTime(action.retryAt)")) // Verify action
   })
 
   it("the return effect still tries success first and keeps its bounded polling", () => {

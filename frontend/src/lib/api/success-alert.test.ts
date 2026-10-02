@@ -110,7 +110,7 @@ describe("success alert: exact reference values (Figma 13101-47566)", () => {
 
 describe("success alert: boundaries", () => {
   it("is composed only of design-system components already exported from @/components/ui", () => {
-    const imports = page.slice(page.indexOf("import {\n  Button,"), page.indexOf('} from "@/components/ui"'))
+    const imports = page.slice(page.indexOf("import {\n  Alert,"), page.indexOf('} from "@/components/ui"'))
     for (const name of ["Toast,", "ToastDescription,", "ToastProvider,", "ToastTitle,", "ToastViewport,", "IconButton,"]) {
       assert.ok(imports.includes(name), name)
     }
