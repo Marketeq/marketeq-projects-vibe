@@ -553,8 +553,20 @@ const Chats = ({
         const result = await res.json()
         const saved = result?.message
         if (saved?.id) {
+          // The upload response returns the attachment beside the message,
+          // not inside it (only the Ably copy carries `attachments`). Merge
+          // it in, or the bubble renders empty and the Ably copy is then
+          // dropped as a duplicate id.
+          const withAttachment = {
+            ...saved,
+            attachments:
+              saved.attachments ??
+              (result.attachment ? [result.attachment] : []),
+          }
           setMessages((prev) =>
-            prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
+            prev.some((m) => m.id === saved.id)
+              ? prev
+              : [...prev, withAttachment]
           )
         }
         return true
