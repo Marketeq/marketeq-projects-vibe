@@ -14278,6 +14278,15 @@ const finalReviewCompactRichTextEditorClassName =
 const finalReviewCompactRichTextEditorContentClassName =
   "h-[150px] max-h-[150px] min-h-[150px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden text-base leading-6 text-dark-blue-400 break-words scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg [overflow-wrap:anywhere] [word-break:break-word] [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
 
+const FinalReviewShimmerBlock = ({ className }: { className: string }) => (
+  <span
+    aria-hidden="true"
+    className={cn("relative overflow-hidden rounded bg-gray-100", className)}
+  >
+    <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+  </span>
+)
+
 const ndaPreviewSections = [
   {
     title: "Parties",
@@ -14667,6 +14676,7 @@ const FinalReviewRichTextField = ({
   placeholder,
   counterLabel,
   compact = false,
+  isLoading = false,
   onChange,
   onActivate,
   onSmartAssistant,
@@ -14676,6 +14686,7 @@ const FinalReviewRichTextField = ({
   placeholder: string
   counterLabel?: string
   compact?: boolean
+  isLoading?: boolean
   onChange?: (value: string) => void
   onActivate?: () => void
   onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
@@ -14753,27 +14764,37 @@ const FinalReviewRichTextField = ({
           {count} / {STEP_TWO_WORD_LIMIT}
         </span>
       </div>
-      <RichTextEditor
-        defaultValue={value}
-        placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
-        className={
-          compact
-            ? finalReviewCompactRichTextEditorClassName
-            : finalReviewRichTextEditorClassName
-        }
-        toolbarClassName="left-4"
-        editorClassName={
-          compact
-            ? finalReviewCompactRichTextEditorContentClassName
-            : finalReviewRichTextEditorContentClassName
-        }
-        onUpdate={handleChange}
-        onBlur={handleChange}
-        hideImageButton={compact}
-        showToolbarOnFocus={compact}
-        toolbarVariant={compact ? "final-review" : "full"}
-        onSmartAssistant={handleSmartAssistant}
-      />
+      {isLoading ? (
+        <FinalReviewShimmerBlock
+          className={
+            compact
+              ? "h-[174px] w-full self-stretch rounded-lg"
+              : "mt-3 h-[250px] w-full rounded-lg"
+          }
+        />
+      ) : (
+        <RichTextEditor
+          defaultValue={value}
+          placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
+          className={
+            compact
+              ? finalReviewCompactRichTextEditorClassName
+              : finalReviewRichTextEditorClassName
+          }
+          toolbarClassName="left-4"
+          editorClassName={
+            compact
+              ? finalReviewCompactRichTextEditorContentClassName
+              : finalReviewRichTextEditorContentClassName
+          }
+          onUpdate={handleChange}
+          onBlur={handleChange}
+          hideImageButton={compact}
+          showToolbarOnFocus={compact}
+          toolbarVariant={compact ? "final-review" : "full"}
+          onSmartAssistant={handleSmartAssistant}
+        />
+      )}
     </div>
   )
 }
@@ -14785,6 +14806,7 @@ const FinalReviewTextSection = ({
   onChange,
   children,
   compact = false,
+  isLoading = false,
   onActivate,
   onSmartAssistant,
 }: {
@@ -14794,6 +14816,7 @@ const FinalReviewTextSection = ({
   onChange?: (value: string) => void
   children?: React.ReactNode
   compact?: boolean
+  isLoading?: boolean
   onActivate?: () => void
   onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => (
@@ -14810,6 +14833,7 @@ const FinalReviewTextSection = ({
       placeholder={placeholder}
       onChange={onChange}
       compact={compact}
+      isLoading={isLoading}
       onActivate={onActivate}
       onSmartAssistant={onSmartAssistant}
     />
@@ -15263,6 +15287,7 @@ const ReviewEditableTags = ({
   autocompleteType,
   fallbackOptions,
   max,
+  isLoading = false,
 }: {
   fieldName: "industry" | "languages"
   label: string
@@ -15270,6 +15295,7 @@ const ReviewEditableTags = ({
   autocompleteType: string
   fallbackOptions: string[]
   max: number
+  isLoading?: boolean
 }) => {
   const methods = useProjectInfoContext()
   const values = useWatch({ control: methods.control, name: fieldName }) ?? []
@@ -15375,60 +15401,68 @@ const ReviewEditableTags = ({
       >
         {label}
       </Label>
-      <div
-        className={
-          usesReviewChipStyle
-            ? "flex min-h-10 w-full flex-wrap items-start content-start gap-2 self-stretch p-0"
-            : "mt-2 flex flex-wrap items-center gap-2"
-        }
-      >
-        {values.length > 0 &&
-          values.map((item) => (
-            <Badge
-              key={item}
-              size="md"
-              visual="gray"
-              className={
-                usesReviewChipStyle
-                  ? "h-10 gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-dark-blue-400 mix-blend-normal"
-                  : "gap-1 border border-gray-200 bg-white pr-1"
-              }
-            >
-              {item}
-              <BadgeCloseButton
-                className={
-                  usesReviewChipStyle
-                    ? "size-4 text-gray-400 opacity-100 hover:text-gray-700"
-                    : "size-4 rounded-full text-gray-400 opacity-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
-                }
-                aria-label={`Remove ${item}`}
-                onClick={() => removeValue(item)}
-              >
-                <X2 className={usesReviewChipStyle ? "size-4" : "size-3"} />
-              </BadgeCloseButton>
-            </Badge>
-          ))}
-        <Button
+      {isLoading ? (
+        <div className="flex min-h-10 w-full items-start gap-2 self-stretch">
+          <FinalReviewShimmerBlock className="h-10 w-[184px] rounded-lg" />
+          <FinalReviewShimmerBlock className="h-10 w-[132px] rounded-lg" />
+          <FinalReviewShimmerBlock className="h-10 w-[156px] rounded-lg" />
+        </div>
+      ) : (
+        <div
           className={
             usesReviewChipStyle
-              ? "h-10 rounded-lg border-2 border-primary-500 py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white"
-              : "h-7"
-          }
-          variant="outlined"
-          visual={usesReviewChipStyle ? "primary" : "gray"}
-          type="button"
-          rightIcon={
-            usesReviewChipStyle ? <Plus className="size-4" /> : undefined
-          }
-          onClick={
-            usesAddDialog
-              ? openAddDialog
-              : () => setIsEditing((current) => !current)
+              ? "flex min-h-10 w-full flex-wrap items-start content-start gap-2 self-stretch p-0"
+              : "mt-2 flex flex-wrap items-center gap-2"
           }
         >
-          {addLabel}
-        </Button>
-      </div>
+          {values.length > 0 &&
+            values.map((item) => (
+              <Badge
+                key={item}
+                size="md"
+                visual="gray"
+                className={
+                  usesReviewChipStyle
+                    ? "h-10 gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-dark-blue-400 mix-blend-normal"
+                    : "gap-1 border border-gray-200 bg-white pr-1"
+                }
+              >
+                {item}
+                <BadgeCloseButton
+                  className={
+                    usesReviewChipStyle
+                      ? "size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                      : "size-4 rounded-full text-gray-400 opacity-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
+                  }
+                  aria-label={`Remove ${item}`}
+                  onClick={() => removeValue(item)}
+                >
+                  <X2 className={usesReviewChipStyle ? "size-4" : "size-3"} />
+                </BadgeCloseButton>
+              </Badge>
+            ))}
+          <Button
+            className={
+              usesReviewChipStyle
+                ? "h-10 rounded-lg border-2 border-primary-500 py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white"
+                : "h-7"
+            }
+            variant="outlined"
+            visual={usesReviewChipStyle ? "primary" : "gray"}
+            type="button"
+            rightIcon={
+              usesReviewChipStyle ? <Plus className="size-4" /> : undefined
+            }
+            onClick={
+              usesAddDialog
+                ? openAddDialog
+                : () => setIsEditing((current) => !current)
+            }
+          >
+            {addLabel}
+          </Button>
+        </div>
+      )}
       {usesAddDialog ? (
         <Dialog
           open={isAddDialogOpen}
@@ -15555,9 +15589,11 @@ const ReviewEditableTags = ({
 
 const ReviewEditableTitle = ({
   label,
+  isLoading = false,
   onActivate,
 }: {
   label: string
+  isLoading?: boolean
   onActivate?: () => void
 }) => {
   const methods = useProjectInfoContext()
@@ -15596,20 +15632,26 @@ const ReviewEditableTitle = ({
       >
         {label}
       </Label>
-      <Input
-        className={
-          isProjectTitle
-            ? "h-11 w-full rounded-[5px] px-[14px] py-2.5 text-base leading-6 font-normal text-dark-blue-400 shadow-[0px_1px_2px_rgba(16,24,40,.05)]"
-            : "mt-1.5"
-        }
-        value={value}
-        maxLength={100}
-        onFocus={onActivate}
-        onClick={onActivate}
-        onChange={(event) => updateTitle(event.target.value)}
-        onBlur={() => void methods.trigger("title")}
-        isInvalid={titleHasError}
-      />
+      {isLoading ? (
+        <FinalReviewShimmerBlock
+          className={isProjectTitle ? "h-11 w-full rounded-[5px]" : "mt-1.5 h-11 w-full rounded-[5px]"}
+        />
+      ) : (
+        <Input
+          className={
+            isProjectTitle
+              ? "h-11 w-full rounded-[5px] px-[14px] py-2.5 text-base leading-6 font-normal text-dark-blue-400 shadow-[0px_1px_2px_rgba(16,24,40,.05)]"
+              : "mt-1.5"
+          }
+          value={value}
+          maxLength={100}
+          onFocus={onActivate}
+          onClick={onActivate}
+          onChange={(event) => updateTitle(event.target.value)}
+          onBlur={() => void methods.trigger("title")}
+          isInvalid={titleHasError}
+        />
+      )}
       <HookFormErrorMessage
         errors={methods.formState.errors}
         name="title"
@@ -15623,7 +15665,7 @@ const ReviewEditableTitle = ({
   )
 }
 
-const ReviewJobTypeSelect = () => {
+const ReviewJobTypeSelect = ({ isLoading = false }: { isLoading?: boolean }) => {
   const { details, setDetails } = useJobListingDraftContext()
   const value = details.jobType ?? ""
   const setValue = useCallback(
@@ -15669,28 +15711,32 @@ const ReviewJobTypeSelect = () => {
       <Label className="h-5 self-stretch text-sm leading-5 font-medium text-dark-blue-400">
         Job Type
       </Label>
-      <Select
-        value={value}
-        onValueChange={setValue}
-        onOpenChange={(open) => {
-          if (open) void loadOptions()
-        }}
-      >
-        <SelectTrigger
-          indicator={false}
-          className="h-10 w-[200px] rounded-lg px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400"
+      {isLoading ? (
+        <FinalReviewShimmerBlock className="h-10 w-[200px] rounded-lg" />
+      ) : (
+        <Select
+          value={value}
+          onValueChange={setValue}
+          onOpenChange={(open) => {
+            if (open) void loadOptions()
+          }}
         >
-          <SelectValue placeholder="Select job type" />
-          <ChevronDown className="size-4 shrink-0 text-gray-400" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+          <SelectTrigger
+            indicator={false}
+            className="h-10 w-[200px] rounded-lg px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400"
+          >
+            <SelectValue placeholder="Select job type" />
+            <ChevronDown className="size-4 shrink-0 text-gray-400" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
     </div>
   )
 }
@@ -16253,6 +16299,10 @@ const FinalProjectReviewStep = ({
   )
   const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
   const [responsibilities, setResponsibilities] = useState("")
+  const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
+    useState(false)
+  const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
+    useState(false)
   const [activeAssistantField, setActiveAssistantField] =
     useState<SmartAssistantEditableField>("title")
   const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
@@ -16379,6 +16429,7 @@ const FinalProjectReviewStep = ({
     didGenerateBasicInformationRef.current = true
 
     void (async () => {
+      setIsGeneratingBasicInformation(true)
       try {
         const response = await JobListingAPI.GenerateBasicInformation(
           jobListingId,
@@ -16433,6 +16484,8 @@ const FinalProjectReviewStep = ({
         }
       } catch (error) {
         console.error("Generate basic information failed", error)
+      } finally {
+        setIsGeneratingBasicInformation(false)
       }
     })()
     // Runs once, when the saved draft id is available.
@@ -16479,6 +16532,57 @@ const FinalProjectReviewStep = ({
     skills,
     onLoad: loadSavedRoleDescription,
   })
+  const isRoleDescriptionLoading =
+    !isRoleDescriptionLoaded || isGeneratingRoleDescriptions
+  const regenerateProjectRoleDescription = useCallback(async () => {
+    if (!jobListingId || !selectedRole || roleOptions.length === 0) return
+
+    setIsGeneratingRoleDescriptions(true)
+    try {
+      const response = await JobListingAPI.GenerateRoleDescriptions(
+        jobListingId,
+        {
+          workType: "project",
+          description: details.description ?? "",
+          roles: roleOptions.map((roleTitle) => ({ roleTitle })),
+        }
+      )
+      const descriptions = response?.data?.roleDescriptions
+      const description = Array.isArray(descriptions)
+        ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
+        : null
+
+      if (description?.overview) {
+        setDetails((current) => ({
+          ...current,
+          description: description.overview,
+        }))
+      }
+      if (description?.benefits) {
+        setDetails((current) => ({
+          ...current,
+          successCriteria: description.benefits,
+        }))
+      }
+      if (description?.responsibilities) {
+        setResponsibilities(description.responsibilities)
+      }
+      if (Array.isArray(description?.skills)) {
+        setSkills(description.skills)
+      }
+    } catch (error) {
+      console.error("Failed to regenerate role descriptions", error)
+    } finally {
+      setIsGeneratingRoleDescriptions(false)
+    }
+  }, [
+    details.description,
+    jobListingId,
+    roleOptions,
+    selectedRole,
+    setDetails,
+    setSkills,
+  ])
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
@@ -16487,54 +16591,14 @@ const FinalProjectReviewStep = ({
     if (responsibilities) return
     didGenerateRoleDescriptionsRef.current = true
 
-    const generateRoleDescriptions = async () => {
-      try {
-        const response = await JobListingAPI.GenerateRoleDescriptions(
-          jobListingId,
-          {
-            workType: "project",
-            description: details.description ?? "",
-            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
-          }
-        )
-        const descriptions = response?.data?.roleDescriptions
-        const description = Array.isArray(descriptions)
-          ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null
-
-        if (description?.overview) {
-          setDetails((current) => ({
-            ...current,
-            description: description.overview,
-          }))
-        }
-        if (description?.benefits) {
-          setDetails((current) => ({
-            ...current,
-            successCriteria: description.benefits,
-          }))
-        }
-        if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities)
-        }
-        if (Array.isArray(description?.skills)) {
-          setSkills(description.skills)
-        }
-      } catch (error) {
-        console.error("Failed to generate role descriptions", error)
-      }
-    }
-
-    void generateRoleDescriptions()
+    void regenerateProjectRoleDescription()
   }, [
-    details.description,
     isRoleDescriptionLoaded,
     jobListingId,
     roleOptions,
     responsibilities,
+    regenerateProjectRoleDescription,
     selectedRole,
-    setDetails,
-    setSkills,
   ])
 
   useIsomorphicLayoutEffect(() => {
@@ -16577,9 +16641,12 @@ const FinalProjectReviewStep = ({
                 </h2>
                 <ReviewEditableTitle
                   label="Project Title"
+                  isLoading={isGeneratingBasicInformation}
                   onActivate={() => setActiveAssistantField("title")}
                 />
-                <ReviewJobTypeSelect />
+                <ReviewJobTypeSelect
+                  isLoading={isGeneratingBasicInformation}
+                />
                 <ReviewEditableTags
                   fieldName="industry"
                   label="Industries"
@@ -16587,6 +16654,7 @@ const FinalProjectReviewStep = ({
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -16595,6 +16663,7 @@ const FinalProjectReviewStep = ({
                   autocompleteType="languages"
                   fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
               </div>
 
@@ -16698,6 +16767,21 @@ const FinalProjectReviewStep = ({
                 <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
                   Description
                 </h2>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  className="h-8 rounded-[5px] border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-xs"
+                  disabled={
+                    isRoleDescriptionLoading ||
+                    !jobListingId ||
+                    !selectedRole ||
+                    roleOptions.length === 0
+                  }
+                  onClick={() => void regenerateProjectRoleDescription()}
+                >
+                  Regenerate role description
+                </Button>
               </div>
               <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
                 <FinalReviewTextSection
@@ -16705,6 +16789,7 @@ const FinalProjectReviewStep = ({
                   title="Overview"
                   initialValue={details.description ?? ""}
                   placeholder="Add the project overview"
+                  isLoading={isRoleDescriptionLoading}
                   onActivate={() => setActiveAssistantField("overview")}
                   onSmartAssistant={(selection) => {
                     setActiveAssistantField("overview")
@@ -16722,6 +16807,7 @@ const FinalProjectReviewStep = ({
                   title="Benefits"
                   initialValue={details.successCriteria ?? ""}
                   placeholder="Add benefits for joining this project"
+                  isLoading={isRoleDescriptionLoading}
                   onActivate={() => setActiveAssistantField("benefits")}
                   onSmartAssistant={(selection) => {
                     setActiveAssistantField("benefits")
@@ -16779,6 +16865,7 @@ const FinalProjectReviewStep = ({
                       title="Responsibilities"
                       initialValue={responsibilities}
                       placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isRoleDescriptionLoading}
                       onActivate={() =>
                         setActiveAssistantField("responsibilities")
                       }
@@ -16793,35 +16880,44 @@ const FinalProjectReviewStep = ({
                       <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
                         Skills
                       </h3>
-                      <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
-                        {skills.map((skill) => (
-                          <Badge
-                            key={skill}
-                            size="md"
-                            visual="gray"
-                            className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
-                          >
-                            {skill}
-                            <BadgeCloseButton
-                              type="button"
-                              onClick={() => removeSkill(skill)}
-                              aria-label={`Remove ${skill}`}
-                              className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                      {isRoleDescriptionLoading ? (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          <FinalReviewShimmerBlock className="h-10 w-[178px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[136px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[152px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[120px] rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          {skills.map((skill) => (
+                            <Badge
+                              key={skill}
+                              size="md"
+                              visual="gray"
+                              className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
                             >
-                              <X2 className="size-4" />
-                            </BadgeCloseButton>
-                          </Badge>
-                        ))}
-                        <Button
-                          className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
-                          variant="outlined"
-                          visual="primary"
-                          onClick={addSkill}
-                        >
-                          Add Skill
-                          <Plus className="size-4" />
-                        </Button>
-                      </div>
+                              {skill}
+                              <BadgeCloseButton
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                aria-label={`Remove ${skill}`}
+                                className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                              >
+                                <X2 className="size-4" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          ))}
+                          <Button
+                            className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                            variant="outlined"
+                            visual="primary"
+                            onClick={addSkill}
+                          >
+                            Add Skill
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -16845,7 +16941,7 @@ const FinalProjectReviewStep = ({
             </div>
             <div
               ref={projectAssistantScrollRef}
-              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
             >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
@@ -16960,12 +17056,12 @@ const FinalProjectReviewStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch px-5 pb-5 pt-3">
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {projectAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
                   <button
                     type="button"
-                    className="flex h-[18px] w-[282px] items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
                     onClick={() =>
                       setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
@@ -16983,7 +17079,7 @@ const FinalProjectReviewStep = ({
                     />
                   </button>
                   {showProjectAssistantFollowUps ? (
-                    <div className="flex w-[282px] flex-wrap items-start gap-2 self-stretch">
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
                       {projectAssistantFollowUpSuggestions.map((suggestion) => (
                         <Button
                           key={suggestion}
@@ -17016,7 +17112,7 @@ const FinalProjectReviewStep = ({
               ) : null}
               <div
                 className={cn(
-                  "flex w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
                   projectAssistant.selectedText ? "h-[148px]" : "h-[100px]"
                 )}
               >
@@ -19151,7 +19247,7 @@ const ServiceScopeEditStep = ({
               </div>
               <div
                 ref={assistantChatScrollRef}
-                className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+                className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
               >
                 <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                   <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
@@ -19318,8 +19414,8 @@ const ServiceScopeEditStep = ({
                   </div>
                 ) : null}
               </div>
-              <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
-                <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
+              <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
+                <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                   <Textarea
                     className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
                     placeholder="I want to change..."
