@@ -1,4 +1,6 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
+import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
+import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, LessThanOrEqual, Repository } from 'typeorm';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
@@ -51,6 +53,7 @@ import {
   VPN_PROXY_DETECTION_PROVIDER,
 } from '../providers/vpn-proxy/vpn-proxy-detection-provider.interface';
 import {
+  DisplayLocation,
   LocationProvider,
   LOCATION_PROVIDER,
 } from '../providers/location/location-provider.interface';
@@ -142,6 +145,78 @@ export class IdentityVerificationService {
     }
 
     return existing ?? this.profileRepository.save(profile);
+  }
+
+  /**
+   * Display-only lookup for the location dialog. Takes the SAME effective
+   * client IP the controller hands to confirmHomeCountry, so what the user is
+   * shown and what gets confirmed come from one server-side IP decision.
+   * Returns null when there is no IP or the provider finds nothing; provider
+   * outages propagate as LocationLookupUnavailableException.
+   */
+  async getDetectedLocationForDisplay(ipAddress?: string | null): Promise<DisplayLocation | null> {
+    return ipAddress ? this.locationProvider.resolveDisplay({ ipAddress }) : null;
+  }
+
+  /**
+   * Browser-geolocation display. The browser's coordinates are used ONLY for an
+   * immediate server-side reverse geocode and are never stored or logged (they
+   * are also rounded to ~1 km before leaving this method). Nothing the browser
+   * sends is trusted as a place: city/region/country all come from the provider.
+   *
+   * The country shown is always the server-derived IP country — the same one
+   * confirmHomeCountry uses. If the reverse-geocoded country disagrees with it,
+   * nothing from the GPS result is shown ('country_mismatch'), so the dialog can
+   * never display one country while confirming another. City, region and
+   * coordinates are display-only, never identity proof.
+   */
+  async resolveGpsDisplay(
+    ipAddress: string | null | undefined,
+    latitude: number,
+    longitude: number,
+  ): Promise<GpsLocationResponseDto> {
+    const empty = (status: GpsLocationResponseDto['status']): GpsLocationResponseDto => ({
+      status,
+      countryCode: null,
+      countryName: null,
+      city: null,
+      regionCode: null,
+      regionName: null,
+      latitude: null,
+      longitude: null,
+    });
+
+    const ipLocation = ipAddress ? await this.locationProvider.resolve({ ipAddress }) : null;
+    if (!ipLocation) return empty('unavailable');
+
+    const base = {
+      ...empty('unavailable'),
+      countryCode: ipLocation.countryCode,
+      countryName: countryNameFromCode(ipLocation.countryCode),
+    };
+
+    // ~1.1 km: enough for a city-level pin, never a precise position.
+    const roundedLat = Math.round(latitude * 100) / 100;
+    const roundedLon = Math.round(longitude * 100) / 100;
+    const place = await this.locationProvider.resolveCoordinates({ latitude: roundedLat, longitude: roundedLon });
+    if (!place || !place.countryCode) return base;
+
+    if (place.countryCode !== ipLocation.countryCode) {
+      // Fixed message: neither country (nor any coordinate) is logged.
+      this.logger.warn('gps_ip_country_mismatch');
+      return { ...base, status: 'country_mismatch' };
+    }
+
+    return {
+      status: 'resolved',
+      countryCode: ipLocation.countryCode,
+      countryName: base.countryName,
+      city: place.city,
+      regionCode: place.regionCode,
+      regionName: place.regionName,
+      latitude: roundedLat,
+      longitude: roundedLon,
+    };
   }
 
   async confirmHomeCountry(

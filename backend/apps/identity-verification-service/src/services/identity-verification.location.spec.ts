@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { IdentityVerificationService } from './identity-verification.service';
 import { LocationVerificationStatus } from '../entities/enums/identity-verification.enums';
 import { NoDetectedLocationException } from '../common/errors/domain-exceptions';
@@ -254,6 +255,86 @@ describe('IdentityVerificationService — location backfill', () => {
       const result = await service.confirmHomeCountry('u1', '198.51.100.9');
       expect(profileRepository.create).toHaveBeenCalledWith({ userId: 'u1' });
       expect(result.verifiedHomeCountry).toBe('DE');
+    });
+  });
+
+  describe('getDetectedLocationForDisplay', () => {
+    it('asks the provider for the display view with the given effective IP', async () => {
+      const shown = { countryCode: 'US', regionState: null, city: null, regionCode: null, latitude: 1, longitude: 2 };
+      const { service, locationProvider } = buildService(null, null);
+      (locationProvider as any).resolveDisplay = jest.fn().mockResolvedValue(shown);
+      await expect(service.getDetectedLocationForDisplay('203.0.113.9')).resolves.toBe(shown);
+      expect((locationProvider as any).resolveDisplay).toHaveBeenCalledWith({ ipAddress: '203.0.113.9' });
+    });
+
+    it('returns null without calling the provider when there is no IP', async () => {
+      const { service, locationProvider } = buildService(null, null);
+      (locationProvider as any).resolveDisplay = jest.fn();
+      await expect(service.getDetectedLocationForDisplay(null)).resolves.toBeNull();
+      expect((locationProvider as any).resolveDisplay).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resolveGpsDisplay', () => {
+    const IP_COUNTRY = { countryCode: 'US', regionState: null, city: null };
+    const place = { countryCode: 'US', countryName: 'United States', city: 'Chicago', regionName: 'Illinois', regionCode: 'IL' };
+
+    const gps = (ipLocation: any, resolvedPlace: any) => {
+      const built = buildService(null, ipLocation);
+      (built.locationProvider as any).resolveCoordinates = jest.fn().mockResolvedValue(resolvedPlace);
+      return built;
+    };
+
+    it('resolved: display fields come from the provider, country from the server IP, coordinates rounded', async () => {
+      const { service, locationProvider } = gps(IP_COUNTRY, place);
+      await expect(service.resolveGpsDisplay('198.51.100.7', 41.878113, -87.629799)).resolves.toEqual({
+        status: 'resolved', countryCode: 'US', countryName: 'United States',
+        city: 'Chicago', regionCode: 'IL', regionName: 'Illinois', latitude: 41.88, longitude: -87.63,
+      });
+      expect((locationProvider as any).resolveCoordinates).toHaveBeenCalledWith({ latitude: 41.88, longitude: -87.63 });
+    });
+
+    it('country mismatch: shows nothing from the GPS result, keeps the server country, logs a fixed code only', async () => {
+      const { service } = gps(IP_COUNTRY, { ...place, countryCode: 'CA' });
+      const logged: string[] = [];
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation((m: any) => void logged.push(String(m)));
+      const result = await service.resolveGpsDisplay('198.51.100.7', 43.65, -79.38);
+      expect(result).toEqual({
+        status: 'country_mismatch', countryCode: 'US', countryName: 'United States',
+        city: null, regionCode: null, regionName: null, latitude: null, longitude: null,
+      });
+      expect(logged).toEqual(['gps_ip_country_mismatch']);
+      jest.restoreAllMocks();
+    });
+
+    it('provider unavailable or no place: country-only fallback with no city, region or pin', async () => {
+      for (const unresolved of [null, { ...place, countryCode: null }]) {
+        const { service } = gps(IP_COUNTRY, unresolved);
+        await expect(service.resolveGpsDisplay('198.51.100.7', 41.88, -87.63)).resolves.toEqual({
+          status: 'unavailable', countryCode: 'US', countryName: 'United States',
+          city: null, regionCode: null, regionName: null, latitude: null, longitude: null,
+        });
+      }
+    });
+
+    it('no server-derived country: unavailable, and the coordinates are never reverse-geocoded', async () => {
+      const { service, locationProvider } = gps(null, place);
+      await expect(service.resolveGpsDisplay('198.51.100.7', 41.88, -87.63)).resolves.toMatchObject({
+        status: 'unavailable', countryCode: null, latitude: null, longitude: null,
+      });
+      expect((locationProvider as any).resolveCoordinates).not.toHaveBeenCalled();
+      await expect(service.resolveGpsDisplay(null, 41.88, -87.63)).resolves.toMatchObject({ status: 'unavailable' });
+    });
+
+    it('persists nothing: no profile save, and the IP never appears in the result', async () => {
+      const { service, profileRepository } = gps(IP_COUNTRY, place);
+      const result = await service.resolveGpsDisplay('198.51.100.7', 41.878113, -87.629799);
+      expect(profileRepository.save).not.toHaveBeenCalled();
+      expect(profileRepository.create).not.toHaveBeenCalled();
+      const text = JSON.stringify(result);
+      expect(text).not.toContain('198.51.100.7');
+      expect(text).not.toContain('41.878113');
+      expect(text).not.toContain('-87.629799');
     });
   });
 });

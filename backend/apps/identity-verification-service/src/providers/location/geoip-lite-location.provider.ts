@@ -3,7 +3,9 @@ import * as geoip from 'geoip-lite';
 import {
   DetectedLocation,
   DetectLocationInput,
+  DisplayLocation,
   LocationProvider,
+  ReverseGeocodedPlace,
 } from './location-provider.interface';
 
 /**
@@ -33,5 +35,22 @@ export class GeoIpLiteLocationProvider implements LocationProvider {
       regionState: geo.region || null,
       city: geo.city || null,
     };
+  }
+
+  async resolveDisplay(input: DetectLocationInput): Promise<DisplayLocation | null> {
+    const base = await this.resolve(input);
+    if (!base) return null;
+    const ll = geoip.lookup(input.ipAddress)?.ll;
+    return {
+      ...base,
+      regionCode: null,
+      latitude: ll ? ll[0] : null,
+      longitude: ll ? ll[1] : null,
+    };
+  }
+
+  // geoip-lite has no reverse geocoder; GPS display is unsupported here.
+  async resolveCoordinates(): Promise<ReverseGeocodedPlace | null> {
+    return null;
   }
 }

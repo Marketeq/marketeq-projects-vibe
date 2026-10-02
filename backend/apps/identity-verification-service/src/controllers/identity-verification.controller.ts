@@ -25,6 +25,9 @@ import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
 import { AcceptedDocumentsRequestDto } from '../dto/request/accepted-documents.request.dto';
 import { ProfileStatusResponseDto } from '../dto/response/profile-status.response.dto';
+import { DetectedLocationResponseDto } from '../dto/response/detected-location.response.dto';
+import { GpsCoordinatesRequestDto } from '../dto/request/gps-coordinates.request.dto';
+import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { DocumentResponseDto } from '../dto/response/document.response.dto';
 import { DocumentUploadUrlResponseDto } from '../dto/response/document-upload-url.response.dto';
 import { VerificationSessionResponseDto } from '../dto/response/verification-session.response.dto';
@@ -66,6 +69,32 @@ export class IdentityVerificationController {
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.getOrCreateProfile(req.userId, getEffectiveClientIp(req));
     return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
+  // Display-only location for the verification dialog. Uses the same
+  // effective client IP as home-country/confirm (the IP is never accepted from
+  // the browser and never returned). Informational lookup — like
+  // accepted-documents it carries no VpnProxyCheckGuard; the dashboard runs the
+  // connection check before the flow opens, and every advancing route is guarded.
+  @Get('detected-location')
+  async getDetectedLocation(@Req() req: AuthenticatedRequest): Promise<DetectedLocationResponseDto> {
+    const location = await this.service.getDetectedLocationForDisplay(getEffectiveClientIp(req));
+    return DetectedLocationResponseDto.from(location);
+  }
+
+  // Browser-geolocation display. Called only after an explicit user action. The
+  // body accepts nothing but two range-validated numbers; the place is
+  // reverse-geocoded server-side and compared with the server-derived IP
+  // country. Coordinates are never stored or logged and are not identity proof.
+  // Throttled to protect the reverse-geocoding quota.
+  @Post('detected-location/coordinates')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async resolveGpsLocation(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: GpsCoordinatesRequestDto,
+  ): Promise<GpsLocationResponseDto> {
+    return this.service.resolveGpsDisplay(getEffectiveClientIp(req), dto.latitude, dto.longitude);
   }
 
   @Post('home-country/confirm')
