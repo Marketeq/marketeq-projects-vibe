@@ -14989,6 +14989,22 @@ const useFinalReviewSmartAssistant = ({
     )
   }, [])
 
+  const markHistoryItemPending = useCallback((historyId: string) => {
+    setHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === historyId
+          ? {
+              ...item,
+              inserted: false,
+              result: undefined,
+              suggestions: [],
+              status: "pending",
+            }
+          : item
+      )
+    )
+  }, [])
+
   const startHistoryItem = useCallback(
     (
       prompt: string,
@@ -15197,6 +15213,134 @@ const useFinalReviewSmartAssistant = ({
     ]
   )
 
+  const retry = useCallback(
+    async (item: FinalReviewAssistantHistoryItem) => {
+      const trimmedCommand = item.prompt.trim()
+
+      if (!trimmedCommand || isLoading) {
+        return
+      }
+
+      markHistoryItemPending(item.id)
+      setIsLoading(true)
+      setResult("")
+
+      try {
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+
+        if (!listingId) {
+          completeHistoryItem(
+            item.id,
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+            "error"
+          )
+          return
+        }
+
+        if (item.selectedText) {
+          const response = await JobListingAPI.ShortenSmartAssistantText(
+            listingId,
+            {
+              selectedText: item.selectedText,
+              fieldContext: item.field,
+            }
+          )
+          const data = response.data as {
+            aiStatus?: "OK" | "AI_UNAVAILABLE"
+            shortenedText?: string
+            updatedText?: string
+            result?: string
+            message?: string
+          }
+
+          if (data.aiStatus === "AI_UNAVAILABLE") {
+            completeHistoryItem(
+              item.id,
+              data.message ?? "Smart Assistant is temporarily unavailable.",
+              "error"
+            )
+            return
+          }
+
+          const shortenedText =
+            data.shortenedText ?? data.updatedText ?? data.result ?? data.message
+
+          completeHistoryItem(
+            item.id,
+            shortenedText ?? "Smart Assistant did not return shortened text.",
+            shortenedText ? "success" : "error"
+          )
+          return
+        }
+
+        const response = await JobListingAPI.SmartAssistant(listingId, {
+          mode: "field",
+          command: trimmedCommand,
+          field: item.field,
+          currentValue: getValue(item.field),
+        })
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          updatedValue?: string
+          summary?: string
+          suggestions?: string[]
+          message?: string
+        }
+
+        if (data.aiStatus === "AI_UNAVAILABLE") {
+          completeHistoryItem(
+            item.id,
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+            "error"
+          )
+          return
+        }
+
+        if (data.updatedValue) {
+          const updatedValue = clampSmartAssistantFieldValue(
+            item.field,
+            data.updatedValue
+          )
+          onApply(item.field, updatedValue)
+          completeHistoryItem(
+            item.id,
+            getFinalReviewAssistantResultText(
+              data,
+              "Smart Assistant updated this section."
+            ),
+            "success",
+            Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []
+          )
+          return
+        }
+
+        completeHistoryItem(
+          item.id,
+          "Smart Assistant did not return an update for this section.",
+          "error"
+        )
+      } catch (error) {
+        console.error("Smart Assistant retry failed", error)
+        completeHistoryItem(
+          item.id,
+          "Smart Assistant is temporarily unavailable.",
+          "error"
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [
+      completeHistoryItem,
+      ensureJobListingDraft,
+      getValue,
+      isLoading,
+      jobListingId,
+      markHistoryItemPending,
+      onApply,
+    ]
+  )
+
   return {
     message,
     setMessage,
@@ -15207,6 +15351,7 @@ const useFinalReviewSmartAssistant = ({
     clearSelectedText,
     isLoading,
     run,
+    retry,
     markHistoryItemInserted,
   }
 }
@@ -17035,7 +17180,7 @@ const FinalProjectReviewStep = ({
             </div>
             <div
               ref={projectAssistantScrollRef}
-              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
             >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
@@ -17163,7 +17308,7 @@ const FinalProjectReviewStep = ({
                               className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
-                                projectAssistant.run(item.prompt, item.field)
+                                projectAssistant.retry(item)
                               }
                             >
                               <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
