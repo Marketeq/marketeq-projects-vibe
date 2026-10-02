@@ -2069,13 +2069,17 @@ const replaceFirstTextInRichTextHtml = (
   html: string,
   selectedText: string,
   replacementText: string
-) => {
+): { html: string; replaced: boolean } => {
   const trimmedSelectedText = selectedText.trim();
 
-  if (!trimmedSelectedText || !replacementText.trim()) return html;
+  if (!trimmedSelectedText || !replacementText.trim()) {
+    return { html, replaced: false };
+  }
 
   if (typeof window === "undefined") {
-    return html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+    const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+
+    return { html: nextHtml, replaced: nextHtml !== html };
   }
 
   const container = window.document.createElement("div");
@@ -2096,13 +2100,15 @@ const replaceFirstTextInRichTextHtml = (
         textContent.slice(0, matchIndex) +
         replacementText +
         textContent.slice(matchIndex + trimmedSelectedText.length);
-      return container.innerHTML;
+      return { html: container.innerHTML, replaced: true };
     }
 
     currentNode = walker.nextNode();
   }
 
-  return html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+  const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+
+  return { html: nextHtml, replaced: nextHtml !== html };
 };
 
 const STEP_TWO_WORD_LIMIT = 100;
@@ -14365,7 +14371,8 @@ type FinalReviewAssistantHistoryItem = {
   prompt: string
   field: SmartAssistantEditableField
   selectedText?: string
-  insertText?: (text: string) => void
+  insertText?: (text: string, targetText?: string) => void
+  insertedText?: string
   inserted?: boolean
   result?: string
   suggestions?: string[]
@@ -14374,7 +14381,7 @@ type FinalReviewAssistantHistoryItem = {
 
 type FinalReviewSmartAssistantSelection = {
   selectedText: string
-  insertText: (text: string) => void
+  insertText: (text: string, targetText?: string) => void
 }
 
 const getFinalReviewAssistantResultText = (
@@ -14779,17 +14786,20 @@ const FinalReviewRichTextField = ({
   ) => {
     onSmartAssistant?.({
       ...selection,
-      insertText: (replacementText: string) => {
-        const nextValue = replaceFirstTextInRichTextHtml(
+      insertText: (replacementText: string, targetText?: string) => {
+        const replacement = replaceFirstTextInRichTextHtml(
           valueRef.current,
-          selection.selectedText,
+          targetText ?? selection.selectedText,
           replacementText
         )
 
+        const nextValue = replacement.html
         valueRef.current = nextValue
         setValue(nextValue)
         onChange?.(nextValue)
-        selection.insertText(replacementText)
+        if (!replacement.replaced) {
+          selection.insertText(replacementText)
+        }
       },
     })
   }
@@ -14931,11 +14941,13 @@ const useFinalReviewSmartAssistant = ({
   ensureJobListingDraft,
   getValue,
   onApply,
+  roleTitle,
 }: {
   jobListingId?: string | null
   ensureJobListingDraft?: EnsureJobListingDraft
   getValue: (field: SmartAssistantEditableField) => string
   onApply: (field: SmartAssistantEditableField, value: string) => void
+  roleTitle?: string
 }) => {
   const [message, setMessage] = useState("")
   const [result, setResult] = useState("")
@@ -14981,10 +14993,10 @@ const useFinalReviewSmartAssistant = ({
     []
   )
 
-  const markHistoryItemInserted = useCallback((historyId: string) => {
+  const markHistoryItemInserted = useCallback((historyId: string, insertedText: string) => {
     setHistory((currentHistory) =>
       currentHistory.map((item) =>
-        item.id === historyId ? { ...item, inserted: true } : item
+        item.id === historyId ? { ...item, inserted: true, insertedText } : item
       )
     )
   }, [])
@@ -15010,7 +15022,7 @@ const useFinalReviewSmartAssistant = ({
       prompt: string,
       field: SmartAssistantEditableField,
       selectedTextSnapshot?: string,
-      insertText?: (text: string) => void
+      insertText?: (text: string, targetText?: string) => void
     ) => {
       const historyId = `final-review-assistant-${getId()}`
       setHistory((currentHistory) =>
@@ -15154,6 +15166,7 @@ const useFinalReviewSmartAssistant = ({
           command: trimmedCommand,
           field,
           currentValue: getValue(field),
+          roleTitle,
         })
         const data = response.data as {
           aiStatus?: "OK" | "AI_UNAVAILABLE"
@@ -15208,6 +15221,7 @@ const useFinalReviewSmartAssistant = ({
       getValue,
       jobListingId,
       onApply,
+      roleTitle,
       selectedText,
       editSelectedText,
       startHistoryItem,
@@ -15279,6 +15293,7 @@ const useFinalReviewSmartAssistant = ({
           command: trimmedCommand,
           field: item.field,
           currentValue: getValue(item.field),
+          roleTitle,
         })
         const data = response.data as {
           aiStatus?: "OK" | "AI_UNAVAILABLE"
@@ -15339,6 +15354,7 @@ const useFinalReviewSmartAssistant = ({
       jobListingId,
       markHistoryItemPending,
       onApply,
+      roleTitle,
     ]
   )
 
@@ -15423,7 +15439,20 @@ const useRoleDescriptionPersistence = ({
         const description = descriptions.find(
           (item: any) => item?.roleTitle === roleTitle
         )
-        if (!description) return
+        if (!description) {
+          const emptyPayload = {
+            overview: "",
+            benefits: "",
+            responsibilities: "",
+            skills: [],
+          }
+          lastSavedPayloadRef.current = JSON.stringify({
+            roleTitle,
+            payload: emptyPayload,
+          })
+          onLoad?.(emptyPayload)
+          return
+        }
 
         const loadedPayload = {
           overview: description.overview ?? undefined,
@@ -16004,6 +16033,8 @@ const FinalServiceReviewStep = ({
     details.ndaEnabled === true ? "yes" : "no"
   )
   const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
+  const [overview, setOverview] = useState("")
+  const [benefits, setBenefits] = useState("")
   const [responsibilities, setResponsibilities] = useState("")
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -16011,14 +16042,14 @@ const FinalServiceReviewStep = ({
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
       if (field === "title") return projectInfoMethods.getValues("title") ?? ""
-      if (field === "overview") return details.description ?? ""
-      if (field === "benefits") return details.successCriteria ?? ""
+      if (field === "overview") return overview
+      if (field === "benefits") return benefits
       if (field === "responsibilities") return responsibilities
       return ""
     },
     [
-      details.description,
-      details.successCriteria,
+      benefits,
+      overview,
       projectInfoMethods,
       responsibilities,
     ]
@@ -16032,20 +16063,21 @@ const FinalServiceReviewStep = ({
           shouldValidate: true,
         })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }))
+        setOverview(value)
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }))
+        setBenefits(value)
       } else if (field === "responsibilities") {
         setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails]
+    [projectInfoMethods]
   )
   const serviceAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
+    roleTitle: selectedRole,
   })
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
@@ -16059,15 +16091,17 @@ const FinalServiceReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
-      didGenerateRoleDescriptionsRef.current = true
+      didGenerateRoleDescriptionsRef.current = Boolean(
+        draft.overview ||
+          draft.benefits ||
+          draft.responsibilities ||
+          draft.skills?.length
+      )
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }))
+        setOverview(draft.overview)
       }
       if (draft.benefits !== undefined) {
-        setDetails((current) => ({
-          ...current,
-          successCriteria: draft.benefits,
-        }))
+        setBenefits(draft.benefits)
       }
       if (draft.responsibilities !== undefined) {
         setResponsibilities(draft.responsibilities)
@@ -16076,14 +16110,14 @@ const FinalServiceReviewStep = ({
         setSkills(draft.skills)
       }
     },
-    [setDetails, setSkills]
+    [setSkills]
   )
   const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
     roleTitle: selectedRole,
-    overview: details.description ?? "",
-    benefits: details.successCriteria ?? "",
+    overview,
+    benefits,
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
@@ -16112,16 +16146,10 @@ const FinalServiceReviewStep = ({
           : null
 
         if (description?.overview) {
-          setDetails((current) => ({
-            ...current,
-            description: description.overview,
-          }))
+          setOverview(description.overview)
         }
         if (description?.benefits) {
-          setDetails((current) => ({
-            ...current,
-            successCriteria: description.benefits,
-          }))
+          setBenefits(description.benefits)
         }
         if (description?.responsibilities) {
           setResponsibilities(description.responsibilities)
@@ -16142,7 +16170,6 @@ const FinalServiceReviewStep = ({
     roleOptions,
     responsibilities,
     selectedRole,
-    setDetails,
     setSkills,
   ])
 
@@ -16302,22 +16329,15 @@ const FinalServiceReviewStep = ({
               </h2>
               <FinalReviewTextSection
                 title="Overview"
-                initialValue={details.description ?? ""}
+                initialValue={overview}
                 placeholder="Add the service overview"
-                onChange={(value) =>
-                  setDetails((current) => ({ ...current, description: value }))
-                }
+                onChange={setOverview}
               />
               <FinalReviewTextSection
                 title="Benefits"
-                initialValue={details.successCriteria ?? ""}
+                initialValue={benefits}
                 placeholder="Add benefits for joining this service"
-                onChange={(value) =>
-                  setDetails((current) => ({
-                    ...current,
-                    successCriteria: value,
-                  }))
-                }
+                onChange={setBenefits}
               />
 
               <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
@@ -16538,6 +16558,8 @@ const FinalProjectReviewStep = ({
     details.ndaEnabled === true ? "yes" : "no"
   )
   const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
+  const [overview, setOverview] = useState("")
+  const [benefits, setBenefits] = useState("")
   const [responsibilities, setResponsibilities] = useState("")
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
@@ -16554,14 +16576,14 @@ const FinalProjectReviewStep = ({
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
       if (field === "title") return projectInfoMethods.getValues("title") ?? ""
-      if (field === "overview") return details.description ?? ""
-      if (field === "benefits") return details.successCriteria ?? ""
+      if (field === "overview") return overview
+      if (field === "benefits") return benefits
       if (field === "responsibilities") return responsibilities
       return ""
     },
     [
-      details.description,
-      details.successCriteria,
+      benefits,
+      overview,
       projectInfoMethods,
       responsibilities,
     ]
@@ -16575,20 +16597,21 @@ const FinalProjectReviewStep = ({
           shouldValidate: true,
         })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }))
+        setOverview(value)
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }))
+        setBenefits(value)
       } else if (field === "responsibilities") {
         setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails]
+    [projectInfoMethods]
   )
   const projectAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
+    roleTitle: selectedRole,
   })
 
   useEffect(() => {
@@ -16743,15 +16766,17 @@ const FinalProjectReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
-      didGenerateRoleDescriptionsRef.current = true
+      didGenerateRoleDescriptionsRef.current = Boolean(
+        draft.overview ||
+          draft.benefits ||
+          draft.responsibilities ||
+          draft.skills?.length
+      )
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }))
+        setOverview(draft.overview)
       }
       if (draft.benefits !== undefined) {
-        setDetails((current) => ({
-          ...current,
-          successCriteria: draft.benefits,
-        }))
+        setBenefits(draft.benefits)
       }
       if (draft.responsibilities !== undefined) {
         setResponsibilities(draft.responsibilities)
@@ -16760,14 +16785,14 @@ const FinalProjectReviewStep = ({
         setSkills(draft.skills)
       }
     },
-    [setDetails, setSkills]
+    [setSkills]
   )
   const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
     roleTitle: selectedRole,
-    overview: details.description ?? "",
-    benefits: details.successCriteria ?? "",
+    overview,
+    benefits,
     responsibilities,
     skills,
     onLoad: loadSavedRoleDescription,
@@ -16793,16 +16818,10 @@ const FinalProjectReviewStep = ({
         : null
 
       if (description?.overview) {
-        setDetails((current) => ({
-          ...current,
-          description: description.overview,
-        }))
+        setOverview(description.overview)
       }
       if (description?.benefits) {
-        setDetails((current) => ({
-          ...current,
-          successCriteria: description.benefits,
-        }))
+        setBenefits(description.benefits)
       }
       if (description?.responsibilities) {
         setResponsibilities(description.responsibilities)
@@ -16820,7 +16839,6 @@ const FinalProjectReviewStep = ({
     jobListingId,
     roleOptions,
     selectedRole,
-    setDetails,
     setSkills,
   ])
 
@@ -17027,7 +17045,7 @@ const FinalProjectReviewStep = ({
                 <FinalReviewTextSection
                   compact
                   title="Overview"
-                  initialValue={details.description ?? ""}
+                  initialValue={overview}
                   placeholder="Add the project overview"
                   isLoading={isRoleDescriptionLoading}
                   onActivate={() => setActiveAssistantField("overview")}
@@ -17035,17 +17053,12 @@ const FinalProjectReviewStep = ({
                     setActiveAssistantField("overview")
                     projectAssistant.populateSelectedText(selection)
                   }}
-                  onChange={(value) =>
-                    setDetails((current) => ({
-                      ...current,
-                      description: value,
-                    }))
-                  }
+                  onChange={setOverview}
                 />
                 <FinalReviewTextSection
                   compact
                   title="Benefits"
-                  initialValue={details.successCriteria ?? ""}
+                  initialValue={benefits}
                   placeholder="Add benefits for joining this project"
                   isLoading={isRoleDescriptionLoading}
                   onActivate={() => setActiveAssistantField("benefits")}
@@ -17053,12 +17066,7 @@ const FinalProjectReviewStep = ({
                     setActiveAssistantField("benefits")
                     projectAssistant.populateSelectedText(selection)
                   }}
-                  onChange={(value) =>
-                    setDetails((current) => ({
-                      ...current,
-                      successCriteria: value,
-                    }))
-                  }
+                  onChange={setBenefits}
                 />
 
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
@@ -17296,8 +17304,14 @@ const FinalProjectReviewStep = ({
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
 
-                                  item.insertText?.(item.result)
-                                  projectAssistant.markHistoryItemInserted(item.id)
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText
+                                  )
+                                  projectAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result
+                                  )
                                 }}
                               >
                                 <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />

@@ -1639,8 +1639,10 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
     }>;
   }): Promise<RoleDescriptionOutput[]> {
     const result = await this.call<{
+      overview?: string;
+      benefits?: string;
       roles: Array<
-        Omit<RoleDescriptionOutput, "responsibilities"> & {
+        Omit<RoleDescriptionOutput, "responsibilities" | "overview" | "benefits"> & {
           responsibilities: string | string[];
         }
       >;
@@ -1654,12 +1656,12 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
             role: "system",
             content:
               "You write professional job listing descriptions for freelance roles. " +
-              'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-              '"responsibilities": ["string"] (one responsibility per item, between 85 and 100 words in total across all items, so more items means each one is shorter, no bullet characters or numbering), ' +
-              '"overview": "string (2-4 sentences, at most 100 words)", ' +
+              'Respond only with a JSON object: { "overview": "string (2-4 sentences, at most 100 words)", ' +
               '"benefits": "string (2-4 sentences, at most 100 words)", ' +
+              '"roles": [{ "roleTitle": "string", ' +
+              '"responsibilities": ["string"] (one responsibility per item, between 85 and 100 words in total across all items, so more items means each one is shorter, no bullet characters or numbering), ' +
               '"skills": ["string"] (5-10 skills) }] }. ' +
-              "overview and benefits describe the project/service as a whole, not the specific role. " +
+              "overview and benefits are written once, at the top level, and describe the project/service as a whole, not any specific role. " +
               "responsibilities are specific to the role: each item is a concrete duty that this role " +
               "performs, grounded in the role title, experience level, work schedule and its listed tasks, " +
               "and the project description. Start each item with an action verb in the imperative or " +
@@ -1694,8 +1696,12 @@ ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
       },
       "role_descriptions",
     );
+    // overview and benefits are generated once for the whole project and
+    // shared by every role, so they don't change when the user switches role.
+    const overview = this.limitWords(result.overview ?? "", 100);
+    const benefits = this.limitWords(result.benefits ?? "", 100);
     return (Array.isArray(result.roles) ? result.roles : []).map((role) =>
-      this.normalizeRoleDescriptionOutput(role),
+      this.normalizeRoleDescriptionOutput({ ...role, overview, benefits }),
     );
   }
 

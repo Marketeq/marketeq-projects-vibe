@@ -121,6 +121,7 @@ export const JobListingAPI = {
           command: string;
           field: "title" | "overview" | "benefits" | "responsibilities";
           currentValue: string;
+          roleTitle?: string;
           context?: string;
         },
   ) =>
