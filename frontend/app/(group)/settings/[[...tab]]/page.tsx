@@ -764,6 +764,40 @@ export default function SettingsPage() {
 
   const [isFingerprintEnabled, setIsFingerprintEnabled] = useState(false)
 
+  /**
+   * Fingerprint enrolment is remembered per device, not on the account.
+   *
+   * A WebAuthn platform credential lives in *this* device's authenticator, so
+   * "fingerprint login is on" is a fact about this browser on this machine and
+   * not something that should follow the user to another one. It is keyed by
+   * user id so two accounts on a shared machine do not inherit each other's.
+   *
+   * It is also the only place it can live today: lib/webauthn.ts generates the
+   * challenge in the browser and discards the credential, because there is no
+   * credentials table and no verification endpoint. Storing a server-side flag
+   * would assert an enrolment the server cannot verify — the same shape as the
+   * bugs this branch has been removing. When real WebAuthn lands, this reads
+   * from the server instead and this comment goes with it.
+   *
+   * Read in an effect rather than a useState initialiser so the server render
+   * and the first client render agree; localStorage does not exist during SSR.
+   */
+  const fingerprintStorageKey = user?.id
+    ? `marketeq-fingerprint-enabled:${user.id}`
+    : null
+
+  useEffect(() => {
+    if (!fingerprintStorageKey) return
+    try {
+      setIsFingerprintEnabled(
+        window.localStorage.getItem(fingerprintStorageKey) === "true"
+      )
+    } catch {
+      // Private browsing and blocked storage both throw. The control still
+      // works for this session; it just will not be remembered.
+    }
+  }, [fingerprintStorageKey])
+
   const closeFingerprint = () => {
     setAcceptsFingerprintTerms(false)
     setFingerprintError(null)
@@ -796,6 +830,15 @@ export default function SettingsPage() {
           "Marketeq user",
       })
       setIsFingerprintEnabled(true)
+      // Persisted only after the sensor actually confirmed, so a cancelled or
+      // failed scan leaves nothing behind.
+      if (fingerprintStorageKey) {
+        try {
+          window.localStorage.setItem(fingerprintStorageKey, "true")
+        } catch {
+          // Storage unavailable — the badge holds for this session only.
+        }
+      }
       setSavedAlertMessage("Successfully enabled fingerprint login")
       setIsSavedAlertMounted(true)
       closeFingerprint()
@@ -2791,7 +2834,11 @@ export default function SettingsPage() {
                           Fingerprint Login
                         </span>
                         {isFingerprintEnabled && (
-                          <Badge visual="success" size="sm">
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
                             Enabled
                           </Badge>
                         )}
