@@ -984,3 +984,113 @@ These will trip the **Login Gate**, which is correct — they are exactly the ki
 of change it exists to surface. The auth-service changes are additive: no
 existing method, route or contract was modified. `resetPassword` is unchanged —
 the new routes mint the token it already accepted.
+
+---
+
+## 8. Where account recovery and Settings share machinery
+
+Added 2026-10-03 on `feat/recovery-settings-shared`, branched from
+`account-recovery`. That base is the one that owns the recovery backend, so it
+is the side everything else is reconciled onto.
+
+### 8.1 The problem this branch exists to solve
+
+Recovery and Settings were being built on two branches that did not know about
+each other:
+
+| | `account-recovery` | `feat/settings-unblocked` |
+|---|---|---|
+| vs `dev-main` | 0 behind | **155 behind**, no open PR |
+| Security questions | real backend | hardcoded list, boolean save |
+| Fingerprint | `setState` only | real, `lib/webauthn.ts` |
+
+**Each branch had stubbed exactly what the other had built, in the same file and
+the same tab** (`app/(group)/settings/[[...tab]]/page.tsx`, Account Recovery).
+A dry-run merge reports four conflicting files, and the SOP rule for resolving
+them — take the authoritative side wholesale rather than hand-blending — would
+have silently destroyed one of the two real implementations.
+
+That file is the documented exception. It must be merged by hand, keeping the
+security questions from this base and the fingerprint work from the other
+branch. Both are now present here, so a later merge of
+`feat/settings-unblocked` should take **this** side for both.
+
+### 8.2 One symbol rule, not three
+
+`containsOneSymbol` in `utils/functions.ts` tested a closed list of fourteen
+characters. auth-service's `StrongPassword` accepts any non-alphanumeric, and
+the Settings page had re-implemented the same rule inline as `/[^A-Za-z0-9]/`.
+Three definitions; 18 symbols the API accepts (`~ ( ) [ ] { } / \ | ; : " ' < >
+=` and a backtick) failed the shared helper.
+
+On `/forgot-password` that holds Save disabled with nothing on screen saying
+why, at the one moment the person is already locked out. In
+`components/security-settings.tsx` the same helper sits inside a zod `.refine`,
+so there it blocks submission outright.
+
+The helper now matches the API. Strictly more permissive, so nothing that
+passed before fails now. The Settings page's inline copy was already correct
+and is left alone.
+
+### 8.3 Settings no longer reports a password change that did not happen
+
+`handlePasswordSave` announced "Your password has been updated" and called
+nothing — the same family as the security questions bug fixed in §4.1 and §4.2.
+`PATCH /auth/change-password` is carried over from `feat/settings-unblocked`:
+guarded, proved by the current password, sets no cookies.
+
+It also now sends the password-changed email via `notifyPasswordChanged`, which
+previously only the recovery path called. A password changed from Settings is no
+less worth telling the account holder about, and it is the only signal they get
+if the change was not theirs.
+
+Both rate limits fall back to in-code defaults (10 per account per 15 min), so
+**no frozen env template needs editing** to run this.
+
+### 8.4 The `/auth/recovery*` naming is already consistent — correction
+
+An earlier read of this called `/auth/recovery-email` and
+`/auth/recovery/security-questions/verify` two conventions for one subsystem.
+That was wrong: they are two different categories, and the split is load-bearing.
+
+| Shape | Auth | Meaning |
+|---|---|---|
+| `/auth/recovery/<factor>/verify` | public | **locked-out proof.** Returns a short-lived reset token, never a session |
+| `/auth/<factor>` | bearer | manage that factor while signed in |
+| `/auth/<factor>/verify` | public | confirm ownership of something just nominated; single-use emailed token |
+| `/auth/<factor>/catalog` | public | reference data a locked-out caller needs |
+
+Verified against every route on both branches: everything under
+`/auth/recovery/` is public and is a locked-out proof; factor management is
+bearer. `recovery-email/verify` belongs in the third row, not the first — it
+confirms a newly nominated address, it does not recover an account, so moving it
+under `/auth/recovery/` would be wrong.
+
+**No route needs renaming.** The convention above is what the recovery-email
+port should follow when it lands. `recovery-email` and `recovery` are distinct
+literal first segments, so there is no route-matching ambiguity either.
+
+### 8.5 Already shared, verified, no action
+
+- **Session revocation** — the recovery confirmation screen and the Settings
+  Devices tab both go through `AuthAPI.RevokeAllOtherSessions` →
+  `DELETE /auth/sessions?currentSessionId=`. One endpoint, one client method.
+- **The backend password rule** — `StrongPassword()` is a single decorator used
+  by `reset-password`, `change-password` and registration alike.
+- **The question catalogue** — one backend owner since §4.1.
+- **`user-agent` forwarding** — the gateway drops-the-header bug that made every
+  Devices row read `axios/1.14.0` is already fixed on this base, so **no
+  login-frozen file needs touching** for it.
+
+### 8.6 Deliberately not carried over
+
+`feat/settings-unblocked` is 3,440 insertions across 39 files. Most of it is
+unrelated to this seam and stays on its own branch for its own review: the
+allowed-IPs CIDR work, settings audit logs, company CRUD, image-upload
+normalisation, notification shared helpers, and the **recovery-email feature
+itself** (~1,100 lines: four endpoints, a migration, a Brevo template, a confirm
+page). Recovery email is a feature, not a seam, and porting it here would make
+this branch unreviewable.
+
+That branch still needs to come forward to `dev-main` on its own. When it does,
+§8.1 is the merge instruction for the one file that matters.
