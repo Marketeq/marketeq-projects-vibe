@@ -1646,7 +1646,19 @@ export default function SettingsPage() {
   const handleCompanySave = async () => {
     setCompanyError(null)
     try {
-      await saveCompanyInfo(companyForm, logoFile)
+      const { logoError } = await saveCompanyInfo(companyForm, logoFile)
+
+      if (logoError) {
+        // The details did save; only the logo did not. The pending file and
+        // its preview stay put so retrying does not mean picking the file
+        // again, and no success toast fires — the save was partial, and
+        // saying otherwise is how someone ends up with no logo and no idea.
+        setCompanyError(
+          `Your company details were saved, but the logo was not. ${logoError}`
+        )
+        return
+      }
+
       setLogoFile(null)
       // The upload is now the saved logo, so the pending preview retires and
       // logoSrc falls through to company.logoUrl. Leaving it set would keep
