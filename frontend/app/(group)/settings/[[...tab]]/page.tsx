@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useBillingExportStore } from "@/lib/billing-export"
 import {
   useParams,
@@ -52,6 +53,7 @@ import { AndroidBrand, AppleBrand, MicrosoftBrand } from "@blend-metrics/icons/b
 import {
   AlertCircle,
   AlertTriangle,
+  Scan,
   ArrowDown,
   ArrowUp,
   Check,
@@ -145,6 +147,7 @@ import {
   DialogOverlay,
   DialogTitle,
   ErrorMessage,
+  SixDigitPinInput,
   IconButton,
   Input,
   InputGroup,
@@ -856,6 +859,128 @@ export default function SettingsPage() {
   const [showSessionsModal, setShowSessionsModal] = useState(false)
   const [twoFactorPhone, setTwoFactorPhone] = useState("")
   const isTwoFactorEnabled = user?.twoFactorEnabled ?? false
+
+  const [isAuthenticatorOpen, setIsAuthenticatorOpen] = useState(false)
+  const [authenticatorQr, setAuthenticatorQr] = useState<string | null>(null)
+  const [authenticatorCode, setAuthenticatorCode] = useState("")
+  const [authenticatorError, setAuthenticatorError] = useState<string | null>(
+    null
+  )
+  const [isAuthenticatorBusy, setIsAuthenticatorBusy] = useState(false)
+
+  // Derived, not local state: enrolment lives on the account, so a local flag
+  // reads false again on every reload and the badge disappears even though the
+  // authenticator is still enrolled.
+  const isAuthenticatorEnabled = user?.twoFactorEnabled ?? false
+
+  /**
+   * Fills in twoFactorEnabled, which `user` arrives without.
+   *
+   * AuthProvider loads the user from GET /user/me, served by user-service —
+   * and twoFactorEnabled is a column on auth-service's user table, which has
+   * no counterpart there. So the field is always undefined on load and the
+   * badge stayed hidden on every reload for an account that *is* enrolled;
+   * it only appeared for the moment after enrolling, from the in-memory
+   * setUser below. The login response does carry the flag, but a page opened
+   * on an existing session never sees that response.
+   *
+   * Read from the service that owns it and folded into the same user object,
+   * so this badge and the Two-Factor section keep reading it as they already
+   * do rather than each growing their own source of truth.
+   */
+  useEffect(() => {
+    if (!user?.id) return
+
+    let cancelled = false
+    AuthAPI.GetTwoFactorStatus()
+      .then((res) => {
+        if (cancelled) return
+        const data = (res as any)?.data ?? res
+        const enabled: boolean = data?.enabled ?? false
+        const method = (data?.method ?? null) as "totp" | "sms" | null
+        // Returning prev unchanged when it already agrees keeps this from
+        // re-rendering in a loop off its own write.
+        setUser((prev) =>
+          prev &&
+          (prev.twoFactorEnabled !== enabled || prev.twoFactorMethod !== method)
+            ? { ...prev, twoFactorEnabled: enabled, twoFactorMethod: method }
+            : prev
+        )
+      })
+      .catch(() => {
+        // Advisory only: if the status cannot be read, leave the badge hidden
+        // rather than assert an enrolment we could not confirm.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, setUser])
+
+  /**
+   * The QR is minted server-side and the secret stored encrypted against the
+   * account, so it is fetched when the modal opens rather than held in advance
+   * — generating one the person never scans would rotate a secret for nothing.
+   */
+  const openAuthenticator = async () => {
+    setIsAuthenticatorOpen(true)
+    setAuthenticatorCode("")
+    setAuthenticatorError(null)
+    setAuthenticatorQr(null)
+
+    // Generating again would rotate the stored secret and invalidate the
+    // authenticator already enrolled, so the server refuses it. Say so here
+    // rather than spending a request to be told.
+    if (isAuthenticatorEnabled) {
+      setAuthenticatorError(
+        "An authenticator app is already enrolled on this account."
+      )
+      return
+    }
+
+    setIsAuthenticatorBusy(true)
+    try {
+      const res = await AuthAPI.GenerateTwoFactor()
+      const data = (res as any)?.data ?? res
+      setAuthenticatorQr(data?.qrCodeDataUrl ?? null)
+    } catch (error) {
+      const message = (error as any)?.response?.data?.message
+      setAuthenticatorError(
+        Array.isArray(message)
+          ? message[0]
+          : (message ??
+            "We could not start authenticator setup. Try again shortly.")
+      )
+    } finally {
+      setIsAuthenticatorBusy(false)
+    }
+  }
+
+  const verifyAuthenticator = async () => {
+    setAuthenticatorError(null)
+    setIsAuthenticatorBusy(true)
+    try {
+      await AuthAPI.EnableTwoFactor({ code: authenticatorCode, method: "totp" })
+      // Mirrors what TwoFactorSetupModal does after a successful enable, so
+      // the badge updates immediately rather than waiting for a refetch.
+      setUser((prev) =>
+        prev ? { ...prev, twoFactorEnabled: true, twoFactorMethod: "totp" } : prev
+      )
+      setIsAuthenticatorOpen(false)
+      setSavedAlertMessage("Successfully added app authenticator")
+      setIsSavedAlertMounted(true)
+    } catch (error) {
+      const message = (error as any)?.response?.data?.message
+      setAuthenticatorError(
+        Array.isArray(message)
+          ? message[0]
+          : (message ?? "That code was not accepted. Try the next one.")
+      )
+    } finally {
+      setIsAuthenticatorBusy(false)
+    }
+  }
+
   const [addedTwoFactorNumbers, setAddedTwoFactorNumbers] = useState<string[]>(
     []
   )
@@ -1049,6 +1174,7 @@ export default function SettingsPage() {
 
   const {
     catalog: securityQuestionOptions,
+    maxAnswers: maxSecurityQuestions,
     configuredIds: savedSecurityQuestionIds,
     isConfigured: areSecurityQuestionsSaved,
     promptFor: securityQuestionPrompt,
@@ -3342,22 +3468,11 @@ export default function SettingsPage() {
                       </span>
                     </Button>
 
-                    {/* The entry point for TwoFactorSetupModal. Both modals were
-                        already rendered at the bottom of this file and wired to
-                        five real endpoints, but setShow2FASetup was never called
-                        from anywhere, so the working TOTP flow was unreachable.
-                        The Two-Factor Auth tab is designed as a magic-link flow
-                        that the backend does not implement, so this row is the
-                        honest way in. That tab is left exactly as it is. */}
                     <Button
                       variant="ghost"
                       visual="gray"
                       size="sm"
-                      onClick={() =>
-                        isTwoFactorEnabled
-                          ? setShow2FADisable(true)
-                          : setShow2FASetup(true)
-                      }
+                      onClick={openAuthenticator}
                       className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                     >
                       <span className="flex items-center gap-x-3">
@@ -3367,10 +3482,7 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium leading-[17px] text-gray-900">
                           App Authenticator
                         </span>
-                        {/* Follows auth state rather than local state: the modal
-                            calls setUser on enable, so this needs nothing of its
-                            own to stay correct. */}
-                        {isTwoFactorEnabled && (
+                        {isAuthenticatorEnabled && (
                           <Badge
                             visual="success"
                             size="sm"
@@ -3503,15 +3615,23 @@ export default function SettingsPage() {
                       )}
 
                       <div className="flex w-full items-start justify-end gap-x-3">
+                        {/* Capped at maxSecurityQuestions, which the catalogue
+                            endpoint reports so this button and the server
+                            validator cannot disagree. Disabling is the hint --
+                            the cap is enforced by @ArrayMaxSize regardless. */}
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
+                          disabled={
+                            securityQuestions.length >= maxSecurityQuestions
+                          }
                           onClick={() =>
-                            setSecurityQuestions((prev) => [
-                              ...prev,
-                              { question: "", answer: "" },
-                            ])
+                            setSecurityQuestions((prev) =>
+                              prev.length >= maxSecurityQuestions
+                                ? prev
+                                : [...prev, { question: "", answer: "" }]
+                            )
                           }
                         >
                           Add Question
@@ -3758,6 +3878,166 @@ export default function SettingsPage() {
                             Start account recovery
                           </a>
                         </p>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isAuthenticatorOpen}
+                    onOpenChange={setIsAuthenticatorOpen}
+                  >
+                    <DialogContent
+                      className="flex max-h-[calc(100vh-4rem)] w-[467px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 overflow-y-auto p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsAuthenticatorOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                            App Authenticator
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
+                              vulputate libero et velit interdum, ac aliquet odio
+                              mattis.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 1: Download the App
+                          </p>
+                          <p className="w-full text-sm text-gray-500">
+                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
+                              vulputate libero et velit interdum, ac aliquet odio
+                              mattis.
+                          </p>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 2: Scan this Code
+                          </p>
+                          <p className="w-full text-sm text-gray-500">
+                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
+                              vulputate libero et velit interdum, ac aliquet odio
+                              mattis.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 208x206 per the design. The QR is a data: URL minted
+                          by auth-service, so there is no remote image to load. */}
+                      <div className="flex h-[206px] w-[208px] items-center justify-center">
+                        {authenticatorQr ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={authenticatorQr}
+                            alt="Authenticator setup QR code"
+                            width={208}
+                            height={206}
+                            className="h-[206px] w-[208px] object-contain"
+                          />
+                        ) : authenticatorError ? (
+                          // Without this the slot spins forever on a failed
+                          // generate, which reads as a hang rather than a
+                          // refusal. The reason renders below the pin input.
+                          <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-error-50 bg-error-100">
+                            <AlertCircle className="size-6 text-error-500" />
+                          </span>
+                        ) : (
+                          <Spinner
+                            size={32}
+                            className="stroke-primary-500"
+                            trackClassName="stroke-gray-200"
+                            strokeWidth={2}
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 3: Enter the Verification Code
+                          </p>
+                          <p className="w-full text-sm leading-5 text-dark-blue-400">
+                            Type the verification code from your authenticator
+                            app below.
+                          </p>
+                        </div>
+
+                        {/* SixDigitPinInput owns its own state machine and
+                            exposes no value, and components/ui is read-only —
+                            so the digits are read back off the inputs it
+                            renders rather than by modifying the component. */}
+                        <div
+                          className="flex w-full justify-center"
+                          onInput={(e) => {
+                            const digits = Array.from(
+                              e.currentTarget.querySelectorAll("input")
+                            )
+                              .map((input) => input.value)
+                              .join("")
+                            setAuthenticatorCode(digits)
+                            setAuthenticatorError(null)
+                          }}
+                        >
+                          {/* Figma gives each box flex-grow:1 inside the
+                              419px row — 57.17px each once the 28px dash and
+                              six 8px gaps are taken out. The component
+                              hardcodes w-16 (64px), which overflows to 460px
+                              and crowds the modal edges. cva here is plain
+                              concatenation, not twMerge, so a w-[57.17px]
+                              override would only win by stylesheet accident;
+                              flex-1 sets flex-basis instead and never
+                              collides with the w-16. */}
+                          {/* The component colours typed text and placeholder
+                              alike (text-gray-300), so entered digits stay as
+                              faint as the 000-000 hint. Empty boxes keep the
+                              base grey; a box holding a digit goes to
+                              text-gray-black, the same colour Input uses for
+                              typed text. :not(:placeholder-shown) is an
+                              arbitrary variant because Tailwind 3.4 ships
+                              placeholder-shown but no negated form, and it
+                              also lands at (0,2,0) specificity — the cva here
+                              is plain concatenation, so a bare text-* would
+                              tie with the base class and win only by
+                              stylesheet order. */}
+                          <SixDigitPinInput
+                            className="w-full"
+                            pinInputClassName="min-w-0 flex-1 [&:not(:placeholder-shown)]:text-gray-black"
+                          />
+                        </div>
+
+                        {authenticatorError && (
+                          <ErrorMessage>{authenticatorError}</ErrorMessage>
+                        )}
+                      </div>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          size="sm"
+                          disabled={
+                            authenticatorCode.length !== 6 ||
+                            isAuthenticatorBusy ||
+                            !authenticatorQr
+                          }
+                          onClick={verifyAuthenticator}
+                          leftIcon={<Scan className="size-[15px]" />}
+                        >
+                          Verify Code &amp; Activate
+                        </Button>
                       </div>
                     </DialogContent>
                   </Dialog>

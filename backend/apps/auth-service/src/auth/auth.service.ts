@@ -50,6 +50,7 @@ import {
 import { VerifyRecoveryAuthenticatorDto } from './dto/recovery-authenticator.dto';
 import { SecurityQuestionAnswer } from '../security-questions/entities/security-question-answer.entity';
 import {
+  MAX_SECURITY_ANSWERS,
   REQUIRED_SECURITY_ANSWERS,
   SECURITY_QUESTION_CATALOG,
   SecurityQuestion,
@@ -1073,8 +1074,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
    * The prompts both screens render. Public: the catalogue is the same for
    * everyone and reveals nothing about any account.
    */
-  getSecurityQuestionCatalog(): { questions: SecurityQuestion[] } {
-    return { questions: [...SECURITY_QUESTION_CATALOG] };
+  getSecurityQuestionCatalog(): {
+    questions: SecurityQuestion[];
+    requiredAnswers: number;
+    maxAnswers: number;
+  } {
+    // The limits ship with the catalogue so the form reads them from the same
+    // place the validator enforces them, rather than restating 2 and 5 in the
+    // two screens that render this.
+    return {
+      questions: [...SECURITY_QUESTION_CATALOG],
+      requiredAnswers: REQUIRED_SECURITY_ANSWERS,
+      maxAnswers: MAX_SECURITY_ANSWERS,
+    };
   }
 
   /**
@@ -2251,6 +2263,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async revokeAllOtherSessions(userId: string, currentSessionId: string): Promise<{ revoked: number }> {
     const result = await this.sessionRepository.delete({ userId, id: Not(currentSessionId) });
     return { revoked: result.affected ?? 0 };
+  }
+
+  /**
+   * Whether an authenticator is enrolled, read from the service that owns the
+   * column. `GET /user/me` is served by user-service, which has no counterpart
+   * to auth-service's `twoFactorEnabled`, so the field arrives undefined on
+   * every page load and anything deriving from it reads false.
+   */
+  async getTwoFactorStatus(
+    userId: string,
+  ): Promise<{ enabled: boolean; method: string | null }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorEnabled', 'twoFactorMethod'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      enabled: user.twoFactorEnabled ?? false,
+      method: user.twoFactorMethod ?? null,
+    };
   }
 
   async generateTwoFactorSecret(userId: string) {

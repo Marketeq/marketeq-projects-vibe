@@ -25,6 +25,11 @@ export type SecurityQuestionDraft = {
 
 export function useSecurityQuestions(enabled: boolean) {
   const [catalog, setCatalog] = useState<SecurityQuestion[]>([])
+  // Both limits come from the catalogue endpoint so the form never restates a
+  // number the server validator owns. The fallbacks only matter if that call
+  // fails, and match the backend defaults.
+  const [requiredAnswers, setRequiredAnswers] = useState(2)
+  const [maxAnswers, setMaxAnswers] = useState(5)
   const [configuredIds, setConfiguredIds] = useState<string[]>([])
   const [isConfigured, setIsConfigured] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -49,6 +54,11 @@ export function useSecurityQuestions(enabled: boolean) {
         if (catalogResult.status === "fulfilled") {
           const questions = catalogResult.value?.data?.questions
           if (Array.isArray(questions)) setCatalog(questions)
+
+          const required = catalogResult.value?.data?.requiredAnswers
+          if (typeof required === "number") setRequiredAnswers(required)
+          const max = catalogResult.value?.data?.maxAnswers
+          if (typeof max === "number") setMaxAnswers(max)
         } else {
           console.warn(
             "[settings] could not load the security question catalogue",
@@ -104,6 +114,8 @@ export function useSecurityQuestions(enabled: boolean) {
 
   return {
     catalog,
+    requiredAnswers,
+    maxAnswers,
     configuredIds,
     isConfigured,
     isLoading,

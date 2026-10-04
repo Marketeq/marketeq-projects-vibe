@@ -85,6 +85,15 @@ export const AuthAPI = {
     return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/verify`, data)
   },
 
+  /**
+   * Whether an authenticator is enrolled. twoFactorEnabled is an auth-service
+   * column, so it is absent from the user that GET /user/me returns — without
+   * this the UI treats every freshly-loaded page as having no authenticator.
+   */
+  GetTwoFactorStatus: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/2fa/status`)
+  },
+
   GenerateTwoFactor: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },

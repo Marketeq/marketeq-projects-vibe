@@ -38,6 +38,16 @@ export const SECURITY_QUESTION_IDS = new Set(
 export const REQUIRED_SECURITY_ANSWERS = 2;
 
 /**
+ * The ceiling. Five, not the catalogue length, so adding a seventh prompt does
+ * not quietly raise how many answers an account may store.
+ *
+ * Owned here for the same reason the prompts are: the cap has to hold on the
+ * server, because the Add Question button being disabled stops nobody from
+ * posting a longer array.
+ */
+export const MAX_SECURITY_ANSWERS = 5;
+
+/**
  * Case, surrounding whitespace and runs of internal whitespace are all
  * insignificant — "  St. Mary's   School " and "st. mary's school" are the same
  * answer, and someone recovering an account a year later will not reproduce

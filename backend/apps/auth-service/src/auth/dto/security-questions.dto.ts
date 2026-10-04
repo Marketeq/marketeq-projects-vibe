@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 
 import {
+  MAX_SECURITY_ANSWERS,
   REQUIRED_SECURITY_ANSWERS,
   SECURITY_QUESTION_CATALOG,
 } from '../../security-questions/security-questions.catalog';
@@ -39,7 +40,7 @@ export class SetSecurityQuestionsDto {
   @ApiProperty({ type: [SecurityQuestionAnswerDto] })
   @IsArray()
   @ArrayMinSize(REQUIRED_SECURITY_ANSWERS)
-  @ArrayMaxSize(CATALOG_IDS.length)
+  @ArrayMaxSize(MAX_SECURITY_ANSWERS)
   @ValidateNested({ each: true })
   @Type(() => SecurityQuestionAnswerDto)
   answers: SecurityQuestionAnswerDto[];
@@ -53,7 +54,7 @@ export class VerifySecurityQuestionsDto {
   @ApiProperty({ type: [SecurityQuestionAnswerDto] })
   @IsArray()
   @ArrayMinSize(REQUIRED_SECURITY_ANSWERS)
-  @ArrayMaxSize(CATALOG_IDS.length)
+  @ArrayMaxSize(MAX_SECURITY_ANSWERS)
   @ValidateNested({ each: true })
   @Type(() => SecurityQuestionAnswerDto)
   answers: SecurityQuestionAnswerDto[];
