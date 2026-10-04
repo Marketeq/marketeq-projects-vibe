@@ -2276,7 +2276,7 @@ const columns = [
             <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
               <PopoverTrigger asChild>
                 <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
-                  <Avatar key={member.id} className="size-6 shrink-0">
+                  <Avatar className="size-6 shrink-0">
                     {member.avatarUrl ? (
                       <AvatarImage
                         src={member.avatarUrl}
@@ -2324,7 +2324,7 @@ const columns = [
         </TableCell>
       )
     },
-    header: "Role",
+    header: "Team Member",
   }),
   columnHelper.accessor("location", {
     cell: ({ row: { index, original }, column: { id }, table }) => {
@@ -2514,20 +2514,7 @@ const PhaseTable = ({
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead
-                  key={header.id}
-                  colSpan={header.colSpan}
-                  className={cn(
-                    "text-left",
-                    header.column.id === "task" && "pl-[44px]",
-                    header.column.id === "role" && "pl-[25px] pr-3",
-                    header.column.id === "location" &&
-                      "px-3",
-                    (header.column.id === "experience" ||
-                      header.column.id === "duration") &&
-                      "px-6"
-                  )}
-                >
+                <TableHead key={header.id} colSpan={header.colSpan}>
                   {header.isPlaceholder
                     ? null
                     : flexRender(

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
-import { HttpModule } from '@nestjs/axios';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { CheckoutSession } from './checkout/entities/checkout-session.entity';
 import { Wallet } from './checkout/entities/wallet.entity';
@@ -18,6 +17,7 @@ import { CheckoutDraftTaskEntity } from './checkout/entities/checkout-draft-task
 import { CheckoutService } from './checkout/checkout.service';
 import { CheckoutDraftService } from './checkout/checkout-draft.service';
 import { CheckoutSummaryService } from './checkout/checkout-summary.service';
+import { LISTINGS_RPC, PRICING_RPC, USER_RPC } from './checkout/rpc-clients';
 import { CheckoutController } from './checkout/checkout.controller';
 import { UcheckoutUserviceController } from './checkout-service.controller';
 import { UcheckoutUserviceService } from './checkout-service.service';
@@ -49,7 +49,21 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       SavedBankAccount, WireTransfer, StripeMetadata,
       CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
     ]),
-    HttpModule,
+    ClientsModule.register(
+      [
+        { name: LISTINGS_RPC, queue: 'listings_service_queue' },
+        { name: PRICING_RPC, queue: 'pricing_service_queue' },
+        { name: USER_RPC, queue: 'user_service_queue' },
+      ].map(({ name, queue }) => ({
+        name,
+        transport: Transport.RMQ,
+        options: {
+          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          queue,
+          queueOptions: { durable: true },
+        },
+      })),
+    ),
     ...(process.env.RABBITMQ_URL
       ? [ClientsModule.register([
           {

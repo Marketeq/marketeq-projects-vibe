@@ -3,7 +3,6 @@ import { CheckoutAPI } from "@/service/http/checkout"
 export type CheckoutDraftTask = {
   id: string
   title: string
-  description: string | null
   roleName: string | null
   assigneeUserId: string | null
   location: string[] | null
@@ -22,6 +21,7 @@ export type CheckoutDraftPhase = {
 
 export type CheckoutScopeSummary = {
   draftId: string
+  version: number
   phases: CheckoutDraftPhase[]
   projectCost: number | null
 }
@@ -36,6 +36,7 @@ export const getCheckoutScopeSummary = async (
 
     return {
       draftId: data.draftId,
+      version: data.version,
       phases: data.phases.map((phase: any) => ({
         id: phase.id,
         phaseName: phase.title,
@@ -45,7 +46,6 @@ export const getCheckoutScopeSummary = async (
         tasks: (phase.tasks ?? []).map((task: any) => ({
           id: task.id,
           title: task.title,
-          description: task.description,
           roleName: task.roleName,
           assigneeUserId: task.assigneeUserId,
           location: task.location,

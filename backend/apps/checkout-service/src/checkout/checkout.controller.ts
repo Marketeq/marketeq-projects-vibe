@@ -2,8 +2,12 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
+  Delete,
   Param,
   Body,
+  Query,
+  ParseIntPipe,
   Req,
   BadRequestException,
   ParseUUIDPipe,
@@ -38,6 +42,15 @@ import { StoreMetadataDto } from './dto/store-metadata.dto';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { ConfirmPaymentIntentDto } from './dto/confirm-payment-intent.dto';
 import { CalculateRateEstimateDto } from './dto/calculate-rate-estimate.dto';
+import {
+  AddDraftPhaseDto,
+  DuplicateDraftPhaseDto,
+  ReplaceDraftMemberDto,
+  UpdateDraftRoleDto,
+  AddDraftTaskDto,
+  UpdateDraftPhaseDto,
+  UpdateDraftTaskDto,
+} from './dto/draft-task.dto';
 
 @Controller("v1/checkout")
 export class CheckoutController {
@@ -86,6 +99,125 @@ export class CheckoutController {
   ) {
     if (!clientId) throw new BadRequestException('Missing client id');
     return this.checkoutDraftService.getTeam(clientId, draftId);
+  }
+
+  @Post("drafts/:draftId/phases")
+  @UseGuards(InternalTokenGuard)
+  addDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: AddDraftPhaseDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.addPhase(clientId, draftId, dto);
+  }
+
+  @Post("drafts/:draftId/team/replace-member")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  replaceDraftMember(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: ReplaceDraftMemberDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.replaceMember(clientId, draftId, dto);
+  }
+
+  @Post("drafts/:draftId/team/update-role")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  updateDraftRole(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: UpdateDraftRoleDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.updateRole(clientId, draftId, dto);
+  }
+
+  @Delete("drafts/:draftId/team/:userId")
+  @UseGuards(InternalTokenGuard)
+  removeDraftMember(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.removeMember(clientId, draftId, userId, version);
+  }
+
+  @Post("drafts/:draftId/phases/:phaseId/duplicate")
+  @UseGuards(InternalTokenGuard)
+  duplicateDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: DuplicateDraftPhaseDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.duplicatePhase(clientId, draftId, phaseId, dto);
+  }
+
+  @Patch("drafts/:draftId/phases/:phaseId")
+  @UseGuards(InternalTokenGuard)
+  updateDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: UpdateDraftPhaseDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.updatePhase(clientId, draftId, phaseId, dto);
+  }
+
+  @Delete("drafts/:draftId/phases/:phaseId")
+  @UseGuards(InternalTokenGuard)
+  deleteDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.deletePhase(clientId, draftId, phaseId, version);
+  }
+
+  @Post("drafts/:draftId/phases/:phaseId/tasks")
+  @UseGuards(InternalTokenGuard)
+  addDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: AddDraftTaskDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.addTask(clientId, draftId, phaseId, dto);
+  }
+
+  @Patch("drafts/:draftId/tasks/:taskId")
+  @UseGuards(InternalTokenGuard)
+  updateDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() dto: UpdateDraftTaskDto,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.updateTask(clientId, draftId, taskId, dto);
+  }
+
+  @Delete("drafts/:draftId/tasks/:taskId")
+  @UseGuards(InternalTokenGuard)
+  deleteDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing client id');
+    return this.checkoutDraftService.deleteTask(clientId, draftId, taskId, version);
   }
 
   @Get("listings/:listingId/summary")

@@ -1,16 +1,14 @@
 import {
   BadGatewayException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import { AxiosError } from 'axios';
-import * as jwt from 'jsonwebtoken';
+import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom, timeout } from 'rxjs';
 import { CheckoutRateSelectionDto } from './dto/calculate-rate-estimate.dto';
+import { LISTINGS_RPC, PRICING_RPC, USER_RPC } from './rpc-clients';
 
 export type SummaryScopeTask = {
   id: string;
@@ -123,26 +121,33 @@ const normalizeScopePhases = (raw: RawScopePhase[]): SummaryScopePhase[] =>
     };
   });
 
-// Fully live: fetches listings-service fresh every call, nothing persisted or cached.
+const errorMessage = (err: unknown): string =>
+  err instanceof Error
+    ? err.message
+    : typeof err === 'object' && err !== null && 'message' in err
+      ? String((err as { message: unknown }).message)
+      : String(err);
+
+// Fully live: asks listings-service fresh every call, nothing persisted or cached.
 @Injectable()
 export class CheckoutSummaryService {
   private readonly logger = new Logger(CheckoutSummaryService.name);
-  private readonly listingsUrl: string;
-  private readonly pricingUrl: string;
-  private readonly userUrl: string;
-  private readonly jwtSecret?: string;
+  private readonly rpcTimeoutMs = 5_000;
 
   constructor(
-    private readonly http: HttpService,
-    config: ConfigService,
-  ) {
-    this.listingsUrl =
-      config.get<string>('LISTINGS_SERVICE_URL') || 'http://localhost:3004';
-    this.pricingUrl =
-      config.get<string>('PRICING_SERVICE_URL') || 'http://localhost:3029';
-    this.userUrl =
-      config.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
-    this.jwtSecret = config.get<string>('JWT_SECRET');
+    @Inject(LISTINGS_RPC) private readonly listings: ClientProxy,
+    @Inject(PRICING_RPC) private readonly pricing: ClientProxy,
+    @Inject(USER_RPC) private readonly users: ClientProxy,
+  ) {}
+
+  private call<T>(
+    client: ClientProxy,
+    pattern: string,
+    data: unknown,
+  ): Promise<T> {
+    return firstValueFrom(
+      client.send<T>(pattern, data).pipe(timeout(this.rpcTimeoutMs)),
+    );
   }
 
   async getSummary(listingId: string) {
@@ -212,12 +217,6 @@ export class CheckoutSummaryService {
     if (groups.size === 0) {
       return { listingId, rates: [] };
     }
-    if (!this.jwtSecret) {
-      throw new ServiceUnavailableException(
-        'Pricing authentication is not configured',
-      );
-    }
-
     const groupedRoles = Array.from(groups.entries());
     const roles = groupedRoles.map(([roleKey, group]) => {
       const selection = selectionByRole.get(roleKey);
@@ -248,22 +247,12 @@ export class CheckoutSummaryService {
 
     if (rolesToPrice.length > 0) {
       try {
-        const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
-          expiresIn: '5m',
-        });
-        const response = await firstValueFrom(
-          this.http.post(
-            `${this.pricingUrl}/v1/budget/calculate`,
-            { roles: rolesToPrice },
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              timeout: 5_000,
-            },
-          ),
+        const response = await this.call<{ roles?: PricingBudgetRoleResult[] }>(
+          this.pricing,
+          'budget.calculate',
+          { roles: rolesToPrice },
         );
-        const pricedResults = response.data?.roles as
-          | PricingBudgetRoleResult[]
-          | undefined;
+        const pricedResults = response?.roles;
         if (
           !Array.isArray(pricedResults) ||
           pricedResults.length !== rolesToPrice.length
@@ -277,9 +266,8 @@ export class CheckoutSummaryService {
         });
       } catch (err) {
         if (err instanceof BadGatewayException) throw err;
-        const axiosErr = err as AxiosError;
         this.logger.warn(
-          `Failed to estimate rates for listing ${listingId}: ${axiosErr.message}`,
+          `Failed to estimate rates for listing ${listingId}: ${errorMessage(err)}`,
         );
         throw new BadGatewayException(
           'Pricing estimate is temporarily unavailable',
@@ -303,15 +291,15 @@ export class CheckoutSummaryService {
 
   async fetchListingTeam(listingId: string): Promise<ListingTeamMember[]> {
     try {
-      const response = await firstValueFrom(
-        this.http.get(
-          `${this.listingsUrl}/v1/projects/slug/${encodeURIComponent(listingId)}`,
-        ),
+      const project = await this.call<{ team?: ListingTeamMember[] }>(
+        this.listings,
+        'project.findPublishedBySlug',
+        { slug: listingId },
       );
-      return Array.isArray(response.data?.team) ? response.data.team : [];
+      return Array.isArray(project?.team) ? project.team : [];
     } catch (err) {
       this.logger.warn(
-        `Failed to fetch team for listing ${listingId}: ${(err as AxiosError).message}`,
+        `Failed to fetch team for listing ${listingId}: ${errorMessage(err)}`,
       );
       return [];
     }
@@ -319,12 +307,11 @@ export class CheckoutSummaryService {
 
   async fetchUserProfile(userId: string): Promise<UserProfileSummary | null> {
     try {
-      const response = await firstValueFrom(
-        this.http.get(`${this.userUrl}/internal/users/${userId}`, {
-          timeout: 5_000,
-        }),
+      const user = await this.call<Record<string, any>>(
+        this.users,
+        'user.profile.get',
+        { id: userId },
       );
-      const user = response.data;
       return {
         firstName: user?.firstName ?? '',
         lastName: user?.lastName ?? '',
@@ -334,9 +321,7 @@ export class CheckoutSummaryService {
         rate: user?.rate != null ? Number(user.rate) : null,
       };
     } catch (err) {
-      this.logger.warn(
-        `Failed to fetch user ${userId}: ${(err as AxiosError).message}`,
-      );
+      this.logger.warn(`Failed to fetch user ${userId}: ${errorMessage(err)}`);
       return null;
     }
   }
@@ -348,29 +333,22 @@ export class CheckoutSummaryService {
     roles.forEach((role) => rates.set(role.roleKey, null));
 
     const priceable = roles.filter((role) => role.location);
-    if (priceable.length === 0 || !this.jwtSecret) return rates;
+    if (priceable.length === 0) return rates;
 
     try {
-      const token = jwt.sign({ sub: 'checkout-service' }, this.jwtSecret, {
-        expiresIn: '5m',
-      });
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.pricingUrl}/v1/budget/calculate`,
-          {
-            roles: priceable.map((role) => ({
-              roleTitle: role.roleTitle,
-              location: role.location,
-              experienceLevel: normalizeExperience(role.experience),
-              estimatedHours: Math.max(1, Math.round(role.estimatedHours)),
-            })),
-          },
-          { headers: { Authorization: `Bearer ${token}` }, timeout: 5_000 },
-        ),
+      const response = await this.call<{ roles?: PricingBudgetRoleResult[] }>(
+        this.pricing,
+        'budget.calculate',
+        {
+          roles: priceable.map((role) => ({
+            roleTitle: role.roleTitle,
+            location: role.location,
+            experienceLevel: normalizeExperience(role.experience),
+            estimatedHours: Math.max(1, Math.round(role.estimatedHours)),
+          })),
+        },
       );
-      const results = response.data?.roles as
-        | PricingBudgetRoleResult[]
-        | undefined;
+      const results = response?.roles;
       if (Array.isArray(results) && results.length === priceable.length) {
         priceable.forEach((role, index) => {
           const cents = results[index]?.hourlyRateUsdCents;
@@ -378,26 +356,24 @@ export class CheckoutSummaryService {
         });
       }
     } catch (err) {
-      this.logger.warn(
-        `Failed to estimate open role rates: ${(err as AxiosError).message}`,
-      );
+      this.logger.warn(`Failed to estimate open role rates: ${errorMessage(err)}`);
     }
     return rates;
   }
 
   async fetchProject(listingId: string): Promise<any> {
     try {
-      const response = await firstValueFrom(
-        this.http.get(`${this.listingsUrl}/v1/projects/${listingId}`),
-      );
-      return response.data;
+      return await this.call<any>(this.listings, 'project.findPublishedById', {
+        id: listingId,
+      });
     } catch (err) {
-      const axiosErr = err as AxiosError;
-      if (axiosErr.response?.status === 404) {
+      if ((err as { statusCode?: number })?.statusCode === 404) {
         throw new NotFoundException('Listing not found');
       }
-      this.logger.warn(`Failed to fetch project ${listingId}: ${axiosErr.message}`);
-      throw err;
+      this.logger.warn(
+        `Failed to fetch project ${listingId}: ${errorMessage(err)}`,
+      );
+      throw new BadGatewayException('Listings service is unavailable');
     }
   }
 }

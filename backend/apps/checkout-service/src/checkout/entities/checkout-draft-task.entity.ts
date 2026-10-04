@@ -29,9 +29,6 @@ export class CheckoutDraftTaskEntity {
   @Column()
   title: string;
 
-  @Column({ type: 'text', nullable: true })
-  description: string | null;
-
   @Column({ type: 'varchar', nullable: true })
   roleName: string | null;
 

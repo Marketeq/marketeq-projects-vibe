@@ -3,15 +3,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { resolveDashboardRoute, useAuth } from "@/contexts/auth"
 import { Spinner } from "@/components/ui/spinner/spinner"
 
-const AuthenticatedRoute = ({
-  children,
-  redirectOnUnauth,
-  redirectMessage,
-}: {
-  children: React.ReactNode
-  redirectOnUnauth?: boolean
-  redirectMessage?: string
-}) => {
+const AuthenticatedRoute = ({ children }: { children: React.ReactNode }) => {
   const router = useRouter()
   const pathname = usePathname()
   const { isLoading, user, authModalOpen, openAuthModal, closeAuthModal, setPendingRedirect } = useAuth()
@@ -22,14 +14,6 @@ const AuthenticatedRoute = ({
     if (isLoading) return
 
     if (!user) {
-      if (redirectOnUnauth) {
-        const redirectQuery = encodeURIComponent(pathname || "/")
-        const messageQuery = encodeURIComponent(
-          redirectMessage || "Please log in to continue."
-        )
-        router.push(`/sign-in?redirect=${redirectQuery}&message=${messageQuery}`)
-        return
-      }
       setPendingRedirect(pathname || "/")
       openAuthModal("sign-in")
       return

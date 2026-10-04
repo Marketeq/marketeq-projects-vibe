@@ -42,6 +42,9 @@ export class CheckoutDraftPhaseEntity {
   @Column({ type: 'int', default: 1 })
   endDay: number;
 
+  @Column({ type: 'boolean', default: false })
+  isDraftOverride: boolean;
+
   @OneToMany(() => CheckoutDraftTaskEntity, (task) => task.phase)
   tasks: CheckoutDraftTaskEntity[];
 

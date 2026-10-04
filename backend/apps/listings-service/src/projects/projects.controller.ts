@@ -12,8 +12,9 @@ import {
   UseGuards,
   ParseUUIDPipe,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { ProjectsService } from './projects.service';
 import { Project } from './entities/project.entity';
 import { ReportProjectDto } from './dto/report-project.dto';
@@ -153,4 +154,32 @@ export class ProjectsController {
   handleFindById(@Payload() data: { id: string }) {
     return this.service.findOne(data.id);
   }
+
+  @MessagePattern('project.findPublishedById')
+  async handleFindPublishedById(@Payload() data: { id: string }) {
+    try {
+      return await this.service.findOnePublished(data.id);
+    } catch (err) {
+      throw toRpcException(err);
+    }
+  }
+
+  @MessagePattern('project.findPublishedBySlug')
+  async handleFindPublishedBySlug(@Payload() data: { slug: string }) {
+    try {
+      return await this.service.findBySlug(data.slug);
+    } catch (err) {
+      throw toRpcException(err);
+    }
+  }
 }
+
+const toRpcException = (err: unknown) =>
+  new RpcException(
+    err instanceof NotFoundException
+      ? { statusCode: 404, message: err.message }
+      : {
+          statusCode: 500,
+          message: err instanceof Error ? err.message : 'Unexpected error',
+        },
+  );

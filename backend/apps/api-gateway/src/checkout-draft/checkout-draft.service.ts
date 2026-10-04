@@ -100,6 +100,200 @@ export class CheckoutDraftGatewayService {
     }
   }
 
+  async addDraftPhase(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `add a phase to checkout draft ${draftId}`);
+    }
+  }
+
+  async replaceDraftMember(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/replace-member`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `replace a member in checkout draft ${draftId}`);
+    }
+  }
+
+  async updateDraftRole(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/update-role`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `update a role in checkout draft ${draftId}`);
+    }
+  }
+
+  async removeDraftMember(
+    draftId: string,
+    userId: string,
+    version: string,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.delete(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/${userId}`,
+          { headers: this.headers(clientId), params: { version } },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `remove a member from checkout draft ${draftId}`);
+    }
+  }
+
+  async duplicateDraftPhase(
+    draftId: string,
+    phaseId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}/duplicate`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `duplicate a phase in checkout draft ${draftId}`);
+    }
+  }
+
+  async updateDraftPhase(
+    draftId: string,
+    phaseId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.patch(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `edit a phase in checkout draft ${draftId}`);
+    }
+  }
+
+  async deleteDraftPhase(
+    draftId: string,
+    phaseId: string,
+    version: string,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.delete(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}`,
+          { headers: this.headers(clientId), params: { version } },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `delete a phase from checkout draft ${draftId}`);
+    }
+  }
+
+  async addDraftTask(
+    draftId: string,
+    phaseId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.post(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}/tasks`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `add a task to checkout draft ${draftId}`);
+    }
+  }
+
+  async updateDraftTask(
+    draftId: string,
+    taskId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.patch(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/tasks/${taskId}`,
+          body,
+          { headers: this.headers(clientId) },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `edit a task in checkout draft ${draftId}`);
+    }
+  }
+
+  async deleteDraftTask(
+    draftId: string,
+    taskId: string,
+    version: string,
+    clientId: string,
+  ) {
+    try {
+      const response = await firstValueFrom(
+        this.http.delete(
+          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/tasks/${taskId}`,
+          { headers: this.headers(clientId), params: { version } },
+        ),
+      );
+      return response.data;
+    } catch (err) {
+      this.rethrowDraftError(err, `delete a task from checkout draft ${draftId}`);
+    }
+  }
+
   private rethrowDraftError(err: unknown, action: string): never {
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;

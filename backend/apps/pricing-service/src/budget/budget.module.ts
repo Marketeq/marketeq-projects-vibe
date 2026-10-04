@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BudgetController } from './controllers/budget.controller';
+import { BudgetRpcController } from './controllers/budget-rpc.controller';
 import { BudgetService } from './services/budget.service';
 import { RatesModule } from '../rates/rates.module';
 
@@ -9,7 +10,7 @@ import { RatesModule } from '../rates/rates.module';
     ConfigModule,
     RatesModule,
   ],
-  controllers: [BudgetController],
+  controllers: [BudgetController, BudgetRpcController],
   providers: [BudgetService],
 })
 export class BudgetModule {}

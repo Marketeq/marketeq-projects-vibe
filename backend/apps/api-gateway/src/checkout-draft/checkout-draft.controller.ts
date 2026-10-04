@@ -1,7 +1,21 @@
-import { Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CheckoutDraftGatewayService } from './checkout-draft.service';
+
+type AuthedRequest = Request & { user?: { userId?: string } };
 
 // Both prefixes, because the frontend's base URL is not consistent about the
 // `/api` segment (see ClientIpController for the same issue/fix). Registered
@@ -48,6 +62,135 @@ export class CheckoutDraftController {
     const clientId = (req as any).user?.userId as string;
 
     return this.checkoutDraftService.getDraftTeam(draftId, clientId);
+  }
+
+  @Post('drafts/:draftId/phases')
+  @UseGuards(JwtAuthGuard)
+  addDraftPhase(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.addDraftPhase(draftId, body, clientId);
+  }
+
+  @Post('drafts/:draftId/team/replace-member')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  replaceDraftMember(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.replaceDraftMember(draftId, body, clientId);
+  }
+
+  @Post('drafts/:draftId/team/update-role')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  updateDraftRole(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.updateDraftRole(draftId, body, clientId);
+  }
+
+  @Delete('drafts/:draftId/team/:userId')
+  @UseGuards(JwtAuthGuard)
+  removeDraftMember(
+    @Param('draftId') draftId: string,
+    @Param('userId') userId: string,
+    @Query('version') version: string,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.removeDraftMember(draftId, userId, version, clientId);
+  }
+
+  @Post('drafts/:draftId/phases/:phaseId/duplicate')
+  @UseGuards(JwtAuthGuard)
+  duplicateDraftPhase(
+    @Param('draftId') draftId: string,
+    @Param('phaseId') phaseId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.duplicateDraftPhase(draftId, phaseId, body, clientId);
+  }
+
+  @Patch('drafts/:draftId/phases/:phaseId')
+  @UseGuards(JwtAuthGuard)
+  updateDraftPhase(
+    @Param('draftId') draftId: string,
+    @Param('phaseId') phaseId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.updateDraftPhase(draftId, phaseId, body, clientId);
+  }
+
+  @Delete('drafts/:draftId/phases/:phaseId')
+  @UseGuards(JwtAuthGuard)
+  deleteDraftPhase(
+    @Param('draftId') draftId: string,
+    @Param('phaseId') phaseId: string,
+    @Query('version') version: string,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.deleteDraftPhase(draftId, phaseId, version, clientId);
+  }
+
+  @Post('drafts/:draftId/phases/:phaseId/tasks')
+  @UseGuards(JwtAuthGuard)
+  addDraftTask(
+    @Param('draftId') draftId: string,
+    @Param('phaseId') phaseId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.addDraftTask(draftId, phaseId, body, clientId);
+  }
+
+  @Patch('drafts/:draftId/tasks/:taskId')
+  @UseGuards(JwtAuthGuard)
+  updateDraftTask(
+    @Param('draftId') draftId: string,
+    @Param('taskId') taskId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.updateDraftTask(draftId, taskId, body, clientId);
+  }
+
+  @Delete('drafts/:draftId/tasks/:taskId')
+  @UseGuards(JwtAuthGuard)
+  deleteDraftTask(
+    @Param('draftId') draftId: string,
+    @Param('taskId') taskId: string,
+    @Query('version') version: string,
+    @Req() req: Request,
+  ) {
+    const clientId = (req as AuthedRequest).user?.userId as string;
+
+    return this.checkoutDraftService.deleteDraftTask(draftId, taskId, version, clientId);
   }
 
   @Get('listings/:listingId/summary')

@@ -1,16 +1,29 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { CheckoutDraft } from './entities/checkout-draft.entity';
 import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity';
 import { CheckoutDraftTaskEntity } from './entities/checkout-draft-task.entity';
 import { CheckoutSession } from './entities/checkout-session.entity';
 import { CheckoutSummaryService } from './checkout-summary.service';
 import { isDraftExpired } from './checkout-draft.util';
+import {
+  AddDraftPhaseDto,
+  AddDraftTaskDto,
+  DuplicateDraftPhaseDto,
+  ReplaceDraftMemberDto,
+  UpdateDraftRoleDto,
+  UpdateDraftPhaseDto,
+  UpdateDraftTaskDto,
+} from './dto/draft-task.dto';
 
 type ListingTask = {
   title?: string;
-  description?: string;
   roleName?: string;
   assigneeUserId?: string | null;
   location?: string[];
@@ -36,8 +49,14 @@ const UUID_PATTERN =
 
 const UNIQUE_VIOLATION = '23505';
 
+const normalizeKeyPart = (value: string | null): string =>
+  (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
 const taskDays = (hours: number | null): number =>
   Math.max(1, Math.round(((hours ?? 0) * 7) / 40));
+
+const phaseLengthDays = (taskHours: (number | null)[]): number =>
+  taskHours.length === 0 ? 0 : Math.max(...taskHours.map(taskDays));
 
 @Injectable()
 export class CheckoutDraftService {
@@ -95,7 +114,7 @@ export class CheckoutDraftService {
         const groups = isAssigned ? assigned : open;
         const key = isAssigned
           ? (task.assigneeUserId as string)
-          : (task.roleName as string).trim().toLowerCase();
+          : `${normalizeKeyPart(task.roleName)}|${normalizeKeyPart(task.experienceLevel)}`;
         const group = groups.get(key) ?? {
           roleTitle: task.roleName ?? '',
           experience: task.experienceLevel,
@@ -201,20 +220,580 @@ export class CheckoutDraftService {
         order: phase.order,
         startDay: phase.startDay,
         endDay: phase.endDay,
-        tasks: phase.tasks.map((task) => ({
-          id: task.id,
-          title: task.title,
-          description: task.description,
-          roleName: task.roleName,
-          location: task.location,
-          experienceLevel: task.experienceLevel,
-          durationHours: task.durationHours,
-          assigneeUserId: task.assigneeUserId,
-          order: task.order,
-          isDraftOverride: task.isDraftOverride,
-        })),
+        tasks: phase.tasks.map((task) => this.toTaskResponse(task)),
       })),
     };
+  }
+
+  private toTaskResponse(task: CheckoutDraftTaskEntity) {
+    return {
+      id: task.id,
+      title: task.title,
+      roleName: task.roleName,
+      location: task.location,
+      experienceLevel: task.experienceLevel,
+      durationHours: task.durationHours,
+      assigneeUserId: task.assigneeUserId,
+      order: task.order,
+      isDraftOverride: task.isDraftOverride,
+    };
+  }
+
+  private async applyScopeChange<T>(
+    clientId: string,
+    draftId: string,
+    version: number,
+    change: (manager: EntityManager) => Promise<T>,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const draft = await manager.findOne(CheckoutDraft, {
+        where: { id: draftId, clientId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!draft || isDraftExpired(draft.updatedAt)) {
+        throw new NotFoundException('Draft not found');
+      }
+      if (draft.version !== version) {
+        throw new ConflictException('Draft version is out of date');
+      }
+
+      const result = await change(manager);
+
+      const phases = await manager.find(CheckoutDraftPhaseEntity, {
+        where: { draftId: draft.id },
+        relations: { tasks: true },
+        order: { order: 'ASC' },
+      });
+      let nextStartDay = 1;
+      const assignees = new Set<string>();
+      const roles = new Set<string>();
+      const phaseDays: { id: string; startDay: number; endDay: number }[] = [];
+      for (const phase of phases) {
+        const days = phaseLengthDays(
+          phase.tasks.map((task) => task.durationHours),
+        );
+        const startDay = nextStartDay;
+        nextStartDay += days;
+        const endDay = days > 0 ? nextStartDay - 1 : startDay;
+        if (phase.startDay !== startDay || phase.endDay !== endDay) {
+          await manager.update(CheckoutDraftPhaseEntity, phase.id, {
+            startDay,
+            endDay,
+          });
+        }
+        phaseDays.push({ id: phase.id, startDay, endDay });
+        for (const task of phase.tasks) {
+          if (task.assigneeUserId) assignees.add(task.assigneeUserId);
+          const role = task.roleName?.trim().toLowerCase();
+          if (role) roles.add(role);
+        }
+      }
+
+      const durationDays = nextStartDay > 1 ? nextStartDay - 1 : null;
+      const teamMemberCount = assignees.size || roles.size || null;
+      const nextVersion = draft.version + 1;
+      await manager.update(CheckoutDraft, draft.id, {
+        version: nextVersion,
+        durationDays,
+        teamMemberCount,
+      });
+
+      return {
+        result,
+        version: nextVersion,
+        phases: phaseDays,
+        durationDays,
+        teamMemberCount,
+      };
+    });
+  }
+
+  private async renumberTasks(
+    manager: EntityManager,
+    tasks: CheckoutDraftTaskEntity[],
+  ) {
+    for (const [index, task] of tasks.entries()) {
+      if (task.order !== index + 1) {
+        await manager.update(CheckoutDraftTaskEntity, task.id, {
+          order: index + 1,
+        });
+      }
+    }
+  }
+
+  private async findDraftTask(
+    manager: EntityManager,
+    draftId: string,
+    taskId: string,
+  ) {
+    const task = await manager.findOne(CheckoutDraftTaskEntity, {
+      where: { id: taskId, phase: { draftId } },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+    return task;
+  }
+
+  private async renumberPhases(
+    manager: EntityManager,
+    phases: CheckoutDraftPhaseEntity[],
+  ) {
+    for (const [index, phase] of phases.entries()) {
+      if (phase.order !== index + 1) {
+        await manager.update(CheckoutDraftPhaseEntity, phase.id, {
+          order: index + 1,
+        });
+      }
+    }
+  }
+
+  private async findDraftPhase(
+    manager: EntityManager,
+    draftId: string,
+    phaseId: string,
+  ) {
+    const phase = await manager.findOne(CheckoutDraftPhaseEntity, {
+      where: { id: phaseId, draftId },
+    });
+    if (!phase) throw new NotFoundException('Phase not found');
+    return phase;
+  }
+
+  private draftPhases(manager: EntityManager, draftId: string) {
+    return manager.find(CheckoutDraftPhaseEntity, {
+      where: { draftId },
+      order: { order: 'ASC' },
+    });
+  }
+
+  private async toPhaseResponse(
+    manager: EntityManager,
+    phaseId: string,
+  ) {
+    const phase = await manager.findOneOrFail(CheckoutDraftPhaseEntity, {
+      where: { id: phaseId },
+    });
+    return {
+      id: phase.id,
+      title: phase.title,
+      order: phase.order,
+      startDay: phase.startDay,
+      endDay: phase.endDay,
+      isDraftOverride: phase.isDraftOverride,
+    };
+  }
+
+  async addPhase(clientId: string, draftId: string, dto: AddDraftPhaseDto) {
+    let phaseId = '';
+    const { result: _created, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager) => {
+        const phases = await this.draftPhases(manager, draftId);
+        const order = dto.order ?? phases.length + 1;
+        if (order > phases.length + 1) {
+          throw new BadRequestException('Order is out of range');
+        }
+        const created = await manager.save(
+          manager.create(CheckoutDraftPhaseEntity, {
+            draftId,
+            title: dto.title,
+            order,
+            isDraftOverride: true,
+          }),
+        );
+        phaseId = created.id;
+        phases.splice(order - 1, 0, created);
+        await this.renumberPhases(manager, phases);
+        return created.id;
+      },
+    );
+    const phase = await this.dataSource.transaction((manager) =>
+      this.toPhaseResponse(manager, phaseId),
+    );
+    return { phase, ...summary };
+  }
+
+  private async reassignTasks(
+    clientId: string,
+    draftId: string,
+    version: number,
+    match: { fromUserId?: string; roleKey?: string },
+    toUserId: string | null,
+  ) {
+    const wantedRoleKey = match.roleKey
+      ? normalizeKeyPart(match.roleKey)
+      : null;
+    const { result: updatedTasks, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      version,
+      async (manager) => {
+        const tasks = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phase: { draftId } },
+        });
+        const matched = tasks.filter((task) =>
+          match.fromUserId
+            ? task.assigneeUserId === match.fromUserId
+            : !task.assigneeUserId &&
+              `${normalizeKeyPart(task.roleName)}|${normalizeKeyPart(task.experienceLevel)}` ===
+                wantedRoleKey,
+        );
+        if (matched.length === 0) {
+          throw new NotFoundException('No tasks found for that member');
+        }
+        await manager.update(
+          CheckoutDraftTaskEntity,
+          { id: In(matched.map((task) => task.id)) },
+          { assigneeUserId: toUserId, isDraftOverride: true },
+        );
+        return matched.map((task) => ({
+          id: task.id,
+          phaseId: task.phaseId,
+          assigneeUserId: toUserId,
+        }));
+      },
+    );
+    const team = await this.getTeam(clientId, draftId);
+    return {
+      version: summary.version,
+      teamMemberCount: summary.teamMemberCount,
+      updatedTasks,
+      members: team.members,
+    };
+  }
+
+  async replaceMember(
+    clientId: string,
+    draftId: string,
+    dto: ReplaceDraftMemberDto,
+  ) {
+    if (Boolean(dto.fromUserId) === Boolean(dto.roleKey)) {
+      throw new BadRequestException(
+        'Send exactly one of fromUserId and roleKey',
+      );
+    }
+    if (dto.fromUserId && dto.fromUserId === dto.toUserId) {
+      throw new BadRequestException('Cannot replace a member with themselves');
+    }
+    return this.reassignTasks(
+      clientId,
+      draftId,
+      dto.version,
+      { fromUserId: dto.fromUserId, roleKey: dto.roleKey },
+      dto.toUserId,
+    );
+  }
+
+  async removeMember(
+    clientId: string,
+    draftId: string,
+    userId: string,
+    version: number,
+  ) {
+    return this.reassignTasks(
+      clientId,
+      draftId,
+      version,
+      { fromUserId: userId },
+      null,
+    );
+  }
+
+  async updateRole(
+    clientId: string,
+    draftId: string,
+    dto: UpdateDraftRoleDto,
+  ) {
+    if (dto.experienceLevel === undefined && dto.location === undefined) {
+      throw new BadRequestException('No fields to update');
+    }
+    const wantedRoleKey = normalizeKeyPart(dto.roleKey);
+    const { result: updatedTasks, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager) => {
+        const tasks = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phase: { draftId } },
+        });
+        const matched = tasks.filter(
+          (task) =>
+            !task.assigneeUserId &&
+            `${normalizeKeyPart(task.roleName)}|${normalizeKeyPart(task.experienceLevel)}` ===
+              wantedRoleKey,
+        );
+        if (matched.length === 0) {
+          throw new NotFoundException('No open tasks found for that role');
+        }
+        const changes: Partial<
+          Pick<CheckoutDraftTaskEntity, 'experienceLevel' | 'location'>
+        > = {};
+        if (dto.experienceLevel !== undefined) {
+          changes.experienceLevel = dto.experienceLevel;
+        }
+        if (dto.location !== undefined) changes.location = [dto.location];
+        await manager.update(
+          CheckoutDraftTaskEntity,
+          { id: In(matched.map((task) => task.id)) },
+          { ...changes, isDraftOverride: true },
+        );
+        return matched.map((task) => ({
+          id: task.id,
+          phaseId: task.phaseId,
+          assigneeUserId: null,
+          experienceLevel: changes.experienceLevel ?? task.experienceLevel,
+          location: changes.location ?? task.location,
+        }));
+      },
+    );
+    const team = await this.getTeam(clientId, draftId);
+    return {
+      version: summary.version,
+      teamMemberCount: summary.teamMemberCount,
+      updatedTasks,
+      members: team.members,
+    };
+  }
+
+  async duplicatePhase(
+    clientId: string,
+    draftId: string,
+    phaseId: string,
+    dto: DuplicateDraftPhaseDto,
+  ) {
+    const { result, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager) => {
+        const source = await this.findDraftPhase(manager, draftId, phaseId);
+        const sourceTasks = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phaseId: source.id },
+          order: { order: 'ASC' },
+        });
+        const phases = await this.draftPhases(manager, draftId);
+        const created = await manager.save(
+          manager.create(CheckoutDraftPhaseEntity, {
+            draftId,
+            title: source.title,
+            sourcePhaseId: source.sourcePhaseId,
+            order: source.order + 1,
+            isDraftOverride: true,
+          }),
+        );
+        const sourceIndex = phases.findIndex((item) => item.id === source.id);
+        phases.splice(sourceIndex + 1, 0, created);
+        await this.renumberPhases(manager, phases);
+        const tasks: CheckoutDraftTaskEntity[] = [];
+        for (const [index, task] of sourceTasks.entries()) {
+          tasks.push(
+            await manager.save(
+              manager.create(CheckoutDraftTaskEntity, {
+                phaseId: created.id,
+                sourceTaskId: task.sourceTaskId,
+                title: task.title,
+                roleName: task.roleName,
+                durationHours: task.durationHours,
+                experienceLevel: task.experienceLevel,
+                location: task.location,
+                assigneeUserId: task.assigneeUserId,
+                order: index + 1,
+                isDraftOverride: true,
+              }),
+            ),
+          );
+        }
+        return { phaseId: created.id, tasks };
+      },
+    );
+    const phase = await this.dataSource.transaction((manager) =>
+      this.toPhaseResponse(manager, result.phaseId),
+    );
+    return {
+      phase,
+      tasks: result.tasks.map((task) => this.toTaskResponse(task)),
+      ...summary,
+    };
+  }
+
+  async updatePhase(
+    clientId: string,
+    draftId: string,
+    phaseId: string,
+    dto: UpdateDraftPhaseDto,
+  ) {
+    if (dto.title === undefined && dto.order === undefined) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const { result: _updated, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager) => {
+        const phase = await this.findDraftPhase(manager, draftId, phaseId);
+        if (dto.title !== undefined) {
+          await manager.update(CheckoutDraftPhaseEntity, phase.id, {
+            title: dto.title,
+          });
+        }
+        if (dto.order !== undefined) {
+          const phases = await this.draftPhases(manager, draftId);
+          if (dto.order > phases.length) {
+            throw new BadRequestException('Order is out of range');
+          }
+          const others = phases.filter((item) => item.id !== phase.id);
+          others.splice(dto.order - 1, 0, phase);
+          await this.renumberPhases(manager, others);
+        }
+        await manager.update(CheckoutDraftPhaseEntity, phase.id, {
+          isDraftOverride: true,
+        });
+        return phase.id;
+      },
+    );
+    const phase = await this.dataSource.transaction((manager) =>
+      this.toPhaseResponse(manager, phaseId),
+    );
+    return { phase, ...summary };
+  }
+
+  async deletePhase(
+    clientId: string,
+    draftId: string,
+    phaseId: string,
+    version: number,
+  ) {
+    const { result: deletedTaskIds, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      version,
+      async (manager) => {
+        const phase = await this.findDraftPhase(manager, draftId, phaseId);
+        const tasks = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phaseId: phase.id },
+        });
+        await manager.delete(CheckoutDraftPhaseEntity, phase.id);
+        const remaining = await this.draftPhases(manager, draftId);
+        await this.renumberPhases(manager, remaining);
+        return tasks.map((task) => task.id);
+      },
+    );
+    return { deletedTaskIds, ...summary };
+  }
+
+  async addTask(
+    clientId: string,
+    draftId: string,
+    phaseId: string,
+    dto: AddDraftTaskDto,
+  ) {
+    const { result, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager) => {
+        const phase = await manager.findOne(CheckoutDraftPhaseEntity, {
+          where: { id: phaseId, draftId },
+        });
+        if (!phase) throw new NotFoundException('Phase not found');
+        const last = await manager.findOne(CheckoutDraftTaskEntity, {
+          where: { phaseId },
+          order: { order: 'DESC' },
+        });
+        return manager.save(
+          manager.create(CheckoutDraftTaskEntity, {
+            phaseId,
+            title: dto.title,
+            roleName: dto.roleName,
+            durationHours: dto.durationHours,
+            experienceLevel: dto.experienceLevel,
+            location: dto.location ?? [],
+            assigneeUserId: dto.assigneeUserId ?? null,
+            order: (last?.order ?? 0) + 1,
+            isDraftOverride: true,
+          }),
+        );
+      },
+    );
+    return { task: this.toTaskResponse(result), ...summary };
+  }
+
+  async updateTask(
+    clientId: string,
+    draftId: string,
+    taskId: string,
+    dto: UpdateDraftTaskDto,
+  ) {
+    const { version, order, ...fields } = dto;
+    const changes = Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== undefined),
+    ) as Partial<
+      Pick<
+        CheckoutDraftTaskEntity,
+        | 'title'
+        | 'roleName'
+        | 'durationHours'
+        | 'experienceLevel'
+        | 'location'
+        | 'assigneeUserId'
+      >
+    >;
+    if (Object.keys(changes).length === 0 && order === undefined) {
+      throw new BadRequestException('No fields to update');
+    }
+
+    const { result, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      version,
+      async (manager) => {
+        const task = await this.findDraftTask(manager, draftId, taskId);
+        await manager.update(CheckoutDraftTaskEntity, task.id, {
+          ...changes,
+          isDraftOverride: true,
+        });
+        Object.assign(task, changes, { isDraftOverride: true });
+        if (order !== undefined && order !== task.order) {
+          const siblings = await manager.find(CheckoutDraftTaskEntity, {
+            where: { phaseId: task.phaseId },
+            order: { order: 'ASC' },
+          });
+          const others = siblings.filter((item) => item.id !== task.id);
+          const position = Math.min(order, others.length + 1);
+          others.splice(position - 1, 0, task);
+          await this.renumberTasks(manager, others);
+          task.order = position;
+        }
+        return task;
+      },
+    );
+    return { task: this.toTaskResponse(result), ...summary };
+  }
+
+  async deleteTask(
+    clientId: string,
+    draftId: string,
+    taskId: string,
+    version: number,
+  ) {
+    const { result: _removed, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      version,
+      async (manager) => {
+        const task = await this.findDraftTask(manager, draftId, taskId);
+        await manager.delete(CheckoutDraftTaskEntity, task.id);
+        const siblings = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phaseId: task.phaseId },
+          order: { order: 'ASC' },
+        });
+        await this.renumberTasks(manager, siblings);
+        return task.id;
+      },
+    );
+    return summary;
   }
 
   async createDraft(clientId: string, listingId: string) {
@@ -288,7 +867,6 @@ export class CheckoutDraftService {
         return manager.create(CheckoutDraftTaskEntity, {
           sourceTaskId: `phase-${phaseIndex}-task-${taskIndex}`,
           title: task?.title ?? 'Untitled task',
-          description: task?.description ?? null,
           roleName: task?.roleName ?? null,
           location: task?.location ?? [],
           experienceLevel: task?.experienceLevel ?? null,
@@ -300,18 +878,15 @@ export class CheckoutDraftService {
           order: taskIndex + 1,
         });
       });
-      const phaseDays = Math.max(
-        1,
-        ...tasks.map((task) => taskDays(task.durationHours)),
-      );
+      const days = phaseLengthDays(tasks.map((task) => task.durationHours));
       const startDay = nextStartDay;
-      nextStartDay = startDay + phaseDays;
+      nextStartDay = startDay + days;
       return {
         sourcePhaseId: `phase-${phaseIndex}`,
         title: listingPhase?.phaseName ?? `Phase ${phaseIndex + 1}`,
         order: phaseIndex + 1,
         startDay,
-        endDay: nextStartDay - 1,
+        endDay: days > 0 ? nextStartDay - 1 : startDay,
         tasks,
       };
     });
@@ -335,7 +910,7 @@ export class CheckoutDraftService {
           updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null,
         title: project.title ?? null,
         mediaUrl: project.mediaUrls?.[0] || project.featuredImage || null,
-        durationDays: plans.length > 0 ? nextStartDay - 1 : null,
+        durationDays: nextStartDay > 1 ? nextStartDay - 1 : null,
         teamMemberCount: assignees.size || roles.size || null,
       }),
     );
