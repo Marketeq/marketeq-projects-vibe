@@ -1,5 +1,12 @@
 import { CheckoutAPI } from "@/service/http/checkout"
 
+export type CheckoutDraftCode = {
+  code: string
+  type: "gift_card" | "promo"
+  status: "valid" | "expired" | "used_up" | "not_found" | "unverified"
+  amount: number
+}
+
 export type CheckoutDraftSummary = {
   draftId: string
   version: number

@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -287,6 +288,63 @@ export class CheckoutSummaryService {
         isStale: Boolean(pricingRoles[index].isStale),
       })),
     };
+  }
+
+  async fetchMemberRates(
+    listingId: string,
+    userIds: string[],
+  ): Promise<Map<string, number>> {
+    const rates = new Map<string, number>();
+    if (userIds.length === 0) return rates;
+    const team = await this.fetchListingTeam(listingId);
+    const teamById = new Map(team.map((member) => [String(member.id), member]));
+    await Promise.all(
+      userIds.map(async (userId) => {
+        const member = teamById.get(userId);
+        const rate = member
+          ? member.rate
+          : ((await this.fetchUserProfile(userId))?.rate ?? null);
+        if (typeof rate === 'number' && rate > 0) rates.set(userId, rate);
+      }),
+    );
+    return rates;
+  }
+
+  async priceScope(
+    phases: Array<{
+      tasks: Array<{
+        roleName: string | null;
+        experienceLevel: string | null;
+        location: string | null;
+        estimatedHours: number;
+        hourlyRate: number | null;
+      }>;
+    }>,
+  ): Promise<number> {
+    try {
+      const response = await this.call<{ total?: number }>(
+        this.pricing,
+        'scope.price',
+        { phases },
+      );
+      if (
+        typeof response?.total !== 'number' ||
+        !Number.isFinite(response.total)
+      ) {
+        throw new Error('Invalid pricing response');
+      }
+      return response.total;
+    } catch (err) {
+      if (
+        typeof err === 'object' &&
+        err !== null &&
+        (err as { statusCode?: number }).statusCode === 400
+      ) {
+        throw new BadRequestException(errorMessage(err));
+      }
+      this.logger.warn(`Failed to price scope: ${errorMessage(err)}`);
+      throw new BadGatewayException('Pricing is temporarily unavailable');
+    }
   }
 
   async fetchListingTeam(listingId: string): Promise<ListingTeamMember[]> {

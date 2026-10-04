@@ -8,14 +8,11 @@ import {
   Patch,
   Post,
   Query,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CheckoutDraftGatewayService } from './checkout-draft.service';
-
-type AuthedRequest = Request & { user?: { userId?: string } };
+import { UserId } from './user-id.decorator';
 
 // Both prefixes, because the frontend's base URL is not consistent about the
 // `/api` segment (see ClientIpController for the same issue/fix). Registered
@@ -34,33 +31,31 @@ export class CheckoutDraftController {
   // re-validating a user JWT itself.
   @Post('listings/:listingId/draft')
   @UseGuards(JwtAuthGuard)
-  createDraft(@Param('listingId') listingId: string, @Req() req: Request) {
-    const clientId = (req as any).user?.userId as string;
-
+  createDraft(@Param('listingId') listingId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.createDraft(listingId, clientId);
   }
 
   @Get('listings/:listingId/draft')
   @UseGuards(JwtAuthGuard)
-  getDraft(@Param('listingId') listingId: string, @Req() req: Request) {
-    const clientId = (req as any).user?.userId as string;
-
+  getDraft(@Param('listingId') listingId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.getDraft(listingId, clientId);
   }
 
   @Get('drafts/:draftId/scope')
   @UseGuards(JwtAuthGuard)
-  getDraftScope(@Param('draftId') draftId: string, @Req() req: Request) {
-    const clientId = (req as any).user?.userId as string;
-
+  getDraftScope(@Param('draftId') draftId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.getDraftScope(draftId, clientId);
+  }
+
+  @Get('drafts/:draftId/pricing')
+  @UseGuards(JwtAuthGuard)
+  getDraftPricing(@Param('draftId') draftId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.getDraftPricing(draftId, clientId);
   }
 
   @Get('drafts/:draftId/team')
   @UseGuards(JwtAuthGuard)
-  getDraftTeam(@Param('draftId') draftId: string, @Req() req: Request) {
-    const clientId = (req as any).user?.userId as string;
-
+  getDraftTeam(@Param('draftId') draftId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.getDraftTeam(draftId, clientId);
   }
 
@@ -69,10 +64,8 @@ export class CheckoutDraftController {
   addDraftPhase(
     @Param('draftId') draftId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.addDraftPhase(draftId, body, clientId);
   }
 
@@ -82,10 +75,8 @@ export class CheckoutDraftController {
   replaceDraftMember(
     @Param('draftId') draftId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.replaceDraftMember(draftId, body, clientId);
   }
 
@@ -95,10 +86,8 @@ export class CheckoutDraftController {
   updateDraftRole(
     @Param('draftId') draftId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.updateDraftRole(draftId, body, clientId);
   }
 
@@ -108,11 +97,31 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('userId') userId: string,
     @Query('version') version: string,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.removeDraftMember(draftId, userId, version, clientId);
+  }
+
+  @Post('drafts/:draftId/apply-code')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  applyDraftCode(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.applyDraftCode(draftId, body, clientId);
+  }
+
+  @Delete('drafts/:draftId/apply-code/:code')
+  @UseGuards(JwtAuthGuard)
+  removeDraftCode(
+    @Param('draftId') draftId: string,
+    @Param('code') code: string,
+    @Query('type') type: string,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.removeDraftCode(draftId, code, type, clientId);
   }
 
   @Post('drafts/:draftId/phases/:phaseId/duplicate')
@@ -121,10 +130,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('phaseId') phaseId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.duplicateDraftPhase(draftId, phaseId, body, clientId);
   }
 
@@ -134,10 +141,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('phaseId') phaseId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.updateDraftPhase(draftId, phaseId, body, clientId);
   }
 
@@ -147,10 +152,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('phaseId') phaseId: string,
     @Query('version') version: string,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.deleteDraftPhase(draftId, phaseId, version, clientId);
   }
 
@@ -160,10 +163,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('phaseId') phaseId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.addDraftTask(draftId, phaseId, body, clientId);
   }
 
@@ -173,10 +174,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('taskId') taskId: string,
     @Body() body: Record<string, unknown>,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.updateDraftTask(draftId, taskId, body, clientId);
   }
 
@@ -186,10 +185,8 @@ export class CheckoutDraftController {
     @Param('draftId') draftId: string,
     @Param('taskId') taskId: string,
     @Query('version') version: string,
-    @Req() req: Request,
+    @UserId() clientId: string,
   ) {
-    const clientId = (req as AuthedRequest).user?.userId as string;
-
     return this.checkoutDraftService.deleteDraftTask(draftId, taskId, version, clientId);
   }
 
@@ -200,6 +197,7 @@ export class CheckoutDraftController {
   getListingSummary(@Param('listingId') listingId: string, @Req() req: Request) {
     const clientId = (req as any).user?.userId as string;
 
+  getListingSummary(@Param('listingId') listingId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.getListingSummary(listingId, clientId);
   }
 }

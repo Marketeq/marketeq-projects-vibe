@@ -80,6 +80,9 @@ export const CheckoutAPI = {
   GetDraftTeam: (draftId: string) =>
     AxiosRequest.get(`/v1/checkout/drafts/${draftId}/team`),
 
+  GetDraftPricing: (draftId: string) =>
+    AxiosRequest.get(`/v1/checkout/drafts/${draftId}/pricing`),
+
   AddDraftPhase: (
     draftId: string,
     data: { version: number; title: string; order?: number }
@@ -154,6 +157,21 @@ export const CheckoutAPI = {
     AxiosRequest.del(`/v1/checkout/drafts/${draftId}/tasks/${taskId}`, {
       params: { version },
     }),
+
+  ApplyDraftCode: (
+    draftId: string,
+    data: { type: "gift_card" | "promo"; code: string }
+  ) => AxiosRequest.post(`/v1/checkout/drafts/${draftId}/apply-code`, data),
+
+  RemoveDraftCode: (
+    draftId: string,
+    code: string,
+    type: "gift_card" | "promo"
+  ) =>
+    AxiosRequest.del(
+      `/v1/checkout/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`,
+      { params: { type } }
+    ),
 
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),

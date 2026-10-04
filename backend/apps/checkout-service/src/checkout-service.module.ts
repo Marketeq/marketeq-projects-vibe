@@ -17,6 +17,11 @@ import { CheckoutDraftTaskEntity } from './checkout/entities/checkout-draft-task
 import { CheckoutService } from './checkout/checkout.service';
 import { CheckoutDraftService } from './checkout/checkout-draft.service';
 import { CheckoutSummaryService } from './checkout/checkout-summary.service';
+import { CheckoutDraftCodeService } from './checkout/checkout-draft-code.service';
+import { CheckoutDraftPricingService } from './checkout/pricing/checkout-draft-pricing.service';
+import { PromoAdjustment } from './checkout/pricing/promo.adjustment';
+import { GiftCardAdjustment } from './checkout/pricing/gift-card.adjustment';
+import { DRAFT_PRICING_ADJUSTMENTS } from './checkout/pricing/pricing.types';
 import { LISTINGS_RPC, PRICING_RPC, USER_RPC } from './checkout/rpc-clients';
 import { CheckoutController } from './checkout/checkout.controller';
 import { UcheckoutUserviceController } from './checkout-service.controller';
@@ -39,6 +44,10 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
         CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
       ],
       synchronize: false,
+      extra: {
+        connectionTimeoutMillis: 10000,
+        options: '-c idle_in_transaction_session_timeout=30000',
+      },
       migrationsRun: true,
       migrations: [__dirname + '/migrations/*{.ts,.js}'],
       ssl: (process.env.DATABASE_SSL_ENABLED ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
@@ -79,6 +88,10 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, CheckoutDraftService, CheckoutSummaryService, UcheckoutUserviceService, StripeService, JwtAuthGuard, InternalTokenGuard],
+  providers: [CheckoutService, CheckoutDraftService, CheckoutDraftCodeService, CheckoutDraftPricingService, PromoAdjustment, GiftCardAdjustment, {
+      provide: DRAFT_PRICING_ADJUSTMENTS,
+      useFactory: (promo: PromoAdjustment, giftCards: GiftCardAdjustment) => [promo, giftCards],
+      inject: [PromoAdjustment, GiftCardAdjustment],
+    }, CheckoutSummaryService, UcheckoutUserviceService, StripeService, JwtAuthGuard, InternalTokenGuard],
 })
 export class CheckoutServiceModule {}

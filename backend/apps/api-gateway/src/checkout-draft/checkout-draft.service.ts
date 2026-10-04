@@ -44,60 +44,23 @@ export class CheckoutDraftGatewayService {
   }
 
   async createDraft(listingId: string, clientId: string) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/listings/${listingId}/draft`,
-          null,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `create checkout draft for ${listingId}`);
-    }
+    return this.forward('post', `/listings/${listingId}/draft`, clientId, `create checkout draft for ${listingId}`);
   }
 
   async getDraft(listingId: string, clientId: string) {
-    try {
-      const response = await firstValueFrom(
-        this.http.get(
-          `${this.checkoutUrl}/v1/checkout/listings/${listingId}/draft`,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `get checkout draft for ${listingId}`);
-    }
+    return this.forward('get', `/listings/${listingId}/draft`, clientId, `get checkout draft for ${listingId}`);
   }
 
   async getDraftScope(draftId: string, clientId: string) {
-    try {
-      const response = await firstValueFrom(
-        this.http.get(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/scope`,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `get checkout draft scope for ${draftId}`);
-    }
+    return this.forward('get', `/drafts/${draftId}/scope`, clientId, `get checkout draft scope for ${draftId}`);
+  }
+
+  async getDraftPricing(draftId: string, clientId: string) {
+    return this.forward('get', `/drafts/${draftId}/pricing`, clientId, `get checkout draft pricing for ${draftId}`);
   }
 
   async getDraftTeam(draftId: string, clientId: string) {
-    try {
-      const response = await firstValueFrom(
-        this.http.get(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team`,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `get checkout draft team for ${draftId}`);
-    }
+    return this.forward('get', `/drafts/${draftId}/team`, clientId, `get checkout draft team for ${draftId}`);
   }
 
   async addDraftPhase(
@@ -105,18 +68,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `add a phase to checkout draft ${draftId}`);
-    }
+    return this.forward('post', `/drafts/${draftId}/phases`, clientId, `add a phase to checkout draft ${draftId}`, { body });
   }
 
   async replaceDraftMember(
@@ -124,18 +76,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/replace-member`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `replace a member in checkout draft ${draftId}`);
-    }
+    return this.forward('post', `/drafts/${draftId}/team/replace-member`, clientId, `replace a member in checkout draft ${draftId}`, { body });
   }
 
   async updateDraftRole(
@@ -143,18 +84,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/update-role`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `update a role in checkout draft ${draftId}`);
-    }
+    return this.forward('post', `/drafts/${draftId}/team/update-role`, clientId, `update a role in checkout draft ${draftId}`, { body });
   }
 
   async removeDraftMember(
@@ -163,17 +93,24 @@ export class CheckoutDraftGatewayService {
     version: string,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.delete(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/team/${userId}`,
-          { headers: this.headers(clientId), params: { version } },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `remove a member from checkout draft ${draftId}`);
-    }
+    return this.forward('delete', `/drafts/${draftId}/team/${userId}`, clientId, `remove a member from checkout draft ${draftId}`, { params: { version } });
+  }
+
+  async applyDraftCode(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    return this.forward('post', `/drafts/${draftId}/apply-code`, clientId, `apply a code to checkout draft ${draftId}`, { body });
+  }
+
+  async removeDraftCode(
+    draftId: string,
+    code: string,
+    type: string,
+    clientId: string,
+  ) {
+    return this.forward('delete', `/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`, clientId, `remove a code from checkout draft ${draftId}`, { params: { type } });
   }
 
   async duplicateDraftPhase(
@@ -182,18 +119,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}/duplicate`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `duplicate a phase in checkout draft ${draftId}`);
-    }
+    return this.forward('post', `/drafts/${draftId}/phases/${phaseId}/duplicate`, clientId, `duplicate a phase in checkout draft ${draftId}`, { body });
   }
 
   async updateDraftPhase(
@@ -202,18 +128,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.patch(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `edit a phase in checkout draft ${draftId}`);
-    }
+    return this.forward('patch', `/drafts/${draftId}/phases/${phaseId}`, clientId, `edit a phase in checkout draft ${draftId}`, { body });
   }
 
   async deleteDraftPhase(
@@ -222,17 +137,7 @@ export class CheckoutDraftGatewayService {
     version: string,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.delete(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}`,
-          { headers: this.headers(clientId), params: { version } },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `delete a phase from checkout draft ${draftId}`);
-    }
+    return this.forward('delete', `/drafts/${draftId}/phases/${phaseId}`, clientId, `delete a phase from checkout draft ${draftId}`, { params: { version } });
   }
 
   async addDraftTask(
@@ -241,18 +146,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.post(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/phases/${phaseId}/tasks`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `add a task to checkout draft ${draftId}`);
-    }
+    return this.forward('post', `/drafts/${draftId}/phases/${phaseId}/tasks`, clientId, `add a task to checkout draft ${draftId}`, { body });
   }
 
   async updateDraftTask(
@@ -261,18 +155,7 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
   ) {
-    try {
-      const response = await firstValueFrom(
-        this.http.patch(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/tasks/${taskId}`,
-          body,
-          { headers: this.headers(clientId) },
-        ),
-      );
-      return response.data;
-    } catch (err) {
-      this.rethrowDraftError(err, `edit a task in checkout draft ${draftId}`);
-    }
+    return this.forward('patch', `/drafts/${draftId}/tasks/${taskId}`, clientId, `edit a task in checkout draft ${draftId}`, { body });
   }
 
   async deleteDraftTask(
@@ -281,23 +164,40 @@ export class CheckoutDraftGatewayService {
     version: string,
     clientId: string,
   ) {
+    return this.forward('delete', `/drafts/${draftId}/tasks/${taskId}`, clientId, `delete a task from checkout draft ${draftId}`, { params: { version } });
+  }
+
+  private async forward(
+    method: 'get' | 'post' | 'patch' | 'delete',
+    path: string,
+    clientId: string,
+    action: string,
+    options: { body?: unknown; params?: Record<string, unknown> } = {},
+  ) {
     try {
-      const response = await firstValueFrom(
-        this.http.delete(
-          `${this.checkoutUrl}/v1/checkout/drafts/${draftId}/tasks/${taskId}`,
-          { headers: this.headers(clientId), params: { version } },
-        ),
-      );
+      const url = `${this.checkoutUrl}/v1/checkout${path}`;
+      const config = {
+        headers: this.headers(clientId),
+        ...(options.params ? { params: options.params } : {}),
+      };
+      const request =
+        method === 'get' || method === 'delete'
+          ? this.http[method](url, config)
+          : this.http[method](url, options.body ?? null, config);
+      const response = await firstValueFrom(request);
       return response.data;
     } catch (err) {
-      this.rethrowDraftError(err, `delete a task from checkout draft ${draftId}`);
+      this.rethrowDraftError(err, action);
     }
   }
 
   private rethrowDraftError(err: unknown, action: string): never {
     const axiosErr = err as AxiosError;
     const status = axiosErr.response?.status;
-    if (status === 400 || status === 404 || status === 409) {
+    if (
+      status === 502 ||
+      (status !== undefined && status >= 400 && status < 500)
+    ) {
       throw new HttpException(axiosErr.response!.data as object, status);
     }
     this.logger.warn(`Failed to ${action}: ${axiosErr.message}`);

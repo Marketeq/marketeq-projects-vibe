@@ -11,7 +11,7 @@ import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity
 import { CheckoutDraftTaskEntity } from './entities/checkout-draft-task.entity';
 import { CheckoutSession } from './entities/checkout-session.entity';
 import { CheckoutSummaryService } from './checkout-summary.service';
-import { isDraftExpired } from './checkout-draft.util';
+import { isDraftExpired, loadOwnedDraft } from './checkout-draft.util';
 import {
   AddDraftPhaseDto,
   AddDraftTaskDto,
@@ -77,12 +77,14 @@ export class CheckoutDraftService {
     return this.toResponse(draft);
   }
 
-  private async findOwnedDraft(clientId: string, draftId: string) {
-    const draft = await this.repo.findOne({ where: { id: draftId, clientId } });
-    if (!draft || isDraftExpired(draft.updatedAt)) {
-      throw new NotFoundException('Draft not found');
-    }
-    return draft;
+  private findOwnedDraft(clientId: string, draftId: string) {
+    return loadOwnedDraft(this.repo.manager, clientId, draftId);
+  }
+
+  async getPricingScope(clientId: string, draftId: string) {
+    const draft = await this.findOwnedDraft(clientId, draftId);
+    const phases = await this.loadPhases(draft.id);
+    return { draft, phases };
   }
 
   private loadPhases(draftId: string) {
@@ -246,13 +248,9 @@ export class CheckoutDraftService {
     change: (manager: EntityManager) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
-      const draft = await manager.findOne(CheckoutDraft, {
-        where: { id: draftId, clientId },
-        lock: { mode: 'pessimistic_write' },
+      const draft = await loadOwnedDraft(manager, clientId, draftId, {
+        lock: true,
       });
-      if (!draft || isDraftExpired(draft.updatedAt)) {
-        throw new NotFoundException('Draft not found');
-      }
       if (draft.version !== version) {
         throw new ConflictException('Draft version is out of date');
       }

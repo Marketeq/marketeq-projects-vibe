@@ -36,7 +36,6 @@ export class AddDraftTaskDto {
   @MaxLength(255)
   roleName!: string;
 
-  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100000)
@@ -81,7 +80,6 @@ export class UpdateDraftTaskDto {
   roleName?: string;
 
   @ValidateIf(isSent)
-  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100000)
