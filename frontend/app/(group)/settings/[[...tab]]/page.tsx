@@ -4004,19 +4004,22 @@ export default function SettingsPage() {
                               collides with the w-16. */}
                           {/* The component colours typed text and placeholder
                               alike (text-gray-300), so entered digits stay as
-                              faint as the 000-000 hint. Empty boxes keep the
-                              base grey; a box holding a digit goes to
-                              text-gray-black, the same colour Input uses for
-                              typed text. :not(:placeholder-shown) is an
-                              arbitrary variant because Tailwind 3.4 ships
-                              placeholder-shown but no negated form, and it
-                              also lands at (0,2,0) specificity — the cva here
-                              is plain concatenation, so a bare text-* would
-                              tie with the base class and win only by
-                              stylesheet order. */}
+                              faint as the 000-000 hint. text-gray-black is what
+                              Input uses for typed text.
+
+                              The important modifier, not an arbitrary variant:
+                              cva here is plain concatenation rather than
+                              twMerge, so a bare text-* ties with the base class
+                              and wins only by stylesheet order. An earlier
+                              version keyed this off :not(:placeholder-shown),
+                              which also depends on zag rendering a placeholder
+                              attribute — ! needs neither. placeholder:text-gray-300
+                              is a separate selector, so the hint stays grey.
+                              Matches /forgot-password, which uses the same
+                              component for the same step. */}
                           <SixDigitPinInput
                             className="w-full"
-                            pinInputClassName="min-w-0 flex-1 [&:not(:placeholder-shown)]:text-gray-black"
+                            pinInputClassName="min-w-0 flex-1 !text-gray-black"
                           />
                         </div>
 
