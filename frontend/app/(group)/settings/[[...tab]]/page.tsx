@@ -1112,18 +1112,22 @@ export default function SettingsPage() {
       prev.map((q, i) => (i === index ? { ...q, [field]: value } : q))
     )
 
-  const [isPhoneVerificationOpen, setIsPhoneVerificationOpen] = useState(false)
-  const [recoveryPhone, setRecoveryPhone] = useState("")
-  const [isRecoveryLinkSent, setIsRecoveryLinkSent] = useState(false)
-  const [isRecoveryPhoneVerified, setIsRecoveryPhoneVerified] = useState(false)
-  const recoveryPhoneLast4 = recoveryPhone.replace(/\D/g, "").slice(-4)
-
-  const closeRecoveryMagicLink = () => {
-    setIsRecoveryPhoneVerified(true)
-    setSavedAlertMessage("Successfully added account recovery number")
-    setIsSavedAlertMounted(true)
-    setIsRecoveryLinkSent(false)
-  }
+  // Phone Verification state -- commented out with its row and dialogs in the
+  // Account Recovery tab. SMS has no provider, so none of this can complete.
+  // Kept so restoring the feature is one uncomment in three places.
+  //
+  // const [isPhoneVerificationOpen, setIsPhoneVerificationOpen] = useState(false)
+  // const [recoveryPhone, setRecoveryPhone] = useState("")
+  // const [isRecoveryLinkSent, setIsRecoveryLinkSent] = useState(false)
+  // const [isRecoveryPhoneVerified, setIsRecoveryPhoneVerified] = useState(false)
+  // const recoveryPhoneLast4 = recoveryPhone.replace(/\D/g, "").slice(-4)
+  //
+  // const closeRecoveryMagicLink = () => {
+  //   setIsRecoveryPhoneVerified(true)
+  //   setSavedAlertMessage("Successfully added account recovery number")
+  //   setIsSavedAlertMounted(true)
+  //   setIsRecoveryLinkSent(false)
+  // }
 
   const twoFactorNumbers = [
     ...(user?.twoFactorPhone ? [user.twoFactorPhone] : []),
@@ -3101,6 +3105,13 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="mt-6 flex w-[550px] flex-col items-start gap-2.5">
+                    {/* Phone Verification is commented out, not deleted: it is
+                        the only recovery option that needs SMS, and there is no
+                        provider wired up. Per CTorres we are not building SMS
+                        yet, so the row would open a flow that cannot deliver.
+                        Its two dialogs below are commented out with it.
+                        Restore all three together when a provider exists.
+
                     <Button
                       variant="ghost"
                       visual="gray"
@@ -3129,6 +3140,7 @@ export default function SettingsPage() {
                         <ChevronRight className="size-5 text-gray-500" />
                       </span>
                     </Button>
+                    */}
 
                     <Button
                       variant="ghost"
@@ -3178,10 +3190,22 @@ export default function SettingsPage() {
                       </span>
                     </Button>
 
+                    {/* The entry point for TwoFactorSetupModal. Both modals were
+                        already rendered at the bottom of this file and wired to
+                        five real endpoints, but setShow2FASetup was never called
+                        from anywhere, so the working TOTP flow was unreachable.
+                        The Two-Factor Auth tab is designed as a magic-link flow
+                        that the backend does not implement, so this row is the
+                        honest way in. That tab is left exactly as it is. */}
                     <Button
                       variant="ghost"
                       visual="gray"
                       size="sm"
+                      onClick={() =>
+                        isTwoFactorEnabled
+                          ? setShow2FADisable(true)
+                          : setShow2FASetup(true)
+                      }
                       className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                     >
                       <span className="flex items-center gap-x-3">
@@ -3191,6 +3215,18 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium leading-[17px] text-gray-900">
                           App Authenticator
                         </span>
+                        {/* Follows auth state rather than local state: the modal
+                            calls setUser on enable, so this needs nothing of its
+                            own to stay correct. */}
+                        {isTwoFactorEnabled && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
                       </span>
                       <span className="flex size-8 items-center justify-center rounded-[5px]">
                         <ChevronRight className="size-5 text-gray-500" />
@@ -3345,6 +3381,10 @@ export default function SettingsPage() {
                     </DialogContent>
                   </Dialog>
 
+                  {/* Phone Verification dialogs -- commented out with the row
+                      above. SMS has no provider, so Send Link could never
+                      deliver. Restore with the row.
+
                   <Dialog
                     open={isPhoneVerificationOpen}
                     onOpenChange={setIsPhoneVerificationOpen}
@@ -3475,6 +3515,7 @@ export default function SettingsPage() {
                       </IconButton>
                     </DialogContent>
                   </Dialog>
+                  */}
                 </>
               )}
 
