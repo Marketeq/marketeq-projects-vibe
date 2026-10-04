@@ -1388,6 +1388,281 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return false;
   }
 
+  // ---------------------------------------------------------------------
+  // Recovery email
+  //
+  // Proving ownership matters more here than anywhere else in Settings: an
+  // unproven recovery address is either a typo that silently removes the only
+  // way back into an account, or a deliberate entry that points recovery at
+  // someone else's inbox. So the requested address waits in
+  // `pendingRecoveryEmail` and only a confirmed one is written to
+  // `recoveryEmail`. Nothing outside this block reads the pending column.
+  // ---------------------------------------------------------------------
+
+  /** How long a confirmation link stays good for. */
+  private static readonly RECOVERY_EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+  private hashRecoveryEmailToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * What Settings renders. Returns the proven address and, separately, one
+   * still awaiting confirmation — the screen has to be able to say "pending"
+   * rather than show an address as though it were live.
+   */
+  async getRecoveryEmail(userId: string): Promise<{
+    recoveryEmail: string | null;
+    pendingRecoveryEmail: string | null;
+  }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'recoveryEmail', 'pendingRecoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      recoveryEmail: user.recoveryEmail ?? null,
+      pendingRecoveryEmail: user.pendingRecoveryEmail ?? null,
+    };
+  }
+
+  /**
+   * Records the requested address and emails it a confirmation link.
+   *
+   * Deliberately does not touch `recoveryEmail`: until the link is followed,
+   * an existing proven address keeps working. Replacing it here would let an
+   * unconfirmed typo delete a working recovery path.
+   */
+  async setRecoveryEmail(
+    userId: string,
+    email: string,
+    ipAddress = '',
+  ): Promise<{ success: true; pendingRecoveryEmail: string }> {
+    this.enforcePasswordResetRateLimit(
+      `recovery-email:user:${userId}`,
+      'AUTH_RECOVERY_EMAIL_LIMIT',
+      5,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `recovery-email:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RECOVERY_EMAIL_IP_LIMIT',
+      20,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const address = normalizeEmail(email);
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'username', 'recoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    // A recovery address equal to the sign-in address is not a recovery path:
+    // whatever locks you out of one locks you out of both.
+    if (normalizeEmail(user.email) === address) {
+      throw new BadRequestException(
+        'Use a different address from your account email, otherwise it cannot help you recover.',
+      );
+    }
+
+    if (user.recoveryEmail && normalizeEmail(user.recoveryEmail) === address) {
+      throw new BadRequestException(
+        'That address is already your recovery email.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+
+    await this.userRepository.update(userId, {
+      pendingRecoveryEmail: address,
+      recoveryEmailTokenHash: this.hashRecoveryEmailToken(token),
+      recoveryEmailExpiresAt: new Date(
+        Date.now() + AuthService.RECOVERY_EMAIL_TOKEN_TTL_MS,
+      ),
+    });
+
+    await this.dispatchRecoveryEmail(user.id, address, user.username, token);
+
+    return { success: true, pendingRecoveryEmail: address };
+  }
+
+  /**
+   * Issues a fresh token for the address already waiting. The old token stops
+   * working, so a resend cannot leave two live links for one address.
+   */
+  async resendRecoveryEmail(
+    userId: string,
+    ipAddress = '',
+  ): Promise<{ success: true; pendingRecoveryEmail: string }> {
+    this.enforcePasswordResetRateLimit(
+      `recovery-email-resend:user:${userId}`,
+      'AUTH_RECOVERY_EMAIL_RESEND_LIMIT',
+      3,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'username', 'pendingRecoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.pendingRecoveryEmail) {
+      throw new BadRequestException(
+        'There is no recovery email awaiting confirmation.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+    await this.userRepository.update(userId, {
+      recoveryEmailTokenHash: this.hashRecoveryEmailToken(token),
+      recoveryEmailExpiresAt: new Date(
+        Date.now() + AuthService.RECOVERY_EMAIL_TOKEN_TTL_MS,
+      ),
+    });
+
+    await this.dispatchRecoveryEmail(
+      user.id,
+      user.pendingRecoveryEmail,
+      user.username,
+      token,
+    );
+
+    return { success: true, pendingRecoveryEmail: user.pendingRecoveryEmail };
+  }
+
+  /**
+   * Completes the change: promotes the pending address and clears the waiting
+   * room. Unauthenticated by design — whoever holds the link is proving they
+   * can read that inbox, which is the entire point, and requiring a session
+   * would break confirming from a phone.
+   */
+  async verifyRecoveryEmail(token: string): Promise<{ recoveryEmail: string }> {
+    if (!token?.trim()) throw new BadRequestException('Token is required');
+
+    const user = await this.userRepository.findOne({
+      where: { recoveryEmailTokenHash: this.hashRecoveryEmailToken(token.trim()) },
+      select: [
+        'id',
+        'pendingRecoveryEmail',
+        'recoveryEmailExpiresAt',
+      ],
+    });
+    if (!user || !user.pendingRecoveryEmail) {
+      throw new NotFoundException(
+        'That confirmation link is not valid. It may already have been used.',
+      );
+    }
+
+    if (
+      user.recoveryEmailExpiresAt &&
+      user.recoveryEmailExpiresAt.getTime() < Date.now()
+    ) {
+      // Cleared on expiry so a stale row cannot be retried indefinitely.
+      await this.userRepository.update(user.id, {
+        pendingRecoveryEmail: null,
+        recoveryEmailTokenHash: null,
+        recoveryEmailExpiresAt: null,
+      });
+      throw new BadRequestException(
+        'That confirmation link has expired. Request it again from Settings.',
+      );
+    }
+
+    const address = user.pendingRecoveryEmail;
+    await this.userRepository.update(user.id, {
+      recoveryEmail: address,
+      pendingRecoveryEmail: null,
+      recoveryEmailTokenHash: null,
+      recoveryEmailExpiresAt: null,
+    });
+
+    this.logger.log(`Recovery email confirmed for userId=${user.id}`);
+    return { recoveryEmail: address };
+  }
+
+  /**
+   * Delivery is best-effort on purpose. The pending row is already committed,
+   * so a Brevo outage must not surface as a failed save and leave the caller
+   * unsure whether the address was recorded — Resend Link is the recovery.
+   */
+  private async dispatchRecoveryEmail(
+    userId: string,
+    address: string,
+    username: string | undefined,
+    token: string,
+  ): Promise<void> {
+    const confirmUrl = this.buildRecoveryEmailConfirmUrl(token);
+
+    let displayName = username;
+    try {
+      const userServiceUrl =
+        this.configService.get<string>('USER_SERVICE_URL') ??
+        'http://localhost:3002';
+      const internalToken = this.configService.get<string>(
+        'INTERNAL_SERVICE_TOKEN',
+      );
+      const profileRes = await axios.get(
+        `${userServiceUrl.replace(/\/$/, '')}/internal/users/${userId}/summary`,
+        {
+          headers: internalToken ? { 'x-internal-token': internalToken } : {},
+          timeout: 3000,
+        },
+      );
+      if (profileRes?.data?.firstName) displayName = profileRes.data.firstName;
+    } catch {
+      // fall back to username, exactly as forgotPassword does
+    }
+
+    // Without an API key nothing can be delivered, so the link would be
+    // unreachable and the flow untestable locally. Logged only when there is
+    // no key AND we are not in production, matching the mock that
+    // notification-service already has and the dev-only reset_token that
+    // forgotPassword returns.
+    if (
+      !(process.env.BREVO_API_KEY ?? '').trim() &&
+      this.configService.get<string>('NODE_ENV') !== 'production'
+    ) {
+      this.logger.log(
+        `[LOCAL DEV MOCK EMAIL] To: ${address} | Subject: "Set Up Your Account Recovery Email" | Link: ${confirmUrl}`,
+      );
+      return;
+    }
+
+    try {
+      await this.brevoService.sendRecoveryEmailVerification(address, {
+        firstName: displayName,
+        confirmUrl,
+      });
+      this.logger.log(
+        `Recovery email confirmation sent for userId=${userId} to ${address}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Recovery email confirmation failed for userId=${userId}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Points at the frontend, not at this API. The link is followed by a person
+   * in a mail client, and landing them on a raw JSON body is not a result they
+   * can read.
+   */
+  private buildRecoveryEmailConfirmUrl(token: string): string {
+    const base = (this.configService.get<string>('FRONTEND_URL') ?? '')
+      .split(',')[0]
+      .trim()
+      .replace(/\/$/, '');
+    const path = `/recovery-email/confirm?token=${encodeURIComponent(token)}`;
+    return base ? `${base}${path}` : path;
+  }
+
   private async assertPasswordNotReused(
     user: Pick<User, 'id' | 'password'>,
     newPassword: string,

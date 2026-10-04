@@ -28,6 +28,10 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/security-questions/catalog',
   '/auth/recovery/security-questions/verify',
   '/auth/recovery/authenticator/verify',
+  // Confirming a recovery email is done from a mail client, often on a
+  // different device from the one that asked. Holding the single-use token is
+  // the proof; requiring a session here would make the link unusable.
+  '/auth/recovery-email/verify',
   '/auth/2fa/resend',
   '/homepage',
   '/homepage/health',

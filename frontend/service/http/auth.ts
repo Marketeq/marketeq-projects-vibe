@@ -63,6 +63,28 @@ export const AuthAPI = {
     return AxiosRequest.patch(`${AUTH_BASE}/auth/change-password`, data)
   },
 
+  /**
+   * Account recovery email. The address is not usable until the link sent to
+   * it is followed — GetRecoveryEmail reports both the proven address and one
+   * still awaiting confirmation, so the screen can tell them apart.
+   */
+  GetRecoveryEmail: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/recovery-email`)
+  },
+
+  SetRecoveryEmail: (data: { email: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email`, data)
+  },
+
+  ResendRecoveryEmail: () => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/resend`, {})
+  },
+
+  /** Unauthenticated: holding the token is the proof. */
+  VerifyRecoveryEmail: (data: { token: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/verify`, data)
+  },
+
   GenerateTwoFactor: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },

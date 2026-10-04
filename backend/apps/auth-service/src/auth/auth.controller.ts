@@ -33,6 +33,10 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import {
+  SetRecoveryEmailDto,
+  VerifyRecoveryEmailDto,
+} from './dto/recovery-email.dto';
+import {
   SetSecurityQuestionsDto,
   VerifySecurityQuestionsDto,
 } from './dto/security-questions.dto';
@@ -319,6 +323,52 @@ export class AuthController {
   ) {
     const { ipAddress } = extractRequestMeta(req);
     return this.authService.verifyAuthenticatorForRecovery(dto, ipAddress);
+  }
+
+  /**
+   * Nominates an address for account recovery. The address is not usable until
+   * the link we email it is followed — see `verifyRecoveryEmail`.
+   */
+  @ApiOperation({ summary: 'Read the signed-in user\'s recovery email state' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Get('recovery-email')
+  getRecoveryEmail(@Req() req: Request) {
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.getRecoveryEmail(userId);
+  }
+
+  @ApiOperation({ summary: 'Request a recovery email address' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('recovery-email')
+  @HttpCode(HttpStatus.OK)
+  setRecoveryEmail(@Body() dto: SetRecoveryEmailDto, @Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.setRecoveryEmail(userId, dto.email, ipAddress);
+  }
+
+  @ApiOperation({ summary: 'Resend the recovery email confirmation link' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard)
+  @Post('recovery-email/resend')
+  @HttpCode(HttpStatus.OK)
+  resendRecoveryEmail(@Req() req: Request) {
+    const { ipAddress } = extractRequestMeta(req);
+    const userId = (req.user as any)?.sub ?? (req.user as any)?.id;
+    return this.authService.resendRecoveryEmail(userId, ipAddress);
+  }
+
+  /**
+   * Deliberately unauthenticated: holding the token *is* the proof, and the
+   * link is often opened on a different device from the one that requested it.
+   */
+  @ApiOperation({ summary: 'Confirm a recovery email address' })
+  @Post('recovery-email/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyRecoveryEmail(@Body() dto: VerifyRecoveryEmailDto) {
+    return this.authService.verifyRecoveryEmail(dto.token);
   }
 
   @ApiOperation({ summary: 'Login using Google' })

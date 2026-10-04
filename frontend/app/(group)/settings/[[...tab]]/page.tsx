@@ -1,8 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { useBillingExportStore } from "@/lib/billing-export"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useDropzone } from "react-dropzone"
 import Cookies from "js-cookie"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
@@ -44,6 +50,7 @@ import { PhoneNumberInput, isPhoneValid } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
 import { AndroidBrand, AppleBrand, MicrosoftBrand } from "@blend-metrics/icons/brands"
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
@@ -137,6 +144,7 @@ import {
   DialogDescription,
   DialogOverlay,
   DialogTitle,
+  ErrorMessage,
   IconButton,
   Input,
   InputGroup,
@@ -222,6 +230,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const routeParams = useParams()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
 
   // /settings/<tab> is the real URL. ?tab= is still honoured so links shared
   // before this existed keep working, and bare /settings lands on the first
@@ -1128,6 +1137,136 @@ export default function SettingsPage() {
   //   setIsSavedAlertMounted(true)
   //   setIsRecoveryLinkSent(false)
   // }
+
+  const [isRecoveryEmailOpen, setIsRecoveryEmailOpen] = useState(false)
+  const [recoveryEmail, setRecoveryEmail] = useState("")
+  const [isRecoveryEmailLinkSent, setIsRecoveryEmailLinkSent] = useState(false)
+  const [isRecoveryEmailVerified, setIsRecoveryEmailVerified] = useState(false)
+  const [recoveryEmailError, setRecoveryEmailError] = useState<string | null>(
+    null
+  )
+  // Set when the confirmation link from the email failed to resolve to an
+  // account. Holds the address so the modal can name it; null means closed.
+  const [recoveryNotFoundEmail, setRecoveryNotFoundEmail] = useState<
+    string | null
+  >(null)
+  const [isRecoveryEmailSending, setIsRecoveryEmailSending] = useState(false)
+
+  /**
+   * The recovery-email link is followed from a mail client and lands on
+   * /recovery-email/confirm, which performs the verification and then sends
+   * the person here with the outcome. Reading it from the URL is what puts
+   * the result in front of them on the screen it belongs to.
+   *
+   * The params are stripped once read, so a refresh does not replay the
+   * modal and a copied URL does not carry a stale result.
+   */
+  useEffect(() => {
+    const outcome = searchParams.get("recovery")
+    if (!outcome) return
+
+    if (outcome === "not-found") {
+      // The address is read back from the server rather than carried in the
+      // URL: a failed token cannot tell us which address it was for, and an
+      // email address does not belong in a query string. The still-pending
+      // value is exactly the one they were trying to confirm.
+      AuthAPI.GetRecoveryEmail()
+        .then((res) => {
+          const data = (res as any)?.data ?? res
+          setRecoveryNotFoundEmail(data?.pendingRecoveryEmail ?? "")
+        })
+        .catch(() => setRecoveryNotFoundEmail(""))
+    } else if (outcome === "confirmed") {
+      setIsRecoveryEmailVerified(true)
+      setSavedAlertMessage("Successfully added account recovery email")
+      setIsSavedAlertMounted(true)
+    }
+
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete("recovery")
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [searchParams, router, pathname])
+
+  // The badge reflects a *proven* address only. A pending one is deliberately
+  // not shown as enabled — it is not usable for recovery until confirmed.
+  useEffect(() => {
+    let cancelled = false
+    AuthAPI.GetRecoveryEmail()
+      .then((res) => {
+        if (cancelled) return
+        const data = (res as any)?.data ?? res
+        if (data?.recoveryEmail) {
+          setIsRecoveryEmailVerified(true)
+          setRecoveryEmail(data.recoveryEmail)
+        }
+      })
+      .catch(() => {
+        // A failed read must not break the tab; the row simply shows no badge.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const submitRecoveryEmail = async () => {
+    setRecoveryEmailError(null)
+    setIsRecoveryEmailSending(true)
+    try {
+      await AuthAPI.SetRecoveryEmail({ email: recoveryEmail.trim() })
+      setIsRecoveryEmailOpen(false)
+      setIsRecoveryEmailLinkSent(true)
+    } catch (error) {
+      const message =
+        (error as any)?.response?.data?.message ??
+        "We could not send that link. Try again."
+      setRecoveryEmailError(
+        Array.isArray(message) ? message[0] : String(message)
+      )
+    } finally {
+      setIsRecoveryEmailSending(false)
+    }
+  }
+
+  const resendRecoveryEmail = async () => {
+    setIsRecoveryEmailSending(true)
+    try {
+      await AuthAPI.ResendRecoveryEmail()
+    } catch {
+      // Swallowed on purpose: the modal's whole message is "we sent a link",
+      // and a failed resend does not change what the person should do next.
+    } finally {
+      setIsRecoveryEmailSending(false)
+    }
+  }
+  // Gates the Send Link button the way isPhoneValid does for the phone
+  // sibling. Deliberately permissive — the authority on an address is the
+  // server that has to deliver to it, and there is no such endpoint yet.
+  const isRecoveryEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    recoveryEmail.trim()
+  )
+
+  /**
+   * Dismissing the "check your email" modal is not confirmation — the address
+   * only becomes usable when the emailed link is followed. Re-reads the server
+   * state instead of assuming, so the badge appears if they confirmed in
+   * another tab and stays away if they did not.
+   */
+  const closeRecoveryEmailMagicLink = () => {
+    setIsRecoveryEmailLinkSent(false)
+    AuthAPI.GetRecoveryEmail()
+      .then((res) => {
+        const data = (res as any)?.data ?? res
+        if (data?.recoveryEmail) {
+          setIsRecoveryEmailVerified(true)
+          setSavedAlertMessage("Successfully added account recovery email")
+          setIsSavedAlertMounted(true)
+        }
+      })
+      .catch(() => {
+        // Leave the badge as it was rather than guessing.
+      })
+  }
 
   const twoFactorNumbers = [
     ...(user?.twoFactorPhone ? [user.twoFactorPhone] : []),
@@ -3175,6 +3314,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       visual="gray"
                       size="sm"
+                      onClick={() => setIsRecoveryEmailOpen(true)}
                       className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                     >
                       <span className="flex items-center gap-x-3">
@@ -3184,6 +3324,18 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium leading-[17px] text-gray-900">
                           Recovery Email
                         </span>
+                        {/* Proven addresses only. A pending one is deliberately
+                            not badged -- it cannot recover anything until the
+                            emailed link is followed. */}
+                        {isRecoveryEmailVerified && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
                       </span>
                       <span className="flex size-8 items-center justify-center rounded-[5px]">
                         <ChevronRight className="size-5 text-gray-500" />
@@ -3377,6 +3529,235 @@ export default function SettingsPage() {
                             ? "Saving..."
                             : "Save Security Questions"}
                         </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isRecoveryEmailOpen}
+                    onOpenChange={setIsRecoveryEmailOpen}
+                  >
+                    <DialogContent
+                      className="flex w-[467px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsRecoveryEmailOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                            Recovery Email
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Enter an email to use for account recovery and
+                            we&apos;ll send a magic link. You&apos;ll be able to
+                            use this email if you ever need to recover your
+                            account.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-1.5">
+                          <Label size="sm" className="text-gray-700">
+                            Email
+                          </Label>
+                          <Input
+                            type="email"
+                            placeholder="you@me.com"
+                            value={recoveryEmail}
+                            isInvalid={!!recoveryEmailError}
+                            onChange={(e) => {
+                              setRecoveryEmail(e.target.value)
+                              setRecoveryEmailError(null)
+                            }}
+                          />
+                          {recoveryEmailError && (
+                            <ErrorMessage>{recoveryEmailError}</ErrorMessage>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setIsRecoveryEmailOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !isRecoveryEmailValid || isRecoveryEmailSending
+                          }
+                          onClick={submitRecoveryEmail}
+                          leftIcon={<Send01 className="size-[15px]" />}
+                        >
+                          Send Link
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isRecoveryEmailLinkSent}
+                    onOpenChange={(open) =>
+                      open
+                        ? setIsRecoveryEmailLinkSent(true)
+                        : closeRecoveryEmailMagicLink()
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[548px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-primary-25 bg-primary-50">
+                          <Mail01 className="size-6 text-primary-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                            Please check your email
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-center text-sm text-gray-500">
+                            We&apos;ve just sent a magic link to{" "}
+                            <span className="font-semibold text-gray-900">
+                              {recoveryEmail.trim()}
+                            </span>
+                          </DialogDescription>
+                          <p className="w-full text-center text-sm text-gray-500">
+                            If you don&apos;t see the email, be sure to check
+                            your spam folder.
+                            <br />
+                            The link will expire in{" "}
+                            <span className="font-semibold text-gray-900">
+                              24 hours.
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        disabled={isRecoveryEmailSending}
+                        onClick={resendRecoveryEmail}
+                      >
+                        Resend Link
+                      </Button>
+
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={closeRecoveryEmailMagicLink}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Reached by following the link in the recovery email when
+                      the token no longer resolves to an account. */}
+                  <Dialog
+                    open={!!recoveryNotFoundEmail}
+                    onOpenChange={(open) =>
+                      open ? undefined : setRecoveryNotFoundEmail(null)
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[512px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-start gap-8">
+                        <div className="flex w-full flex-col items-start gap-10">
+                          <div className="flex w-full flex-col items-start gap-5">
+                            <div className="flex w-full items-start justify-between gap-5">
+                              <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-error-50 bg-error-100">
+                                <AlertCircle className="size-6 text-error-500" />
+                              </span>
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                size="sm"
+                                className="size-9 rounded-[5px] p-2"
+                                onClick={() => setRecoveryNotFoundEmail(null)}
+                              >
+                                <X className="size-5 text-gray-500" />
+                              </IconButton>
+                            </div>
+
+                            <div className="flex w-full flex-col items-start gap-2">
+                              <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                                No account found
+                              </DialogTitle>
+                              <DialogDescription className="w-full text-sm text-gray-500">
+                                {recoveryNotFoundEmail ? (
+                                  <>
+                                    We couldn&apos;t find an account associated
+                                    with the email
+                                    <br />
+                                    <span className="font-semibold text-gray-900">
+                                      {recoveryNotFoundEmail}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    That confirmation link is no longer valid.
+                                    It may already have been used, or it may
+                                    have expired.
+                                  </>
+                                )}
+                              </DialogDescription>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-x-3">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setRecoveryNotFoundEmail(null)
+                                setRecoveryEmail("")
+                                setRecoveryEmailError(null)
+                                setIsRecoveryEmailOpen(true)
+                              }}
+                            >
+                              Try a Different Email
+                            </Button>
+                            <Button
+                              asChild
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                            >
+                              <Link href="/contact-support">
+                                Contact Support
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+
+                        <p className="w-full text-sm text-gray-500">
+                          Need to try another way?{" "}
+                          <a href="#" className="underline">
+                            Start account recovery
+                          </a>
+                        </p>
                       </div>
                     </DialogContent>
                   </Dialog>
