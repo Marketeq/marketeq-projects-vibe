@@ -53,6 +53,16 @@ export const AuthAPI = {
     return AxiosRequest.post(`${AUTH_BASE}/auth/reset-password`, data)
   },
 
+  /**
+   * Changes the password of a signed-in user, proving intent with the one they
+   * already hold -- unlike ResetPassword, which trades an emailed token because
+   * the person cannot sign in. Sets no cookies: the caller's session stays
+   * valid, so the tab they are standing in does not sign out.
+   */
+  ChangePassword: (data: { currentPassword: string; newPassword: string }) => {
+    return AxiosRequest.patch(`${AUTH_BASE}/auth/change-password`, data)
+  },
+
   GenerateTwoFactor: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },

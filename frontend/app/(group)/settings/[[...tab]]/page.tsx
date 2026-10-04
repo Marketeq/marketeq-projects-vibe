@@ -741,6 +741,9 @@ export default function SettingsPage() {
     passwordForm.next !== "" ||
     passwordForm.confirm !== ""
 
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
+
   const [isDiscardOpen, setIsDiscardOpen] = useState(false)
   const [isFingerprintOpen, setIsFingerprintOpen] = useState(false)
   const [acceptsFingerprintTerms, setAcceptsFingerprintTerms] = useState(false)
@@ -796,13 +799,48 @@ export default function SettingsPage() {
   const closeUpdatePassword = () => {
     setPasswordForm({ current: "", next: "", confirm: "" })
     setVisiblePasswords({ current: false, next: false, confirm: false })
+    setPasswordError(null)
     setIsUpdatePasswordOpen(false)
   }
 
-  const handlePasswordSave = () => {
-    setSavedAlertMessage("Your password has been updated")
-    setIsSavedAlertMounted(true)
-    closeUpdatePassword()
+  /**
+   * Only reports success once the server has confirmed it. The screen used to
+   * announce "Your password has been updated" without calling anything, which
+   * told someone their password had changed when it had not.
+   *
+   * A failure leaves the form open with what they typed intact -- clearing it
+   * would make them retype a password they got right to fix the one they got
+   * wrong.
+   */
+  const handlePasswordSave = async () => {
+    if (!canSavePassword || isSavingPassword) return
+
+    setIsSavingPassword(true)
+    setPasswordError(null)
+    try {
+      await AuthAPI.ChangePassword({
+        currentPassword: passwordForm.current,
+        newPassword: passwordForm.next,
+      })
+      setSavedAlertMessage("Your password has been updated")
+      setIsSavedAlertMounted(true)
+      closeUpdatePassword()
+    } catch (error: any) {
+      const raw =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message
+      // ValidationPipe returns an array of messages; everything else is one
+      // finished sentence already, so it is surfaced as the server wrote it
+      // rather than wrapped in "Please try again" -- retrying does not help an
+      // account that signs in with a social provider.
+      setPasswordError(
+        (Array.isArray(raw) ? raw.join(". ") : raw) ||
+          "Something went wrong. Please try again."
+      )
+    } finally {
+      setIsSavingPassword(false)
+    }
   }
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
@@ -2680,6 +2718,12 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
+                  {passwordError && (
+                    <p className="w-full text-xs font-medium text-error-500">
+                      {passwordError}
+                    </p>
+                  )}
+
                   <div className="flex w-full justify-end gap-x-3">
                     <Button
                       variant="outlined"
@@ -2696,7 +2740,7 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       onClick={handlePasswordSave}
-                      disabled={!canSavePassword}
+                      disabled={!canSavePassword || isSavingPassword}
                     >
                       Save Changes
                     </Button>
@@ -2754,9 +2798,10 @@ export default function SettingsPage() {
                         </Button>
                         <Button
                           size="lg"
+                          disabled={!canSavePassword || isSavingPassword}
                           onClick={() => {
                             setIsDiscardOpen(false)
-                            handlePasswordSave()
+                            void handlePasswordSave()
                           }}
                         >
                           Save & Exit

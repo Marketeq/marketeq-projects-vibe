@@ -881,6 +881,124 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Changes the password of a signed-in caller, proving intent with the
+   * password they already hold.
+   *
+   * Distinct from resetPassword, which is reached with an emailed token
+   * precisely because the person cannot sign in. Settings > Login & Password
+   * used to call nothing at all here and still report "Your password has been
+   * updated", so a change the user believed had happened had not.
+   *
+   * No cookies are set and no session is re-issued: the caller's session is
+   * still valid, and replacing it would sign them out of the tab they are
+   * standing in.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    ipAddress = '',
+    userAgent = '',
+  ): Promise<{ success: true }> {
+    // Same limiter as reset. This endpoint verifies a secret, so it is a
+    // guessing surface even though the caller is already authenticated.
+    this.enforcePasswordResetRateLimit(
+      `change-password:user:${userId}`,
+      'AUTH_CHANGE_PASSWORD_LIMIT',
+      10,
+      'AUTH_CHANGE_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: [
+        'id',
+        'email',
+        'username',
+        'password',
+        'provider',
+        'hasPassword',
+        'passwordResetVersion',
+      ],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Account not found');
+    }
+
+    // An OAuth-only account has no password to verify. Say so plainly rather
+    // than reporting a mismatch against something that does not exist.
+    if (!user.password || !user.hasPassword) {
+      throw new BadRequestException(
+        'This account signs in with a social provider and has no password to change.',
+      );
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) {
+      this.logger.warn(
+        `changePassword: wrong current password for userId=${userId} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new BadRequestException(
+        'That does not match your current password.',
+      );
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Your new password must be different from your current one.',
+      );
+    }
+
+    await this.assertPasswordNotReused(user, newPassword);
+
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Account not found');
+      }
+
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager.getRepository(PasswordHistory).find({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+        skip: PASSWORD_HISTORY_LIMIT,
+      });
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
+    });
+
+    this.logger.log(
+      `changePassword: password changed for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    // The same notification the reset path sends. A password changed from
+    // Settings is no less worth telling the account holder about than one
+    // changed through recovery, and this is the only signal they get if the
+    // change was not theirs. Swallows its own failures.
+    await this.notifyPasswordChanged(user, ipAddress, userAgent);
+
+    return { success: true };
+  }
+
+  /**
    * Tells the account holder their password changed, so an unauthorised change
    * is visible to them even though the attacker now holds the credentials.
    *
