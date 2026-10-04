@@ -13,6 +13,10 @@ import { useCompanyInfo } from "../hooks/use-company-info"
 import { useSecurityQuestions } from "../hooks/use-security-questions"
 import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
+import {
+  fingerprintFailureMessage,
+  promptForFingerprint,
+} from "@/lib/webauthn"
 import AllowedIpsAPI from "@/service/http/allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
@@ -740,19 +744,53 @@ export default function SettingsPage() {
   const [isDiscardOpen, setIsDiscardOpen] = useState(false)
   const [isFingerprintOpen, setIsFingerprintOpen] = useState(false)
   const [acceptsFingerprintTerms, setAcceptsFingerprintTerms] = useState(false)
+  const [fingerprintError, setFingerprintError] = useState<string | null>(null)
+  const [isEnrollingFingerprint, setIsEnrollingFingerprint] = useState(false)
 
   const [isFingerprintEnabled, setIsFingerprintEnabled] = useState(false)
 
   const closeFingerprint = () => {
     setAcceptsFingerprintTerms(false)
+    setFingerprintError(null)
     setIsFingerprintOpen(false)
   }
 
-  const handleEnableFingerprint = () => {
-    setIsFingerprintEnabled(true)
-    setSavedAlertMessage("Successfully enabled fingerprint login")
-    setIsSavedAlertMounted(true)
-    closeFingerprint()
+  /**
+   * Actually prompts the device's sensor before turning the setting on.
+   *
+   * The dialog says "Confirm your fingerprint on your device" and used to turn
+   * the setting on without asking anything, so a device with no sensor at all
+   * still reported success.
+   *
+   * Note what this still is not: the credential is not stored or verified
+   * server-side, so this switch does not yet let anyone sign in with a
+   * fingerprint. See lib/webauthn.ts.
+   */
+  const handleEnableFingerprint = async () => {
+    if (isEnrollingFingerprint) return
+
+    setIsEnrollingFingerprint(true)
+    setFingerprintError(null)
+    try {
+      await promptForFingerprint({
+        id: user?.id ?? "unknown",
+        name: user?.email ?? user?.username ?? "Marketeq user",
+        displayName:
+          [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+          user?.username ||
+          "Marketeq user",
+      })
+      setIsFingerprintEnabled(true)
+      setSavedAlertMessage("Successfully enabled fingerprint login")
+      setIsSavedAlertMounted(true)
+      closeFingerprint()
+    } catch (failure) {
+      // Stays open on failure: the person is mid-task and the usual fix is to
+      // try the scan again, not to start over.
+      setFingerprintError(fingerprintFailureMessage(failure))
+    } finally {
+      setIsEnrollingFingerprint(false)
+    }
   }
 
   const closeUpdatePassword = () => {
@@ -2776,23 +2814,33 @@ export default function SettingsPage() {
                       </div>
                     </div>
 
-                    <div className="flex w-full items-start justify-center gap-x-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={closeFingerprint}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={!acceptsFingerprintTerms}
-                        onClick={handleEnableFingerprint}
-                        leftIcon={<Check className="size-[15px]" />}
-                      >
-                        Enable Fingerprint Login
-                      </Button>
+                    <div className="flex w-full flex-col items-center gap-3">
+                      {fingerprintError && (
+                        <p className="w-full text-center text-xs font-medium text-error-500">
+                          {fingerprintError}
+                        </p>
+                      )}
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={closeFingerprint}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !acceptsFingerprintTerms || isEnrollingFingerprint
+                          }
+                          onClick={handleEnableFingerprint}
+                          leftIcon={<Check className="size-[15px]" />}
+                        >
+                          Enable Fingerprint Login
+                        </Button>
+                      </div>
                     </div>
                   </DialogContent>
                 </Dialog>
