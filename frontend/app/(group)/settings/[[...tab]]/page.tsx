@@ -200,6 +200,28 @@ const INTEGRATIONS = [
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
 
+/**
+ * One line for the outcome of an import.
+ *
+ * An address can now be left out for two different reasons — it was already on
+ * the list, or an entry already on the list covers it — and they need saying
+ * separately. "Skipped 3" over a table that grew by none reads as a glitch;
+ * naming the reason is what makes it actionable.
+ */
+const summariseIpImport = (
+  added: number,
+  skipped: number,
+  overlapping: number
+): string => {
+  const notes: string[] = []
+  if (skipped > 0) notes.push(`skipped ${skipped} already on your list`)
+  if (overlapping > 0)
+    notes.push(`skipped ${overlapping} overlapping an existing entry`)
+  return notes.length > 0
+    ? `Added ${added}, ${notes.join(", ")}`
+    : "Successfully added IP addresses"
+}
+
 // Current session first, then most recently active — the ordering
 // ActiveSessionsModal already uses. Shared so the initial load and the refetch
 // after a removal cannot drift apart, which is what made the list silently
@@ -1811,9 +1833,19 @@ export default function SettingsPage() {
         await updateAllowedIp(editingIpId, updated)
         setSavedAlertMessage("Successfully updated IP address")
       } else {
-        const { added, skipped } = await addAllowedIps(entries)
-        // Nothing new means every address was already on the list. Saying so
-        // beats a success alert over a table that did not change.
+        const { added, skipped, overlapping } = await addAllowedIps(entries)
+        // Nothing new means every address was already on the list, or an
+        // existing entry already covers it. Saying so beats a success alert
+        // over a table that did not change — and the two reasons need telling
+        // apart, because the fix differs.
+        if (added === 0 && overlapping.length > 0) {
+          setIpSaveError(
+            overlapping.length === 1
+              ? `${overlapping[0].address} overlaps ${overlapping[0].conflictsWith}, which is already on your list`
+              : `${overlapping.length} addresses overlap entries already on your list`
+          )
+          return
+        }
         if (added === 0 && skipped.length > 0) {
           setIpSaveError(
             skipped.length === 1
@@ -1823,9 +1855,7 @@ export default function SettingsPage() {
           return
         }
         setSavedAlertMessage(
-          skipped.length > 0
-            ? `Added ${added}, skipped ${skipped.length} already on your list`
-            : "Successfully added IP addresses"
+          summariseIpImport(added, skipped.length, overlapping.length)
         )
       }
     } catch (err: any) {
@@ -1981,16 +2011,17 @@ export default function SettingsPage() {
     if (csvEntries.length === 0 || csvStatus !== "done") return
     setIpSaveError(null)
     try {
-      const { added, skipped } = await addAllowedIps(
+      // Sent in chunks of 500, so this is real completion, not a timer.
+      setCsvProgress(0)
+      const { added, skipped, overlapping } = await addAllowedIps(
         csvEntries.map((entry) => ({
           address: entry.address,
           description: entry.description,
-        }))
+        })),
+        setCsvProgress
       )
       setSavedAlertMessage(
-        skipped.length > 0
-          ? `Added ${added}, skipped ${skipped.length} already on your list`
-          : "Successfully added IP addresses"
+        summariseIpImport(added, skipped.length, overlapping.length)
       )
     } catch (err: any) {
       setIpSaveError(
