@@ -28,6 +28,7 @@ import { startInputActivity, stopInputActivity } from './services/capture/input-
 import { createCleanupJob } from './services/capture/cleanup-job';
 import { createAppUsageTracker, type AppUsageTracker } from './services/capture/app-usage-tracker';
 import { createActivityWatchTracker } from './services/capture/activitywatch-tracker';
+import { mapTimerStateToCapturePayload } from './services/capture/timer-state-adapter';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
 import { createApiClient } from './services/sync/api-client';
@@ -332,6 +333,7 @@ async function bootstrap(): Promise<void> {
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
   let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
+  let detachCaptureTimerBridge: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -416,6 +418,30 @@ async function bootstrap(): Promise<void> {
       captureSupervisor,
     });
     captureSupervisor.start();
+
+    // Bridge real timer state into capture — this is what actually pauses
+    // screenshots/activity during idle, pause, and breaks. Its own
+    // subscription (not the Phase 6 one below, which is for
+    // tray/notifications) so it's live from the moment capture starts, not
+    // whenever Phase 6 happens to run.
+    if (timerService && captureSupervisor) {
+      const cs = captureSupervisor;
+      detachCaptureTimerBridge = timerService.attachEventBus((evt: TimerBusEvent) => {
+        if (evt.channel === TIMER_CHANNELS.stateChanged) {
+          try {
+            cs.handleTimerState(
+              mapTimerStateToCapturePayload({
+                state: evt.payload.state,
+                activeSessionId: evt.payload.activeSessionId,
+              }),
+            );
+          } catch (err) {
+            logger.warn({ err }, 'timer bus → capture bridge failed');
+          }
+        }
+      });
+    }
+
     // Separate keyboard/mouse activity measurement — feeds real percentages
     // into each screenshot upload (see event-bridge.ts). Non-fatal if the
     // native input hook is unavailable.

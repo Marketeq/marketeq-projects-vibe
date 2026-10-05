@@ -40,17 +40,23 @@ export function IdleResolutionModal({ payload, onResolve }: Props): JSX.Element 
   ).toLocaleTimeString()}`;
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal">
-        <h2>You were idle for {formatMinutes(payload.seconds)}</h2>
-        <p className="modal-sub">{range}</p>
-        <p>What would you like to do with that time?</p>
-        <div className="modal-actions">
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40 animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-[360px] rounded-lg bg-white p-5 shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+        <h2 className="text-base font-semibold text-dark-blue-400">
+          You were idle for {formatMinutes(payload.seconds)}
+        </h2>
+        <p className="mt-1 text-xs text-gray-400">{range}</p>
+        <p className="mt-3 text-sm text-dark-blue-400">What would you like to do with that time?</p>
+        <div className="mt-4 flex flex-col gap-2">
           <button
             type="button"
-            className="primary"
             disabled={busy}
             onClick={() => void handle('keep')}
+            className="w-full rounded-full bg-primary-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-primary-600 disabled:opacity-50"
           >
             Keep it
           </button>
@@ -58,6 +64,7 @@ export function IdleResolutionModal({ payload, onResolve }: Props): JSX.Element 
             type="button"
             disabled={busy}
             onClick={() => void handle('discard')}
+            className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-dark-blue-400 transition hover:bg-gray-50 disabled:opacity-50"
           >
             Discard
           </button>
@@ -65,6 +72,7 @@ export function IdleResolutionModal({ payload, onResolve }: Props): JSX.Element 
             type="button"
             disabled={busy}
             onClick={() => void handle('convert_to_break')}
+            className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-dark-blue-400 transition hover:bg-gray-50 disabled:opacity-50"
           >
             Convert to break
           </button>
