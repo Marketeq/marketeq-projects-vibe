@@ -25,6 +25,7 @@ import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
 import { AcceptedDocumentsRequestDto } from '../dto/request/accepted-documents.request.dto';
 import { ProfileStatusResponseDto } from '../dto/response/profile-status.response.dto';
+import { TravelReminderClaimResponseDto } from '../dto/response/travel-reminder-claim.response.dto';
 import { DetectedLocationResponseDto } from '../dto/response/detected-location.response.dto';
 import { GpsCoordinatesRequestDto } from '../dto/request/gps-coordinates.request.dto';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
@@ -125,6 +126,17 @@ export class IdentityVerificationController {
   ): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.recordTravelDuration(req.userId, dto.duration);
     return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
+  // Dashboard claim of the next Travel Mode reminder (day 3 / day 7). Acts only
+  // for the authenticated caller: it reads no body, query, profile id or
+  // timestamp. Always 200 with { claimed }; "nothing to claim" is claimed:false,
+  // never an error. Not guarded by VpnProxyCheckGuard: it advances no
+  // verification.
+  @Post('travel-reminder/claim')
+  @HttpCode(HttpStatus.OK)
+  async claimTravelReminder(@Req() req: AuthenticatedRequest): Promise<TravelReminderClaimResponseDto> {
+    return TravelReminderClaimResponseDto.from(await this.service.claimTravelReminder(req.userId));
   }
 
   // Document-selection screen calls this after the user picks (or the flow

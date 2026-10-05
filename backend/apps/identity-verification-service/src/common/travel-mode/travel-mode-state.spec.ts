@@ -8,6 +8,7 @@ import {
   TravelModeState,
   TravelReminderFields,
   deriveTravelModeState,
+  deriveTravelReminderClaim,
   deriveTravelReminderSchedule,
   travelModeBlocksNewSession,
 } from './travel-mode-state';
@@ -274,5 +275,65 @@ describe('deriveTravelReminderSchedule', () => {
       schedule(f, at(5));
       expect(JSON.stringify(f)).toBe(snapshot);
     });
+  });
+});
+
+describe('deriveTravelReminderClaim', () => {
+  const ACTIVATED = new Date('2026-06-01T12:00:00.000Z');
+  const at = (days: number, offsetMs = 0) => new Date(ACTIVATED.getTime() + days * DAY_MS + offsetMs);
+  const fields = (over: TravelReminderFields = {}): TravelReminderFields => ({
+    travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+    travelModeActive: true,
+    travelModeActivatedAt: ACTIVATED,
+    declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS, // 13 days
+    lastTravelReminderSentAt: null,
+    ...over,
+  });
+  const six = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
+  const latest = (f: TravelReminderFields, now: Date) => deriveTravelReminderClaim(f, now.getTime())?.latestDue ?? null;
+
+  it('day 3: nothing 1 ms before, claimable exactly at it and after', () => {
+    expect(latest(fields(), at(3, -1))).toBeNull();
+    expect(latest(fields(), at(3))).toEqual(at(3));
+    expect(latest(fields(), at(3, 1))).toEqual(at(3));
+  });
+
+  it('day 7 (13 and both 30-day durations): claimable exactly at it once day 3 is claimed', () => {
+    for (const duration of [DeclaredDuration.ONE_TO_TWO_WEEKS, DeclaredDuration.MORE_THAN_TWO_WEEKS, DeclaredDuration.NOT_SURE]) {
+      const f = fields({ declaredDuration: duration, lastTravelReminderSentAt: at(3) });
+      expect(latest(f, at(7, -1))).toBeNull();
+      expect(latest(f, at(7))).toEqual(at(7));
+    }
+  });
+
+  it('the 6-day duration has only day 3 and never a day 7', () => {
+    expect(latest(fields(six), at(5))).toEqual(at(3));
+    expect(latest(fields({ ...six, lastTravelReminderSentAt: at(3) }), at(5))).toBeNull();
+    expect(latest(fields(six), at(7))).toBeNull();
+  });
+
+  it('exact expiry: claimable 1 ms before the end, never at it', () => {
+    expect(latest(fields(six), at(6, -1))).toEqual(at(3));
+    expect(latest(fields(six), at(6))).toBeNull();
+    expect(latest(fields(), at(13))).toBeNull();
+  });
+
+  it('catch-up: day 5 claims day 3 only; after day 7 the latest due is day 7 so one claim consumes both', () => {
+    expect(latest(fields(), at(5))).toEqual(at(3));
+    expect(latest(fields(), at(9))).toEqual(at(7));
+  });
+
+  it('nothing is claimable once everything due is claimed', () => {
+    expect(latest(fields({ lastTravelReminderSentAt: at(9) }), at(10))).toBeNull();
+  });
+
+  it.each([
+    ['pending', fields({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null })],
+    ['inactive', fields({ travelModeActive: false })],
+    ['invalid', fields({ declaredDuration: null })],
+    ['an unusable stored claim time', fields({ lastTravelReminderSentAt: 'garbage' })],
+    ['a future stored claim time', fields({ lastTravelReminderSentAt: at(99) })],
+  ])('%s: nothing to claim', (_label, f) => {
+    expect(latest(f, at(9))).toBeNull();
   });
 });

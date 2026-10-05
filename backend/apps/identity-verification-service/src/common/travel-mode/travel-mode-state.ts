@@ -107,6 +107,31 @@ export function deriveTravelReminderSchedule(fields: TravelReminderFields, nowMs
   return next ? { due: next.getTime() <= nowMs, availableAt: next } : none;
 }
 
+/**
+ * What a claim of the dashboard reminder would consume, or null when nothing
+ * can be claimed right now. Built on the schedule above, so it is claimable
+ * only while Travel Mode is effectively active and before its exact end, and
+ * only when an unclaimed reminder is due.
+ *
+ * `latestDue` is the latest reminder time at or before now. A claim records the
+ * current time, which is at or after every reminder due so far, so a single
+ * claim consumes all of them (day 3 and day 7 together after a late login).
+ * The atomic write requires the stored last-claim time to be null or earlier
+ * than `latestDue`, which can hold for exactly one of any number of concurrent
+ * claims.
+ */
+export function deriveTravelReminderClaim(
+  fields: TravelReminderFields,
+  nowMs: number,
+): { latestDue: Date } | null {
+  if (!deriveTravelReminderSchedule(fields, nowMs).due) return null;
+  const { endsAt } = deriveTravelModeState(fields, nowMs);
+  const latestDue = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt as Date)
+    .filter((due) => due.getTime() <= nowMs)
+    .pop();
+  return latestDue ? { latestDue } : null;
+}
+
 // Fixed text only: never an identifier or a stored value.
 const INVALID_TRAVEL_DATA_WARNING = 'Travel Mode fail-safe: reason=invalid_travel_data';
 

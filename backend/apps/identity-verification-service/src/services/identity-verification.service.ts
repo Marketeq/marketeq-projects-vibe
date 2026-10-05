@@ -2,7 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -71,7 +71,11 @@ import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { NextAction } from '../common/status/verification-summary';
 import { VerificationSummaryService } from './verification-summary.service';
-import { deriveTravelModeState, expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
+import {
+  deriveTravelModeState,
+  deriveTravelReminderClaim,
+  expireTravelModeIfDue,
+} from '../common/travel-mode/travel-mode-state';
 
 // First Travel Mode reminder is due 3 days after activation (approved
 // reminder days: 3 and 7).
@@ -395,6 +399,48 @@ export class IdentityVerificationService {
       occurredAt: now.toISOString(),
     });
     return profile;
+  }
+
+  /**
+   * Claims the next Travel Mode reminder for the dashboard, for the caller's own
+   * profile only. Returns { claimed: true } to exactly one of any number of
+   * simultaneous callers; everyone else, and every case where nothing is
+   * claimable (no profile, not active, pending, invalid, expired, nothing due,
+   * everything already claimed), gets { claimed: false }. It never creates a
+   * profile and never throws for those cases.
+   *
+   * Only lastTravelReminderSentAt is written (the reminder job stays the sole
+   * owner of nextTravelReminderAt and of the travel_mode_still_active event, and
+   * no event is published here). The write is one compare-and-set on the id, the
+   * flag still being active and the activation time and duration this call
+   * observed, with the stored claim time null or earlier than the latest due
+   * reminder, so a claim made against an older activation can never consume a
+   * newer one's reminders, and a future or unusable stored claim time claims
+   * nothing.
+   */
+  async claimTravelReminder(userId: string): Promise<{ claimed: boolean }> {
+    const found = await this.profileRepository.findOne({ where: { userId } });
+    if (!found) return { claimed: false };
+
+    // Lazy expiry first: an ended period (or active data with no trustworthy end,
+    // which takes the fail-safe) is deactivated before anything is claimed.
+    const nowMs = Date.now();
+    const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
+
+    const claim = deriveTravelReminderClaim(profile, nowMs);
+    if (!claim) return { claimed: false };
+
+    const result = await this.profileRepository.update(
+      {
+        id: profile.id,
+        travelModeActive: true,
+        travelModeActivatedAt: profile.travelModeActivatedAt as Date,
+        declaredDuration: profile.declaredDuration as DeclaredDuration,
+        lastTravelReminderSentAt: Or(IsNull(), LessThan(claim.latestDue)),
+      },
+      { lastTravelReminderSentAt: new Date(nowMs) },
+    );
+    return { claimed: result.affected === 1 };
   }
 
   // --- Documents ---
