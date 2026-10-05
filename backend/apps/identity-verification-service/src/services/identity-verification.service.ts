@@ -2,7 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, LessThanOrEqual, Repository } from 'typeorm';
+import { DataSource, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -26,6 +26,7 @@ import {
   DocumentNotFoundException,
   NoDetectedLocationException,
   ClassificationRequiredException,
+  TravelModeAlreadyActiveException,
   InvalidWebhookSignatureException,
   UnknownVendorSessionException,
   VpnProxyDetectedException,
@@ -70,7 +71,7 @@ import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { NextAction } from '../common/status/verification-summary';
 import { VerificationSummaryService } from './verification-summary.service';
-import { expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
+import { deriveTravelModeState, expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
 
 // First Travel Mode reminder is due 3 days after activation (approved
 // reminder days: 3 and 7).
@@ -323,27 +324,77 @@ export class IdentityVerificationService {
     userId: string,
     duration: DeclaredDuration,
   ): Promise<IdentityVerificationProfile> {
-    const profile = await this.getOrCreateProfile(userId);
+    // The stored row is read as it is, before any normalization, so active data
+    // with no trustworthy end is seen as such (see below). A brand-new profile
+    // has nothing stored yet and is created here.
+    const stored = await this.profileRepository.findOne({ where: { userId } });
+    const found = stored ?? (await this.getOrCreateProfile(userId));
+    if (found.travelClassification !== TravelClassification.TEMPORARILY_TRAVELING) {
+      throw new ClassificationRequiredException();
+    }
+
+    // Extending or shortening Travel Mode while it is in force is not
+    // supported: only the first duration, or a new one after the previous
+    // period has ended, is accepted.
+    const nowMs = Date.now();
+    const state = deriveTravelModeState(found, nowMs).state;
+    if (state === 'active') throw new TravelModeAlreadyActiveException();
+
+    // An ended period (or active data with no trustworthy end) is deactivated
+    // and persisted by the shared expiry helper. The profile it returns, which
+    // is the freshly reloaded row if another request got there first, is the
+    // one the activation below is based on.
+    const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
+    // Untrustworthy active data fails closed: it is now deactivated, but this
+    // request does not activate anything. A later retry may proceed.
+    if (state === 'invalid') throw new TravelModeAlreadyActiveException();
     if (profile.travelClassification !== TravelClassification.TEMPORARILY_TRAVELING) {
       throw new ClassificationRequiredException();
     }
-    const now = new Date();
+    if (deriveTravelModeState(profile, nowMs).state === 'active') throw new TravelModeAlreadyActiveException();
+
+    // Compare-and-set on what this request observed AFTER expiry: not active,
+    // and the same (preserved) previous activation time and duration, or none.
+    // Of any number of concurrent requests only one can match; the rest lose
+    // and are rejected without writing, so a duration is never replaced.
+    const now = new Date(nowMs);
+    const firstReminderAt = new Date(nowMs + FIRST_REMINDER_AFTER_ACTIVATION_MS);
+    const observedActivation =
+      profile.travelModeActivatedAt instanceof Date && Number.isFinite(profile.travelModeActivatedAt.getTime())
+        ? profile.travelModeActivatedAt
+        : IsNull();
+    const result = await this.profileRepository.update(
+      {
+        id: profile.id,
+        travelModeActive: false,
+        travelModeActivatedAt: observedActivation,
+        declaredDuration: profile.declaredDuration ?? IsNull(),
+      },
+      {
+        declaredDuration: duration,
+        travelModeActive: true,
+        travelModeActivatedAt: now,
+        // A new activation starts its own reminder schedule: nothing from a
+        // previous activation may suppress it.
+        lastTravelReminderSentAt: null,
+        nextTravelReminderAt: firstReminderAt,
+      },
+    );
+    if (result.affected !== 1) throw new TravelModeAlreadyActiveException();
+
     profile.declaredDuration = duration;
     profile.travelModeActive = true;
     profile.travelModeActivatedAt = now;
-    // A new activation starts its own reminder schedule: nothing from a
-    // previous activation may suppress it.
     profile.lastTravelReminderSentAt = null;
-    profile.nextTravelReminderAt = new Date(now.getTime() + FIRST_REMINDER_AFTER_ACTIVATION_MS);
-    const saved = await this.profileRepository.save(profile);
+    profile.nextTravelReminderAt = firstReminderAt;
 
     await this.events.publish({
       eventType: IdentityVerificationEventType.TRAVEL_MODE_ACTIVATED,
-      profileId: saved.id,
+      profileId: profile.id,
       userId,
       occurredAt: now.toISOString(),
     });
-    return saved;
+    return profile;
   }
 
   // --- Documents ---

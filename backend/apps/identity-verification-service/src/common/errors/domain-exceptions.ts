@@ -90,6 +90,17 @@ export class ClassificationRequiredException extends DomainException {
   }
 }
 
+// Travel Mode cannot be extended or shortened while it is in force: a new
+// duration is only accepted before the first activation or after the previous
+// period has ended. Also returned for active data with no trustworthy end
+// (which is deactivated safely in the same request; a retry may then proceed).
+export class TravelModeAlreadyActiveException extends DomainException {
+  readonly code = 'TRAVEL_MODE_ALREADY_ACTIVE';
+  constructor(details?: Record<string, unknown>) {
+    super('Travel Mode is already active.', HttpStatus.CONFLICT, details);
+  }
+}
+
 export class InvalidWebhookSignatureException extends DomainException {
   readonly code = 'INVALID_SIGNATURE';
   constructor(details?: Record<string, unknown>) {

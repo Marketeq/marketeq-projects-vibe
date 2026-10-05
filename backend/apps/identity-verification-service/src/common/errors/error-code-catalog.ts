@@ -48,6 +48,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Message is a plain, user-safe sentence.',
   },
   {
+    code: 'TRAVEL_MODE_ALREADY_ACTIVE',
+    httpStatus: 409,
+    meaning: 'A travel duration was submitted while Travel Mode is still in force (or its active data had no trustworthy end, which is deactivated safely in the same request). Extending or shortening is not supported; a new duration is accepted after Travel Mode ends.',
+    source: 'SVC-05 (Travel Mode: approved no-extension rule)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed sentence "Travel Mode is already active." and carries no details.',
+  },
+  {
     code: 'DUPLICATE_DOCUMENT',
     httpStatus: 409,
     meaning: 'This document is already on file under a different account.',

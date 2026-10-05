@@ -7,6 +7,7 @@ import {
   KycNotStartableException,
   KycReconciliationUnavailableException,
   RetryLimitExceededException,
+  TravelModeAlreadyActiveException,
   VendorOutcomeUnknownException,
   VendorStageUnavailableException,
 } from './domain-exceptions';
@@ -49,6 +50,20 @@ describe('Free KYC fixed error contract', () => {
       expect(entry).toBeDefined();
       expect(entry?.httpStatus).toBe(s.status);
     }
+  });
+
+  it('TRAVEL_MODE_ALREADY_ACTIVE is a stable, distinct 409 with a fixed message and no details', () => {
+    const error = new TravelModeAlreadyActiveException() as any;
+    expect(error.code).toBe('TRAVEL_MODE_ALREADY_ACTIVE');
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toEqual({ message: 'Travel Mode is already active.', details: undefined });
+    expect(scenarios.some((s) => s.code === error.code)).toBe(false);
+    for (const other of ERROR_CODE_CATALOG.filter((e) => e.code !== error.code)) expect(other.code).not.toBe(error.code);
+    const entry = ERROR_CODE_CATALOG.filter((e) => e.code === error.code);
+    expect(entry).toHaveLength(1);
+    expect(entry[0].httpStatus).toBe(409);
+    expect(entry[0].callerAudience).toBe('end-user');
+    expect(entry[0].safeToDisplayVerbatim).toBe(true);
   });
 
   it('the home-country reasons are exactly the documented closed set', () => {
