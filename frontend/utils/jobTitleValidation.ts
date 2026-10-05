@@ -1,5 +1,6 @@
 import leoProfanity from "leo-profanity"
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 import { blacklist } from "../utils/blacklist"
 import { categoryRules } from "../utils/blacklist"
 
@@ -95,6 +96,7 @@ async function logRejection(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeader("POST"),
       },
       body: JSON.stringify({ input, type, reason }),
     })
@@ -130,7 +132,7 @@ export const assignSemanticCategory = async (
       `${process.env.NEXT_PUBLIC_SEMANTIC_API_URL}/semantic-category`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...csrfHeader("POST") },
         body: JSON.stringify({ label }),
       }
     )
@@ -189,6 +191,7 @@ export async function submitTextToModerationQueue(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeader("POST"),
       },
       body: JSON.stringify({ title: input, type }),
     })

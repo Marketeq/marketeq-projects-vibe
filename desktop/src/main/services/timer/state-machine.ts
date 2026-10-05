@@ -132,12 +132,14 @@ export function transition(
     ) {
       return simple('Idle', state, event);
     }
-    // For everything else, force-close the active session locally so we can
-    // restore on next boot if needed, and move to Idle.
+    // For everything else, close the active session and move to Idle. This
+    // is a deliberate quit (the user confirmed "Stop & Quit"), so it ends the
+    // session like a normal stop — 'crash_recover' is reserved for the boot
+    // sweep that closes sessions a crash / force-kill left open.
     return {
       next: 'Idle',
       effects: [
-        { kind: 'force_close_active', reason: 'crash_recover' },
+        { kind: 'force_close_active', reason: 'user_stop' },
         auditEffect(state, 'Idle', event),
       ],
     };

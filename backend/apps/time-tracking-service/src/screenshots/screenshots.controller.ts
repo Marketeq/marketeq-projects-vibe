@@ -85,8 +85,8 @@ export class ScreenshotsController {
       const mime =
         body.mimeType ?? (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
       const key = keyFor(body.userId, ext, body.tsIso);
-      const { url, expiresIn } = await this.r2.presignPut(key, mime);
-      return { url, key, expiresIn, mimeType: mime };
+      const { url, expiresIn, publicUrl } = await this.r2.presignPut(key, mime);
+      return { url, key, expiresIn, mimeType: mime, publicUrl };
     } catch (e: any) {
       const message = e?.response?.message ?? e?.message ?? 'presign failed';
       throw new HttpException({ message }, HttpStatus.BAD_REQUEST);

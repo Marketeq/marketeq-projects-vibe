@@ -51,7 +51,11 @@ import {
   Badge,
   Button,
   Dialog,
+  DialogClose,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuCheckItem,
   DropdownMenuContent,
@@ -67,6 +71,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  useToast,
 } from "@/components/ui"
 
 const newListingOptions = [
@@ -108,9 +113,12 @@ export default function MyListingsPage() {
   const router = useRouter()
   const { user } = useAuth()
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
+  const { toast } = useToast()
   const [showNewListingDialog, setShowNewListingDialog] = useState(false)
   const [creatingType, setCreatingType] = useState<string | null>(null)
-  const { listings, isLoading } = useMyListings()
+  const { listings, isLoading, hasError, refreshListings } = useMyListings()
+  const [deleteTarget, setDeleteTarget] = useState<MyListing | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState("grid")
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [searchVisible, setSearchVisible] = useState(true)
@@ -186,6 +194,33 @@ export default function MyListingsPage() {
 
   const goEdit = (id: string) => router.push(editProjectListingUrl(id))
 
+  // QA-202/PMCM-403: the menu item below called nothing — this is the
+  // actual delete action, soft-deleting via the endpoint newly wired up in
+  // publish.controller.ts (backed by the pre-existing but previously
+  // unreachable PublishService.softDelete).
+  const handleDeleteProject = async () => {
+    if (!deleteTarget) return
+    setIsDeleting(true)
+    try {
+      await ProjectAPI.DeleteProject(deleteTarget.id)
+      setDeleteTarget(null)
+      toast({
+        variant: "success",
+        title: `${deleteTarget.title || "Listing"} deleted`,
+      })
+      await refreshListings()
+    } catch (err) {
+      console.error("Failed to delete project", err)
+      toast({
+        variant: "destructive",
+        title: "Failed to delete listing",
+        description: "Please try again.",
+      })
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // Card ••• menu — matches the Figma Project/Service menus (owner variant;
   // my-listings only surfaces listings the current user owns).
   const renderListingMenu = (listing: MyListing) => {
@@ -217,7 +252,10 @@ export default function MyListingsPage() {
           <ExternalLink className="h-4 w-4" /> View in marketplace
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem visual="destructive">
+        <DropdownMenuItem
+          visual="destructive"
+          onClick={() => setDeleteTarget(listing)}
+        >
           <Trash02 className="h-4 w-4" />
           Delete {noun}
         </DropdownMenuItem>
@@ -468,6 +506,26 @@ export default function MyListingsPage() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                ) : hasError && filteredListings.length === 0 ? (
+                  // QA-201/PMCM-403: a failed fetch used to render the same
+                  // "you haven't created any listings yet" copy below as a
+                  // genuinely empty account — misleading, and with no way to
+                  // recover short of a full page reload. Mirrors the
+                  // error-text + outlined Retry button pattern already used
+                  // for other failed-list-loads in the app (e.g. the inbox
+                  // right sidebar's profile-load error).
+                  <div className="py-16 flex flex-col items-center gap-y-3 text-center">
+                    <p className="text-sm text-error-500">
+                      Couldn&apos;t load your listings.
+                    </p>
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => refreshListings()}
+                    >
+                      Retry
+                    </Button>
                   </div>
                 ) : filteredListings.length === 0 ? (
                   <div className="py-16 text-center">
@@ -822,6 +880,37 @@ export default function MyListingsPage() {
                   )}
                 </button>
               ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTarget(null)
+          }}
+        >
+          <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
+            <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
+              <DialogTitle>
+                Delete this {deleteTarget?.type === "service" ? "service" : "project"}
+              </DialogTitle>
+              <DialogDescription>
+                &ldquo;{deleteTarget?.title}&rdquo; will be deleted
+                permanently. You will not be able to recover it.
+              </DialogDescription>
+
+              <DialogFooter className="mt-8 grid gap-x-3">
+                <DialogClose asChild>
+                  <Button variant="outlined" visual="gray" disabled={isDeleting}>
+                    Cancel
+                  </Button>
+                </DialogClose>
+
+                <Button onClick={handleDeleteProject} disabled={isDeleting}>
+                  {isDeleting ? "Deleting…" : "Yes, Delete"}
+                </Button>
+              </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>

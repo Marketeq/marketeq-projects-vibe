@@ -290,6 +290,19 @@ export class AuthController {
     return req.user ?? null;
   }
 
+  @ApiOperation({ summary: 'Get CSRF token for the current session' })
+  @ApiBearerAuth('access-token')
+  @UseGuards(JwtAuthGuard, SessionValidationGuard)
+  @Get('csrf')
+  @HttpCode(HttpStatus.OK)
+  getCsrfToken(@Req() req: Request) {
+    const sessionId = (req.user as any)?.sid ?? '';
+    if (!sessionId) {
+      throw new UnauthorizedException('No session');
+    }
+    return this.authService.getCsrfToken(sessionId);
+  }
+
   @ApiOperation({ summary: 'List active sessions' })
   @ApiBearerAuth('access-token')
   @UseGuards(JwtAuthGuard, SessionValidationGuard)

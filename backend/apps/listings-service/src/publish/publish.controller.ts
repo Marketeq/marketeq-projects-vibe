@@ -118,6 +118,20 @@ export class PublishController {
     }
   }
 
+  @Delete('project/:projectId')
+  async deleteProject(
+    @Req() req: AuthenticatedRequest,
+    @Param('projectId') projectId: string,
+  ) {
+    try {
+      await this.publishService.softDelete(req.user.sub, projectId);
+      return { success: true };
+    } catch (error) {
+      console.log('err', error);
+      throw error;
+    }
+  }
+
   @Post('project/:projectId/faqs/suggest')
   async suggestFaqs(
     @Req() req: AuthenticatedRequest,

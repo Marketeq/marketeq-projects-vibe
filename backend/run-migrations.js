@@ -132,6 +132,11 @@ function discoverServices() {
  */
 async function pendingFor(dataSource) {
   const schema = dataSource.options.schema || 'public';
+  // Services that share a schema can keep their own bookkeeping table
+  // (legal-service: ls_migrations, suggestions-service: sug_migrations), and
+  // TypeORM itself reads that one. Reading "migrations" regardless listed every
+  // applied migration of theirs as PENDING.
+  const table = dataSource.options.migrationsTableName || 'migrations';
   // dataSource.migrations holds instances, not classes, so `.name` is defined
   // only for migrations that declare it as a field — the rest reported blank.
   // This mirrors how TypeORM's own MigrationExecutor resolves the name.
@@ -142,7 +147,7 @@ async function pendingFor(dataSource) {
   let applied = [];
   try {
     const rows = await dataSource.query(
-      `SELECT name FROM "${schema}"."migrations"`,
+      `SELECT name FROM "${schema}"."${table}"`,
     );
     applied = rows.map((r) => r.name);
   } catch (err) {
@@ -153,6 +158,7 @@ async function pendingFor(dataSource) {
   const appliedSet = new Set(applied);
   return {
     schema,
+    table,
     appliedCount: applied.length,
     pending: registered.filter((name) => !appliedSet.has(name)),
   };
@@ -177,19 +183,20 @@ async function processService(serviceDir) {
 
   try {
     if (!dataSource.isInitialized) await dataSource.initialize();
-    const { schema, appliedCount, pending } = await pendingFor(dataSource);
+    const { schema, table, appliedCount, pending } = await pendingFor(dataSource);
 
     if (MODE === 'apply' && pending.length > 0) {
       const ran = await dataSource.runMigrations({ transaction: 'all' });
       return {
         name,
         schema,
+        table,
         appliedCount,
         applied: ran.map((m) => m.name),
         pending: [],
       };
     }
-    return { name, schema, appliedCount, pending };
+    return { name, schema, table, appliedCount, pending };
   } catch (err) {
     return { name, error: err.message };
   } finally {
@@ -227,16 +234,21 @@ async function main() {
     results.push(await processService(dir));
   }
 
-  const perSchema = new Map();
+  // Keyed by the bookkeeping table, not the schema: two services in "public"
+  // with their own tables (ls_migrations, sug_migrations) do not share rows.
+  const bookkeeping = (r) => `"${r.schema}"."${r.table}"`;
+  const perTable = new Map();
   for (const r of results) {
     if (!r.schema) continue;
-    perSchema.set(r.schema, (perSchema.get(r.schema) || 0) + 1);
+    perTable.set(bookkeeping(r), (perTable.get(bookkeeping(r)) || 0) + 1);
   }
-  const sharesSchema = (r) => r.schema && perSchema.get(r.schema) > 1;
+  const sharesTable = (r) => r.schema && perTable.get(bookkeeping(r)) > 1;
   const appliedNote = (r) =>
-    sharesSchema(r)
-      ? `${r.appliedCount} applied in shared schema "${r.schema}"`
-      : `${r.appliedCount} applied`;
+    sharesTable(r)
+      ? `${r.appliedCount} applied in shared table ${bookkeeping(r)}`
+      : r.table === 'migrations'
+        ? `${r.appliedCount} applied`
+        : `${r.appliedCount} applied in ${bookkeeping(r)}`;
 
   for (const r of results) {
     if (r.skipped) {
@@ -261,16 +273,16 @@ async function main() {
     }
   }
 
-  const shared = [...perSchema.entries()].filter(([, count]) => count > 1);
-  for (const [schema, count] of shared) {
+  const shared = [...perTable.entries()].filter(([, count]) => count > 1);
+  for (const [table, count] of shared) {
     const names = results
-      .filter((r) => r.schema === schema)
+      .filter((r) => r.schema && bookkeeping(r) === table)
       .map((r) => r.name)
       .join(', ');
     console.warn(
-      `[migrations] NOTE: ${count} services share schema "${schema}" and therefore share ` +
-        `its single "${schema}".migrations table, so each one's applied-count includes the ` +
-        `others' rows and its pending list is measured against them: ${names}. ` +
+      `[migrations] NOTE: ${count} services share the single ${table} bookkeeping table, ` +
+        `so each one's applied-count includes the others' rows and its pending list is ` +
+        `measured against them: ${names}. ` +
         'Resolve the shared bookkeeping before applying migrations for any of them.',
     );
   }

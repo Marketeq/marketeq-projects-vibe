@@ -55,9 +55,25 @@ import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
 import { FaqContext, FaqSuggestion } from './faq/faq.types';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 
+type ProjectScopeReplacement = { scope: Phase[]; budgetUsdCents: number };
+
+type PendingScopeReplacement = {
+  dto: UpsertProjectScopeDto;
+  waiters: Array<{
+    resolve: (result: ProjectScopeReplacement) => void;
+    reject: (error: unknown) => void;
+  }>;
+};
+
 @Injectable()
 export class PublishService {
   private readonly logger = new Logger(PublishService.name);
+
+  private readonly pendingScopeReplacements = new Map<
+    string,
+    PendingScopeReplacement
+  >();
+  private readonly runningScopeReplacements = new Set<string>();
 
   constructor(
     private readonly projectRepository: ProjectRepository,
@@ -152,6 +168,17 @@ export class PublishService {
     }
   }
 
+  // QA-196/PMCM-402: "ownership" here also covers anyone on the listing's
+  // own team roster (teamMemberIds), not only its literal creator — the
+  // editor is expected to be usable by the whole team the owner staffed on
+  // this listing, matching the AC's "can access it normally".
+  private isProjectMember(project: Project, userId: string): boolean {
+    if (project.userId === userId) return true;
+    return (project.teamMemberIds ?? [])
+      .map((id) => String(id))
+      .includes(String(userId));
+  }
+
   private async ensureProjectOwnership(
     projectId: string,
     userId: string,
@@ -162,7 +189,7 @@ export class PublishService {
       throw new NotFoundException('Project not found');
     }
 
-    if (project.userId !== userId) {
+    if (!this.isProjectMember(project, userId)) {
       throw new ForbiddenException('You do not have access to this project');
     }
 
@@ -792,6 +819,9 @@ export class PublishService {
     if (dto.teamMemberIds !== undefined) {
       payload.teamMemberIds = dto.teamMemberIds;
     }
+    if (dto.pendingInviteEmails !== undefined) {
+      payload.pendingInviteEmails = dto.pendingInviteEmails;
+    }
 
     const updated = await this.projectRepository.update(projectId, payload);
     if (!updated) {
@@ -802,9 +832,19 @@ export class PublishService {
   }
 
   async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
-    const project = await this.projectRepository.findBySlug(slug, userId);
+    const project = await this.projectRepository.findBySlug(slug);
     if (!project) {
       throw new NotFoundException('Project not found');
+    }
+
+    // QA-196/PMCM-402: findBySlug used to filter by userId at the query
+    // level, so the row simply never came back for anyone but the literal
+    // creator — including a real team member on this listing. The lookup
+    // above is unscoped; the access check now happens explicitly here so a
+    // team member sees the real listing and a stranger gets a 403 instead
+    // of both silently falling through to "not found".
+    if (!this.isProjectMember(project, userId)) {
+      throw new ForbiddenException('You do not have access to this project');
     }
 
     const media = await this.mediaRepository.find({ projectId: project.id });
@@ -965,29 +1005,60 @@ export class PublishService {
     userId: string,
     projectId: string,
     dto: UpsertProjectScopeDto,
-  ): Promise<{ scope: Phase[]; budgetUsdCents: number }> {
+  ): Promise<ProjectScopeReplacement> {
     await this.ensureProjectOwnership(projectId, userId);
+
+    // One replace per project at a time, latest payload wins. The listing
+    // editor re-sends the whole scope every 2s; when a save outlasted that,
+    // identical requests piled up in this process until listings-service ran
+    // out of heap (2026-10-03). A request that arrives while a replace is
+    // running joins the next run instead of starting its own, and every
+    // caller waiting on that run gets its result.
+    return new Promise<ProjectScopeReplacement>((resolve, reject) => {
+      const pending = this.pendingScopeReplacements.get(projectId);
+      if (pending) {
+        pending.dto = dto;
+        pending.waiters.push({ resolve, reject });
+      } else {
+        this.pendingScopeReplacements.set(projectId, {
+          dto,
+          waiters: [{ resolve, reject }],
+        });
+      }
+      void this.drainScopeReplacements(projectId);
+    });
+  }
+
+  private async drainScopeReplacements(projectId: string): Promise<void> {
+    if (this.runningScopeReplacements.has(projectId)) return;
+    this.runningScopeReplacements.add(projectId);
+
+    try {
+      let next = this.pendingScopeReplacements.get(projectId);
+      while (next) {
+        this.pendingScopeReplacements.delete(projectId);
+        try {
+          const result = await this.writeProjectScope(projectId, next.dto);
+          next.waiters.forEach((waiter) => waiter.resolve(result));
+        } catch (error) {
+          next.waiters.forEach((waiter) => waiter.reject(error));
+        }
+        next = this.pendingScopeReplacements.get(projectId);
+      }
+    } finally {
+      this.runningScopeReplacements.delete(projectId);
+    }
+  }
+
+  private async writeProjectScope(
+    projectId: string,
+    dto: UpsertProjectScopeDto,
+  ): Promise<ProjectScopeReplacement> {
     const normalizedScope = this.normalizeServiceScope(dto.scope ?? []);
 
-    const existingPhases = await this.phaseRepository.findAll({
-      filterOptions: { projectId },
-    });
-
-    for (const phase of existingPhases) {
-      const hydratedPhase =
-        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
-
-      for (const task of hydratedPhase.task ?? []) {
-        await this.taskRepository.softDelete(task.id);
-      }
-
-      await this.phaseRepository.softDelete(phase.id);
-    }
-
-    const scope: Phase[] = [];
-
-    for (const phaseDto of normalizedScope) {
-      const phase = await this.phaseRepository.create({
+    const scope = await this.phaseRepository.replaceForProject(
+      projectId,
+      normalizedScope.map((phaseDto) => ({
         name: phaseDto.name,
         stageName: phaseDto.stageName,
         startDay: phaseDto.startDay,
@@ -996,11 +1067,7 @@ export class PublishService {
         phaseType: phaseDto.phaseType ?? null,
         recurrenceSchedule: phaseDto.recurrenceSchedule ?? null,
         recurrenceCount: phaseDto.recurrenceCount ?? null,
-        projectId,
-      });
-
-      for (const taskDto of phaseDto.tasks ?? []) {
-        await this.taskRepository.create({
+        tasks: (phaseDto.tasks ?? []).map((taskDto) => ({
           taskName: taskDto.taskName,
           role: taskDto.role,
           description: taskDto.description,
@@ -1010,14 +1077,9 @@ export class PublishService {
           duration: taskDto.duration,
           estimatedHours: taskDto.estimatedHours,
           assigneeUserId: taskDto.assigneeUserId ?? null,
-          phaseId: phase.id,
-        });
-      }
-
-      const phaseWithTasks =
-        (await this.phaseRepository.findOneWithTasks(phase.id)) ?? phase;
-      scope.push(phaseWithTasks);
-    }
+        })),
+      })),
+    );
 
     // Auto-derive deliverables from the new scope
     try {
@@ -1610,7 +1672,21 @@ export class PublishService {
   //   // return this.projectRepository.update(id, clonedPayload);
   // }
 
-  async softDelete(id: Project['id']): Promise<void> {
+  // QA-202/PMCM-403: this existed but was never wired to a controller route
+  // — "Delete project" on the dashboard card menu had nowhere to call. Also
+  // had no authorization check at all (would soft-delete any project by id
+  // for any authenticated caller); ensureProjectOwnership now gates it the
+  // same as every other mutating project endpoint in this service.
+  async softDelete(userId: string, id: string): Promise<void> {
+    await this.ensureProjectOwnership(id, userId);
+    // Unpublish before deleting. search-service's DB fallback lists
+    // listings by raw SQL on status = 'published' with no deletedAt check,
+    // and this service never removes them from Algolia — a deleted listing
+    // left as 'published' stays in marketplace search, linking to a 404.
+    await this.projectRepository.update(id, {
+      status: 'draft',
+      projectDatePublished: null,
+    });
     await this.projectRepository.softDelete(id);
   }
 

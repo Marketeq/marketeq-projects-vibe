@@ -56,6 +56,8 @@ import type {
 // -----------------------------------------------------------------------------
 
 const MAX_SESSION_SEC = 14 * 60 * 60; // 14 hours
+/** How often (seconds) a Running session persists its billable total. */
+const CHECKPOINT_EVERY_SEC = 15;
 const MAX_BREAK_SEC = 4 * 60 * 60; // 4 hours
 
 // -----------------------------------------------------------------------------
@@ -209,6 +211,24 @@ export function createTimerService(deps: TimerServiceDeps) {
 
   // --------- tick loop (1 Hz while Running) ---------------------------------
   let tickHandle: NodeJS.Timeout | null = null;
+  let ticksSinceCheckpoint = 0;
+
+  // Persist billable-so-far to the session row. On a crash / force-kill the
+  // next boot's recovery sweep closes the session at this checkpoint, so at
+  // most CHECKPOINT_EVERY_SEC of tracked work can be lost — never the whole
+  // session, and never the dead time while the app was closed.
+  function checkpointSession() {
+    if (!activeSessionId) return;
+    try {
+      repos.session.checkpoint({
+        id: activeSessionId,
+        billableSeconds: totalBillableSec(),
+        at: Date.now(),
+      });
+    } catch (err) {
+      logger.warn({ err, sessionId: activeSessionId }, 'session checkpoint failed');
+    }
+  }
 
   function startTickLoop() {
     if (tickHandle) return;
@@ -220,6 +240,11 @@ export function createTimerService(deps: TimerServiceDeps) {
         runningSec: snap.runningSec,
         state: snap.state,
       });
+      ticksSinceCheckpoint += 1;
+      if (ticksSinceCheckpoint >= CHECKPOINT_EVERY_SEC) {
+        ticksSinceCheckpoint = 0;
+        checkpointSession();
+      }
       // Enforce max session duration (doc 22).
       if (snap.elapsedSec >= MAX_SESSION_SEC) {
         logger.warn({ sessionId: activeSessionId }, 'max session duration reached — auto-stopping');
@@ -473,6 +498,10 @@ export function createTimerService(deps: TimerServiceDeps) {
       runningStartedHr = null;
       runningStartedAt = null;
       stopTickLoop();
+      ticksSinceCheckpoint = 0;
+      // Paused / on break / idle: record the frozen total now, so a crash
+      // while not Running still recovers every second worked so far.
+      checkpointSession();
     }
 
     // Break reminders.
@@ -641,6 +670,10 @@ export function createTimerService(deps: TimerServiceDeps) {
     // dispatch, so a bad id leaves the machine in Idle rather than advancing to
     // Running with no session row (see startBreak's allowance guard below).
     if (!repos.task.findById(input.taskId)) {
+      logger.warn(
+        { contractId: input.contractId, taskId: input.taskId },
+        'timer start refused: task not mirrored locally',
+      );
       emitError('DTT-ERR-TIMER.03', 'selected task not found');
       return snapshot();
     }

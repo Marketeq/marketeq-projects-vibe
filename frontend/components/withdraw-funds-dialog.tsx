@@ -25,6 +25,7 @@ import {
 import { CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transactions-comps"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 
 const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
 
@@ -68,7 +69,9 @@ let sessionExpiredRedirecting = false
 // EC-58/Doc06 "Session expiry handling": on 401, try POST /auth/refresh once
 // and retry the original request — same pattern as /transfer-funds.
 async function payoutFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(input, { ...init, credentials: "include" })
+  const csrf = csrfHeader(init.method)
+  const mergedHeaders = { ...Object.fromEntries(new Headers(init.headers).entries()), ...csrf }
+  const res = await fetch(input, { ...init, credentials: "include", headers: mergedHeaders })
   if (res.status !== 401) return res
 
   try {
@@ -82,7 +85,9 @@ async function payoutFetch(input: string, init: RequestInit = {}): Promise<Respo
     return res
   }
 
-  return fetch(input, { ...init, credentials: "include" })
+  const freshCsrf = csrfHeader(init.method)
+  const retryHeaders = { ...Object.fromEntries(new Headers(init.headers).entries()), ...freshCsrf }
+  return fetch(input, { ...init, credentials: "include", headers: retryHeaders })
 }
 
 // AC-25.03/EC pattern: never map a backend errorCode to raw text on screen —

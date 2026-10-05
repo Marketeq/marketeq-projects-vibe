@@ -4,6 +4,7 @@ import { encryptAES } from "@/src/crypto/e2ee"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { apiFetch } from "@/src/lib/api"
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 
 interface FileUploadResponse {
   message: {
@@ -123,6 +124,7 @@ export function useFileUpload(
       const response = await fetch(`${API_BASE_URL}/messaging/upload`, {
         method: "POST",
         credentials: "include",
+        headers: csrfHeader("POST"),
         body: formData,
       })
 

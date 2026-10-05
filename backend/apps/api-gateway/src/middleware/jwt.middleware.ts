@@ -138,8 +138,8 @@ export class JwtMiddleware implements NestMiddleware {
     }
 
     try {
-      const payload = this.jwt.verify<{ sub: string; email: string; role?: string }>(token)
-      ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role }
+      const payload = this.jwt.verify<{ sub: string; email: string; role?: string; sid?: string }>(token)
+      ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role, sid: payload.sid }
       next()
     } catch (err: any) {
       // Public routes can proceed even with an invalid token

@@ -14,6 +14,10 @@ export interface InviteContext {
   inviter?: string
   inviterHandle?: string
   role?: string
+  /** QA-180/PMCM-399: the listing (project draft) this invite was
+   * generated from, when the inviter opened the dialog from a listing's
+   * Team step rather than a generic team/share flow. */
+  listingId?: string
 }
 
 export const INVITE_CONTEXT_KEYS: (keyof InviteContext)[] = [
@@ -22,6 +26,7 @@ export const INVITE_CONTEXT_KEYS: (keyof InviteContext)[] = [
   "inviter",
   "inviterHandle",
   "role",
+  "listingId",
 ]
 
 export const appendInviteContext = (
