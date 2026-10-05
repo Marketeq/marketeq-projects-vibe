@@ -75,11 +75,21 @@ export interface IdentityVerificationSummaryView {
   canRetry: boolean | null
   retryAvailableAt: string | null
   hasActiveSession: boolean | null
+  // Append-only Travel Mode fields, exactly as the backend sent them (or null when
+  // absent or malformed). Nothing is derived here: the backend computes expiry and
+  // reminder availability from its own clock.
+  travelModeEndsAt: string | null
+  travelModeExpired: boolean | null
+  travelReminderDue: boolean | null
+  travelReminderAvailableAt: string | null
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
 const count = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null
+// A string that is a real timestamp, else null (an unparseable value never schedules anything).
+const isoTime = (v: unknown): string | null =>
+  typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null
 
 // Returns null when the body is not an object (treated as "unavailable").
 export function parseIdentityVerificationSummary(
@@ -99,6 +109,10 @@ export function parseIdentityVerificationSummary(
     retryAvailableAt:
       typeof body.retryAvailableAt === "string" ? body.retryAvailableAt : null,
     hasActiveSession: bool(body.hasActiveSession),
+    travelModeEndsAt: isoTime(body.travelModeEndsAt),
+    travelModeExpired: bool(body.travelModeExpired),
+    travelReminderDue: bool(body.travelReminderDue),
+    travelReminderAvailableAt: isoTime(body.travelReminderAvailableAt),
   }
 }
 

@@ -86,6 +86,11 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       canRetry: false,
       retryAvailableAt: "2026-10-02T12:00:00.000Z",
       hasActiveSession: true,
+      // the append-only Travel Mode fields: absent from this body, so null
+      travelModeEndsAt: null,
+      travelModeExpired: null,
+      travelReminderDue: null,
+      travelReminderAvailableAt: null,
     })
   })
 

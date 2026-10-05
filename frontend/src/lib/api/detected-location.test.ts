@@ -366,9 +366,14 @@ describe("browser geolocation wiring (source guards)", () => {
   const page = read("app", "(group)", "talent-dashboard", "page.tsx")
 
   it("is requested only from the explicit verify action, never on page load", () => {
+    // Two callers: the explicit verify action (which may ask for the browser's
+    // location) and the Travel Mode popup's Update action (server-derived location
+    // only: it never passes the option, so it can never trigger the permission prompt).
     const calls = page.match(/getDetectedLocation\(/g) ?? []
-    assert.equal(calls.length, 1)
+    assert.equal(calls.length, 2)
+    assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 1)
     assert.ok(page.includes("getDetectedLocation({ useBrowserLocation: true })"))
+    assert.ok(page.includes("await getDetectedLocation()"))
     const handler = page.slice(page.indexOf("const handleVerifyMyAccount"))
     assert.ok(handler.indexOf("getDetectedLocation(") > -1)
     const beforeHandler = page.slice(0, page.indexOf("const handleVerifyMyAccount"))

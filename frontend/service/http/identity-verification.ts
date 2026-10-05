@@ -39,6 +39,13 @@ export interface IdentityVerificationProfileStatus {
   retryAvailableAt?: string | null
   hasActiveSession?: boolean
   nextAction?: IdentityVerificationNextAction
+  // Append-only Travel Mode additions (backend profile-status DTO). Optional for the
+  // same reason as the summary fields above; parsed defensively in
+  // src/lib/api/identity-verification-state.ts.
+  travelModeEndsAt?: string | null
+  travelModeExpired?: boolean
+  travelReminderDue?: boolean
+  travelReminderAvailableAt?: string | null
 }
 
 export const IdentityVerificationAPI = {
@@ -152,6 +159,15 @@ export const IdentityVerificationAPI = {
     duration: "a_few_days" | "one_to_two_weeks" | "more_than_two_weeks" | "not_sure"
   ) =>
     AxiosRequest.post("/v1/identity-verification/travel-duration", { duration }),
+
+  // Claims the next due Travel Mode reminder (day 3 / day 7) for the CALLER only:
+  // no body, no query, no id, no timestamp. The backend answers exactly
+  // { claimed: boolean }; typed unknown here on purpose so the only reader is
+  // src/lib/api/travel-reminder.ts, which accepts nothing else.
+  claimTravelReminder: () =>
+    AxiosRequest.post("/v1/identity-verification/travel-reminder/claim", null) as Promise<{
+      data: unknown
+    }>,
 
   // Real R2 presigned-upload-URL request. The actual file bytes are then
   // PUT directly to `uploadUrl` by the caller — never routed through our

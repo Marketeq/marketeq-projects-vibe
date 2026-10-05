@@ -528,6 +528,7 @@ export function IdentityVerificationFlow({
   verificationContext,
   onBeginVerifying,
   initialState,
+  activeTravelModeUpdate,
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
@@ -544,16 +545,25 @@ export function IdentityVerificationFlow({
   // both this callback AND a real verificationContext are present — never
   // with a missing or invented documentId.
   onBeginVerifying?: (context: VerificationContext) => void
-  // Escape hatch for the dev preview route ONLY (app/identity-verification-preview/)
-  // to reach a specific screen directly instead of clicking through the
-  // whole flow. Optional and defaulted to "ideal" — every real caller
-  // (talent-dashboard/page.tsx, account-verification-gate.tsx) omits this
-  // entirely, so their starting state, guards (VpnProxyCheckGuard-gated
+  // Lets a caller reach a specific screen directly instead of clicking through
+  // the whole flow: the dev preview route (app/identity-verification-preview/)
+  // and the dashboard's Travel Mode popup, whose Update action starts at
+  // "current-location-showcase" (talent-dashboard/page.tsx). Optional and
+  // defaulted to "ideal" — every other caller (account-verification-gate.tsx)
+  // omits this entirely, so their starting state, guards (VpnProxyCheckGuard-gated
   // connection-check, etc.) and API behavior are byte-for-byte unchanged.
   // Only read once, on mount — a caller that needs a different starting
   // screen after the first render must remount (e.g. via a changing
   // `key`), not rely on this prop updating live.
   initialState?: FlowState
+  // True only when the dashboard opened this flow from the Travel Mode popup's
+  // day-3 / day-7 reminder while Travel Mode is STILL in force. Choosing
+  // "Temporarily traveling" then changes nothing (the period keeps its duration
+  // and activation), so it skips the duration screen, makes no API call and
+  // closes with the existing "Travel mode is on." confirmation. Every other entry
+  // (first-time, or an expired Travel Mode) leaves it unset and behaves exactly
+  // as before, including the duration screen.
+  activeTravelModeUpdate?: boolean
   // Development preview only (app/identity-verification-preview/): skips the
   // real presigned-URL + R2 upload in handleCapture so every screen can be
   // walked through without storage credentials. Defaults to off and is
@@ -1727,6 +1737,11 @@ export function IdentityVerificationFlow({
           <div className="mt-8 space-y-2">
             <button
               onClick={() => {
+                if (activeTravelModeUpdate) {
+                  setTravelModeNotificationOpen(true)
+                  onOpenChange(false)
+                  return
+                }
                 persistTravelClassification("temporarily_traveling")
                 send("NEXT")
               }}

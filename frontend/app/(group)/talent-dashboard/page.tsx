@@ -10,6 +10,7 @@ import {
   ArrowRight,
   CheckCircle,
   ChevronRight,
+  Plane,
   RefreshCw,
   X,
 } from "@blend-metrics/icons"
@@ -47,6 +48,20 @@ import {
   getDetectedLocation,
   type DetectedLocation,
 } from "@/src/lib/api/detected-location"
+import {
+  claimTravelReminder,
+  createTravelReminderScheduler,
+} from "@/src/lib/api/travel-reminder"
+import {
+  dismissTravelExpiryPopup,
+  readSessionId,
+  shouldShowTravelExpiryPopup,
+} from "@/src/lib/api/travel-expiry-popup"
+import {
+  createTravelPopupCloseGuard,
+  isActiveTravelUpdate,
+  TRAVEL_POPUP_DURATION_MS,
+} from "@/src/lib/api/travel-popup"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
 import {
   AccountVerificationGate,
@@ -169,6 +184,24 @@ export default function TalentDashboard() {
   const [detectedLocation, setDetectedLocation] =
     useState<DetectedLocation | null>(null)
   const identityStatusCheckStartedRef = useRef(false)
+  // Travel Mode popup (Figma node 13101-46860): the latest backend answer and which
+  // popup, if any, is showing. "reminder" = a day-3/day-7 occurrence this tab claimed;
+  // "expiry" = Travel Mode ended for an account that is not fully verified yet.
+  const [travelSummary, setTravelSummary] =
+    useState<IdentityVerificationSummaryView | null>(null)
+  const [travelPopup, setTravelPopup] = useState<"reminder" | "expiry" | null>(
+    null
+  )
+  // How the existing verification flow is (re)started. The default is exactly what it
+  // always was; only the popup's Update action starts it at "Tell us more about your
+  // current location" (a new key remounts it, since the flow reads its start screen once).
+  const [flowLaunch, setFlowLaunch] = useState<{
+    key: number
+    initialState?: "current-location-showcase"
+    activeTravelModeUpdate?: boolean
+  }>({ key: 0 })
+  // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
+  const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
   const runIdentityVerificationCheck = useCallback(async () => {
     // The backend's nextAction is the only input. The banner shows for the actionable,
@@ -180,6 +213,7 @@ export default function TalentDashboard() {
     setProfileBannerShown(shouldShowProfileBanner(summary))
     setVerificationGateOpen(shouldOpenFirstTimeGate(summary))
     setCooldownRetryTime(cooldownRetryAt(summary))
+    setTravelSummary(summary)
   }, [])
 
   // A start attempt rejected as not startable re-reads the real status
@@ -363,6 +397,8 @@ export default function TalentDashboard() {
       // browser's location permission is requested.
       const location = await getDetectedLocation({ useBrowserLocation: true })
       setDetectedLocation(location)
+      // A flow last started by the Travel Mode Update action starts fresh here.
+      setFlowLaunch((prev) => (prev.initialState ? { key: prev.key + 1 } : prev))
       setIdentityFlowOpen(true)
       return
     }
@@ -382,6 +418,79 @@ export default function TalentDashboard() {
     setVerificationGateOpen(false)
     setVpnProxyModalOpen(true)
   }, [runIdentityVerificationCheck])
+
+  // Travel Mode expiry popup: when the backend says Travel Mode ended and the account
+  // is not fully verified, show it unless it was closed in THIS login (the existing
+  // readable session_id cookie; a refresh keeps it, a new login changes it).
+  useEffect(() => {
+    if (!travelSummary) return
+    if (
+      shouldShowTravelExpiryPopup({
+        expired: travelSummary.travelModeExpired,
+        fullyVerified: travelSummary.fullyVerified,
+        sessionId: readSessionId(),
+        storage: window.localStorage,
+      })
+    ) {
+      setTravelPopup("expiry")
+    }
+  }, [travelSummary])
+
+  // Travel Mode day-3 / day-7 reminders. If /me says one is due it is CLAIMED first and
+  // shown only when the backend answers { claimed: true } (so of several tabs only the
+  // winner shows it); if it is in the future one timer is set for that time. No polling.
+  // The timer is replaced whenever the backend answer changes and cleared on unmount;
+  // after a definitive claim answer /me is re-read for the next occurrence.
+  useEffect(() => {
+    if (!travelSummary) return
+    const scheduler = createTravelReminderScheduler({
+      claim: () => claimTravelReminder(),
+      onClaimed: () => setTravelPopup("reminder"),
+      onSettled: () => {
+        void fetchIdentityVerificationSummary().then((next) => {
+          if (next) setTravelSummary(next)
+        })
+      },
+    })
+    scheduler.update({
+      due: travelSummary.travelReminderDue,
+      availableAt: travelSummary.travelReminderAvailableAt,
+    })
+    return () => scheduler.dispose()
+  }, [travelSummary])
+
+  // Closing the popup (X, swipe or Escape). A closed reminder is spent: its occurrence
+  // was claimed when it opened. A closed expiry popup is remembered for this login only.
+  const handleTravelPopupClose = useCallback(() => {
+    if (travelPopup === "expiry") {
+      dismissTravelExpiryPopup(readSessionId(), window.localStorage)
+    }
+    setTravelPopup(null)
+  }, [travelPopup])
+
+  // "Update": hide the popup (nothing is remembered) and open the existing verification
+  // flow at "Tell us more about your current location", which keeps its own
+  // Temporarily traveling / Permanently relocated choices. The location shown behind it
+  // comes from the server only; no browser location permission is requested here.
+  // WHY the popup opened decides one thing: for a reminder while Travel Mode is still in
+  // force, "Temporarily traveling" must not start a new period (the flow is told so and
+  // skips the duration screen); for an expired Travel Mode it continues to the duration
+  // screen so a new period can be activated. A reminder popup can stay open for a long
+  // time, so /me is re-read to make sure Travel Mode has not ended meanwhile.
+  const handleTravelUpdate = useCallback(async () => {
+    const kind = travelPopup
+    setTravelPopup(null)
+    const fresh = kind === "reminder" ? await fetchIdentityVerificationSummary() : null
+    const activeTravelModeUpdate = isActiveTravelUpdate(kind, fresh)
+    const location = await getDetectedLocation()
+    setDetectedLocation(location)
+    setFlowLaunch((prev) => ({
+      key: prev.key + 1,
+      initialState: "current-location-showcase",
+      activeTravelModeUpdate,
+    }))
+    setIdentityFlowOpen(true)
+  }, [travelPopup])
 
   // Exact copy/markup from the Storybook reference
   // (stories/identity-verification-entire.stories.tsx: VPNDetected,
@@ -549,6 +658,60 @@ export default function TalentDashboard() {
         <ToastViewport className="top-5 right-5 left-auto bottom-auto w-auto max-w-[400px] flex-col gap-3 p-0 sm:top-5 sm:right-5 sm:left-auto sm:bottom-auto sm:flex-col md:max-w-[400px]" />
       </ToastProvider>
 
+      {/* Travel Mode popup — the approved Notification (Figma node 13101-46860), the same
+          markup as the flow's own reminder toast. It stays until the user closes it: it
+          carries an action, and for the expiry popup a close is what is remembered. */}
+      <ToastProvider swipeDirection="right">
+        <Toast
+          open={travelPopup !== null}
+          onOpenChange={(open) => {
+            // Only a user's close counts; the toast closing itself is ignored.
+            if (travelPopupCloseGuardRef.current.shouldClose(open)) {
+              handleTravelPopupClose()
+            }
+          }}
+          onEscapeKeyDown={() => travelPopupCloseGuardRef.current.markUserClose()}
+          onSwipeEnd={() => travelPopupCloseGuardRef.current.markUserClose()}
+          duration={TRAVEL_POPUP_DURATION_MS}
+          className="relative w-[400px] max-w-full items-start gap-4 space-x-0 rounded-xl border border-gray-100 bg-white p-4 text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)] data-[state=open]:sm:slide-in-from-top-full"
+        >
+          <div className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+            <Plane className="size-[24.75px] text-primary-500" />
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-4 pt-0.5">
+            <div className="flex flex-col gap-1">
+              <ToastTitle className="text-sm font-semibold leading-5 text-gray-900">
+                You are in Travel Mode
+              </ToastTitle>
+              <ToastDescription className="text-sm font-normal leading-5 text-gray-600">
+                Update your status if your location changes
+              </ToastDescription>
+            </div>
+
+            <Button
+              variant="link"
+              className="h-5 justify-start p-0 text-sm font-semibold leading-5"
+              onClick={() => void handleTravelUpdate()}
+            >
+              Update
+            </Button>
+          </div>
+
+          <IconButton
+            className="absolute right-2 top-2 text-gray-500"
+            size="md"
+            visual="gray"
+            variant="ghost"
+            onClick={handleTravelPopupClose}
+          >
+            <X className="size-5" />
+          </IconButton>
+        </Toast>
+
+        <ToastViewport className="top-5 right-5 left-auto bottom-auto w-auto max-w-[400px] flex-col gap-3 p-0 sm:top-5 sm:right-5 sm:left-auto sm:bottom-auto sm:flex-col md:max-w-[400px]" />
+      </ToastProvider>
+
       <AccountVerificationGate
         open={verificationGateOpen}
         reason="unstarted"
@@ -560,9 +723,12 @@ export default function TalentDashboard() {
 
       {detectedLocation && (
         <IdentityVerificationFlow
+          key={flowLaunch.key}
           open={identityFlowOpen}
           onOpenChange={setIdentityFlowOpen}
           detectedLocation={detectedLocation}
+          initialState={flowLaunch.initialState}
+          activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
         />
       )}
 
