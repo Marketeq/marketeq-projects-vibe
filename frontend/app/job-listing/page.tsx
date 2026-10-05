@@ -16045,6 +16045,11 @@ const FinalServiceReviewStep = ({
   const [overview, setOverview] = useState("")
   const [benefits, setBenefits] = useState("")
   const [responsibilities, setResponsibilities] = useState("")
+  const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
+    useState(false)
+  const [activeAssistantField, setActiveAssistantField] =
+    useState<SmartAssistantEditableField>("title")
+  const didGenerateBasicInformationRef = useRef(false)
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
     useDynamicFinalReviewSkills()
@@ -16088,6 +16093,46 @@ const FinalServiceReviewStep = ({
     onApply: applyAssistantValue,
     roleTitle: selectedRole,
   })
+  const serviceAssistantQuickActions: Record<
+    SmartAssistantEditableField,
+    string[]
+  > = {
+    title: [
+      "Make it more descriptive",
+      "Simplify the wording",
+      "Reword for clarity",
+    ],
+    overview: [
+      "Add service goals",
+      "Highlight key deliverables",
+      "Reword for better flow",
+    ],
+    benefits: [
+      "Add bullet points",
+      "Focus on team impact",
+      "Highlight learning opportunities",
+    ],
+    responsibilities: [
+      "Add more specifics",
+      "Simplify the task list",
+      "Group similar tasks",
+    ],
+  }
+  const getServiceAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Make it more descriptive" && "w-[211px]",
+      suggestion === "Simplify the wording" && "w-[194px]",
+      suggestion === "Reword for clarity" && "w-[163px]",
+      suggestion === "Add service goals" && "w-[151px]",
+      suggestion === "Highlight key deliverables" && "w-[218px]",
+      suggestion === "Reword for better flow" && "w-[191px]",
+      suggestion === "Add bullet points" && "w-[154px]",
+      suggestion === "Focus on team impact" && "w-[196px]",
+      suggestion === "Highlight learning opportunities" && "w-[248px]",
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]"
+    )
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
       setSelectedRole(roleOptions[0] ?? "")
@@ -16131,6 +16176,87 @@ const FinalServiceReviewStep = ({
     skills,
     onLoad: loadSavedRoleDescription,
   })
+
+  useEffect(() => {
+    if (!jobListingId || didGenerateBasicInformationRef.current) return
+    const current = projectInfoMethods.getValues()
+    if (
+      current.title?.trim() ||
+      current.industry?.length ||
+      current.languages?.length
+    ) {
+      didGenerateBasicInformationRef.current = true
+      return
+    }
+    didGenerateBasicInformationRef.current = true
+
+    void (async () => {
+      setIsGeneratingBasicInformation(true)
+      try {
+        const response = await JobListingAPI.GenerateBasicInformation(
+          jobListingId,
+          {
+            workType: "service",
+            description: details.description || undefined,
+            deliverables: details.deliverables || undefined,
+            tools: details.tools ?? [],
+            roles: roleOptions.length ? roleOptions : undefined,
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          basicInformation?: {
+            title?: string
+            jobType?: string
+            industries?: string[]
+            languages?: string[]
+          } | null
+        }
+        const generated = data.basicInformation
+        if (data.aiStatus !== "OK" || !generated) return
+
+        const latest = projectInfoMethods.getValues()
+        const fill = (
+          name: "title" | "industry" | "languages",
+          value: string | string[]
+        ) =>
+          projectInfoMethods.setValue(name, value as never, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: true,
+          })
+
+        if (!latest.title?.trim() && generated.title?.trim()) {
+          fill("title", generated.title.slice(0, 100))
+        }
+        if (!latest.industry?.length && generated.industries?.length) {
+          fill("industry", getUniqueOptions(generated.industries).slice(0, 10))
+        }
+        if (!latest.languages?.length && generated.languages?.length) {
+          fill("languages", getUniqueOptions(generated.languages).slice(0, 10))
+        }
+        if (generated.jobType?.trim()) {
+          setDetails((existing) =>
+            existing.jobType
+              ? existing
+              : { ...existing, jobType: generated.jobType?.trim() }
+          )
+        }
+      } catch (error) {
+        console.error("Generate service basic information failed", error)
+      } finally {
+        setIsGeneratingBasicInformation(false)
+      }
+    })()
+  }, [
+    details.deliverables,
+    details.description,
+    details.tools,
+    jobListingId,
+    projectInfoMethods,
+    roleOptions,
+    setDetails,
+  ])
 
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
@@ -16220,8 +16346,14 @@ const FinalServiceReviewStep = ({
                 <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                   Basic Information
                 </h2>
-                <ReviewEditableTitle label="Service Title" />
-                <ReviewJobTypeSelect />
+                <ReviewEditableTitle
+                  label="Service Title"
+                  isLoading={isGeneratingBasicInformation}
+                  onActivate={() => setActiveAssistantField("title")}
+                />
+                <ReviewJobTypeSelect
+                  isLoading={isGeneratingBasicInformation}
+                />
                 <ReviewEditableTags
                   fieldName="industry"
                   label="Industries"
@@ -16229,6 +16361,7 @@ const FinalServiceReviewStep = ({
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -16237,6 +16370,7 @@ const FinalServiceReviewStep = ({
                   autocompleteType="languages"
                   fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
               </div>
 
@@ -16348,9 +16482,11 @@ const FinalServiceReviewStep = ({
                   initialValue={overview}
                   placeholder="Add the service overview"
                   isLoading={isRoleDescriptionLoading}
-                  onSmartAssistant={(selection) =>
+                  onActivate={() => setActiveAssistantField("overview")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("overview")
                     serviceAssistant.populateSelectedText(selection)
-                  }
+                  }}
                   onChange={setOverview}
                 />
                 <FinalReviewTextSection
@@ -16359,9 +16495,11 @@ const FinalServiceReviewStep = ({
                   initialValue={benefits}
                   placeholder="Add benefits for joining this service"
                   isLoading={isRoleDescriptionLoading}
-                  onSmartAssistant={(selection) =>
+                  onActivate={() => setActiveAssistantField("benefits")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("benefits")
                     serviceAssistant.populateSelectedText(selection)
-                  }
+                  }}
                   onChange={setBenefits}
                 />
 
@@ -16410,9 +16548,13 @@ const FinalServiceReviewStep = ({
                       initialValue={responsibilities}
                       placeholder={`Add responsibilities for ${selectedRole}`}
                       isLoading={isRoleDescriptionLoading}
-                      onSmartAssistant={(selection) =>
-                        serviceAssistant.populateSelectedText(selection)
+                      onActivate={() =>
+                        setActiveAssistantField("responsibilities")
                       }
+                      onSmartAssistant={(selection) => {
+                        setActiveAssistantField("responsibilities")
+                        serviceAssistant.populateSelectedText(selection)
+                      }}
                       onChange={setResponsibilities}
                     />
 
@@ -16465,7 +16607,7 @@ const FinalServiceReviewStep = ({
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
               <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
@@ -16487,56 +16629,21 @@ const FinalServiceReviewStep = ({
                 Here are some suggestions:
               </p>
               <div className="mt-4 flex flex-col items-start gap-2">
-                {[
-                  {
-                    label: "Change a Service Title",
-                    field: "title",
-                    icon: "/job-listing/smart-assistant-target.png",
-                    className: "w-[235px]",
-                    textClassName: "w-[167px]",
-                  },
-                  {
-                    label: "Rewrite Overview",
-                    field: "overview",
-                    icon: "/job-listing/smart-assistant-timeline.png",
-                    className: "w-[201px]",
-                    textClassName: "w-[133px]",
-                  },
-                  {
-                    label: "Rewrite Benefits",
-                    field: "benefits",
-                    icon: "/job-listing/smart-assistant-money-bag.png",
-                    className: "w-[194px]",
-                    textClassName: "w-[126px]",
-                  },
-                ].map((item) => (
+                {serviceAssistantQuickActions[activeAssistantField].map((item) => (
                   <Button
-                    key={item.label}
+                    key={`${activeAssistantField}-${item}`}
                     className={cn(
-                      "h-10 justify-start rounded-full bg-white py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                      item.className
+                      "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getServiceAssistantSuggestionWidthClass(item)
                     )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
-                      serviceAssistant.run(
-                        item.label,
-                        item.field as SmartAssistantEditableField
-                      )
+                      serviceAssistant.run(item, activeAssistantField)
                     }
                   >
-                    <img
-                      src={item.icon}
-                      alt=""
-                      aria-hidden="true"
-                      width={20}
-                      height={20}
-                      className="size-5 shrink-0"
-                    />
-                    <span className={cn("h-5 shrink-0", item.textClassName)}>
-                      {item.label}
-                    </span>
+                    <span className="h-5 shrink-0">{item}</span>
                   </Button>
                 ))}
               </div>
@@ -16566,9 +16673,7 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        resolveFinalReviewAssistantField(
-                          serviceAssistant.message
-                        )
+                        activeAssistantField
                       )
                     }
                   >
