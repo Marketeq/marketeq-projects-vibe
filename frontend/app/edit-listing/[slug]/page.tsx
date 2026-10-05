@@ -9099,6 +9099,7 @@ function PublishProject({
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
+  const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
   // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
   // saveMedia had no ref here and its effect's cleanup only cleared the
@@ -9545,6 +9546,7 @@ function PublishProject({
 
       if (serializedPayload === lastScopePayloadRef.current) return
 
+      scopeSavesInFlightRef.current += 1
       try {
         const scopeRes = await ProjectAPI.ReplaceProjectScope(
           draftProjectId,
@@ -9558,6 +9560,8 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project scope draft", error)
+      } finally {
+        scopeSavesInFlightRef.current -= 1
       }
     }
 
@@ -9565,6 +9569,11 @@ function PublishProject({
 
     void saveScope()
     const interval = setInterval(() => {
+      // Never stack ticks: until a save resolves, the payload still differs
+      // from lastScopePayloadRef, so a slow save got re-sent every 2s — the
+      // pile-up that took listings-service down on 2026-10-03. The flushes
+      // on cleanup and beforeunload still go out regardless.
+      if (scopeSavesInFlightRef.current > 0) return
       void saveScope()
     }, 2000)
 
