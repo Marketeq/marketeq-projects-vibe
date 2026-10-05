@@ -14,6 +14,7 @@ import {
   TRAVEL_REMINDER_DAYS,
   travelModeEndsAt,
 } from '../common/travel-mode/travel-mode-duration';
+import { expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
 
 @Injectable()
 export class TravelModeReminderJob {
@@ -29,6 +30,11 @@ export class TravelModeReminderJob {
   @Cron(CronExpression.EVERY_DAY_AT_9AM)
   async runDailySweep(): Promise<void> {
     const now = new Date();
+    // Expiry first, so a profile whose Travel Mode has ended is deactivated
+    // before the reminder query runs and can never receive a reminder. If the
+    // expiry pass did not complete for every profile, an expired profile may
+    // still be raw-active, so no reminders are processed in this sweep.
+    if (!(await this.expireEndedTravelModes(now))) return;
     const dueProfiles = await this.profileRepository.find({
       where: { travelModeActive: true, nextTravelReminderAt: LessThanOrEqual(now) },
     });
@@ -41,6 +47,35 @@ export class TravelModeReminderJob {
         // and this log must never carry PII or internals. See docs/error-handling.
         this.logger.error(`Travel Mode reminder failed for profile ${profile.id}`);
       }
+    }
+  }
+
+  // Daily backstop for the lazy expiry done on profile reads: ends every
+  // raw-active Travel Mode whose period is over (and applies the shared
+  // fail-safe to active rows with missing or invalid activation data). The
+  // shared helper does the compare-and-set; nothing is written here. Logs carry
+  // counts only, never an identifier or a stored value. Returns true only when
+  // the whole pass completed: the query worked and no profile failed.
+  private async expireEndedTravelModes(now: Date): Promise<boolean> {
+    try {
+      const active = await this.profileRepository.find({ where: { travelModeActive: true } });
+      let failed = 0;
+      for (const profile of active) {
+        try {
+          await expireTravelModeIfDue(this.profileRepository, profile, now.getTime(), this.logger);
+        } catch {
+          failed += 1;
+        }
+      }
+      this.logger.log(`Travel Mode expiry sweep: ${active.length} active profile(s) checked.`);
+      if (failed > 0) {
+        this.logger.error(`Travel Mode expiry failed for ${failed} profile(s).`);
+        return false;
+      }
+      return true;
+    } catch {
+      this.logger.error('Travel Mode expiry sweep failed.');
+      return false;
     }
   }
 
