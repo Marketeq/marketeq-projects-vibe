@@ -82,6 +82,7 @@ describe('FreeKycService', () => {
     const profileRepository = {
       findOne: jest.fn().mockResolvedValue(profile),
       save: jest.fn((p: any) => Promise.resolve(p)),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const sessionRepository = {
       findOne: jest.fn().mockImplementation(async (q: any) => {
@@ -364,6 +365,59 @@ describe('FreeKycService', () => {
       it('an expired Travel Mode does not hide the other start rules (stale confirmation still blocks)', async () => {
         const { service } = build({ profile: confirmedProfile({ ...sixDays(NOW - 7 * DAY), verifiedHomeCountryConfirmedAt: new Date(NOW - HOME_COUNTRY_CONFIRMATION_WINDOW_MS - 1) }) });
         expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('confirmation_stale');
+      });
+
+      describe('lazy expiry is persisted before the start rules run, inside the profile lock', () => {
+        it('a raw-active expired profile is ended (only the flag and the reminder cursor), then the start proceeds', async () => {
+          const expired = confirmedProfile({
+            ...sixDays(NOW - 6 * DAY),
+            nextTravelReminderAt: new Date(NOW + DAY),
+            lastTravelReminderSentAt: new Date(NOW - 3 * DAY),
+          });
+          const { service, profileRepository, queryRunner, provider } = build({ profile: expired });
+
+          await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+
+          expect(profileRepository.update).toHaveBeenCalledTimes(1);
+          expect(profileRepository.update).toHaveBeenCalledWith(
+            {
+              id: 'profile-1',
+              travelModeActive: true,
+              travelModeActivatedAt: expired.travelModeActivatedAt,
+              declaredDuration: DeclaredDuration.A_FEW_DAYS,
+            },
+            { travelModeActive: false, nextTravelReminderAt: null },
+          );
+          // Taken after the advisory lock, before Didit is called.
+          expect(queryRunner.query.mock.invocationCallOrder[0]).toBeLessThan(profileRepository.update.mock.invocationCallOrder[0]);
+          expect(profileRepository.update.mock.invocationCallOrder[0]).toBeLessThan(provider.createKycSession.mock.invocationCallOrder[0]);
+          // The row the rules saw no longer carries the stale raw-active state.
+          expect(expired.travelModeActive).toBe(false);
+          expect(expired.nextTravelReminderAt).toBeNull();
+          expect(expired.travelClassification).toBe(TRAVELING);
+          expect(expired.declaredDuration).toBe(DeclaredDuration.A_FEW_DAYS);
+          expect(expired.lastTravelReminderSentAt).toEqual(new Date(NOW - 3 * DAY));
+        });
+
+        it('1 ms before the end nothing is written and the start is still blocked', async () => {
+          const { service, profileRepository } = build({ profile: confirmedProfile(sixDays(NOW - 6 * DAY + 1)) });
+          expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
+          expect(profileRepository.update).not.toHaveBeenCalled();
+        });
+
+        it('a lost compare-and-set reloads the fresh row and the start follows it (a newer activation blocks)', async () => {
+          const stale = confirmedProfile(sixDays(NOW - 7 * DAY));
+          const fresh = confirmedProfile({ ...sixDays(NOW - DAY), declaredDuration: DeclaredDuration.MORE_THAN_TWO_WEEKS });
+          const { service, profileRepository, provider } = build({ profile: stale });
+          profileRepository.findOne.mockReset().mockResolvedValueOnce(stale).mockResolvedValueOnce(stale).mockResolvedValue(fresh);
+          profileRepository.update.mockResolvedValue({ affected: 0 });
+
+          expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
+
+          expect(profileRepository.update).toHaveBeenCalledTimes(1);
+          expect(provider.createKycSession).not.toHaveBeenCalled();
+          expect(stale.travelModeActive).toBe(true); // the loser's copy is never overwritten
+        });
       });
     });
 

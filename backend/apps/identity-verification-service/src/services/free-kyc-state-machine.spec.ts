@@ -80,6 +80,7 @@ describe('Free KYC state machine and attempt cycle (Part 1)', () => {
     const profileRepository = {
       findOne: jest.fn(async () => profile),
       save: jest.fn(async (p: Row) => p),
+      update: jest.fn(async () => ({ affected: 1 })),
     };
     const sessionRepository = {
       findOne: jest.fn(async (q: any) => {

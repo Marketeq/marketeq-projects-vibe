@@ -48,7 +48,7 @@ describe('verification summary ↔ real start path parity (new-session requireme
       create: jest.fn((d: any) => ({ id: 'row-1', createdAt: new Date(), ...d })),
       save: jest.fn(async (d: any) => (sessions.push(d), d)),
     };
-    const profileRepository = { findOne: jest.fn(async () => profile), save: jest.fn(async (p: any) => p) };
+    const profileRepository = { findOne: jest.fn(async () => profile), save: jest.fn(async (p: any) => p), update: jest.fn(async () => ({ affected: 1 })) };
     const attemptRepository = { find: jest.fn(async () => []) };
     const empty = { count: jest.fn(async () => 0) };
     const queryRunner = {

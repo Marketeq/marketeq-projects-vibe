@@ -57,7 +57,7 @@ import {
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
 import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
-import { travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
+import { expireTravelModeIfDue, travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
 import {
   NOTIFICATION_EVENT_PUBLISHER,
   NotificationEventPublisher,
@@ -171,6 +171,10 @@ export class FreeKycService {
   private async startOrResumeLocked(profileId: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
+
+    // Lazy Travel Mode expiry, under the same per-profile lock as the start itself,
+    // so the rules below never see a stale raw-active state.
+    profile = await expireTravelModeIfDue(this.profileRepository, profile, Date.now(), this.logger);
 
     // Runs under the per-profile advisory lock held by startOrResume, so
     // concurrent starts cannot both leave failed_final or create two sessions.

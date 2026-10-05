@@ -70,6 +70,7 @@ import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { NextAction } from '../common/status/verification-summary';
 import { VerificationSummaryService } from './verification-summary.service';
+import { expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
 
 // First Travel Mode reminder is due 3 days after activation (approved
 // reminder days: 3 and 7).
@@ -147,7 +148,12 @@ export class IdentityVerificationService {
     userId: string,
     ipAddress?: string | null,
   ): Promise<IdentityVerificationProfile> {
-    const existing = await this.profileRepository.findOne({ where: { userId } });
+    const found = await this.profileRepository.findOne({ where: { userId } });
+    // Lazy expiry: a Travel Mode whose period is over is ended (and persisted)
+    // before anything reads or returns this profile.
+    const existing = found
+      ? await expireTravelModeIfDue(this.profileRepository, found, Date.now(), this.logger)
+      : null;
     const profile = existing ?? this.profileRepository.create({ userId });
 
     if (!profile.detectedCountry && ipAddress) {
@@ -534,8 +540,9 @@ export class IdentityVerificationService {
   }
 
   async getStatusForInternalCaller(userId: string): Promise<InternalCallerStatus> {
-    const profile = await this.profileRepository.findOne({ where: { userId } });
-    if (!profile) throw new ProfileNotFoundException();
+    const found = await this.profileRepository.findOne({ where: { userId } });
+    if (!found) throw new ProfileNotFoundException();
+    const profile = await expireTravelModeIfDue(this.profileRepository, found, Date.now(), this.logger);
 
     // Hosted Free KYC current-cycle count and the stable next action. The old
     // all-rows counter (every pipeline, never reset) is deliberately not used here.

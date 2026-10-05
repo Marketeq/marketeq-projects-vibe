@@ -19,6 +19,7 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       findOne: jest.fn().mockResolvedValue(existingProfile),
       create: jest.fn((data: any) => ({ ...data })),
       save: jest.fn((profile: any) => Promise.resolve({ id: 'p1', ...profile })),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
     };
     const events = { publish: jest.fn() };
 
@@ -74,8 +75,11 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
   });
 
   it('a new activation resets lastTravelReminderSentAt and restarts the schedule', async () => {
+    // A previous activation whose period has ended (lazily expired on read).
     const previous = travelling({
       travelModeActive: true,
+      travelModeActivatedAt: new Date('2026-01-01T12:00:00Z'),
+      declaredDuration: DeclaredDuration.A_FEW_DAYS,
       lastTravelReminderSentAt: new Date('2026-01-10T09:00:00Z'),
       nextTravelReminderAt: new Date('2026-01-14T09:00:00Z'),
     });

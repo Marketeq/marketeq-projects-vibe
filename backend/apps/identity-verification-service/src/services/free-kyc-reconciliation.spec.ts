@@ -94,7 +94,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
     let didditSeq = 0;
     const inValues = (op: any): any[] | null => (op && Array.isArray(op.value) ? op.value : null);
 
-    const profileRepository = { findOne: jest.fn(async () => profile), save: jest.fn(async (p: Row) => p) };
+    const profileRepository = { findOne: jest.fn(async () => profile), save: jest.fn(async (p: Row) => p), update: jest.fn(async () => ({ affected: 1 })) };
     const sessionRepository = {
       findOne: jest.fn(async (q: any) => {
         const w = q?.where ?? {};
