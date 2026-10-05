@@ -26,3 +26,15 @@ export function travelModeEndsAt(activatedAt: Date, duration: DeclaredDuration):
   if (typeof days !== 'number' || !Number.isFinite(start)) return null;
   return new Date(start + days * DAY_MS);
 }
+
+/**
+ * The reminder times of one activation, earliest first: day 3 and day 7 after
+ * activation, keeping only those that fall strictly before the end. A reminder
+ * that would land at or after `endsAt` does not exist (so the 6-day duration
+ * has no day-7 reminder).
+ */
+export function travelReminderOccurrences(activatedAt: Date, endsAt: Date): Date[] {
+  return TRAVEL_REMINDER_DAYS.map((day) => new Date(activatedAt.getTime() + day * DAY_MS)).filter(
+    (due) => due.getTime() < endsAt.getTime(),
+  );
+}

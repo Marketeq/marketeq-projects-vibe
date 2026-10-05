@@ -144,17 +144,49 @@ describe('persisted lazy expiry: GET /me, internal status and the shared state',
     expect(update).toHaveBeenCalledTimes(1);
   });
 
-  it('adds no response field: the API contract is unchanged', async () => {
+  it('keeps every existing field and adds only the four append-only Travel Mode fields', async () => {
     await build(expiredRow());
 
     const res = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
 
-    for (const added of ['travelModeEndsAt', 'travelModeExpired', 'travelModeState']) {
-      expect(res.body).not.toHaveProperty(added);
-    }
+    expect(res.body).not.toHaveProperty('travelModeState'); // no internal state name leaks
     for (const key of ['travelModeActive', 'travelClassification', 'declaredDuration', 'reconfirmationRequired', 'nextAction']) {
       expect(res.body).toHaveProperty(key);
     }
+    for (const added of ['travelModeEndsAt', 'travelModeExpired', 'travelReminderDue', 'travelReminderAvailableAt']) {
+      expect(res.body).toHaveProperty(added);
+    }
+    expect(res.body).not.toHaveProperty('nextTravelReminderAt'); // the job's raw cursor is never exposed
+    expect(res.body).not.toHaveProperty('lastTravelReminderSentAt');
+  });
+
+  it('GET /me reports an expired period: end time kept, expired true, nothing to claim', async () => {
+    const original = expiredRow();
+    await build({ ...original });
+
+    const res = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+
+    expect(res.body).toMatchObject({
+      travelModeExpired: true,
+      travelModeEndsAt: new Date(original.travelModeActivatedAt.getTime() + 6 * DAY).toISOString(),
+      travelReminderDue: false,
+      travelReminderAvailableAt: null,
+    });
+  });
+
+  it('GET /me reports an active period with its next reminder time', async () => {
+    const original = activeRow();
+    await build({ ...original });
+
+    const res = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+
+    expect(res.body).toMatchObject({
+      travelModeActive: true,
+      travelModeExpired: false,
+      travelModeEndsAt: new Date(original.travelModeActivatedAt.getTime() + 13 * DAY).toISOString(),
+      travelReminderDue: false, // started 1 day ago: day 3 is still in the future
+      travelReminderAvailableAt: new Date(original.travelModeActivatedAt.getTime() + 3 * DAY).toISOString(),
+    });
   });
 
   it('active Travel Mode is unchanged: still active, still asks for confirm_location, nothing written', async () => {

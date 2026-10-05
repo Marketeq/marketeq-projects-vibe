@@ -4,7 +4,7 @@ import {
   TravelClassification,
 } from '../../entities/enums/identity-verification.enums';
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
-import { travelModeEndsAt } from './travel-mode-duration';
+import { travelModeEndsAt, travelReminderOccurrences } from './travel-mode-duration';
 
 // What a profile's stored Travel Mode fields mean at a given instant.
 //
@@ -62,6 +62,49 @@ export function travelModeBlocksNewSession(fields: TravelModeFields, nowMs: numb
     state === 'active' ||
     (fields.travelClassification === TravelClassification.TEMPORARILY_TRAVELING && state !== 'expired')
   );
+}
+
+export interface TravelReminderFields extends TravelModeFields {
+  lastTravelReminderSentAt?: unknown;
+}
+
+export interface TravelReminderSchedule {
+  /** An unclaimed reminder is due now. */
+  due: boolean;
+  /** The time of the earliest unclaimed reminder; null when nothing is left to claim. */
+  availableAt: Date | null;
+}
+
+/**
+ * When the dashboard may claim the next Travel Mode reminder (day 3, then
+ * day 7). Pure, from the activation, the duration, the last claim time, the
+ * effective state and the caller's clock; the job's reminder cursor is never
+ * read.
+ *
+ * A claim at time T consumes every reminder due at or before T, so a reminder
+ * is already claimed when `lastTravelReminderSentAt >= its time`. The result
+ * is the earliest reminder not yet claimed: still in the future (due false), or
+ * due now and unclaimed (due true, and it keeps that reminder's own time until
+ * it is claimed or Travel Mode ends). Anything that is not an active period
+ * (expired, inactive, invalid, pending or none), a completed schedule, or an
+ * unusable last-claim time yields due false and no time (fail closed).
+ */
+export function deriveTravelReminderSchedule(fields: TravelReminderFields, nowMs: number): TravelReminderSchedule {
+  const none: TravelReminderSchedule = { due: false, availableAt: null };
+  const { state, endsAt } = deriveTravelModeState(fields, nowMs);
+  if (state !== 'active' || !fields.travelModeActive || !endsAt) return none;
+
+  let claimedUpToMs = Number.NEGATIVE_INFINITY;
+  const sent = fields.lastTravelReminderSentAt;
+  if (sent !== null && sent !== undefined) {
+    if (!(sent instanceof Date) || !Number.isFinite(sent.getTime())) return none;
+    claimedUpToMs = sent.getTime();
+  }
+
+  const next = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt).find(
+    (due) => due.getTime() > claimedUpToMs,
+  );
+  return next ? { due: next.getTime() <= nowMs, availableAt: next } : none;
 }
 
 // Fixed text only: never an identifier or a stored value.

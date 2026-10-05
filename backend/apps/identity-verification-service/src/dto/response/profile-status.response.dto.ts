@@ -7,6 +7,7 @@ import {
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
 import { coarseFailureReason } from '../../common/status/coarse-failure-reason';
 import { NextAction, VerificationSummary } from '../../common/status/verification-summary';
+import { deriveTravelModeState, deriveTravelReminderSchedule } from '../../common/travel-mode/travel-mode-state';
 
 export class ProfileStatusResponseDto {
   verifiedHomeCountry!: string | null;
@@ -18,6 +19,17 @@ export class ProfileStatusResponseDto {
   travelClassification!: TravelClassification | null;
   declaredDuration!: DeclaredDuration | null;
   travelModeActive!: boolean;
+  // Append-only Travel Mode additions, derived from the stored activation, the
+  // duration, the last reminder claim and the server clock (never the job's raw
+  // reminder cursor). The ISO fields are null whenever there is no value.
+  /** Exact end of the activation (also for an ended period); null without a valid activation. */
+  travelModeEndsAt!: string | null;
+  /** A valid activation exists and its end has passed. */
+  travelModeExpired!: boolean;
+  /** An unclaimed day-3 or day-7 reminder is due now. */
+  travelReminderDue!: boolean;
+  /** Time of the earliest unclaimed reminder; null when none is left or Travel Mode is not active. */
+  travelReminderAvailableAt!: string | null;
 
   identityVerificationStatus!: IdentityVerificationStatus;
   identityRejectionReason!: string | null;
@@ -39,7 +51,11 @@ export class ProfileStatusResponseDto {
   retryAvailableAt?: string | null;
   hasActiveSession?: boolean;
 
-  static fromEntity(profile: IdentityVerificationProfile, summary?: VerificationSummary): ProfileStatusResponseDto {
+  static fromEntity(
+    profile: IdentityVerificationProfile,
+    summary?: VerificationSummary,
+    nowMs: number = Date.now(),
+  ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
     dto.detectedCountry = profile.detectedCountry;
@@ -49,6 +65,12 @@ export class ProfileStatusResponseDto {
     dto.travelClassification = profile.travelClassification;
     dto.declaredDuration = profile.declaredDuration;
     dto.travelModeActive = profile.travelModeActive;
+    const travelMode = deriveTravelModeState(profile, nowMs);
+    dto.travelModeEndsAt = travelMode.endsAt ? travelMode.endsAt.toISOString() : null;
+    dto.travelModeExpired = travelMode.state === 'expired';
+    const reminder = deriveTravelReminderSchedule(profile, nowMs);
+    dto.travelReminderDue = reminder.due;
+    dto.travelReminderAvailableAt = reminder.availableAt ? reminder.availableAt.toISOString() : null;
     dto.identityVerificationStatus = profile.identityVerificationStatus;
     dto.identityRejectionReason =
       profile.identityRejectionReason ?? coarseFailureReason(profile.identityVerificationStatus);
