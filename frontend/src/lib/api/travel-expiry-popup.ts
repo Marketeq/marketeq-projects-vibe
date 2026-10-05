@@ -1,14 +1,17 @@
 // frontend/src/lib/api/travel-expiry-popup.ts
 //
 // When to show the Travel Mode expiry popup and how closing it is remembered. The
-// backend says whether Travel Mode expired (travelModeExpired) and whether the account
-// is fully verified (fullyVerified); this file adds only the per-LOGIN dismissal, keyed
-// by the existing readable `session_id` cookie (a new login has a new session id; a
-// refresh keeps it). No time, duration or expiry rule lives here.
+// backend says whether Travel Mode expired (travelModeExpired); this file adds only the
+// per-LOGIN dismissal, keyed by the existing readable `session_id` cookie (a new login
+// has a new session id; a refresh keeps it). No time, duration or expiry rule lives
+// here, and verification status plays no part: Travel Mode never changes identity or
+// location status, fullyVerified, isVerified, inGrace or gate access, so verified and
+// unverified accounts see the popup alike.
 //
-//   shown   travelModeExpired === true AND fullyVerified === false AND not dismissed
-//           for this session id. A fully verified account never sees it (that case is
-//           undecided, so it is deliberately not handled); an unknown value shows nothing.
+//   shown   travelModeExpired === true AND not dismissed for this session id. It stops
+//           when the backend clears the state (home-country confirmation) or a new
+//           Travel Mode period starts (travelModeExpired is then false); an unknown
+//           value shows nothing.
 //   closing the X stores localStorage["travelExpiryDismissed:<sid>"] and removes the
 //           marker of every other session, so at most ONE marker ever exists.
 //   no session id  the popup is shown and nothing is persisted (it may reappear after a
@@ -64,14 +67,12 @@ function wasDismissed(storage: DismissalStorage | undefined, sessionId: string):
 
 export interface ExpiryPopupInput {
   expired: boolean | null
-  fullyVerified: boolean | null
   sessionId: string | null
   storage?: DismissalStorage
 }
 
 export function shouldShowTravelExpiryPopup(input: ExpiryPopupInput): boolean {
   if (input.expired !== true) return false
-  if (input.fullyVerified !== false) return false // verified (undecided) or unknown: nothing
   if (!input.sessionId) return true // no id: show, and nothing can be remembered
   return !wasDismissed(input.storage, input.sessionId)
 }

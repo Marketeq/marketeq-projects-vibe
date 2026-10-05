@@ -107,7 +107,7 @@ describe("the expiry popup", () => {
     assert.equal((page.match(/setTravelPopup\("expiry"\)/g) ?? []).length, 1)
     assert.match(
       page,
-      /shouldShowTravelExpiryPopup\(\{\s+expired: travelSummary\.travelModeExpired,\s+fullyVerified: travelSummary\.fullyVerified,\s+sessionId: readSessionId\(\),\s+storage: window\.localStorage,\s+\}\)/
+      /shouldShowTravelExpiryPopup\(\{\s+expired: travelSummary\.travelModeExpired,\s+sessionId: readSessionId\(\),\s+storage: window\.localStorage,\s+\}\)/
     )
   })
 

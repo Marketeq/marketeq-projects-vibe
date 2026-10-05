@@ -419,15 +419,14 @@ export default function TalentDashboard() {
     setVpnProxyModalOpen(true)
   }, [runIdentityVerificationCheck])
 
-  // Travel Mode expiry popup: when the backend says Travel Mode ended and the account
-  // is not fully verified, show it unless it was closed in THIS login (the existing
+  // Travel Mode expiry popup: when the backend says Travel Mode ended, show it (verified
+  // or not) unless it was closed in THIS login (the existing
   // readable session_id cookie; a refresh keeps it, a new login changes it).
   useEffect(() => {
     if (!travelSummary) return
     if (
       shouldShowTravelExpiryPopup({
         expired: travelSummary.travelModeExpired,
-        fullyVerified: travelSummary.fullyVerified,
         sessionId: readSessionId(),
         storage: window.localStorage,
       })

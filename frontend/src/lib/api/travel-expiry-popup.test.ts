@@ -1,6 +1,9 @@
 // Run like detected-location.test.ts (from the frontend/ directory).
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import { describe, it } from "node:test"
+import { shouldShowProfileBanner } from "./identity-next-step"
+import { parseIdentityVerificationSummary } from "./identity-verification-state"
 import {
   SESSION_COOKIE_NAME,
   TRAVEL_EXPIRY_DISMISSED_PREFIX,
@@ -27,23 +30,82 @@ function memoryStorage(initial: Record<string, string> = {}): DismissalStorage &
 const SID_A = "7a1b2c3d-0000-4000-8000-00000000000a"
 const SID_B = "7a1b2c3d-0000-4000-8000-00000000000b"
 const show = (over: Partial<Parameters<typeof shouldShowTravelExpiryPopup>[0]> = {}) =>
-  shouldShowTravelExpiryPopup({ expired: true, fullyVerified: false, sessionId: SID_A, storage: memoryStorage(), ...over })
+  shouldShowTravelExpiryPopup({ expired: true, sessionId: SID_A, storage: memoryStorage(), ...over })
 
 describe("when the expiry popup is shown", () => {
-  it("shown when Travel Mode expired and the account is not fully verified", () => {
+  it("shown when Travel Mode expired, whatever the verification status", () => {
     assert.equal(show(), true)
+  })
+
+  it("verified + expired shows the popup", () => {
+    // verification status is not an input at all: the same call serves both accounts
+    const verified = parseIdentityVerificationSummary({ nextAction: "complete", fullyVerified: true, travelModeExpired: true })
+    assert.equal(show({ expired: verified?.travelModeExpired ?? null }), true)
+  })
+
+  it("unverified + expired still shows the popup", () => {
+    const unverified = parseIdentityVerificationSummary({ nextAction: "confirm_location", fullyVerified: false, travelModeExpired: true })
+    assert.equal(show({ expired: unverified?.travelModeExpired ?? null }), true)
+  })
+
+  it("verified + active Travel Mode does not show the expiry popup", () => {
+    const active = parseIdentityVerificationSummary({ nextAction: "complete", fullyVerified: true, travelModeExpired: false })
+    assert.equal(show({ expired: active?.travelModeExpired ?? null }), false)
   })
 
   it("not shown unless the backend says expired === true", () => {
     for (const expired of [false, null]) assert.equal(show({ expired }), false)
   })
 
-  it("never shown to a fully verified account (that case is undecided and not handled)", () => {
-    assert.equal(show({ fullyVerified: true }), false)
+  it("cleared Travel Mode state (home country confirmed) stops it, even if never closed", () => {
+    // the backend clears the travel fields; /me then reports no expired state
+    const cleared = parseIdentityVerificationSummary({ nextAction: "complete", fullyVerified: true })
+    assert.equal(cleared?.travelModeExpired, null)
+    assert.equal(show({ expired: cleared?.travelModeExpired ?? null, storage: memoryStorage() }), false)
   })
 
-  it("an unknown verification state shows nothing", () => {
-    assert.equal(show({ fullyVerified: null }), false)
+  it("a new Travel Mode period suppresses it, and it returns after that period's next expiry (a later login)", () => {
+    const storage = memoryStorage()
+    dismissTravelExpiryPopup(SID_A, storage) // closed during the first expiry
+    assert.equal(show({ expired: false, storage, sessionId: SID_B }), false) // new period active
+    assert.equal(show({ expired: true, storage, sessionId: SID_B }), true) // next expiry, new login
+  })
+})
+
+describe("the logic never changes verification or gate values", () => {
+  it("is a pure decision: the input is not modified and no status is returned", () => {
+    const input = Object.freeze({ expired: true, sessionId: SID_A, storage: memoryStorage() })
+    assert.equal(typeof shouldShowTravelExpiryPopup(input), "boolean")
+  })
+
+  it("verification status and gate values never reach this file", () => {
+    const source = readFileSync("src/lib/api/travel-expiry-popup.ts", "utf8")
+    const code = source.replace(/\/\/.*$/gm, "")
+    for (const name of ["fullyVerified", "isVerified", "inGrace", "gateOpen", "identityVerificationStatus", "locationVerificationStatus"]) {
+      assert.ok(!code.includes(name), `${name} must not appear in the expiry popup logic`)
+    }
+  })
+
+  it("the dashboard passes only the expired flag and the session marker", () => {
+    const page = readFileSync("app/(group)/talent-dashboard/page.tsx", "utf8")
+    const call = page.slice(page.indexOf("shouldShowTravelExpiryPopup({"), page.indexOf("setTravelPopup(\"expiry\")"))
+    assert.ok(!call.includes("fullyVerified"))
+  })
+})
+
+describe("the general profile banner is unchanged", () => {
+  const banner = (body: Record<string, unknown>) => shouldShowProfileBanner(parseIdentityVerificationSummary(body))
+
+  it("a verified user (expired Travel Mode or not) never gets the banner, only the Travel Mode popup", () => {
+    assert.equal(banner({ nextAction: "complete", fullyVerified: true, travelModeExpired: true }), false)
+    assert.equal(banner({ nextAction: "complete", fullyVerified: true, travelModeExpired: false }), false)
+  })
+
+  it("an unverified user's banner depends on nextAction only, not on Travel Mode", () => {
+    for (const expired of [true, false, undefined]) {
+      assert.equal(banner({ nextAction: "confirm_location", fullyVerified: false, travelModeExpired: expired }), true)
+      assert.equal(banner({ nextAction: "await_review", fullyVerified: false, travelModeExpired: expired }), false)
+    }
   })
 })
 
@@ -91,9 +153,6 @@ describe("dismissal is per login, keyed by the session id", () => {
     assert.deepEqual(markers, [`${TRAVEL_EXPIRY_DISMISSED_PREFIX}sid-24`])
   })
 
-  it("becoming fully verified later hides it even if it was never closed", () => {
-    assert.equal(show({ fullyVerified: true, storage: memoryStorage() }), false)
-  })
 })
 
 describe("a missing session id", () => {
