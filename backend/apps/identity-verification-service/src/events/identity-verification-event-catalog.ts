@@ -16,7 +16,7 @@ export const IDENTITY_VERIFICATION_EVENT_CATALOG: readonly EventCatalogEntry[] =
   },
   {
     eventType: IdentityVerificationEventType.TRAVEL_MODE_STILL_ACTIVE,
-    description: 'The daily reminder sweep found a profile due for a Travel Mode reminder, not on a skip day.',
+    description: 'The daily reminder sweep processed a Travel Mode reminder due on day 3 or day 7 after activation, while Travel Mode had not expired.',
     wired: true,
     emittedBy: 'TravelModeReminderJob (Doc 05 Step 10)',
   },
