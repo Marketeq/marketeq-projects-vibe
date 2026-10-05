@@ -7,7 +7,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios"
 import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
-import { getCsrfToken, setCsrfToken } from "@/src/lib/csrf"
+import { getCsrfToken, setCsrfToken, waitForCsrfToken } from "@/src/lib/csrf"
 
 interface Config extends AxiosRequestConfig {}
 
@@ -30,10 +30,17 @@ axiosInstance.interceptors.request.use(
       delete config.headers.Authorization
     }
 
-    // Attach CSRF token on state-changing requests
-    const token = getCsrfToken()
-    if (token && config.method && WRITE_METHODS.has(config.method)) {
-      config.headers.set("X-CSRF-Token", token)
+    // Attach CSRF token on state-changing requests.
+    // If the token isn't available yet (page reload), wait for the
+    // GET /auth/csrf fetch to complete before sending the request.
+    if (config.method && WRITE_METHODS.has(config.method)) {
+      if (!getCsrfToken()) {
+        await Promise.race([waitForCsrfToken(), new Promise((r) => setTimeout(r, 3000))])
+      }
+      const token = getCsrfToken()
+      if (token) {
+        config.headers.set("X-CSRF-Token", token)
+      }
     }
 
     return Promise.resolve(config)

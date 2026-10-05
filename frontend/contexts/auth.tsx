@@ -219,16 +219,18 @@ function useProvideAuth() {
             ) {
               nextUser.onboardingDismissed = true
             }
-            setUser(nextUser)
 
-            // Fetch CSRF token for the existing session (login/refresh set it
-            // via the response interceptor; this covers page reloads).
+            // Fetch CSRF token BEFORE setting user — setting user triggers
+            // the heartbeat (a POST), which needs the token to be available.
             const AUTH_BASE = getPublicAuthUrl()
             AxiosRequest.get(`${AUTH_BASE}/auth/csrf`)
               .then((r: any) => {
                 if (r?.data?.csrfToken) setCsrfToken(r.data.csrfToken)
               })
               .catch(() => {})
+              .finally(() => {
+                setUser(nextUser)
+              })
           }
         }
       })

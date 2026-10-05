@@ -31,6 +31,7 @@ export interface TalentUser {
     | {
         jobTitle?: string
         title?: string
+        headline?: string
         isDefault?: boolean
         saveAsDefault?: boolean
       }
@@ -158,34 +159,47 @@ export function talentToCardProps(
           ...defaultSkills.filter((d) => !skillNames.includes(d)),
         ].slice(0, 12)
 
+  const INVALID_ROLES = ["client", "talent"]
+  const isValidRole = (r: string) =>
+    r.length > 0 && !INVALID_ROLES.includes(r.toLowerCase())
+
   const jobTitleLabels = (u.jobTitles ?? [])
     .map((jobTitle: any) =>
       typeof jobTitle === "string"
         ? jobTitle
         : jobTitle?.jobTitle || jobTitle?.title || jobTitle?.headline || ""
     )
-    .filter(Boolean)
+    .filter((label: string) => isValidRole(label))
+  const defaultTitle = (u.jobTitles ?? []).find(
+    (
+      j
+    ): j is {
+      jobTitle?: string
+      title?: string
+      headline?: string
+      isDefault?: boolean
+      saveAsDefault?: boolean
+    } => typeof j !== "string" && Boolean(j?.isDefault || j?.saveAsDefault)
+  )
+  const defaultTitleLabel =
+    defaultTitle?.jobTitle || defaultTitle?.title || defaultTitle?.headline || ""
   const role =
-    (u.jobTitles ?? []).find(
-      (
-        j
-      ): j is {
-        jobTitle?: string
-        title?: string
-        isDefault?: boolean
-        saveAsDefault?: boolean
-      } => typeof j !== "string" && Boolean(j?.isDefault || j?.saveAsDefault)
-    )?.jobTitle ||
+    (isValidRole(defaultTitleLabel) ? defaultTitleLabel : "") ||
     jobTitleLabels[0] ||
-    u.recentJobTitle ||
+    (u.recentJobTitle && isValidRole(u.recentJobTitle)
+      ? u.recentJobTitle
+      : "") ||
     "Marketing Technologist"
 
-  const rate = u.rate
-    ? `$${u.rate}`
-    : u.rateMin && u.rateMax
-      ? `$${u.rateMin} - $${u.rateMax}`
-      : u.rateMin
-        ? `$${u.rateMin}`
+  const numRate = Number(u.rate) || 0
+  const numRateMin = Number(u.rateMin) || 0
+  const numRateMax = Number(u.rateMax) || 0
+  const rate = numRate > 0
+    ? `$${numRate}`
+    : numRateMin > 0 && numRateMax > 0
+      ? `$${numRateMin} - $${numRateMax}`
+      : numRateMin > 0
+        ? `$${numRateMin}`
         : "$85 - $120"
   const [firstNameFallback] = (u.name ?? "").trim().split(/\s+/)
 

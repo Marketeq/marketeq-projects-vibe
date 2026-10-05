@@ -1,6 +1,6 @@
 // src/lib/api.ts
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
-import { csrfHeader } from "./csrf"
+import { csrfHeader, getCsrfToken, waitForCsrfToken } from "./csrf"
 
 export const API_BASE = getPublicBackendUrl()
 
@@ -51,8 +51,12 @@ export async function apiFetch<T = any>(
   requestHeaders.set("Content-Type", "application/json")
   requestHeaders.delete("Authorization")
   requestHeaders.delete("authorization")
-  // Attach CSRF token on write methods
-  const csrf = csrfHeader((opts as any).method)
+  // Wait for CSRF token on write methods (covers page-reload race)
+  const method = ((opts as any).method ?? "GET").toUpperCase()
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method) && !getCsrfToken()) {
+    await Promise.race([waitForCsrfToken(), new Promise((r) => setTimeout(r, 3000))])
+  }
+  const csrf = csrfHeader(method)
   for (const [k, v] of Object.entries(csrf)) requestHeaders.set(k, v)
 
   const send = () =>
