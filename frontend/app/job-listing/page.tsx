@@ -20498,14 +20498,16 @@ const ExistingContractFinalReviewStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Carify what this role involves
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
+            <div className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                 {[
                   "Add more specifics",
                   "Simplify the task list",
@@ -20513,34 +20515,49 @@ const ExistingContractFinalReviewStep = ({
                 ].map((item) => (
                   <Button
                     key={item}
-                    className="h-10 rounded-full"
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      item === "Add more specifics" && "w-[185px]",
+                      item === "Simplify the task list" && "w-[200px]",
+                      item === "Group similar tasks" && "w-[202px]",
+                    )}
                     variant="outlined"
                     visual="gray"
                     disabled={roleAssistant.isLoading}
                     onClick={() => roleAssistant.run(item, "responsibilities")}
                   >
-                    {item}
+                    <span className="h-5 shrink-0">{item}</span>
                   </Button>
                 ))}
               </div>
               {roleAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
+                <p className="w-[282px] shrink-0 text-base font-normal leading-6 text-dark-blue-400">
                   {roleAssistant.result}
                 </p>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
+              <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={roleAssistant.message}
                   onChange={(event) =>
                     roleAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
+                    aria-label="Send message to Smart Assistant"
                     disabled={
                       roleAssistant.isLoading || !roleAssistant.message.trim()
                     }
