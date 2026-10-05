@@ -16093,6 +16093,15 @@ const FinalServiceReviewStep = ({
     onApply: applyAssistantValue,
     roleTitle: selectedRole,
   })
+  const serviceAssistantScrollRef = useRef<HTMLDivElement | null>(null)
+  const [showServiceAssistantFollowUps, setShowServiceAssistantFollowUps] =
+    useState(false)
+  const latestServiceAssistantItem =
+    serviceAssistant.history[serviceAssistant.history.length - 1]
+  const serviceAssistantFollowUpSuggestions =
+    latestServiceAssistantItem?.status === "success"
+      ? (latestServiceAssistantItem.suggestions ?? [])
+      : []
   const serviceAssistantQuickActions: Record<
     SmartAssistantEditableField,
     string[]
@@ -16133,6 +16142,20 @@ const FinalServiceReviewStep = ({
       suggestion === "Simplify the task list" && "w-[184px]",
       suggestion === "Group similar tasks" && "w-[181px]"
     )
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = serviceAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [serviceAssistant.history])
+
+  useEffect(() => {
+    setShowServiceAssistantFollowUps(false)
+  }, [latestServiceAssistantItem?.id])
+
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
       setSelectedRole(roleOptions[0] ?? "")
@@ -16621,14 +16644,19 @@ const FinalServiceReviewStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 flex flex-col items-start gap-2">
+            <div
+              ref={serviceAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm font-normal leading-5 text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                 {serviceAssistantQuickActions[activeAssistantField].map((item) => (
                   <Button
                     key={`${activeAssistantField}-${item}`}
@@ -16647,24 +16675,223 @@ const FinalServiceReviewStep = ({
                   </Button>
                 ))}
               </div>
-              {serviceAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
-                  {serviceAssistant.result}
-                </p>
+              {serviceAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {serviceAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === serviceAssistant.history.length - 1
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24)
+                    )
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs font-normal leading-[18px] text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm font-normal leading-5 text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return
+
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText
+                                  )
+                                  serviceAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result
+                                  )
+                                }}
+                              >
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={serviceAssistant.isLoading}
+                              onClick={() => serviceAssistant.retry(item)}
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
+              {serviceAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                  <button
+                    type="button"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                    onClick={() =>
+                      setShowServiceAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showServiceAssistantFollowUps
+                        ? "Use this suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showServiceAssistantFollowUps && "rotate-180"
+                      )}
+                    />
+                  </button>
+                  {showServiceAssistantFollowUps ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
+                      {serviceAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getServiceAssistantSuggestionWidthClass(
+                              suggestion
+                            ) || "w-fit"
+                          )}
+                          disabled={serviceAssistant.isLoading}
+                          onClick={() =>
+                            serviceAssistant.run(
+                              suggestion,
+                              latestServiceAssistantItem?.field ??
+                                activeAssistantField
+                            )
+                          }
+                        >
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  serviceAssistant.selectedText ? "h-[148px]" : "h-[100px]"
+                )}
+              >
+                {serviceAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
+                      “{serviceAssistant.selectedText}
+                    </p>
+                    <button
+                      type="button"
+                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={serviceAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </button>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
-                  placeholder="I want to change..."
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    serviceAssistant.selectedText ? "h-5" : "h-10"
+                  )}
+                  placeholder={
+                    serviceAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={serviceAssistant.message}
                   onChange={(event) =>
                     serviceAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
                     type="button"
                     disabled={
                       serviceAssistant.isLoading ||
@@ -20157,6 +20384,8 @@ const ExistingContractFinalReviewStep = ({
   );
   const [includeNda, setIncludeNda] = useState(false);
   const [responsibilities, setResponsibilities] = useState("");
+  const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
+    useState(false);
   const didGenerateRoleDescriptionsRef = useRef(false);
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
     useDynamicFinalReviewSkills();
@@ -20178,7 +20407,23 @@ const ExistingContractFinalReviewStep = ({
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
+    roleTitle: selectedRole,
   });
+  const roleAssistantScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showRoleAssistantFollowUps, setShowRoleAssistantFollowUps] =
+    useState(false);
+  const latestRoleAssistantItem =
+    roleAssistant.history[roleAssistant.history.length - 1];
+  const roleAssistantFollowUpSuggestions =
+    latestRoleAssistantItem?.status === "success"
+      ? (latestRoleAssistantItem.suggestions ?? [])
+      : [];
+  const getRoleAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]",
+    );
   const loadSavedRoleDescription = useCallback(
     (draft: { responsibilities?: string; skills?: string[] }) => {
       if (draft.responsibilities !== undefined) {
@@ -20200,6 +20445,20 @@ const ExistingContractFinalReviewStep = ({
   });
 
   useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = roleAssistantScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [roleAssistant.history]);
+
+  useEffect(() => {
+    setShowRoleAssistantFollowUps(false);
+  }, [latestRoleAssistantItem?.id]);
+
+  useEffect(() => {
     if (roleOptions.length === 0 || roleOptions.includes(selectedRole)) {
       return;
     }
@@ -20213,6 +20472,7 @@ const ExistingContractFinalReviewStep = ({
     didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
+      setIsGeneratingRoleDescriptions(true);
       try {
         const response = await JobListingAPI.GenerateRoleDescriptions(
           jobListingId,
@@ -20234,6 +20494,8 @@ const ExistingContractFinalReviewStep = ({
         }
       } catch (error) {
         console.error("Failed to generate role descriptions", error);
+      } finally {
+        setIsGeneratingRoleDescriptions(false);
       }
     };
 
@@ -20441,6 +20703,10 @@ const ExistingContractFinalReviewStep = ({
                       title="Responsibilities"
                       initialValue={responsibilities}
                       placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isGeneratingRoleDescriptions}
+                      onSmartAssistant={(selection) => {
+                        roleAssistant.populateSelectedText(selection);
+                      }}
                       onChange={setResponsibilities}
                     />
 
@@ -20498,7 +20764,10 @@ const ExistingContractFinalReviewStep = ({
                 className="size-5 shrink-0"
               />
             </div>
-            <div className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg">
+            <div
+              ref={roleAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
                   What do you want to do?
@@ -20517,9 +20786,7 @@ const ExistingContractFinalReviewStep = ({
                     key={item}
                     className={cn(
                       "h-10 justify-start rounded-full bg-white py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                      item === "Add more specifics" && "w-[185px]",
-                      item === "Simplify the task list" && "w-[200px]",
-                      item === "Group similar tasks" && "w-[202px]",
+                      getRoleAssistantSuggestionWidthClass(item),
                     )}
                     variant="outlined"
                     visual="gray"
@@ -20530,17 +20797,204 @@ const ExistingContractFinalReviewStep = ({
                   </Button>
                 ))}
               </div>
-              {roleAssistant.result ? (
-                <p className="w-[282px] shrink-0 text-base font-normal leading-6 text-dark-blue-400">
-                  {roleAssistant.result}
-                </p>
+              {roleAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {roleAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === roleAssistant.history.length - 1;
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean);
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24),
+                    );
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs leading-[18px] font-normal text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm leading-5 font-normal text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base leading-6 font-normal text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs leading-[18px] font-normal text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs leading-[18px] font-normal text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base leading-6 font-normal text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base leading-6 font-normal text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base leading-6 font-normal text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>
+                                        {line}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return;
+
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText,
+                                  );
+                                  roleAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result,
+                                  );
+                                }}
+                              >
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={roleAssistant.isLoading}
+                              onClick={() => roleAssistant.retry(item)}
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : null}
             </div>
-            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
-              <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
+              {roleAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                  <button
+                    type="button"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs leading-[18px] font-normal text-gray-400"
+                    onClick={() =>
+                      setShowRoleAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showRoleAssistantFollowUps
+                        ? "Use this suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showRoleAssistantFollowUps && "rotate-180",
+                      )}
+                    />
+                  </button>
+                  {showRoleAssistantFollowUps ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
+                      {roleAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getRoleAssistantSuggestionWidthClass(suggestion) ||
+                              "w-fit",
+                          )}
+                          disabled={roleAssistant.isLoading}
+                          onClick={() =>
+                            roleAssistant.run(suggestion, "responsibilities")
+                          }
+                        >
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  roleAssistant.selectedText ? "h-[148px]" : "h-[100px]",
+                )}
+              >
+                {roleAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm leading-5 font-normal text-dark-blue-400">
+                      “{roleAssistant.selectedText}
+                    </p>
+                    <button
+                      type="button"
+                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={roleAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </button>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
-                  placeholder="I want to change..."
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    roleAssistant.selectedText ? "h-5" : "h-10",
+                  )}
+                  placeholder={
+                    roleAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={roleAssistant.message}
                   onChange={(event) =>
                     roleAssistant.setMessage(event.target.value)
@@ -20557,6 +21011,7 @@ const ExistingContractFinalReviewStep = ({
                   />
                   <Button
                     className="size-6 rounded-full p-1 shadow-none"
+                    type="button"
                     aria-label="Send message to Smart Assistant"
                     disabled={
                       roleAssistant.isLoading || !roleAssistant.message.trim()
