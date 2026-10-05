@@ -71,7 +71,9 @@ import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-att
 import { NextAction } from '../common/status/verification-summary';
 import { VerificationSummaryService } from './verification-summary.service';
 
-const FIRST_REMINDER_DELAY_MS = 5 * 60 * 1000;
+// First Travel Mode reminder is due 3 days after activation (approved
+// reminder days: 3 and 7).
+const FIRST_REMINDER_AFTER_ACTIVATION_MS = 3 * 24 * 60 * 60 * 1000;
 
 export interface InternalCallerStatus {
   identityVerificationStatus: IdentityVerificationStatus;
@@ -323,7 +325,10 @@ export class IdentityVerificationService {
     profile.declaredDuration = duration;
     profile.travelModeActive = true;
     profile.travelModeActivatedAt = now;
-    profile.nextTravelReminderAt = new Date(now.getTime() + FIRST_REMINDER_DELAY_MS);
+    // A new activation starts its own reminder schedule: nothing from a
+    // previous activation may suppress it.
+    profile.lastTravelReminderSentAt = null;
+    profile.nextTravelReminderAt = new Date(now.getTime() + FIRST_REMINDER_AFTER_ACTIVATION_MS);
     const saved = await this.profileRepository.save(profile);
 
     await this.events.publish({

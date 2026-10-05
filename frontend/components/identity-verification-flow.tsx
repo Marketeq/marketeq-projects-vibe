@@ -120,10 +120,7 @@ import {
   recordTravelDuration,
   type TravelModeDeps,
 } from "@/src/lib/api/travel-mode-backend"
-import {
-  scheduleTravelModeReminderMock,
-  type TravelDuration,
-} from "@/src/lib/api/travel-mode-reminder"
+import { type TravelDuration } from "@/src/lib/api/travel-mode-reminder"
 import {
   getAcceptedDocuments,
   type AcceptedDocumentTypeId,
@@ -859,11 +856,6 @@ export function IdentityVerificationFlow({
     )
     setTravelModeNotificationOpen(true)
     onOpenChange(false)
-    scheduleTravelModeReminderMock(travelDuration, () => {
-      if (getIsMounted()) {
-        setTravelReminderOpen(true)
-      }
-    })
   }
 
   // Guards against a second capture firing (e.g. a fast double-click) while
