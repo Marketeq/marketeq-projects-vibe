@@ -5,6 +5,7 @@ import {
   RetryLimitExceededException,
 } from '../common/errors/domain-exceptions';
 import {
+  DeclaredDuration,
   IdentityVerificationStatus as I,
   LocationVerificationStatus as L,
   TravelClassification,
@@ -14,6 +15,9 @@ import {
 // would refuse a NEW session for a home-country reason. Same inputs, both sides.
 describe('verification summary ↔ real start path parity (new-session requirements)', () => {
   const T0 = new Date('2026-10-01T12:00:00.000Z');
+  const DAY = 24 * 60 * 60 * 1000;
+  // A valid activation still in force: 13 days, started 1 day ago.
+  const ACTIVE_TRAVEL = { travelModeActivatedAt: new Date(T0.getTime() - DAY), declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS };
   beforeEach(() => jest.useFakeTimers({ now: T0, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }));
   afterEach(() => {
     jest.useRealTimers();
@@ -29,6 +33,8 @@ describe('verification summary ↔ real start path parity (new-session requireme
     verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 60_000),
     travelModeActive: false,
     travelClassification: null,
+    travelModeActivatedAt: null,
+    declaredDuration: null,
     failedFinalAt: null,
     ...over,
   });
@@ -94,6 +100,7 @@ describe('verification summary ↔ real start path parity (new-session requireme
       verifiedHomeCountryConfirmedAt: at,
       travelModeActive,
       travelClassification: classification,
+      ...(travelModeActive ? ACTIVE_TRAVEL : {}),
     });
     const summary = buildVerificationSummary({
       identityStatus: status,
@@ -105,6 +112,7 @@ describe('verification summary ↔ real start path parity (new-session requireme
       verifiedHomeCountryConfirmedAt: at,
       travelModeActive,
       travelClassification: classification,
+      ...(travelModeActive ? ACTIVE_TRAVEL : {}),
       nowMs: Date.now(),
     });
     const real = await startsFor(profile);
@@ -113,5 +121,45 @@ describe('verification summary ↔ real start path parity (new-session requireme
     if (!real.blockedForHomeCountry) {
       expect(['start_identity', 'retry_identity', 'reverify_identity']).toContain(summary.nextAction);
     }
+  });
+
+  // Every Travel Mode state, including the exact end instant, must agree between
+  // the summary and the real start path (the fake clock is frozen at T0).
+  const SIX_DAYS = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
+  const TRAVELING = TravelClassification.TEMPORARILY_TRAVELING;
+  const travelStates: Array<[string, Record<string, unknown>, boolean]> = [
+    ['none', {}, false],
+    ['permanently relocated alone', { travelClassification: TravelClassification.PERMANENTLY_RELOCATED }, false],
+    ['pending duration', { travelClassification: TRAVELING }, true],
+    ['active', { travelModeActive: true, travelClassification: TRAVELING, ...ACTIVE_TRAVEL }, true],
+    ['active, 1 ms before the end', { travelModeActive: true, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 6 * DAY + 1) }, true],
+    ['expired, exactly at the end', { travelModeActive: true, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 6 * DAY) }, false],
+    ['expired, raw flag already false', { travelModeActive: false, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 7 * DAY) }, false],
+    ['invalid raw-active data, no classification', { travelModeActive: true }, false],
+    ['invalid raw-active data, temporarily traveling', { travelModeActive: true, travelClassification: TRAVELING }, true],
+    ['invalid raw-active data, unknown duration', { travelModeActive: true, travelClassification: TRAVELING, travelModeActivatedAt: new Date(T0.getTime() - DAY), declaredDuration: 'forever' }, true],
+  ];
+
+  it.each(travelStates)('Travel Mode state: %s', async (_label, over, blocked) => {
+    const profile = profileRow(over);
+    const summary = buildVerificationSummary({
+      identityStatus: I.UNSTARTED,
+      locationStatus: L.VERIFIED,
+      failedFinalAt: null,
+      hostedCycleAttempts: 0,
+      hasActiveHostedSession: false,
+      verifiedHomeCountry: profile.verifiedHomeCountry,
+      verifiedHomeCountryConfirmedAt: profile.verifiedHomeCountryConfirmedAt,
+      travelModeActive: profile.travelModeActive as boolean,
+      travelClassification: profile.travelClassification as TravelClassification | null,
+      travelModeActivatedAt: profile.travelModeActivatedAt,
+      declaredDuration: profile.declaredDuration,
+      nowMs: Date.now(),
+    });
+    const real = await startsFor(profile);
+    expect(real.other).toBeNull();
+    expect(real.blockedForHomeCountry).toBe(blocked);
+    expect(summary.nextAction === 'confirm_location').toBe(blocked);
+    if (!blocked) expect(summary.nextAction).toBe('start_identity');
   });
 });

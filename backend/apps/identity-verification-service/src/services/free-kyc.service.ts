@@ -14,7 +14,6 @@ import {
   HostedKycSessionStatus,
   IdentityVerificationStatus,
   LocationVerificationStatus,
-  TravelClassification,
 } from '../entities/enums/identity-verification.enums';
 import {
   HOSTED_BIOMETRIC_SESSION_PROVIDER,
@@ -58,6 +57,7 @@ import {
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
 import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
+import { travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
 import {
   NOTIFICATION_EVENT_PUBLISHER,
   NotificationEventPublisher,
@@ -401,7 +401,8 @@ export class FreeKycService {
   }
 
   // A current, server-recorded home-country confirmation, with no Travel
-  // Mode. POST /home-country/confirm sets verifiedHomeCountry, its
+  // Mode in force (active, or pending a duration; an expired one is
+  // ignored). POST /home-country/confirm sets verifiedHomeCountry, its
   // timestamp and the verified status from a live server-side IP lookup
   // (never a country sent by the frontend).
   private assertHomeCountryConfirmed(
@@ -414,7 +415,7 @@ export class FreeKycService {
     };
     if (profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED) fail('location_not_verified');
     if (!profile.verifiedHomeCountry || !profile.verifiedHomeCountryConfirmedAt) fail('confirmation_missing');
-    if (profile.travelModeActive || profile.travelClassification === TravelClassification.TEMPORARILY_TRAVELING) {
+    if (travelModeBlocksNewSession(profile, Date.now())) {
       fail('travel_mode_active');
     }
     if (options.requireFresh) {

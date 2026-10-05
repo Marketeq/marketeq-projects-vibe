@@ -6,6 +6,7 @@ import {
 import { FAILED_FINAL_COOLDOWN_MS, hasFailedFinalCooldownElapsed } from '../attempt-limit/hosted-kyc-attempt-cycle';
 import { RETRY_LIMIT } from '../attempt-limit/account-wide-attempt-count';
 import { HOME_COUNTRY_CONFIRMATION_WINDOW_MS } from '../../services/free-kyc.service';
+import { travelModeBlocksNewSession } from '../travel-mode/travel-mode-state';
 
 // Backward-compatible verification summary: additive fields exposed on
 // GET /v1/identity-verification/me (the account holder's own view; TRVG2 §6 lets
@@ -79,13 +80,18 @@ export interface VerificationSummaryInput {
   verifiedHomeCountryConfirmedAt: unknown;
   travelModeActive: boolean;
   travelClassification: TravelClassification | null;
+  // Activation time and declared duration decide whether Travel Mode is still
+  // in force (see common/travel-mode/travel-mode-state.ts). Absent means null.
+  travelModeActivatedAt?: unknown;
+  declaredDuration?: unknown;
   nowMs: number;
 }
 
 /**
  * Mirrors the rules FreeKycService enforces before creating a NEW session:
- * location verified, a home country on record, travel mode off, and a
- * confirmation no older than the 15-minute window. (Resuming needs none of it.)
+ * location verified, a home country on record, no Travel Mode in force (active or
+ * pending a duration; an expired one does not count), and a confirmation no older
+ * than the 15-minute window. (Resuming needs none of it.)
  * A parity test runs this against the real start path so the two cannot drift.
  */
 export function newSessionRequirementsMet(input: VerificationSummaryInput): boolean {
@@ -93,7 +99,7 @@ export function newSessionRequirementsMet(input: VerificationSummaryInput): bool
   if (!input.verifiedHomeCountry) return false;
   const confirmedAt = input.verifiedHomeCountryConfirmedAt;
   if (!(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) return false;
-  if (input.travelModeActive || input.travelClassification === TravelClassification.TEMPORARILY_TRAVELING) return false;
+  if (travelModeBlocksNewSession(input, input.nowMs)) return false;
   return input.nowMs - confirmedAt.getTime() <= HOME_COUNTRY_CONFIRMATION_WINDOW_MS;
 }
 

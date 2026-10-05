@@ -10,6 +10,7 @@ import { IdentityDocument } from '../entities/identity-document.entity';
 import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import { ProcessedWebhookEvent } from '../entities/processed-webhook-event.entity';
 import {
+  DeclaredDuration,
   HostedKycSessionStatus,
   IdentityVerificationStatus,
   LocationVerificationStatus,
@@ -290,7 +291,7 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       ['missing confirmation', { verifiedHomeCountryConfirmedAt: null }, 'confirmation_missing'],
       ['location not verified', { locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }, 'location_not_verified'],
       ['no home country', { verifiedHomeCountry: null }, 'confirmation_missing'],
-      ['travel mode active', { travelModeActive: true }, 'travel_mode_active'],
+      ['travel mode active', { travelModeActive: true, travelModeActivatedAt: new Date(T0.getTime() - 24 * 60 * 60 * 1000), declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS }, 'travel_mode_active'],
       ['temporary-travel classification', { travelClassification: TravelClassification.TEMPORARILY_TRAVELING }, 'travel_mode_active'],
     ])('is blocked by %s and Didit is never called', async (_label, over, reason) => {
       const w = world({ profile: over });

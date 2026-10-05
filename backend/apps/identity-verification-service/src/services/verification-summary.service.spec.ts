@@ -1,5 +1,5 @@
 import { VerificationSummaryService } from './verification-summary.service';
-import { HostedKycSessionStatus, IdentityVerificationStatus, LocationVerificationStatus } from '../entities/enums/identity-verification.enums';
+import { DeclaredDuration, HostedKycSessionStatus, IdentityVerificationStatus, LocationVerificationStatus, TravelClassification } from '../entities/enums/identity-verification.enums';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 
 describe('VerificationSummaryService (hosted Free KYC data only, read-only)', () => {
@@ -49,6 +49,40 @@ describe('VerificationSummaryService (hosted Free KYC data only, read-only)', ()
     );
     const s = await service.summarize(profile({ identityVerificationStatus: IdentityVerificationStatus.FAILED }), NOW);
     expect(s).toMatchObject({ attemptsUsed: 2, attemptsRemaining: 1, nextAction: 'retry_identity' });
+  });
+
+  describe('passes the Travel Mode activation fields through to the rule', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const travelling = (activatedAtMs: number, over: Row = {}) =>
+      profile({
+        travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+        travelModeActive: true,
+        travelModeActivatedAt: new Date(activatedAtMs),
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+        ...over,
+      });
+
+    it('active Travel Mode asks for confirm_location, then is startable exactly at the end', async () => {
+      const { service } = build();
+      const activated = NOW - DAY;
+      const endsAt = activated + 6 * DAY;
+      expect((await service.summarize(travelling(activated), endsAt - 1)).nextAction).toBe('confirm_location');
+      expect((await service.summarize(travelling(activated, { verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000) }), endsAt)).nextAction).toBe('start_identity');
+    });
+
+    it('an expired period is startable whether the raw flag is true or false', async () => {
+      const { service } = build();
+      for (const travelModeActive of [true, false]) {
+        const s = await service.summarize(travelling(NOW - 7 * DAY, { travelModeActive }), NOW);
+        expect(s.nextAction).toBe('start_identity');
+      }
+    });
+
+    it('a pending duration still asks for confirm_location', async () => {
+      const { service } = build();
+      const s = await service.summarize(profile({ travelClassification: TravelClassification.TEMPORARILY_TRAVELING }), NOW);
+      expect(s.nextAction).toBe('confirm_location');
+    });
   });
 
   it('legacy attempt rows (no hosted session) never count', async () => {

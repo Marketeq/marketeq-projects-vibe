@@ -8,6 +8,7 @@ import {
 import { FAILED_FINAL_COOLDOWN_MS } from '../attempt-limit/hosted-kyc-attempt-cycle';
 import { HOME_COUNTRY_CONFIRMATION_WINDOW_MS } from '../../services/free-kyc.service';
 import {
+  DeclaredDuration,
   IdentityVerificationStatus as I,
   LocationVerificationStatus as L,
   TravelClassification,
@@ -18,6 +19,11 @@ describe('verification summary (backward-compatible additions + stable nextActio
   const T0 = new Date(NOW);
   const FRESH = new Date(NOW - 60_000);
   const STALE = new Date(NOW - HOME_COUNTRY_CONFIRMATION_WINDOW_MS - 1);
+  const DAY = 24 * 60 * 60 * 1000;
+  // A valid Travel Mode activation: 13 days, started 1 day ago (still in force).
+  const ACTIVE_TRAVEL = { travelModeActivatedAt: new Date(NOW - DAY), declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS };
+  // A valid activation whose 6 days ended 1 day ago.
+  const ENDED_TRAVEL = { travelModeActivatedAt: new Date(NOW - 7 * DAY), declaredDuration: DeclaredDuration.A_FEW_DAYS };
 
   // A profile whose location is confirmed and fresh, no active session, no attempts.
   const base = (over: Partial<VerificationSummaryInput> = {}): VerificationSummaryInput => ({
@@ -76,12 +82,19 @@ describe('verification summary (backward-compatible additions + stable nextActio
       ['unstarted, no home country on record', { verifiedHomeCountry: null }, 'confirm_location'],
       ['unstarted, no confirmation time', { verifiedHomeCountryConfirmedAt: null }, 'confirm_location'],
       ['unstarted, confirmation stale (older than 15 minutes)', { verifiedHomeCountryConfirmedAt: STALE }, 'confirm_location'],
-      ['unstarted, travel mode active', { travelModeActive: true }, 'confirm_location'],
-      ['unstarted, temporary-travel classification', travelling, 'confirm_location'],
+      ['unstarted, travel mode active', { travelModeActive: true, ...ACTIVE_TRAVEL }, 'confirm_location'],
+      ['unstarted, temporary-travel classification (pending duration)', travelling, 'confirm_location'],
+      ['unstarted, invalid raw-active data with a temporary-travel classification', { travelModeActive: true, ...travelling }, 'confirm_location'],
       ['failed with stale confirmation', { identityStatus: I.FAILED, verifiedHomeCountryConfirmedAt: STALE }, 'confirm_location'],
       ['expired with location not verified', { identityStatus: I.EXPIRED, locationStatus: L.NOT_VERIFIED }, 'confirm_location'],
       // start_identity
       ['unstarted, location confirmed and fresh', {}, 'start_identity'],
+      ['unstarted, Travel Mode expired (raw flag still true)', { travelModeActive: true, ...travelling, ...ENDED_TRAVEL }, 'start_identity'],
+      ['unstarted, Travel Mode expired (raw flag already false)', { travelModeActive: false, ...travelling, ...ENDED_TRAVEL }, 'start_identity'],
+      ['unstarted, invalid raw-active data and no temporary-travel classification', { travelModeActive: true }, 'start_identity'],
+      ['unstarted, permanently relocated classification alone', { travelClassification: TravelClassification.PERMANENTLY_RELOCATED }, 'start_identity'],
+      ['failed after expired Travel Mode', { identityStatus: I.FAILED, ...travelling, ...ENDED_TRAVEL }, 'retry_identity'],
+      ['expired verification after expired Travel Mode', { identityStatus: I.EXPIRED, ...travelling, ...ENDED_TRAVEL }, 'reverify_identity'],
       ['in progress but no unfinished session to resume', { identityStatus: I.IN_PROGRESS }, 'start_identity'],
       // continue_identity (resume needs no new-session checks)
       ['in progress with an unfinished session', { identityStatus: I.IN_PROGRESS, hasActiveHostedSession: true }, 'continue_identity'],
@@ -124,7 +137,7 @@ describe('verification summary (backward-compatible additions + stable nextActio
               for (const travelModeActive of [true, false]) {
                 for (const failedFinalAt of [T0, null]) {
                   combinations++;
-                  const input = base({ identityStatus, locationStatus, hasActiveHostedSession, travelModeActive, failedFinalAt, ...conf });
+                  const input = base({ identityStatus, locationStatus, hasActiveHostedSession, travelModeActive, failedFinalAt, ...(travelModeActive ? ACTIVE_TRAVEL : {}), ...conf });
                   const s = buildVerificationSummary(input);
                   expect(NEXT_ACTIONS).toContain(s.nextAction);
                   expect(s.fullyVerified).toBe(s.nextAction === 'complete');
@@ -152,6 +165,34 @@ describe('verification summary (backward-compatible additions + stable nextActio
     });
   });
 
+  describe('Travel Mode state in the summary (explicit clock)', () => {
+    const traveling = { travelClassification: TravelClassification.TEMPORARILY_TRAVELING, travelModeActive: true };
+    const endsAt = NOW - DAY + 13 * DAY; // ACTIVE_TRAVEL: started 1 day ago, 13 days long
+
+    it('active Travel Mode asks for confirm_location until the last millisecond', () => {
+      const justBefore = { ...traveling, ...ACTIVE_TRAVEL, nowMs: endsAt - 1, verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000) };
+      expect(summary(justBefore).nextAction).toBe('confirm_location');
+    });
+
+    it('exactly at the end the account is startable again', () => {
+      // The confirmation is kept fresh relative to the later clock so only Travel Mode is under test.
+      const atEnd = { ...traveling, ...ACTIVE_TRAVEL, nowMs: endsAt, verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000) };
+      expect(summary(atEnd).nextAction).toBe('start_identity');
+      expect(newSessionRequirementsMet(base(atEnd))).toBe(true);
+    });
+
+    it('a pending duration (classified, never activated) still asks for confirm_location', () => {
+      expect(summary({ travelClassification: TravelClassification.TEMPORARILY_TRAVELING }).nextAction).toBe('confirm_location');
+    });
+
+    it('an expired period neither changes the other fields nor fakes verification', () => {
+      const s = summary({ ...traveling, ...ENDED_TRAVEL });
+      expect(s.fullyVerified).toBe(false);
+      expect(s.attemptsRemaining).toBe(3);
+      expect(s.nextAction).toBe('start_identity');
+    });
+  });
+
   describe('new-session requirements (the confirm_location rule)', () => {
     it('are met only with verified location, a home country, travel off and a confirmation within 15 minutes', () => {
       expect(newSessionRequirementsMet(base())).toBe(true);
@@ -159,7 +200,7 @@ describe('verification summary (backward-compatible additions + stable nextActio
       expect(newSessionRequirementsMet(base({ verifiedHomeCountry: null }))).toBe(false);
       expect(newSessionRequirementsMet(base({ verifiedHomeCountryConfirmedAt: null }))).toBe(false);
       expect(newSessionRequirementsMet(base({ verifiedHomeCountryConfirmedAt: 'not-a-date' }))).toBe(false);
-      expect(newSessionRequirementsMet(base({ travelModeActive: true }))).toBe(false);
+      expect(newSessionRequirementsMet(base({ travelModeActive: true, ...ACTIVE_TRAVEL }))).toBe(false);
     });
 
     it('the 15-minute edge: exactly at the window is fine, one millisecond past is not', () => {

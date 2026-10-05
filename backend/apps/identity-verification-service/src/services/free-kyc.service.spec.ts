@@ -9,6 +9,7 @@ import { IdentityDocument } from '../entities/identity-document.entity';
 import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import { ProcessedWebhookEvent } from '../entities/processed-webhook-event.entity';
 import {
+  DeclaredDuration,
   HostedKycSessionStatus,
   IdentityVerificationStatus,
   LocationVerificationStatus,
@@ -286,7 +287,7 @@ describe('FreeKycService', () => {
     });
 
     it('rejects while Travel Mode is active', async () => {
-      const { service, provider } = build({ profile: confirmedProfile({ travelModeActive: true, travelClassification: TravelClassification.TEMPORARILY_TRAVELING }) });
+      const { service, provider } = build({ profile: confirmedProfile({ travelModeActive: true, travelClassification: TravelClassification.TEMPORARILY_TRAVELING, travelModeActivatedAt: new Date(Date.now() - 24 * 60 * 60 * 1000), declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS }) });
       const r = await reasonOf(service.startOrResume('user-1'));
       expect(r?.type).toBeInstanceOf(HomeCountryConfirmationRequiredException);
       expect(r?.reason).toBe('travel_mode_active');
@@ -301,6 +302,69 @@ describe('FreeKycService', () => {
     it('allows a profile whose travel state is cleared (travel ended: not active, no temporary classification)', async () => {
       const { service } = build({ profile: confirmedProfile({ travelModeActive: false, travelClassification: null }) });
       await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+    });
+
+    describe('Travel Mode state at the start rule (explicit clock)', () => {
+      const DAY = 24 * 60 * 60 * 1000;
+      const NOW = Date.UTC(2026, 9, 1, 12, 0, 0);
+      const TRAVELING = TravelClassification.TEMPORARILY_TRAVELING;
+      const sixDays = (activatedAtMs: number) => ({
+        travelClassification: TRAVELING,
+        travelModeActive: true,
+        travelModeActivatedAt: new Date(activatedAtMs),
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+        verifiedHomeCountryConfirmedAt: new Date(NOW - 60_000),
+      });
+      beforeEach(() => {
+        jest.spyOn(Date, 'now').mockReturnValue(NOW);
+      });
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('1 ms before the end Travel Mode still blocks', async () => {
+        const { service, provider } = build({ profile: confirmedProfile(sixDays(NOW - 6 * DAY + 1)) });
+        expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
+        expect(provider.createKycSession).not.toHaveBeenCalled();
+      });
+
+      it('exactly at the end an expired Travel Mode does not block (raw flag still true)', async () => {
+        const { service } = build({ profile: confirmedProfile(sixDays(NOW - 6 * DAY)) });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      });
+
+      it('an expired Travel Mode does not block when the raw flag is already false', async () => {
+        const { service } = build({ profile: confirmedProfile({ ...sixDays(NOW - 9 * DAY), travelModeActive: false }) });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      });
+
+      it('a pending duration (classified, never activated) still blocks', async () => {
+        const { service } = build({ profile: confirmedProfile({ travelClassification: TRAVELING, verifiedHomeCountryConfirmedAt: new Date(NOW - 60_000) }) });
+        expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
+      });
+
+      it('invalid raw-active data with a temporarily_traveling classification blocks', async () => {
+        const { service } = build({ profile: confirmedProfile({ travelModeActive: true, travelClassification: TRAVELING, verifiedHomeCountryConfirmedAt: new Date(NOW - 60_000) }) });
+        expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('travel_mode_active');
+      });
+
+      it.each([
+        ['no classification', null],
+        ['permanently relocated', TravelClassification.PERMANENTLY_RELOCATED],
+      ])('invalid raw-active data with %s does not block', async (_label, classification) => {
+        const { service } = build({ profile: confirmedProfile({ travelModeActive: true, travelClassification: classification, verifiedHomeCountryConfirmedAt: new Date(NOW - 60_000) }) });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      });
+
+      it('an unrelated classification keeps its existing behavior: relocated alone never blocks', async () => {
+        const { service } = build({ profile: confirmedProfile({ travelClassification: TravelClassification.PERMANENTLY_RELOCATED, verifiedHomeCountryConfirmedAt: new Date(NOW - 60_000) }) });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      });
+
+      it('an expired Travel Mode does not hide the other start rules (stale confirmation still blocks)', async () => {
+        const { service } = build({ profile: confirmedProfile({ ...sixDays(NOW - 7 * DAY), verifiedHomeCountryConfirmedAt: new Date(NOW - HOME_COUNTRY_CONFIRMATION_WINDOW_MS - 1) }) });
+        expect((await reasonOf(service.startOrResume('user-1')))?.reason).toBe('confirmation_stale');
+      });
     });
 
     it.each([
