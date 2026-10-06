@@ -12890,9 +12890,27 @@ const ProjectScopeEditStep = ({
     )
   }
 
+  const markProjectAssistantHistoryItemPending = (
+    id: string,
+    listingBefore: ProjectAssistantListingSnapshot
+  ) => {
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              result: undefined,
+              status: "pending",
+              listingBefore,
+              listingAfter: undefined,
+            }
+          : item
+      )
+    )
+  }
+
   useEffect(() => {
-    const latestHistoryItem = assistantHistory[assistantHistory.length - 1]
-    if (!latestHistoryItem || latestHistoryItem.status === "pending") return
+    if (assistantHistory.length === 0) return
 
     window.requestAnimationFrame(() => {
       const scrollContainer = assistantChatScrollRef.current
@@ -12903,16 +12921,10 @@ const ProjectScopeEditStep = ({
     })
   }, [assistantHistory])
 
-  const runProjectAssistant = async (message: string) => {
-    const prompt = message.trim()
-    if (!prompt) return
-
-    const listingBefore = getProjectAssistantListingSnapshot()
-    assistantUndoSnapshotRef.current = listingBefore
-    setAssistantLastPrompt(prompt)
-    const historyId = startProjectAssistantHistoryItem(prompt, listingBefore)
-    setAssistantMessage("")
-
+  const runProjectAssistantRequest = async (
+    historyId: string,
+    prompt: string
+  ) => {
     if (!jobListingId) {
       completeProjectAssistantHistoryItem(
         historyId,
@@ -12983,6 +12995,32 @@ const ProjectScopeEditStep = ({
     } finally {
       setIsAssistantLoading(false)
     }
+  }
+
+  const runProjectAssistant = async (message: string) => {
+    const prompt = message.trim()
+    if (!prompt) return
+
+    const listingBefore = getProjectAssistantListingSnapshot()
+    assistantUndoSnapshotRef.current = listingBefore
+    setAssistantLastPrompt(prompt)
+    const historyId = startProjectAssistantHistoryItem(prompt, listingBefore)
+    setAssistantMessage("")
+
+    await runProjectAssistantRequest(historyId, prompt)
+  }
+
+  const retryProjectAssistantHistoryItem = async (
+    item: ProjectAssistantHistoryItem
+  ) => {
+    const prompt = item.prompt.trim()
+    if (!prompt || isAssistantLoading) return
+
+    const listingBefore = getProjectAssistantListingSnapshot()
+    assistantUndoSnapshotRef.current = listingBefore
+    setAssistantLastPrompt(prompt)
+    markProjectAssistantHistoryItemPending(item.id, listingBefore)
+    await runProjectAssistantRequest(item.id, prompt)
   }
 
   const undoProjectAssistant = async () => {
@@ -13388,7 +13426,7 @@ const ProjectScopeEditStep = ({
               </div>
             </div>
 
-            <div className="mt-6 space-y-3">
+            <div className="mt-6 space-y-3 pb-8">
               {isAssistantLoading || isBudgetLoading ? (
                 <div
                   className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
@@ -14056,7 +14094,7 @@ const ProjectScopeEditStep = ({
             </div>
             <div
               ref={assistantChatScrollRef}
-              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              className="flex min-h-0 max-w-full shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
             >
               <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
                 <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
@@ -14150,7 +14188,11 @@ const ProjectScopeEditStep = ({
                             {item.prompt}
                           </p>
                         </div>
-                        {item.status !== "pending" ? (
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
                           <div className="text-base font-normal leading-6 text-dark-blue-400">
                             {item.status === "error" ? (
                               <p>{item.result}</p>
@@ -14168,7 +14210,7 @@ const ProjectScopeEditStep = ({
                               </>
                             )}
                           </div>
-                        ) : null}
+                        )}
                         {canRestore ? (
                           <Button
                             type="button"
@@ -14188,9 +14230,11 @@ const ProjectScopeEditStep = ({
                           <div className="flex h-10 items-start gap-2">
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={isAssistantLoading || !item.prompt}
-                              onClick={() => runProjectAssistant(item.prompt)}
+                              onClick={() =>
+                                void retryProjectAssistantHistoryItem(item)
+                              }
                             >
                               <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
                               Retry
@@ -14216,10 +14260,10 @@ const ProjectScopeEditStep = ({
                 </div>
               ) : null}
             </div>
-            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch p-5">
-              <div className="flex h-[100px] w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
+              <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={assistantMessage}
                   onChange={(event) => setAssistantMessage(event.target.value)}
@@ -15397,6 +15441,14 @@ const resolveFinalReviewAssistantField = (
   return "responsibilities"
 }
 
+type RoleDescriptionDraft = {
+  roleTitle?: string
+  overview?: string
+  benefits?: string
+  responsibilities?: string
+  skills?: string[]
+}
+
 const useRoleDescriptionPersistence = ({
   jobListingId,
   ensureJobListingDraft,
@@ -15405,6 +15457,7 @@ const useRoleDescriptionPersistence = ({
   benefits,
   responsibilities,
   skills,
+  roleDescriptionsSeed,
   onLoad,
 }: {
   jobListingId?: string | null
@@ -15414,6 +15467,7 @@ const useRoleDescriptionPersistence = ({
   benefits?: string
   responsibilities?: string
   skills?: string[]
+  roleDescriptionsSeed?: RoleDescriptionDraft[]
   onLoad?: (draft: {
     overview?: string
     benefits?: string
@@ -15422,54 +15476,95 @@ const useRoleDescriptionPersistence = ({
   }) => void
 }) => {
   const loadedKeyRef = useRef("")
+  const loadedListingIdRef = useRef("")
+  const roleDescriptionsCacheRef = useRef<any[]>([])
   const lastSavedPayloadRef = useRef("")
   const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("")
+
+  useEffect(() => {
+    const listingId = jobListingId
+    if (!listingId || !roleDescriptionsSeed?.length) return
+
+    loadedListingIdRef.current = listingId
+    roleDescriptionsCacheRef.current = roleDescriptionsSeed.reduce(
+      (currentDescriptions, nextDescription) => {
+        if (!nextDescription.roleTitle) return currentDescriptions
+
+        const existingIndex = currentDescriptions.findIndex(
+          (item: any) => item?.roleTitle === nextDescription.roleTitle
+        )
+
+        if (existingIndex >= 0) {
+          return currentDescriptions.map((item, index) =>
+            index === existingIndex ? nextDescription : item
+          )
+        }
+
+        return [...currentDescriptions, nextDescription]
+      },
+      roleDescriptionsCacheRef.current
+    )
+  }, [jobListingId, roleDescriptionsSeed])
 
   useEffect(() => {
     const listingId = jobListingId
     const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : ""
     if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return
     loadedKeyRef.current = loadKey
+
+    const applyCachedRoleDescription = (descriptions: any[]) => {
+      const description = descriptions.find(
+        (item: any) => item?.roleTitle === roleTitle
+      )
+
+      if (!description) {
+        const emptyPayload = {
+          overview: "",
+          benefits: "",
+          responsibilities: "",
+          skills: [],
+        }
+        lastSavedPayloadRef.current = JSON.stringify({
+          roleTitle,
+          payload: emptyPayload,
+        })
+        onLoad?.(emptyPayload)
+        setLoadedPersistenceKey(loadKey)
+        return
+      }
+
+      const loadedPayload = {
+        overview: description.overview ?? undefined,
+        benefits: description.benefits ?? undefined,
+        responsibilities: description.responsibilities ?? undefined,
+        skills: Array.isArray(description.skills)
+          ? description.skills
+          : undefined,
+      }
+      lastSavedPayloadRef.current = JSON.stringify({
+        roleTitle,
+        payload: loadedPayload,
+      })
+      onLoad?.(loadedPayload)
+      setLoadedPersistenceKey(loadKey)
+    }
+
+    if (loadedListingIdRef.current === listingId) {
+      applyCachedRoleDescription(roleDescriptionsCacheRef.current)
+      return
+    }
+
     setLoadedPersistenceKey("")
 
     const loadRoleDescription = async () => {
       try {
         const response = await JobListingAPI.GetRoleDescriptions(listingId)
         const descriptions = Array.isArray(response?.data) ? response.data : []
-        const description = descriptions.find(
-          (item: any) => item?.roleTitle === roleTitle
-        )
-        if (!description) {
-          const emptyPayload = {
-            overview: "",
-            benefits: "",
-            responsibilities: "",
-            skills: [],
-          }
-          lastSavedPayloadRef.current = JSON.stringify({
-            roleTitle,
-            payload: emptyPayload,
-          })
-          onLoad?.(emptyPayload)
-          return
-        }
-
-        const loadedPayload = {
-          overview: description.overview ?? undefined,
-          benefits: description.benefits ?? undefined,
-          responsibilities: description.responsibilities ?? undefined,
-          skills: Array.isArray(description.skills)
-            ? description.skills
-            : undefined,
-        }
-        lastSavedPayloadRef.current = JSON.stringify({
-          roleTitle,
-          payload: loadedPayload,
-        })
-        onLoad?.(loadedPayload)
+        loadedListingIdRef.current = listingId
+        roleDescriptionsCacheRef.current = descriptions
+        applyCachedRoleDescription(descriptions)
       } catch (error) {
         console.error("Failed to load role description", error)
-      } finally {
         setLoadedPersistenceKey(loadKey)
       }
     }
@@ -15523,6 +15618,24 @@ const useRoleDescriptionPersistence = ({
           if (!listingId) return
 
           await JobListingAPI.SaveRoleDescription(listingId, roleTitle, payload)
+          if (loadedListingIdRef.current === listingId) {
+            const nextDescription = { roleTitle, ...payload }
+            const existingIndex = roleDescriptionsCacheRef.current.findIndex(
+              (item: any) => item?.roleTitle === roleTitle
+            )
+
+            if (existingIndex >= 0) {
+              roleDescriptionsCacheRef.current =
+                roleDescriptionsCacheRef.current.map((item, index) =>
+                  index === existingIndex ? nextDescription : item
+                )
+            } else {
+              roleDescriptionsCacheRef.current = [
+                ...roleDescriptionsCacheRef.current,
+                nextDescription,
+              ]
+            }
+          }
           lastSavedPayloadRef.current = serializedPayload
         } catch (error) {
           console.error("Failed to save role description", error)
@@ -15982,7 +16095,7 @@ const ReviewJobTypeSelect = ({ isLoading = false }: { isLoading?: boolean }) => 
         Job Type
       </Label>
       {isLoading ? (
-        <FinalReviewShimmerBlock className="h-10 w-[200px] rounded-lg" />
+        <FinalReviewShimmerBlock className="h-10 w-[240px] rounded-lg" />
       ) : (
         <Select
           value={value}
@@ -15993,9 +16106,12 @@ const ReviewJobTypeSelect = ({ isLoading = false }: { isLoading?: boolean }) => 
         >
           <SelectTrigger
             indicator={false}
-            className="h-10 w-[200px] rounded-lg px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400"
+            className="h-10 w-[240px] gap-2 rounded-lg px-4 py-2.5 text-left text-sm leading-5 font-medium text-dark-blue-400"
           >
-            <SelectValue placeholder="Select job type" />
+            <SelectValue
+              className="min-w-0 flex-1 truncate text-left"
+              placeholder="Select job type"
+            />
             <ChevronDown className="size-4 shrink-0 text-gray-400" />
           </SelectTrigger>
           <SelectContent>
@@ -16045,6 +16161,9 @@ const FinalServiceReviewStep = ({
   const [overview, setOverview] = useState("")
   const [benefits, setBenefits] = useState("")
   const [responsibilities, setResponsibilities] = useState("")
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([])
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
@@ -16168,17 +16287,21 @@ const FinalServiceReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
-      didGenerateRoleDescriptionsRef.current = Boolean(
+      if (
         draft.overview ||
           draft.benefits ||
           draft.responsibilities ||
           draft.skills?.length
-      )
+      ) {
+        didGenerateRoleDescriptionsRef.current = true
+      }
       if (draft.overview !== undefined) {
-        setOverview(draft.overview)
+        setOverview((current) => (current.trim() ? current : draft.overview ?? ""))
       }
       if (draft.benefits !== undefined) {
-        setBenefits(draft.benefits)
+        setBenefits((current) =>
+          current.trim() ? current : draft.benefits ?? ""
+        )
       }
       if (draft.responsibilities !== undefined) {
         setResponsibilities(draft.responsibilities)
@@ -16197,6 +16320,7 @@ const FinalServiceReviewStep = ({
     benefits,
     responsibilities,
     skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
     onLoad: loadSavedRoleDescription,
   })
 
@@ -16299,6 +16423,30 @@ const FinalServiceReviewStep = ({
           }
         )
         const descriptions = response?.data?.roleDescriptions
+        const generatedDescriptions = Array.isArray(descriptions)
+          ? descriptions
+          : []
+        if (generatedDescriptions.length) {
+          setGeneratedRoleDescriptions(generatedDescriptions)
+          void Promise.all(
+            generatedDescriptions
+              .filter((item: any) => item?.roleTitle)
+              .map((item: any) =>
+                JobListingAPI.SaveRoleDescription(
+                  jobListingId,
+                  item.roleTitle,
+                  {
+                    overview: item.overview,
+                    benefits: item.benefits,
+                    responsibilities: item.responsibilities,
+                    skills: Array.isArray(item.skills) ? item.skills : [],
+                  }
+                )
+              )
+          ).catch((error) => {
+            console.error("Failed to save generated role descriptions", error)
+          })
+        }
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
           : null
@@ -16950,6 +17098,9 @@ const FinalProjectReviewStep = ({
   const [overview, setOverview] = useState("")
   const [benefits, setBenefits] = useState("")
   const [responsibilities, setResponsibilities] = useState("")
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([])
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
   const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
@@ -17155,17 +17306,21 @@ const FinalProjectReviewStep = ({
       responsibilities?: string
       skills?: string[]
     }) => {
-      didGenerateRoleDescriptionsRef.current = Boolean(
+      if (
         draft.overview ||
           draft.benefits ||
           draft.responsibilities ||
           draft.skills?.length
-      )
+      ) {
+        didGenerateRoleDescriptionsRef.current = true
+      }
       if (draft.overview !== undefined) {
-        setOverview(draft.overview)
+        setOverview((current) => (current.trim() ? current : draft.overview ?? ""))
       }
       if (draft.benefits !== undefined) {
-        setBenefits(draft.benefits)
+        setBenefits((current) =>
+          current.trim() ? current : draft.benefits ?? ""
+        )
       }
       if (draft.responsibilities !== undefined) {
         setResponsibilities(draft.responsibilities)
@@ -17184,6 +17339,7 @@ const FinalProjectReviewStep = ({
     benefits,
     responsibilities,
     skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
     onLoad: loadSavedRoleDescription,
   })
   const isRoleDescriptionLoading =
@@ -17202,6 +17358,26 @@ const FinalProjectReviewStep = ({
         }
       )
       const descriptions = response?.data?.roleDescriptions
+      const generatedDescriptions = Array.isArray(descriptions)
+        ? descriptions
+        : []
+      if (generatedDescriptions.length) {
+        setGeneratedRoleDescriptions(generatedDescriptions)
+        void Promise.all(
+          generatedDescriptions
+            .filter((item: any) => item?.roleTitle)
+            .map((item: any) =>
+              JobListingAPI.SaveRoleDescription(jobListingId, item.roleTitle, {
+                overview: item.overview,
+                benefits: item.benefits,
+                responsibilities: item.responsibilities,
+                skills: Array.isArray(item.skills) ? item.skills : [],
+              })
+            )
+        ).catch((error) => {
+          console.error("Failed to save generated role descriptions", error)
+        })
+      }
       const description = Array.isArray(descriptions)
         ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
         : null
@@ -20384,6 +20560,9 @@ const ExistingContractFinalReviewStep = ({
   );
   const [includeNda, setIncludeNda] = useState(false);
   const [responsibilities, setResponsibilities] = useState("");
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([]);
   const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
     useState(false);
   const didGenerateRoleDescriptionsRef = useRef(false);
@@ -20441,6 +20620,7 @@ const ExistingContractFinalReviewStep = ({
     roleTitle: selectedRole,
     responsibilities,
     skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
     onLoad: loadSavedRoleDescription,
   });
 
@@ -20469,6 +20649,7 @@ const ExistingContractFinalReviewStep = ({
   useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
     if (responsibilities) return;
+    if (!selectedRole || roleOptions.length === 0) return;
     didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
@@ -20478,10 +20659,32 @@ const ExistingContractFinalReviewStep = ({
           jobListingId,
           {
             workType: "project",
-            roles: [selectedRole].map((roleTitle) => ({ roleTitle })),
+            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
           },
         );
         const descriptions = response?.data?.roleDescriptions;
+        const generatedDescriptions = Array.isArray(descriptions)
+          ? descriptions
+          : [];
+        if (generatedDescriptions.length) {
+          setGeneratedRoleDescriptions(generatedDescriptions);
+          void Promise.all(
+            generatedDescriptions
+              .filter((item: any) => item?.roleTitle)
+              .map((item: any) =>
+                JobListingAPI.SaveRoleDescription(
+                  jobListingId,
+                  item.roleTitle,
+                  {
+                    responsibilities: item.responsibilities,
+                    skills: Array.isArray(item.skills) ? item.skills : [],
+                  },
+                ),
+              ),
+          ).catch((error) => {
+            console.error("Failed to save generated role descriptions", error);
+          });
+        }
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
           : null;
@@ -20500,7 +20703,7 @@ const ExistingContractFinalReviewStep = ({
     };
 
     void generateRoleDescriptions();
-  }, [jobListingId, responsibilities, selectedRole, setSkills]);
+  }, [jobListingId, responsibilities, roleOptions, selectedRole, setSkills]);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(true);
