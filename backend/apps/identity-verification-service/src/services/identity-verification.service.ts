@@ -32,6 +32,7 @@ import {
   VpnProxyDetectedException,
   UnsupportedDocumentForCountryException,
   LegacyVerificationPathRetiredException,
+  LocationLookupUnavailableException,
 } from '../common/errors/domain-exceptions';
 import { verifyDiditWebhookSignature } from '../common/utils/verify-didit-webhook-signature';
 import {
@@ -75,6 +76,7 @@ import {
   deriveTravelModeState,
   deriveTravelReminderClaim,
   expireTravelModeIfDue,
+  travelModeBlocksNewSession,
 } from '../common/travel-mode/travel-mode-state';
 
 // First Travel Mode reminder is due 3 days after activation (approved
@@ -172,6 +174,35 @@ export class IdentityVerificationService {
     }
 
     return existing ?? this.profileRepository.save(profile);
+  }
+
+  /**
+   * Returning-user new-location signal for GET /me. True only when the profile has
+   * a verified home country, the request's live IP country is known and differs
+   * from it, and Travel Mode is not in force (the same rule that already stops a
+   * new session while Travel Mode is active or pending). The live country comes
+   * from the free local IP lookup (provider.resolve): never the GPS or display
+   * paths, so no reverse-geocoding quota is spent. Read-only: nothing is stored.
+   * An unavailable lookup, a missing IP or an unknown country is simply false, so
+   * a location-service outage can never fail or change the status response.
+   */
+  async getLocationMismatch(
+    profile: IdentityVerificationProfile,
+    ipAddress?: string | null,
+    nowMs: number = Date.now(),
+  ): Promise<boolean> {
+    const home = profile.verifiedHomeCountry;
+    if (!home || !ipAddress) return false;
+    if (travelModeBlocksNewSession(profile, nowMs)) return false;
+    try {
+      const live = await this.locationProvider.resolve({ ipAddress });
+      const liveCountry = live?.countryCode;
+      if (!liveCountry) return false;
+      return liveCountry.toUpperCase() !== home.toUpperCase();
+    } catch (err) {
+      if (err instanceof LocationLookupUnavailableException) return false;
+      throw err;
+    }
   }
 
   /**

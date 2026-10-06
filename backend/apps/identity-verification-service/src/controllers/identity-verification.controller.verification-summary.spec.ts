@@ -85,13 +85,14 @@ describe('ProfileStatusResponseDto (backward-compatible summary)', () => {
 
 describe('GET /v1/identity-verification/me (HTTP)', () => {
   let app: INestApplication;
-  const ivs = { getOrCreateProfile: jest.fn(), getVerificationSummary: jest.fn() };
+  const ivs = { getOrCreateProfile: jest.fn(), getVerificationSummary: jest.fn(), getLocationMismatch: jest.fn() };
 
   beforeEach(async () => {
     ivs.getOrCreateProfile.mockReset().mockResolvedValue(profile({ identityVerificationStatus: I.FAILED, locationVerificationStatus: L.VERIFIED }));
     ivs.getVerificationSummary.mockReset().mockResolvedValue(
       buildVerificationSummary(summaryInput({ identityStatus: I.FAILED, hostedCycleAttempts: 2 })),
     );
+    ivs.getLocationMismatch.mockReset().mockResolvedValue(false);
     const moduleRef = await Test.createTestingModule({
       controllers: [IdentityVerificationController],
       providers: [
@@ -134,6 +135,22 @@ describe('GET /v1/identity-verification/me (HTTP)', () => {
     const res = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
     const text = JSON.stringify(res.body);
     for (const leak of ['profile-1', 'user-1', 'didit', 'vendor', 'documentRef']) expect(text).not.toContain(leak);
+  });
+
+  it('returns locationMismatch false by default and true when the service reports a new country', async () => {
+    const quiet = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+    expect(quiet.body.locationMismatch).toBe(false);
+
+    ivs.getLocationMismatch.mockResolvedValue(true);
+    const mismatch = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+    expect(mismatch.body.locationMismatch).toBe(true);
+    // The same loaded profile is compared; nothing else on the response changes.
+    expect(ivs.getLocationMismatch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ userId: expect.anything() }),
+      expect.anything(),
+    );
+    expect(mismatch.body.fullyVerified).toBe(quiet.body.fullyVerified);
+    expect(mismatch.body.nextAction).toBe(quiet.body.nextAction);
   });
 });
 

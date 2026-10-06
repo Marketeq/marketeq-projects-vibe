@@ -37,6 +37,14 @@ export class ProfileStatusResponseDto {
 
   reconfirmationRequired!: boolean;
 
+  /**
+   * Returning-user new-location signal: a verified home country exists, the live IP
+   * country is known and different, and Travel Mode is not in force. Computed on
+   * GET /me only (see IdentityVerificationService.getLocationMismatch); false
+   * everywhere else. Never stored.
+   */
+  locationMismatch!: boolean;
+
   // Backward-compatible summary additions. fullyVerified is derived from the two
   // statuses alone, so it is on every response that carries this DTO. The rest
   // need hosted-session data and are present only where a summary is supplied
@@ -55,6 +63,7 @@ export class ProfileStatusResponseDto {
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
     nowMs: number = Date.now(),
+    locationMismatch: boolean = false,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -75,6 +84,7 @@ export class ProfileStatusResponseDto {
     dto.identityRejectionReason =
       profile.identityRejectionReason ?? coarseFailureReason(profile.identityVerificationStatus);
     dto.locationVerificationStatus = profile.locationVerificationStatus;
+    dto.locationMismatch = locationMismatch === true;
     dto.reconfirmationRequired = Boolean(
       profile.verifiedHomeCountry && profile.detectedCountry && profile.verifiedHomeCountry !== profile.detectedCountry,
     );

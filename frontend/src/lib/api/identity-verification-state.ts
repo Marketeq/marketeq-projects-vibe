@@ -82,6 +82,10 @@ export interface IdentityVerificationSummaryView {
   travelModeExpired: boolean | null
   travelReminderDue: boolean | null
   travelReminderAvailableAt: string | null
+  // Returning-user new-location signal, exactly as the backend sent it (null when
+  // absent or malformed, which shows nothing). The backend alone decides it: a
+  // verified home country, a known and different live country, no Travel Mode.
+  locationMismatch: boolean | null
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
@@ -113,6 +117,7 @@ export function parseIdentityVerificationSummary(
     travelModeExpired: bool(body.travelModeExpired),
     travelReminderDue: bool(body.travelReminderDue),
     travelReminderAvailableAt: isoTime(body.travelReminderAvailableAt),
+    locationMismatch: bool(body.locationMismatch),
   }
 }
 

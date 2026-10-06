@@ -62,6 +62,12 @@ import {
   isActiveTravelUpdate,
   TRAVEL_POPUP_DURATION_MS,
 } from "@/src/lib/api/travel-popup"
+import {
+  shouldShowLocationMismatchPrompt,
+  startChangeHomeCountry,
+  startStillTraveling,
+  type MismatchLaunch,
+} from "@/src/lib/api/location-mismatch"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
 import {
   AccountVerificationGate,
@@ -197,9 +203,13 @@ export default function TalentDashboard() {
   // current location" (a new key remounts it, since the flow reads its start screen once).
   const [flowLaunch, setFlowLaunch] = useState<{
     key: number
-    initialState?: "current-location-showcase"
+    initialState?: "current-location-showcase" | "traveling-showcase"
     activeTravelModeUpdate?: boolean
   }>({ key: 0 })
+  // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
+  // locationMismatch decides; closing it unanswered only hides it for this page load.
+  const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
+  const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
@@ -214,6 +224,7 @@ export default function TalentDashboard() {
     setVerificationGateOpen(shouldOpenFirstTimeGate(summary))
     setCooldownRetryTime(cooldownRetryAt(summary))
     setTravelSummary(summary)
+    setLocationMismatchOpen(shouldShowLocationMismatchPrompt(summary))
   }, [])
 
   // A start attempt rejected as not startable re-reads the real status
@@ -491,6 +502,34 @@ export default function TalentDashboard() {
     setIdentityFlowOpen(true)
   }, [travelPopup])
 
+  // The new-location prompt's two answers. Each records the choice, then opens the
+  // existing verification flow: "currently traveling" on its duration screen, "change my
+  // home country" from the top so the home country is confirmed again.
+  const openFlowFromMismatch = useCallback((launch: MismatchLaunch) => {
+    setDetectedLocation(launch.location)
+    setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
+    setLocationMismatchOpen(false)
+    setIdentityFlowOpen(true)
+  }, [])
+
+  const handleStillTraveling = useCallback(async () => {
+    setLocationMismatchBusy(true)
+    try {
+      openFlowFromMismatch(await startStillTraveling())
+    } finally {
+      setLocationMismatchBusy(false)
+    }
+  }, [openFlowFromMismatch])
+
+  const handleChangeHomeCountry = useCallback(async () => {
+    setLocationMismatchBusy(true)
+    try {
+      openFlowFromMismatch(await startChangeHomeCountry())
+    } finally {
+      setLocationMismatchBusy(false)
+    }
+  }, [openFlowFromMismatch])
+
   // Exact copy/markup from the Storybook reference
   // (stories/identity-verification-entire.stories.tsx: VPNDetected,
   // ProxyDetected, VPNProxyDetected) — unchanged, only for a real detection.
@@ -621,6 +660,39 @@ export default function TalentDashboard() {
             {retryWhen &&
               `You can try again on ${retryWhen.date} at ${retryWhen.time}. Nothing is lost — your account stays as it is until then.`}
           </DialogDescription>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={locationMismatchOpen} onOpenChange={setLocationMismatchOpen}>
+        <DialogContent className="w-[456px]">
+          <div className="flex items-center justify-center">
+            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-6" />
+            </div>
+          </div>
+
+          <DialogDescription className="text-sm mt-5 text-center leading-5 text-dark-blue-400">
+            You’re logging in from a location outside your usual one. Just
+            checking if you’re still away.
+          </DialogDescription>
+
+          <div className="mt-[50px] grid grid-cols-2 gap-x-3">
+            <Button
+              variant="outlined"
+              size="md"
+              disabled={locationMismatchBusy}
+              onClick={() => void handleStillTraveling()}
+            >
+              I’m currently traveling
+            </Button>
+            <Button
+              size="md"
+              disabled={locationMismatchBusy}
+              onClick={() => void handleChangeHomeCountry()}
+            >
+              Change my home country
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -157,7 +157,7 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(page.includes("setFlowLaunch((prev) => (prev.initialState ? { key: prev.key + 1 } : prev))"))
     assert.ok(
       page.includes(
-        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\"\n    activeTravelModeUpdate?: boolean\n  }>({ key: 0 })"
+        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n  }>({ key: 0 })"
       )
     )
   })

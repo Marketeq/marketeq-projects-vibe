@@ -68,9 +68,11 @@ export class IdentityVerificationController {
   @Get('me')
   @UseGuards(VpnProxyCheckGuard)
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
-    const profile = await this.service.getOrCreateProfile(req.userId, getEffectiveClientIp(req));
+    const ip = getEffectiveClientIp(req);
+    const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
-    return ProfileStatusResponseDto.fromEntity(profile, summary);
+    const locationMismatch = await this.service.getLocationMismatch(profile, ip);
+    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch);
   }
 
   // Display-only location for the verification dialog. Uses the same
