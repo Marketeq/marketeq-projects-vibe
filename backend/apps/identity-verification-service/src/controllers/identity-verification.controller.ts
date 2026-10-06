@@ -18,6 +18,7 @@ import { FreeKycService, KycReconcileOutcome } from '../services/free-kyc.servic
 import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto';
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
+import { readLoginSession } from '../common/travel-mode/login-reminder';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
@@ -42,6 +43,8 @@ import {
 
 interface AuthenticatedRequest extends Request {
   userId: string;
+  // The verified access-token payload set by BearerAuthGuard.
+  user?: Record<string, unknown>;
 }
 
 @Controller('v1/identity-verification')
@@ -72,7 +75,8 @@ export class IdentityVerificationController {
     const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
     const locationMismatch = await this.service.getLocationMismatch(profile, ip);
-    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch);
+    const loginReminderAt = await this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
+    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt);
   }
 
   // Display-only location for the verification dialog. Uses the same
@@ -138,7 +142,9 @@ export class IdentityVerificationController {
   @Post('travel-reminder/claim')
   @HttpCode(HttpStatus.OK)
   async claimTravelReminder(@Req() req: AuthenticatedRequest): Promise<TravelReminderClaimResponseDto> {
-    return TravelReminderClaimResponseDto.from(await this.service.claimTravelReminder(req.userId));
+    return TravelReminderClaimResponseDto.from(
+      await this.service.claimTravelReminder(req.userId, readLoginSession(req.user, Date.now())),
+    );
   }
 
   // Document-selection screen calls this after the user picks (or the flow

@@ -78,6 +78,7 @@ import {
   expireTravelModeIfDue,
   travelModeBlocksNewSession,
 } from '../common/travel-mode/travel-mode-state';
+import { deriveLoginReminderAt, LoginSession } from '../common/travel-mode/login-reminder';
 
 // First Travel Mode reminder is due 3 days after activation (approved
 // reminder days: 3 and 7).
@@ -449,7 +450,10 @@ export class IdentityVerificationService {
    * newer one's reminders, and a future or unusable stored claim time claims
    * nothing.
    */
-  async claimTravelReminder(userId: string): Promise<{ claimed: boolean }> {
+  async claimTravelReminder(
+    userId: string,
+    session: LoginSession | null = null,
+  ): Promise<{ claimed: boolean }> {
     const found = await this.profileRepository.findOne({ where: { userId } });
     if (!found) return { claimed: false };
 
@@ -459,19 +463,110 @@ export class IdentityVerificationService {
     const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
 
     const claim = deriveTravelReminderClaim(profile, nowMs);
-    if (!claim) return { claimed: false };
 
-    const result = await this.profileRepository.update(
+    // This login session's own reminder (5 minutes after authentication), when the
+    // verified token carries a usable session and the period was active at login.
+    const loginAt = session ? deriveLoginReminderAt(profile, session.authTimeMs, nowMs) : null;
+    const loginDue = session !== null && loginAt !== null && loginAt.getTime() <= nowMs;
+
+    if (!claim && !loginDue) return { claimed: false };
+    if (!loginDue) {
+      // Day 3 / day 7 only: exactly the original single compare-and-set.
+      return { claimed: await this.claimDayReminder(this.profileRepository, profile, claim!.latestDue, nowMs) };
+    }
+    return this.claimWithLoginReminder(profile, claim, (session as LoginSession).sid, nowMs);
+  }
+
+  /**
+   * The login-session reminder to report on GET /me: the time it is due, or null when
+   * the token has no usable session, the period was not active at login, it is over,
+   * or this session's reminder was already claimed. Read-only; a lookup failure only
+   * means "no login reminder" (it never fails or changes the status response).
+   */
+  async getLoginReminderAt(
+    profile: IdentityVerificationProfile,
+    session: LoginSession | null,
+    nowMs: number = Date.now(),
+  ): Promise<Date | null> {
+    if (!session) return null;
+    const dueAt = deriveLoginReminderAt(profile, session.authTimeMs, nowMs);
+    if (!dueAt) return null;
+    try {
+      const rows: unknown[] = await this.dataSource.query(
+        `SELECT 1 FROM identity_verification.travel_login_reminder_claims
+         WHERE profile_id = $1 AND session_id = $2 LIMIT 1`,
+        [profile.id, session.sid],
+      );
+      return rows.length > 0 ? null : dueAt;
+    } catch {
+      this.logger.error('Travel Mode login reminder lookup failed; reporting no login reminder.');
+      return null;
+    }
+  }
+
+  // The day 3 / day 7 claim: one atomic compare-and-set on the profile's
+  // lastTravelReminderSentAt, against whatever repository the caller is using.
+  private async claimDayReminder(
+    repository: Pick<Repository<IdentityVerificationProfile>, 'update'>,
+    profile: IdentityVerificationProfile,
+    latestDue: Date,
+    nowMs: number,
+  ): Promise<boolean> {
+    const result = await repository.update(
       {
         id: profile.id,
         travelModeActive: true,
         travelModeActivatedAt: profile.travelModeActivatedAt as Date,
         declaredDuration: profile.declaredDuration as DeclaredDuration,
-        lastTravelReminderSentAt: Or(IsNull(), LessThan(claim.latestDue)),
+        lastTravelReminderSentAt: Or(IsNull(), LessThan(latestDue)),
       },
       { lastTravelReminderSentAt: new Date(nowMs) },
     );
-    return { claimed: result.affected === 1 };
+    return result.affected === 1;
+  }
+
+  /**
+   * Claims a due login-session reminder together with any day reminder that is due at the
+   * same moment, so an overlap is ONE popup. One transaction under a per-profile advisory
+   * lock: of any number of simultaneous claimers (tabs, refreshes) exactly one gets
+   * { claimed: true } for everything due, the rest get nothing. The session's claim is a
+   * unique (profile, session) row, so a refresh or another tab of the SAME login can
+   * never claim it twice, while a new login (new session id) gets its own.
+   */
+  private async claimWithLoginReminder(
+    profile: IdentityVerificationProfile,
+    dayClaim: { latestDue: Date } | null,
+    sessionId: string,
+    nowMs: number,
+  ): Promise<{ claimed: boolean }> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      await queryRunner.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`travel-reminder-claim:${profile.id}`]);
+      const inserted: unknown[] = await queryRunner.query(
+        `INSERT INTO identity_verification.travel_login_reminder_claims (profile_id, session_id)
+         VALUES ($1, $2)
+         ON CONFLICT (profile_id, session_id) DO NOTHING
+         RETURNING id`,
+        [profile.id, sessionId],
+      );
+      const dayClaimed = dayClaim
+        ? await this.claimDayReminder(
+            queryRunner.manager.getRepository(IdentityVerificationProfile),
+            profile,
+            dayClaim.latestDue,
+            nowMs,
+          )
+        : false;
+      await queryRunner.commitTransaction();
+      return { claimed: inserted.length === 1 || dayClaimed };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
   // --- Documents ---

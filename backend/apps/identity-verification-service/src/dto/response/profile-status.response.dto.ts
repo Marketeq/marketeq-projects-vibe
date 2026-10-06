@@ -64,6 +64,7 @@ export class ProfileStatusResponseDto {
     summary?: VerificationSummary,
     nowMs: number = Date.now(),
     locationMismatch: boolean = false,
+    loginReminderAt: Date | null = null,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -77,7 +78,7 @@ export class ProfileStatusResponseDto {
     const travelMode = deriveTravelModeState(profile, nowMs);
     dto.travelModeEndsAt = travelMode.endsAt ? travelMode.endsAt.toISOString() : null;
     dto.travelModeExpired = travelMode.state === 'expired';
-    const reminder = deriveTravelReminderSchedule(profile, nowMs);
+    const reminder = deriveTravelReminderSchedule(profile, nowMs, loginReminderAt);
     dto.travelReminderDue = reminder.due;
     dto.travelReminderAvailableAt = reminder.availableAt ? reminder.availableAt.toISOString() : null;
     dto.identityVerificationStatus = profile.identityVerificationStatus;

@@ -88,8 +88,16 @@ export interface TravelReminderSchedule {
  * it is claimed or Travel Mode ends). Anything that is not an active period
  * (expired, inactive, invalid, pending or none), a completed schedule, or an
  * unusable last-claim time yields due false and no time (fail closed).
+ *
+ * `loginReminderAt` (optional) adds the caller's login-session occurrence; the
+ * earliest unclaimed of the two is reported. Omitted, the result is exactly the
+ * day 3 / day 7 schedule.
  */
-export function deriveTravelReminderSchedule(fields: TravelReminderFields, nowMs: number): TravelReminderSchedule {
+export function deriveTravelReminderSchedule(
+  fields: TravelReminderFields,
+  nowMs: number,
+  loginReminderAt: Date | null = null,
+): TravelReminderSchedule {
   const none: TravelReminderSchedule = { due: false, availableAt: null };
   const { state, endsAt } = deriveTravelModeState(fields, nowMs);
   if (state !== 'active' || !fields.travelModeActive || !endsAt) return none;
@@ -101,9 +109,19 @@ export function deriveTravelReminderSchedule(fields: TravelReminderFields, nowMs
     claimedUpToMs = sent.getTime();
   }
 
-  const next = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt).find(
+  const day = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt).find(
     (due) => due.getTime() > claimedUpToMs,
   );
+  // The caller's own login-session reminder (5 minutes after authentication), already
+  // checked and known to be unclaimed for THIS session. It is a separate occurrence: it
+  // never reads or moves the day cursor above, and it never outlives the period.
+  const login =
+    loginReminderAt instanceof Date &&
+    Number.isFinite(loginReminderAt.getTime()) &&
+    loginReminderAt.getTime() < endsAt.getTime()
+      ? loginReminderAt
+      : null;
+  const next = day && login ? (login.getTime() < day.getTime() ? login : day) : (day ?? login);
   return next ? { due: next.getTime() <= nowMs, availableAt: next } : none;
 }
 
