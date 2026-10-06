@@ -23,9 +23,9 @@ import { BrevoService } from '../brevo/brevo.service';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-const LOGIN_AT = Date.parse('2026-10-06T12:00:00.123Z');
-const LOGIN_AT_SECONDS = Math.floor(LOGIN_AT / 1000);
-const HOURS = 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
+const T1 = Date.parse('2026-10-06T12:00:00.123Z');
+const T1_SECONDS = Math.floor(T1 / 1000);
 
 const mockUserRepository = {
   findOne: jest.fn(),
@@ -39,7 +39,7 @@ const mockSessionRepository = {
   delete: jest.fn(),
 };
 const mockJwtService = {
-  sign: jest.fn().mockReturnValue('mock-access-token'),
+  sign: jest.fn(),
   signAsync: jest.fn(),
   verifyAsync: jest.fn(),
 };
@@ -63,16 +63,22 @@ const setNow = (ms: number) =>
     doNotFake: ['nextTick', 'setImmediate', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'queueMicrotask'],
   });
 
+type Payload = Record<string, unknown>;
+
 describe('AuthService — auth_time claim', () => {
   let service: AuthService;
-  const accessPayloads = () => mockJwtService.sign.mock.calls.map((c) => c[0] as Record<string, unknown>);
-  const lastAccessPayload = () => accessPayloads().at(-1)!;
+
+  const accessPayloads = (): Payload[] => mockJwtService.sign.mock.calls.map((c) => c[0] as Payload);
+  const refreshPayloads = (): Payload[] => mockJwtService.signAsync.mock.calls.map((c) => c[0] as Payload);
+  const lastAccess = () => accessPayloads().at(-1)!;
+  const lastRefresh = () => refreshPayloads().at(-1)!;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mockUserRepository.findOne.mockResolvedValue(null);
     mockUserRepository.save.mockImplementation(async (user: User) => ({ ...user, id: 'user-1' }));
     mockSessionRepository.save.mockResolvedValue(undefined);
+    mockSessionRepository.delete.mockResolvedValue(undefined);
     mockJwtService.sign.mockReturnValue('mock-access-token');
     mockJwtService.signAsync.mockImplementation(async () => `refresh-${Math.random()}`);
     mockedAxios.post.mockResolvedValue({ data: {} });
@@ -96,176 +102,320 @@ describe('AuthService — auth_time claim', () => {
     jest.clearAllTimers();
   });
 
-  // A login that creates a session, whatever the method.
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  const devLogin = async () => {
+    mockUserRepository.findOne.mockResolvedValue({ id: 'user-1', email: 'a@example.com', username: 'a' });
+    return service.devLogin('a@example.com', 'jest', '127.0.0.1');
+  };
+  const googleLogin = async () => {
+    mockedAxios.get.mockResolvedValue({
+      data: { aud: 'test-google-client-id', audience: 'test-google-client-id', email: 'g@example.com', email_verified: 'true', given_name: 'G', family_name: 'U' },
+    });
+    return service.loginWithGoogle({ access_token: 'fake' } as any, 'jest', '127.0.0.1');
+  };
   const loginMethods: Array<[string, () => Promise<unknown>]> = [
-    [
-      'devLogin',
-      async () => {
-        mockUserRepository.findOne.mockResolvedValue({ id: 'user-1', email: 'a@example.com', username: 'a' });
-        return service.devLogin('a@example.com', 'jest', '127.0.0.1');
-      },
-    ],
-    [
-      'loginWithGoogle',
-      async () => {
-        mockedAxios.get.mockResolvedValue({
-          data: { aud: 'test-google-client-id', audience: 'test-google-client-id', email: 'g@example.com', email_verified: 'true', given_name: 'G', family_name: 'U' },
-        });
-        return service.loginWithGoogle({ access_token: 'fake' } as any, 'jest', '127.0.0.1');
-      },
-    ],
+    ['devLogin', devLogin],
+    ['loginWithGoogle', googleLogin],
   ];
 
+  /** Feeds a signed refresh-token payload to refresh(), as the verified JWT, against its session. */
+  const refreshWith = async (verified: Payload, sessionOverrides: Record<string, unknown> = {}) => {
+    const token = `refresh-token-${Math.random()}`;
+    mockJwtService.verifyAsync.mockResolvedValue(verified);
+    mockSessionRepository.findOne.mockResolvedValue({
+      id: verified.sid,
+      userId: verified.sub,
+      refreshTokenHash: createHash('sha256').update(token).digest('hex'),
+      ...sessionOverrides,
+    });
+    return service.refresh({ refresh_token: token } as any);
+  };
+
+  const legacyRefreshPayload = (extra: Payload = {}): Payload => ({
+    sub: 'user-1',
+    email: 'a@example.com',
+    type: 'refresh',
+    rememberMe: false,
+    sid: 'sid-1',
+    ...extra,
+  });
+
+  // ── login ──────────────────────────────────────────────────────────────────
+
   describe.each(loginMethods)('login — %s', (_name, login) => {
-    it('signs auth_time (epoch seconds) into the access token', async () => {
-      setNow(LOGIN_AT);
+    it('generates one auth_time (epoch seconds) and signs it into the access token', async () => {
+      setNow(T1);
       await login();
-      const payload = lastAccessPayload();
-      expect(payload.sid).toEqual(expect.any(String));
-      expect(payload.auth_time).toBe(LOGIN_AT_SECONDS);
-      expect(Number.isInteger(payload.auth_time)).toBe(true);
+      expect(lastAccess().sid).toEqual(expect.any(String));
+      expect(lastAccess().auth_time).toBe(T1_SECONDS);
+      expect(Number.isInteger(lastAccess().auth_time)).toBe(true);
     });
 
-    it("stores the same instant as the session's createdAt, so refresh can reproduce it", async () => {
-      setNow(LOGIN_AT);
+    it('signs the same value into the refresh token', async () => {
+      setNow(T1);
+      await login();
+      expect(lastRefresh().auth_time).toBe(T1_SECONDS);
+      expect(lastRefresh().auth_time).toBe(lastAccess().auth_time);
+      expect(lastRefresh()).toMatchObject({ type: 'refresh', sid: lastAccess().sid });
+    });
+
+    it('leaves Session.createdAt to the database (nothing assigns it)', async () => {
+      setNow(T1);
       await login();
       const session = mockSessionRepository.save.mock.calls[0][0] as Session;
-      expect(session.createdAt).toEqual(new Date(LOGIN_AT));
-      expect(Math.floor(session.createdAt.getTime() / 1000)).toBe(lastAccessPayload().auth_time);
+      expect(session.createdAt).toBeUndefined();
+      expect(Object.keys(session)).not.toContain('createdAt');
     });
 
-    it('does not put auth_time in the refresh token or add it to the response', async () => {
-      setNow(LOGIN_AT);
-      const result = (await login()) as Record<string, unknown>;
-      const refreshPayload = mockJwtService.signAsync.mock.calls[0][0] as Record<string, unknown>;
-      expect(refreshPayload).not.toHaveProperty('auth_time');
+    it('does not add auth_time to the response body', async () => {
+      setNow(T1);
+      const result = (await login()) as Payload;
       expect(result).not.toHaveProperty('auth_time');
       expect(result).not.toHaveProperty('authTime');
     });
   });
 
+  // ── refresh ────────────────────────────────────────────────────────────────
+
   describe('refresh', () => {
-    const refreshToken = 'old-refresh-token';
-    const refreshPayload = { sub: 'user-1', email: 'a@example.com', type: 'refresh', sid: 'sid-1', rememberMe: false };
-    const sessionRow = (createdAt: unknown) => ({
-      id: 'sid-1',
-      userId: 'user-1',
-      refreshTokenHash: createHash('sha256').update(refreshToken).digest('hex'),
-      createdAt,
+    it('takes auth_time from the verified refresh token, never Session.createdAt or iat', async () => {
+      setNow(T1 + 5 * HOUR_MS);
+      const token = 'refresh-token-x';
+      const session: Record<string, unknown> = {
+        id: 'sid-1',
+        userId: 'user-1',
+        refreshTokenHash: createHash('sha256').update(token).digest('hex'),
+      };
+      // Reading createdAt at all fails the test: refresh must not look at it.
+      Object.defineProperty(session, 'createdAt', {
+        get: () => {
+          throw new Error('Session.createdAt must not be read');
+        },
+        enumerable: true,
+      });
+      mockSessionRepository.findOne.mockResolvedValue(session);
+      // iat is deliberately unrelated to auth_time (as it is after a refresh).
+      mockJwtService.verifyAsync.mockResolvedValue(
+        legacyRefreshPayload({ auth_time: T1_SECONDS, iat: T1_SECONDS + 4 * 3600 }),
+      );
+      await service.refresh({ refresh_token: token } as any);
+      expect(lastAccess().auth_time).toBe(T1_SECONDS);
+      expect(lastRefresh().auth_time).toBe(T1_SECONDS);
     });
 
-    it('preserves the identical auth_time created at login, however much later it runs (not iat)', async () => {
-      setNow(LOGIN_AT);
-      await loginMethods[0][1]();
-      const loginAuthTime = lastAccessPayload().auth_time;
-      const storedSession = mockSessionRepository.save.mock.calls[0][0] as Session;
-
-      mockJwtService.verifyAsync.mockResolvedValue(refreshPayload);
-      for (const hoursLater of [1, 5, 72]) {
-        setNow(LOGIN_AT + hoursLater * HOURS);
-        mockSessionRepository.findOne.mockResolvedValue({
-          ...sessionRow(storedSession.createdAt),
-          refreshTokenHash: createHash('sha256').update(refreshToken).digest('hex'),
-        });
-        await service.refresh({ refresh_token: refreshToken } as any);
-        expect(lastAccessPayload().auth_time).toBe(loginAuthTime);
-        expect(lastAccessPayload().auth_time).not.toBe(Math.floor(Date.now() / 1000));
-      }
-    });
-
-    it('carries the same value through repeated refreshes of the same session', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue(refreshPayload);
-      const createdAt = new Date(LOGIN_AT);
-      for (let i = 0; i < 3; i += 1) {
-        mockSessionRepository.findOne.mockResolvedValue(sessionRow(createdAt));
-        await service.refresh({ refresh_token: refreshToken } as any);
-      }
-      expect(accessPayloads().map((p) => p.auth_time)).toEqual([LOGIN_AT_SECONDS, LOGIN_AT_SECONDS, LOGIN_AT_SECONDS]);
-    });
-
-    it('keeps the session id and issues tokens exactly as before apart from the claim', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue(refreshPayload);
-      mockSessionRepository.findOne.mockResolvedValue(sessionRow(new Date(LOGIN_AT)));
-      const result = await service.refresh({ refresh_token: refreshToken } as any);
-      expect(lastAccessPayload()).toEqual({ sub: 'user-1', email: 'a@example.com', sid: 'sid-1', auth_time: LOGIN_AT_SECONDS });
+    it('preserves the value in BOTH rotated tokens, with every other claim as before', async () => {
+      setNow(T1 + HOUR_MS);
+      const result = await refreshWith(legacyRefreshPayload({ auth_time: T1_SECONDS }));
+      expect(lastAccess()).toEqual({ sub: 'user-1', email: 'a@example.com', sid: 'sid-1', auth_time: T1_SECONDS });
+      expect(lastRefresh()).toEqual({ sub: 'user-1', email: 'a@example.com', type: 'refresh', rememberMe: false, sid: 'sid-1', auth_time: T1_SECONDS });
       expect(result.sessionId).toBe('sid-1');
       expect(result.access_token).toBe('mock-access-token');
     });
-  });
 
-  describe('old and missing values never break authentication', () => {
-    const refreshToken = 'legacy-refresh-token';
-    const hash = createHash('sha256').update(refreshToken).digest('hex');
+    it('stays identical across repeated rotations, however much later each one happens', async () => {
+      setNow(T1);
+      await devLogin();
+      let current = lastRefresh();
+      const loginValue = lastAccess().auth_time;
+      expect(loginValue).toBe(T1_SECONDS);
 
-    it('a refresh token issued before this change (no auth_time anywhere in it) still refreshes', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', email: 'a@example.com', type: 'refresh', sid: 'sid-1' });
-      mockSessionRepository.findOne.mockResolvedValue({ id: 'sid-1', userId: 'user-1', refreshTokenHash: hash, createdAt: new Date(LOGIN_AT) });
-      await expect(service.refresh({ refresh_token: refreshToken } as any)).resolves.toMatchObject({ sessionId: 'sid-1' });
-      expect(lastAccessPayload().auth_time).toBe(LOGIN_AT_SECONDS);
+      for (const hoursLater of [1, 5, 29, 72, 200]) {
+        setNow(T1 + hoursLater * HOUR_MS);
+        await refreshWith(current);
+        expect(lastAccess().auth_time).toBe(loginValue);
+        expect(lastRefresh().auth_time).toBe(loginValue);
+        expect(lastAccess().auth_time).not.toBe(Math.floor(Date.now() / 1000));
+        current = lastRefresh(); // the next refresh presents the token this one just issued
+      }
     });
 
-    it.each([
-      ['undefined', undefined],
-      ['null', null],
-      ['an invalid date', new Date('not a date')],
-      ['the epoch', new Date(0)],
-      ['a string', '2026-10-06T12:00:00Z'],
-    ])('a session whose createdAt is %s still refreshes, with no auth_time claim', async (_label, createdAt) => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', email: 'a@example.com', type: 'refresh', sid: 'sid-1' });
-      mockSessionRepository.findOne.mockResolvedValue({ id: 'sid-1', userId: 'user-1', refreshTokenHash: hash, createdAt });
-      const result = await service.refresh({ refresh_token: refreshToken } as any);
-      expect(result.access_token).toBe('mock-access-token');
-      expect(lastAccessPayload()).not.toHaveProperty('auth_time');
-      expect(lastAccessPayload().sid).toBe('sid-1');
-    });
-
-    it('a legacy refresh token with no session id still refreshes, with no sid and no auth_time', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', email: 'a@example.com', type: 'refresh' });
-      const result = await service.refresh({ refresh_token: refreshToken } as any);
+    it('keeps working for a session id-less legacy refresh token that carries the claim', async () => {
+      setNow(T1 + HOUR_MS);
+      const verified = legacyRefreshPayload({ auth_time: T1_SECONDS });
+      delete verified.sid;
+      mockJwtService.verifyAsync.mockResolvedValue(verified);
+      const result = await service.refresh({ refresh_token: 'x' } as any);
       expect(result.access_token).toBe('mock-access-token');
       expect(mockSessionRepository.findOne).not.toHaveBeenCalled();
-      expect(lastAccessPayload()).toEqual({ sub: 'user-1', email: 'a@example.com' });
+      expect(lastAccess()).toEqual({ sub: 'user-1', email: 'a@example.com', auth_time: T1_SECONDS });
     });
 
-    it('a revoked session or a wrong refresh token is still rejected exactly as before', async () => {
-      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', email: 'a@example.com', type: 'refresh', sid: 'sid-1' });
+    it('still rejects a revoked session or a wrong refresh token exactly as before', async () => {
+      mockJwtService.verifyAsync.mockResolvedValue(legacyRefreshPayload({ auth_time: T1_SECONDS }));
       mockSessionRepository.findOne.mockResolvedValueOnce(null);
-      await expect(service.refresh({ refresh_token: refreshToken } as any)).rejects.toThrow('Session has been revoked');
-      mockSessionRepository.findOne.mockResolvedValueOnce({ id: 'sid-1', userId: 'user-1', refreshTokenHash: 'something-else', createdAt: new Date(LOGIN_AT) });
-      await expect(service.refresh({ refresh_token: refreshToken } as any)).rejects.toThrow('Invalid refresh token');
+      await expect(service.refresh({ refresh_token: 'x' } as any)).rejects.toThrow('Session has been revoked');
+      mockSessionRepository.findOne.mockResolvedValueOnce({ id: 'sid-1', userId: 'user-1', refreshTokenHash: 'something-else' });
+      await expect(service.refresh({ refresh_token: 'x' } as any)).rejects.toThrow('Invalid refresh token');
+    });
+  });
+
+  // ── legacy tokens ──────────────────────────────────────────────────────────
+
+  describe('legacy refresh tokens (issued before auth_time existed)', () => {
+    it('refresh successfully and omit the claim from both rotated tokens until the next login', async () => {
+      setNow(T1);
+      // A real, valid createdAt is present: it must NOT be used to invent the claim.
+      const result = await refreshWith(legacyRefreshPayload(), { createdAt: new Date(T1 - HOUR_MS) });
+      expect(result.access_token).toBe('mock-access-token');
+      expect(lastAccess()).not.toHaveProperty('auth_time');
+      expect(lastRefresh()).not.toHaveProperty('auth_time');
+      expect(lastAccess().sid).toBe('sid-1');
     });
 
-    it('an access token without auth_time still validates (and one with it is accepted unchanged)', async () => {
+    it('stay claim-free through repeated rotations and then gain it only from a new login', async () => {
+      setNow(T1);
+      let current: Payload = legacyRefreshPayload();
+      for (const hoursLater of [0, 2, 6]) {
+        setNow(T1 + hoursLater * HOUR_MS);
+        await refreshWith(current);
+        expect(lastAccess()).not.toHaveProperty('auth_time');
+        current = lastRefresh();
+        expect(current).not.toHaveProperty('auth_time');
+      }
+      setNow(T1 + 8 * HOUR_MS);
+      await devLogin();
+      expect(lastAccess().auth_time).toBe(Math.floor((T1 + 8 * HOUR_MS) / 1000));
+      expect(lastRefresh().auth_time).toBe(lastAccess().auth_time);
+    });
+
+    it('a legacy token with no session id still refreshes, with no sid and no claim', async () => {
+      mockJwtService.verifyAsync.mockResolvedValue({ sub: 'user-1', email: 'a@example.com', type: 'refresh' });
+      const result = await service.refresh({ refresh_token: 'x' } as any);
+      expect(result.access_token).toBe('mock-access-token');
+      expect(lastAccess()).toEqual({ sub: 'user-1', email: 'a@example.com' });
+    });
+
+    it('an access token without auth_time still validates, and one with it is accepted unchanged', async () => {
       const strategy = new JwtStrategy({ get: () => 'test-public-key' } as unknown as ConfigService);
       const base = { sub: 'user-1', email: 'a@example.com', sid: 'sid-1' };
       const expected = { id: 'user-1', sub: 'user-1', email: 'a@example.com', sid: 'sid-1' };
       await expect(strategy.validate(base)).resolves.toEqual(expected);
-      await expect(strategy.validate({ ...base, auth_time: LOGIN_AT_SECONDS })).resolves.toEqual(expected);
+      await expect(strategy.validate({ ...base, auth_time: T1_SECONDS })).resolves.toEqual(expected);
     });
   });
 
-  describe('every login method is covered (guards against a future login path forgetting it)', () => {
-    const source = readFileSync(join(__dirname, 'auth.service.ts'), 'utf8');
-    const sessionLoginBlocks = source.split('const sessionId = randomUUID();').slice(1);
+  // ── malformed / future values ──────────────────────────────────────────────
 
-    it('finds the eight session-creating login paths', () => {
-      expect(sessionLoginBlocks).toHaveLength(8);
+  describe('malformed or future auth_time in a refresh token is omitted, never trusted', () => {
+    const nowSeconds = T1_SECONDS;
+    const bad: Array<[string, unknown]> = [
+      ['a numeric string', String(T1_SECONDS - 100)],
+      ['a fractional number', T1_SECONDS - 100.5],
+      ['zero', 0],
+      ['a negative number', -5],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['null', null],
+      ['a boolean', true],
+      ['an object', { a: 1 }],
+      ['an array', [T1_SECONDS]],
+      ['milliseconds instead of seconds', T1],
+      ['61 seconds in the future', nowSeconds + 61],
+      ['a day in the future', nowSeconds + 24 * 3600],
+    ];
+
+    it.each(bad)('%s: refresh succeeds and neither rotated token carries the claim', async (_label, value) => {
+      setNow(T1);
+      const result = await refreshWith(legacyRefreshPayload({ auth_time: value }));
+      expect(result.access_token).toBe('mock-access-token');
+      expect(lastAccess()).not.toHaveProperty('auth_time');
+      expect(lastRefresh()).not.toHaveProperty('auth_time');
+      expect(lastAccess().sid).toBe('sid-1');
     });
 
-    it.each(sessionLoginBlocks.map((block, index) => [index + 1, block.slice(0, block.indexOf('this.createSession(') + 400)] as const))(
-      'login path #%i takes its time once and passes it to both the token and the session',
+    it.each([
+      ['now', nowSeconds],
+      ['30 seconds ahead (clock skew between instances)', nowSeconds + 30],
+      ['exactly the 60 second tolerance', nowSeconds + 60],
+      ['one second after the epoch', 1],
+      ['a year ago', nowSeconds - 365 * 24 * 3600],
+    ])('a valid value (%s) is preserved', async (_label, value) => {
+      setNow(T1);
+      await refreshWith(legacyRefreshPayload({ auth_time: value }));
+      expect(lastAccess().auth_time).toBe(value);
+      expect(lastRefresh().auth_time).toBe(value);
+    });
+  });
+
+  // ── logout / login ─────────────────────────────────────────────────────────
+
+  describe('logout and login', () => {
+    it('a new login after logout gets a newer auth_time, and refreshing it never goes back to the old one', async () => {
+      setNow(T1);
+      await devLogin();
+      const first = lastAccess().auth_time as number;
+      const firstRefresh = lastRefresh();
+      const firstSid = lastAccess().sid;
+
+      setNow(T1 + HOUR_MS);
+      await refreshWith(firstRefresh);
+      expect(lastAccess().auth_time).toBe(first);
+
+      // Logout removes that session.
+      mockJwtService.verifyAsync.mockResolvedValue(legacyRefreshPayload({ sid: firstSid, auth_time: first }));
+      await service.logout({ sub: 'user-1' }, 'whatever');
+      expect(mockSessionRepository.delete).toHaveBeenCalledWith({ id: firstSid, userId: 'user-1' });
+
+      // The next login is a new authentication.
+      setNow(T1 + 2 * HOUR_MS);
+      await devLogin();
+      const second = lastAccess().auth_time as number;
+      expect(second).toBe(Math.floor((T1 + 2 * HOUR_MS) / 1000));
+      expect(second).toBeGreaterThan(first);
+      expect(lastAccess().sid).not.toBe(firstSid);
+
+      setNow(T1 + 3 * HOUR_MS);
+      await refreshWith(lastRefresh());
+      expect(lastAccess().auth_time).toBe(second);
+    });
+
+    it('two logins at different times are independent of each other', async () => {
+      setNow(T1);
+      await devLogin();
+      const a = lastRefresh();
+      setNow(T1 + HOUR_MS);
+      await devLogin();
+      const b = lastRefresh();
+      setNow(T1 + 2 * HOUR_MS);
+      await refreshWith(a);
+      expect(lastAccess().auth_time).toBe(T1_SECONDS);
+      await refreshWith(b);
+      expect(lastAccess().auth_time).toBe(Math.floor((T1 + HOUR_MS) / 1000));
+    });
+  });
+
+  // ── structure ──────────────────────────────────────────────────────────────
+
+  describe('every login method and the database behavior (guards against regressions)', () => {
+    const source = readFileSync(join(__dirname, 'auth.service.ts'), 'utf8');
+    const loginBlocks = source.split('const sessionId = randomUUID();').slice(1);
+
+    it('finds the eight session-creating login paths', () => {
+      expect(loginBlocks).toHaveLength(8);
+    });
+
+    it.each(loginBlocks.map((block, index) => [index + 1, block.slice(0, block.indexOf('this.createSession(') + 400)] as const))(
+      'login path #%i generates one auth_time and passes it to the tokens only',
       (_index, block) => {
         const issue = block.slice(block.indexOf('this.issueTokens('), block.indexOf(');', block.indexOf('this.issueTokens(')));
         const create = block.slice(block.indexOf('this.createSession('), block.indexOf('});', block.indexOf('this.createSession(')));
-        expect(block).toContain('const authTime = new Date();');
+        expect(block).toContain('const authTime = Math.floor(Date.now() / 1000);');
         expect(issue).toMatch(/\bauthTime\b/);
-        expect(create).toContain('createdAt: authTime');
+        expect(create).not.toMatch(/authTime|createdAt/);
       },
     );
 
-    it('never derives auth_time from iat', () => {
-      expect(source).not.toMatch(/auth_time[^\n]*\biat\b/);
-      expect(source).not.toMatch(/\biat\b[^\n]*auth_time/);
+    it('Session.createdAt keeps its original database-managed behavior', () => {
+      expect(source).not.toMatch(/session\.createdAt\s*=/);
+      expect(source).not.toMatch(/createdAt\?:\s*Date/);
+    });
+
+    it('never derives auth_time from Session.createdAt or iat', () => {
+      expect(source).not.toMatch(/authTime:\s*session\./);
+      expect(source).not.toMatch(/auth_time[^\n]*\b(iat|createdAt)\b/);
+      expect(source).not.toMatch(/\b(iat|createdAt)\b[^\n]*auth_time/);
+      expect(source).toContain('authTime: payload.auth_time');
     });
   });
 });

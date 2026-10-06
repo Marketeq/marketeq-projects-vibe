@@ -86,13 +86,16 @@ const normalizeKey = (value?: string) =>
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
-// OIDC `auth_time`: epoch SECONDS of the original authentication, taken from the
-// session's createdAt (never JWT `iat`, which changes on every refresh). Anything that
-// is not a real date yields no claim, so a token without it is still issued and valid.
-const toAuthTimeSeconds = (value: unknown): number | null => {
-  if (!(value instanceof Date)) return null;
-  const ms = value.getTime();
-  return Number.isFinite(ms) && ms > 0 ? Math.floor(ms / 1000) : null;
+// OIDC `auth_time`: epoch SECONDS of the original authentication. It is generated once at
+// login and then carried unchanged in the signed access AND refresh tokens, so it never
+// comes from Session.createdAt or JWT `iat` (which changes on every refresh). A value that
+// is not a positive integer, or is more than a minute in the future, yields no claim: the
+// token is still issued and the claim is simply omitted until the next login.
+const AUTH_TIME_FUTURE_SKEW_SECONDS = 60;
+const sanitizeAuthTime = (value: unknown): number | null => {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return null;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return value <= nowSeconds + AUTH_TIME_FUTURE_SKEW_SECONDS ? value : null;
 };
 
 const parseExpiresIn = (value: string): number | StringValue =>
@@ -215,7 +218,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.sendPasswordCreatedEmail(user.email, user.username, 'register');
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
@@ -223,7 +226,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       authTime,
     });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
@@ -273,7 +276,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
@@ -281,7 +284,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       authTime,
     });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
@@ -520,11 +523,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const rememberMe = dto.rememberMe ?? false;
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime, rememberMe });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return {
       ...tokens,
@@ -572,10 +575,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
@@ -774,9 +777,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     );
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime });
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       success: true,
@@ -1064,7 +1067,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
@@ -1072,7 +1075,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       authTime,
     });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
@@ -1200,7 +1203,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const tokens = await this.issueTokens({
       sub: user.id,
       email: user.email,
@@ -1208,7 +1211,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       authTime,
     });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
     return {
       ...tokens,
@@ -1229,7 +1232,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const refreshSecret = this.getRefreshSecret();
-    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
+    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean; auth_time?: unknown };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.refresh_token, {
@@ -1257,7 +1260,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
 
       const rememberMe = payload.rememberMe ?? false;
-      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe, authTime: session.createdAt });
+      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe, authTime: payload.auth_time });
 
       const csrfToken = randomBytes(32).toString('hex');
       session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
@@ -1269,7 +1272,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       return { ...newTokens, sessionId: payload.sid, csrfToken };
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false, authTime: payload.auth_time });
   }
 
   async logout(user: { id?: string; sub?: string }, refreshToken?: string) {
@@ -1541,11 +1544,11 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.syncUserProfile(user);
 
     const sessionId = randomUUID();
-    const authTime = new Date();
+    const authTime = Math.floor(Date.now() / 1000);
     const rememberMe = payload.rememberMe ?? false;
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime, rememberMe });
 
-    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe, createdAt: authTime });
+    const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
     return { ...tokens, sessionId, csrfToken, user: this.serializeUser(user) };
   }
@@ -1801,7 +1804,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     userAgent: string;
     ipAddress: string;
     rememberMe?: boolean;
-    createdAt?: Date;
   }): Promise<string> {
     const hash = createHash('sha256').update(params.refreshToken).digest('hex');
     const expiresAt = new Date(Date.now() + this.refreshTtlMs(params.rememberMe ?? false));
@@ -1827,11 +1829,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     session.ipAddress = params.ipAddress;
     session.csrfToken = csrfToken;
     session.expiresAt = expiresAt;
-    // The login's own authentication time, so the session row and the access token's
-    // auth_time are the same instant (TypeORM inserts an explicit createdAt as given).
-    if (params.createdAt) {
-      session.createdAt = params.createdAt;
-    }
     await this.sessionRepository.save(session);
     return csrfToken;
   }
@@ -1868,15 +1865,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     email: string;
     sessionId?: string;
     rememberMe?: boolean;
-    authTime?: Date;
+    // Login passes a freshly generated value; refresh passes the verified refresh token's
+    // own claim. Anything unusable is dropped (see sanitizeAuthTime).
+    authTime?: unknown;
   }): Promise<JwtPair> {
+    const authTime = sanitizeAuthTime(payload.authTime);
     const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
     if (payload.sessionId) {
       accessPayload.sid = payload.sessionId;
-      const authTime = toAuthTimeSeconds(payload.authTime);
-      if (authTime !== null) {
-        accessPayload.auth_time = authTime;
-      }
+    }
+    if (authTime !== null) {
+      accessPayload.auth_time = authTime;
     }
     const access_token = this.jwtService.sign(accessPayload);
 
@@ -1892,6 +1891,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
     if (payload.sessionId) {
       refreshPayload.sid = payload.sessionId;
+    }
+    if (authTime !== null) {
+      refreshPayload.auth_time = authTime;
     }
 
     const refresh_token = await this.jwtService.signAsync(refreshPayload, {
