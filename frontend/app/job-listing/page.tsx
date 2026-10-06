@@ -21743,10 +21743,10 @@ const TeamRoles = ({
                 </Alert>
               ) : null}
 
-              <div className="self-stretch overflow-x-auto bg-white">
-                <Table className="min-w-[886px] table-fixed bg-white">
+              <div className="self-stretch overflow-x-hidden bg-white">
+                <Table className="w-full table-fixed bg-white">
                   <colgroup>
-                    <col className="w-[241px]" />
+                    <col className="w-[239px]" />
                     <col className="w-[140px]" />
                     <col className="w-[105px]" />
                     <col className="w-[124px]" />
@@ -21756,9 +21756,9 @@ const TeamRoles = ({
                   </colgroup>
                   <TableHeader className="bg-gray-50 [&_tr]:border-y-0">
                     <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
-                      <TableHead className="h-11 w-[241px] px-0 py-0">
+                      <TableHead className="h-11 w-[239px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-[205px]">Role</span>
+                          <span className="h-[18px] min-w-0 flex-1">Role</span>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[140px] px-0 py-0">
@@ -21901,25 +21901,25 @@ const TeamRoles = ({
                         key={`${row.role}-${index}`}
                         className="h-[72px] border-b border-gray-200 hover:bg-transparent"
                       >
-                        <TableCell className="h-[72px] w-[241px] px-0 py-0">
+                        <TableCell className="h-[72px] w-[239px] px-0 py-0">
                           <div className="flex h-[72px] items-center gap-3 py-4 pl-6 pr-3">
                             {row.editable ? (
-                              <div className="flex h-5 w-[205px] flex-col items-start justify-start gap-0">
+                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start justify-start gap-0">
                                 <Button
                                   type="button"
                                   variant="ghost"
                                   visual="gray"
-                                  className="h-5 w-[205px] justify-start p-0 text-left hover:bg-transparent"
+                                  className="h-5 w-full justify-start p-0 text-left hover:bg-transparent"
                                   onClick={() => openRenameRoleDialog(index)}
                                 >
-                                  <span className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                  <span className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
                                     {row.role}
                                   </span>
                                 </Button>
                               </div>
                             ) : (
-                              <div className="flex h-5 w-[205px] flex-col items-start">
-                                <p className="h-5 w-[205px] truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start">
+                                <p className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
                                   {row.role}
                                 </p>
                               </div>
