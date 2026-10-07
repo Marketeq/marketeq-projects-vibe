@@ -21,6 +21,16 @@ export interface ContractDTO {
   updatedAt: string
 }
 
+export interface AddableContractDTO {
+  id: string
+  name: string
+  status: string
+  phase: string | null
+  memberAvatars: string[]
+  memberCount: number
+  createdAt: string
+}
+
 export const getContractsForTalent = async (
   talentId: string
 ): Promise<ContractDTO[]> => {
@@ -37,6 +47,19 @@ export const getContractsForClient = async (
     `/contracts/client/${encodeURIComponent(clientId)}`
   )
   return Array.isArray(res.data) ? res.data : []
+}
+
+export const getAddableJobContractsForClient = async (
+  clientUserId: string
+): Promise<AddableContractDTO[]> => {
+  const res = await AxiosRequest.get("/v1/contracts", {
+    params: {
+      clientUserId,
+      addableJobsOnly: true,
+    },
+  })
+
+  return Array.isArray(res.data?.contracts) ? res.data.contracts : []
 }
 
 export type TalentNetworkStatus = "active" | "pending" | "past"

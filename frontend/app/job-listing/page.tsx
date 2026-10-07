@@ -27,8 +27,8 @@ import {
   type CheckoutPaymentMethod,
 } from "@/service/http/checkout";
 import {
-  type ContractDTO,
-  getContractsForClient,
+  type AddableContractDTO,
+  getAddableJobContractsForClient,
 } from "@/service/http/contracts";
 import {
   JobListingAPI,
@@ -4339,32 +4339,44 @@ const ProjectInfo = ({
 
     return undefined;
   };
-  const mapContractToExistingOption = (
-    contract: ContractDTO,
-  ): ExistingListingOption => {
-    const isServiceContract = Boolean(contract.serviceId);
-    const statusBadge = contract.status
-      ? contract.status
+  const formatContractStatusLabel = (status?: string | null) =>
+    status
+      ? status
           .split(/[_\s-]+/)
           .filter(Boolean)
           .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
           .join(" ")
-      : "Active";
+      : "";
+  const formatContractPhaseLabel = (phase?: string | null) => {
+    const formattedPhase = formatContractStatusLabel(phase);
+
+    return formattedPhase ? `${formattedPhase} Phase` : "";
+  };
+  const mapContractToExistingOption = (
+    contract: AddableContractDTO,
+  ): ExistingListingOption => {
+    const normalizedStatus = contract.status?.toLowerCase();
+    const statusBadge =
+      normalizedStatus &&
+      ["disputed", "expired", "closed", "paused"].includes(normalizedStatus)
+        ? formatContractStatusLabel(contract.status)
+        : "";
+    const avatarUrls = contract.memberAvatars.filter(Boolean).slice(0, 4);
+    const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
 
     return {
       id: contract.id,
-      title: contract.title || "Untitled contract",
+      title: contract.name || "Untitled contract",
       badges: [
-        contract.note || contract.duration || statusBadge,
-        isServiceContract ? "Service" : "Project",
+        formatContractPhaseLabel(contract.phase),
+        statusBadge,
       ].filter(Boolean),
-      icon: isServiceContract ? (
-        <RefreshCcw05 className="size-5" />
-      ) : (
-        <Copy className="size-5" />
-      ),
-      avatars: [],
-      workType: isServiceContract ? "service" : "project",
+      icon: <Copy className="size-5" />,
+      avatars:
+        overflowAvatarCount > 0
+          ? [...avatarUrls, `+${overflowAvatarCount}`]
+          : avatarUrls,
+      workType: "project",
       disabledReason: getContractDisabledReason(contract.status),
     };
   };
@@ -4388,11 +4400,13 @@ const ProjectInfo = ({
 
     const loadExistingContracts = async () => {
       try {
-        const contracts = await getContractsForClient(user.id);
+        const contracts = await getAddableJobContractsForClient(user.id);
         if (cancelled) return;
 
         setApiExistingListingOptions(
-          contracts.map(mapContractToExistingOption),
+          contracts
+            .filter((contract) => contract.status?.toLowerCase() === "active")
+            .map(mapContractToExistingOption),
         );
       } catch (error) {
         if (!cancelled) {
@@ -4599,10 +4613,10 @@ const ProjectInfo = ({
                                   />
                                 ) : (
                                   React.isValidElement(option.icon)
-                                    ? React.cloneElement(option.icon as React.ReactElement, {
+                                    ? React.cloneElement(option.icon as React.ReactElement<{ className?: string }>, {
                                         className: cn(
                                           "size-6 shrink-0 text-primary-500",
-                                          (option.icon as React.ReactElement).props
+                                          (option.icon as React.ReactElement<{ className?: string }>).props
                                             ?.className,
                                         ),
                                       })
@@ -4611,7 +4625,7 @@ const ProjectInfo = ({
                               </span>
 
                               <span className="flex h-[60px] min-w-0 flex-1 flex-col justify-center gap-1">
-                                <span className="block text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                <span className="block truncate text-[18px] font-semibold leading-7 text-dark-blue-400">
                                   {option.title}
                                 </span>
                                 <span className="flex h-[27px] items-center gap-2">
@@ -4637,18 +4651,14 @@ const ProjectInfo = ({
                               </span>
                             </span>
 
-                            <span className="hidden items-center md:flex">
+                            <span className="hidden shrink-0 items-center md:flex">
                               <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
-                                {[
-                                  "/woman.jpg",
-                                  "/man.jpg",
-                                  "/girl.jpeg",
-                                  "/guy.jpeg",
-                                ]
-                                  .slice(0, option.avatars.length > 2 ? 4 : 2)
-                                  .map((avatar) => (
+                                {option.avatars
+                                  .filter(Boolean)
+                                  .slice(0, 4)
+                                  .map((avatar, avatarIndex) => (
                                     <Avatar
-                                      key={`${option.id}-${avatar}`}
+                                      key={`${option.id}-${avatarIndex}-${avatar}`}
                                       size="xs"
                                       className="border-2 border-white hover:ring-0 active:ring-0"
                                     >
@@ -11451,7 +11461,10 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
   const { projectScopeMethods } = useProjectScopeContext();
   const [, setProjectScopeState] = projectScopeMethods;
   const [roleDescription, setRoleDescription] = useState("");
-  const [headcount, setHeadcount] = useState("2");
+  const [headcount, setHeadcount] = useState("1");
+  const roleDescriptionWordCount = roleDescription.trim()
+    ? roleDescription.trim().split(/\s+/).length
+    : 0;
   const seededRowIdRef = useRef(String(getId()));
 
   useIsomorphicLayoutEffect(() => {
@@ -11500,82 +11513,61 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="px-5 py-10 md:px-10 min-[1024px]:px-[70px] min-[1024px]:py-[50px]">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
-          <div className="min-w-0 flex-auto max-w-[885px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+      <div className="px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:py-[50px]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1240px]:flex-row min-[1240px]:items-start">
+          <div className="flex w-full min-w-0 flex-col gap-8 min-[1240px]:w-[886px] min-[1240px]:shrink-0">
+            <h1 className="text-[36px] font-bold leading-[44px] text-dark-blue-400">
               Describe roles
             </h1>
-            <div className="mt-8">
-              <div className="flex items-center justify-between gap-x-4">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                  What do you want new team members to do?
-                </Label>
-                <span className="text-sm leading-5 text-gray-400">
-                  67 / 100
-                </span>
+            <div className="flex flex-col gap-16">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label className="text-lg font-medium leading-7 text-dark-blue-400">
+                    What do you want new team members to do?
+                  </Label>
+                  <span className="text-sm leading-5 text-gray-400">
+                    {roleDescriptionWordCount} / 100
+                  </span>
+                </div>
+                <Textarea
+                  className="h-40 resize-none px-4 py-3 text-base leading-6 text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+                  placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                  value={roleDescription}
+                  onChange={(event) => setRoleDescription(event.target.value)}
+                />
               </div>
-              <Textarea
-                className="mt-3 h-40 text-base"
-                placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
-                value={roleDescription}
-                onChange={(event) => setRoleDescription(event.target.value)}
-              />
-            </div>
-            <div className="mt-16 max-w-[320px]">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                How many people do you want to add to your team?
-              </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <Input
-                className="mt-2"
-                inputMode="numeric"
-                value={headcount}
-                onChange={(event) => setHeadcount(event.target.value)}
-              />
+              <div className="flex h-[114px] w-full flex-col items-start gap-4">
+                <Label className="text-lg font-medium leading-7 text-dark-blue-400">
+                  How many people do you want to add to your team?
+                </Label>
+                <div className="flex h-[70px] w-[320px] items-end gap-2">
+                  <div className="flex h-[70px] w-[320px] flex-col items-start gap-1.5">
+                    <Label className="text-sm font-medium leading-5 text-gray-500">
+                      Amount
+                    </Label>
+                    <Input
+                      className="h-11 rounded-[5px] px-[14px] py-2.5 text-base font-normal leading-6 text-dark-blue-400 shadow-xs"
+                      inputMode="numeric"
+                      value={headcount}
+                      onChange={(event) => setHeadcount(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div
-            className={cn(
-              "w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start",
-              isTeamMode &&
-                "box-border flex h-[300px] flex-col gap-4 min-[1180px]:w-[322px]",
-            )}
-          >
-            <div
-              className={cn(
-                "flex items-center gap-x-2",
-                isTeamMode && "h-6 w-full items-start justify-between gap-2",
-              )}
-            >
-              <span
-                className={cn(
-                  "text-base leading-normal font-semibold text-gray-400",
-                  isTeamMode && "h-6 flex-1 leading-6",
-                )}
-              >
+          <div className="box-border flex h-[300px] w-full shrink-0 flex-col items-start gap-4 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1240px]:w-[322px]">
+            <div className="flex h-6 w-full items-start justify-between gap-2">
+              <span className="h-6 flex-1 rounded-[4.84px] text-base font-semibold leading-6 text-gray-400">
                 Quick tip
               </span>
               <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
             </div>
-            <div className={cn(isTeamMode && "flex h-[220px] flex-col gap-2")}>
-              <p
-                className={cn(
-                  "mt-4 text-base leading-6 font-semibold text-dark-blue-400",
-                  isTeamMode &&
-                    "mt-0 h-14 text-lg leading-7 font-semibold text-dark-blue-400",
-                )}
-              >
+            <div className="flex h-[220px] flex-col gap-2">
+              <p className="mt-0 h-14 text-lg font-semibold leading-7 text-dark-blue-400">
                 Give us a few details now to save time later:
               </p>
-              <div
-                className={cn(
-                  "mt-3 space-y-2",
-                  isTeamMode && "mt-0 h-[156px]",
-                )}
-              >
+              <ul className="mt-0 h-[156px] list-disc space-y-1 pl-5 text-sm font-normal leading-5 text-dark-blue-400">
                 {[
                   "What the role or job is about",
                   "Key responsibilities and tasks to be done",
@@ -11583,14 +11575,11 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
                   "Desired outcomes or deliverables",
                   "Any deadlines or timing constraints",
                 ].map((item) => (
-                  <div key={item} className="flex items-start gap-x-3">
-                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                    <span className="text-sm leading-5 text-dark-blue-400">
-                      {item}
-                    </span>
-                  </div>
+                  <li key={item} className="pl-1">
+                    {item}
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           </div>
         </div>
