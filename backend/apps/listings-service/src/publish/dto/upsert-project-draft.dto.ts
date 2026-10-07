@@ -1,10 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -26,6 +28,7 @@ export class UpsertProjectDraftDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  @MaxLength(120, { message: 'Title cannot exceed 120 characters.' })
   title?: string;
 
   @ApiProperty({ required: false })
@@ -71,6 +74,7 @@ export class UpsertProjectDraftDto {
   @ApiProperty({ type: [String], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @IsString({ each: true })
   categories?: string[];
 
@@ -86,6 +90,7 @@ export class UpsertProjectDraftDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @ValidateNested({ each: true })
   @Type(() => ProjectCategorySelectionDto)
   categorySelections?: ProjectCategorySelectionDto[];

@@ -405,7 +405,13 @@ export class ProjectsService {
     if (Object.prototype.hasOwnProperty.call(writable, 'title')) {
       const title = this.normalizeRequiredText(writable.title, 'Project title cannot be empty');
       writable.title = title;
-      writable.slug = await this.resolveUniqueSlug(title, id);
+      // PMCM-254: slug is generated from the title on first save only —
+      // editing the title afterward must never change it. Previously this
+      // regenerated the slug from the title on every update with no check
+      // against the project's existing slug.
+      if (!existing.slug) {
+        writable.slug = await this.resolveUniqueSlug(title, id);
+      }
     }
 
     if (Object.prototype.hasOwnProperty.call(writable, 'description')) {

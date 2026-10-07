@@ -779,13 +779,20 @@ export class PublishService {
     projectId: string,
     dto: UpsertProjectDraftDto,
   ): Promise<Project> {
-    await this.ensureProjectOwnership(projectId, userId);
+    const existing = await this.ensureProjectOwnership(projectId, userId);
 
     const payload: Partial<Project> = {};
 
     if (dto.title !== undefined) {
       payload.title = dto.title;
-      payload.slug = dto.title ? slugify(dto.title) : null;
+      // PMCM-254: slug is generated from the title on first save only —
+      // editing the title afterward must never change it. Previously this
+      // regenerated the slug from the title on every update with no check
+      // against the project's existing slug, so any title edit after the
+      // first save silently changed the published URL.
+      if (!existing.slug && dto.title) {
+        payload.slug = slugify(dto.title);
+      }
     }
     if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
     if (dto.shortDescription !== undefined) {

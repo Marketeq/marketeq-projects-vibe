@@ -189,6 +189,7 @@ import {
   DropdownMenuTrigger,
   Favorite,
   FavoriteRoot,
+  HelperText,
   IconButton,
   Input,
   InputGroup,
@@ -1556,6 +1557,69 @@ function ProjectDetailsInner() {
     null,
     null,
   ])
+  const [infoDraftBaseline, setInfoDraftBaseline] = React.useState<{
+    title: string
+    summary: string
+    projectType: string
+    categories: CategoryRow[]
+  } | null>(null)
+  // PMCM-254: rebuild the Basic Info / Categories draft fresh from the
+  // committed `project` state. Must run on every modal-open — infoTitle and
+  // infoSummary were already re-hydrated inline at each open call site, but
+  // infoProjectType/infoCategories were not, so Cancel-ing an edit to either
+  // left the mutation sitting in state until the next real Save. Also
+  // captures the pre-edit snapshot so the Save button can tell whether the
+  // modal is actually dirty.
+  const resetProjectInfoDraft = React.useCallback(() => {
+    const title = toTitleCase(
+      project.title && project.title !== "Enter Project Title"
+        ? project.title
+        : ""
+    )
+    const summary = project.summary || ""
+    const projectType = project.projectType || "Website"
+    let categories: CategoryRow[]
+    if (
+      Array.isArray(project.categorySelections) &&
+      project.categorySelections.length > 0
+    ) {
+      categories = project.categorySelections.map((cs: CategoryRow) => ({
+        category: cs.category || "",
+        subCategories: Array.isArray(cs.subCategories)
+          ? cs.subCategories
+          : [],
+      }))
+    } else if (
+      Array.isArray(project.categories) &&
+      project.categories.length > 0
+    ) {
+      const subs = project.subcategories ?? []
+      categories = project.categories.map((cat: string, i: number) => ({
+        category: cat,
+        subCategories: i === 0 && Array.isArray(subs) ? subs : [],
+      }))
+    } else {
+      categories = []
+    }
+    while (categories.length < 3)
+      categories.push({ category: "", subCategories: [] })
+    categories = categories.slice(0, 3)
+
+    setInfoTitleRaw(title)
+    setInfoSummary(summary)
+    setInfoProjectType(projectType)
+    setInfoCategories(categories)
+    setInfoCatErrors([null, null, null])
+    setInfoDraftBaseline({ title, summary, projectType, categories })
+  }, [project])
+  const isProjectInfoDirty = infoDraftBaseline
+    ? JSON.stringify({
+        title: infoTitle,
+        summary: infoSummary,
+        projectType: infoProjectType,
+        categories: infoCategories,
+      }) !== JSON.stringify(infoDraftBaseline)
+    : false
   const [hiddenImages, setHiddenImages] = React.useState<Set<number>>(new Set())
   const [videoHidden, setVideoHidden] = React.useState(false)
   const galleryInputRef = React.useRef<HTMLInputElement>(null)
@@ -2611,7 +2675,7 @@ function ProjectDetailsInner() {
       if (values.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
         setInfoCatErrors((prev) => {
           const next = [...prev]
-          next[index] = "You can add a maximum of five (5) sub categories"
+          next[index] = "You can add a maximum of five (5) sub-categories."
           return next
         })
         return
@@ -2632,14 +2696,19 @@ function ProjectDetailsInner() {
 
   const handleSuggestedCategoryClick = React.useCallback(
     (category: string, subCategory: string) => {
-      const indexToUpdate = activeCategoryIndex
+      // PMCM-254: target the first EMPTY row rather than activeCategoryIndex
+      // (which defaults to 0 and only updates on dropdown/input focus) — a
+      // suggestion click must never silently overwrite a row the seller
+      // already filled in.
       setInfoCategories((prev) => {
+        const indexToUpdate = prev.findIndex((row) => !row.category)
+        if (indexToUpdate === -1) return prev
         const next = [...prev]
         next[indexToUpdate] = { category, subCategories: [subCategory] }
         return next
       })
     },
-    [activeCategoryIndex]
+    []
   )
 
   const selectedSuggestedPairs = React.useMemo(
@@ -2676,6 +2745,11 @@ function ProjectDetailsInner() {
   }, [infoProjectType, infoCategories, categoryTree])
 
   const suggestedForDisplay = React.useMemo(() => {
+    // PMCM-254: once all 3 rows are filled there's no empty row left for a
+    // suggestion click to land in — hide suggestions entirely instead of
+    // letting a click silently overwrite an existing row (or need a
+    // separate max-3 error for a path that structurally can't add a 4th row).
+    if (selectedCategoryNames.size >= 3) return []
     const seenCategories = new Set(selectedCategoryNames)
     const result: SuggestedCategoryOption[] = []
     for (const item of [...derivedSuggestions, ...suggested]) {
@@ -4255,7 +4329,7 @@ function ProjectDetailsInner() {
                       (!project.title ||
                         project.title === "Enter Project Title") && (
                         <p className="text-sm text-error-500">
-                          Please enter your project title
+                          Title is required.
                         </p>
                       )}
 
@@ -4287,12 +4361,7 @@ function ProjectDetailsInner() {
                             : "text-dark-blue-400"
                         )}
                         onClick={() => {
-                          setInfoTitle(
-                            project.title === "Enter Project Title"
-                              ? ""
-                              : project.title || ""
-                          )
-                          setInfoSummary(project.summary || "")
+                          resetProjectInfoDraft()
                           setInfoTab("Categories")
                           setSelected("Details")
                           setProjectInfoOpen(true)
@@ -4305,9 +4374,9 @@ function ProjectDetailsInner() {
 
                     {SHOW_PUBLISH_VALIDATION &&
                       publishAttempted &&
-                      (project.categories || []).length < 3 && (
+                      (project.categories || []).length < 1 && (
                         <p className="text-sm text-error-500">
-                          Please add at least 3 categories
+                          At least one category is required.
                         </p>
                       )}
                   </div>
@@ -4317,12 +4386,7 @@ function ProjectDetailsInner() {
                     variant="ghost"
                     visual="gray"
                     onClick={() => {
-                      setInfoTitle(
-                        project.title === "Enter Project Title"
-                          ? ""
-                          : project.title || ""
-                      )
-                      setInfoSummary(project.summary || "")
+                      resetProjectInfoDraft()
                       setInfoTab("Basic Info")
                       setSelected("Details")
                       setProjectInfoOpen(true)
@@ -4335,6 +4399,7 @@ function ProjectDetailsInner() {
                 <div
                   className="mt-6 relative cursor-pointer hover:bg-gray-50 rounded-md transition -mx-2 px-2 py-1"
                   onClick={() => {
+                    resetProjectInfoDraft()
                     setInfoTab("Basic Info")
                     setFocusSummaryOnOpen(true)
                     setSelected("Details")
@@ -5038,19 +5103,24 @@ function ProjectDetailsInner() {
                                   {infoTab === "Basic Info" && (
                                     <div className="pt-6 px-6 pb-6 space-y-5">
                                       <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                          <Label
-                                            size="sm"
-                                            className="font-medium cursor-default"
-                                          >
-                                            Title
-                                          </Label>
-                                          <span className="text-xs text-gray-400">
+                                        <Label
+                                          size="sm"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
+                                        >
+                                          Title
+                                        </Label>
+                                        <div className="flex items-center justify-between gap-x-3">
+                                          <HelperText className="flex-auto">
+                                            Write a title that accurately
+                                            describes your project scope for
+                                            the marketplace.
+                                          </HelperText>
+                                          <span className="shrink-0 text-xs text-gray-400">
                                             {infoTitle.length}/120
                                           </span>
                                         </div>
                                         <Input
-                                          placeholder="Enter project title"
+                                          placeholder="Enter Title"
                                           value={infoTitle}
                                           onChange={(e) =>
                                             setInfoTitle(
@@ -5061,16 +5131,20 @@ function ProjectDetailsInner() {
                                       </div>
 
                                       <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                          <Label
-                                            size="sm"
-                                            className="font-medium cursor-default"
-                                          >
-                                            Short Description
-                                          </Label>
+                                        <Label
+                                          size="sm"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
+                                        >
+                                          Short Description
+                                        </Label>
+                                        <div className="flex items-center justify-between gap-x-3">
+                                          <HelperText className="flex-auto">
+                                            Provide a brief overview of your
+                                            project scope.
+                                          </HelperText>
                                           <span
                                             className={cn(
-                                              "text-xs",
+                                              "shrink-0 text-xs",
                                               infoSummary.length >
                                                 SHORT_DESCRIPTION_MAX_LENGTH
                                                 ? "text-error-500"
@@ -5084,7 +5158,7 @@ function ProjectDetailsInner() {
                                         <Textarea
                                           ref={summaryTextareaRef}
                                           className="min-h-[100px] resize-none"
-                                          placeholder="Enter a short description..."
+                                          placeholder="Enter a description..."
                                           value={infoSummary}
                                           isInvalid={
                                             infoSummary.length > 0 &&
@@ -5116,17 +5190,21 @@ function ProjectDetailsInner() {
                                       <div className="space-y-1.5">
                                         <Label
                                           size="sm"
-                                          className="font-medium cursor-default"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
                                         >
                                           Project Type
                                         </Label>
+                                        <HelperText>
+                                          Select the category that best
+                                          represents your project scope.
+                                        </HelperText>
                                         <Listbox
                                           value={infoProjectType}
                                           onChange={setInfoProjectType}
                                         >
                                           <ListboxButton
                                             placeholder="Select type"
-                                            className="h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                                            className="w-32 h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
                                           >
                                             {({ value }) => (
                                               <span className="truncate block">
@@ -5212,6 +5290,10 @@ function ProjectDetailsInner() {
                                               </div>
 
                                               <TagsInputRoot
+                                                disabled={
+                                                  !infoCategories[index]
+                                                    .category
+                                                }
                                                 value={
                                                   infoCategories[index]
                                                     .subCategories
@@ -5393,7 +5475,12 @@ function ProjectDetailsInner() {
                                   <X className="size-[15px]" />
                                   Cancel
                                 </Button>
-                                <Button type="submit">Save</Button>
+                                <Button
+                                  type="submit"
+                                  disabled={!isProjectInfoDirty}
+                                >
+                                  Save
+                                </Button>
                               </div>
                             </form>
                           </DialogContent>
@@ -6452,6 +6539,7 @@ function ProjectDetailsInner() {
                                       visual="gray"
                                       className="shrink-0 ml-4 bg-white"
                                       onClick={() => {
+                                        resetProjectInfoDraft()
                                         setDetailsDialogOpen(false)
                                         setProjectInfoOpen(true)
                                         setInfoTab("Categories")
