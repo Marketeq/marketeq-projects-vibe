@@ -14,7 +14,7 @@ import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu, MenuSection } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
 import { ManualTimeForm } from "./manual-time-form"
-import { deriveUiRunningPaused, computeDisplayedElapsedSec } from "./timer-ui-state"
+import { deriveUiRunningPaused, computeDisplayedElapsedSec, decideActiveTaskAction } from "./timer-ui-state"
 import { IdleResolutionModal } from "../../views/IdleResolutionModal"
 import type { IdleResolutionNeededPayload, TimerSnapshotDTO } from "../../../shared/ipc-contracts"
 
@@ -814,11 +814,19 @@ export function TimeTrackerApp({
     setIsPaused(paused)
     isOnBreakRef.current = snap.isOnBreak
     if (!snap.pendingIdle) setPendingIdle(null)
-    if (!running) {
+    // Counting is the in-between step of Start, not "tracking ended" — see
+    // decideActiveTaskAction in timer-ui-state.ts.
+    const taskAction = decideActiveTaskAction({
+      state: snap.state,
+      running,
+      hasPickedContract: !!snap.pickedContract,
+      hasActiveTask: !!activeTaskRef.current,
+    })
+    if (taskAction === 'clear') {
       setActiveTask(null)
       setTrackingStartTime(null)
       setPendingPickedContract(null)
-    } else if (snap.pickedContract && !activeTaskRef.current) {
+    } else if (taskAction === 'restore' && snap.pickedContract) {
       setPendingPickedContract(snap.pickedContract)
     }
   }, [])

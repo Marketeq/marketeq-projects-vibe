@@ -23,6 +23,28 @@ export function deriveUiRunningPaused(snap: {
 }
 
 /**
+ * What a timer snapshot should do to the renderer's activeTask.
+ *
+ * `Counting` is never "tracking ended": timerService.startTimer() dispatches
+ * PICK_CONTRACT (Idle → Counting) and START (Counting → Running) in one call,
+ * so the renderer gets both snapshots back to back. Clearing on Counting
+ * wiped the task the user had just started, and when both snapshots landed
+ * in one React batch the Running restore was skipped (activeTaskRef had not
+ * caught up yet), leaving the timer running with no header card or
+ * Pause/Stop. Only states that really end tracking clear the task.
+ */
+export function decideActiveTaskAction(snap: {
+  state: TimerStateName;
+  running: boolean;
+  hasPickedContract: boolean;
+  hasActiveTask: boolean;
+}): 'clear' | 'restore' | 'keep' {
+  if (!snap.running && snap.state !== 'Counting') return 'clear';
+  if (snap.running && snap.hasPickedContract && !snap.hasActiveTask) return 'restore';
+  return 'keep';
+}
+
+/**
  * The displayed clock is always "the last backend-confirmed elapsed seconds,
  * plus however much real time has passed since that confirmation" — never
  * "now minus the original absolute start time." The latter is what caused

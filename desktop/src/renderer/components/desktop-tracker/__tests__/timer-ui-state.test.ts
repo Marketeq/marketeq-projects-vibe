@@ -1,7 +1,11 @@
 // src/renderer/components/desktop-tracker/__tests__/timer-ui-state.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { deriveUiRunningPaused, computeDisplayedElapsedSec } from '../timer-ui-state';
+import {
+  deriveUiRunningPaused,
+  computeDisplayedElapsedSec,
+  decideActiveTaskAction,
+} from '../timer-ui-state';
 import type { TimerStateName } from '../../../../shared/ipc-contracts';
 
 describe('deriveUiRunningPaused', () => {
@@ -69,5 +73,75 @@ describe('computeDisplayedElapsedSec', () => {
     const freshBaselineAtResume = { sec: 28, at: fiveMinutesLater };
     expect(computeDisplayedElapsedSec(freshBaselineAtResume, fiveMinutesLater)).toBe(28);
     expect(computeDisplayedElapsedSec(freshBaselineAtResume, fiveMinutesLater + 1_000)).toBe(29);
+  });
+});
+
+describe('decideActiveTaskAction', () => {
+  const decide = (state: TimerStateName, hasPickedContract: boolean, hasActiveTask: boolean) => {
+    const { isRunning } = deriveUiRunningPaused({ state, isOnBreak: false });
+    return decideActiveTaskAction({ state, running: isRunning, hasPickedContract, hasActiveTask });
+  };
+
+  it('Counting never clears the task (it is the in-between step of Start)', () => {
+    expect(decide('Counting', true, true)).toBe('keep');
+    expect(decide('Counting', true, false)).toBe('keep');
+  });
+
+  it('Idle and OfflineStopped really end tracking -> clear', () => {
+    expect(decide('Idle', false, true)).toBe('clear');
+    expect(decide('OfflineStopped', true, true)).toBe('clear');
+  });
+
+  it('running with a pick but no task on screen (window reload) -> restore', () => {
+    for (const s of ['Running', 'Paused', 'IdleSoftPaused', 'OnBreakUnpaid'] as const) {
+      expect(decide(s, true, false)).toBe('restore');
+    }
+  });
+
+  it('running with the task already on screen -> keep (no extra lookup)', () => {
+    expect(decide('Running', true, true)).toBe('keep');
+  });
+
+  it('running with no pick -> keep', () => {
+    expect(decide('Running', false, false)).toBe('keep');
+  });
+
+  // Mirrors applyTimerSnapshot: activeTaskRef only syncs after React commits,
+  // so every snapshot in one batch sees the ref as it was before the batch.
+  function deliver(batches: TimerStateName[][]) {
+    let activeTask: string | null = 'optimistic-task'; // set by startTimerImmediate
+    let pending: string | null = null;
+    for (const batch of batches) {
+      const refAtBatchStart = activeTask;
+      let queuedTask: string | null | undefined;
+      for (const state of batch) {
+        const action = decide(state, state !== 'Idle', !!refAtBatchStart);
+        if (action === 'clear') {
+          queuedTask = null;
+          pending = null;
+        } else if (action === 'restore') {
+          pending = 'picked';
+        }
+      }
+      if (queuedTask !== undefined) activeTask = queuedTask;
+      // the [pendingPickedContract, days] effect restores after commit
+      if (pending && !activeTask) {
+        activeTask = 'restored-task';
+        pending = null;
+      }
+    }
+    return activeTask;
+  }
+
+  it('regression: Counting + Running in ONE batch keeps the task (header stays)', () => {
+    expect(deliver([['Counting', 'Running']])).toBe('optimistic-task');
+  });
+
+  it('Counting and Running in separate batches keeps the task', () => {
+    expect(deliver([['Counting'], ['Running']])).toBe('optimistic-task');
+  });
+
+  it('Stop still clears the task', () => {
+    expect(deliver([['Counting', 'Running'], ['Idle']])).toBeNull();
   });
 });
