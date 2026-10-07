@@ -1824,33 +1824,35 @@ const Empty = ({
       <div className="relative flex-auto">
         {jobsPage}
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/40 px-6">
-          <Card className="w-full max-w-[600px] rounded-[16px] border-gray-200 bg-white p-0 shadow-lg hover:border-gray-200 hover:ring-0">
-            <div className="relative px-10 py-10 text-center">
+          <Card className="h-[334px] w-full max-w-[600px] rounded-[16px] border-none bg-white p-0 shadow-none hover:border-transparent hover:ring-0">
+            <div className="relative flex h-full flex-col items-start gap-8 px-10 pb-10 pt-16">
               <IconButton
-                className="absolute right-6 top-6"
+                className="absolute right-6 top-6 size-8 p-0 text-gray-500 opacity-50"
                 variant="ghost"
                 visual="gray"
                 size="md"
                 onClick={() => router.push("/my-jobs")}
               >
-                <X className="size-6" />
+                <X className="size-8" />
               </IconButton>
-              <div className="mx-auto inline-flex size-14 items-center justify-center rounded-full bg-success-50 text-success-500">
-                <CheckCircle className="size-7" />
+              <div className="inline-flex size-12 shrink-0 items-center justify-center rounded-full border-8 border-success-50 bg-success-100 text-success-600">
+                <CheckCircle className="size-6" />
               </div>
-              <h2 className="mt-8 text-[32px] font-bold leading-tight text-dark-blue-400">
-                {inviteStep === "sent"
-                  ? "Invites sent successfully!"
-                  : "All set! Your job post is live"}
-              </h2>
-              <p className="mt-5 text-[18px] font-light leading-normal text-dark-blue-400">
-                {inviteStep === "sent"
-                  ? "You can track applicants for each job from your My Jobs page"
-                  : "Start inviting talents to move your hiring forward"}
-              </p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="flex w-full flex-col items-start gap-4">
+                <h2 className="w-full text-[30px] font-bold leading-[38px] text-dark-blue-400">
+                  {inviteStep === "sent"
+                    ? "Invites sent successfully!"
+                    : "All set! Your job post is live"}
+                </h2>
+                <p className="w-full text-base font-normal leading-6 text-dark-blue-400">
+                  {inviteStep === "sent"
+                    ? "You can track applicants for each job from your My Jobs page"
+                    : "Start inviting talents to move your hiring forward"}
+                </p>
+              </div>
+              <div className="grid h-10 w-full grid-cols-2 gap-3">
                 <Button
-                  className="h-12"
+                  className="h-10 rounded-[5px] px-4 py-2.5 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
                   variant="outlined"
                   visual="gray"
                   onClick={() => router.push("/my-jobs")}
@@ -1858,7 +1860,7 @@ const Empty = ({
                   {inviteStep === "sent" ? "Close" : "Do It Later"}
                 </Button>
                 <Button
-                  className="h-12"
+                  className="h-10 rounded-[5px] px-4 py-2.5 text-sm font-semibold leading-5 shadow-xs"
                   onClick={() =>
                     inviteStep === "sent"
                       ? router.push("/my-jobs")
@@ -3110,7 +3112,10 @@ const BottomBar = ({
             </Button>
           ) : (
             <Button
-              className="h-11 rounded-[44px] px-6 opacity-50"
+              className={cn(
+                "h-11 rounded-[44px] px-6",
+                !isValid && "opacity-50",
+              )}
               disabled={!isValid}
               onClick={() => {
                 handleSubmit();
