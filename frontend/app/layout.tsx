@@ -23,6 +23,14 @@ export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
   title: "Marketeq",
   description: "Welcome to Marketeq's marketing website.",
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: {
+      index: false,
+      follow: false,
+    },
+  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon-16x16.png",

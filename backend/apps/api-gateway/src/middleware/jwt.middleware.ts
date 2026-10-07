@@ -101,8 +101,19 @@ const PUBLIC_PATTERNS = [
   /^(?:\/api)?\/v1\/notifications\/preferences\/email\/verify$/,
 ]
 
-function isPublic(path: string): boolean {
+// Method-scoped public routes. Didit calls this directly — no Marketeq
+// session exists to send. Authenticity is verified downstream by
+// identity-verification-service (X-Signature-V2 HMAC, timestamp window,
+// replay/idempotency), not by gateway JWT auth. Matched on method AND exact
+// path so GET/PUT/PATCH/DELETE, trailing slashes, extra segments and sibling
+// routes under /v1/identity-verification all stay JWT-protected.
+const PUBLIC_METHOD_ROUTES: ReadonlyArray<{ method: string; path: string }> = [
+  { method: 'POST', path: '/v1/identity-verification/webhooks/didit-kyc' },
+]
+
+function isPublic(path: string, method: string): boolean {
   if (PUBLIC_EXACT_ROUTES.has(path)) return true
+  if (PUBLIC_METHOD_ROUTES.some((r) => r.method === method && r.path === path)) return true
   return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 
@@ -117,7 +128,7 @@ export class JwtMiddleware implements NestMiddleware {
     // (no /api) or NEXT_PUBLIC_API_BASE_URL (with /api) hit the same routes.
     const rawPath = req.originalUrl.split('?')[0]
     const reqPath = rawPath.replace(/^\/api(?=\/|$)/, '') || '/'
-    const pub = isPublic(reqPath)
+    const pub = isPublic(reqPath, req.method)
 
     const authHeader = req.headers.authorization
     const cookieToken = (req as any).cookies?.access_token

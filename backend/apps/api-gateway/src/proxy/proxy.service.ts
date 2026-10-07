@@ -82,6 +82,11 @@ export class ProxyService {
       // these exact paths ahead of the global json() parser).
       ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
       ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
+      // Didit Free KYC webhook headers — identity-verification-service
+      // verifies the V2 HMAC and the timestamp window from these. Forwarded
+      // verbatim and only when present; never fabricated.
+      ...(req.headers['x-signature-v2'] ? { 'x-signature-v2': req.headers['x-signature-v2'] as string } : {}),
+      ...(req.headers['x-timestamp'] ? { 'x-timestamp': req.headers['x-timestamp'] as string } : {}),
     }
 
     // Downstream services (timezone-resolution.service.ts, geo.service.ts's

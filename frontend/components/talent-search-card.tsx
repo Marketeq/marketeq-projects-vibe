@@ -90,8 +90,8 @@ function useVisibleSkills(skills: string[]) {
     const el = containerRef.current
     if (!el) return
 
-    const GAP = 8 // gap-x-2
-    const PAD = 32 // px-4 each side
+    const GAP = 8 // gap-2
+    const PAD = 24 // p-[12px] each side
 
     // Measure "More..." span (last child)
     const children = Array.from(el.children) as HTMLElement[]
@@ -154,7 +154,6 @@ export const TalentSearchCard = ({
   availability,
   level,
 }: TalentSearchCardProps) => {
-  const { containerRef, visibleCount } = useVisibleSkills(skillsList)
   const normalizedMatchScore =
     typeof matchScore === "number"
       ? Math.max(0, Math.min(100, Math.round(matchScore)))
@@ -364,11 +363,11 @@ export const TalentSearchCard = ({
   )
 
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col h-full">
-      <div className="p-5">
-        <div className="relative">
+    <article className="bg-white border border-[#eaecf0] drop-shadow-[0px_2px_2.5px_rgba(0,0,0,0.04)] flex flex-col items-start rounded-[6px] h-full">
+      <div className="flex flex-col gap-[12px] items-start p-[20px] w-full relative">
+        <div className="relative w-full">
           <NextLink href={profileHref} className="block">
-            <div className="relative h-[140px] overflow-hidden rounded-[6px] group">
+            <div className="relative h-[140px] overflow-hidden rounded-[6px] w-full group">
               <NextImage
                 src={photo}
                 sizes="25vw"
@@ -379,10 +378,10 @@ export const TalentSearchCard = ({
               />
             </div>
           </NextLink>
-          <div className="flex items-center absolute px-2.5 pt-2.5 justify-between top-0 inset-x-0 pointer-events-none">
+          <div className="flex items-center absolute px-2.5 pt-[11px] justify-between top-0 inset-x-0 pointer-events-none">
             {allStars ? (
-              <div className="font-bold rounded-[5px] py-0.5 px-1.5 bg-black/[.57] inline-flex items-center gap-x-1 text-white text-[10px]">
-                <Stars02 /> All Stars
+              <div className="bg-[rgba(0,0,0,0.57)] flex gap-[4px] items-center justify-center px-[6px] py-[4px] rounded-[5px] font-bold text-[10px] text-white">
+                <Stars02 className="size-[10.8px]" /> All Stars
               </div>
             ) : (
               <div />
@@ -442,99 +441,88 @@ export const TalentSearchCard = ({
             )}
           </div>
 
-          <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
-            <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
-              <Check className="size-[13.97px]" />
-            </div>
+          <div className="absolute bg-[#12b76a] border-[2.531px] border-white flex items-center justify-center overflow-clip p-[6.517px] rounded-[14.5px] left-[-7px] -bottom-1">
+            <Check className="size-[13.966px] text-white" />
           </div>
         </div>
 
-        <div className="mt-3">
-          <h1 className="text-sm font-bold leading-none text-dark-blue-400">
+        <div className="flex items-center text-[#22376b] text-center whitespace-nowrap">
+          <span className="flex items-start font-bold text-[14px]">
             {rate}
-            <span className="text-[10px] leading-none font-light">/hr</span>
-          </h1>
+          </span>
+          <span className="font-light text-[10px]">/hr</span>
+        </div>
 
-          <NextLink href={profileHref} className="block mt-3 hover:underline">
-            <h1 className="text-sm font-bold leading-none text-dark-blue-400">
-              {name}{" "}
-              <span className="text-[12px] text-gray-500 leading-none font-light">
-                {handle}
-              </span>
-            </h1>
-          </NextLink>
-          <h2 className="text-[12px] text-dark-blue-400 leading-none font-medium mt-0.5">
-            {role}
-          </h2>
-          <p className="text-[11px] text-dark-blue-400 leading-none font-light mt-2">
-            {experience}
-          </p>
-          <div className="flex items-center text-gray-500 gap-x-1 mt-3.5">
-            <MarkerPin02 className="size-3" />
-            <p className="text-[10px] leading-5 font-semibold">
-              {country} <span className="font-light">({localTime})</span>
-            </p>
+        <div className="flex flex-col gap-[14px] items-start w-full">
+          <div className="flex flex-col gap-[8px] items-center text-[#22376b] whitespace-nowrap w-full">
+            <div className="flex flex-col gap-[2px] items-start w-full">
+              <NextLink href={profileHref} className="flex gap-[2px] items-center text-center hover:underline">
+                <span className="font-bold text-[14px]">
+                  {name}
+                </span>
+                <span className="flex items-center font-light text-[12px]">
+                  {handle}
+                </span>
+              </NextLink>
+              <p className="capitalize font-medium min-w-full overflow-hidden text-[12px] text-ellipsis w-[min-content]">
+                {role}
+              </p>
+            </div>
+            <div className="flex gap-[2px] items-start font-light text-[11px] w-full">
+              <span className="overflow-hidden text-ellipsis">{experience}</span>
+            </div>
           </div>
 
-          <div className="mt-3.5 flex items-center gap-x-2">
-            <div className="flex items-center gap-x-2">
-              <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-gray-50 shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                <div className="flex items-center gap-x-[3px]">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star
-                      key={i}
-                      className={`size-3 shrink-0 ${
-                        i <= Math.round(rating)
-                          ? "text-primary-500 fill-primary-500"
-                          : "text-gray-200 fill-gray-200"
-                      }`}
-                    />
-                  ))}
-                </div>
+          <div className="flex gap-[4px] items-center overflow-clip w-full">
+            <MarkerPin02 className="size-[12px] shrink-0 text-[#667085]" />
+            <div className="flex gap-[2px] items-center text-[#667085] text-[10px] text-center whitespace-nowrap">
+              <span className="font-semibold leading-[16px]">{country}</span>
+              <span className="font-light leading-[16px]">({localTime})</span>
+            </div>
+          </div>
+
+          <div className="flex gap-[8px] items-center w-full">
+            <div className="bg-[#f2f4f7] flex gap-[5px] items-center justify-center overflow-clip px-[6px] py-[3px] rounded-[3.032px] shadow-[0px_0.571px_1.142px_0px_rgba(16,24,40,0.05)]">
+              <div className="flex gap-[3px] items-center">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Star
+                    key={i}
+                    className={`size-[12px] shrink-0 ${
+                      i <= Math.round(rating)
+                        ? "text-primary-500 fill-primary-500"
+                        : "text-gray-200 fill-gray-200"
+                    }`}
+                  />
+                ))}
               </div>
-              <span className="text-xs font-semibold leading-none text-dark-blue-400">
+              <span className="font-semibold text-[#22376b] text-[12px] text-center whitespace-nowrap">
                 {rating}
               </span>
             </div>
-            <span className="text-xs font-semibold leading-none text-dark-blue-400">
-              {projects} Projects
+            <span className="font-medium text-[#22376b] text-[12px] whitespace-nowrap">
+              {projects} {projects === 1 ? "review" : "reviews"}
             </span>
           </div>
         </div>
       </div>
 
-      <div
-        ref={containerRef}
-        className="relative overflow-hidden mt-auto px-4 py-2.5 flex flex-wrap gap-x-2 gap-y-1 border-t border-gray-200 bg-[#122A4B]/[.02] items-center"
-      >
-        {skillsList.map((skill, index) => (
-          <span
-            key={index}
-            className="text-xs leading-5 font-semibold text-gray-500/60 hover:text-gray-500 cursor-pointer whitespace-nowrap"
-            style={
-              index >= visibleCount
-                ? {
-                    // Kept mounted (off-flow) purely so useVisibleSkills can
-                    // measure them. Pinned to the container's top-left so they
-                    // never extend past it and widen the page.
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    visibility: "hidden",
-                    pointerEvents: "none",
-                  }
-                : undefined
-            }
+      <div className="bg-[rgba(18,42,75,0.02)] border-t border-[#eaecf0] flex flex-col items-start p-[12px] mt-auto w-full">
+        <div className="content-start flex flex-wrap gap-[8px] h-[52px] items-start overflow-clip relative w-full">
+          {skillsList.map((skill, index) => (
+            <span
+              key={index}
+              className="flex h-[12px] items-center justify-center opacity-60 overflow-clip text-[10px] leading-[20px] font-semibold text-[#667085] text-center whitespace-nowrap capitalize cursor-pointer hover:opacity-100"
+            >
+              {skill}
+            </span>
+          ))}
+          <NextLink
+            href={profileHref ? `${profileHref}#skills` : "#"}
+            className="absolute bottom-0 right-0 flex h-[12px] items-center justify-center overflow-clip text-[10px] leading-[20px] font-bold text-[#667085] text-center whitespace-nowrap hover:underline cursor-pointer"
           >
-            {skill}
-          </span>
-        ))}
-        <NextLink
-          href={profileHref ? `${profileHref}#skills` : "#"}
-          className="text-xs leading-5 font-bold text-gray-500/60 hover:text-gray-500 hover:underline cursor-pointer whitespace-nowrap"
-        >
-          More...
-        </NextLink>
+            More...
+          </NextLink>
+        </div>
       </div>
     </article>
   )
