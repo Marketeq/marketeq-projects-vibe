@@ -1239,6 +1239,11 @@ export default function SettingsPage() {
 
   const {
     catalog: securityQuestionOptions,
+    // Both counts come from the catalogue endpoint rather than being written
+    // into the copy, for the same reason the prompts do: the server owns how
+    // many answers are required and allowed, and a hardcoded "two" here would
+    // go quietly wrong the day REQUIRED_SECURITY_ANSWERS changes.
+    requiredAnswers: requiredSecurityAnswers,
     maxAnswers: maxSecurityQuestions,
     configuredIds: savedSecurityQuestionIds,
     isConfigured: areSecurityQuestionsSaved,
@@ -3633,9 +3638,11 @@ export default function SettingsPage() {
                             Security Questions
                           </DialogTitle>
                           <DialogDescription className="w-full text-sm text-gray-500">
-                            Torem ipsum dolor sit amet, consectetur adipiscing
-                            elit. Nunc vulputate libero et velit interdum, ac
-                            aliquet odio mattis.
+                            These confirm it&apos;s you if you ever can&apos;t
+                            sign in. Answer at least {requiredSecurityAnswers},
+                            and pick ones you&apos;ll still remember in a year.
+                            Capital letters and extra spaces don&apos;t matter,
+                            but answers can&apos;t be viewed again once saved.
                           </DialogDescription>
                         </div>
 
@@ -3998,9 +4005,10 @@ export default function SettingsPage() {
                             App Authenticator
                           </DialogTitle>
                           <DialogDescription className="w-full text-sm text-gray-500">
-                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
-                              vulputate libero et velit interdum, ac aliquet odio
-                              mattis.
+                            An authenticator app generates a 6-digit code that
+                            changes every 30 seconds. Once this is on,
+                            you&apos;ll enter a code from the app every time you
+                            sign in.
                           </DialogDescription>
                         </div>
 
@@ -4009,9 +4017,9 @@ export default function SettingsPage() {
                             Step 1: Download the App
                           </p>
                           <p className="w-full text-sm text-gray-500">
-                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
-                              vulputate libero et velit interdum, ac aliquet odio
-                              mattis.
+                            Install an authenticator app on your phone. Google
+                            Authenticator, Microsoft Authenticator, Authy and
+                            1Password all work.
                           </p>
                         </div>
 
@@ -4020,9 +4028,9 @@ export default function SettingsPage() {
                             Step 2: Scan this Code
                           </p>
                           <p className="w-full text-sm text-gray-500">
-                            Torem ipsum dolor sit amet, consectetur adipiscing elit. Nunc
-                              vulputate libero et velit interdum, ac aliquet odio
-                              mattis.
+                            In the app, add a new account and scan the code
+                            below. It will appear as Marketeq, listed under your
+                            email address.
                           </p>
                         </div>
                       </div>
