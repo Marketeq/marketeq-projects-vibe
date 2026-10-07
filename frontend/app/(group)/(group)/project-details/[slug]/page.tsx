@@ -97,6 +97,7 @@ import {
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { sanitizeProjectDescription } from "@/lib/sanitize-html"
 import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
@@ -3257,21 +3258,38 @@ export default function ProjectDetails({
                     <div id="section-description" className="pt-6">
                       <CollapsibleCard maxHeight={599}>
                         {/*
-                          project.description is HTML generated from the
-                          Payload Lexical rich-text editor by the
-                          listings-service ProjectSyncService. Editor
-                          content is admin-authored (not user-submitted)
-                          so `dangerouslySetInnerHTML` is safe here — see
-                          the lexicalToHtml() helper on the service which
-                          escapes text content before wrapping in tags.
+                          PMCM-255: project.description is seller-authored
+                          HTML from the RichTextEditor component (talent's
+                          own My Listings / wizard Description editor),
+                          saved directly via publish.service.ts's
+                          createProjectDraft/updateProjectDraft — it is
+                          NOT the Payload/Lexical admin-authored content
+                          this comment previously (incorrectly) described.
+                          That assumption no longer holds for self-serve
+                          listings, so this renders through an allow-list
+                          sanitizer rather than raw dangerouslySetInnerHTML.
+                        */}
+                        {/*
+                          PMCM-255 (follow-up): rich-text-content is the
+                          same class the frozen RichTextEditor applies to
+                          its own editable surface (components/rich-text-editor.tsx)
+                          — globals.css's heading-size and image
+                          alignment/wrap rules ([data-font-size=...],
+                          img[data-align=...]) are scoped under that class
+                          only. Without it here, the client-view render had
+                          none of that styling even though the sanitizer
+                          preserves the markup. Tailwind typography's own
+                          `prose` img/heading rules are wrapped in :where()
+                          (near-zero specificity), so rich-text-content's
+                          plain class+attribute selectors win without
+                          needing !important or new arbitrary values.
                         */}
                         <div
-                          className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                          className="prose prose-sm rich-text-content max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
                           dangerouslySetInnerHTML={{
-                            __html:
-                              project.description ||
-                              project.summary ||
-                              "",
+                            __html: sanitizeProjectDescription(
+                              project.description || project.summary || ""
+                            ),
                           }}
                         />
                       </CollapsibleCard>

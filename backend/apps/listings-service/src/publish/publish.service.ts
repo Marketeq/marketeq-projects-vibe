@@ -46,6 +46,7 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
+import sanitizeHtml from 'sanitize-html';
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -54,6 +55,61 @@ import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types
 import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
 import { FaqContext, FaqSuggestion } from './faq/faq.types';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
+
+// PMCM-255: fullDescription comes straight from the seller's own browser
+// (RichTextEditor, via createProjectDraft/updateProjectDraft below) and was
+// never sanitized server-side before being persisted. `sanitize-html` is
+// already a real dependency of this service (job-listing.service.ts's
+// `sanitiseRichText`) — reused here with an allow-list matching what
+// RichTextEditor actually produces (span[data-font-size] for headings, img
+// with data-align for inline images, blockquote) rather than job-listing's
+// narrower h2-h4/p/ul/ol/li set, which has no image/heading-mark support.
+// Mirrors the frontend's sanitizeProjectDescription allow-list
+// (frontend/lib/sanitize-html.ts) — no <a>, no custom fonts/CSS beyond
+// alignment.
+function sanitizeProjectFullDescription(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      'b',
+      'strong',
+      'i',
+      'em',
+      'u',
+      's',
+      'p',
+      'br',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'span',
+      'img',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+    ],
+    allowedAttributes: {
+      span: ['data-font-size'],
+      img: ['src', 'alt', 'data-align'],
+      p: ['style'],
+      h1: ['style'],
+      h2: ['style'],
+      h3: ['style'],
+      h4: ['style'],
+      h5: ['style'],
+      h6: ['style'],
+    },
+    allowedStyles: {
+      '*': {
+        'text-align': [/^left$|^center$|^right$|^justify$/],
+      },
+    },
+    allowedSchemes: ['https', 'http'],
+  });
+}
 
 type ProjectScopeReplacement = { scope: Phase[]; budgetUsdCents: number };
 
@@ -471,7 +527,9 @@ export class PublishService {
         slug: title ? slugify(title) : null,
         subtitle: dto.subtitle ?? null,
         shortDescription: dto.shortDescription ?? '',
-        fullDescription: dto.fullDescription ?? '',
+        fullDescription: dto.fullDescription
+          ? sanitizeProjectFullDescription(dto.fullDescription)
+          : '',
         budget: dto.budget ?? null,
         initialTeamBudget: dto.initialTeamBudget ?? null,
         durationMonths: dto.durationMonths ?? null,
@@ -799,7 +857,9 @@ export class PublishService {
       payload.shortDescription = dto.shortDescription;
     }
     if (dto.fullDescription !== undefined) {
-      payload.fullDescription = dto.fullDescription;
+      payload.fullDescription = dto.fullDescription
+        ? sanitizeProjectFullDescription(dto.fullDescription)
+        : dto.fullDescription;
     }
     if (dto.budget !== undefined) payload.budget = dto.budget;
     if (dto.initialTeamBudget !== undefined) {

@@ -1779,20 +1779,23 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter at least 1 industry(s)")
     .max(5, "Please do not enter more than 5 industry(s)"),
+  // PMCM-255: settled at max 300, no minimum — required just means
+  // non-empty (after trim).
   shortDescription: z
     .string()
-    .min(350, "Please enter at least 350 character(s)")
-    .max(450, "Please do not enter more than 450 character(s)"),
+    .trim()
+    .min(1, "Short description is required.")
+    .max(300, "Please do not enter more than 300 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
-    if (contentLength < 100) {
+    if (contentLength < 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.too_small,
-        minimum: 100,
+        minimum: 1,
         type: "string",
         inclusive: true,
-        message: "Please enter at least 100 character(s)",
+        message: "Full description is required.",
       })
     }
 
@@ -1802,7 +1805,7 @@ const projectInfoSchema = z.object({
         maximum: FULL_DESCRIPTION_MAX_LENGTH,
         type: "string",
         inclusive: true,
-        message: "Please do not enter more than 5,000 character(s)",
+        message: "Please do not enter more than 2,000 character(s)",
       })
     }
   }),
@@ -1878,13 +1881,14 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+// PMCM-255: settled at max 300 / 2,000, no minimum on either field.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 450 character(s)"
+  "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 5,000 character(s)"
+  "Please do not enter more than 2,000 character(s)"
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -2290,6 +2294,20 @@ const ProjectInfo = ({
   const fullDescriptionCharacterCount = getRichTextCharacterCount(
     projectInfoValues.fullDescription ?? ""
   )
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping a form-state commit while typing does nothing to stop the
+  // seller from typing past the limit — the editor just keeps going on its
+  // own internal state. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper around the
+  // editor below); this ref gives those capture-phase handlers a
+  // synchronous, always-current character count to check against (a
+  // closure over `fullDescriptionCharacterCount` state could be stale).
+  const fullDescriptionLiveCountRef = useRef(fullDescriptionCharacterCount)
+  useEffect(() => {
+    fullDescriptionLiveCountRef.current = fullDescriptionCharacterCount
+  }, [fullDescriptionCharacterCount])
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
@@ -3295,7 +3313,7 @@ const ProjectInfo = ({
 
                   <Textarea
                     id="short-description"
-                    placeholder="Enter a short Description"
+                    placeholder="Enter a description..."
                     maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
                     {...shortDescriptionField}
                     onChange={(event) => {
@@ -3367,7 +3385,15 @@ const ProjectInfo = ({
                         including its purpose and features.
                       </HelperText>
 
-                      <span className="text-xs leading-[14.52px] text-gray-500">
+                      <span
+                        className={cn(
+                          "text-xs leading-[14.52px]",
+                          fullDescriptionCharacterCount >=
+                            FULL_DESCRIPTION_MAX_LENGTH
+                            ? "text-error-500"
+                            : "text-gray-500"
+                        )}
+                      >
                         {fullDescriptionCharacterCount}/
                         {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                       </span>
@@ -3378,61 +3404,96 @@ const ProjectInfo = ({
                     name="fullDescription"
                     control={methods.control}
                     render={({ field }) => (
-                      <RichTextEditor
-                        defaultValue={field.value ?? ""}
-                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                        allowFullscreen
-                        className={cn(
-                          "rounded-lg border bg-white transition-colors",
-                          fullDescriptionHasError
-                            ? "border-error-500"
-                            : "border-gray-300 focus-within:border-primary-500"
-                        )}
-                        toolbarClassName="left-4"
-                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                        onUpdate={(html) => {
-                          field.onChange(html)
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                      // PMCM-255 (follow-up): capture-phase guard — fires
+                      // before the event reaches the editor's own
+                      // contenteditable, so it blocks input without
+                      // touching the frozen RichTextEditor component.
+                      // Single-character typing is blocked once already at
+                      // the limit (liveCount >= max); paste/drop are
+                      // checked precisely against the text they'd actually
+                      // insert, since a multi-character paste can cross the
+                      // limit from under it. Deletions are never blocked.
+                      <div
+                        onBeforeInputCapture={(event) => {
+                          const inputType = event.nativeEvent.inputType
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            inputType?.startsWith("insert") &&
+                            fullDescriptionLiveCountRef.current >=
+                              FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
                         }}
-                        onBlur={(html) => {
-                          field.onBlur()
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                        onPasteCapture={(event) => {
+                          const pastedText =
+                            event.clipboardData.getData("text")
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            fullDescriptionLiveCountRef.current +
+                              pastedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
-
-                          void trigger("fullDescription")
                         }}
-                      />
+                        onDropCapture={(event) => {
+                          const droppedText = event.dataTransfer.getData(
+                            "text/plain"
+                          )
+                          if (
+                            fullDescriptionLiveCountRef.current +
+                              droppedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
+                          ) {
+                            event.preventDefault()
+                          }
+                        }}
+                      >
+                        <RichTextEditor
+                          defaultValue={field.value ?? ""}
+                          placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                          allowFullscreen
+                          fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
+                          fullscreenCharacterCount={fullDescriptionCharacterCount}
+                          fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
+                          className={cn(
+                            "rounded-lg border bg-white transition-colors",
+                            fullDescriptionHasError
+                              ? "border-error-500"
+                              : "border-gray-300 focus-within:border-primary-500"
+                          )}
+                          toolbarClassName="left-4"
+                          editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                          onUpdate={(html) => {
+                            // PMCM-255 (follow-up): always commit the real
+                            // HTML, even over the limit — form state must
+                            // reflect what the seller actually sees, so the
+                            // counter/error are truthful and nothing typed
+                            // (and visible) is ever silently lost. Actual
+                            // enforcement is the capture-phase wrapper above.
+                            const contentLength =
+                              getRichTextCharacterCount(html)
+                            fullDescriptionLiveCountRef.current = contentLength
+                            field.onChange(html)
+
+                            if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                              triggerMaxLengthError(
+                                "fullDescription",
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                              )
+                            } else if (
+                              fullDescriptionHasError &&
+                              get(errors, "fullDescription.message") ===
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            ) {
+                              methods.clearErrors("fullDescription")
+                            }
+                          }}
+                          onBlur={() => {
+                            field.onBlur()
+                            void trigger("fullDescription")
+                          }}
+                        />
+                      </div>
                     )}
                   />
 

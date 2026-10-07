@@ -347,10 +347,10 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
-const SHORT_DESCRIPTION_MIN_LENGTH = 350
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
+// PMCM-255: settled at max 300, no minimum — required just means non-empty.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MIN_LENGTH = 100
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 // Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
 // Set to false to hide all publish validation.
 const SHOW_PUBLISH_VALIDATION = true
@@ -1502,9 +1502,35 @@ function ProjectDetailsInner() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
-  const descDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+  // PMCM-255: snapshot of descDraft at the moment the modal opened, so Save
+  // can stay disabled until actually dirty (same pattern as PMCM-254's
+  // resetProjectInfoDraft/isProjectInfoDirty).
+  const [descDraftBaseline, setDescDraftBaseline] = React.useState("")
+  const descCharCount = getRichTextCharacterCount(descDraft)
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping the setDescDraft commit while typing did nothing to stop the
+  // seller typing past the limit — the editor just kept going on its own
+  // internal state, and the un-committed overflow text was then silently
+  // lost on Save. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper below); this
+  // ref gives those capture-phase handlers a synchronous, always-current
+  // character count (a plain closure over `descCharCount` state could read
+  // a stale value if several input events fire before React re-renders,
+  // e.g. held-down-key repeat).
+  const descLiveCountRef = React.useRef(descCharCount)
+  React.useEffect(() => {
+    descLiveCountRef.current = descCharCount
+  }, [descCharCount])
+  const openDescriptionModal = React.useCallback(() => {
+    const current = project.description || ""
+    setDescDraft(current)
+    setDescDraftBaseline(current)
+    descLiveCountRef.current = getRichTextCharacterCount(current)
+    setDescFullscreenOpen(true)
+  }, [project.description])
+  const isDescDirty = descDraft !== descDraftBaseline
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
     str.replace(/\b\w/g, (char) => char.toUpperCase())
@@ -1670,7 +1696,11 @@ function ProjectDetailsInner() {
         !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
         !project.title || project.title === "Enter Project Title",
         (project.categories || []).length < 3,
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
+        // PMCM-255: required = non-empty, no minimum length. Still blocks
+        // on over-limit so an unshortened over-300 value can't pass as
+        // "complete" either.
+        !(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) > SHORT_DESCRIPTION_MAX_LENGTH,
         getRichTextCharacterCount(project.description || "") === 0,
         !(
           Array.isArray(project.deliverables) &&
@@ -1708,7 +1738,9 @@ function ProjectDetailsInner() {
         (!project.title || project.title === "Enter Project Title") &&
           "project title",
         (project.categories || []).length < 3 && "categories",
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH &&
+        (!(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) >
+            SHORT_DESCRIPTION_MAX_LENGTH) &&
           "short description",
         getRichTextCharacterCount(project.description || "") === 0 &&
           "project description",
@@ -2830,6 +2862,18 @@ function ProjectDetailsInner() {
       router,
     ]
   )
+
+  // PMCM-255: explicit Save for the Project Description modal — commits
+  // descDraft to project.description and persists it, instead of the
+  // previous "always save whenever the editor closes, no matter how"
+  // behavior that had no real Cancel/discard path.
+  const handleSaveDescription = React.useCallback(() => {
+    if (descCharCount > FULL_DESCRIPTION_MAX_LENGTH) return
+    const savedDesc = descCharCount === 0 ? "" : descDraft
+    setProject((prev: any) => ({ ...prev, description: savedDesc }))
+    saveProjectFields({ fullDescription: savedDesc })
+    setDescFullscreenOpen(false)
+  }, [descCharCount, descDraft, saveProjectFields])
 
   const faqSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -4902,10 +4946,7 @@ function ProjectDetailsInner() {
                         {getRichTextCharacterCount(project.description || "") > 0 ? (
                           <DescriptionCard
                             descHtml={project.description}
-                            onEdit={() => {
-                              setDescDraft(project.description || "")
-                              setDescFullscreenOpen(true)
-                            }}
+                            onEdit={openDescriptionModal}
                           />
                         ) : (
                           <>
@@ -4951,10 +4992,7 @@ function ProjectDetailsInner() {
                                     publishAttempted &&
                                     "text-error-500 border-error-300"
                                 )}
-                                onClick={() => {
-                                  setDescDraft(project.description || "")
-                                  setDescFullscreenOpen(true)
-                                }}
+                                onClick={openDescriptionModal}
                               >
                                 <Plus className="size-[15px]" />
                                 Add Description
@@ -4975,43 +5013,135 @@ function ProjectDetailsInner() {
                             </p>
                           )}
 
-                        {descFullscreenOpen && (
-                          <RichTextEditor
-                            defaultValue={descDraft}
-                            placeholder="<p class='text-gray-400'>Enter a full description</p>"
-                            allowFullscreen
-                            fullscreenOpen={descFullscreenOpen}
-                            onFullscreenOpenChange={(open) => {
-                              if (!open) {
-                                // Auto-save on close
-                                const savedDesc =
-                                  getRichTextCharacterCount(descDraft) === 0
-                                    ? ""
-                                    : descDraft
-                                setProject((prev: any) => ({
-                                  ...prev,
-                                  description: savedDesc,
-                                }))
-                                saveProjectFields({
-                                  fullDescription: savedDesc,
-                                })
-                              }
-                              setDescFullscreenOpen(open)
-                            }}
-                            fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
-                            fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
-                            fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
-                            className="hidden"
-                            onUpdate={(html) => {
-                              if (descDraftTimerRef.current)
-                                clearTimeout(descDraftTimerRef.current)
-                              descDraftTimerRef.current = setTimeout(
-                                () => setDescDraft(html),
-                                250
-                              )
-                            }}
-                          />
-                        )}
+                        {/* Project Description Modal */}
+                        <Dialog
+                          open={descFullscreenOpen}
+                          onOpenChange={setDescFullscreenOpen}
+                        >
+                          <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+                            <div className="px-6 pt-6">
+                              <div className="flex items-start gap-x-2">
+                                <div className="flex-auto">
+                                  <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                                    Project Description
+                                  </h1>
+                                </div>
+                                <IconButton
+                                  type="button"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setDescFullscreenOpen(false)}
+                                >
+                                  <X className="size-5" />
+                                </IconButton>
+                              </div>
+                            </div>
+
+                            <div className="px-6 pt-4 pb-6 space-y-1.5">
+                              <div className="flex items-center justify-between gap-x-3">
+                                <HelperText className="flex-auto">
+                                  Provide a comprehensive description of this
+                                  project, including its purpose and features.
+                                </HelperText>
+                                <span
+                                  className={cn(
+                                    "shrink-0 text-xs",
+                                    descCharCount >= FULL_DESCRIPTION_MAX_LENGTH
+                                      ? "text-error-500"
+                                      : "text-gray-400"
+                                  )}
+                                >
+                                  {descCharCount.toLocaleString()}/
+                                  {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                                </span>
+                              </div>
+                              {descFullscreenOpen && (
+                                // PMCM-255 (follow-up): capture-phase guard
+                                // around the editor — fires before the event
+                                // reaches its contenteditable, blocking input
+                                // without touching the frozen component.
+                                <div
+                                  onBeforeInputCapture={(event) => {
+                                    const inputType =
+                                      event.nativeEvent.inputType
+                                    if (
+                                      inputType?.startsWith("insert") &&
+                                      descLiveCountRef.current >=
+                                        FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onPasteCapture={(event) => {
+                                    const pastedText =
+                                      event.clipboardData.getData("text")
+                                    if (
+                                      descLiveCountRef.current +
+                                        pastedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onDropCapture={(event) => {
+                                    const droppedText =
+                                      event.dataTransfer.getData("text/plain")
+                                    if (
+                                      descLiveCountRef.current +
+                                        droppedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                >
+                                  <RichTextEditor
+                                    defaultValue={descDraft}
+                                    placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                                    allowFullscreen
+                                    className="rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
+                                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                                    onUpdate={(html) => {
+                                      // PMCM-255 (follow-up): always commit
+                                      // the real HTML, even over the limit —
+                                      // state must reflect what the seller
+                                      // actually sees, so the counter/Save
+                                      // button are truthful and nothing
+                                      // typed is ever silently lost. Actual
+                                      // enforcement is the capture-phase
+                                      // wrapper above, not this commit.
+                                      descLiveCountRef.current =
+                                        getRichTextCharacterCount(html)
+                                      setDescDraft(html)
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                              <Button
+                                type="button"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => setDescFullscreenOpen(false)}
+                              >
+                                <X className="size-[15px]" />
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                disabled={
+                                  !isDescDirty ||
+                                  descCharCount > FULL_DESCRIPTION_MAX_LENGTH
+                                }
+                                onClick={handleSaveDescription}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
 
                         {/* Project Info Modal */}
                         <Dialog
@@ -5022,10 +5152,13 @@ function ProjectDetailsInner() {
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault()
+                                // PMCM-255: block saving while the short
+                                // description is over the limit — never
+                                // silently truncate an existing over-limit
+                                // value on save.
                                 if (
-                                  infoSummary.length > 0 &&
-                                  infoSummary.length <
-                                    SHORT_DESCRIPTION_MIN_LENGTH
+                                  infoSummary.length >
+                                  SHORT_DESCRIPTION_MAX_LENGTH
                                 )
                                   return
                                 const updatedCategories = infoCategories
@@ -5145,7 +5278,7 @@ function ProjectDetailsInner() {
                                           <span
                                             className={cn(
                                               "shrink-0 text-xs",
-                                              infoSummary.length >
+                                              infoSummary.length >=
                                                 SHORT_DESCRIPTION_MAX_LENGTH
                                                 ? "text-error-500"
                                                 : "text-gray-400"
@@ -5161,30 +5294,58 @@ function ProjectDetailsInner() {
                                           placeholder="Enter a description..."
                                           value={infoSummary}
                                           isInvalid={
-                                            infoSummary.length > 0 &&
-                                            (infoSummary.length <
-                                              SHORT_DESCRIPTION_MIN_LENGTH ||
-                                              infoSummary.length >
-                                                SHORT_DESCRIPTION_MAX_LENGTH)
+                                            infoSummary.length >
+                                            SHORT_DESCRIPTION_MAX_LENGTH
                                           }
+                                          // PMCM-255: never truncate an
+                                          // existing over-limit value —
+                                          // block further insertions instead
+                                          // of slicing the whole string on
+                                          // every keystroke. Deletions are
+                                          // always allowed (key.length !== 1
+                                          // for Backspace/Delete).
                                           onChange={(e) =>
-                                            setInfoSummary(
-                                              e.target.value.slice(
-                                                0,
-                                                SHORT_DESCRIPTION_MAX_LENGTH
-                                              )
-                                            )
+                                            setInfoSummary(e.target.value)
                                           }
+                                          onKeyDown={(e) => {
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              !e.ctrlKey &&
+                                              !e.metaKey &&
+                                              !e.altKey &&
+                                              e.key.length === 1 &&
+                                              currentLen - selLen >=
+                                                SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
+                                          onPaste={(e) => {
+                                            const pastedText =
+                                              e.clipboardData.getData("text")
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              currentLen -
+                                                selLen +
+                                                pastedText.length >
+                                              SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
                                         />
-                                        {infoSummary.length > 0 &&
-                                          infoSummary.length <
-                                            SHORT_DESCRIPTION_MIN_LENGTH && (
-                                            <p className="text-xs text-error-500">
-                                              Please enter at least{" "}
-                                              {SHORT_DESCRIPTION_MIN_LENGTH}{" "}
-                                              character(s)
-                                            </p>
-                                          )}
                                       </div>
 
                                       <div className="space-y-1.5">
