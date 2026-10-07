@@ -12,6 +12,18 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Contract } from '../entities/contract.entity';
 import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
+import { AddableContractDto } from '../dtos/addable-contract.dto';
+import { UserServiceClient } from './user-service.client';
+
+// Group status for the selector, strongest first: a dispute outranks everything
+// else, and a group with any live member stays selectable.
+const ADDABLE_STATUS_PRECEDENCE: ContractStatus[] = [
+  ContractStatus.DISPUTED,
+  ContractStatus.ACTIVE,
+  ContractStatus.PAUSED,
+  ContractStatus.EXPIRED,
+  ContractStatus.CLOSED,
+];
 
 @Injectable()
 export class GroupsService {
@@ -21,6 +33,8 @@ export class GroupsService {
 
     @InjectRepository(Contract)
     private readonly contractRepository: Repository<Contract>,
+
+    private readonly userServiceClient: UserServiceClient,
   ) {}
   async createGroup(
     dto: CreateGroupDto,
@@ -34,6 +48,8 @@ export class GroupsService {
       const group = groupRepo.create({
         type: dto.type,
         ownerClientId,
+        name: dto.name ?? null,
+        phase: dto.phase ?? null,
         projectId: dto.projectId,
         serviceId: dto.serviceId,
         teamId: dto.teamId,
@@ -159,5 +175,94 @@ export class GroupsService {
       teamId: group.teamId,
       jobId: group.jobId,
     }));
+  }
+
+  // "Add to an existing contract" selector. Groups are what the UI calls
+  // contracts; they carry no status of their own, so the status shown is
+  // derived from the members (ADDABLE_STATUS_PRECEDENCE). Groups with no
+  // member in any listed status (e.g. only pending/canceled) are omitted.
+  // disputed/expired/closed are returned on purpose: the UI renders them
+  // disabled. Create-time validation (active/paused only) lives with
+  // POST /v1/job-listings. One query via the OneToMany relation, no N+1.
+  // Owner-only: ownerClientId is the sole access concept — no lead role
+  // exists. phase is the group's own column; memberAvatars come from user-service
+  // in one batch call (all null if that call fails).
+  async getAddableContractsForClient(
+    ownerClientId: string,
+  ): Promise<AddableContractDto[]> {
+    const groups = await this.contractGroupRepository.find({
+      where: { ownerClientId },
+      relations: ['contracts'],
+      order: { createdAt: 'DESC' },
+    });
+
+    const included: Array<{
+      group: ContractGroup;
+      status: ContractStatus;
+      members: Contract[];
+    }> = [];
+    for (const group of groups) {
+      const status = ADDABLE_STATUS_PRECEDENCE.find((candidate) =>
+        group.contracts.some((contract) => contract.status === candidate),
+      );
+      if (!status) continue;
+
+      included.push({
+        group,
+        status,
+        members: group.contracts.filter(
+          (contract) =>
+            contract.status !== ContractStatus.CANCELED &&
+            contract.status !== ContractStatus.ENDED,
+        ),
+      });
+    }
+
+    // One batch call to user-service for every member of every group.
+    const avatarByUser = await this.userServiceClient.getAvatarUrls(
+      included.flatMap(({ members }) => members.map((m) => m.talentId)),
+    );
+
+    const result: AddableContractDto[] = included.map(
+      ({ group, status, members }) => ({
+        id: group.id,
+        name: group.name ?? group.contracts[0]?.title ?? '',
+        status,
+        phase: group.phase,
+        // One entry per member, same order and length as memberCount; null
+        // where the member has no avatar (or the lookup failed).
+        memberAvatars: members.map(
+          (member) => avatarByUser[member.talentId] ?? null,
+        ),
+        // Each member's own contract id, index-aligned with memberAvatars.
+        memberContractIds: members.map((member) => member.id),
+        memberCount: members.length,
+        createdAt: group.createdAt.toISOString(),
+      }),
+    );
+    return result;
+  }
+
+  // Create-time check for POST /v1/job-listings with an existing contract.
+  // Returns the group's derived status (same precedence as the selector list)
+  // and whether the caller owns it; listings-service decides what to reject.
+  // Deliberately returns no name or members, so a caller probing someone
+  // else's id learns nothing beyond "exists, not yours".
+  async getSelectableState(
+    id: string,
+    callerId: string,
+  ): Promise<{ id: string; status: string; isOwner: boolean }> {
+    const group = await this.contractGroupRepository.findOne({
+      where: { id },
+      relations: ['contracts'],
+    });
+    if (!group) {
+      throw new NotFoundException('Contract not found');
+    }
+    const status =
+      ADDABLE_STATUS_PRECEDENCE.find((candidate) =>
+        group.contracts.some((contract) => contract.status === candidate),
+      ) ?? 'unavailable';
+    return { id: group.id, status, isOwner: group.ownerClientId === callerId };
   }
 }

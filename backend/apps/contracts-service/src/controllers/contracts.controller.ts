@@ -1,4 +1,4 @@
-import { Controller, Post, Put, Get, Param, Body, Req, Headers, ForbiddenException } from '@nestjs/common';
+import { Controller, Post, Put, Get, Param, Body, Query, Req, Headers, ForbiddenException } from '@nestjs/common';
 import { Request } from 'express';
 import { ContractsService } from '../services/contracts.service';
 import { GroupsService } from '../services/groups.service';
@@ -9,6 +9,7 @@ import { LogHireInitiatedDto } from '../dtos/log-hire-initiated.dto';
 import { ContractGroupSummaryDto } from '../dtos/contract-group-summary.dto';
 import { TalentNetworkDto } from '../dtos/talent-network.dto';
 import { CreateContractDto } from '../dtos/create-contract.dto';
+import { ListContractsQueryDto } from '../dtos/list-contracts-query.dto';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '../decorators/public.decorator';
 import { AuditLoggerService } from '../services/audit-logger.service';
@@ -45,6 +46,30 @@ export class ContractsController {
     return { ok: true };
   }
 
+  // GET /v1/contracts (gateway strips /v1). Identity comes from req.user; a
+  // clientUserId that names someone else is refused, same rule as
+  // `client/:clientId`. With addableJobsOnly=true: the selector list for
+  // "Add to an existing contract", including disputed/expired/closed so the
+  // UI can show them disabled. Otherwise: the caller's contracts, as
+  // `client/:clientId` returns them.
+  @Get()
+  async listContracts(
+    @Query() query: ListContractsQueryDto,
+    @Req() req: Request & { user: { sub: string } },
+  ) {
+    if (query.clientUserId && query.clientUserId !== req.user.sub) {
+      throw new ForbiddenException('You may only view your own contracts');
+    }
+    if (query.addableJobsOnly) {
+      return {
+        contracts: await this.groupsService.getAddableContractsForClient(
+          req.user.sub,
+        ),
+      };
+    }
+    return this.contractsService.getContractsByClient(req.user.sub);
+  }
+
   // End a single contract
   @Put(':id/end')
   async endContract(@Param('id') id: string, @Body() dto: EndContractDto) {
@@ -71,6 +96,18 @@ export class ContractsController {
     @Req() req: Request & { user: { sub: string } },
   ): Promise<ContractGroupSummaryDto[]> {
     return this.groupsService.getGroupsForClient(req.user.sub);
+  }
+
+  // JL-10: listings-service asks this before attaching a job listing to an
+  // existing contract. Identity from req.user (the gateway-forwarded
+  // x-user-id), never the path. Three segments, so it can't collide with
+  // `groups/mine` or `groups/:id/members`.
+  @Get('groups/:id/selectable')
+  async getGroupSelectable(
+    @Param('id') id: string,
+    @Req() req: Request & { user: { sub: string } },
+  ) {
+    return this.groupsService.getSelectableState(id, req.user.sub);
   }
 
   // T2-13: attach a talent to an EXISTING group — see groupsService.addMember

@@ -2,10 +2,12 @@ import {
   Controller,
   Get,
   Param,
+  Query,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User } from './entities/user.entity';
 import { UserService } from './user.service';
 import { Public } from '../decorators/public.decorator';
@@ -74,6 +76,31 @@ export class UserInternalController {
     });
     if (!user) throw new NotFoundException(`User ${normalised} not found`);
     return this.project(user);
+  }
+
+  // Batch avatar lookup for service-to-service callers (one request per list,
+  // no N+1). Returns { [userId]: avatarUrl } and omits users with no avatar.
+  // Declared ahead of `@Get(':id')`: both are one-segment GETs, so with the
+  // reverse order Nest would treat "avatars" as an id.
+  @Public()
+  @Get('avatars')
+  async getAvatars(@Query('ids') ids?: string): Promise<Record<string, string>> {
+    const list = Array.from(
+      new Set((ids ?? '').split(',').map((id) => id.trim()).filter(Boolean)),
+    );
+    if (list.length === 0) return {};
+    if (list.length > 100) {
+      throw new BadRequestException('At most 100 ids per request');
+    }
+    const users = await this.userRepository.find({
+      where: { id: In(list) },
+      select: ['id', 'avatarUrl'],
+    });
+    const result: Record<string, string> = {};
+    for (const user of users) {
+      if (user.avatarUrl) result[user.id] = user.avatarUrl;
+    }
+    return result;
   }
 
   @Public()

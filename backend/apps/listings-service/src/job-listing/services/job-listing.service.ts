@@ -129,17 +129,38 @@ export class JobListingService {
   }
 
   // Called during create() when contractType is EXISTING.
-  // Validates the selected contract is in a selectable status and the user
-  // has owner or lead permission on it. Throws 409 or 403 otherwise.
+  // Validates the selected contract is in a selectable status (active or
+  // paused) and that the user owns it. Throws 404, 409 or 403 otherwise.
+  // contracts-service has no owner/lead roles; ownership is the only access
+  // concept it knows (isOwner).
   async validateContractSelectable(
     contractId: string,
     userId: string,
   ): Promise<void> {
-    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/v1/contracts/${contractId}`;
-    const response = await firstValueFrom(
-      this.http.get(url, { headers: { "x-user-id": userId } }),
-    );
-    const contract = response.data;
+    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/contracts/groups/${contractId}/selectable`;
+    let contract: { status: string; isOwner: boolean };
+    try {
+      const response = await firstValueFrom(
+        this.http.get(url, { headers: { "x-user-id": userId } }),
+      );
+      contract = response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        throw new NotFoundException({
+          code: "JL_CONTRACT_NOT_FOUND",
+          message: "Contract not found.",
+        });
+      }
+      throw error;
+    }
+
+    if (!contract.isOwner) {
+      throw new ForbiddenException({
+        code: "JL_CONTRACT_FORBIDDEN",
+        message:
+          "You do not have permission to add job listings to this contract.",
+      });
+    }
 
     const SELECTABLE_STATUSES = ["active", "paused"];
     if (!SELECTABLE_STATUSES.includes(contract.status)) {
@@ -154,18 +175,6 @@ export class JobListingService {
       throw new ConflictException({
         code: "JL_CONTRACT_NOT_SELECTABLE",
         message: reason,
-      });
-    }
-
-    const hasPermission = contract.members?.some(
-      (m: { userId: string; role: string }) =>
-        m.userId === userId && ["owner", "lead"].includes(m.role),
-    );
-    if (!hasPermission) {
-      throw new ForbiddenException({
-        code: "JL_CONTRACT_FORBIDDEN",
-        message:
-          "You do not have permission to add job listings to this contract.",
       });
     }
   }
@@ -230,25 +239,14 @@ export class JobListingService {
   }
 
   // Called when contractType is EXISTING during create().
-  // Fetches the parent contract from contracts-service and copies
-  // budget, duration, NDA, and contract link onto the listing record.
+  // Links the listing to the contract. Budget, duration and NDA are not
+  // copied: contracts-service contracts carry none of those fields.
   async populateFromContract(
     listingId: string,
     contractId: string,
   ): Promise<void> {
-    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/v1/contracts/${contractId}`;
-    const response = await firstValueFrom(this.http.get(url));
-    const contract = response.data;
-
     await this.repo.update(listingId, {
       contractId,
-      budgetAmountUsdCents: contract.budgetAmountUsdCents,
-      budgetFrequency: contract.budgetFrequency,
-      durationMonths: contract.durationMonths,
-      isOngoing: contract.isOngoing,
-      ndaEnabled: contract.ndaEnabled,
-      ndaDocumentId: contract.ndaDocumentId ?? null,
-      ndaScopeVisibility: contract.ndaScopeVisibility,
       inviteBalance: 0, // Calculated properly on publish.
     });
   }

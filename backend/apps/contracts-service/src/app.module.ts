@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { HttpModule } from '@nestjs/axios';
 import { APP_GUARD } from '@nestjs/core';
 
 // Import your actual controllers
@@ -19,6 +20,7 @@ import { ReviewsClient } from './services/reviews.client';
 import { NotificationsClient } from './services/notifications.client';
 import { AuditLoggerService } from './services/audit-logger.service';
 import { TalentNetworkService } from './services/talent-network.service';
+import { UserServiceClient } from './services/user-service.client';
 
 // Import your entities
 import { Contract } from './entities/contract.entity';
@@ -45,6 +47,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     }),
     // Register your entities with TypeORM
     TypeOrmModule.forFeature([Contract, ContractGroup, ContractAudit]),
+    HttpModule,
   ],
   controllers: [
     AppController,
@@ -63,6 +66,7 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     NotificationsClient,
     AuditLoggerService,
     TalentNetworkService,
+    UserServiceClient,
     // Global JWT guard
     {
       provide: APP_GUARD,
