@@ -6,6 +6,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation"
+import { useCheckout } from "@/contexts/checkout"
 import { UserAPI } from "@/service/http/user"
 import {
   ArrowRight,
@@ -233,8 +234,15 @@ export default function ConfirmationPage() {
   const searchParams = useSearchParams()
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
-  const slug = searchParams.get(slugParamName) ?? ""
-  const slugQuery = `${slugParamName}=${encodeURIComponent(slug)}`
+  const checkout = useCheckout()
+  const slug =
+    (!isTalentCheckout && checkout.slug) ||
+    (searchParams.get(slugParamName) ?? "")
+  const listingQuery = `${slugParamName}=${encodeURIComponent(slug)}`
+  const slugQuery =
+    !isTalentCheckout && checkout.sessionId
+      ? `sessionId=${encodeURIComponent(checkout.sessionId)}`
+      : listingQuery
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
@@ -665,7 +673,9 @@ export default function ConfirmationPage() {
                     visual="primary"
                     onClick={() =>
                       router.push(
-                        `${basePath}/project-details?${searchParams.toString()}`
+                        `${basePath}/project-details?${
+                          isTalentCheckout ? searchParams.toString() : listingQuery
+                        }`
                       )
                     }
                   >

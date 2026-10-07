@@ -21,6 +21,8 @@ import { CheckoutSummaryService } from "./checkout-summary.service";
 import { CheckoutDraftService } from "./checkout-draft.service";
 import { CheckoutDraftCodeService } from "./checkout-draft-code.service";
 import { CheckoutDraftPricingService } from "./pricing/checkout-draft-pricing.service";
+import { CheckoutDraftSessionService } from "./checkout-draft-session.service";
+import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
@@ -64,6 +66,7 @@ export class CheckoutController {
     private readonly checkoutDraftService: CheckoutDraftService,
     private readonly checkoutDraftCodeService: CheckoutDraftCodeService,
     private readonly checkoutDraftPricingService: CheckoutDraftPricingService,
+    private readonly checkoutDraftSessionService: CheckoutDraftSessionService,
   ) {}
 
   @Post("listings/:listingId/draft")
@@ -109,6 +112,26 @@ export class CheckoutController {
     @ClientId() clientId: string,
   ) {
     return this.checkoutDraftPricingService.getPricing(clientId, draftId);
+  }
+
+  @Get("session/:sessionId")
+  @UseGuards(InternalTokenGuard)
+  getDraftSession(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.getSession(clientId, sessionId);
+  }
+
+  @Post("drafts/:draftId/create-session")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  createDraftSession(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: CreateDraftSessionDto,
+  ) {
+    return this.checkoutDraftSessionService.createSession(clientId, draftId, dto);
   }
 
   @Post("drafts/:draftId/phases")

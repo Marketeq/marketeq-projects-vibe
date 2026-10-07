@@ -574,7 +574,7 @@ export class CheckoutDraftService {
         const created = await manager.save(
           manager.create(CheckoutDraftPhaseEntity, {
             draftId,
-            title: source.title,
+            title: `${source.title} (Copy)`,
             sourcePhaseId: source.sourcePhaseId,
             order: source.order + 1,
             isDraftOverride: true,

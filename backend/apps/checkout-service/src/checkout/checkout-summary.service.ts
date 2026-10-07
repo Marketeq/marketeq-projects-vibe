@@ -390,32 +390,33 @@ export class CheckoutSummaryService {
     const rates = new Map<string, number | null>();
     roles.forEach((role) => rates.set(role.roleKey, null));
 
-    const priceable = roles.filter((role) => role.location);
+    const priceable = roles.filter((role) => role.roleTitle?.trim());
     if (priceable.length === 0) return rates;
 
-    try {
-      const response = await this.call<{ roles?: PricingBudgetRoleResult[] }>(
-        this.pricing,
-        'budget.calculate',
-        {
-          roles: priceable.map((role) => ({
-            roleTitle: role.roleTitle,
-            location: role.location,
-            experienceLevel: normalizeExperience(role.experience),
-            estimatedHours: Math.max(1, Math.round(role.estimatedHours)),
-          })),
-        },
-      );
-      const results = response?.roles;
-      if (Array.isArray(results) && results.length === priceable.length) {
-        priceable.forEach((role, index) => {
-          const cents = results[index]?.hourlyRateUsdCents;
-          rates.set(role.roleKey, typeof cents === 'number' ? cents / 100 : null);
-        });
-      }
-    } catch (err) {
-      this.logger.warn(`Failed to estimate open role rates: ${errorMessage(err)}`);
-    }
+    await Promise.all(
+      priceable.map(async (role) => {
+        try {
+          const total = await this.priceScope([
+            {
+              tasks: [
+                {
+                  roleName: role.roleTitle,
+                  experienceLevel: role.experience,
+                  location: role.location,
+                  estimatedHours: 1,
+                  hourlyRate: null,
+                },
+              ],
+            },
+          ]);
+          rates.set(role.roleKey, total > 0 ? total : null);
+        } catch (err) {
+          this.logger.warn(
+            `Failed to estimate open role rate for ${role.roleKey}: ${errorMessage(err)}`,
+          );
+        }
+      }),
+    );
     return rates;
   }
 

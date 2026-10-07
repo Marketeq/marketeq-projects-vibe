@@ -59,6 +59,23 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.getDraftTeam(draftId, clientId);
   }
 
+  @Get('session/:sessionId')
+  @UseGuards(JwtAuthGuard)
+  getCheckoutSession(@Param('sessionId') sessionId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.getCheckoutSession(sessionId, clientId);
+  }
+
+  @Post('drafts/:draftId/create-session')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  createDraftSession(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.createDraftSession(draftId, body, clientId);
+  }
+
   @Post('drafts/:draftId/phases')
   @UseGuards(JwtAuthGuard)
   addDraftPhase(

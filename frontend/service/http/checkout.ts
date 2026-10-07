@@ -83,6 +83,14 @@ export const CheckoutAPI = {
   GetDraftPricing: (draftId: string) =>
     AxiosRequest.get(`/v1/checkout/drafts/${draftId}/pricing`),
 
+  GetSession: (sessionId: string) =>
+    AxiosRequest.get(`/v1/checkout/session/${sessionId}`),
+
+  CreateDraftSession: (
+    draftId: string,
+    data: { version: number; expectedTotal: number }
+  ) => AxiosRequest.post(`/v1/checkout/drafts/${draftId}/create-session`, data),
+
   AddDraftPhase: (
     draftId: string,
     data: { version: number; title: string; order?: number }

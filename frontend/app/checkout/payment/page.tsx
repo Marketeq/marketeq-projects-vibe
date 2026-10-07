@@ -6,6 +6,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation"
+import { useCheckout } from "@/contexts/checkout"
 import { UserAPI } from "@/service/http/user"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
@@ -966,11 +967,18 @@ export default function PaymentPage() {
   const searchParams = useSearchParams()
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
-  const slug = searchParams.get(slugParamName) ?? ""
+  const checkout = useCheckout()
+  const slug =
+    (!isTalentCheckout && checkout.slug) ||
+    (searchParams.get(slugParamName) ?? "")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
-  const slugQuery = `${slugParamName}=${safeSlugSegment}`
+  const listingQuery = `${slugParamName}=${safeSlugSegment}`
+  const slugQuery =
+    !isTalentCheckout && checkout.sessionId
+      ? `sessionId=${encodeURIComponent(checkout.sessionId)}`
+      : listingQuery
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
@@ -2039,7 +2047,7 @@ export default function PaymentPage() {
   }
 
   const getCheckoutProjectId = () =>
-    searchParams.get("projectId") || decodedSlug
+    searchParams.get("projectId") || checkout.listingId || decodedSlug
 
   const formatWireDate = (value?: string | null) =>
     value
@@ -2197,7 +2205,10 @@ export default function PaymentPage() {
               amount: totalAmountToBePaid,
               currency: "usd",
               paymentMethod: "card",
-              projectId: searchParams.get("projectId") || decodedSlug,
+              projectId:
+                searchParams.get("projectId") ||
+                checkout.listingId ||
+                decodedSlug,
               contractId: searchParams.get("contractId") || undefined,
               savePaymentMethod: saveCard,
               metadata: {
@@ -2371,7 +2382,10 @@ export default function PaymentPage() {
                   amount: totalAmountToBePaid,
                   currency: "usd",
                   paymentMethod: "card",
-                  projectId: searchParams.get("projectId") || decodedSlug,
+                  projectId:
+                searchParams.get("projectId") ||
+                checkout.listingId ||
+                decodedSlug,
                   contractId: searchParams.get("contractId") || undefined,
                   savePaymentMethod: false,
                   metadata: {
@@ -2548,7 +2562,10 @@ export default function PaymentPage() {
               amount: totalAmountToBePaid,
               currency: "usd",
               paymentMethod: "klarna",
-              projectId: searchParams.get("projectId") || decodedSlug,
+              projectId:
+                searchParams.get("projectId") ||
+                checkout.listingId ||
+                decodedSlug,
               contractId: searchParams.get("contractId") || undefined,
               savePaymentMethod: false,
               metadata: {
@@ -3359,7 +3376,10 @@ export default function PaymentPage() {
             amount: totalAmountToBePaid,
             currency: "usd",
             paymentMethod: "ach",
-            projectId: searchParams.get("projectId") || decodedSlug,
+            projectId:
+                searchParams.get("projectId") ||
+                checkout.listingId ||
+                decodedSlug,
             contractId: searchParams.get("contractId") || undefined,
             savePaymentMethod: saveBankAccount,
             metadata: {
@@ -3506,7 +3526,10 @@ export default function PaymentPage() {
             amount: totalAmountToBePaid,
             currency: "usd",
             paymentMethod: "ach",
-            projectId: searchParams.get("projectId") || decodedSlug,
+            projectId:
+                searchParams.get("projectId") ||
+                checkout.listingId ||
+                decodedSlug,
             contractId: searchParams.get("contractId") || undefined,
             savePaymentMethod: saveBankAccount,
             metadata: {
@@ -4712,7 +4735,7 @@ export default function PaymentPage() {
               variant="link"
               visual="gray"
               onClick={() =>
-                router.push(`${basePath}/project-details?${slugQuery}`)
+                router.push(`${basePath}/project-details?${listingQuery}`)
               }
             >
               <ArrowLeft className="size-[15px] group-hover:-translate-x-1 transition duration-300" />{" "}

@@ -63,6 +63,18 @@ export class CheckoutDraftGatewayService {
     return this.forward('get', `/drafts/${draftId}/team`, clientId, `get checkout draft team for ${draftId}`);
   }
 
+  async getCheckoutSession(sessionId: string, clientId: string) {
+    return this.forward('get', `/session/${sessionId}`, clientId, `get checkout session ${sessionId}`);
+  }
+
+  async createDraftSession(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    return this.forward('post', `/drafts/${draftId}/create-session`, clientId, `create a session for checkout draft ${draftId}`, { body });
+  }
+
   async addDraftPhase(
     draftId: string,
     body: Record<string, unknown>,

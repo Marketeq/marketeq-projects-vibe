@@ -6,6 +6,7 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation"
+import { useCheckout } from "@/contexts/checkout"
 import { UserAPI } from "@/service/http/user"
 import {
   getCheckoutProjectSummary,
@@ -231,11 +232,18 @@ export default function ConfirmationPage() {
   const searchParams = useSearchParams()
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
-  const slug = searchParams.get(slugParamName) ?? ""
+  const checkout = useCheckout()
+  const slug =
+    (!isTalentCheckout && checkout.slug) ||
+    (searchParams.get(slugParamName) ?? "")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
-  const slugQuery = `${slugParamName}=${safeSlugSegment}`
+  const listingQuery = `${slugParamName}=${safeSlugSegment}`
+  const slugQuery =
+    !isTalentCheckout && checkout.sessionId
+      ? `sessionId=${encodeURIComponent(checkout.sessionId)}`
+      : listingQuery
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
@@ -529,9 +537,10 @@ export default function ConfirmationPage() {
   }, [basePath, router, slugQuery, searchParams])
 
   const handleEditProjectDetails = React.useCallback(() => {
-    const nextUrl = searchParams.toString()
-      ? `${basePath}/project-details?${searchParams.toString()}`
-      : `${basePath}/project-details?${slugQuery}`
+    const nextUrl =
+      !isTalentCheckout || !searchParams.toString()
+        ? `${basePath}/project-details?${listingQuery}`
+        : `${basePath}/project-details?${searchParams.toString()}`
     router.push(nextUrl)
   }, [basePath, router, slugQuery, searchParams])
 

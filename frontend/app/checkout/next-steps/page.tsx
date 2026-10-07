@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useCheckout } from "@/contexts/checkout"
 import { useAuth } from "@/contexts/auth"
 import {
   AlertCircle,
@@ -83,8 +84,12 @@ export default function NextStepsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { isAuthChecked, isLoading, user } = useAuth()
+  const checkout = useCheckout()
   const slug = safeDecodeSlug(
-    searchParams.get("listingId") ?? searchParams.get("username") ?? ""
+    checkout.slug ??
+      searchParams.get("listingId") ??
+      searchParams.get("username") ??
+      ""
   )
   const [loadState, setLoadState] = React.useState<LoadState>("loading")
   const [toastMessage, setToastMessage] = React.useState("")

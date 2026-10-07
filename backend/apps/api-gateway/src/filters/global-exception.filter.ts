@@ -50,6 +50,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       details: typeof exceptionResponse === 'object' && exceptionResponse !== null
         ? (exceptionResponse as any).details ?? undefined
         : undefined,
+      ...(typeof exceptionResponse === 'object' &&
+      exceptionResponse !== null &&
+      Array.isArray((exceptionResponse as any).blockingReasons)
+        ? {
+            valid: false,
+            blockingReasons: (exceptionResponse as any).blockingReasons,
+          }
+        : {}),
     })
   }
 }
