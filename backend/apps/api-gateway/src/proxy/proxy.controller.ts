@@ -405,6 +405,11 @@ export class ProxyController {
       prefix = 'budget'
     } else if (prefix === 'v1' && ['nda', 'acceptance', 'legal-documents'].includes(segments[1])) {
       prefix = 'legal'
+    } else if (prefix === 'v1' && segments[1] === 'contracts') {
+      // GET /v1/contracts (the Job Creation wizard's "Add to an existing
+      // contract" list) lives in contracts-service. Without this branch it
+      // fell through to the 'v1' default (transaction-service) and 404'd.
+      prefix = 'contracts'
     } else if (prefix === 'v1' && segments[1] === 'identity-verification') {
       // identity-verification-service's controller is @Controller('v1/identity-verification'),
       // so — like checkout-service — it expects the full /v1/identity-verification/...
@@ -445,6 +450,11 @@ export class ProxyController {
     // excluded. It goes to invitations-service, whose controller IS mounted
     // at v1/companies/:companyId/invitations and would 404 on a stripped path.
     if (segments[0] === 'v1' && segments[1] === 'companies' && !isCompanyInvitationsPath) {
+      downstreamPath = '/' + segments.slice(1).join('/')
+    }
+    // contracts-service's controller is @Controller('contracts') with no
+    // global prefix, so /v1/contracts must lose its /v1.
+    if (segments[0] === 'v1' && segments[1] === 'contracts') {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
     if (serviceName === 'checkout' && segments[0] === 'checkout') {

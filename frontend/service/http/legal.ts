@@ -1,18 +1,10 @@
 import { getPublicLegalUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
 
-const getLegalBaseUrl = () => {
-  const legalBase = getPublicLegalUrl()
-
-  if (
-    process.env.NODE_ENV === "development" &&
-    /^http:\/\/localhost:4000\/?$/.test(legalBase)
-  ) {
-    return "http://localhost:3032"
-  }
-
-  return legalBase
-}
+// Always go through the API gateway: it turns the access_token cookie into the
+// x-user-id header legal-service authenticates on. Calling legal-service
+// directly (e.g. localhost:3032) has no such header, so JWT-protected routes 401.
+const getLegalBaseUrl = () => getPublicLegalUrl()
 
 const legalUrl = (path: string) => `${getLegalBaseUrl()}${path}`
 

@@ -19,6 +19,16 @@ import { CreatePhaseDto } from '../dto/create-phase.dto';
 import { ReorderPhasesDto } from '../dto/reorder-phases.dto';
 import { SmartAssistantHistoryEntry } from '../entities/job-listing.entity';
 import { JobListingBudgetService } from './job-listing-budget.service';
+import {
+  ScopeOperation,
+  ScopeSnapshotPhase,
+  ScopeSnapshotTask,
+  NewTaskInput,
+  NewPhaseInput,
+  TaskOperationFields,
+  PhaseOperationFields,
+} from './job-listing-ai-operations.types';
+import type { EntityManager } from 'typeorm';
 
 // ── AI generation phase/task caps ────────────────────────────────────────────
 // Hard caps applied to AI-generated output before persisting.
@@ -27,6 +37,157 @@ const AI_PHASE_CAP_HAS_SCOPE  = 10;
 const AI_PHASE_CAP_NO_SCOPE   = 8;
 const AI_TASK_CAP_HAS_SCOPE   = 16;
 const AI_TASK_CAP_NO_SCOPE    = 12;
+
+// ── Smart Assistant scope-edit: prompt-shape trimming ────────────────────────
+// Converts persisted entities to the anonymous, index-addressed shape sent to
+// the LLM and consumed by applyOperationsToSnapshot below. Used by the
+// controller for both the live-edit path (from listing.phases) and the retry
+// path (from a stored SmartAssistantHistoryEntry.before snapshot) — one place
+// defining "phases/tasks -> prompt shape, in what order" so indices always
+// line up with what applySmartAssistantScopeOperations resolves against.
+export function buildScopeSnapshotForPrompt(
+  phases: JobListingPhase[],
+): ScopeSnapshotPhase[] {
+  return [...(phases ?? [])]
+    .sort((a, b) => a.positionOrder - b.positionOrder)
+    .map((phase) => ({
+      phaseName: phase.phaseName,
+      phaseType: phase.phaseType,
+      recurrenceSchedule: phase.recurrenceSchedule,
+      recurrenceCount: phase.recurrenceCount,
+      durationDays: phase.durationDays,
+      tasks: [...(phase.tasks ?? [])]
+        .sort((a, b) => a.positionOrder - b.positionOrder)
+        .map((task) => ({
+          taskName: task.taskName,
+          roleTitle: task.roleTitle,
+          location: task.location,
+          experienceLevel: task.experienceLevel,
+          workSchedule: task.workSchedule,
+          customHours: task.customHours,
+          customFrequency: task.customFrequency,
+          estimatedHours: Number(task.estimatedHours),
+        })),
+    }));
+}
+
+// ── Smart Assistant scope-edit: pure operation apply ─────────────────────────
+// Resolves a batch of ScopeOperations against a pre-edit snapshot and returns
+// the resulting full phase list. Pure and synchronous — no DB access — so
+// it's the single source of truth for "what does the scope look like after
+// these operations," shared by:
+//   1. job-listing-ai.service.ts's operation validator (cap / empty-phase /
+//      service-timeline-shrink checks against the WOULD-BE result).
+//   2. applySmartAssistantScopeOperations below (diffed against live DB rows).
+//   3. the controller's retry path (applied to a stored history snapshot,
+//      then fed to the existing delete-all-reinsert applyGeneratedScopeAndRecalculate).
+//
+// Every phaseIndex/taskIndex resolves against the INPUT snapshot, never
+// against this function's own growing output — operations in one batch never
+// see each other's effects, only the pre-edit state (see
+// job-listing-ai-operations.types.ts's module doc).
+export function applyOperationsToSnapshot(
+  snapshot: ScopeSnapshotPhase[],
+  operations: ScopeOperation[],
+): ScopeSnapshotPhase[] {
+  const removedPhaseIndexes = new Set<number>();
+  const removedTaskIndexes = new Map<number, Set<number>>();
+  const taskFieldPatches = new Map<number, Map<number, Partial<ScopeSnapshotTask>>>();
+  const phaseFieldPatches = new Map<number, Partial<ScopeSnapshotPhase>>();
+  const addedTasksByPhase = new Map<number, ScopeSnapshotTask[]>();
+  const addedPhases: Array<{ phase: ScopeSnapshotPhase; afterPhaseIndex?: number }> = [];
+
+  const toSnapshotTask = (task: NewTaskInput): ScopeSnapshotTask => ({
+    taskName: task.taskName,
+    roleTitle: task.roleTitle,
+    location: task.location ?? null,
+    experienceLevel: task.experienceLevel ?? null,
+    workSchedule: task.workSchedule ?? 'full_time',
+    customHours: task.customHours ?? null,
+    customFrequency: task.customFrequency ?? null,
+    estimatedHours: task.estimatedHours,
+  });
+
+  for (const op of operations) {
+    switch (op.op) {
+      case 'update_task': {
+        if (!taskFieldPatches.has(op.phaseIndex)) taskFieldPatches.set(op.phaseIndex, new Map());
+        const phaseMap = taskFieldPatches.get(op.phaseIndex)!;
+        phaseMap.set(op.taskIndex, { ...(phaseMap.get(op.taskIndex) ?? {}), ...op.fields });
+        break;
+      }
+      case 'remove_task': {
+        if (!removedTaskIndexes.has(op.phaseIndex)) removedTaskIndexes.set(op.phaseIndex, new Set());
+        removedTaskIndexes.get(op.phaseIndex)!.add(op.taskIndex);
+        break;
+      }
+      case 'add_task': {
+        if (!addedTasksByPhase.has(op.phaseIndex)) addedTasksByPhase.set(op.phaseIndex, []);
+        addedTasksByPhase.get(op.phaseIndex)!.push(toSnapshotTask(op.task));
+        break;
+      }
+      case 'update_phase': {
+        phaseFieldPatches.set(op.phaseIndex, { ...(phaseFieldPatches.get(op.phaseIndex) ?? {}), ...op.fields });
+        break;
+      }
+      case 'remove_phase': {
+        removedPhaseIndexes.add(op.phaseIndex);
+        break;
+      }
+      case 'add_phase': {
+        addedPhases.push({
+          phase: {
+            ...op.phase,
+            tasks: op.phase.tasks.map((t) => toSnapshotTask(t)),
+          },
+          afterPhaseIndex: op.afterPhaseIndex,
+        });
+        break;
+      }
+    }
+  }
+
+  const resultPhases: ScopeSnapshotPhase[] = [];
+
+  snapshot.forEach((phase, phaseIndex) => {
+    if (!removedPhaseIndexes.has(phaseIndex)) {
+      const taskRemovals = removedTaskIndexes.get(phaseIndex) ?? new Set<number>();
+      const taskPatches = taskFieldPatches.get(phaseIndex) ?? new Map<number, Partial<ScopeSnapshotTask>>();
+
+      const survivingTasks = phase.tasks
+        .map((task, taskIndex) => {
+          if (taskRemovals.has(taskIndex)) return null;
+          const patch = taskPatches.get(taskIndex);
+          return patch ? { ...task, ...patch } : task;
+        })
+        .filter((t): t is ScopeSnapshotTask => t !== null);
+
+      const newTasks = addedTasksByPhase.get(phaseIndex) ?? [];
+      const phasePatch = phaseFieldPatches.get(phaseIndex);
+
+      resultPhases.push({
+        ...phase,
+        ...(phasePatch ?? {}),
+        tasks: [...survivingTasks, ...newTasks],
+      });
+    }
+
+    for (const added of addedPhases.filter((a) => a.afterPhaseIndex === phaseIndex)) {
+      resultPhases.push(added.phase);
+    }
+  });
+
+  for (const added of addedPhases.filter(
+    (a) =>
+      a.afterPhaseIndex === undefined ||
+      a.afterPhaseIndex < 0 ||
+      a.afterPhaseIndex >= snapshot.length,
+  )) {
+    resultPhases.push(added.phase);
+  }
+
+  return resultPhases;
+}
 
 export interface GeneratedScopeTaskInput {
   taskName: string;
@@ -270,9 +431,14 @@ export class JobListingScopeService {
     listingId: string,
     rawPhases: GeneratedScopePhaseInput[],
     hasScope: boolean,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const phases = await this.applyAiGeneratedScope(listingId, rawPhases, hasScope);
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(listingId, phases);
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(listingId, phases);
 
     await this.listingRepo.update(listingId, {
       budgetAmountUsdCents: totalBudgetUsdCents,
@@ -280,38 +446,52 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases, totalBudgetUsdCents };
+    return { phases, totalBudgetUsdCents, isBudgetStale };
   }
 
-  // ── applySmartAssistantScopeEdit ───────────────────────────────────────────
+  // ── applySmartAssistantScopeOperations ─────────────────────────────────────
   // Called when the client submits the "I want to change..." field in Step 4.
-  // Deletes all existing phases/tasks and re-inserts the AI-updated scope in a
-  // single transaction. Appends an entry to smartAssistantHistory on the listing.
-  // Budget and timeline are recalculated on the new scope before returning.
-  async applySmartAssistantScopeEdit(
+  // Unlike applyAiGeneratedScope (delete-all-and-reinsert), this applies the
+  // operations as TARGETED mutations against the listing's current phases/
+  // tasks — updates in place, creates only what's added, deletes only what's
+  // removed — inside a single transaction. Appends an entry to
+  // smartAssistantHistory on the listing. Budget and timeline are
+  // recalculated on the new scope before returning, matching
+  // applyGeneratedScopeAndRecalculate's outside-the-transaction placement
+  // (the budget service uses its own injected repos, not the transaction's
+  // manager, so it must run only after the mutating transaction has
+  // committed — same ordering this method's delete-all-reinsert predecessor
+  // already relied on).
+  async applySmartAssistantScopeOperations(
     listing: JobListing,
-    updatedScope: GeneratedScopePhaseInput[],
+    operations: ScopeOperation[],
     command: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
-    // Snapshot current scope before replacing (for history entry).
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
+    // Snapshot current scope before mutating (for history entry). A separate
+    // read from the one the mutation transaction below takes, same as the
+    // delete-all-reinsert path always did — independent object references so
+    // the in-place entity mutations below can never retroactively change
+    // what "before" recorded.
     const beforePhases = await this.phaseRepo.find({
       where: { jobListingId: listing.id },
       relations: ['tasks'],
       order: { positionOrder: 'ASC' },
     });
+    beforePhases.forEach((phase) => {
+      phase.tasks = [...(phase.tasks ?? [])].sort((a, b) => a.positionOrder - b.positionOrder);
+    });
 
-    // Replace scope inside a transaction.
-    const savedPhases = await this.applyAiGeneratedScope(
-      listing.id,
-      updatedScope,
-      true, // treat as hasScope path for cap purposes
-    );
+    const savedPhases = await this.applyScopeOperationsInTransaction(listing.id, operations);
 
-    // Recalculate budget and timeline on new scope.
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     // Append history entry (max 20 kept; oldest pruned).
     const historyEntry: SmartAssistantHistoryEntry = {
@@ -333,13 +513,218 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
+  }
+
+  private applyTaskFieldPatch(task: JobListingTask, patch: TaskOperationFields): void {
+    if (patch.taskName !== undefined) task.taskName = patch.taskName;
+    if (patch.roleTitle !== undefined) task.roleTitle = patch.roleTitle;
+    if (patch.location !== undefined) task.location = patch.location;
+    if (patch.experienceLevel !== undefined) task.experienceLevel = patch.experienceLevel;
+    if (patch.workSchedule !== undefined) task.workSchedule = patch.workSchedule as any;
+    if (patch.customHours !== undefined) task.customHours = patch.customHours;
+    if (patch.customFrequency !== undefined) task.customFrequency = patch.customFrequency;
+    if (patch.estimatedHours !== undefined) task.estimatedHours = patch.estimatedHours;
+  }
+
+  private applyPhaseFieldPatch(phase: JobListingPhase, patch: PhaseOperationFields): void {
+    if (patch.phaseName !== undefined) phase.phaseName = patch.phaseName;
+    if (patch.recurrenceSchedule !== undefined) phase.recurrenceSchedule = patch.recurrenceSchedule as any;
+    if (patch.recurrenceCount !== undefined) phase.recurrenceCount = patch.recurrenceCount;
+    if (patch.durationDays !== undefined) phase.durationDays = patch.durationDays;
+  }
+
+  private async createPhaseEntityFromInput(
+    manager: EntityManager,
+    listingId: string,
+    input: NewPhaseInput,
+  ): Promise<JobListingPhase> {
+    const phase = manager.create(JobListingPhase, {
+      jobListingId: listingId,
+      phaseName: input.phaseName,
+      phaseType: this.mapPhaseType(input.phaseType),
+      positionOrder: 0, // renumbered by the caller once final order is known
+      durationDays: input.durationDays ?? null,
+      recurrenceSchedule: (input.recurrenceSchedule as any) ?? null,
+      recurrenceCount: input.recurrenceCount ?? null,
+      tasks: [],
+    });
+    const savedPhase = await manager.save(JobListingPhase, phase);
+    savedPhase.tasks = [];
+
+    for (let i = 0; i < input.tasks.length; i++) {
+      const t = input.tasks[i];
+      const task = manager.create(JobListingTask, {
+        phaseId: savedPhase.id,
+        taskName: t.taskName,
+        roleTitle: t.roleTitle,
+        location: t.location ?? null,
+        experienceLevel: t.experienceLevel ?? null,
+        workSchedule: (t.workSchedule as any) ?? 'full_time',
+        customHours: t.customHours ?? null,
+        customFrequency: t.customFrequency ?? null,
+        estimatedHours: t.estimatedHours,
+        positionOrder: i,
+      });
+      savedPhase.tasks.push(await manager.save(JobListingTask, task));
+    }
+
+    return savedPhase;
+  }
+
+  // Loads the listing's current phases/tasks fresh, resolves every
+  // operation's phaseIndex/taskIndex against that snapshot (mirroring
+  // applyOperationsToSnapshot's partitioning exactly, but mutating real
+  // entities via targeted save/update/delete instead of building a plain
+  // object), renumbers positionOrder, and returns the resulting full
+  // JobListingPhase[] with real, persisted ids. Single transaction — if
+  // anything fails the scope is unchanged.
+  private async applyScopeOperationsInTransaction(
+    listingId: string,
+    operations: ScopeOperation[],
+  ): Promise<JobListingPhase[]> {
+    return this.dataSource.transaction(async (manager) => {
+      const currentPhases = await manager.find(JobListingPhase, {
+        where: { jobListingId: listingId },
+        relations: ['tasks'],
+        order: { positionOrder: 'ASC' },
+      });
+      currentPhases.forEach((phase) => {
+        phase.tasks = [...(phase.tasks ?? [])].sort((a, b) => a.positionOrder - b.positionOrder);
+      });
+
+      const removedPhaseIndexes = new Set<number>();
+      const removedTaskIndexes = new Map<number, Set<number>>();
+      const taskFieldPatches = new Map<number, Map<number, TaskOperationFields>>();
+      const phaseFieldPatches = new Map<number, PhaseOperationFields>();
+      const addedTasksByPhase = new Map<number, NewTaskInput[]>();
+      const addedPhaseOps: Array<{ phase: NewPhaseInput; afterPhaseIndex?: number }> = [];
+
+      for (const op of operations) {
+        switch (op.op) {
+          case 'update_task': {
+            if (!taskFieldPatches.has(op.phaseIndex)) taskFieldPatches.set(op.phaseIndex, new Map());
+            const phaseMap = taskFieldPatches.get(op.phaseIndex)!;
+            phaseMap.set(op.taskIndex, { ...(phaseMap.get(op.taskIndex) ?? {}), ...op.fields });
+            break;
+          }
+          case 'remove_task': {
+            if (!removedTaskIndexes.has(op.phaseIndex)) removedTaskIndexes.set(op.phaseIndex, new Set());
+            removedTaskIndexes.get(op.phaseIndex)!.add(op.taskIndex);
+            break;
+          }
+          case 'add_task': {
+            if (!addedTasksByPhase.has(op.phaseIndex)) addedTasksByPhase.set(op.phaseIndex, []);
+            addedTasksByPhase.get(op.phaseIndex)!.push(op.task);
+            break;
+          }
+          case 'update_phase': {
+            phaseFieldPatches.set(op.phaseIndex, { ...(phaseFieldPatches.get(op.phaseIndex) ?? {}), ...op.fields });
+            break;
+          }
+          case 'remove_phase': {
+            removedPhaseIndexes.add(op.phaseIndex);
+            break;
+          }
+          case 'add_phase': {
+            addedPhaseOps.push({ phase: op.phase, afterPhaseIndex: op.afterPhaseIndex });
+            break;
+          }
+        }
+      }
+
+      const finalPhases: JobListingPhase[] = [];
+
+      for (let phaseIndex = 0; phaseIndex < currentPhases.length; phaseIndex++) {
+        const phase = currentPhases[phaseIndex];
+
+        if (removedPhaseIndexes.has(phaseIndex)) {
+          await manager.delete(JobListingPhase, phase.id); // cascades to tasks
+        } else {
+          const taskRemovals = removedTaskIndexes.get(phaseIndex) ?? new Set<number>();
+          const taskPatches = taskFieldPatches.get(phaseIndex) ?? new Map<number, TaskOperationFields>();
+          const survivingTasks: JobListingTask[] = [];
+
+          for (let taskIndex = 0; taskIndex < phase.tasks.length; taskIndex++) {
+            const task = phase.tasks[taskIndex];
+            if (taskRemovals.has(taskIndex)) {
+              await manager.delete(JobListingTask, task.id);
+              continue;
+            }
+            const patch = taskPatches.get(taskIndex);
+            if (patch) {
+              this.applyTaskFieldPatch(task, patch);
+              await manager.save(JobListingTask, task);
+            }
+            survivingTasks.push(task);
+          }
+
+          for (const input of addedTasksByPhase.get(phaseIndex) ?? []) {
+            const created = manager.create(JobListingTask, {
+              phaseId: phase.id,
+              taskName: input.taskName,
+              roleTitle: input.roleTitle,
+              location: input.location ?? null,
+              experienceLevel: input.experienceLevel ?? null,
+              workSchedule: (input.workSchedule as any) ?? 'full_time',
+              customHours: input.customHours ?? null,
+              customFrequency: input.customFrequency ?? null,
+              estimatedHours: input.estimatedHours,
+              positionOrder: survivingTasks.length,
+            });
+            survivingTasks.push(await manager.save(JobListingTask, created));
+          }
+
+          for (let i = 0; i < survivingTasks.length; i++) {
+            if (survivingTasks[i].positionOrder !== i) {
+              survivingTasks[i].positionOrder = i;
+              await manager.update(JobListingTask, survivingTasks[i].id, { positionOrder: i });
+            }
+          }
+
+          const phasePatch = phaseFieldPatches.get(phaseIndex);
+          if (phasePatch) {
+            this.applyPhaseFieldPatch(phase, phasePatch);
+            await manager.save(JobListingPhase, phase);
+          }
+
+          phase.tasks = survivingTasks;
+          finalPhases.push(phase);
+        }
+
+        for (const added of addedPhaseOps.filter((a) => a.afterPhaseIndex === phaseIndex)) {
+          finalPhases.push(await this.createPhaseEntityFromInput(manager, listingId, added.phase));
+        }
+      }
+
+      for (const added of addedPhaseOps.filter(
+        (a) =>
+          a.afterPhaseIndex === undefined ||
+          a.afterPhaseIndex < 0 ||
+          a.afterPhaseIndex >= currentPhases.length,
+      )) {
+        finalPhases.push(await this.createPhaseEntityFromInput(manager, listingId, added.phase));
+      }
+
+      for (let i = 0; i < finalPhases.length; i++) {
+        if (finalPhases[i].positionOrder !== i) {
+          finalPhases[i].positionOrder = i;
+          await manager.update(JobListingPhase, finalPhases[i].id, { positionOrder: i });
+        }
+      }
+
+      return finalPhases;
+    });
   }
 
   async restoreSmartAssistantScopeEdit(
     listing: JobListing,
     historyId: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const entry = (listing.smartAssistantHistory ?? []).find(
       (item) => item.id === historyId && item.field === 'scope',
     );
@@ -357,10 +742,11 @@ export class JobListingScopeService {
       true,
     );
 
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     const historyEntry: SmartAssistantHistoryEntry = {
       id: uuidv4(),
@@ -381,7 +767,7 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
   }
 
   // ── loadInheritedScope ─────────────────────────────────────────────────────
@@ -392,7 +778,11 @@ export class JobListingScopeService {
   async undoLatestSmartAssistantScopeEdit(
     listing: JobListing,
     historyId: string,
-  ): Promise<{ phases: JobListingPhase[]; totalBudgetUsdCents: number }> {
+  ): Promise<{
+    phases: JobListingPhase[];
+    totalBudgetUsdCents: number;
+    isBudgetStale: boolean;
+  }> {
     const history = [...(listing.smartAssistantHistory ?? [])];
     const latest = history[history.length - 1];
 
@@ -409,10 +799,11 @@ export class JobListingScopeService {
       true,
     );
 
-    const totalBudgetUsdCents = await this.budgetService.recalculateAndPersist(
-      listing.id,
-      savedPhases,
-    );
+    const { totalBudgetUsdCents, isBudgetStale } =
+      await this.budgetService.recalculateAndPersistWithStatus(
+        listing.id,
+        savedPhases,
+      );
 
     history.pop();
 
@@ -423,7 +814,7 @@ export class JobListingScopeService {
       staleWarningSent: false,
     });
 
-    return { phases: savedPhases, totalBudgetUsdCents };
+    return { phases: savedPhases, totalBudgetUsdCents, isBudgetStale };
   }
 
   async replaceLatestSmartAssistantScopeHistoryAfter(

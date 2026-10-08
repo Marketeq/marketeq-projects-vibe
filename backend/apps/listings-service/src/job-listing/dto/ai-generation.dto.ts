@@ -301,3 +301,20 @@ export class GenerateRoleDescriptionsDto {
   @IsOptional()
   roles?: GenerateRoleDescriptionRoleDto[];
 }
+
+export class GenerateTeamRowsDto {
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  headcount?: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(50)
+  @IsOptional()
+  tools?: string[];
+}

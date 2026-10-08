@@ -15,6 +15,7 @@ import { RoleDescription } from "../entities/job-listing-role-description.entity
 import { JobListingInviteService } from "./job-listing-invite.service";
 import { JobListingBriefStorageService } from "./job-listing-brief-storage.service";
 import { JobListingScopeService } from "./job-listing-scope.service";
+import { JobListingBudgetService } from "./job-listing-budget.service";
 import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -52,6 +53,10 @@ const mockScopeService = {
   loadInheritedScope: jest.fn().mockResolvedValue([]),
 };
 
+const mockBudgetService = {
+  getRateUsdCents: jest.fn().mockResolvedValue(0),
+};
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("JobListingService — JL-10 Existing Contract", () => {
@@ -80,6 +85,7 @@ describe("JobListingService — JL-10 Existing Contract", () => {
         { provide: JobListingBriefStorageService, useValue: mockBriefStorage },
         { provide: JobListingEventsPublisher, useValue: mockPublisher },
         { provide: JobListingScopeService, useValue: mockScopeService },
+        { provide: JobListingBudgetService, useValue: mockBudgetService },
       ],
     }).compile();
 
