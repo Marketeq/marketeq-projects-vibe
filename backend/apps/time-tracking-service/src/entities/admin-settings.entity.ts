@@ -34,6 +34,18 @@ export class AdminSettings {
   @Column({ name: 'blurred_billable', default: true })
   blurredBillable: boolean;
 
+  @Column({ name: 'require_delete_approval', default: false })
+  requireDeleteApproval: boolean;
+
+  @Column({ name: 'manual_time_enabled', default: true })
+  manualTimeEnabled: boolean;
+
+  @Column({ name: 'manual_time_require_approval', default: true })
+  manualTimeRequireApproval: boolean;
+
+  @Column({ name: 'manual_time_require_reason', default: true })
+  manualTimeRequireReason: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
