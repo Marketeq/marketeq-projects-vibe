@@ -10,6 +10,7 @@ import * as path from 'path';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
 import { AblyService } from '../../src/realtime/ably.service';
+import { IdentityVerificationGateClient } from '../../src/identity-gate/identity-verification-gate.client';
 import { OfferExceptionFilter } from '../../src/filters/offer-exception.filter';
 import { createMockAblyService } from '../mocks/ably.mock';
 
@@ -66,6 +67,12 @@ export async function bootstrapE2E(): Promise<void> {
   })
     .overrideProvider(AblyService)
     .useValue(mockAbly)
+    // G4: these flows exercise offer behavior, not identity verification, and
+    // there is no identity-verification-service on the test broker - an open
+    // gate keeps them about offers. The gate itself is covered by
+    // src/offers/offers.talent-gate.spec.ts.
+    .overrideProvider(IdentityVerificationGateClient)
+    .useValue({ checkGate: async () => ({ gateOpen: true, missingRequirements: 'none' }) })
     .compile();
 
   app = moduleRef.createNestApplication();
