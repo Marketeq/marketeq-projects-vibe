@@ -7383,120 +7383,124 @@ const OpenRolesContent = () => {
                 </div>
               )}
 
-              {/* Question preview card */}
-              <div className="flex flex-col gap-2">
-                <p className="text-sm leading-5 font-normal text-gray-500">
-                  This question appears when talent requests to join the project.
-                </p>
+              {/* Question preview card — hidden when no roles selected */}
+              {selectedRoles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    This question appears when talent requests to join the project.
+                  </p>
 
-                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
-                  <div className="flex gap-2.5 items-start">
-                    <div className="shrink-0 w-[15px] pt-[3px]">
-                      <Lock01 className="size-[15px] text-gray-500" />
-                    </div>
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                    <div className="flex gap-2.5 items-start">
+                      <div className="shrink-0 w-[15px] pt-[3px]">
+                        <Lock01 className="size-[15px] text-gray-500" />
+                      </div>
 
-                    <div className="flex-1 min-w-0 flex flex-col gap-3">
-                      {/* Question title + tags */}
-                      <div className="flex items-center">
-                        <div className="flex gap-6 items-center">
-                          <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
-                            Which role are you interested in?
-                          </span>
-                          <div className="flex gap-2 items-center">
-                            <Badge
-                              visual="gray"
-                              size="sm"
-                              className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                      <div className="flex-1 min-w-0 flex flex-col gap-3">
+                        {/* Question title + tags */}
+                        <div className="flex items-center">
+                          <div className="flex gap-6 items-center">
+                            <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
+                              Which role are you interested in?
+                            </span>
+                            <div className="flex gap-2 items-center">
+                              <Badge
+                                visual="gray"
+                                size="sm"
+                                className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                              >
+                                Default
+                              </Badge>
+                              <Badge
+                                visual="gray"
+                                size="sm"
+                                className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
+                              >
+                                Multi-Select
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="w-full h-px bg-gray-200" />
+
+                        {/* Available Options */}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex gap-3 items-center">
+                            <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
+                              Available Options
+                            </span>
+                            <Button
+                              variant="link"
+                              visual="primary"
+                              className="gap-1 text-xs font-bold leading-5 underline"
                             >
-                              Default
-                            </Badge>
-                            <Badge
-                              visual="gray"
-                              size="sm"
-                              className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
-                            >
-                              Multi-Select
-                            </Badge>
+                              Edit Roles
+                              <ArrowUpRight className="size-[15px]" />
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-wrap content-center gap-2.5 items-center">
+                            {SAMPLE_ROLE_OPTIONS.map((role) => (
+                              <Badge
+                                key={role}
+                                visual="gray"
+                                size="sm"
+                                className="h-[26px] pl-2 pr-1.5 py-0.5"
+                              >
+                                {role}
+                              </Badge>
+                            ))}
+                            <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500">
+                              + 8 more
+                            </span>
                           </div>
                         </div>
                       </div>
-
-                      <div className="w-full h-px bg-gray-200" />
-
-                      {/* Available Options */}
-                      <div className="flex flex-col gap-2">
-                        <div className="flex gap-3 items-center">
-                          <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
-                            Available Options
-                          </span>
-                          <Button
-                            variant="link"
-                            visual="primary"
-                            className="gap-1 text-xs font-bold leading-5 underline"
-                          >
-                            Edit Roles
-                            <ArrowUpRight className="size-[15px]" />
-                          </Button>
-                        </div>
-
-                        <div className="flex flex-wrap content-center gap-2.5 items-center">
-                          {SAMPLE_ROLE_OPTIONS.map((role) => (
-                            <Badge
-                              key={role}
-                              visual="gray"
-                              size="sm"
-                              className="h-[26px] pl-2 pr-1.5 py-0.5"
-                            >
-                              {role}
-                            </Badge>
-                          ))}
-                          <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500">
-                            + 8 more
-                          </span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Role-Specific Questions */}
-              <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                    <span className="text-base font-semibold text-dark-blue-400">
-                      Role-Specific Questions
-                    </span>
-                    <p className="text-sm font-normal leading-5 text-gray-600">
-                      Here are your current Role-Specific questions. Click Edit to update them.
-                    </p>
-                  </div>
-                  <Button
-                    visual="gray"
-                    variant="outlined"
-                    className="shrink-0 bg-white"
-                  >
-                    <Edit03 className="size-[15px]" />
-                    Edit Role Questions
-                  </Button>
-                </div>
-
-                <div className="flex flex-wrap content-start gap-3">
-                  {SAMPLE_ROLE_QUESTIONS.map((q) => (
-                    <div
-                      key={q}
-                      className="bg-white border-[1.5px] border-gray-300 rounded-full px-3 py-1 flex items-center justify-center cursor-pointer transition duration-300 hover:bg-gray-50 hover:border-gray-400"
-                    >
-                      <span className="text-sm font-medium leading-5 text-gray-700">
-                        {q}
+              {/* Role-Specific Questions — hidden when no roles selected */}
+              {selectedRoles.length > 0 && (
+                <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                      <span className="text-base font-semibold text-dark-blue-400">
+                        Role-Specific Questions
                       </span>
+                      <p className="text-sm font-normal leading-5 text-gray-600">
+                        Here are your current Role-Specific questions. Click Edit to update them.
+                      </p>
                     </div>
-                  ))}
-                  <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800">
-                    + 26 more
-                  </span>
+                    <Button
+                      visual="gray"
+                      variant="outlined"
+                      className="shrink-0 bg-white"
+                    >
+                      <Edit03 className="size-[15px]" />
+                      Edit Role Questions
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap content-start gap-3">
+                    {SAMPLE_ROLE_QUESTIONS.map((q) => (
+                      <div
+                        key={q}
+                        className="bg-white border-[1.5px] border-gray-300 rounded-full px-3 py-1 flex items-center justify-center cursor-pointer transition duration-300 hover:bg-gray-50 hover:border-gray-400"
+                      >
+                        <span className="text-sm font-medium leading-5 text-gray-700">
+                          {q}
+                        </span>
+                      </div>
+                    ))}
+                    <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800">
+                      + 26 more
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
