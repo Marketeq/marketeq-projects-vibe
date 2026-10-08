@@ -40,22 +40,13 @@ export const titleizeCheckoutSlug = (value: string): string =>
 const getTeamMemberCount = (project: any): number | null => {
   // `team` is the real, currently-assigned roster (resolved from
   // teamMemberIds server-side) — trust it whenever it's present, even when
-  // empty, rather than falling through to the scope role-name guess below,
-  // which isn't actual assignment data and would contradict the Team
-  // Members tab (which only ever shows the real `team` array).
+  // empty. Scope role names describe vacancies, not assigned people.
   if (Array.isArray(project.team)) {
-    return project.team.length > 0 ? project.team.length : null
+    return new Set(project.team.map((member: any) => member.id)).size
   }
   if (typeof project.teamMemberCount === "number") return project.teamMemberCount
 
-  const scope = Array.isArray(project.scope) ? project.scope : []
-  const roles = new Set(
-    scope.flatMap((phase: any) =>
-      (phase.tasks ?? []).map((task: any) => task.roleName).filter(Boolean)
-    )
-  )
-
-  return roles.size > 0 ? roles.size : null
+  return null
 }
 
 const getTeamMembers = (project: any): CheckoutRawTeamMember[] => {
@@ -116,9 +107,9 @@ const getScopeDurationDays = (project: any): number => {
             return v
           }
         }
-        // Fall back to estimatedHours at 40 hrs/week.
+        // Fall back to estimatedHours using the shared 24-hour day rule.
         const hrs = Number(task.estimatedHours) || 0
-        return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
+        return hrs > 0 ? Math.ceil(hrs / 24) : 0
       })
       .filter((d: number) => d > 0)
     if (taskDurations.length > 0) {
@@ -202,9 +193,9 @@ const getFaqs = (project: any): CheckoutFaq[] => {
     .filter((faq: CheckoutFaq) => faq.question && faq.answer)
 }
 
-const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary => ({
+const mapProjectSummary = (project: any): CheckoutProjectSummary => ({
   id: project.id ? String(project.id) : null,
-  title: project.title || titleizeCheckoutSlug(slug),
+  title: project.title || "Project Title Unavailable",
   mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "",
   teamMemberCount: getTeamMemberCount(project),
   dateRangeLabel: getDateRangeLabel(project),
@@ -227,7 +218,7 @@ export const getCheckoutProjectSummary = async (
     credentials: "include",
   })
   if (projectResponse.ok) {
-    return mapProjectSummary(await projectResponse.json(), "")
+    return mapProjectSummary(await projectResponse.json())
   }
 
   const serviceResponse = await fetch(`${apiBase}/v1/services/slug/${id}`, {
@@ -235,7 +226,7 @@ export const getCheckoutProjectSummary = async (
     credentials: "include",
   })
   if (serviceResponse.ok) {
-    return mapProjectSummary(await serviceResponse.json(), "")
+    return mapProjectSummary(await serviceResponse.json())
   }
 
   return null

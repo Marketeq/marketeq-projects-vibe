@@ -4,8 +4,16 @@ import { CheckoutDraft } from './entities/checkout-draft.entity';
 
 export const DRAFT_IDLE_DAYS = 30;
 
-export const isDraftExpired = (updatedAt: Date, now: number = Date.now()): boolean =>
-  now - new Date(updatedAt).getTime() > DRAFT_IDLE_DAYS * 24 * 60 * 60 * 1000;
+export const isDraftExpired = (
+  draft: Pick<CheckoutDraft, 'updatedAt' | 'lastOpenedAt'>,
+  now: number = Date.now(),
+): boolean => {
+  const lastActive = Math.max(
+    new Date(draft.updatedAt).getTime(),
+    new Date(draft.lastOpenedAt).getTime(),
+  );
+  return now - lastActive > DRAFT_IDLE_DAYS * 24 * 60 * 60 * 1000;
+};
 
 export const loadOwnedDraft = async (
   manager: EntityManager,
@@ -17,7 +25,7 @@ export const loadOwnedDraft = async (
     where: { id: draftId, clientId },
     ...(options.lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
   });
-  if (!draft || isDraftExpired(draft.updatedAt)) {
+  if (!draft || isDraftExpired(draft)) {
     throw new NotFoundException('Draft not found');
   }
   return draft;

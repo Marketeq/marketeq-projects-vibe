@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { CheckoutSession } from './checkout-session.entity';
 
-@Entity('checkout_drafts')
+@Entity('drafts')
 @Unique(['clientId', 'listingId'])
 export class CheckoutDraft {
   @PrimaryGeneratedColumn('uuid')
@@ -26,20 +26,14 @@ export class CheckoutDraft {
   @Column({ type: 'int', default: 1 })
   version: number;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  sourceListingUpdatedAt: Date | null;
-
   @Column({ type: 'varchar', nullable: true })
   title: string | null;
 
   @Column({ type: 'text', nullable: true })
   mediaUrl: string | null;
 
-  @Column({ type: 'int', nullable: true })
-  durationDays: number | null;
-
-  @Column({ type: 'int', nullable: true })
-  teamMemberCount: number | null;
+  @Column({ type: 'uuid', array: true, default: () => "'{}'" })
+  memberUserIds: string[];
 
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   giftCardCodes: string[];
@@ -47,12 +41,12 @@ export class CheckoutDraft {
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   promoCodes: string[];
 
-  @Index('IDX_checkout_drafts_sessionId')
+  @Index('IDX_drafts_sessionId')
   @Column({ type: 'uuid', nullable: true })
   sessionId: string | null;
 
   @ManyToOne(() => CheckoutSession, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'sessionId', foreignKeyConstraintName: 'FK_checkout_drafts_session' })
+  @JoinColumn({ name: 'sessionId', foreignKeyConstraintName: 'FK_drafts_session' })
   session: CheckoutSession | null;
 
   @CreateDateColumn()
@@ -60,4 +54,7 @@ export class CheckoutDraft {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ type: 'timestamp', default: () => 'now()' })
+  lastOpenedAt: Date;
 }

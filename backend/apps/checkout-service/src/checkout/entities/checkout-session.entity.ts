@@ -13,7 +13,7 @@ export type AppliedGiftCard = { code: string; amountUsed: number };
 export type AppliedPromo = { code: string; discountAmount: number };
 export type InstallmentPlan = 'full' | 'monthly' | 'biweekly';
 
-@Entity('checkout_sessions')
+@Entity('sessions')
 export class CheckoutSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -183,7 +183,7 @@ export class CheckoutDraftSessionService {
   ): Promise<boolean> {
     const rows: { expired: boolean }[] = await manager.query(
       `SELECT (now() - "createdAt") > make_interval(mins => $2) AS expired
-       FROM "checkout"."checkout_sessions" WHERE "id" = $1`,
+       FROM "checkout"."sessions" WHERE "id" = $1`,
       [sessionId, SESSION_EXPIRY_MINUTES],
     );
     return rows[0]?.expired === true;

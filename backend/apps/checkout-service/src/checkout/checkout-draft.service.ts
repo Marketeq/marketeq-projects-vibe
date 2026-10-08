@@ -40,7 +40,6 @@ type ListingProject = {
   title?: string;
   mediaUrls?: string[];
   featuredImage?: string;
-  updatedAt?: string;
   scope?: ListingPhase[];
 };
 
@@ -53,10 +52,12 @@ const normalizeKeyPart = (value: string | null): string =>
   (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
 const taskDays = (hours: number | null): number =>
-  Math.max(1, Math.round(((hours ?? 0) * 7) / 40));
+  hours !== null && hours > 0 ? Math.ceil(hours / 24) : 0;
 
 const phaseLengthDays = (taskHours: (number | null)[]): number =>
   taskHours.length === 0 ? 0 : Math.max(...taskHours.map(taskDays));
+
+const uniqueIds = (ids: Iterable<string>): string[] => Array.from(new Set(ids));
 
 @Injectable()
 export class CheckoutDraftService {
@@ -71,10 +72,28 @@ export class CheckoutDraftService {
 
   async getDraft(clientId: string, listingId: string) {
     const draft = await this.repo.findOne({ where: { clientId, listingId } });
-    if (!draft || isDraftExpired(draft.updatedAt)) {
+    if (!draft || isDraftExpired(draft)) {
       throw new NotFoundException('Draft not found');
     }
-    return this.toResponse(draft);
+    await this.touchLastOpened(draft.id);
+    return this.toResponse(draft, await this.loadDurationDays(draft.id));
+  }
+
+  private async touchLastOpened(draftId: string) {
+    await this.repo.query(
+      `UPDATE "checkout"."drafts" SET "lastOpenedAt" = now() WHERE id = $1`,
+      [draftId],
+    );
+  }
+
+  private async loadDurationDays(draftId: string): Promise<number | null> {
+    const rows: { days: number | null }[] = await this.repo.query(
+      `SELECT MAX(p."endDay") AS days FROM "checkout"."draft_phases" p
+       WHERE p."draftId" = $1
+         AND EXISTS (SELECT 1 FROM "checkout"."draft_tasks" t WHERE t."phaseId" = p.id)`,
+      [draftId],
+    );
+    return rows[0]?.days ?? null;
   }
 
   private findOwnedDraft(clientId: string, draftId: string) {
@@ -108,6 +127,13 @@ export class CheckoutDraftService {
     };
     const assigned = new Map<string, Group>();
     const open = new Map<string, Group>();
+    const emptyGroup = (): Group => ({
+      roleTitle: '',
+      experience: null,
+      location: null,
+      hours: 0,
+      phaseTitles: [],
+    });
 
     for (const phase of phases) {
       for (const task of phase.tasks) {
@@ -139,7 +165,7 @@ export class CheckoutDraftService {
           ? titles[0]
           : `${titles.length} Phase`;
 
-    const assignedIds = Array.from(assigned.keys());
+    const assignedIds = uniqueIds([...draft.memberUserIds, ...assigned.keys()]);
     const [listingTeam, rates] = await Promise.all([
       this.summaryService.fetchListingTeam(draft.listingId),
       this.summaryService.estimateRoleRates(
@@ -165,7 +191,7 @@ export class CheckoutDraftService {
     );
 
     const members = assignedIds.map((userId) => {
-      const group = assigned.get(userId) as Group;
+      const group = assigned.get(userId) ?? emptyGroup();
       const member = teamById.get(userId);
       const profile = profiles.get(userId);
       const fullName = profile
@@ -237,7 +263,6 @@ export class CheckoutDraftService {
       durationHours: task.durationHours,
       assigneeUserId: task.assigneeUserId,
       order: task.order,
-      isDraftOverride: task.isDraftOverride,
     };
   }
 
@@ -245,7 +270,7 @@ export class CheckoutDraftService {
     clientId: string,
     draftId: string,
     version: number,
-    change: (manager: EntityManager) => Promise<T>,
+    change: (manager: EntityManager, draft: CheckoutDraft) => Promise<T>,
   ) {
     return this.dataSource.transaction(async (manager) => {
       const draft = await loadOwnedDraft(manager, clientId, draftId, {
@@ -255,7 +280,7 @@ export class CheckoutDraftService {
         throw new ConflictException('Draft version is out of date');
       }
 
-      const result = await change(manager);
+      const result = await change(manager, draft);
 
       const phases = await manager.find(CheckoutDraftPhaseEntity, {
         where: { draftId: draft.id },
@@ -264,7 +289,6 @@ export class CheckoutDraftService {
       });
       let nextStartDay = 1;
       const assignees = new Set<string>();
-      const roles = new Set<string>();
       const phaseDays: { id: string; startDay: number; endDay: number }[] = [];
       for (const phase of phases) {
         const days = phaseLengthDays(
@@ -282,18 +306,16 @@ export class CheckoutDraftService {
         phaseDays.push({ id: phase.id, startDay, endDay });
         for (const task of phase.tasks) {
           if (task.assigneeUserId) assignees.add(task.assigneeUserId);
-          const role = task.roleName?.trim().toLowerCase();
-          if (role) roles.add(role);
         }
       }
 
       const durationDays = nextStartDay > 1 ? nextStartDay - 1 : null;
-      const teamMemberCount = assignees.size || roles.size || null;
+      const memberUserIds = uniqueIds([...draft.memberUserIds, ...assignees]);
+      const teamMemberCount = memberUserIds.length;
       const nextVersion = draft.version + 1;
       await manager.update(CheckoutDraft, draft.id, {
         version: nextVersion,
-        durationDays,
-        teamMemberCount,
+        memberUserIds,
       });
 
       return {
@@ -363,10 +385,7 @@ export class CheckoutDraftService {
     });
   }
 
-  private async toPhaseResponse(
-    manager: EntityManager,
-    phaseId: string,
-  ) {
+  private async toPhaseResponse(manager: EntityManager, phaseId: string) {
     const phase = await manager.findOneOrFail(CheckoutDraftPhaseEntity, {
       where: { id: phaseId },
     });
@@ -376,7 +395,6 @@ export class CheckoutDraftService {
       order: phase.order,
       startDay: phase.startDay,
       endDay: phase.endDay,
-      isDraftOverride: phase.isDraftOverride,
     };
   }
 
@@ -397,7 +415,6 @@ export class CheckoutDraftService {
             draftId,
             title: dto.title,
             order,
-            isDraftOverride: true,
           }),
         );
         phaseId = created.id;
@@ -426,7 +443,7 @@ export class CheckoutDraftService {
       clientId,
       draftId,
       version,
-      async (manager) => {
+      async (manager, draft) => {
         const tasks = await manager.find(CheckoutDraftTaskEntity, {
           where: { phase: { draftId } },
         });
@@ -437,14 +454,28 @@ export class CheckoutDraftService {
               `${normalizeKeyPart(task.roleName)}|${normalizeKeyPart(task.experienceLevel)}` ===
                 wantedRoleKey,
         );
-        if (matched.length === 0) {
+        const isListedMember =
+          Boolean(match.fromUserId) &&
+          draft.memberUserIds.includes(match.fromUserId as string);
+        if (matched.length === 0 && !isListedMember) {
           throw new NotFoundException('No tasks found for that member');
         }
-        await manager.update(
-          CheckoutDraftTaskEntity,
-          { id: In(matched.map((task) => task.id)) },
-          { assigneeUserId: toUserId, isDraftOverride: true },
-        );
+        if (matched.length > 0) {
+          await manager.update(
+            CheckoutDraftTaskEntity,
+            { id: In(matched.map((task) => task.id)) },
+            { assigneeUserId: toUserId },
+          );
+        }
+        if (match.fromUserId) {
+          draft.memberUserIds = uniqueIds(
+            toUserId
+              ? draft.memberUserIds.map((id) =>
+                  id === match.fromUserId ? toUserId : id,
+                )
+              : draft.memberUserIds.filter((id) => id !== match.fromUserId),
+          );
+        }
         return matched.map((task) => ({
           id: task.id,
           phaseId: task.phaseId,
@@ -498,11 +529,7 @@ export class CheckoutDraftService {
     );
   }
 
-  async updateRole(
-    clientId: string,
-    draftId: string,
-    dto: UpdateDraftRoleDto,
-  ) {
+  async updateRole(clientId: string, draftId: string, dto: UpdateDraftRoleDto) {
     if (dto.experienceLevel === undefined && dto.location === undefined) {
       throw new BadRequestException('No fields to update');
     }
@@ -531,11 +558,13 @@ export class CheckoutDraftService {
           changes.experienceLevel = dto.experienceLevel;
         }
         if (dto.location !== undefined) changes.location = [dto.location];
-        await manager.update(
-          CheckoutDraftTaskEntity,
-          { id: In(matched.map((task) => task.id)) },
-          { ...changes, isDraftOverride: true },
-        );
+        if (Object.keys(changes).length > 0) {
+          await manager.update(
+            CheckoutDraftTaskEntity,
+            { id: In(matched.map((task) => task.id)) },
+            changes,
+          );
+        }
         return matched.map((task) => ({
           id: task.id,
           phaseId: task.phaseId,
@@ -575,9 +604,7 @@ export class CheckoutDraftService {
           manager.create(CheckoutDraftPhaseEntity, {
             draftId,
             title: `${source.title} (Copy)`,
-            sourcePhaseId: source.sourcePhaseId,
             order: source.order + 1,
-            isDraftOverride: true,
           }),
         );
         const sourceIndex = phases.findIndex((item) => item.id === source.id);
@@ -589,7 +616,6 @@ export class CheckoutDraftService {
             await manager.save(
               manager.create(CheckoutDraftTaskEntity, {
                 phaseId: created.id,
-                sourceTaskId: task.sourceTaskId,
                 title: task.title,
                 roleName: task.roleName,
                 durationHours: task.durationHours,
@@ -597,7 +623,6 @@ export class CheckoutDraftService {
                 location: task.location,
                 assigneeUserId: task.assigneeUserId,
                 order: index + 1,
-                isDraftOverride: true,
               }),
             ),
           );
@@ -645,9 +670,6 @@ export class CheckoutDraftService {
           others.splice(dto.order - 1, 0, phase);
           await this.renumberPhases(manager, others);
         }
-        await manager.update(CheckoutDraftPhaseEntity, phase.id, {
-          isDraftOverride: true,
-        });
         return phase.id;
       },
     );
@@ -710,7 +732,6 @@ export class CheckoutDraftService {
             location: dto.location ?? [],
             assigneeUserId: dto.assigneeUserId ?? null,
             order: (last?.order ?? 0) + 1,
-            isDraftOverride: true,
           }),
         );
       },
@@ -748,11 +769,10 @@ export class CheckoutDraftService {
       version,
       async (manager) => {
         const task = await this.findDraftTask(manager, draftId, taskId);
-        await manager.update(CheckoutDraftTaskEntity, task.id, {
-          ...changes,
-          isDraftOverride: true,
-        });
-        Object.assign(task, changes, { isDraftOverride: true });
+        if (Object.keys(changes).length > 0) {
+          await manager.update(CheckoutDraftTaskEntity, task.id, changes);
+        }
+        Object.assign(task, changes);
         if (order !== undefined && order !== task.order) {
           const siblings = await manager.find(CheckoutDraftTaskEntity, {
             where: { phaseId: task.phaseId },
@@ -795,8 +815,11 @@ export class CheckoutDraftService {
   }
 
   async createDraft(clientId: string, listingId: string) {
-    const existing = await this.repo.findOne({ where: { clientId, listingId } });
-    if (existing && !isDraftExpired(existing.updatedAt)) {
+    const existing = await this.repo.findOne({
+      where: { clientId, listingId },
+    });
+    if (existing && !isDraftExpired(existing)) {
+      await this.touchLastOpened(existing.id);
       throw new ConflictException({
         message: 'Draft already exists',
         draftId: existing.id,
@@ -805,13 +828,20 @@ export class CheckoutDraftService {
 
     const project: ListingProject =
       await this.summaryService.fetchProject(listingId);
+    const listingTeam = await this.summaryService.fetchListingTeam(listingId);
 
     try {
       const draft = await this.dataSource.transaction(async (manager) => {
         if (existing) {
           await this.discardDraft(manager, existing);
         }
-        return this.copyListingScope(manager, clientId, listingId, project);
+        return this.copyListingScope(
+          manager,
+          clientId,
+          listingId,
+          project,
+          listingTeam,
+        );
       });
       return { draftId: draft.id, version: draft.version };
     } catch (err) {
@@ -826,15 +856,15 @@ export class CheckoutDraftService {
     }
   }
 
-  private toResponse(draft: CheckoutDraft) {
+  private toResponse(draft: CheckoutDraft, durationDays: number | null) {
     return {
       draftId: draft.id,
       version: draft.version,
       listingId: draft.listingId,
       title: draft.title,
       mediaUrl: draft.mediaUrl,
-      teamMemberCount: draft.teamMemberCount,
-      durationDays: draft.durationDays,
+      teamMemberCount: draft.memberUserIds.length,
+      durationDays,
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
     };
@@ -856,6 +886,7 @@ export class CheckoutDraftService {
     clientId: string,
     listingId: string,
     project: ListingProject,
+    listingTeam: { id: string }[],
   ) {
     const listingPhases = Array.isArray(project.scope) ? project.scope : [];
     let nextStartDay = 1;
@@ -863,7 +894,6 @@ export class CheckoutDraftService {
       const tasks = (listingPhase?.tasks ?? []).map((task, taskIndex) => {
         const hours = Number(task?.estimatedHours);
         return manager.create(CheckoutDraftTaskEntity, {
-          sourceTaskId: `phase-${phaseIndex}-task-${taskIndex}`,
           title: task?.title ?? 'Untitled task',
           roleName: task?.roleName ?? null,
           location: task?.location ?? [],
@@ -880,7 +910,6 @@ export class CheckoutDraftService {
       const startDay = nextStartDay;
       nextStartDay = startDay + days;
       return {
-        sourcePhaseId: `phase-${phaseIndex}`,
         title: listingPhase?.phaseName ?? `Phase ${phaseIndex + 1}`,
         order: phaseIndex + 1,
         startDay,
@@ -890,26 +919,22 @@ export class CheckoutDraftService {
     });
 
     const allTasks = plans.flatMap((plan) => plan.tasks);
-    const assignees = new Set(
-      allTasks.map((task) => task.assigneeUserId).filter(Boolean),
-    );
-    const roles = new Set(
-      allTasks
-        .map((task) => task.roleName?.trim().toLowerCase())
-        .filter(Boolean),
+    const memberUserIds = uniqueIds(
+      [
+        ...listingTeam.map((member) => String(member.id)),
+        ...allTasks.map((task) => task.assigneeUserId),
+      ].filter(
+        (id): id is string => Boolean(id) && UUID_PATTERN.test(id as string),
+      ),
     );
 
-    const updatedAt = project.updatedAt ? new Date(project.updatedAt) : null;
     const draft = await manager.save(
       manager.create(CheckoutDraft, {
         clientId,
         listingId,
-        sourceListingUpdatedAt:
-          updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null,
         title: project.title ?? null,
         mediaUrl: project.mediaUrls?.[0] || project.featuredImage || null,
-        durationDays: nextStartDay > 1 ? nextStartDay - 1 : null,
-        teamMemberCount: assignees.size || roles.size || null,
+        memberUserIds,
       }),
     );
 

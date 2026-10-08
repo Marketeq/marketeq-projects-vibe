@@ -2,9 +2,7 @@ import {
   BadGatewayException,
   ConflictException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
-import { CheckoutSummaryService } from './checkout-summary.service';
 import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.service';
 import { CheckoutDraft } from './entities/checkout-draft.entity';
 import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity';
@@ -20,7 +18,6 @@ const toCents = (dollars: number) => Math.round(dollars * 100);
 @Injectable()
 export class CheckoutDraftValidationService {
   constructor(
-    private readonly summaryService: CheckoutSummaryService,
     private readonly pricingService: CheckoutDraftPricingService,
   ) {}
 
@@ -41,8 +38,7 @@ export class CheckoutDraftValidationService {
   ): Promise<{ reasons: BlockingReason[]; pricing: DraftPricing | null }> {
     const reasons: BlockingReason[] = [
       ...this.checkScope(phases),
-      ...this.checkTeam(phases),
-      ...(await this.checkListing(draft)),
+      ...this.checkTeam(draft, phases),
     ];
 
     if (reasons.length > 0) return { reasons, pricing: null };
@@ -55,49 +51,16 @@ export class CheckoutDraftValidationService {
     if (phases.some((phase) => phase.tasks.length === 0)) {
       reasons.push({ code: 'PHASE_EMPTY' });
     }
-    const tasks = phases.flatMap((phase) => phase.tasks);
-    if (tasks.some((task) => !task.roleName?.trim())) {
-      reasons.push({ code: 'TASK_MISSING_ROLE' });
-    }
     return reasons;
   }
 
-  private checkTeam(phases: CheckoutDraftPhaseEntity[]): BlockingReason[] {
+  private checkTeam(
+    draft: CheckoutDraft,
+    phases: CheckoutDraftPhaseEntity[],
+  ): BlockingReason[] {
     const tasks = phases.flatMap((phase) => phase.tasks);
     if (tasks.length === 0) return [];
-    return tasks.some((task) => task.assigneeUserId)
-      ? []
-      : [{ code: 'TEAM_EMPTY' }];
-  }
-
-  private async checkListing(draft: CheckoutDraft): Promise<BlockingReason[]> {
-    let project: { updatedAt?: string } | null;
-    try {
-      project = await this.summaryService.fetchProject(draft.listingId);
-    } catch (err) {
-      if (err instanceof NotFoundException) {
-        return [{ code: 'LISTING_UNAVAILABLE' }];
-      }
-      if (err instanceof BadGatewayException) {
-        throw new BadGatewayException({
-          code: 'LISTING_CHECK_UNAVAILABLE',
-          message: 'Listings service is unavailable',
-        });
-      }
-      throw err;
-    }
-    if (!project) return [{ code: 'LISTING_UNAVAILABLE' }];
-
-    const current = project.updatedAt ? new Date(project.updatedAt) : null;
-    if (
-      draft.sourceListingUpdatedAt &&
-      current &&
-      !Number.isNaN(current.getTime()) &&
-      current.getTime() > new Date(draft.sourceListingUpdatedAt).getTime()
-    ) {
-      return [{ code: 'LISTING_CHANGED' }];
-    }
-    return [];
+    return draft.memberUserIds.length > 0 ? [] : [{ code: 'TEAM_EMPTY' }];
   }
 
   private async checkPrice(

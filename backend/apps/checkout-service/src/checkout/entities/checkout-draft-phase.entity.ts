@@ -12,8 +12,8 @@ import {
 import { CheckoutDraft } from './checkout-draft.entity';
 import { CheckoutDraftTaskEntity } from './checkout-draft-task.entity';
 
-@Entity('checkout_draft_phases')
-@Unique('UQ_checkout_draft_phases_draft_order', ['draftId', 'order'], {
+@Entity('draft_phases')
+@Unique('UQ_draft_phases_draft_order', ['draftId', 'order'], {
   deferrable: 'INITIALLY DEFERRED',
 })
 export class CheckoutDraftPhaseEntity {
@@ -24,11 +24,8 @@ export class CheckoutDraftPhaseEntity {
   draftId: string;
 
   @ManyToOne(() => CheckoutDraft, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'draftId', foreignKeyConstraintName: 'FK_checkout_draft_phases_draft' })
+  @JoinColumn({ name: 'draftId', foreignKeyConstraintName: 'FK_draft_phases_draft' })
   draft: CheckoutDraft;
-
-  @Column({ type: 'varchar', nullable: true })
-  sourcePhaseId: string | null;
 
   @Column()
   title: string;
@@ -41,9 +38,6 @@ export class CheckoutDraftPhaseEntity {
 
   @Column({ type: 'int', default: 1 })
   endDay: number;
-
-  @Column({ type: 'boolean', default: false })
-  isDraftOverride: boolean;
 
   @OneToMany(() => CheckoutDraftTaskEntity, (task) => task.phase)
   tasks: CheckoutDraftTaskEntity[];

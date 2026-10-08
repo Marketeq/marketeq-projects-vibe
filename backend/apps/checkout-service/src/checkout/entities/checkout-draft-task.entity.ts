@@ -10,21 +10,18 @@ import {
 } from 'typeorm';
 import { CheckoutDraftPhaseEntity } from './checkout-draft-phase.entity';
 
-@Entity('checkout_draft_tasks')
+@Entity('draft_tasks')
 export class CheckoutDraftTaskEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Index('IDX_checkout_draft_tasks_phaseId')
+  @Index('IDX_draft_tasks_phaseId')
   @Column({ type: 'uuid' })
   phaseId: string;
 
   @ManyToOne(() => CheckoutDraftPhaseEntity, (phase) => phase.tasks, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'phaseId', foreignKeyConstraintName: 'FK_checkout_draft_tasks_phase' })
+  @JoinColumn({ name: 'phaseId', foreignKeyConstraintName: 'FK_draft_tasks_phase' })
   phase: CheckoutDraftPhaseEntity;
-
-  @Column({ type: 'varchar', nullable: true })
-  sourceTaskId: string | null;
 
   @Column()
   title: string;
@@ -46,9 +43,6 @@ export class CheckoutDraftTaskEntity {
 
   @Column({ type: 'int' })
   order: number;
-
-  @Column({ default: false })
-  isDraftOverride: boolean;
 
   @CreateDateColumn()
   createdAt: Date;
