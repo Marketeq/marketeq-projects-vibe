@@ -3314,9 +3314,18 @@ function ScreenshotDetailsDialog({
   // Clients never see a blurred capture; they get the Request Access card.
   const clientBlurred = isClient && s.isBlurred
 
-  const monitorSwitcher = screens.length > 1 && (
-    <div className="absolute bottom-4 left-4 flex items-center gap-x-2">
-      <Monitor01 className="size-5 text-white drop-shadow" />
+  // Bottom-left on the capture; centered at the bottom when zoomed (Figma
+  // "Screenshot Details" zoom frame: 4px gap, icon in a 44×40 slot).
+  const renderMonitorSwitcher = (zoomed = false) => screens.length > 1 && (
+    <div
+      className={cn(
+        "absolute flex items-center",
+        zoomed ? "bottom-5 left-1/2 -translate-x-1/2 gap-x-1" : "bottom-4 left-4 gap-x-2"
+      )}
+    >
+      <span className={cn("flex items-center justify-center", zoomed && "px-3 py-2.5")}>
+        <Monitor01 className="size-5 text-white drop-shadow" />
+      </span>
       <ToggleGroupRoot
         value={[String(screenIndex)]}
         onValueChange={({ value }: { value: string[] }) => {
@@ -3329,7 +3338,9 @@ function ScreenshotDetailsDialog({
             key={screen.id}
             value={String(i)}
             aria-label={`Screen ${i + 1}`}
-            className="bg-white px-4 py-2.5 text-gray-700 border-r border-gray-300 last:border-r-0 data-[state=on]:bg-gray-200 data-[state=on]:text-gray-700"
+            // Figma "Button group": 122×40 including its 1px border, so each
+            // item is 40px wide (border-r included) and 38px tall inside it.
+            className="h-[38px] w-10 bg-white p-0 text-gray-700 border-r border-gray-300 last:border-r-0 data-[state=on]:bg-gray-200 data-[state=on]:text-gray-700"
           >
             {i + 1}
           </ToggleGroupItem>
@@ -3505,7 +3516,7 @@ function ScreenshotDetailsDialog({
                   )
                 })}
 
-                {monitorSwitcher}
+                {renderMonitorSwitcher()}
 
                 {!clientBlurred && (
                   <div className="absolute bottom-4 right-4 flex items-center gap-x-1 rounded-lg border border-gray-200 bg-white p-1 shadow-md">
@@ -3695,16 +3706,36 @@ function ScreenshotDetailsDialog({
                   className={cn("max-h-full max-w-full object-contain", s.isBlurred && "blur-md")}
                 />
               )}
+              {/* Figma zoom frame: 28×83 edge tabs, 19px in, vertically centred. */}
+              {(["prev", "next"] as const).map((dir) => {
+                const disabled = dir === "prev" ? currentIndex <= 0 : currentIndex >= total - 1
+                return (
+                  <IconButton
+                    key={dir}
+                    variant="ghost"
+                    visual="gray"
+                    aria-label={dir === "prev" ? "Previous screenshot" : "Next screenshot"}
+                    disabled={disabled}
+                    onClick={dir === "prev" ? goPrev : goNext}
+                    className={cn(
+                      "absolute top-1/2 h-[83px] w-7 -translate-y-1/2 rounded-[5px] border border-white/20 bg-black/[0.07] p-2 text-white shadow-xs hover:bg-black/20 hover:text-white disabled:opacity-30",
+                      dir === "prev" ? "left-[19px]" : "right-[19px]"
+                    )}
+                  >
+                    <ChevronRight className={cn("size-3", dir === "prev" && "rotate-180")} />
+                  </IconButton>
+                )
+              })}
               <IconButton
                 variant="ghost"
                 visual="gray"
                 aria-label="Exit zoom"
                 onClick={() => setFullscreen(false)}
-                className="absolute right-4 top-4 rounded-full bg-gray-900/60 text-white hover:bg-gray-900/80 hover:text-white"
+                className="absolute right-5 top-5 size-9 rounded-full border-2 border-white/50 bg-black/40 p-0 text-white hover:bg-black/60 hover:text-white"
               >
                 <X className="size-5" />
               </IconButton>
-              {monitorSwitcher}
+              {renderMonitorSwitcher(true)}
             </div>
           )}
         </TooltipProvider>
