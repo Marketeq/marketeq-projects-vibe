@@ -149,6 +149,14 @@ export const ActivityBatchResponse = z.object({
 });
 export type ActivityBatchResponse = z.infer<typeof ActivityBatchResponse>;
 
+/** Only the fields the desktop app acts on; the rest are web-only. */
+export const TimePreferencesResponse = z
+  .object({
+    captureMode: z.enum(['active', 'all']).optional(),
+  })
+  .passthrough();
+export type TimePreferencesResponse = z.infer<typeof TimePreferencesResponse>;
+
 export const RealtimeTokenResponse = z.object({
   token: z.string().min(1),
 });
@@ -426,6 +434,13 @@ export function createApiClient(config: ApiClientConfig) {
     // user ------------------------------------------------------------------
     async getMe(): Promise<UserMirror> {
       return requestJson(UserMirror, { method: 'GET', path: '/me' });
+    },
+
+    async getTimePreferences(): Promise<TimePreferencesResponse> {
+      return requestJson(TimePreferencesResponse, {
+        method: 'GET',
+        path: '/time-tracking/settings/preferences',
+      });
     },
 
     // devices ---------------------------------------------------------------

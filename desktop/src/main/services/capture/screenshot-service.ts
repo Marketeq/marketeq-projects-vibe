@@ -85,6 +85,8 @@ interface ElectronCaptureSurface {
       /** True for a laptop's built-in panel. */
       internal?: boolean;
     }>;
+    getCursorScreenPoint?: () => { x: number; y: number };
+    getDisplayNearestPoint?: (point: { x: number; y: number }) => { id: number };
   };
   app: { getPath: (p: string) => string };
 }
@@ -329,7 +331,28 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
         })
         .map(({ src }) => src);
 
-      for (const [screenIdx, src] of ordered.entries()) {
+      // Web setting "Screen Capture Settings" (synced into preferences as
+      // dtt.captureMode): "active" captures only the monitor the cursor is on.
+      const captureMode = (() => {
+        try {
+          const p = deps.preferenceRepo.get('dtt.captureMode');
+          return p ? String(JSON.parse(p.value_json)) : 'all';
+        } catch {
+          return 'all';
+        }
+      })();
+      const activeDisplayId = (() => {
+        if (captureMode !== 'active') return null;
+        const { getCursorScreenPoint, getDisplayNearestPoint } = electron.screen;
+        if (!getCursorScreenPoint || !getDisplayNearestPoint) return null;
+        return String(getDisplayNearestPoint(getCursorScreenPoint()).id);
+      })();
+      const toCapture =
+        activeDisplayId && ordered.some((s) => s.display_id === activeDisplayId)
+          ? ordered.filter((s) => s.display_id === activeDisplayId)
+          : ordered;
+
+      for (const [screenIdx, src] of toCapture.entries()) {
         const screenNumber = screenIdx + 1;
         const id = `shot_${uuid()}`;
         const size = src.thumbnail.getSize();
