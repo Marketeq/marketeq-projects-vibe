@@ -41,8 +41,13 @@ async function bootstrap() {
 
   if (process.env.NODE_ENV !== 'production') {
     app.use('/api/screenshot-files', (req: any, res: any, next: any) => {
-      const allowed = process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000,http://localhost:5173';
-      res.setHeader('Access-Control-Allow-Origin', allowed);
+      // The header takes exactly one origin, so echo the caller's when it is
+      // allowed; a comma-joined list is rejected by browsers and breaks fetch()
+      // of these files (e.g. downloading screenshots).
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+      }
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       next();
     }, express.static(path.join(process.cwd(), 'screenshot-uploads')));

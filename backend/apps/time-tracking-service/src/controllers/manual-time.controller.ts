@@ -7,14 +7,16 @@ import {
   ParseUUIDPipe,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
+import { actorOf } from '../contracts/contract-access.service';
 import { ManualTimeService } from '../services/manual-time.service';
 import { EventsService } from '../services/events.service';
 import { EarningsSyncService } from '../services/earnings-sync.service';
+import { TalentNotificationsService } from '../notifications/talent-notifications.service';
 import { CreateManualTimeDto, ReviewManualTimeDto } from '../dtos/create-manual-time.dto';
 
 @Controller('manual-time')
@@ -24,6 +26,7 @@ export class ManualTimeController {
     private readonly manualTimeService: ManualTimeService,
     private readonly eventsService: EventsService,
     private readonly earningsSyncService: EarningsSyncService,
+    private readonly talentNotifications: TalentNotificationsService,
   ) {}
 
   @Post()
@@ -34,8 +37,13 @@ export class ManualTimeController {
     return entry;
   }
 
+  /**
+   * The caller's own entries, or with ?view=client the entries logged on
+   * contracts where the caller is the client (the client's timeline).
+   */
   @Get()
-  async findAll(@Req() req: any) {
+  async findAll(@Req() req: any, @Query('view') view?: string) {
+    if (view === 'client') return this.manualTimeService.findForClient(req.user.sub);
     return this.manualTimeService.findByUser(req.user.sub);
   }
 
@@ -48,22 +56,20 @@ export class ManualTimeController {
     return { deleted: true };
   }
 
-  /** Admin: list all pending manual time entries for review */
+  /** Pending entries on contracts where the caller is the client (all, for platform admins) */
   @Get('pending')
-  @UseGuards(RolesGuard('admin'))
-  async getPending() {
-    return this.manualTimeService.getPending();
+  async getPending(@Req() req: any) {
+    return this.manualTimeService.getPending(actorOf(req));
   }
 
-  /** Admin: approve or reject a manual time entry */
+  /** The contract's client approves or rejects a manual time entry */
   @Put(':id/review')
-  @UseGuards(RolesGuard('admin'))
   async review(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
     @Body() dto: ReviewManualTimeDto,
   ) {
-    const entry = await this.manualTimeService.review(id, req.user.sub, dto);
+    const entry = await this.manualTimeService.review(id, actorOf(req), dto);
 
     const hours = (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60);
 
@@ -83,6 +89,14 @@ export class ManualTimeController {
       });
     } else if (dto.status === 'rejected') {
       this.eventsService.manualTimeRejected(entry.id, entry.userId, req.user.sub, dto.comment ?? null);
+    }
+    if (dto.status === 'approved' || dto.status === 'rejected') {
+      void this.talentNotifications.manualTimeReviewed(
+        entry.userId,
+        dto.status,
+        Math.round(hours * 100) / 100,
+        dto.comment ?? null,
+      );
     }
 
     return entry;
