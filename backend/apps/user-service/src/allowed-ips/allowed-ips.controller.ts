@@ -22,6 +22,7 @@ import {
 import { CurrentUser } from '../decorators/current-user.decorator';
 import { JwtUser } from '../auth/types/jwt-user.type';
 import { resolveCallerIp } from './caller-ip.util';
+import { AuditContext } from '../audit/audit.service';
 import { SetIpRestrictionDto } from './dto/create-allowed-ip.dto';
 
 /**
@@ -41,6 +42,21 @@ import { SetIpRestrictionDto } from './dto/create-allowed-ip.dto';
 export class AllowedIpsController {
   constructor(private readonly allowedIps: AllowedIpsService) {}
 
+  /**
+   * Who is acting and from where, assembled once per request.
+   *
+   * `user-agent` is only meaningful now that the gateway forwards it — before
+   * that every audit row would have recorded the internal HTTP client.
+   */
+  private auditContext(user: JwtUser, req: Request): AuditContext {
+    const ua = req.headers['user-agent'];
+    return {
+      actorUserId: user.sub,
+      ipAddress: resolveCallerIp(req),
+      userAgent: Array.isArray(ua) ? ua[0] : (ua ?? null),
+    };
+  }
+
   @ApiOperation({ summary: "List the caller's allowed IP addresses" })
   @Get()
   list(@CurrentUser() user: JwtUser) {
@@ -50,8 +66,12 @@ export class AllowedIpsController {
   @ApiOperation({ summary: 'Add one address or range' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  create(@CurrentUser() user: JwtUser, @Body() dto: CreateAllowedIpDto) {
-    return this.allowedIps.create(user.sub, dto);
+  create(
+    @CurrentUser() user: JwtUser,
+    @Body() dto: CreateAllowedIpDto,
+    @Req() req: Request,
+  ) {
+    return this.allowedIps.create(user.sub, dto, this.auditContext(user, req));
   }
 
   @ApiOperation({ summary: 'Add many at once (CSV import)' })
@@ -60,8 +80,13 @@ export class AllowedIpsController {
   createMany(
     @CurrentUser() user: JwtUser,
     @Body() dto: BulkCreateAllowedIpsDto,
+    @Req() req: Request,
   ) {
-    return this.allowedIps.createMany(user.sub, dto.entries);
+    return this.allowedIps.createMany(
+      user.sub,
+      dto.entries,
+      this.auditContext(user, req),
+    );
   }
 
   @ApiOperation({ summary: 'Edit an address or its description' })
@@ -70,8 +95,14 @@ export class AllowedIpsController {
     @CurrentUser() user: JwtUser,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAllowedIpDto,
+    @Req() req: Request,
   ) {
-    return this.allowedIps.update(user.sub, id, dto);
+    return this.allowedIps.update(
+      user.sub,
+      id,
+      dto,
+      this.auditContext(user, req),
+    );
   }
 
   @ApiOperation({ summary: 'Remove one entry' })
@@ -82,7 +113,12 @@ export class AllowedIpsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
-    return this.allowedIps.remove(user.sub, id, resolveCallerIp(req));
+    return this.allowedIps.remove(
+      user.sub,
+      id,
+      resolveCallerIp(req),
+      this.auditContext(user, req),
+    );
   }
 
   /**
@@ -104,6 +140,7 @@ export class AllowedIpsController {
       user.sub,
       dto.enabled,
       resolveCallerIp(req),
+      this.auditContext(user, req),
     );
   }
 }

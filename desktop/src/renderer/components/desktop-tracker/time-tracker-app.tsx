@@ -771,6 +771,7 @@ export function TimeTrackerApp({
               id: c.id,
               name: c.title || "Untitled Contract",
               clientHandle: c.clientName || c.clientId?.slice(0, 12) || "client",
+              avatarSrc: c.clientAvatarUrl ?? undefined,
               rate: Number(c.rate) || 0,
               tasks,
             }
@@ -980,7 +981,7 @@ export function TimeTrackerApp({
       const c = day.contracts.find((x) => x.id === last.contractId)
       const t = c?.tasks.find((x) => x.id === last.taskId)
       if (c && t) {
-        setSelectedTask({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+        setSelectedTask({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle, avatarSrc: c.avatarSrc })
         return
       }
     }
@@ -1045,12 +1046,12 @@ export function TimeTrackerApp({
       for (const c of day.contracts) {
         if (c.name.toLowerCase().includes(q)) {
           for (const t of c.tasks) {
-            results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+            results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle, avatarSrc: c.avatarSrc })
           }
         } else {
           for (const t of c.tasks) {
             if (t.name.toLowerCase().includes(q)) {
-              results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+              results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle, avatarSrc: c.avatarSrc })
             }
           }
         }
@@ -1061,7 +1062,7 @@ export function TimeTrackerApp({
 
   const allContracts = React.useMemo(() => {
     const seen = new Set<string>()
-    const list: { id: string; name: string; clientHandle?: string; tasks: { id: string; name: string }[] }[] = []
+    const list: { id: string; name: string; clientHandle?: string; avatarSrc?: string; tasks: { id: string; name: string }[] }[] = []
     for (const day of days) {
       for (const c of day.contracts) {
         if (!seen.has(c.id)) {
@@ -1070,6 +1071,7 @@ export function TimeTrackerApp({
             id: c.id,
             name: c.name,
             clientHandle: c.clientHandle,
+            avatarSrc: c.avatarSrc,
             tasks: c.tasks.map((t) => ({ id: t.id, name: t.name })),
           })
         }
@@ -1085,7 +1087,7 @@ export function TimeTrackerApp({
       for (const c of day.contracts) {
         for (const t of c.tasks) {
           if (!results.find((r) => r.id === t.id)) {
-            results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+            results.push({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle, avatarSrc: c.avatarSrc })
           }
         }
       }
@@ -1557,6 +1559,7 @@ export function TimeTrackerApp({
                           taskName: activeTask.taskName,
                           contractName: activeTask.contractName,
                           clientHandle: activeTask.clientHandle,
+                          avatarSrc: days.flatMap((d) => d.contracts).find((c) => c.id === activeTask.contractId)?.avatarSrc,
                         })
                       : selectedTask
                     }

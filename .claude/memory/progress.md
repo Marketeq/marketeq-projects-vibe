@@ -64,7 +64,7 @@ These can be built immediately in parallel:
 - suggestions-service → user-service
 - autocomplete-service → standalone
 - portfolio-service → user-service
-- time-tracking-service → contracts-service
+- time-tracking-service → contracts-service (RabbitMQ `contracts.parties.rpc` for contract client/talent lookups, 2026-10-03)
 
 ## Frontend Progress
 - Homepage: SSR page fetches from api-gateway `/homepage`, renders dynamic sections (projects, services, teams, talent), hero, banner, categories, SEO metadata. Uses `ListingCard`/`ListingCardCompact` components. Types aligned with backend.

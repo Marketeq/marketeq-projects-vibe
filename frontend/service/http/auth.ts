@@ -53,6 +53,47 @@ export const AuthAPI = {
     return AxiosRequest.post(`${AUTH_BASE}/auth/reset-password`, data)
   },
 
+  /**
+   * Changes the password of a signed-in user, proving intent with the one they
+   * already hold -- unlike ResetPassword, which trades an emailed token because
+   * the person cannot sign in. Sets no cookies: the caller's session stays
+   * valid, so the tab they are standing in does not sign out.
+   */
+  ChangePassword: (data: { currentPassword: string; newPassword: string }) => {
+    return AxiosRequest.patch(`${AUTH_BASE}/auth/change-password`, data)
+  },
+
+  /**
+   * Account recovery email. The address is not usable until the link sent to
+   * it is followed — GetRecoveryEmail reports both the proven address and one
+   * still awaiting confirmation, so the screen can tell them apart.
+   */
+  GetRecoveryEmail: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/recovery-email`)
+  },
+
+  SetRecoveryEmail: (data: { email: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email`, data)
+  },
+
+  ResendRecoveryEmail: () => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/resend`, {})
+  },
+
+  /** Unauthenticated: holding the token is the proof. */
+  VerifyRecoveryEmail: (data: { token: string }) => {
+    return AxiosRequest.post(`${AUTH_BASE}/auth/recovery-email/verify`, data)
+  },
+
+  /**
+   * Whether an authenticator is enrolled. twoFactorEnabled is an auth-service
+   * column, so it is absent from the user that GET /user/me returns — without
+   * this the UI treats every freshly-loaded page as having no authenticator.
+   */
+  GetTwoFactorStatus: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/2fa/status`)
+  },
+
   GenerateTwoFactor: () => {
     return AxiosRequest.post(`${AUTH_BASE}/auth/2fa/generate`, {})
   },
@@ -98,6 +139,50 @@ export const AuthAPI = {
   RevokeAllOtherSessions: (currentSessionId: string) => {
     return AxiosRequest.del(
       `${AUTH_BASE}/auth/sessions?currentSessionId=${encodeURIComponent(currentSessionId)}`
+    )
+  },
+
+  /**
+   * The six prompts both screens render. Public, and the single source of
+   * truth — Settings and /forgot-password used to each hardcode their own copy
+   * of the list, and an edit to one would have locked every account that
+   * answered the edited question out of its own recovery path.
+   */
+  GetSecurityQuestionCatalog: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/security-questions/catalog`)
+  },
+
+  /** Question ids only. There is no endpoint that returns the answers. */
+  GetSecurityQuestions: () => {
+    return AxiosRequest.get(`${AUTH_BASE}/auth/security-questions`)
+  },
+
+  SetSecurityQuestions: (data: {
+    answers: { questionId: string; answer: string }[]
+  }) => {
+    return AxiosRequest.put(`${AUTH_BASE}/auth/security-questions`, data)
+  },
+
+  /**
+   * Recovery, so unauthenticated on purpose. On a pass this returns a
+   * short-lived reset token that ResetPassword accepts; every failure comes
+   * back identically, so the response says nothing about whether the account
+   * exists.
+   */
+  VerifySecurityQuestions: (data: {
+    email: string
+    answers: { questionId: string; answer: string }[]
+  }) => {
+    return AxiosRequest.post(
+      `${AUTH_BASE}/auth/recovery/security-questions/verify`,
+      data
+    )
+  },
+
+  VerifyRecoveryAuthenticator: (data: { email: string; code: string }) => {
+    return AxiosRequest.post(
+      `${AUTH_BASE}/auth/recovery/authenticator/verify`,
+      data
     )
   },
 }

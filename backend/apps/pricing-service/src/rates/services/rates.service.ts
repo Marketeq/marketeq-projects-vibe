@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { PlatformRateAverage } from '../entities/platform-rate-average.entity';
@@ -109,18 +109,38 @@ export class RatesService {
   }
 
   private async findRate(q: GetRatesQueryDto): Promise<PlatformRateAverage | null> {
-    const where: Record<string, any> = {};
-    if (q.role) where.role = ILike(q.role);
-    if (q.location) where.region = ILike(q.location);
-    if (q.experience) where.experienceLevel = q.experience;
+    // If no dimensions specified, don't return an arbitrary record
+    if (!q.role && !q.location && !q.experience && !q.schedule) return null;
+
+    const qb = this.rateRepo.createQueryBuilder('rate');
+
+    if (q.role) {
+      // Exact ILIKE would miss "Front-End Developer" vs the canonical
+      // "Frontend Developer" — the role field is free text with autocomplete
+      // suggestions, not a forced dropdown, so callers don't always send the
+      // exact stored spelling. Strip everything but letters/digits and
+      // lowercase on both sides before comparing, so punctuation/spacing/case
+      // variants of the SAME title match. Deliberately not a substring/
+      // wildcard match — that would risk silently matching a different,
+      // unrelated title (e.g. "AI Engineer" wildcard-matching "AI Research
+      // Engineer") instead of honestly returning no_data.
+      qb.andWhere(
+        `regexp_replace(lower(rate.role), '[^a-z0-9]', '', 'g') = regexp_replace(lower(:role), '[^a-z0-9]', '', 'g')`,
+        { role: q.role },
+      );
+    }
+    if (q.location) {
+      qb.andWhere('rate.region ILIKE :location', { location: q.location });
+    }
+    if (q.experience) {
+      qb.andWhere('rate.experienceLevel = :experience', { experience: q.experience });
+    }
     if (q.schedule) {
       // Custom schedules are normalized to part_time (DB only stores full_time/part_time).
-      where.schedule = q.schedule === 'custom' ? 'part_time' : q.schedule;
+      const schedule = q.schedule === 'custom' ? 'part_time' : q.schedule;
+      qb.andWhere('rate.schedule = :schedule', { schedule });
     }
 
-    // If no dimensions specified, don't return an arbitrary record
-    if (Object.keys(where).length === 0) return null;
-
-    return this.rateRepo.findOne({ where });
+    return qb.getOne();
   }
 }

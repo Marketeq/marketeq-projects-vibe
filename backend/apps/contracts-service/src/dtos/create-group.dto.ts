@@ -12,6 +12,9 @@ import { CreateContractDto } from './create-contract.dto';
 export class CreateGroupDto {
   @IsEnum(GroupType) type: GroupType;
 
+  @IsOptional() @IsString() @MaxLength(255) name?: string;
+  @IsOptional() @IsString() @MaxLength(100) phase?: string;
+
   @IsOptional() projectId?: string;
   @IsOptional() serviceId?: string;
   @IsOptional() teamId?: string;

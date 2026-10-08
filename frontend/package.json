@@ -75,6 +75,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.3.1",
     "embla-carousel-react": "^8.5.2",
+    "fflate": "^0.8.3",
     "framer-motion": "^11.0.3",
     "fuse.js": "^7.1.0",
     "google-libphonenumber": "^3.2.40",

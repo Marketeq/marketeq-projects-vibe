@@ -30,3 +30,4 @@ Next.js (App Router), TypeScript, Tailwind CSS
 - Location search via /frontend/utils/useLocationSearch.ts
 
 ## Agent Log
+- 2026-10-02: Step 5 Smart Assistant selected-text edit now uses a generic edit-selection endpoint with the user-entered command instead of auto-filling/calling the hardcoded shorten flow.

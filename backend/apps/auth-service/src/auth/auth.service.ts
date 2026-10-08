@@ -23,6 +23,7 @@ import axios from 'axios';
 import * as otplib from 'otplib';
 import * as QRCode from 'qrcode';
 import { UAParser } from 'ua-parser-js';
+import * as geoip from 'geoip-lite';
 import type { StringValue } from 'ms';
 
 import { BrevoService } from '../brevo/brevo.service';
@@ -42,6 +43,19 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import {
+  SetSecurityQuestionsDto,
+  VerifySecurityQuestionsDto,
+} from './dto/security-questions.dto';
+import { VerifyRecoveryAuthenticatorDto } from './dto/recovery-authenticator.dto';
+import { SecurityQuestionAnswer } from '../security-questions/entities/security-question-answer.entity';
+import {
+  MAX_SECURITY_ANSWERS,
+  REQUIRED_SECURITY_ANSWERS,
+  SECURITY_QUESTION_CATALOG,
+  SecurityQuestion,
+  normalizeSecurityAnswer,
+} from '../security-questions/security-questions.catalog';
 
 type JwtPair = { access_token: string; refresh_token: string; csrfToken?: string };
 type SyncUserProfilePayload = {
@@ -106,6 +120,77 @@ const PASSWORD_RESET_RATE_LIMIT_MESSAGE =
   'Too many requests. Please try again later.';
 const PASSWORD_HISTORY_LIMIT = 5;
 
+/**
+ * geoip-lite returns two-letter subdivision codes; the password-changed email
+ * shows full state names ("Brooklyn, New York, United States"). US only —
+ * other countries fall back to the raw code.
+ */
+const US_STATE_NAMES: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  DC: 'District of Columbia',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  PR: 'Puerto Rico',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
+
+/**
+ * The single answer both recovery checks give on every failure.
+ *
+ * Unknown email, no answers ever set, wrong questions named, wrong answers,
+ * no authenticator paired, SMS-backed 2FA, wrong code — all of it comes back
+ * as this. Any wording that distinguishes them turns the endpoint into a probe
+ * for which accounts exist and how they are protected.
+ */
+const RECOVERY_VERIFICATION_FAILED_MESSAGE =
+  'We could not verify those details. Please check them and try again.';
+
 type RateLimitBucket = {
   count: number;
   resetAt: number;
@@ -129,6 +214,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   private sessionCleanupTimer: NodeJS.Timeout | null = null;
 
+  private unmatchableAnswerHash?: Promise<string>;
+
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
@@ -136,6 +223,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     private readonly sessionRepository: Repository<Session>,
     @InjectRepository(PasswordHistory)
     private readonly passwordHistoryRepository: Repository<PasswordHistory>,
+    @InjectRepository(SecurityQuestionAnswer)
+    private readonly securityQuestionRepository: Repository<SecurityQuestionAnswer>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly brevoService: BrevoService,
@@ -781,6 +870,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, authTime });
     const csrfToken = await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress });
 
+    await this.notifyPasswordChanged(user, ipAddress, userAgent);
+
     return {
       success: true,
       ...tokens,
@@ -788,6 +879,800 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       csrfToken,
       user: this.serializeUser(user),
     };
+  }
+
+  /**
+   * Changes the password of a signed-in caller, proving intent with the
+   * password they already hold.
+   *
+   * Distinct from resetPassword, which is reached with an emailed token
+   * precisely because the person cannot sign in. Settings > Login & Password
+   * used to call nothing at all here and still report "Your password has been
+   * updated", so a change the user believed had happened had not.
+   *
+   * No cookies are set and no session is re-issued: the caller's session is
+   * still valid, and replacing it would sign them out of the tab they are
+   * standing in.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+    ipAddress = '',
+    userAgent = '',
+  ): Promise<{ success: true }> {
+    // Same limiter as reset. This endpoint verifies a secret, so it is a
+    // guessing surface even though the caller is already authenticated.
+    this.enforcePasswordResetRateLimit(
+      `change-password:user:${userId}`,
+      'AUTH_CHANGE_PASSWORD_LIMIT',
+      10,
+      'AUTH_CHANGE_PASSWORD_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: [
+        'id',
+        'email',
+        'username',
+        'password',
+        'provider',
+        'hasPassword',
+        'passwordResetVersion',
+      ],
+    });
+    if (!user) {
+      throw new UnauthorizedException('Account not found');
+    }
+
+    // An OAuth-only account has no password to verify. Say so plainly rather
+    // than reporting a mismatch against something that does not exist.
+    if (!user.password || !user.hasPassword) {
+      throw new BadRequestException(
+        'This account signs in with a social provider and has no password to change.',
+      );
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) {
+      this.logger.warn(
+        `changePassword: wrong current password for userId=${userId} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new BadRequestException(
+        'That does not match your current password.',
+      );
+    }
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Your new password must be different from your current one.',
+      );
+    }
+
+    await this.assertPasswordNotReused(user, newPassword);
+
+    const nextResetVersion = randomUUID();
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.userRepository.manager.transaction(async (manager) => {
+      const updateResult = await manager.getRepository(User).update(
+        { id: user.id },
+        {
+          password: hashedPassword,
+          hasPassword: true,
+          passwordResetVersion: nextResetVersion,
+        },
+      );
+      if (!updateResult.affected) {
+        throw new UnauthorizedException('Account not found');
+      }
+
+      await manager.getRepository(PasswordHistory).save({
+        userId: user.id,
+        passwordHash: hashedPassword,
+      });
+
+      const staleHistory = await manager.getRepository(PasswordHistory).find({
+        where: { userId: user.id },
+        order: { createdAt: 'DESC' },
+        skip: PASSWORD_HISTORY_LIMIT,
+      });
+      if (staleHistory.length) {
+        await manager
+          .getRepository(PasswordHistory)
+          .delete(staleHistory.map((entry) => entry.id));
+      }
+    });
+
+    this.logger.log(
+      `changePassword: password changed for userId=${user.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    // The same notification the reset path sends. A password changed from
+    // Settings is no less worth telling the account holder about than one
+    // changed through recovery, and this is the only signal they get if the
+    // change was not theirs. Swallows its own failures.
+    await this.notifyPasswordChanged(user, ipAddress, userAgent);
+
+    return { success: true };
+  }
+
+  /**
+   * Tells the account holder their password changed, so an unauthorised change
+   * is visible to them even though the attacker now holds the credentials.
+   *
+   * Deliberately never throws: the password is already committed by this point
+   * and the caller's session is issued, so a mail failure must not turn a
+   * completed reset into an error the user would retry. That does mean a
+   * delivery failure is only visible in this log — the same swallow that
+   * applies to the reset email itself.
+   */
+  private async notifyPasswordChanged(
+    user: Pick<User, 'id' | 'email' | 'username'>,
+    ipAddress: string,
+    userAgent: string,
+  ): Promise<void> {
+    try {
+      const frontendUrl = this.configService.get<string>('FRONTEND_URL');
+
+      await this.brevoService.sendPasswordChangedEmail(user.email, {
+        firstName: await this.resolveDisplayName(user),
+        when: this.formatEventTime(new Date(), ipAddress),
+        device: this.describeDevice(userAgent),
+        where: this.describeLocation(ipAddress),
+        // Whoever did this holds the password now, so the recipient cannot
+        // simply sign in and change it — the recovery flow is the way back in.
+        changePasswordUrl: frontendUrl
+          ? `${frontendUrl.replace(/\/$/, '')}/forgot-password`
+          : undefined,
+      });
+    } catch (error) {
+      this.logger.error(
+        `notifyPasswordChanged: password-changed email failed for userId=${user.id}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * First name from user-service for the greeting, falling back to the
+   * username. Mirrors what forgotPassword does for the reset email.
+   */
+  private async resolveDisplayName(
+    user: Pick<User, 'id' | 'username'>,
+  ): Promise<string> {
+    try {
+      const userServiceUrl =
+        this.configService.get<string>('USER_SERVICE_URL') ?? 'http://localhost:3002';
+      const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+      const profileRes = await axios.get(
+        `${userServiceUrl.replace(/\/$/, '')}/internal/users/${user.id}/summary`,
+        {
+          headers: internalToken ? { 'x-internal-token': internalToken } : {},
+          timeout: 3000,
+        },
+      );
+      const firstName = profileRes?.data?.firstName;
+      if (firstName) return firstName;
+    } catch {
+      // fall back to username
+    }
+    return user.username;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Security questions
+  //
+  // Two audiences, deliberately separated. The three methods above the divider
+  // are for a signed-in user managing their own answers from Settings; the two
+  // below are the unauthenticated recovery checks, which end in a password
+  // reset and are therefore treated as an attack surface throughout.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The prompts both screens render. Public: the catalogue is the same for
+   * everyone and reveals nothing about any account.
+   */
+  getSecurityQuestionCatalog(): {
+    questions: SecurityQuestion[];
+    requiredAnswers: number;
+    maxAnswers: number;
+  } {
+    // The limits ship with the catalogue so the form reads them from the same
+    // place the validator enforces them, rather than restating 2 and 5 in the
+    // two screens that render this.
+    return {
+      questions: [...SECURITY_QUESTION_CATALOG],
+      requiredAnswers: REQUIRED_SECURITY_ANSWERS,
+      maxAnswers: MAX_SECURITY_ANSWERS,
+    };
+  }
+
+  /**
+   * Which questions this account has answered — ids only.
+   *
+   * Never returns the answers or their hashes, and there is no endpoint that
+   * does. An answer is write-only by design; Settings shows which questions are
+   * set and offers to replace them, it does not show what was said.
+   */
+  async getSecurityQuestions(
+    userId: string,
+  ): Promise<{ questionIds: string[]; configured: boolean }> {
+    const rows = await this.securityQuestionRepository.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+
+    return {
+      questionIds: rows.map((row) => row.questionId),
+      configured: rows.length >= REQUIRED_SECURITY_ANSWERS,
+    };
+  }
+
+  /**
+   * Replaces this account's answers wholesale.
+   *
+   * Replace rather than merge: the form always submits the full set, so a merge
+   * would leave an answer to a question the user has since deselected still
+   * live and still accepted at recovery time.
+   */
+  async setSecurityQuestions(
+    userId: string,
+    dto: SetSecurityQuestionsDto,
+  ): Promise<{ questionIds: string[]; configured: boolean }> {
+    const questionIds = dto.answers.map((entry) => entry.questionId);
+
+    if (new Set(questionIds).size !== questionIds.length) {
+      throw new BadRequestException(
+        'Each security question can only be answered once.',
+      );
+    }
+
+    const prepared = await Promise.all(
+      dto.answers.map(async (entry) => {
+        const normalized = normalizeSecurityAnswer(entry.answer);
+
+        // @IsNotEmpty passes a string of spaces; normalisation turns it into
+        // an empty answer that would then match any other whitespace-only one.
+        if (!normalized) {
+          throw new BadRequestException('Answers cannot be blank.');
+        }
+
+        return {
+          userId,
+          questionId: entry.questionId,
+          answerHash: await bcrypt.hash(normalized, 10),
+        };
+      }),
+    );
+
+    await this.securityQuestionRepository.manager.transaction(
+      async (manager) => {
+        const repository = manager.getRepository(SecurityQuestionAnswer);
+        await repository.delete({ userId });
+        await repository.save(prepared);
+      },
+    );
+
+    this.logger.log(
+      `setSecurityQuestions: stored ${prepared.length} answers for userId=${userId}`,
+    );
+
+    return { questionIds, configured: true };
+  }
+
+  /**
+   * Checks answers submitted by someone who is locked out, and on a pass
+   * returns a short-lived reset token that resetPassword will accept.
+   *
+   * The caller states which questions they are answering as well as what the
+   * answers are. That is not laziness about showing them their own questions —
+   * it is what keeps this from being an account-existence oracle. There is no
+   * endpoint that will tell an unauthenticated caller which questions an
+   * account set, so the response is identical whether the email is unknown, the
+   * account never set any answers, the wrong questions were named, or the
+   * answers were simply wrong.
+   */
+  async verifySecurityQuestionsForRecovery(
+    dto: VerifySecurityQuestionsDto,
+    ipAddress = '',
+  ): Promise<{ resetToken: string }> {
+    this.enforceRecoveryRateLimit('security-questions', dto.email, ipAddress);
+
+    const normalizedEmail = normalizeEmail(dto.email);
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+      select: ['id', 'email', 'passwordResetVersion'],
+    });
+
+    const submittedIds = dto.answers.map((entry) => entry.questionId);
+    const stored = user
+      ? await this.securityQuestionRepository.find({
+          where: { userId: user.id },
+          select: ['id', 'questionId', 'answerHash'],
+        })
+      : [];
+
+    const storedByQuestion = new Map(
+      stored.map((row) => [row.questionId, row.answerHash]),
+    );
+
+    // Every branch below still runs a bcrypt comparison, including the ones
+    // that are already doomed, so that "no such account" does not return
+    // measurably faster than "wrong answer". Timing is blunted rather than
+    // equalised — the rate limiter above is the control that actually matters.
+    let passed =
+      !!user &&
+      new Set(submittedIds).size === submittedIds.length &&
+      stored.length >= REQUIRED_SECURITY_ANSWERS &&
+      submittedIds.length >= REQUIRED_SECURITY_ANSWERS;
+
+    for (const entry of dto.answers) {
+      const expected =
+        (passed ? storedByQuestion.get(entry.questionId) : undefined) ??
+        (await this.getUnmatchableAnswerHash());
+
+      const matched = await bcrypt.compare(
+        normalizeSecurityAnswer(entry.answer),
+        expected,
+      );
+
+      if (!matched) passed = false;
+    }
+
+    if (!passed) {
+      this.logger.warn(
+        `verifySecurityQuestionsForRecovery: rejected (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new UnauthorizedException(RECOVERY_VERIFICATION_FAILED_MESSAGE);
+    }
+
+    this.logger.log(
+      `verifySecurityQuestionsForRecovery: passed for userId=${user!.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    return { resetToken: await this.issueRecoveryResetToken(user!) };
+  }
+
+  /**
+   * Checks a TOTP code from someone who is locked out, and on a pass returns
+   * the same short-lived reset token the security-question route returns.
+   *
+   * It has to be its own route. /auth/2fa/verify is the only other place that
+   * validates a TOTP code, and it demands a partialToken minted by a *completed*
+   * login — which nobody holds in a forgotten-password flow — so it is
+   * unreachable from here by construction.
+   *
+   * It deliberately does NOT issue a session. Proving a TOTP code means proving
+   * possession of the second factor; handing back a session for it alone would
+   * make an account with 2FA enabled reachable with strictly less than its own
+   * sign-in requires (password *and* code), which is an authentication bypass.
+   * The code authorises setting a new password, and the new password is the way
+   * back in. See docs/ACCOUNT_RECOVERY_NOTES.md §4.4.
+   */
+  async verifyAuthenticatorForRecovery(
+    dto: VerifyRecoveryAuthenticatorDto,
+    ipAddress = '',
+  ): Promise<{ resetToken: string }> {
+    this.enforceRecoveryRateLimit('authenticator', dto.email, ipAddress);
+
+    const normalizedEmail = normalizeEmail(dto.email);
+    const user = await this.userRepository.findOne({
+      where: { email: normalizedEmail },
+      select: [
+        'id',
+        'email',
+        'passwordResetVersion',
+        'twoFactorEnabled',
+        'twoFactorMethod',
+        'twoFactorSecret',
+        'twoFactorBackupCodes',
+      ],
+    });
+
+    // An SMS-backed account has no secret to check a code against without
+    // sending one first, and SMS is deprioritised, so it falls through to the
+    // same rejection as an account with no authenticator at all — rather than a
+    // distinguishable "wrong method" error.
+    const checkable =
+      !!user &&
+      user.twoFactorEnabled &&
+      !!user.twoFactorSecret &&
+      (user.twoFactorMethod ?? 'totp') !== 'sms';
+
+    const passed = checkable
+      ? await this.validateTwoFactorCode(user!, dto.code)
+      : await this.burnUnmatchableComparison();
+
+    if (!passed) {
+      this.logger.warn(
+        `verifyAuthenticatorForRecovery: rejected (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+      );
+      throw new UnauthorizedException(RECOVERY_VERIFICATION_FAILED_MESSAGE);
+    }
+
+    this.logger.log(
+      `verifyAuthenticatorForRecovery: passed for userId=${user!.id} (ip=${this.normalizeRateLimitIp(ipAddress)})`,
+    );
+
+    return { resetToken: await this.issueRecoveryResetToken(user!) };
+  }
+
+  /**
+   * Mints the proof that Update Password consumes.
+   *
+   * Rotating passwordResetVersion first is what makes it single-use: resetPassword
+   * requires the version in the token to still match the row, and rotates it
+   * again on success. It also invalidates any reset link already sitting in the
+   * account's inbox, which is the right outcome — a second recovery attempt
+   * should retire the first.
+   *
+   * Minutes, not the 24 hours an emailed link gets: this token is handed
+   * straight to the next screen in an open modal, so its whole life is the time
+   * it takes to type a password.
+   */
+  private async issueRecoveryResetToken(user: {
+    id: string;
+    email: string;
+  }): Promise<string> {
+    const resetVersion = randomUUID();
+    await this.userRepository.update(
+      { id: user.id },
+      { passwordResetVersion: resetVersion },
+    );
+
+    const expiresIn = parseExpiresIn(
+      this.configService.get<string>('AUTH_RECOVERY_RESET_TOKEN_EXPIRES_IN') ??
+        '15m',
+    );
+
+    return this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'reset',
+        resetVersion,
+      },
+      { expiresIn },
+    );
+  }
+
+  /**
+   * Per-account and per-IP ceilings on the two recovery checks.
+   *
+   * Both are unauthenticated, both end in a password reset, and both compare
+   * against a small answer space — six questions, or a six-digit code. Without
+   * a ceiling they are a brute-force target, and the code space in particular
+   * falls quickly to an unthrottled attacker.
+   *
+   * Shares the password-reset limiter, which means it shares its limitation:
+   * the buckets live in this process, so they are per-instance and reset on
+   * deploy. On Render with more than one instance the effective limit is the
+   * configured number times the instance count. A shared Redis bucket is the
+   * real fix and Redis is already a dependency of this stack.
+   */
+  private enforceRecoveryRateLimit(
+    scope: 'security-questions' | 'authenticator',
+    email: string,
+    ipAddress: string,
+  ): void {
+    this.enforcePasswordResetRateLimit(
+      `recovery:${scope}:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RECOVERY_IP_LIMIT',
+      10,
+      'AUTH_RECOVERY_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `recovery:${scope}:email:${normalizeEmail(email)}`,
+      'AUTH_RECOVERY_ACCOUNT_LIMIT',
+      5,
+      'AUTH_RECOVERY_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+  }
+
+  /**
+   * A bcrypt hash of random bytes, so nothing a caller can send will ever match
+   * it. Compared against when there is no real hash to compare against, so the
+   * doomed paths through the two verify methods still pay for a hash.
+   *
+   * Generated once per process rather than written into the source, where a
+   * constant bcrypt string would read as a leaked credential to anyone — and to
+   * the secret scanner — looking at this file.
+   */
+  private getUnmatchableAnswerHash(): Promise<string> {
+    if (!this.unmatchableAnswerHash) {
+      this.unmatchableAnswerHash = bcrypt.hash(
+        randomBytes(32).toString('hex'),
+        10,
+      );
+    }
+    return this.unmatchableAnswerHash;
+  }
+
+  private async burnUnmatchableComparison(): Promise<false> {
+    await bcrypt.compare(
+      randomBytes(16).toString('hex'),
+      await this.getUnmatchableAnswerHash(),
+    );
+    return false;
+  }
+
+  // ---------------------------------------------------------------------
+  // Recovery email
+  //
+  // Proving ownership matters more here than anywhere else in Settings: an
+  // unproven recovery address is either a typo that silently removes the only
+  // way back into an account, or a deliberate entry that points recovery at
+  // someone else's inbox. So the requested address waits in
+  // `pendingRecoveryEmail` and only a confirmed one is written to
+  // `recoveryEmail`. Nothing outside this block reads the pending column.
+  // ---------------------------------------------------------------------
+
+  /** How long a confirmation link stays good for. */
+  private static readonly RECOVERY_EMAIL_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+  private hashRecoveryEmailToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * What Settings renders. Returns the proven address and, separately, one
+   * still awaiting confirmation — the screen has to be able to say "pending"
+   * rather than show an address as though it were live.
+   */
+  async getRecoveryEmail(userId: string): Promise<{
+    recoveryEmail: string | null;
+    pendingRecoveryEmail: string | null;
+  }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'recoveryEmail', 'pendingRecoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      recoveryEmail: user.recoveryEmail ?? null,
+      pendingRecoveryEmail: user.pendingRecoveryEmail ?? null,
+    };
+  }
+
+  /**
+   * Records the requested address and emails it a confirmation link.
+   *
+   * Deliberately does not touch `recoveryEmail`: until the link is followed,
+   * an existing proven address keeps working. Replacing it here would let an
+   * unconfirmed typo delete a working recovery path.
+   */
+  async setRecoveryEmail(
+    userId: string,
+    email: string,
+    ipAddress = '',
+  ): Promise<{ success: true; pendingRecoveryEmail: string }> {
+    this.enforcePasswordResetRateLimit(
+      `recovery-email:user:${userId}`,
+      'AUTH_RECOVERY_EMAIL_LIMIT',
+      5,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+    this.enforcePasswordResetRateLimit(
+      `recovery-email:ip:${this.normalizeRateLimitIp(ipAddress)}`,
+      'AUTH_RECOVERY_EMAIL_IP_LIMIT',
+      20,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const address = normalizeEmail(email);
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'email', 'username', 'recoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    // A recovery address equal to the sign-in address is not a recovery path:
+    // whatever locks you out of one locks you out of both.
+    if (normalizeEmail(user.email) === address) {
+      throw new BadRequestException(
+        'Use a different address from your account email, otherwise it cannot help you recover.',
+      );
+    }
+
+    if (user.recoveryEmail && normalizeEmail(user.recoveryEmail) === address) {
+      throw new BadRequestException(
+        'That address is already your recovery email.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+
+    await this.userRepository.update(userId, {
+      pendingRecoveryEmail: address,
+      recoveryEmailTokenHash: this.hashRecoveryEmailToken(token),
+      recoveryEmailExpiresAt: new Date(
+        Date.now() + AuthService.RECOVERY_EMAIL_TOKEN_TTL_MS,
+      ),
+    });
+
+    await this.dispatchRecoveryEmail(user.id, address, user.username, token);
+
+    return { success: true, pendingRecoveryEmail: address };
+  }
+
+  /**
+   * Issues a fresh token for the address already waiting. The old token stops
+   * working, so a resend cannot leave two live links for one address.
+   */
+  async resendRecoveryEmail(
+    userId: string,
+    ipAddress = '',
+  ): Promise<{ success: true; pendingRecoveryEmail: string }> {
+    this.enforcePasswordResetRateLimit(
+      `recovery-email-resend:user:${userId}`,
+      'AUTH_RECOVERY_EMAIL_RESEND_LIMIT',
+      3,
+      'AUTH_RECOVERY_EMAIL_RATE_LIMIT_WINDOW_MS',
+      15 * 60 * 1000,
+    );
+
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'username', 'pendingRecoveryEmail'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (!user.pendingRecoveryEmail) {
+      throw new BadRequestException(
+        'There is no recovery email awaiting confirmation.',
+      );
+    }
+
+    const token = randomBytes(32).toString('hex');
+    await this.userRepository.update(userId, {
+      recoveryEmailTokenHash: this.hashRecoveryEmailToken(token),
+      recoveryEmailExpiresAt: new Date(
+        Date.now() + AuthService.RECOVERY_EMAIL_TOKEN_TTL_MS,
+      ),
+    });
+
+    await this.dispatchRecoveryEmail(
+      user.id,
+      user.pendingRecoveryEmail,
+      user.username,
+      token,
+    );
+
+    return { success: true, pendingRecoveryEmail: user.pendingRecoveryEmail };
+  }
+
+  /**
+   * Completes the change: promotes the pending address and clears the waiting
+   * room. Unauthenticated by design — whoever holds the link is proving they
+   * can read that inbox, which is the entire point, and requiring a session
+   * would break confirming from a phone.
+   */
+  async verifyRecoveryEmail(token: string): Promise<{ recoveryEmail: string }> {
+    if (!token?.trim()) throw new BadRequestException('Token is required');
+
+    const user = await this.userRepository.findOne({
+      where: { recoveryEmailTokenHash: this.hashRecoveryEmailToken(token.trim()) },
+      select: [
+        'id',
+        'pendingRecoveryEmail',
+        'recoveryEmailExpiresAt',
+      ],
+    });
+    if (!user || !user.pendingRecoveryEmail) {
+      throw new NotFoundException(
+        'That confirmation link is not valid. It may already have been used.',
+      );
+    }
+
+    if (
+      user.recoveryEmailExpiresAt &&
+      user.recoveryEmailExpiresAt.getTime() < Date.now()
+    ) {
+      // Cleared on expiry so a stale row cannot be retried indefinitely.
+      await this.userRepository.update(user.id, {
+        pendingRecoveryEmail: null,
+        recoveryEmailTokenHash: null,
+        recoveryEmailExpiresAt: null,
+      });
+      throw new BadRequestException(
+        'That confirmation link has expired. Request it again from Settings.',
+      );
+    }
+
+    const address = user.pendingRecoveryEmail;
+    await this.userRepository.update(user.id, {
+      recoveryEmail: address,
+      pendingRecoveryEmail: null,
+      recoveryEmailTokenHash: null,
+      recoveryEmailExpiresAt: null,
+    });
+
+    this.logger.log(`Recovery email confirmed for userId=${user.id}`);
+    return { recoveryEmail: address };
+  }
+
+  /**
+   * Delivery is best-effort on purpose. The pending row is already committed,
+   * so a Brevo outage must not surface as a failed save and leave the caller
+   * unsure whether the address was recorded — Resend Link is the recovery.
+   */
+  private async dispatchRecoveryEmail(
+    userId: string,
+    address: string,
+    username: string | undefined,
+    token: string,
+  ): Promise<void> {
+    const confirmUrl = this.buildRecoveryEmailConfirmUrl(token);
+
+    let displayName = username;
+    try {
+      const userServiceUrl =
+        this.configService.get<string>('USER_SERVICE_URL') ??
+        'http://localhost:3002';
+      const internalToken = this.configService.get<string>(
+        'INTERNAL_SERVICE_TOKEN',
+      );
+      const profileRes = await axios.get(
+        `${userServiceUrl.replace(/\/$/, '')}/internal/users/${userId}/summary`,
+        {
+          headers: internalToken ? { 'x-internal-token': internalToken } : {},
+          timeout: 3000,
+        },
+      );
+      if (profileRes?.data?.firstName) displayName = profileRes.data.firstName;
+    } catch {
+      // fall back to username, exactly as forgotPassword does
+    }
+
+    // Without an API key nothing can be delivered, so the link would be
+    // unreachable and the flow untestable locally. Logged only when there is
+    // no key AND we are not in production, matching the mock that
+    // notification-service already has and the dev-only reset_token that
+    // forgotPassword returns.
+    if (
+      !(process.env.BREVO_API_KEY ?? '').trim() &&
+      this.configService.get<string>('NODE_ENV') !== 'production'
+    ) {
+      this.logger.log(
+        `[LOCAL DEV MOCK EMAIL] To: ${address} | Subject: "Set Up Your Account Recovery Email" | Link: ${confirmUrl}`,
+      );
+      return;
+    }
+
+    try {
+      await this.brevoService.sendRecoveryEmailVerification(address, {
+        firstName: displayName,
+        confirmUrl,
+      });
+      this.logger.log(
+        `Recovery email confirmation sent for userId=${userId} to ${address}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Recovery email confirmation failed for userId=${userId}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Points at the frontend, not at this API. The link is followed by a person
+   * in a mail client, and landing them on a raw JSON body is not a result they
+   * can read.
+   */
+  private buildRecoveryEmailConfirmUrl(token: string): string {
+    const base = (this.configService.get<string>('FRONTEND_URL') ?? '')
+      .split(',')[0]
+      .trim()
+      .replace(/\/$/, '');
+    const path = `/recovery-email/confirm?token=${encodeURIComponent(token)}`;
+    return base ? `${base}${path}` : path;
   }
 
   private async assertPasswordNotReused(
@@ -1378,6 +2263,27 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async revokeAllOtherSessions(userId: string, currentSessionId: string): Promise<{ revoked: number }> {
     const result = await this.sessionRepository.delete({ userId, id: Not(currentSessionId) });
     return { revoked: result.affected ?? 0 };
+  }
+
+  /**
+   * Whether an authenticator is enrolled, read from the service that owns the
+   * column. `GET /user/me` is served by user-service, which has no counterpart
+   * to auth-service's `twoFactorEnabled`, so the field arrives undefined on
+   * every page load and anything deriving from it reads false.
+   */
+  async getTwoFactorStatus(
+    userId: string,
+  ): Promise<{ enabled: boolean; method: string | null }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'twoFactorEnabled', 'twoFactorMethod'],
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      enabled: user.twoFactorEnabled ?? false,
+      method: user.twoFactorMethod ?? null,
+    };
   }
 
   async generateTwoFactorSecret(userId: string) {
@@ -2003,6 +2909,118 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         this.passwordResetRateLimits.delete(key);
       }
     }
+  }
+
+  /**
+   * "Chrome, Mac OS X" for the password-changed notification.
+   *
+   * Returns undefined rather than a placeholder when the user-agent is absent
+   * or unrecognised — the email omits the line entirely in that case. Note the
+   * header only reaches this service because api-gateway forwards it; if that
+   * passthrough is ever removed this silently goes blank again.
+   */
+  private describeDevice(userAgent: string): string | undefined {
+    if (!userAgent?.trim()) return undefined;
+
+    const parser = new UAParser(userAgent);
+    const parts = [parser.getBrowser().name, parser.getOS().name].filter(
+      (part): part is string => Boolean(part?.trim()),
+    );
+
+    return parts.length ? parts.join(', ') : undefined;
+  }
+
+  /**
+   * "Brooklyn, New York, United States" from the caller's IP.
+   *
+   * geoip-lite is a bundled offline database, so this costs no network call
+   * and cannot fail slowly. It resolves nothing for private and loopback
+   * addresses, which is why this is absent in local development.
+   *
+   * Region codes are expanded to full names for the US only; elsewhere the
+   * raw subdivision code is used, since ISO 3166-2 has no bundled name table
+   * here. Country codes go through Intl.DisplayNames.
+   */
+  private describeLocation(ipAddress: string): string | undefined {
+    const ip = ipAddress?.trim();
+    if (!ip) return undefined;
+
+    let geo: geoip.Lookup | null = null;
+    try {
+      geo = geoip.lookup(ip);
+    } catch {
+      return undefined;
+    }
+    if (!geo) return undefined;
+
+    let country: string | undefined;
+    if (geo.country) {
+      try {
+        country =
+          new Intl.DisplayNames(['en'], { type: 'region' }).of(geo.country) ??
+          geo.country;
+      } catch {
+        country = geo.country;
+      }
+    }
+
+    const region =
+      geo.country === 'US' && geo.region
+        ? US_STATE_NAMES[geo.region] ?? geo.region
+        : geo.region || undefined;
+
+    const parts = [geo.city || undefined, region, country].filter(
+      (part): part is string => Boolean(part?.trim()),
+    );
+
+    return parts.length ? parts.join(', ') : undefined;
+  }
+
+  /**
+   * "June 13th, 2023, 2:51 PM EDT" in the timezone the IP resolves to,
+   * falling back to UTC. Shown in the reader's own local time where we can
+   * work it out, because the point of the line is for them to recognise
+   * whether that was them.
+   */
+  private formatEventTime(when: Date, ipAddress: string): string {
+    let timeZone = 'UTC';
+    try {
+      const geo = ipAddress?.trim() ? geoip.lookup(ipAddress.trim()) : null;
+      if (geo?.timezone) timeZone = geo.timezone;
+    } catch {
+      // keep UTC
+    }
+
+    let parts: Intl.DateTimeFormatPart[];
+    try {
+      parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZoneName: 'short',
+      }).formatToParts(when);
+    } catch {
+      return when.toISOString();
+    }
+
+    const find = (type: string) =>
+      parts.find((part) => part.type === type)?.value ?? '';
+
+    const day = Number(find('day'));
+    const suffix =
+      day % 10 === 1 && day !== 11
+        ? 'st'
+        : day % 10 === 2 && day !== 12
+          ? 'nd'
+          : day % 10 === 3 && day !== 13
+            ? 'rd'
+            : 'th';
+
+    return `${find('month')} ${day}${suffix}, ${find('year')}, ${find('hour')}:${find('minute')} ${find('dayPeriod')} ${find('timeZoneName')}`;
   }
 
   private normalizeRateLimitIp(ipAddress: string): string {

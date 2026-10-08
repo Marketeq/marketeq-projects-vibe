@@ -28,6 +28,15 @@ export class ContractGroup {
   @Column()
   ownerClientId: string;
 
+  // Display name shown in the "Add to an existing contract" selector
+  @Column({ type: 'varchar', nullable: true })
+  name: string | null;
+
+  // Current phase label (e.g. 'design', 'development'). Set on the group;
+  // there is no derived source for it yet.
+  @Column({ type: 'varchar', nullable: true })
+  phase: string | null;
+
   // Optional references to external services (validate via Listing Service)
   @Column({ nullable: true })
   projectId: string;

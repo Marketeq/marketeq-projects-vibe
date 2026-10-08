@@ -19,6 +19,19 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/2fa/verify',
+  // Reached by someone locked out of their account, who therefore has no token
+  // to present — the same reasoning as /auth/forgot-password above. The
+  // catalogue is the same six prompts for everyone and names no account; the
+  // two verify routes are rate limited per account and per IP in auth-service
+  // and answer every failure identically, so neither reveals whether an email
+  // is registered.
+  '/auth/security-questions/catalog',
+  '/auth/recovery/security-questions/verify',
+  '/auth/recovery/authenticator/verify',
+  // Confirming a recovery email is done from a mail client, often on a
+  // different device from the one that asked. Holding the single-use token is
+  // the proof; requiring a session here would make the link unusable.
+  '/auth/recovery-email/verify',
   '/auth/2fa/resend',
   '/homepage',
   '/homepage/health',
@@ -46,6 +59,13 @@ const PUBLIC_EXACT_ROUTES = new Set([
   // credential; verify-email hashes and validates it server-side.
   '/v1/payouts/verify-email',
   '/v1/payouts/verify',
+  // Contact Support in the account recovery flow. Whoever needs it is locked
+  // out by definition and has no token to present, so the same reasoning as
+  // /auth/forgot-password applies. Both endpoints are per-IP rate limited in
+  // notification-service's SupportService, since a public endpoint that sends
+  // mail is a relay otherwise.
+  '/support/messages',
+  '/support/call-requests',
 ])
 
 // Only explicitly allowed dynamic routes are public.

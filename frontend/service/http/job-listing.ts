@@ -1,4 +1,4 @@
-import { getPublicListingsUrl } from "@/lib/runtime-urls";
+import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls";
 import AxiosRequest from "..";
 
 const getJobListingBaseUrl = () => {
@@ -6,6 +6,7 @@ const getJobListingBaseUrl = () => {
 };
 
 const jobListingUrl = (path: string) => `${getJobListingBaseUrl()}${path}`;
+const pricingUrl = (path: string) => `${getPublicApiUrl()}${path}`;
 
 export type JobListingContractType = "new" | "existing";
 export type JobListingScopeKnowledge =
@@ -28,6 +29,7 @@ export type JobListingFrequency =
   | "per_year";
 export type JobListingPhaseType = "setup" | "recurring" | "ongoing";
 export type JobListingWorkSchedule = "full_time" | "part_time" | "custom";
+export type JobListingPricingExperience = "junior" | "mid" | "senior";
 
 export const JobListingAPI = {
   Create: (data: {
@@ -36,6 +38,7 @@ export const JobListingAPI = {
     workType?: JobListingWorkType;
     hiringType?: JobListingHiringType;
     contractId?: string;
+    lastCompletedStep?: number;
   }) => AxiosRequest.post(jobListingUrl("/v1/job-listings"), data),
 
   Get: (id: string) =>
@@ -103,17 +106,84 @@ export const JobListingAPI = {
           command: string;
           currentScope: Record<string, unknown>;
           workType: JobListingWorkType;
+          // Current total budget in USD cents, as already computed for the
+          // on-screen budget figure — passed through so the backend doesn't
+          // repeat the same pricing-service rate lookups just to give the
+          // Smart Assistant a reduction target.
+          currentTotalBudgetUsdCents?: number;
+          // Current total project timeline in working days, as already
+          // computed for the on-screen timeline figure — same rationale as
+          // currentTotalBudgetUsdCents, for "shorten the timeline" commands.
+          currentTotalTimelineDays?: number;
         }
       | {
           mode: "field";
           command: string;
           field: "title" | "overview" | "benefits" | "responsibilities";
           currentValue: string;
+          roleTitle?: string;
           context?: string;
         },
   ) =>
     AxiosRequest.post(
       jobListingUrl(`/v1/job-listings/${id}/smart-assistant`),
+      data,
+    ),
+
+  GenerateBasicInformation: (
+    id: string,
+    data: {
+      workType?: JobListingWorkType;
+      description?: string;
+      deliverables?: string;
+      tools?: string[];
+      roles?: string[];
+      save?: boolean;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-basic-information`),
+      data,
+    ),
+
+  SmartAssistantScope: (
+    id: string,
+    data: {
+      command: string;
+      currentScope: Record<string, unknown>;
+      workType?: JobListingWorkType;
+      currentTotalBudgetUsdCents?: number;
+      currentTotalTimelineDays?: number;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/scope`),
+      data,
+    ),
+
+  ShortenSmartAssistantText: (
+    id: string,
+    data: {
+      selectedText: string;
+      fieldContext: string;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/shorten`),
+      data,
+    ),
+
+  EditSmartAssistantSelectedText: (
+    id: string,
+    data: {
+      command: string;
+      selectedText: string;
+      fieldContext: "title" | "overview" | "benefits" | "responsibilities";
+      fullFieldValue?: string;
+    },
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/smart-assistant/edit-selection`),
       data,
     ),
 
@@ -144,10 +214,24 @@ export const JobListingAPI = {
       durationMonths?: number;
       hiringType?: JobListingHiringType;
       minimalInput?: boolean;
+      apply?: boolean;
     },
   ) =>
     AxiosRequest.post(
       jobListingUrl(`/v1/job-listings/${id}/generate-scope`),
+      data,
+    ),
+
+  GenerateTeamRows: (
+    id: string,
+    data: {
+      description?: string;
+      headcount?: number;
+      tools?: string[];
+    } = {},
+  ) =>
+    AxiosRequest.post(
+      jobListingUrl(`/v1/job-listings/${id}/generate-team-rows`),
       data,
     ),
 
@@ -396,4 +480,13 @@ export const JobListingAPI = {
       hourlyRateHighUsdCents?: number;
     }>,
   ) => AxiosRequest.put(jobListingUrl(`/v1/job-listings/${id}/roles`), data),
+};
+
+export const JobListingPricingAPI = {
+  GetRate: (params: {
+    role?: string;
+    location?: string;
+    experience?: JobListingPricingExperience;
+    schedule?: JobListingWorkSchedule;
+  }) => AxiosRequest.get(pricingUrl("/v1/rates"), { params }),
 };

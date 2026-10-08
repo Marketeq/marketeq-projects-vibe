@@ -2,6 +2,105 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
+import {
+  COUNTRY_TO_REGION,
+  REGION_TO_COUNTRIES,
+  calculateTotalWorkingDays,
+} from "./job-listing-budget.service";
+import { applyOperationsToSnapshot } from "./job-listing-scope.service";
+import {
+  ScopeOperation,
+  ScopeSnapshotPhase,
+  TaskOperationFields,
+  PhaseOperationFields,
+  NewTaskInput,
+  NewPhaseInput,
+} from "./job-listing-ai-operations.types";
+
+// The 56 countries job-listing-budget.service.ts's normalizeLocation() can
+// actually resolve to a pricing-service region. Reused here (not
+// re-typed) so the AI is asked for exactly what the rate lookup can consume
+// — a real country, never a bare region name like "Eastern Europe", which
+// normalizeLocation() has no way to map back to itself.
+const VALID_COUNTRIES = Object.keys(COUNTRY_TO_REGION);
+const VALID_COUNTRIES_PROMPT_LIST = VALID_COUNTRIES.join(", ");
+// lowercase -> canonical casing, so a model reply like "united states" still
+// gets stored/displayed as "United States" (Step 4's country picker matches
+// on exact casing), not just accepted as "close enough" for the rate lookup.
+const VALID_COUNTRIES_CANONICAL: Record<string, string> = Object.fromEntries(
+  VALID_COUNTRIES.map((c) => [c.toLowerCase(), c]),
+);
+
+// Region tags the Smart Assistant is allowed to reason in (the 8 distinct
+// values COUNTRY_TO_REGION maps onto). The UI's location field only ever
+// stores a real country — REGION_TO_COUNTRIES is how a region decision gets
+// turned back into one.
+const VALID_REGIONS = Object.keys(REGION_TO_COUNTRIES);
+const VALID_REGIONS_CANONICAL: Record<string, string> = Object.fromEntries(
+  VALID_REGIONS.map((r) => [r.toLowerCase(), r]),
+);
+
+// Curated subset (~5-6) of well-known countries per region for the PROMPT
+// reference only — REGION_TO_COUNTRIES itself (and its full lists, up to 15
+// countries for one region) stays untouched and is still what
+// resolveTaskLocation() picks a real fallback country from. The model only
+// needs enough options here to classify a task's current country into a
+// region and to vary its choice when relocating one — it doesn't need every
+// country the code can fall back to. Any region not covered below (e.g. a
+// new region added later) falls back to its full REGION_TO_COUNTRIES list,
+// so this can never omit a region entirely.
+const REGION_COUNTRY_PROMPT_SAMPLE: Record<string, string[]> = {
+  "Western Europe": ["Germany", "France", "Netherlands", "Sweden", "Ireland", "Portugal"],
+  "Eastern Europe": ["Poland", "Romania", "Ukraine", "Bulgaria", "Hungary", "Czech Republic"],
+  "South Asia": ["India", "Pakistan", "Bangladesh", "Nigeria", "Kenya", "South Africa"],
+  "Southeast Asia": ["Philippines", "Vietnam", "Indonesia", "Malaysia", "Thailand", "China"],
+};
+
+// Authoritative region -> country listing for the prompt. Every region still
+// appears (so the model can classify any task's country), but a region with
+// a curated sample above only shows that sample instead of its full
+// REGION_TO_COUNTRIES list — the same reference resolveTaskLocation() falls
+// back on for real, just trimmed for what the model needs to read here.
+const REGION_COUNTRY_REFERENCE = VALID_REGIONS.map(
+  (region) =>
+    `- ${region}: ${(REGION_COUNTRY_PROMPT_SAMPLE[region] ?? REGION_TO_COUNTRIES[region]).join(", ")}`,
+).join("\n");
+
+// Full 5-level experience scale — matches ps_platform_rate_averages.
+// experience_level (pricing-service) and Step 4's EXPERIENCE_LEVELS picker.
+// Single source of truth for every scope-generation/edit prompt below and
+// for normalizeTask()'s validation, so they can never drift out of sync
+// with each other the way the old 3-level junior/mid/senior scale did.
+const VALID_EXPERIENCE_LEVELS = ["student", "junior", "medior", "senior", "guru"];
+const VALID_EXPERIENCE_LEVELS_PROMPT_LIST = VALID_EXPERIENCE_LEVELS.join(", ");
+
+// Smart Assistant scope-edit operation caps — matches the prompt's own
+// stated "Never exceed 5 phases or 5 tasks per phase" rule. Enforced here
+// (not just asked of the model) since normalizeSmartAssistantOperations
+// rejects the whole batch on violation rather than silently truncating.
+const SMART_ASSISTANT_MAX_PHASES = 5;
+const SMART_ASSISTANT_MAX_TASKS_PER_PHASE = 5;
+
+// Human-readable labels for buildOperationsSummary's mechanically-written
+// summary — deliberately not the raw field name (e.g. "hours" not
+// "estimatedHours").
+const TASK_FIELD_LABELS: Record<string, string> = {
+  taskName: "name",
+  roleTitle: "role",
+  location: "location",
+  experienceLevel: "experience level",
+  workSchedule: "work schedule",
+  customHours: "custom hours",
+  customFrequency: "custom frequency",
+  estimatedHours: "hours",
+};
+
+const PHASE_FIELD_LABELS: Record<string, string> = {
+  phaseName: "name",
+  recurrenceSchedule: "recurrence schedule",
+  recurrenceCount: "recurrence count",
+  durationDays: "duration (days)",
+};
 
 interface GroqMessage {
   role: "system" | "user" | "assistant";
@@ -12,11 +111,44 @@ interface GroqCallOptions {
   messages: GroqMessage[];
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: "low" | "medium" | "high";
 }
 
-const DEFAULT_GROQ_MODEL = "llama-3.1-8b-instant";
 const DEFAULT_GROQ_MAX_TOKENS = 2048;
 const DEFAULT_GROQ_TEMPERATURE = 0.3;
+// Reasoning models (the "openai/gpt-oss*" and "qwen/*" families on Groq)
+// spend a chunk of the completion token budget on an internal reasoning
+// trace before producing the actual JSON content. reasoning_effort controls
+// how much: "medium" measured closer to a Smart Assistant scope-edit's own
+// numeric targets (e.g. a 20% budget-reduction target) than "low", which
+// doesn't verify its arithmetic before answering and was measured
+// overshooting to ~60%+. "low" was originally chosen over "medium" because
+// this account is rate-limited around 8,000 tokens/minute and "medium"'s
+// reasoning trace alone regularly exhausted that, causing frequent 429s
+// and, on successful calls, crowding out the tail of the JSON response.
+//
+// TRIED "high" on 2026-09-23, after the operations-based response format
+// (see handleSmartAssistantScopeEdit) shrunk the JSON output itself to a
+// fraction of the old full-scope-echo size. An initial light test (2 calls,
+// well spaced) succeeded cleanly, suggesting the rate limit might not be an
+// issue anymore — but heavier back-to-back use in the same session (9 calls
+// over ~8 minutes) produced a real `reason=http_429` ("Rate limit reached
+// ... Used 3799, Requested 6515") and a `reason=http_413` ("Request too
+// large ... Requested 8361") — roughly 1-in-3 calls failing. So the
+// per-minute cap is still very real under realistic usage (a user firing
+// off several edits while iterating); it was only the earlier LIGHT test
+// that gave a false-clean read. Stepped back down to "medium" as a result —
+// still real 429 risk under heavy back-to-back use (it alone can consume
+// most of one request's budget), but a smaller step than "low" while this
+// gets more real-world testing. Revisit if the account moves to a paid
+// tier, or if "medium" also proves too risky (step down to "low" then —
+// nothing else needs to change, it's this one constant). Always explicit,
+// not environment-configurable, so behavior can't silently drift per env.
+// It's rejected outright (400 "not supported with this model") on
+// non-reasoning models, so it must only be sent when the configured model
+// is actually a reasoning model.
+const REASONING_MODEL_PATTERN = /^openai\/gpt-oss|^qwen\//i;
+const GROQ_REASONING_EFFORT = "medium";
 
 interface GeneratedTask {
   taskName: string;
@@ -88,11 +220,150 @@ interface SmartAssistantFieldContext {
   roles?: string[];
 }
 
+export interface GeneratedTeamRow {
+  roleTitle: string;
+  location: string;
+  experienceLevel: string;
+  workSchedule: "full_time" | "part_time";
+}
+
+// Hard cap on generated team size, independent of what the client asked for.
+export const MAX_GENERATED_TEAM_ROWS = 20;
+
+// The step-2 budget is an amount per week or per month. The team-row prompt is
+// given the TOTAL for the whole contract: per_month amounts multiply by the
+// number of months, per_week amounts by weeks (4.33 per month, the same
+// constant the step-4 estimate uses). Unknown frequency defaults to per_week,
+// matching the step-2 form default.
+export function computeTeamTotalBudgetUsdCents(
+  budgetUsdCents: number,
+  budgetFrequency: string | null | undefined,
+  durationMonths: number,
+): number {
+  const periods =
+    budgetFrequency === "per_month" ? durationMonths : durationMonths * 4.33;
+  return Math.round(budgetUsdCents * periods);
+}
+
 export class GroqUnavailableException extends Error {
   constructor(public readonly reason = "unknown") {
     super("AI generation service is temporarily unavailable.");
   }
 }
+
+// ── Smart Assistant scope-edit rules ─────────────────────────────────────
+// One shared rule block per command type, used identically for both project
+// and service scopes — no per-workType duplication. Each block is appended
+// to the generic base prompt in buildSmartAssistantPrompt() only when the
+// command matches that type (see isCostOptimizationCommand /
+// isTimelineShorteningCommand / isScopeQualityCommand below).
+// REDUCE_BUDGET_RULES's multiplier tables mirror hourlyRateForTask in
+// ../../shared/utils/pricing.ts — kept as separate prose here (rather than
+// importing and stringifying that function) because this is a natural
+// language prompt for the model to reason with, not a value the code itself
+// evaluates. If the source multipliers change, update both.
+const REDUCE_BUDGET_RULES = `
+COST REDUCTION
+
+You may ONLY change a task's location and/or experienceLevel. Never change
+estimatedHours, and never add, remove, or reorder a phase or task.
+
+relativeCost = hours × locationMultiplier × experienceMultiplier
+(hours is a fixed input here, never something you change)
+
+Location multipliers:
+US/Canada/UK/Australia 1.00 · Western Europe 0.85 · Eastern Europe 0.40 ·
+Southeast/East Asia/Middle East 0.30 · Latin America 0.35 · South Asia 0.25 ·
+Africa 0.25 · unclassifiable 0.40
+
+Experience multipliers:
+student 0.50 · junior 0.75 · medior 1.00 · senior 1.25 · guru 1.50
+
+Only relocate work that is async, well-defined, low-interaction, and
+independent; keep collaborative, tightly-coupled, or timezone-sensitive
+work where it is. Only lower a task's experience tier when the task
+genuinely doesn't need its current tier's judgment; keep senior/guru for
+architecture, security, ambiguity, or high delivery risk.
+
+Location must always be one real country, never a region name. Use this
+reference to classify a task's current country and to pick a new one:
+
+${REGION_COUNTRY_REFERENCE}
+
+If no reduction target is given, aim to reduce the sum of relativeCost
+across all tasks by approximately 20%. Don't overshoot meaningfully once
+you're close. If the command gives an explicit target as a percentage or
+fraction ("by 30%", "in half"), use that instead. If the command gives a
+dollar figure (e.g. "cut $500") AND a current total budget is given below,
+divide the dollar figure by that total budget to get a percentage, and use
+that percentage as your target exactly like an explicit percentage would
+be used. If no current total budget is given below, or the dollar figure
+is larger than the current total budget, you have no real baseline to
+convert it with — treat it as directional only ("meaningfully more than
+the 20% default") rather than a number to hit exactly.
+
+If you can't reasonably reach the target within these constraints, get as
+close as you can without making unrealistic changes, then stop. Add a
+suggestion explaining that the full target wasn't reached and why.
+
+Before responding, verify every operation is an update_task op whose
+fields contains only location and/or experienceLevel — no add_task,
+remove_task, add_phase, remove_phase, or update_phase operations, and no
+other key inside fields.
+`;
+
+const SHORTEN_TIMELINE_RULES = `
+TIMELINE SHORTENING
+
+The only lever is a task's estimatedHours. Never change location,
+experienceLevel, or the phase/task list.
+
+durationDays = ceil(estimatedHours / hoursPerDay); the project timeline is
+the sum of every task's durationDays (fully sequential, no parallelism).
+
+Reduce estimatedHours on the task(s) best able to absorb it, preferring
+the fewest tasks changed. Never reduce a task's hours below what's
+realistically required for its purpose.
+
+If no reduction target is given, aim to reduce the sum of durationDays
+across all tasks by approximately 20%. If a real target is given (a %, a
+day/week amount, "in half", etc.), use that instead.
+
+If you can't reasonably reach the target within these constraints, get as
+close as you can without making unrealistic changes, then stop. Add a
+suggestion explaining that the full target wasn't reached and why.
+
+Before responding, verify every operation is an update_task op whose
+fields contains only estimatedHours — no add_task, remove_task, add_phase,
+remove_phase, or update_phase operations, and no other key inside fields.
+`;
+
+const IMPROVE_SCOPE_RULES = `
+SCOPE QUALITY
+
+The only lever: split ONE genuinely vague or bundled task into exactly TWO
+specific sibling tasks in the same phase. Nothing else may change.
+
+A task is a candidate when it bundles multiple deliverables under one
+broad label, uses a broad verb+noun with no specific deliverable named, or
+has unusually large hours versus its phase's other tasks. Leave every
+other task unchanged.
+
+Each phase already caps at 5 tasks. Only split a task in a phase with room
+(fewer than 5 tasks), and split at most one task per phase. If no phase
+has both a candidate and headroom, return no operations and add a
+suggestion explaining why.
+
+To split: name each sibling for its specific piece of work, divide
+estimatedHours between them proportionally to sum close to the original,
+then emit one remove_task operation for the original and two add_task
+operations (in the same phase) for the siblings. Inherit location,
+experienceLevel, and workSchedule unchanged from the original — no
+exceptions. roleTitle is also inherited by default, unless one sibling
+clearly performs a different skill than the other (e.g. a UI task vs. an
+integration task), in which case that sibling's roleTitle may differ.
+`;
+
 
 @Injectable()
 export class JobListingAiService {
@@ -141,6 +412,10 @@ export class JobListingAiService {
     if (candidate.code) return candidate.code;
     if (candidate.message === "GROQ_API_KEY is not configured")
       return "missing_api_key";
+    if (candidate.message === "GROQ_MODEL is not configured")
+      return "missing_model";
+    if (candidate.message === "GROQ_RESPONSE_TRUNCATED")
+      return "truncated_response";
     if (candidate instanceof SyntaxError) return "invalid_json_response";
     return candidate.name ?? "unknown";
   }
@@ -195,7 +470,7 @@ export class JobListingAiService {
     }
 
     if (["overview", "benefits", "responsibilities"].includes(field)) {
-      return this.limitCharacters(safeValue, 100);
+      return this.limitWords(safeValue, 100);
     }
 
     return this.stripMarkdown(safeValue);
@@ -280,15 +555,89 @@ export class JobListingAiService {
   }
 
   private normalizeRoleDescriptionOutput(
-    role: RoleDescriptionOutput,
+    role: Omit<RoleDescriptionOutput, "responsibilities"> & {
+      responsibilities: string | string[];
+    },
   ): RoleDescriptionOutput {
     return {
       roleTitle: role.roleTitle,
-      overview: this.limitCharacters(role.overview ?? "", 100),
-      benefits: this.limitCharacters(role.benefits ?? "", 100),
-      responsibilities: this.limitCharacters(role.responsibilities ?? "", 100),
+      overview: this.limitWords(role.overview ?? "", 100),
+      benefits: this.limitWords(role.benefits ?? "", 100),
+      responsibilities: this.toBulletListHtml(role.responsibilities, 100),
       skills: Array.isArray(role.skills) ? role.skills.slice(0, 10) : [],
     };
+  }
+
+  // Rich text HTML (<ul><li>…) -> one plain line per block, for prompting.
+  private richTextToPlainLines(html: string): string {
+    return (html ?? "")
+      .replace(/<\/(li|p|div|h[1-6])>|<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  // Accepts the model's responsibilities as an array of bullets (preferred) or
+  // a string with one bullet per line, and returns an HTML <ul> for the rich
+  // text editor, capped at maxWords words in total.
+  private toBulletListHtml(value: unknown, maxWords: number): string {
+    const rawItems: string[] = Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : typeof value === "string"
+        ? value.split(/\r?\n/)
+        : [];
+
+    const items: string[] = [];
+    let remainingWords = maxWords;
+    for (const rawItem of rawItems) {
+      if (remainingWords <= 0) break;
+      const text = this.limitWords(
+        rawItem.replace(/^\s*(?:[-*+•]|\d+[.)])\s+/, ""),
+        remainingWords,
+      );
+      if (!text) continue;
+      items.push(text);
+      remainingWords -= text.split(/\s+/).length;
+    }
+
+    if (items.length === 0) return "";
+    const escape = (text: string) =>
+      text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return `<ul>${items.map((item) => `<li><p>${escape(item)}</p></li>`).join("")}</ul>`;
+  }
+
+  // Coerce to one of the 56 countries job-listing-budget.service.ts's
+  // normalizeLocation() can actually resolve. The prompt asks for a real
+  // country (or, in cost-optimization mode, permits a region name that this
+  // method then resolves to one), but models don't always comply exactly:
+  //   - a valid country, just wrong casing → canonicalize it
+  //   - a region name (e.g. "South Asia") instead of a country → the Smart
+  //     Assistant reasons about regions when optimizing cost, so this is the
+  //     expected shape when it decides to relocate a task; pick a real
+  //     country from that region rather than discarding the decision
+  //   - anything else unrecognized → fall back to "United States" rather
+  //     than let a stray value quietly go un-priced or show up unmatched in
+  //     Step 4's country picker
+  private resolveTaskLocation(rawLocation: unknown): string {
+    const value = typeof rawLocation === "string" ? rawLocation.trim() : "";
+    if (!value) return "United States";
+
+    const canonicalCountry = VALID_COUNTRIES_CANONICAL[value.toLowerCase()];
+    if (canonicalCountry) return canonicalCountry;
+
+    const canonicalRegion = VALID_REGIONS_CANONICAL[value.toLowerCase()];
+    if (canonicalRegion) {
+      const countries = REGION_TO_COUNTRIES[canonicalRegion];
+      return countries[Math.floor(Math.random() * countries.length)];
+    }
+
+    return "United States";
   }
 
   private normalizeTask(
@@ -296,11 +645,11 @@ export class JobListingAiService {
     index: number,
   ): GeneratedTask {
     const estimatedHours = Number(task.estimatedHours);
-    const experienceLevel = ["junior", "mid", "senior"].includes(
-      String(task.experienceLevel),
+    const experienceLevel = VALID_EXPERIENCE_LEVELS.includes(
+      String(task.experienceLevel).toLowerCase(),
     )
-      ? String(task.experienceLevel)
-      : "mid";
+      ? String(task.experienceLevel).toLowerCase()
+      : "medior";
     const workSchedule =
       task.workSchedule === "part_time" ? "part_time" : "full_time";
 
@@ -313,10 +662,7 @@ export class JobListingAiService {
         typeof task.roleTitle === "string" && task.roleTitle.trim()
           ? task.roleTitle.trim()
           : "Specialist",
-      location:
-        typeof task.location === "string" && task.location.trim()
-          ? task.location.trim()
-          : "United States",
+      location: this.resolveTaskLocation(task.location),
       experienceLevel,
       workSchedule,
       estimatedHours:
@@ -329,7 +675,7 @@ export class JobListingAiService {
   private normalizeProjectScope(
     scope: Partial<GeneratedProjectScope>,
     maxPhases = 10,
-    maxTasks = 16,
+    maxTasks = 5,
   ): GeneratedProjectScope {
     const phases = Array.isArray(scope.phases) ? scope.phases : [];
 
@@ -349,7 +695,7 @@ export class JobListingAiService {
   private normalizeServiceScope(
     scope: Partial<GeneratedServiceScope>,
     maxPhases = 10,
-    maxTasks = 16,
+    maxTasks = 5,
   ): GeneratedServiceScope {
     const phases = Array.isArray(scope.phases) ? scope.phases : [];
     const normalized = phases.slice(0, maxPhases).map((phase, phaseIndex) => {
@@ -430,34 +776,366 @@ export class JobListingAiService {
     return { phases: normalized.slice(0, maxPhases) };
   }
 
-  private preserveExistingServicePhaseTypes(
-    updatedScope: GeneratedProjectScope | GeneratedServiceScope,
-    currentScope: GeneratedProjectScope | GeneratedServiceScope,
-  ): GeneratedServiceScope {
-    const updatedPhases = Array.isArray(
-      (updatedScope as GeneratedServiceScope).phases,
-    )
-      ? (updatedScope as GeneratedServiceScope).phases
-      : [];
-    const currentPhases = Array.isArray(
-      (currentScope as GeneratedServiceScope).phases,
-    )
-      ? (currentScope as GeneratedServiceScope).phases
-      : [];
+  // ── Smart Assistant operations: per-field coercion ─────────────────────────
+  // Non-fatal coercion, same posture as normalizeTask above: a bad/missing
+  // value inside a field that IS being changed gets a safe default rather
+  // than rejecting the batch. A field simply absent from the raw payload is
+  // left out of the returned object entirely (not set to undefined) so
+  // applyOperationsToSnapshot's `{ ...task, ...patch }` merge never
+  // overwrites an untouched field with undefined.
+  private coerceTaskFields(raw: unknown): TaskOperationFields {
+    const fields = (raw ?? {}) as Record<string, unknown>;
+    const coerced: TaskOperationFields = {};
+
+    if (typeof fields.taskName === "string" && fields.taskName.trim()) {
+      coerced.taskName = fields.taskName.trim();
+    }
+    if (typeof fields.roleTitle === "string" && fields.roleTitle.trim()) {
+      coerced.roleTitle = fields.roleTitle.trim();
+    }
+    if (fields.location !== undefined) {
+      coerced.location = this.resolveTaskLocation(fields.location);
+    }
+    if (fields.experienceLevel !== undefined) {
+      const level = String(fields.experienceLevel).toLowerCase();
+      coerced.experienceLevel = VALID_EXPERIENCE_LEVELS.includes(level)
+        ? level
+        : "medior";
+    }
+    if (fields.workSchedule !== undefined) {
+      coerced.workSchedule =
+        fields.workSchedule === "part_time" ? "part_time" : "full_time";
+    }
+    if (fields.customHours !== undefined) {
+      const hours = Number(fields.customHours);
+      coerced.customHours = Number.isFinite(hours) && hours > 0 ? hours : null;
+    }
+    if (fields.customFrequency !== undefined) {
+      coerced.customFrequency =
+        typeof fields.customFrequency === "string" && fields.customFrequency.trim()
+          ? fields.customFrequency.trim()
+          : null;
+    }
+    if (fields.estimatedHours !== undefined) {
+      const hours = Number(fields.estimatedHours);
+      coerced.estimatedHours = Number.isFinite(hours) && hours > 0 ? hours : 10;
+    }
+
+    return coerced;
+  }
+
+  private coercePhaseFields(raw: unknown): PhaseOperationFields {
+    const fields = (raw ?? {}) as Record<string, unknown>;
+    const coerced: PhaseOperationFields = {};
+
+    if (typeof fields.phaseName === "string" && fields.phaseName.trim()) {
+      coerced.phaseName = fields.phaseName.trim();
+    }
+    if (fields.recurrenceSchedule !== undefined) {
+      coerced.recurrenceSchedule = ["weekly", "monthly", "quarterly"].includes(
+        String(fields.recurrenceSchedule),
+      )
+        ? String(fields.recurrenceSchedule)
+        : null;
+    }
+    if (fields.recurrenceCount !== undefined) {
+      const count = Number(fields.recurrenceCount);
+      coerced.recurrenceCount =
+        Number.isFinite(count) && count >= 1 ? Math.floor(count) : null;
+    }
+    if (fields.durationDays !== undefined) {
+      const days = Number(fields.durationDays);
+      coerced.durationDays = Number.isFinite(days) && days > 0 ? Math.round(days) : null;
+    }
+
+    return coerced;
+  }
+
+  // Full task payload for add_task / a new phase's initial tasks. Reuses
+  // normalizeTask for the fields it already knows how to default (taskName,
+  // roleTitle, location, experienceLevel, workSchedule, estimatedHours), and
+  // layers customHours/customFrequency on top — normalizeTask predates those
+  // two fields and isn't otherwise touched here.
+  private coerceNewTask(raw: unknown): NewTaskInput {
+    const task = (raw ?? {}) as Record<string, unknown>;
+    const base = this.normalizeTask(task as Partial<GeneratedTask>, 0);
+    const customHours = Number(task.customHours);
+    const customFrequency = task.customFrequency;
 
     return {
-      phases: updatedPhases.map((phase, index) => {
-        const matchingCurrentPhase =
-          currentPhases.find(
-            (currentPhase) => currentPhase.phaseName === phase.phaseName,
-          ) ?? currentPhases[index];
-
-        return {
-          ...phase,
-          phaseType: matchingCurrentPhase?.phaseType ?? phase.phaseType,
-        };
-      }),
+      ...base,
+      customHours: Number.isFinite(customHours) && customHours > 0 ? customHours : null,
+      customFrequency:
+        typeof customFrequency === "string" && customFrequency.trim()
+          ? customFrequency.trim()
+          : null,
     };
+  }
+
+  private coerceNewPhase(raw: unknown, workType: "project" | "service"): NewPhaseInput {
+    const phase = (raw ?? {}) as Record<string, unknown>;
+    const phaseName =
+      typeof phase.phaseName === "string" && phase.phaseName.trim()
+        ? phase.phaseName.trim()
+        : "New Phase";
+    const phaseType =
+      workType === "service" &&
+      ["setup", "recurring", "ongoing"].includes(String(phase.phaseType))
+        ? String(phase.phaseType)
+        : "setup";
+    const isRecurring = phaseType === "recurring";
+    const tasks = Array.isArray(phase.tasks)
+      ? phase.tasks.map((t) => this.coerceNewTask(t))
+      : [];
+    const durationDays = Number(phase.durationDays);
+
+    return {
+      phaseName,
+      phaseType,
+      recurrenceSchedule: isRecurring
+        ? ["weekly", "monthly", "quarterly"].includes(String(phase.recurrenceSchedule))
+          ? String(phase.recurrenceSchedule)
+          : "monthly"
+        : null,
+      recurrenceCount: isRecurring
+        ? Math.max(
+            1,
+            Number.isFinite(Number(phase.recurrenceCount))
+              ? Number(phase.recurrenceCount)
+              : 3,
+          )
+        : null,
+      durationDays: Number.isFinite(durationDays) && durationDays > 0 ? Math.round(durationDays) : null,
+      tasks,
+    };
+  }
+
+  // ── Smart Assistant operations: structural validation ──────────────────────
+  // Parses and coerces the LLM's raw "operations" array into ScopeOperation[],
+  // resolving every phaseIndex/taskIndex against snapshotPhases (the exact
+  // scope the model was shown). Per-field VALUE problems are coerced (see
+  // coerceTaskFields/coercePhaseFields above); STRUCTURAL problems — an
+  // unrecognized op, an out-of-range index, a batch that would exceed the
+  // phase/task caps, leave a phase with zero tasks, or (service scopes)
+  // shorten the total timeline — reject the WHOLE batch by throwing
+  // GroqUnavailableException, matching this file's existing zero-partial-
+  // apply precedent (a truncated/malformed Groq response already fails
+  // closed the same way). Reasons are distinct strings for log
+  // observability only — they all surface to the client as the same
+  // AI_UNAVAILABLE fallback.
+  private normalizeSmartAssistantOperations(
+    rawOperations: unknown,
+    snapshotPhases: ScopeSnapshotPhase[],
+    workType: "project" | "service",
+  ): ScopeOperation[] {
+    if (!Array.isArray(rawOperations)) {
+      throw new GroqUnavailableException("invalid_operation");
+    }
+
+    const operations: ScopeOperation[] = [];
+
+    for (const raw of rawOperations as Array<Record<string, unknown>>) {
+      if (!raw || typeof raw !== "object" || typeof raw.op !== "string") {
+        throw new GroqUnavailableException("invalid_operation");
+      }
+
+      switch (raw.op) {
+        case "update_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          const taskIndex = Number(raw.taskIndex);
+          const phase = snapshotPhases[phaseIndex];
+          if (!phase || !phase.tasks[taskIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "update_task",
+            phaseIndex,
+            taskIndex,
+            fields: this.coerceTaskFields(raw.fields),
+          });
+          break;
+        }
+        case "add_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "add_task",
+            phaseIndex,
+            task: this.coerceNewTask(raw.task),
+          });
+          break;
+        }
+        case "remove_task": {
+          const phaseIndex = Number(raw.phaseIndex);
+          const taskIndex = Number(raw.taskIndex);
+          const phase = snapshotPhases[phaseIndex];
+          if (!phase || !phase.tasks[taskIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({ op: "remove_task", phaseIndex, taskIndex });
+          break;
+        }
+        case "update_phase": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "update_phase",
+            phaseIndex,
+            fields: this.coercePhaseFields(raw.fields),
+          });
+          break;
+        }
+        case "add_phase": {
+          const rawAfter = raw.afterPhaseIndex;
+          const afterPhaseIndex =
+            rawAfter === undefined || rawAfter === null
+              ? undefined
+              : Number(rawAfter);
+          if (
+            afterPhaseIndex !== undefined &&
+            !snapshotPhases[afterPhaseIndex]
+          ) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({
+            op: "add_phase",
+            phase: this.coerceNewPhase(raw.phase, workType),
+            afterPhaseIndex,
+          });
+          break;
+        }
+        case "remove_phase": {
+          const phaseIndex = Number(raw.phaseIndex);
+          if (!snapshotPhases[phaseIndex]) {
+            throw new GroqUnavailableException("operation_index_out_of_range");
+          }
+          operations.push({ op: "remove_phase", phaseIndex });
+          break;
+        }
+        default:
+          throw new GroqUnavailableException("invalid_operation");
+      }
+    }
+
+    const resultingPhases = applyOperationsToSnapshot(snapshotPhases, operations);
+
+    if (resultingPhases.length > SMART_ASSISTANT_MAX_PHASES) {
+      throw new GroqUnavailableException("operation_cap_violation");
+    }
+    for (const phase of resultingPhases) {
+      if (phase.tasks.length === 0) {
+        throw new GroqUnavailableException("operation_would_empty_phase");
+      }
+      if (phase.tasks.length > SMART_ASSISTANT_MAX_TASKS_PER_PHASE) {
+        throw new GroqUnavailableException("operation_cap_violation");
+      }
+    }
+
+    // Services have no fixed end date — a batch that would shrink the total
+    // working-day timeline breaks that invariant. Previously this was a
+    // prompt-only rule with no runtime check; calculateTotalWorkingDays only
+    // reads estimatedHours/workSchedule/customHours/customFrequency off each
+    // task, all present on ScopeSnapshotTask, so the same pure function used
+    // for real JobListingPhase[] elsewhere works here without needing real
+    // entities.
+    if (workType === "service") {
+      const before = calculateTotalWorkingDays(snapshotPhases as any);
+      const after = calculateTotalWorkingDays(resultingPhases as any);
+      if (after < before) {
+        throw new GroqUnavailableException("service_timeline_shrink");
+      }
+    }
+
+    return operations;
+  }
+
+  // ── Smart Assistant operations: deterministic summary ──────────────────────
+  // The AI is asked to write its own plain-English summary of what it
+  // changed, but since operations are addressed by index (phase 0, task 1),
+  // the model's own summary text sometimes slips into referencing those same
+  // indices instead of real names, even though the prompt tells it not to —
+  // instruction-following isn't guaranteed. Rather than trust that text, the
+  // summary shown to the client is built HERE, mechanically, from the
+  // validated operations plus the real names/values already in
+  // snapshotPhases — so it can never contain an index, independent of
+  // whether the model followed instructions.
+  private formatSmartAssistantFieldValue(value: unknown): string {
+    if (value === null || value === undefined || value === "") return "none";
+    return String(value);
+  }
+
+  private buildOperationsSummary(
+    operations: ScopeOperation[],
+    snapshotPhases: ScopeSnapshotPhase[],
+  ): string {
+    if (operations.length === 0) {
+      return "No changes were made.";
+    }
+
+    const parts: string[] = [];
+
+    for (const op of operations) {
+      switch (op.op) {
+        case "update_task": {
+          const originalTask = snapshotPhases[op.phaseIndex]?.tasks[op.taskIndex];
+          const changes = Object.entries(op.fields)
+            .map(([key, newValue]) => {
+              const label = TASK_FIELD_LABELS[key] ?? key;
+              const oldValue = (originalTask as unknown as Record<string, unknown>)?.[key];
+              return `${label} from ${this.formatSmartAssistantFieldValue(oldValue)} to ${this.formatSmartAssistantFieldValue(newValue)}`;
+            })
+            .join(", ");
+          if (changes) {
+            parts.push(`Changed '${originalTask?.taskName ?? "task"}': ${changes}.`);
+          }
+          break;
+        }
+        case "add_task": {
+          const phaseName = snapshotPhases[op.phaseIndex]?.phaseName ?? "the phase";
+          parts.push(`Added task '${op.task.taskName}' to '${phaseName}'.`);
+          break;
+        }
+        case "remove_task": {
+          const originalTask = snapshotPhases[op.phaseIndex]?.tasks[op.taskIndex];
+          const phaseName = snapshotPhases[op.phaseIndex]?.phaseName ?? "the phase";
+          parts.push(`Removed task '${originalTask?.taskName ?? "task"}' from '${phaseName}'.`);
+          break;
+        }
+        case "update_phase": {
+          const originalPhase = snapshotPhases[op.phaseIndex];
+          const changes = Object.entries(op.fields)
+            .map(([key, newValue]) => {
+              const label = PHASE_FIELD_LABELS[key] ?? key;
+              const oldValue = (originalPhase as unknown as Record<string, unknown>)?.[key];
+              return `${label} from ${this.formatSmartAssistantFieldValue(oldValue)} to ${this.formatSmartAssistantFieldValue(newValue)}`;
+            })
+            .join(", ");
+          if (changes) {
+            parts.push(`Changed phase '${originalPhase?.phaseName ?? "phase"}': ${changes}.`);
+          }
+          break;
+        }
+        case "add_phase": {
+          parts.push(`Added phase '${op.phase.phaseName}'.`);
+          break;
+        }
+        case "remove_phase": {
+          const originalPhase = snapshotPhases[op.phaseIndex];
+          parts.push(`Removed phase '${originalPhase?.phaseName ?? "phase"}'.`);
+          break;
+        }
+      }
+    }
+
+    // Joined with newlines, one change per line — the chat UI already splits
+    // on \n and renders each line as its own bullet (see assistantHistory's
+    // resultLines in job-listing/page.tsx), so this is what actually turns
+    // the summary into a bulleted list rather than one run-on sentence.
+    return parts.length > 0 ? parts.join("\n") : "No changes were made.";
   }
 
   private async call<T>(
@@ -473,7 +1151,8 @@ export class JobListingAiService {
 
       const apiUrl =
         this.config.get<string>("GROQ_API_URL") ?? this.defaultApiUrl;
-      const model = this.config.get<string>("GROQ_MODEL") ?? DEFAULT_GROQ_MODEL;
+      const model = this.config.get<string>("GROQ_MODEL") ?? "llama-3.1-8b-instant";
+
       const maxTokens =
         options.maxTokens ??
         this.configNumber("GROQ_MAX_TOKENS", DEFAULT_GROQ_MAX_TOKENS);
@@ -481,34 +1160,72 @@ export class JobListingAiService {
         options.temperature ??
         this.configNumber("GROQ_TEMPERATURE", DEFAULT_GROQ_TEMPERATURE);
 
+      const requestBody: Record<string, unknown> = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: options.messages,
+        response_format: { type: "json_object" },
+      };
+      if (REASONING_MODEL_PATTERN.test(model)) {
+        requestBody.reasoning_effort =
+          options.reasoningEffort ?? GROQ_REASONING_EFFORT;
+      }
+
       const response = await firstValueFrom(
-        this.http.post(
-          apiUrl,
-          {
-            model,
-            max_tokens: maxTokens,
-            temperature,
-            messages: options.messages,
-            response_format: { type: "json_object" },
-          },
-          {
-            headers: { Authorization: `Bearer ${apiKey}` },
-            timeout: 30_000,
-          },
-        ),
+        this.http.post(apiUrl, requestBody, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          timeout: 30_000,
+        }),
       );
 
-      const raw = response.data.choices[0].message.content;
+      const choice = response.data.choices[0];
+      // finish_reason "length" means Groq stopped generating because it hit
+      // max_tokens, not because it finished the JSON object. The cut-off
+      // text can still happen to be well-formed JSON (e.g. truncated right
+      // after suggestions' closing bracket, before operations was ever
+      // written) — parseGroqJson would accept that silently as a
+      // complete, valid result. Checking finish_reason catches this
+      // regardless of whether the truncated text happens to parse, so a
+      // half-finished response surfaces as AI_UNAVAILABLE instead of being
+      // returned to the caller as if it were complete.
+      if (choice.finish_reason === "length") {
+        throw new Error("GROQ_RESPONSE_TRUNCATED");
+      }
+
+      const raw = choice.message.content;
       const latencyMs = Date.now() - startMs;
+      // Groq's response is OpenAI-format and includes a `usage` block.
+      // Logged (not previously) specifically to measure the real
+      // prompt/completion token impact of the smart-assistant operations
+      // redesign vs. the old full-scope-echo format — see maxTokens'
+      // comment on handleSmartAssistantScopeEdit for why this number is
+      // what eventually right-sizes that constant.
+      const usage = response.data.usage as
+        | { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        | undefined;
       this.logger.log(
-        `jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}`,
+        `jl_ai_generation_latency_ms type=${generationType} latency=${latencyMs}` +
+          (usage
+            ? ` prompt_tokens=${usage.prompt_tokens ?? "?"} completion_tokens=${usage.completion_tokens ?? "?"} total_tokens=${usage.total_tokens ?? "?"}`
+            : ""),
       );
       return this.parseGroqJson<T>(raw);
     } catch (error) {
       const latencyMs = Date.now() - startMs;
       const reason = this.getFailureReason(error);
+      // getFailureReason only classifies the HTTP status (e.g. "http_400"),
+      // which doesn't say WHY Groq rejected the request. Groq's own error
+      // body (the actual validation message) is attached below whenever the
+      // failure came back from the API itself, so a 400 is diagnosable from
+      // this log line alone instead of needing to reproduce it separately.
+      const groqErrorBody = (error as { response?: { data?: unknown } })
+        ?.response?.data;
+      const groqErrorDetail = groqErrorBody
+        ? ` groq_error=${JSON.stringify(groqErrorBody).slice(0, 500)}`
+        : "";
       this.logger.error(
-        `jl_ai_generation_failed type=${generationType} latency=${latencyMs} reason=${reason} error=${(error as Error).message}`,
+        `jl_ai_generation_failed type=${generationType} latency=${latencyMs} reason=${reason} error=${(error as Error).message}${groqErrorDetail}`,
       );
       throw new GroqUnavailableException(reason);
     }
@@ -523,7 +1240,7 @@ export class JobListingAiService {
   }): Promise<string> {
     const result = await this.call<{ title: string }>(
       {
-        maxTokens: 256,
+        maxTokens: 2048,
         temperature: 0.4,
         messages: [
           {
@@ -555,28 +1272,87 @@ export class JobListingAiService {
   }): Promise<string[]> {
     const result = await this.call<{ tools: string[] }>(
       {
-        maxTokens: 512,
-        temperature: 0.3,
+        maxTokens: 2048,
+        temperature: 0.2,
         messages: [
           {
             role: "system",
-            content:
-              'You identify tools, technologies, frameworks, and platforms required for a software or digital project. Respond only with a JSON object: { "tools": ["string"] }. Return 5 to 15 tools. Use the exact common name for each tool (e.g. "React", "Node.js", "PostgreSQL", "Figma"). Do not include soft skills or methodologies.',
+            content: `
+You are a senior software architect selecting the technology stack for a real-world software or digital project.
+
+Your job is NOT to brainstorm technologies. Your job is to choose a small, coherent, production-appropriate set of tools that would realistically be used to deliver the project.
+
+Analyze the project requirements internally before selecting tools.
+
+Selection process:
+1. Determine what is actually being built from the work type, description, deliverables, and roles.
+2. Identify the technical capabilities required to build and deliver it.
+3. Select technologies that work well together as a coherent stack.
+4. Prefer tools directly relevant to the requested deliverables.
+5. Remove redundant tools, competing alternatives, and tools that are merely "nice to have".
+6. Prefer mature, widely adopted technologies unless the project clearly calls for something specialized.
+7. Choose the most appropriate tool for each responsibility instead of listing several interchangeable options.
+
+Selection criteria:
+- Strong fit for the project's actual requirements
+- Compatibility with the rest of the selected stack
+- Appropriate for the project's likely scale and complexity
+- Commonly used in production for this type of work
+- Relevant to the roles involved
+- Necessary or highly useful for producing the specified deliverables
+
+Important rules:
+- Return approximately 6-12 tools. Use fewer if the project is simple.
+- Do not fill the list just to reach a minimum.
+- Do not include multiple competing technologies for the same purpose unless the project genuinely requires both.
+  Bad: ["React", "Vue.js", "Angular"]
+  Good: ["React"]
+- Do not include generic concepts such as:
+  "REST API", "Microservices", "CI/CD", "Cloud", "Database", "Agile", "DevOps", "Machine Learning"
+- Do not include soft skills, methodologies, job roles, or abstract architectural concepts.
+- Programming languages are allowed when they are a meaningful part of the implementation.
+- Infrastructure, deployment, testing, design, analytics, and collaboration tools should only be included when the project actually needs them.
+- Avoid obscure or niche technologies when a standard industry tool is a better fit.
+- Do not select a technology simply because it appears in the project description; determine whether it is actually appropriate.
+- Use exact, commonly recognized product or technology names:
+  "React", "Next.js", "TypeScript", "Node.js", "PostgreSQL", "Redis", "Docker", "AWS", "Figma", "Playwright"
+- Do not add explanations, categories, markdown, or commentary.
+
+Before answering, internally verify:
+- Every selected tool has a clear purpose.
+- The technologies are compatible.
+- There are no unnecessary alternatives.
+- The stack could realistically be used by the listed roles to produce the requested deliverables.
+
+Respond with exactly this JSON structure:
+{
+  "tools": ["Tool 1", "Tool 2"]
+}
+`.trim(),
           },
           {
             role: "user",
-            content: [
-              `Work type: ${input.workType}`,
-              `Description: ${input.description}`,
-              `Deliverables: ${input.deliverables ?? "Not specified"}`,
-              `Roles: ${input.roles.join(", ")}`,
-            ].join("\n"),
+            content: `
+Select the most appropriate technology stack for this project.
+
+Work type:
+${input.workType}
+
+Project description:
+${input.description}
+
+Expected deliverables:
+${input.deliverables?.trim() || "Not specified"}
+
+Roles involved:
+${input.roles.length > 0 ? input.roles.join(", ") : "Not specified"}
+`.trim(),
           },
         ],
       },
       "tools",
     );
-    return result.tools.slice(0, 20);
+    return result.tools.slice(0, 15);
   }
 
   async generateProjectScope(input: {
@@ -593,7 +1369,7 @@ export class JobListingAiService {
 
     const result = await this.call<GeneratedProjectScope>(
       {
-        maxTokens: 4096,
+        maxTokens: 9216,
         temperature: 0.3,
         messages: [
           {
@@ -604,10 +1380,9 @@ export class JobListingAiService {
               '{ "phases": [{ "phaseName": "string", "tasks": [{ "taskName": "string", ' +
               '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
               '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
-              "Maximum 10 phases. Maximum 16 tasks per phase. " +
-              "experienceLevel must be one of: junior, mid, senior. " +
-              "location must be one of: United States, Canada, United Kingdom, " +
-              "Western Europe, Eastern Europe, Latin America, South Asia, Southeast Asia. " +
+              "Maximum 5 phases. Maximum 5 tasks per phase. " +
+              `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
+              `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
               "estimatedHours must be a positive number. Do not include markdown or prose.",
           },
           {
@@ -644,7 +1419,7 @@ export class JobListingAiService {
 
     const result = await this.call<GeneratedServiceScope>(
       {
-        maxTokens: 4096,
+        maxTokens: 9216,
         temperature: 0.3,
         messages: [
           {
@@ -653,12 +1428,21 @@ export class JobListingAiService {
               "You generate a service scope structure for an ongoing freelance engagement. " +
               'Respond only with a JSON object: { "phases": [{ "phaseName": "string", ' +
               '"phaseType": "setup|recurring|ongoing", "recurrenceSchedule": "weekly|monthly|quarterly|null", ' +
-              '"recurrenceCount": number|null, "tasks": [...] }] }. ' +
+              '"recurrenceCount": number|null, "tasks": [{ "taskName": "string", ' +
+              '"roleTitle": "string", "location": "string", "experienceLevel": "string", ' +
+              '"workSchedule": "full_time|part_time", "estimatedHours": number }] }] }. ' +
               "Rules: Exactly one setup phase (first). One or more recurring phases (middle). " +
-              "Exactly one ongoing phase (last). Maximum 10 phases total. Maximum 16 tasks per phase. " +
+              "Exactly one ongoing phase (last). Maximum 5 phases total. Maximum 5 tasks per phase. " +
               "setup and ongoing phases have recurrenceSchedule: null and recurrenceCount: null. " +
               "recurring phases must have recurrenceSchedule and recurrenceCount >= 1. " +
-              "Do not include a duration field — services have no fixed end date.",
+              "Do not include a duration field — services have no fixed end date. " +
+              "taskName must be a specific, concrete action (e.g. \"Set up analytics dashboard\"), " +
+              "never a generic placeholder like \"Task 1\". roleTitle must be a specific " +
+              "professional title matched to that task (e.g. \"SEO Copywriter\", \"Video Editor\", " +
+              "\"React Developer\"), never a generic placeholder like \"Specialist\". " +
+              "experienceLevel must be one of: " +
+              `${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
+              "estimatedHours must be a positive number.",
           },
           {
             role: "user",
@@ -666,7 +1450,7 @@ export class JobListingAiService {
               `Service description: ${input.description}`,
               `Deliverables: ${input.deliverables}`,
               `Tools: ${input.tools.join(", ")}`,
-              `Roles: ${input.roles.join(", ")}`,
+              `Roles mentioned by the client: ${input.roles.length > 0 ? input.roles.join(", ") : "Not specified — infer the right role for each task yourself"}`,
               `Monthly budget: $${budgetUsd} USD`,
               "Generate the service scope with setup, recurring work cycles, and ongoing maintenance.",
             ].join("\n"),
@@ -677,6 +1461,108 @@ export class JobListingAiService {
     );
 
     return this.normalizeServiceScope(result);
+  }
+
+  // Generates the step-4 team table for the "no scope" Teams flow. Titles are
+  // free text (same as project scope — no catalog snapping); location and
+  // experience are validated strictly, and anything short of exactly
+  // `headcount` valid rows fails the whole call so the caller falls back to
+  // manual entry rather than saving a partial team.
+  async generateTeamRows(input: {
+    description: string;
+    tools: string[];
+    headcount: number;
+    durationMonths: number;
+    totalBudgetUsdCents: number;
+  }): Promise<GeneratedTeamRow[]> {
+    const headcount = Math.min(input.headcount, MAX_GENERATED_TEAM_ROWS);
+    const totalBudgetUsd = (input.totalBudgetUsdCents / 100).toFixed(2);
+
+    const result = await this.call<{ rows?: Partial<GeneratedTeamRow>[] }>(
+      {
+        maxTokens: 4096,
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior staffing and workforce planner for a freelance marketplace. " +
+              "Given a client's brief, you design the team they should hire. " +
+              "Respond only with a JSON object matching: " +
+              '{ "rows": [{ "roleTitle": "string", "location": "string", ' +
+              '"experienceLevel": "string", "workSchedule": "full_time|part_time" }] }. ' +
+              `Return exactly ${headcount} rows, one per person to hire. Never more, never fewer. ` +
+              'roleTitle must be a specific, standard job title (for example "Frontend Developer", ' +
+              '"QA Engineer", "UX Designer"), never a generic label such as "Team Member 1". ' +
+              "Each row should cover a distinct part of the brief; do not repeat the same role " +
+              "unless the brief clearly needs several people in it. " +
+              `location must be one of these countries: ${VALID_COUNTRIES_PROMPT_LIST}. ` +
+              `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}. ` +
+              "workSchedule is full_time (40 hours per week) or part_time (20 hours per week). " +
+              "The client's total budget for the whole team over the contract is given below. " +
+              "Choose experience levels, locations and schedules that fit it, as a reasonable target. " +
+              "Never reduce the number of people to fit it, and never choose a level or location " +
+              "that makes a role unrealistic for the work. " +
+              "Do not include markdown, comments or prose.",
+          },
+          {
+            role: "user",
+            content: [
+              `Team description: ${input.description}`,
+              `Tools and technologies: ${input.tools.length > 0 ? input.tools.join(", ") : "Not specified"}`,
+              `Number of people to hire: ${headcount}`,
+              `Contract length: ${input.durationMonths} months for every person`,
+              `Total budget for the whole team over the contract: $${totalBudgetUsd} USD`,
+              "Design the team so its combined cost over the contract fits this total.",
+            ].join("\n"),
+          },
+        ],
+      },
+      "team_rows",
+    );
+
+    return this.normalizeTeamRows(result?.rows, headcount);
+  }
+
+  private normalizeTeamRows(
+    rawRows: unknown,
+    headcount: number,
+  ): GeneratedTeamRow[] {
+    if (!Array.isArray(rawRows)) {
+      throw new GroqUnavailableException("team_rows_invalid_shape");
+    }
+
+    const rows: GeneratedTeamRow[] = [];
+    for (const raw of rawRows as Partial<GeneratedTeamRow>[]) {
+      const roleTitle =
+        typeof raw?.roleTitle === "string" ? raw.roleTitle.trim() : "";
+      const location =
+        VALID_COUNTRIES_CANONICAL[String(raw?.location ?? "").trim().toLowerCase()];
+      const experienceLevel = String(raw?.experienceLevel ?? "")
+        .trim()
+        .toLowerCase();
+
+      if (
+        !roleTitle ||
+        !location ||
+        !VALID_EXPERIENCE_LEVELS.includes(experienceLevel)
+      ) {
+        throw new GroqUnavailableException("team_rows_invalid_row");
+      }
+
+      rows.push({
+        roleTitle,
+        location,
+        experienceLevel,
+        workSchedule: raw.workSchedule === "part_time" ? "part_time" : "full_time",
+      });
+    }
+
+    // Extras are trimmed; too few is a failure, never a partial team.
+    if (rows.length < headcount) {
+      throw new GroqUnavailableException("team_rows_too_few");
+    }
+    return rows.slice(0, headcount);
   }
 
   async generateScopeFromMinimalInput(input: {
@@ -692,19 +1578,21 @@ export class JobListingAiService {
       ? "You generate a complete service scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the service scope structure ' +
-        "(one setup, one or more recurring, one ongoing). Maximum 8 phases. Maximum 12 tasks per phase. " +
-        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task."
+        "(one setup, one or more recurring, one ongoing). Maximum 5 phases. Maximum 5 tasks per phase. " +
+        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
+        `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`
       : "You generate a complete project scope from a brief description. The client is unsure " +
         "what they need beyond the basic description. Make reasonable assumptions. " +
         'Respond only with a JSON object: { "phases": [...] } following the project scope structure. ' +
-        "Maximum 8 phases. Maximum 12 tasks per phase. " +
-        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task.";
+        "Maximum 5 phases. Maximum 5 tasks per phase. " +
+        "Include role, location, experienceLevel, workSchedule, estimatedHours on every task. " +
+        `experienceLevel must be one of: ${VALID_EXPERIENCE_LEVELS_PROMPT_LIST}.`;
 
     const result = await this.call<
       GeneratedProjectScope | GeneratedServiceScope
     >(
       {
-        maxTokens: 4096,
+        maxTokens: 9216,
         temperature: 0.5,
         messages: [
           { role: "system", content: systemPrompt },
@@ -727,12 +1615,12 @@ export class JobListingAiService {
       ? this.normalizeServiceScope(
           result as Partial<GeneratedServiceScope>,
           8,
-          12,
+          5,
         )
       : this.normalizeProjectScope(
           result as Partial<GeneratedProjectScope>,
           8,
-          12,
+          5,
         );
   }
 
@@ -748,23 +1636,45 @@ export class JobListingAiService {
       tasks: string[];
     }>;
   }): Promise<RoleDescriptionOutput[]> {
-    const result = await this.call<{ roles: RoleDescriptionOutput[] }>(
+    const result = await this.call<{
+      overview?: string;
+      benefits?: string;
+      roles: Array<
+        Omit<RoleDescriptionOutput, "responsibilities" | "overview" | "benefits"> & {
+          responsibilities: string | string[];
+        }
+      >;
+    }>(
       {
-        maxTokens: 4096,
+        maxTokens: 6144,
         temperature: 0.4,
+        reasoningEffort: "low",
         messages: [
           {
             role: "system",
             content:
               "You write professional job listing descriptions for freelance roles. " +
-              'Respond only with a JSON object: { "roles": [{ "roleTitle": "string", ' +
-              '"responsibilities": "string (max 100 characters)", ' +
-              '"overview": "string (max 100 characters)", ' +
-              '"benefits": "string (max 100 characters)", ' +
+              'Respond only with a JSON object: { "overview": "string (2-4 sentences, at most 100 words)", ' +
+              '"benefits": "string (2-4 sentences, at most 100 words)", ' +
+              '"roles": [{ "roleTitle": "string", ' +
+              '"responsibilities": ["string"] (one responsibility per item, between 85 and 100 words in total across all items, so more items means each one is shorter, no bullet characters or numbering), ' +
               '"skills": ["string"] (5-10 skills) }] }. ' +
-              "overview and benefits describe the project/service as a whole, not the specific role. " +
-              "responsibilities are specific to the role. " +
-              "Write in second person (You will...). Do not use markdown.",
+              "overview and benefits are written once, at the top level, and describe the project/service as a whole, not any specific role. " +
+              "responsibilities are specific to the role: each item is a concrete duty that this role " +
+              "performs, grounded in the role title, experience level, work schedule and its listed tasks, " +
+              "and the project description. Start each item with an action verb in the imperative or " +
+              "present form (for example \"Design…\", \"Build…\", \"Review…\"). Never start with " +
+              "\"You will\", \"You'll\", \"You are\" or any pronoun, and do not use generic filler " +
+              "that could apply to any role. Do not invent duties unrelated to the role or the project. " +
+              "Choose the number of responsibilities per role (between 3 and 7) from the role itself: " +
+              "roughly one item per distinct task listed for that role, merging closely related tasks; " +
+              "when no tasks are listed, infer the scope from the role title and seniority. " +
+              "A narrow role gets 3 or 4 detailed items (about 25 words each) and a broad role gets 6 or 7 items (about 14 words each). " +
+              "Use the available space: aim for 85 to 100 words in total, adding detail about the scope, deliverables, collaborators and outcomes of each task. " +
+              "Only name tools, technologies, vendors, metrics or percentages that appear in the project description or the role's listed tasks; never invent any, and never mention a tool just because it is typical for the role. " +
+              "Never exceed 100 words, and never output an empty item. " +
+              "Do NOT default to 5 items. Roles in the same response must not all have the same count. " +
+              "overview and benefits are written in second person (You will...). Do not use markdown.",
           },
           {
             role: "user",
@@ -784,8 +1694,12 @@ export class JobListingAiService {
       },
       "role_descriptions",
     );
+    // overview and benefits are generated once for the whole project and
+    // shared by every role, so they don't change when the user switches role.
+    const overview = this.limitWords(result.overview ?? "", 100);
+    const benefits = this.limitWords(result.benefits ?? "", 100);
     return (Array.isArray(result.roles) ? result.roles : []).map((role) =>
-      this.normalizeRoleDescriptionOutput(role),
+      this.normalizeRoleDescriptionOutput({ ...role, overview, benefits }),
     );
   }
 
@@ -798,7 +1712,7 @@ export class JobListingAiService {
   }): Promise<BasicInformationOutput> {
     const result = await this.call<BasicInformationOutput>(
       {
-        maxTokens: 512,
+        maxTokens: 2048,
         temperature: 0.3,
         messages: [
           {
@@ -811,8 +1725,9 @@ export class JobListingAiService {
               "jobType examples: Website, Mobile App, API Integration, E-commerce, SaaS Platform, " +
               "Brand Identity, Data Pipeline, CMS, Marketplace. Use the most specific applicable type. " +
               "industries: use well-known industry names (Fintech, Healthcare, Education, etc). " +
-              "languages: programming languages and frameworks only (TypeScript, React, Python, etc). " +
-              "Do not include human spoken languages in the languages field.",
+              "languages: human (spoken/written) languages the team needs to communicate in or deliver content in " +
+              "(English, Spanish, Japanese, etc). Default to English when the listing does not imply otherwise. " +
+              "Do not include programming languages or frameworks in the languages field.",
           },
           {
             role: "user",
@@ -831,8 +1746,8 @@ export class JobListingAiService {
     return {
       title: this.limitCharacters(result.title ?? "", 100),
       jobType: result.jobType,
-      industries: result.industries.slice(0, 10),
-      languages: result.languages.slice(0, 10),
+      industries: (Array.isArray(result.industries) ? result.industries : []).slice(0, 10),
+      languages: (Array.isArray(result.languages) ? result.languages : []).slice(0, 10),
     };
   }
 
@@ -853,13 +1768,16 @@ export class JobListingAiService {
 
     // Step 2 — Score each region/experience combination
     // Composite score = quality weight (0.75) + budget fit weight (0.25)
-    // Quality rank: senior=3, mid=2, junior=1
+    // Quality rank: guru=5, senior=4, medior=3, junior=2, student=1
     // Budget fit: 1 if effective hourly >= median, 0.5 if >= low, 0 otherwise
     const qualityRank: Record<string, number> = {
-      senior: 3,
-      mid: 2,
-      junior: 1,
+      guru: 5,
+      senior: 4,
+      medior: 3,
+      junior: 2,
+      student: 1,
     };
+    const MAX_QUALITY_RANK = 5;
 
     const scored = input.rateData.map((rate) => {
       const quality = qualityRank[rate.experienceLevel] ?? 1;
@@ -877,7 +1795,7 @@ export class JobListingAiService {
             : 0;
       const bestFit = Math.max(fitFull, fitPart);
       const schedule = fitPart > fitFull ? "part_time" : "full_time";
-      const score = (quality / 3) * 0.75 + bestFit * 0.25;
+      const score = (quality / MAX_QUALITY_RANK) * 0.75 + bestFit * 0.25;
       return { rate, score, schedule, fitFull, fitPart };
     });
 
@@ -908,25 +1826,156 @@ export class JobListingAiService {
     };
   }
 
+  // Builds the system prompt for handleSmartAssistantScopeEdit. Cost-related
+  // commands ("reduce the budget", "make it cheaper", ...) get
+  // REDUCE_BUDGET_RULES appended, timeline-shortening commands get
+  // SHORTEN_TIMELINE_RULES, and scope-quality commands ("Improve scope
+  // quality", "add more detail", ...) get IMPROVE_SCOPE_RULES — each
+  // identical for both project and service scopes, appended independently
+  // of the others, so a command could in principle match more than one.
+  // Non-matching commands (e.g. "add a QA phase") skip all three to keep
+  // the prompt short and on-topic.
+  private isCostOptimizationCommand(command: string): boolean {
+    return /\b(reduce|lower|cut|optimi[sz]e|decrease|save)\b.*\b(cost|costs|budget|spend|spending)\b|\bcheaper\b/i.test(
+      command,
+    );
+  }
+
+  // Shared with handleSmartAssistantScopeEdit's SERVICE-only rejection
+  // check (services have no fixed end date) and with the controller's
+  // fallback-computation gate — single source of truth for what counts as
+  // a timeline-shortening command.
+  private isTimelineShorteningCommand(command: string): boolean {
+    return /shorten.*timeline|reduce.*duration|faster|speed up/i.test(
+      command,
+    );
+  }
+
+  // Detects "Improve scope quality" and free-text variants asking for more
+  // detail/granularity in the scope (e.g. "add more detail", "break down the
+  // tasks", "expand the tasks into subtasks"). Deliberately does NOT match
+  // plain structural edits like "add a QA phase" (no detail/granularity/
+  // specificity/split keyword present), nor the cost/timeline commands.
+  // Independent of isCostOptimizationCommand and isTimelineShorteningCommand
+  // — a command could theoretically match more than one; buildSmartAssistant-
+  // Prompt appends whichever blocks match, same pattern cost+timeline already
+  // use today.
+  private isScopeQualityCommand(command: string): boolean {
+    return /\b(improve|increase|add|more)\b.*\b(scope|detail|granularity|specificity)\b|\b(break\s*down|breakdown|expand)\b.*\b(tasks?|scope)\b|\bmore\s+(detailed|granular|specific)\b|\bsplit\b.*\btasks?\b/i.test(
+      command,
+    );
+  }
+
+  private buildSmartAssistantPrompt(input: {
+    command: string;
+    workType: "project" | "service";
+  }): string {
+    const isCostOptimization = this.isCostOptimizationCommand(input.command);
+    const isTimelineShortening = this.isTimelineShorteningCommand(
+      input.command,
+    );
+    const isScopeQuality = this.isScopeQualityCommand(input.command);
+
+    const serviceRule =
+      input.workType === "service"
+        ? `
+- Service scopes have no fixed end date: never shorten a service's overall
+  timeline.`
+        : "";
+
+    let prompt = `
+You are a Smart Assistant that edits ${input.workType} scopes based on
+natural-language commands. Act as an experienced Product Manager and
+Delivery Planner.
+
+The current scope is given below as a list of phases (0-indexed) each
+containing a list of tasks (0-indexed within their phase). Respond ONLY
+with a valid JSON object, with the keys in this exact order:
+
+{
+  "suggestions": ["string"],
+  "operations": [ {...op...} ]
+}
+
+Do not include a "summary" key or any other prose — the human-readable
+description of what changed is built separately from "operations", not
+from anything you write, so spending effort on one just wastes tokens.
+
+"operations" is a list of edits, NOT a copy of the scope. Only include an
+operation for something that actually changes. Never re-emit a task or
+phase that isn't changing. Each operation is one of:
+
+  { "op": "update_task", "phaseIndex": 0, "taskIndex": 1,
+    "fields": { "location": "Poland", "experienceLevel": "junior" } }
+    — fields contains ONLY the fields you are changing on that task.
+
+  { "op": "add_task", "phaseIndex": 0,
+    "task": { "taskName": "...", "roleTitle": "...", "location": "...",
+              "experienceLevel": "...", "workSchedule": "full_time",
+              "estimatedHours": 8 } }
+
+  { "op": "remove_task", "phaseIndex": 0, "taskIndex": 2 }
+
+  { "op": "update_phase", "phaseIndex": 1,
+    "fields": { "phaseName": "New name" } }
+
+  { "op": "add_phase",
+    "phase": { "phaseName": "QA", "tasks": [ {...task...} ] },
+    "afterPhaseIndex": 1 }
+    — afterPhaseIndex is optional; omit it to append at the end.
+
+  { "op": "remove_phase", "phaseIndex": 2 }
+
+Every phaseIndex/taskIndex refers to the ORIGINAL scope given below, not
+to any earlier operation in this same list — always index against the
+scope as given, never against your own edits.
+
+RULES:
+- Only emit operations for what the command actually asks you to change.
+- Never let the resulting scope exceed 5 phases or 5 tasks per phase.
+- Don't add, remove, or reorder a phase or task unless the command clearly
+  asks for it; if you remove a task, never leave a phase with zero tasks.
+- suggestions must contain 2-3 useful follow-up actions.${serviceRule}
+`;
+
+    if (isCostOptimization) {
+      prompt += `\n${REDUCE_BUDGET_RULES}`;
+    }
+
+    // Only reachable for project scopes — handleSmartAssistantScopeEdit
+    // rejects timeline-shortening commands for services before the prompt
+    // is ever built.
+    if (isTimelineShortening) {
+      prompt += `\n${SHORTEN_TIMELINE_RULES}`;
+    }
+
+    if (isScopeQuality) {
+      prompt += `\n${IMPROVE_SCOPE_RULES}`;
+    }
+
+    return prompt;
+  }
+
   async handleSmartAssistantScopeEdit(input: {
     command: string;
-    currentScope: GeneratedProjectScope | GeneratedServiceScope;
+    currentScope: { phases: ScopeSnapshotPhase[] };
     workType: "project" | "service";
+    // Client-computed, advisory only (see SmartAssistantScopeDto) — used
+    // here purely as prompt context so REDUCE_BUDGET_RULES can convert a
+    // dollar figure in the command into a real percentage. Never persisted,
+    // never trusted for anything financial.
+    currentTotalBudgetUsdCents?: number;
   }): Promise<{
-    updatedScope: GeneratedProjectScope | GeneratedServiceScope;
     summary: string;
     suggestions: string[];
+    operations: ScopeOperation[];
   }> {
     const isService = input.workType === "service";
 
     // Services cannot shorten the timeline — there is no fixed end date.
     // Reject timeline-shortening commands for service scopes.
-    if (
-      isService &&
-      /shorten.*timeline|reduce.*duration|faster|speed up/i.test(input.command)
-    ) {
+    if (isService && this.isTimelineShorteningCommand(input.command)) {
       return {
-        updatedScope: input.currentScope,
         summary:
           "Timeline changes are not applicable to service scopes. Services run on a recurring schedule with no fixed end date. To adjust the workload, try reducing tasks or changing the recurrence frequency.",
         suggestions: [
@@ -934,53 +1983,73 @@ export class JobListingAiService {
           "Improve scope quality",
           "Remove a recurring cycle",
         ],
+        operations: [],
       };
     }
 
+    const systemPrompt = this.buildSmartAssistantPrompt({
+      command: input.command,
+      workType: input.workType,
+    });
+
+    // GROQ_REASONING_EFFORT's reasoning trace can consume most of a smaller
+    // maxTokens budget before the model ever writes the JSON body. 9216 was
+    // sized to survive echoing the full scope back on every edit; now that
+    // the response is a short operations list instead, this ceiling is
+    // expected to be overly generous — leave it as-is until real
+    // completion_tokens numbers are measured post-rollout, rather than
+    // guessing a smaller value now (guessing too low risks reintroducing the
+    // exact truncation problem this change exists to fix).
+    const maxTokens = 9216;
+
+    const budgetLine =
+      Number.isFinite(input.currentTotalBudgetUsdCents) &&
+      (input.currentTotalBudgetUsdCents as number) > 0
+        ? `\nCurrent total budget: $${((input.currentTotalBudgetUsdCents as number) / 100).toFixed(2)} USD\n`
+        : "";
+
     const result = await this.call<{
-      updatedScope: GeneratedProjectScope | GeneratedServiceScope;
-      summary: string;
       suggestions: string[];
+      operations: unknown;
     }>(
       {
-        maxTokens: 4096,
-        temperature: 0.3,
+        maxTokens,
+        temperature: 0.2,
         messages: [
           {
             role: "system",
-            content:
-              "You are a Smart Assistant that edits project scopes based on natural language commands. " +
-              'Respond only with a JSON object: { "updatedScope": {...}, "summary": "string", "suggestions": ["string"] }. ' +
-              "summary is a one-sentence description of what changed. " +
-              "suggestions contains 2-3 follow-up action suggestions. " +
-              "Preserve all fields not mentioned in the command. " +
-              "Never exceed 10 phases or 16 tasks per phase. " +
-              "Do not change phaseType on existing service phases.",
+            content: systemPrompt,
           },
           {
             role: "user",
-            content: `Current scope:\n${JSON.stringify(input.currentScope, null, 2)}\n\nCommand: ${input.command}`,
+            content: `
+Current scope:
+${JSON.stringify(input.currentScope)}
+${budgetLine}
+Command:
+${input.command}
+`,
           },
         ],
       },
       "smart_assistant",
     );
 
+    const operations = this.normalizeSmartAssistantOperations(
+      result.operations,
+      input.currentScope.phases,
+      input.workType,
+    );
+
     return {
-      ...result,
-      updatedScope: isService
-        ? this.normalizeServiceScope(
-            this.preserveExistingServicePhaseTypes(
-              result.updatedScope,
-              input.currentScope,
-            ),
-          )
-        : this.normalizeProjectScope(
-            result.updatedScope as Partial<GeneratedProjectScope>,
-          ),
+      // Built mechanically from `operations`, not taken from the model's own
+      // `result.summary` — see buildOperationsSummary's doc comment above
+      // for why.
+      summary: this.buildOperationsSummary(operations, input.currentScope.phases),
       suggestions: Array.isArray(result.suggestions)
         ? result.suggestions.slice(0, 3)
         : [],
+      operations,
     };
   }
 
@@ -991,9 +2060,16 @@ export class JobListingAiService {
     context?: SmartAssistantFieldContext;
   }): Promise<{
     updatedValue: string;
+    summary: string;
     suggestions: string[];
   }> {
-    const limitInstruction = "updatedValue must not exceed 100 characters. ";
+    const isBulletField = input.field === "responsibilities";
+    const limitInstruction =
+      input.field === "title"
+        ? "updatedValue must not exceed 100 characters. "
+        : isBulletField
+          ? "updatedValue is a JSON array of 4-6 strings, one short responsibility per bullet point, with no bullet characters or numbering, at most 100 words in total. Always return bullet points, even if the command asks for a paragraph. "
+          : "updatedValue must not exceed 100 words. ";
     const titleInstruction =
       input.field === "title"
         ? "For title edits, create a specific, client-ready listing title from the context. Do not repeat the command or current title. "
@@ -1011,19 +2087,21 @@ export class JobListingAiService {
       : "No additional listing context provided.";
 
     const result = await this.call<{
-      updatedValue: string;
+      updatedValue: string | string[];
+      summary?: string;
       suggestions: string[];
     }>(
       {
-        maxTokens: 1024,
+        maxTokens: 2048,
         temperature: 0.4,
         messages: [
           {
             role: "system",
             content:
               `You are a Smart Assistant editing a ${input.field} field for a freelance job listing. ` +
-              `Respond only with JSON: { "updatedValue": "string", "suggestions": ["string"] }. ` +
+              `Respond only with JSON: { "updatedValue": ${isBulletField ? '["string"]' : '"string"'}, "summary": "string", "suggestions": ["string"] }. ` +
               limitInstruction +
+              `summary is one short plain-English sentence (at most 30 words) telling the user what you changed in the ${input.field} and why, written in the past tense. Do not quote updatedValue in full. ` +
               titleInstruction +
               'suggestions contains 2-3 short follow-up action options (e.g. "Make it shorter"). ' +
               "Preserve the original meaning unless the command explicitly asks to change the meaning, audience, scope, tone, or emphasis. " +
@@ -1033,7 +2111,9 @@ export class JobListingAiService {
             role: "user",
             content: [
               `Current ${input.field}:`,
-              input.currentValue,
+              isBulletField
+                ? this.richTextToPlainLines(input.currentValue)
+                : input.currentValue,
               "",
               "Listing context:",
               contextLines,
@@ -1047,12 +2127,18 @@ export class JobListingAiService {
     );
 
     return {
-      updatedValue: this.normalizeSmartAssistantFieldValue(
-        input.field,
-        result.updatedValue,
-        input.currentValue,
-        input.context,
-      ),
+      updatedValue: isBulletField
+        ? this.toBulletListHtml(result.updatedValue, 100) ||
+          input.currentValue
+        : this.normalizeSmartAssistantFieldValue(
+            input.field,
+            result.updatedValue as string,
+            input.currentValue,
+            input.context,
+          ),
+      summary:
+        this.limitWords(result.summary ?? "", 30) ||
+        `Updated the ${input.field}.`,
       suggestions: Array.isArray(result.suggestions)
         ? result.suggestions.slice(0, 3)
         : [],
@@ -1065,7 +2151,7 @@ export class JobListingAiService {
   }): Promise<{ shortenedText: string }> {
     return this.call<{ shortenedText: string }>(
       {
-        maxTokens: 256,
+        maxTokens: 2048,
         temperature: 0.3,
         messages: [
           {
@@ -1080,6 +2166,46 @@ export class JobListingAiService {
         ],
       },
       "shorten_text",
+    );
+  }
+
+  async editSelectedText(input: {
+    command: string;
+    selectedText: string;
+    fieldContext: string;
+    fullFieldValue?: string;
+  }): Promise<{ updatedText: string }> {
+    const fullFieldContext = input.fullFieldValue?.trim()
+      ? input.fullFieldValue
+      : "No full field value provided.";
+
+    return this.call<{ updatedText: string }>(
+      {
+        maxTokens: 2048,
+        temperature: 0.4,
+        messages: [
+          {
+            role: "system",
+            content:
+              'You edit selected text from a job listing field using the user command. Respond only with JSON: { "updatedText": "string" }. Return only the replacement text for the selected text, not the full field. Preserve the original meaning unless the command explicitly asks to change meaning, tone, emphasis, audience, or scope. Do not use markdown.',
+          },
+          {
+            role: "user",
+            content: [
+              `Field: ${input.fieldContext}`,
+              "",
+              "Full field value for context:",
+              fullFieldContext,
+              "",
+              "Selected text to edit:",
+              input.selectedText,
+              "",
+              `Command: ${input.command}`,
+            ].join("\n"),
+          },
+        ],
+      },
+      "edit_selected_text",
     );
   }
 }

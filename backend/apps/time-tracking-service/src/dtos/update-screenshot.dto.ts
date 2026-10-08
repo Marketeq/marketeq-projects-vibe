@@ -1,4 +1,4 @@
-import { IsArray, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsArray, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class UpdateScreenshotMetaDto {
   @IsOptional()
@@ -27,5 +27,12 @@ export class BatchUpdateScreenshotDto {
 export class DeleteScreenshotDto {
   @IsOptional()
   @IsString()
+  reason?: string;
+}
+
+export class BlurScreenshotDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   reason?: string;
 }
