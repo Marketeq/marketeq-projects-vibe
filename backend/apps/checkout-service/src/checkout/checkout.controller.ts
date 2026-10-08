@@ -87,6 +87,15 @@ export class CheckoutController {
     return this.checkoutDraftService.getDraft(clientId, listingId);
   }
 
+  @Delete("drafts/:draftId")
+  @UseGuards(InternalTokenGuard)
+  discardDraft(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.discard(clientId, draftId);
+  }
+
   @Get("drafts/:draftId/scope")
   @UseGuards(InternalTokenGuard)
   getDraftScope(

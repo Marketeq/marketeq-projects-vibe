@@ -44,9 +44,9 @@ export class CheckoutDraftTaskEntity {
   @Column({ type: 'int' })
   order: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

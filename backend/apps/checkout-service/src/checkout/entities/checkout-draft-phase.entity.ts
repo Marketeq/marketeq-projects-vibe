@@ -42,9 +42,9 @@ export class CheckoutDraftPhaseEntity {
   @OneToMany(() => CheckoutDraftTaskEntity, (task) => task.phase)
   tasks: CheckoutDraftTaskEntity[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

@@ -1,4 +1,5 @@
 import { CheckoutAPI } from "@/service/http/checkout"
+import { workingDaysToCalendarDays, workingDaysToWeeks } from "./working-days"
 
 export type CheckoutDraftCode = {
   code: string
@@ -58,7 +59,7 @@ export const getCheckoutDraftSummary = async (
 
 export const getDraftDurationLabel = (days: number | null): string | null => {
   if (!days || days <= 0) return null
-  const weeks = Math.max(1, Math.ceil(days / 7))
+  const weeks = workingDaysToWeeks(days)
   return `${weeks} Week${weeks !== 1 ? "s" : ""}`
 }
 
@@ -66,6 +67,6 @@ export const getDraftDateRangeLabel = (days: number | null): string | null => {
   if (!days || days <= 0) return null
   const start = new Date()
   const end = new Date(start)
-  end.setUTCDate(end.getUTCDate() + days)
+  end.setUTCDate(end.getUTCDate() + workingDaysToCalendarDays(days))
   return `${monthYearFormatter.format(start)} - ${monthYearFormatter.format(end)}`
 }

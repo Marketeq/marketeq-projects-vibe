@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CheckoutDraft } from './entities/checkout-draft.entity';
 import { GiftCard } from './entities/gift-card.entity';
-import { loadOwnedDraft } from './checkout-draft.util';
+import { loadOwnedDraft, releaseSession } from './checkout-draft.util';
 import { ApplyDraftCodeDto, DraftCodeType } from './dto/draft-code.dto';
 
 export type DraftCodeStatus =
@@ -77,6 +77,7 @@ export class CheckoutDraftCodeService {
       const current = this.codesOf(draft, type);
 
       if (!current.some((item) => sameCode(type, item, code))) {
+        await releaseSession(manager, draft);
         const [entry] = await this.verifyCodes(type, [code], manager);
         if (entry.status === 'unverified') {
           throw new BadGatewayException('Could not verify the code right now');
@@ -118,6 +119,7 @@ export class CheckoutDraftCodeService {
       const current = this.codesOf(draft, type);
 
       if (current.some((item) => sameCode(type, item, code))) {
+        await releaseSession(manager, draft);
         const next = current.filter((item) => !sameCode(type, item, code));
         await manager.update(
           CheckoutDraft,

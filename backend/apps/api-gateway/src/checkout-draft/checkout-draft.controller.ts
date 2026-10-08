@@ -41,6 +41,12 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.getDraft(listingId, clientId);
   }
 
+  @Delete('drafts/:draftId')
+  @UseGuards(JwtAuthGuard)
+  discardDraft(@Param('draftId') draftId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.discardDraft(draftId, clientId);
+  }
+
   @Get('drafts/:draftId/scope')
   @UseGuards(JwtAuthGuard)
   getDraftScope(@Param('draftId') draftId: string, @UserId() clientId: string) {

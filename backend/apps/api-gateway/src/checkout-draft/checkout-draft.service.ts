@@ -47,6 +47,10 @@ export class CheckoutDraftGatewayService {
     return this.forward('post', `/listings/${listingId}/draft`, clientId, `create checkout draft for ${listingId}`);
   }
 
+  async discardDraft(draftId: string, clientId: string) {
+    return this.forward('delete', `/drafts/${draftId}`, clientId, `discard checkout draft ${draftId}`);
+  }
+
   async getDraft(listingId: string, clientId: string) {
     return this.forward('get', `/listings/${listingId}/draft`, clientId, `get checkout draft for ${listingId}`);
   }

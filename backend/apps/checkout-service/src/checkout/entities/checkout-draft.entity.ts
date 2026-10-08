@@ -49,12 +49,12 @@ export class CheckoutDraft {
   @JoinColumn({ name: 'sessionId', foreignKeyConstraintName: 'FK_drafts_session' })
   session: CheckoutSession | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 
-  @Column({ type: 'timestamp', default: () => 'now()' })
+  @Column({ type: 'timestamptz', default: () => 'now()' })
   lastOpenedAt: Date;
 }

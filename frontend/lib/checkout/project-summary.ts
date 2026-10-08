@@ -1,4 +1,9 @@
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import {
+  HOURS_PER_DAY,
+  workingDaysToCalendarDays,
+  workingDaysToWeeks,
+} from "./working-days"
 
 export type CheckoutRawTeamMember = {
   id: string
@@ -90,9 +95,11 @@ const getScopeDurationDays = (project: any): number => {
         if (dur && typeof dur === "object") {
           const val = Number(dur.value) || 0
           if (val > 0) {
-            if (dur.type === "weeks") return val * 7
-            if (dur.type === "months") return val * 30
-            if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+            if (dur.type === "weeks") return val * 5
+            if (dur.type === "months") return Math.ceil((val * 150) / 7)
+            if (dur.type === "hours") {
+              return Math.max(1, Math.ceil(val / HOURS_PER_DAY))
+            }
             return val
           }
         }
@@ -101,15 +108,16 @@ const getScopeDurationDays = (project: any): number => {
           const v = Number(rv) || 0
           const u = (ru || "days").toLowerCase()
           if (v > 0) {
-            if (u.startsWith("week")) return v * 7
-            if (u.startsWith("month")) return v * 30
-            if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+            if (u.startsWith("week")) return v * 5
+            if (u.startsWith("month")) return Math.ceil((v * 150) / 7)
+            if (u.startsWith("hour")) {
+              return Math.max(1, Math.ceil(v / HOURS_PER_DAY))
+            }
             return v
           }
         }
-        // Fall back to estimatedHours using the shared 24-hour day rule.
         const hrs = Number(task.estimatedHours) || 0
-        return hrs > 0 ? Math.ceil(hrs / 24) : 0
+        return hrs > 0 ? Math.ceil(hrs / HOURS_PER_DAY) : 0
       })
       .filter((d: number) => d > 0)
     if (taskDurations.length > 0) {
@@ -124,7 +132,9 @@ const getDuration = (
   project: any
 ): { amount: number; unit: "day" | "week" | "month" } | null => {
   const scopeDays = getScopeDurationDays(project)
-  if (scopeDays > 0) return { amount: scopeDays, unit: "day" }
+  if (scopeDays > 0) {
+    return { amount: workingDaysToCalendarDays(scopeDays), unit: "day" }
+  }
 
   if (typeof project.duration === "string") {
     const match = project.duration.match(/(\d+)\s*(day|week|month)/i)
@@ -169,9 +179,7 @@ const getDateRangeLabel = (project: any): string => {
 const getDurationLabel = (project: any): string | null => {
   const scopeDays = getScopeDurationDays(project)
   if (scopeDays > 0) {
-    // Checkout always shows duration in weeks (unlike my-listings, which
-    // tiers between days/weeks/months).
-    const weeks = Math.max(1, Math.ceil(scopeDays / 7))
+    const weeks = workingDaysToWeeks(scopeDays)
     return `${weeks} Week${weeks !== 1 ? "s" : ""}`
   }
   if (typeof project.duration === "string" && project.duration.trim()) {

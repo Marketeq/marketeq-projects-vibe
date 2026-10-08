@@ -37,6 +37,18 @@ const INDEX_RENAMES: [string, string][] = [
   ['IDX_checkout_draft_tasks_phaseId', 'IDX_draft_tasks_phaseId'],
 ];
 
+const TIMESTAMPTZ_COLUMNS: [string, string][] = [
+  ['drafts', 'createdAt'],
+  ['drafts', 'updatedAt'],
+  ['drafts', 'lastOpenedAt'],
+  ['draft_phases', 'createdAt'],
+  ['draft_phases', 'updatedAt'],
+  ['draft_tasks', 'createdAt'],
+  ['draft_tasks', 'updatedAt'],
+  ['sessions', 'createdAt'],
+  ['sessions', 'updatedAt'],
+];
+
 export class CatchUpCheckoutDraftTables1791500000000
   implements MigrationInterface
 {
@@ -195,6 +207,24 @@ export class CatchUpCheckoutDraftTables1791500000000
         DROP COLUMN IF EXISTS "sourceTaskId",
         DROP COLUMN IF EXISTS "isDraftOverride"
     `);
+
+    for (const [table, column] of TIMESTAMPTZ_COLUMNS) {
+      await queryRunner.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'checkout' AND table_name = '${table}'
+              AND column_name = '${column}'
+              AND data_type = 'timestamp without time zone'
+          ) THEN
+            ALTER TABLE "checkout"."${table}"
+              ALTER COLUMN "${column}" TYPE TIMESTAMPTZ
+              USING "${column}" AT TIME ZONE 'UTC';
+          END IF;
+        END $$;
+      `);
+    }
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

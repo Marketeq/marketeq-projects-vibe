@@ -11,7 +11,11 @@ import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity
 import { CheckoutDraftTaskEntity } from './entities/checkout-draft-task.entity';
 import { CheckoutSession } from './entities/checkout-session.entity';
 import { CheckoutSummaryService } from './checkout-summary.service';
-import { isDraftExpired, loadOwnedDraft } from './checkout-draft.util';
+import {
+  isDraftExpired,
+  loadOwnedDraft,
+  releaseSession,
+} from './checkout-draft.util';
 import {
   AddDraftPhaseDto,
   AddDraftTaskDto,
@@ -48,11 +52,16 @@ const UUID_PATTERN =
 
 const UNIQUE_VIOLATION = '23505';
 
+const OPEN_ROLE_EXPERIENCE = 'Medior';
+const OPEN_ROLE_LOCATION = 'United States';
+
 const normalizeKeyPart = (value: string | null): string =>
   (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+const HOURS_PER_DAY = 8;
+
 const taskDays = (hours: number | null): number =>
-  hours !== null && hours > 0 ? Math.ceil(hours / 24) : 0;
+  hours !== null && hours > 0 ? Math.ceil(hours / HOURS_PER_DAY) : 0;
 
 const phaseLengthDays = (taskHours: (number | null)[]): number =>
   taskHours.length === 0 ? 0 : Math.max(...taskHours.map(taskDays));
@@ -280,6 +289,7 @@ export class CheckoutDraftService {
         throw new ConflictException('Draft version is out of date');
       }
 
+      await releaseSession(manager, draft);
       const result = await change(manager, draft);
 
       const phases = await manager.find(CheckoutDraftPhaseEntity, {
@@ -460,11 +470,17 @@ export class CheckoutDraftService {
         if (matched.length === 0 && !isListedMember) {
           throw new NotFoundException('No tasks found for that member');
         }
+        const openRoleDefaults = toUserId
+          ? {}
+          : {
+              experienceLevel: OPEN_ROLE_EXPERIENCE,
+              location: [OPEN_ROLE_LOCATION],
+            };
         if (matched.length > 0) {
           await manager.update(
             CheckoutDraftTaskEntity,
             { id: In(matched.map((task) => task.id)) },
-            { assigneeUserId: toUserId },
+            { assigneeUserId: toUserId, ...openRoleDefaults },
           );
         }
         if (match.fromUserId) {
@@ -480,6 +496,7 @@ export class CheckoutDraftService {
           id: task.id,
           phaseId: task.phaseId,
           assigneeUserId: toUserId,
+          ...openRoleDefaults,
         }));
       },
     );
@@ -729,7 +746,11 @@ export class CheckoutDraftService {
             roleName: dto.roleName,
             durationHours: dto.durationHours,
             experienceLevel: dto.experienceLevel,
-            location: dto.location ?? [],
+            location: dto.location?.length
+              ? dto.location
+              : dto.assigneeUserId
+                ? []
+                : [OPEN_ROLE_LOCATION],
             assigneeUserId: dto.assigneeUserId ?? null,
             order: (last?.order ?? 0) + 1,
           }),
@@ -761,6 +782,10 @@ export class CheckoutDraftService {
     >;
     if (Object.keys(changes).length === 0 && order === undefined) {
       throw new BadRequestException('No fields to update');
+    }
+    if (changes.assigneeUserId === null) {
+      changes.experienceLevel ??= OPEN_ROLE_EXPERIENCE;
+      changes.location ??= [OPEN_ROLE_LOCATION];
     }
 
     const { result, ...summary } = await this.applyScopeChange(
@@ -856,6 +881,16 @@ export class CheckoutDraftService {
     }
   }
 
+  async discard(clientId: string, draftId: string) {
+    await this.dataSource.transaction(async (manager) => {
+      const draft = await loadOwnedDraft(manager, clientId, draftId, {
+        lock: true,
+      });
+      await this.discardDraft(manager, draft);
+    });
+    return { deleted: true };
+  }
+
   private toResponse(draft: CheckoutDraft, durationDays: number | null) {
     return {
       draftId: draft.id,
@@ -893,16 +928,22 @@ export class CheckoutDraftService {
     const plans = listingPhases.map((listingPhase, phaseIndex) => {
       const tasks = (listingPhase?.tasks ?? []).map((task, taskIndex) => {
         const hours = Number(task?.estimatedHours);
+        const assigneeUserId =
+          task?.assigneeUserId && UUID_PATTERN.test(task.assigneeUserId)
+            ? task.assigneeUserId
+            : null;
         return manager.create(CheckoutDraftTaskEntity, {
           title: task?.title ?? 'Untitled task',
           roleName: task?.roleName ?? null,
-          location: task?.location ?? [],
-          experienceLevel: task?.experienceLevel ?? null,
+          location: task?.location?.length
+            ? task.location
+            : assigneeUserId
+              ? []
+              : [OPEN_ROLE_LOCATION],
+          experienceLevel:
+            task?.experienceLevel || (assigneeUserId ? null : OPEN_ROLE_EXPERIENCE),
           durationHours: Number.isFinite(hours) ? Math.round(hours) : null,
-          assigneeUserId:
-            task?.assigneeUserId && UUID_PATTERN.test(task.assigneeUserId)
-              ? task.assigneeUserId
-              : null,
+          assigneeUserId,
           order: taskIndex + 1,
         });
       });

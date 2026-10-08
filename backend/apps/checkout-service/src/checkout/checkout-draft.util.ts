@@ -1,6 +1,7 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { CheckoutDraft } from './entities/checkout-draft.entity';
+import { CheckoutSession } from './entities/checkout-session.entity';
 
 export const DRAFT_IDLE_DAYS = 30;
 
@@ -29,4 +30,25 @@ export const loadOwnedDraft = async (
     throw new NotFoundException('Draft not found');
   }
   return draft;
+};
+
+export const releaseSession = async (
+  manager: EntityManager,
+  draft: CheckoutDraft,
+): Promise<void> => {
+  if (!draft.sessionId) return;
+  const session = await manager.findOne(CheckoutSession, {
+    where: { id: draft.sessionId },
+  });
+  if (session?.status === 'success') {
+    throw new ConflictException({
+      code: 'SESSION_ALREADY_PAID',
+      message: 'This checkout has already been paid',
+    });
+  }
+  if (session?.status === 'pending') {
+    await manager.update(CheckoutSession, session.id, { status: 'cancelled' });
+  }
+  await manager.update(CheckoutDraft, draft.id, { sessionId: null });
+  draft.sessionId = null;
 };
