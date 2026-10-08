@@ -24,6 +24,22 @@ export class UpdateAdminSettingsDto {
   @IsOptional()
   @IsBoolean()
   blurredBillable?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  requireDeleteApproval?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  manualTimeEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  manualTimeRequireApproval?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  manualTimeRequireReason?: boolean;
 }
 
 export class UpdateUserPreferencesDto {
@@ -42,4 +58,32 @@ export class UpdateUserPreferencesDto {
   @IsOptional()
   @IsIn(['12h', '24h'])
   timeFormat?: '12h' | '24h';
+
+  @IsOptional()
+  @IsIn(['hour', 'day'])
+  defaultScreenshotView?: 'hour' | 'day';
+
+  @IsOptional()
+  @IsBoolean()
+  showTooltips?: boolean;
+
+  @IsOptional()
+  @IsIn(['active', 'all'])
+  captureMode?: 'active' | 'all';
+
+  @IsOptional()
+  @IsBoolean()
+  notifyManualTime?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyReassignment?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyWeeklyReport?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notifyScreenshotComments?: boolean;
 }

@@ -72,6 +72,14 @@ export class Screenshot {
   @Column({ name: 'blurred_at', type: 'timestamptz', nullable: true })
   blurredAt!: Date | null;
 
+  /** Why the talent blurred it, shown to the client when the blur is reviewed. */
+  @Column({ name: 'blur_reason', type: 'text', nullable: true })
+  blurReason!: string | null;
+
+  /** Set when the contract's client asks to see this blurred screenshot. */
+  @Column({ name: 'access_requested_at', type: 'timestamptz', nullable: true })
+  accessRequestedAt!: Date | null;
+
   @Column({ name: 'is_flagged', type: 'boolean', default: false })
   isFlagged!: boolean;
 
@@ -102,6 +110,13 @@ export class Screenshot {
   @Column({ name: 'deletion_reason', type: 'text', nullable: true })
   deletionReason!: string | null;
 
+  /**
+   * Set while a delete waits for the client's approval (contract rule
+   * "Require approval for deleted screenshots"). Null when none is pending.
+   */
+  @Column({ name: 'delete_requested_at', type: 'timestamptz', nullable: true })
+  deleteRequestedAt!: Date | null;
+
   // ── Multi-monitor grouping ──────────────────────────────────────────
   @Column({ name: 'monitor_id', type: 'text', nullable: true })
   monitorId!: string | null;
@@ -109,4 +124,11 @@ export class Screenshot {
   /** Groups simultaneous screenshots from multiple monitors */
   @Column({ name: 'group_key', type: 'text', nullable: true })
   groupKey!: string | null;
+
+  /**
+   * Set when the contract or task is changed after capture — the
+   * "Edited Time" entry type (US-TT-026). Null for untouched captures.
+   */
+  @Column({ name: 'edited_at', type: 'timestamptz', nullable: true })
+  editedAt!: Date | null;
 }

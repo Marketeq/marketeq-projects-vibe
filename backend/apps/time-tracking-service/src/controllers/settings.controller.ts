@@ -10,27 +10,34 @@ import {
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { SettingsService } from '../services/settings.service';
 import { UpdateAdminSettingsDto, UpdateUserPreferencesDto } from '../dtos/update-settings.dto';
-import { RolesGuard } from '../guards/roles.guard';
+import { ContractAccessService, actorOf } from '../contracts/contract-access.service';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard)
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(
+    private readonly settingsService: SettingsService,
+    private readonly access: ContractAccessService,
+  ) {}
 
-  /** Get screenshot permission settings for a contract scope */
-  @UseGuards(RolesGuard('admin'))
+  /**
+   * Screenshot permission settings for a contract. Both sides read them —
+   * the talent's UI hides actions the client has turned off.
+   */
   @Get('admin/:scopeId')
-  async getAdminSettings(@Param('scopeId') scopeId: string) {
+  async getAdminSettings(@Param('scopeId') scopeId: string, @Req() req: any) {
+    await this.access.assertPartyOf(actorOf(req), scopeId);
     return this.settingsService.getAdminSettings(scopeId);
   }
 
-  /** Update screenshot permission settings for a contract scope */
-  @UseGuards(RolesGuard('admin'))
+  /** Only the contract's client (or a platform admin) changes them. */
   @Put('admin/:scopeId')
   async updateAdminSettings(
     @Param('scopeId') scopeId: string,
+    @Req() req: any,
     @Body() dto: UpdateAdminSettingsDto,
   ) {
+    await this.access.assertClientOf(actorOf(req), scopeId);
     return this.settingsService.updateAdminSettings(scopeId, dto);
   }
 

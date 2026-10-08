@@ -21,6 +21,7 @@ import { AuditLoggerService } from './services/audit-logger.service';
 import { TalentNetworkService } from './services/talent-network.service';
 import { ContractOwnerGuard } from './guards/contract-owner.guard';
 import { OfferAcceptedSubscriber } from './subscribers/offer-accepted.subscriber';
+import { ContractPartiesResponder } from './subscribers/contract-parties.responder';
 
 // Import your entities
 import { Contract } from './entities/contract.entity';
@@ -68,6 +69,9 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     ContractOwnerGuard,
     // OS-07: creates contracts from offer.accepted / offer.counter_accepted
     OfferAcceptedSubscriber,
+    // Answers contracts.parties.rpc so other services can check who is the
+    // client/talent on a contract without reading this schema.
+    ContractPartiesResponder,
     // Global JWT guard
     {
       provide: APP_GUARD,

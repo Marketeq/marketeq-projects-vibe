@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { R2Service } from '../storage/r2.service';
 import { ScreenshotsService } from './screenshots.service';
 import { EventsService } from '../services/events.service';
+import { TalentNotificationsService } from '../notifications/talent-notifications.service';
 import { BearerGuard } from '../common/guards/bearer.guard';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -27,9 +28,11 @@ import { ReadPresignDto } from './dto/read.dto';
 import { CreateFlagDto } from './dto/create-flag.dto';
 import { ReviewScreenshotDto } from './dto/review-screenshot.dto';
 import { ScreenshotQueryDto } from '../dtos/screenshot-query.dto';
+import { actorOf } from '../contracts/contract-access.service';
 import {
   BatchUpdateScreenshotDto,
   DeleteScreenshotDto,
+  BlurScreenshotDto,
   UpdateScreenshotMetaDto,
 } from '../dtos/update-screenshot.dto';
 
@@ -74,6 +77,7 @@ export class ScreenshotsController {
     private readonly r2: R2Service,
     private readonly svc: ScreenshotsService,
     private readonly events: EventsService,
+    private readonly talentNotifications: TalentNotificationsService,
   ) {}
 
   // ── Machine-to-machine endpoints (BearerGuard) ─────────────────────
@@ -115,16 +119,31 @@ export class ScreenshotsController {
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   async deleteScreenshot(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
-    @Query('scopeId') scopeId?: string,
     @Body() dto: DeleteScreenshotDto = {},
   ) {
-    const userId: string = req.user.sub;
-    const role: string = req.user.role ?? 'user';
-    const result = await this.svc.deleteScreenshot(id, userId, role, dto, scopeId);
-    this.events.screenshotDeleted(id, userId, dto.reason ?? null);
+    const result = await this.svc.deleteScreenshot(id, actorOf(req), dto);
+    // A delete awaiting the client's approval hasn't happened yet.
+    if (result.isDeleted) this.events.screenshotDeleted(id, req.user.sub, dto.reason ?? null);
     return result;
+  }
+
+  /** The contract's client (or a platform admin) approves or rejects a pending delete. */
+  @Put(':id/delete-request')
+  @UseGuards(JwtAuthGuard)
+  async reviewDeleteRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: any,
+    @Body() dto: ReviewScreenshotDto,
+  ) {
+    const { isDeleted, screenshot } = await this.svc.reviewDeleteRequest(id, actorOf(req), dto);
+    if (isDeleted) this.events.screenshotDeleted(id, req.user.sub, screenshot.deletionReason ?? null);
+    const comment = dto.comment?.trim();
+    if (comment && screenshot.userId !== req.user.sub) {
+      void this.talentNotifications.screenshotCommented(screenshot.userId, comment);
+    }
+    return { id, isDeleted };
   }
 
   // ── JWT-protected user/admin endpoints ────────────────────────────
@@ -136,13 +155,21 @@ export class ScreenshotsController {
   @Get()
   @UseGuards(JwtAuthGuard)
   async listScreenshots(@Req() req: any, @Query() query: ScreenshotQueryDto) {
-    return this.svc.listScreenshots(query, req.user.sub, req.user.role);
+    return this.svc.listScreenshots(query, actorOf(req));
   }
 
+  /** ?view=client returns screenshots on contracts where the caller is the client. */
   @Get('cards')
   @UseGuards(JwtAuthGuard)
   async getCards(@Req() req: any, @Query() query: ScreenshotQueryDto) {
-    return this.svc.findCards(req.user.sub, query);
+    return this.svc.findCards(actorOf(req), query);
+  }
+
+  /** Apps and visited URLs for the Filter → Apps / URLs lists. */
+  @Get('facets')
+  @UseGuards(JwtAuthGuard)
+  async getFacets(@Req() req: any, @Query() query: ScreenshotQueryDto) {
+    return this.svc.findFacets(actorOf(req), query.view);
   }
 
   @Get('admin/all')
@@ -151,28 +178,34 @@ export class ScreenshotsController {
     return this.svc.findCards(null, query);
   }
 
+  /** Flagged screenshots and pending blurs: platform admins see all, clients see their contracts'. */
   @Get('flagged')
-  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
-  async getFlagged(@Query() query: ScreenshotQueryDto) {
-    return this.svc.getFlaggedScreenshots(query.page ?? 1, query.pageSize ?? 50);
+  @UseGuards(JwtAuthGuard)
+  async getFlagged(@Req() req: any, @Query() query: ScreenshotQueryDto) {
+    const actor = actorOf(req);
+    return this.svc.getFlaggedScreenshots(
+      actor.role === 'admin' ? null : actor,
+      query.page ?? 1,
+      query.pageSize ?? 50,
+    );
   }
 
   @Get('group/:groupKey')
   @UseGuards(JwtAuthGuard)
   async getGroup(@Param('groupKey') groupKey: string, @Req() req: any) {
-    return this.svc.findGrouped(groupKey, req.user.sub, req.user.role);
+    return this.svc.findGrouped(groupKey, actorOf(req));
   }
 
   @Get(':id/url')
   @UseGuards(JwtAuthGuard)
   async getSignedUrl(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
-    return this.svc.getSignedUrl(id, req.user.sub, req.user.role);
+    return this.svc.getSignedUrl(id, actorOf(req));
   }
 
   @Get(':id/detail')
   @UseGuards(JwtAuthGuard)
   async getDetail(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
-    return this.svc.findDetail(id, req.user.sub, req.user.role);
+    return this.svc.findDetail(id, actorOf(req));
   }
 
   @Post(':id/flag')
@@ -183,20 +216,25 @@ export class ScreenshotsController {
     @Req() req: any,
     @Body() dto: CreateFlagDto,
   ) {
-    const screenshot = await this.svc.flagScreenshot(id, req.user.sub, req.user.role, dto);
+    const screenshot = await this.svc.flagScreenshot(id, actorOf(req), dto);
     this.events.screenshotFlagged(id, screenshot.userId, req.user.sub, dto.reason ?? null);
     return screenshot;
   }
 
+  /** The contract's client (or a platform admin) approves or rejects. */
   @Put(':id/review')
-  @UseGuards(JwtAuthGuard, RolesGuard('admin'))
+  @UseGuards(JwtAuthGuard)
   async reviewScreenshot(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
     @Body() dto: ReviewScreenshotDto,
   ) {
-    const screenshot = await this.svc.reviewScreenshot(id, req.user.sub, dto);
+    const screenshot = await this.svc.reviewScreenshot(id, actorOf(req), dto);
     this.events.screenshotReviewed(id, req.user.sub, dto.status, dto.comment ?? null);
+    const comment = dto.comment?.trim();
+    if (comment && screenshot.userId !== req.user.sub) {
+      void this.talentNotifications.screenshotCommented(screenshot.userId, comment);
+    }
     return screenshot;
   }
 
@@ -205,40 +243,54 @@ export class ScreenshotsController {
   async blur(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
-    @Query('scopeId') scopeId?: string,
+    @Body() dto: BlurScreenshotDto = {},
   ) {
-    const screenshot = await this.svc.blur(id, req.user.sub, req.user.role, scopeId);
+    const screenshot = await this.svc.blur(id, actorOf(req), dto.reason);
     this.events.screenshotBlurred(id, req.user.sub, screenshot.blurredAt ?? new Date());
+    return screenshot;
+  }
+
+  /** The contract's client asks the talent to unblur a screenshot. */
+  @Post(':id/request-access')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async requestAccess(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    const { screenshot, firstRequest } = await this.svc.requestAccess(id, actorOf(req));
+    if (firstRequest) void this.talentNotifications.screenshotAccessRequested(screenshot.userId);
     return screenshot;
   }
 
   @Patch(':id/unblur')
   @UseGuards(JwtAuthGuard)
-  async unblur(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: any,
-  ) {
-    return this.svc.unblur(id, req.user.sub);
+  async unblur(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.svc.unblur(id, actorOf(req));
   }
 
   @Patch('batch/meta')
   @UseGuards(JwtAuthGuard)
-  async batchUpdateMeta(
-    @Req() req: any,
-    @Body() dto: BatchUpdateScreenshotDto,
-    @Query('scopeId') scopeId?: string,
-  ) {
-    return this.svc.batchUpdateMeta(req.user.sub, req.user.role, dto, scopeId);
+  async batchUpdateMeta(@Req() req: any, @Body() dto: BatchUpdateScreenshotDto) {
+    const result = await this.svc.batchUpdateMeta(actorOf(req), dto);
+    for (const [userId, count] of Object.entries(result.movedOthers)) {
+      void this.talentNotifications.screenshotsReassigned(userId, count);
+    }
+    return { updated: result.updated };
   }
+
   @Patch(':id/meta')
   @UseGuards(JwtAuthGuard)
   async updateMeta(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: any,
     @Body() dto: UpdateScreenshotMetaDto,
-    @Query('scopeId') scopeId?: string,
   ) {
-    return this.svc.updateMeta(id, req.user.sub, req.user.role, dto, scopeId);
+    const before = await this.svc.ownerAndPlacement(id);
+    const updated = await this.svc.updateMeta(id, actorOf(req), dto);
+    const moved =
+      before &&
+      (before.contractId !== updated.contractId || before.taskId !== updated.taskId);
+    if (moved && updated.userId !== req.user.sub) {
+      void this.talentNotifications.screenshotsReassigned(updated.userId, 1);
+    }
+    return updated;
   }
-
 }

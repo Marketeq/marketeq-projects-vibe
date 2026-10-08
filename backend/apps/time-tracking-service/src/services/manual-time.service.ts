@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, LessThan, MoreThan, Not, Repository } from 'typeorm';
+import { In, IsNull, LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { ManualTime } from '../entities/manual-time.entity';
 import { CreateManualTimeDto, ReviewManualTimeDto } from '../dtos/create-manual-time.dto';
+import { Actor, ContractAccessService } from '../contracts/contract-access.service';
 
 const MAX_DURATION_HOURS = 12;
 const MAX_PAST_DAYS = 90;
@@ -17,9 +18,13 @@ export class ManualTimeService {
   constructor(
     @InjectRepository(ManualTime)
     private readonly repo: Repository<ManualTime>,
+    private readonly access: ContractAccessService,
   ) {}
 
   async create(userId: string, dto: CreateManualTimeDto): Promise<ManualTime> {
+    if (dto.contractId && !(await this.access.isTalentOf(userId, dto.contractId))) {
+      throw new BadRequestException('You can only log time on your own contracts.');
+    }
     const start = new Date(dto.startTime);
     const end = new Date(dto.endTime);
     if (end <= start) {
@@ -84,6 +89,16 @@ export class ManualTimeService {
     });
   }
 
+  /** Entries logged on contracts where this user is the client. */
+  async findForClient(userId: string): Promise<ManualTime[]> {
+    const owned = await this.access.clientContractIds(userId);
+    if (!owned.length) return [];
+    return this.repo.find({
+      where: { contractId: In(owned) },
+      order: { startTime: 'DESC' },
+    });
+  }
+
   async delete(id: string, userId: string, role: string): Promise<void> {
     const entry = await this.repo.findOneBy({ id });
     if (!entry) throw new NotFoundException('Manual time entry not found');
@@ -93,22 +108,30 @@ export class ManualTimeService {
     await this.repo.softRemove(entry);
   }
 
-  async getPending(): Promise<ManualTime[]> {
+  /** Pending entries: platform admins see all, clients see their contracts'. */
+  async getPending(actor: Actor): Promise<ManualTime[]> {
+    if (this.access.isAdmin(actor)) {
+      return this.repo.find({ where: { status: 'pending' }, order: { createdAt: 'ASC' } });
+    }
+    const owned = await this.access.clientContractIds(actor.userId);
+    if (!owned.length) return [];
     return this.repo.find({
-      where: { status: 'pending' },
+      where: { status: 'pending', contractId: In(owned) },
       order: { createdAt: 'ASC' },
     });
   }
 
-  async review(id: string, adminId: string, dto: ReviewManualTimeDto): Promise<ManualTime> {
+  /** The contract's client (or a platform admin) approves or rejects. */
+  async review(id: string, actor: Actor, dto: ReviewManualTimeDto): Promise<ManualTime> {
     const entry = await this.repo.findOneBy({ id });
     if (!entry) throw new NotFoundException('Manual time entry not found');
+    await this.access.assertClientOf(actor, entry.contractId);
     if (entry.status !== 'pending') {
       throw new BadRequestException(`Entry has already been ${entry.status}`);
     }
 
     entry.status = dto.status;
-    entry.reviewedBy = adminId;
+    entry.reviewedBy = actor.userId;
     entry.reviewComment = dto.comment ?? null;
     return this.repo.save(entry);
   }
