@@ -2909,9 +2909,9 @@ export default function SettingsPage() {
                     <p className="w-full text-sm text-gray-500">
                       Marketeq recommends avoiding using personal information in
                       passwords and using a unique password for each account.{" "}
-                      <a href="#" className="underline">
+                      <Button variant="link" className="inline h-auto p-0 underline">
                         Learn more
-                      </a>
+                      </Button>
                     </p>
                   </div>
 
@@ -3073,12 +3073,12 @@ export default function SettingsPage() {
                       <span className="text-sm font-medium leading-[17px] text-gray-700">
                         Forgot your password?
                       </span>
-                      <a
-                        href="#"
-                        className="text-sm font-medium leading-[17px] text-primary-500 underline"
+                      <Button
+                        variant="link"
+                        className="inline h-auto p-0 text-sm font-medium leading-[17px] text-primary-500 underline"
                       >
                         Request a new one
-                      </a>
+                      </Button>
                     </div>
                   </div>
 
@@ -3216,9 +3216,9 @@ export default function SettingsPage() {
                         />
                         <span className="text-sm font-medium capitalize text-gray-700">
                           Accept{" "}
-                          <a href="#" className="underline">
+                          <Button variant="link" className="inline h-auto p-0 underline">
                             Terms &amp; Conditions
-                          </a>
+                          </Button>
                         </span>
                       </div>
                     </div>
@@ -3427,9 +3427,9 @@ export default function SettingsPage() {
 
                       <p className="w-full text-center text-sm text-gray-500">
                         No longer have access to this email?{" "}
-                        <a href="#" className="underline">
+                        <Button variant="link" className="inline h-auto p-0 underline">
                           Start account recovery
-                        </a>
+                        </Button>
                       </p>
 
                       <IconButton
@@ -3971,9 +3971,9 @@ export default function SettingsPage() {
 
                         <p className="w-full text-sm text-gray-500">
                           Need to try another way?{" "}
-                          <a href="#" className="underline">
+                          <Button variant="link" className="inline h-auto p-0 underline">
                             Start account recovery
-                          </a>
+                          </Button>
                         </p>
                       </div>
                     </DialogContent>
@@ -4261,9 +4261,9 @@ export default function SettingsPage() {
 
                       <p className="w-full text-center text-sm text-gray-500">
                         No longer have access to this email?{" "}
-                        <a href="#" className="underline">
+                        <Button variant="link" className="inline h-auto p-0 underline">
                           Start account recovery
-                        </a>
+                        </Button>
                       </p>
 
                       <IconButton
@@ -4409,12 +4409,13 @@ export default function SettingsPage() {
                               </TableCell>
                               <TableCell className="h-[72px] px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                 {member.company ? (
-                                  <a
-                                    href="/client-profile"
-                                    className="text-sm font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline"
+                                  <Button
+                                    variant="link"
+                                    className="inline h-auto p-0 text-sm font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline"
+                                    onClick={() => window.location.href = '/client-profile'}
                                   >
                                     {member.company}
-                                  </a>
+                                  </Button>
                                 ) : (
                                   <span className="text-sm leading-5 text-gray-300">
                                     &mdash;
@@ -5134,9 +5135,9 @@ export default function SettingsPage() {
                             Control which IP addresses are allowed to access
                             your account. Any device outside these addresses
                             will be blocked from signing in.{" "}
-                            <a href="#" className="text-primary-500 underline">
+                            <Button variant="link" className="inline h-auto p-0 text-primary-500 underline">
                               Learn More
-                            </a>
+                            </Button>
                             .
                           </p>
                         </div>
@@ -5402,9 +5403,9 @@ export default function SettingsPage() {
                           <>
                             Upload a CSV file to add multiple IP addresses at
                             once. Each address should be on its own line.{" "}
-                            <a href="#" className="text-primary-500 underline">
+                            <Button variant="link" className="inline h-auto p-0 text-primary-500 underline">
                               Sample CSV
-                            </a>
+                            </Button>
                             .
                           </>
                         )}
