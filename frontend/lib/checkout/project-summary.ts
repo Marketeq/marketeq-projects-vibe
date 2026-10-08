@@ -237,5 +237,9 @@ export const getCheckoutProjectSummary = async (
     return mapProjectSummary(await serviceResponse.json())
   }
 
-  return null
+  if (projectResponse.status === 404 && serviceResponse.status === 404) {
+    return null
+  }
+
+  throw new Error("Project summary request failed")
 }

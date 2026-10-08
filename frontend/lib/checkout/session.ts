@@ -8,7 +8,7 @@ export type CheckoutSession = {
   contractId: string | null
   totalAmount: number
   appliedGiftCards: { code: string; amountUsed: number }[]
-  appliedPromos: { code: string; discountAmount: number }[]
+  appliedPromoCode: string | null
 }
 
 export const getCheckoutSession = async (
@@ -17,7 +17,10 @@ export const getCheckoutSession = async (
   try {
     const response = await CheckoutAPI.GetSession(sessionId)
     return response.data as CheckoutSession
-  } catch {
-    return null
+  } catch (error) {
+    const status = (error as { response?: { status?: number } })?.response
+      ?.status
+    if (status === 400 || status === 404) return null
+    throw error
   }
 }

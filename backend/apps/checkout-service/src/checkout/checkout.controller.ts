@@ -32,7 +32,7 @@ import { Request } from "express";
 
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
-import { ApplyDraftCodeDto, RemoveDraftCodeQueryDto } from './dto/draft-code.dto';
+import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { UseWalletDto } from './dto/use-wallet.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { CancelPaymentDto } from './dto/cancel-payment.dto';
@@ -189,23 +189,24 @@ export class CheckoutController {
   @Post("drafts/:draftId/apply-code")
   @HttpCode(HttpStatus.OK)
   @UseGuards(InternalTokenGuard)
-  applyDraftCode(
+  async applyDraftCode(
     @Param('draftId', ParseUUIDPipe) draftId: string,
     @ClientId() clientId: string,
     @Body() dto: ApplyDraftCodeDto,
   ) {
-    return this.checkoutDraftCodeService.applyCode(clientId, draftId, dto);
+    await this.checkoutDraftCodeService.applyCode(clientId, draftId, dto);
+    return this.checkoutDraftPricingService.getCodes(clientId, draftId);
   }
 
   @Delete("drafts/:draftId/apply-code/:code")
   @UseGuards(InternalTokenGuard)
-  removeDraftCode(
+  async removeDraftCode(
     @Param('draftId', ParseUUIDPipe) draftId: string,
     @Param('code') code: string,
-    @Query() query: RemoveDraftCodeQueryDto,
     @ClientId() clientId: string,
   ) {
-    return this.checkoutDraftCodeService.removeCode(clientId, draftId, query.type, code);
+    await this.checkoutDraftCodeService.removeCode(clientId, draftId, code);
+    return this.checkoutDraftPricingService.getCodes(clientId, draftId);
   }
 
   @Post("drafts/:draftId/phases/:phaseId/duplicate")

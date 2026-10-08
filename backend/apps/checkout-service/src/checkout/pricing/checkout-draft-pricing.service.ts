@@ -35,7 +35,7 @@ export class CheckoutDraftPricingService {
         ),
       ),
     );
-    const [memberRates, codes] = await Promise.all([
+    const [memberRates, { giftCards, promo }] = await Promise.all([
       this.summaryService.fetchMemberRates(draft.listingId, assigneeIds),
       this.codeService.listCodes(draft),
     ]);
@@ -63,11 +63,21 @@ export class CheckoutDraftPricingService {
     };
 
     for (const adjustment of this.adjustments) {
-      const result = adjustment.apply({ codes }, runningCents);
+      const result = adjustment.apply({ giftCards, promo }, runningCents);
       runningCents = Math.max(0, result.runningCents);
       lines.push(...result.lines);
       Object.assign(totals, result.totals);
     }
+
+    const promoCode = promo
+      ? {
+          code: promo.code,
+          status: promo.status,
+          amount: toDollars(totals.discountTotal),
+          discountType: promo.discountType,
+          discountValue: promo.discountValue,
+        }
+      : null;
 
     return {
       projectCost: toDollars(projectCostCents),
@@ -89,7 +99,13 @@ export class CheckoutDraftPricingService {
         Object.entries(totals).map(([key, cents]) => [key, toDollars(cents)]),
       ),
       total: toDollars(runningCents),
-      codes,
+      giftCards,
+      promoCode,
     };
+  }
+
+  async getCodes(clientId: string, draftId: string) {
+    const { giftCards, promoCode } = await this.getPricing(clientId, draftId);
+    return { giftCards, promoCode };
   }
 }

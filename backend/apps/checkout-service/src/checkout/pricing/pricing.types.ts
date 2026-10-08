@@ -1,10 +1,8 @@
-import { DraftCodeEntry } from '../checkout-draft-code.service';
+import { DraftCodes } from '../checkout-draft-code.service';
 
 export const DRAFT_PRICING_ADJUSTMENTS = 'DRAFT_PRICING_ADJUSTMENTS';
 
-export type PricingContext = {
-  codes: DraftCodeEntry[];
-};
+export type PricingContext = DraftCodes;
 
 export type PricingLineCents = {
   key: string;

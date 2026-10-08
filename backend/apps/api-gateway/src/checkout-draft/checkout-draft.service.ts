@@ -123,10 +123,9 @@ export class CheckoutDraftGatewayService {
   async removeDraftCode(
     draftId: string,
     code: string,
-    type: string,
     clientId: string,
   ) {
-    return this.forward('delete', `/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`, clientId, `remove a code from checkout draft ${draftId}`, { params: { type } });
+    return this.forward('delete', `/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`, clientId, `remove a code from checkout draft ${draftId}`);
   }
 
   async duplicateDraftPhase(

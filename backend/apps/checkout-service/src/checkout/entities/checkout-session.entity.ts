@@ -10,7 +10,6 @@ export type PaymentMethod = 'card' | 'ach' | 'wire' | 'klarna';
 export type PaymentStatus =
   'pending' | 'success' | 'failed' | 'cancelled' | 'refunded' | 'expired';
 export type AppliedGiftCard = { code: string; amountUsed: number };
-export type AppliedPromo = { code: string; discountAmount: number };
 export type InstallmentPlan = 'full' | 'monthly' | 'biweekly';
 
 @Entity('sessions')
@@ -78,8 +77,8 @@ export class CheckoutSession {
   @Column({ type: 'jsonb', nullable: true })
   appliedGiftCards: AppliedGiftCard[] | null;
 
-  @Column({ type: 'jsonb', nullable: true })
-  appliedPromos: AppliedPromo[] | null;
+  @Column({ type: 'uuid', nullable: true })
+  appliedPromoCode: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

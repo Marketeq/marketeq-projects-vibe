@@ -171,14 +171,9 @@ export const CheckoutAPI = {
     data: { type: "gift_card" | "promo"; code: string }
   ) => AxiosRequest.post(`/v1/checkout/drafts/${draftId}/apply-code`, data),
 
-  RemoveDraftCode: (
-    draftId: string,
-    code: string,
-    type: "gift_card" | "promo"
-  ) =>
+  RemoveDraftCode: (draftId: string, code: string) =>
     AxiosRequest.del(
-      `/v1/checkout/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`,
-      { params: { type } }
+      `/v1/checkout/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`
     ),
 
   GetListingSummary: (listingId: string) =>

@@ -1,11 +1,25 @@
 import { CheckoutAPI } from "@/service/http/checkout"
 import { workingDaysToCalendarDays, workingDaysToWeeks } from "./working-days"
 
-export type CheckoutDraftCode = {
+export type CheckoutDraftCodeStatus =
+  | "valid"
+  | "expired"
+  | "used_up"
+  | "not_found"
+  | "unverified"
+
+export type CheckoutDraftGiftCard = {
   code: string
-  type: "gift_card" | "promo"
-  status: "valid" | "expired" | "used_up" | "not_found" | "unverified"
+  status: CheckoutDraftCodeStatus
   amount: number
+}
+
+export type CheckoutDraftPromoCode = {
+  code: string
+  status: CheckoutDraftCodeStatus
+  amount: number
+  discountType: "percent" | "fixed"
+  discountValue: number
 }
 
 export type CheckoutDraftSummary = {

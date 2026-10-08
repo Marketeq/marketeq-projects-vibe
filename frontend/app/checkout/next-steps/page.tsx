@@ -86,10 +86,7 @@ export default function NextStepsPage() {
   const { isAuthChecked, isLoading, user } = useAuth()
   const checkout = useCheckout()
   const slug = safeDecodeSlug(
-    checkout.slug ??
-      searchParams.get("listingId") ??
-      searchParams.get("username") ??
-      ""
+    checkout.slug ?? searchParams.get("username") ?? ""
   )
   const [loadState, setLoadState] = React.useState<LoadState>("loading")
   const [toastMessage, setToastMessage] = React.useState("")

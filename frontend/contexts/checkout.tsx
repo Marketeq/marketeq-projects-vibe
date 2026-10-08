@@ -7,12 +7,13 @@ import React, {
   useMemo,
   useState,
 } from "react"
-import { usePathname, useSearchParams } from "next/navigation"
+import { notFound, usePathname, useSearchParams } from "next/navigation"
 import { AlertCircle } from "@blend-metrics/icons"
 import {
   type CheckoutSession,
   getCheckoutSession,
 } from "@/lib/checkout/session"
+import { isCheckoutSessionAllowed } from "@/lib/checkout/step-access"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import {
   Alert,
@@ -38,16 +39,19 @@ const CheckoutContext = createContext<CheckoutContextValue>({
 
 type LoadState = {
   sessionId: string
-  status: "loading" | "ready" | "error"
+  status: "loading" | "ready" | "error" | "notFound"
   session: CheckoutSession | null
 }
 
 export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const sessionId = pathname.startsWith("/checkout/")
-    ? (searchParams.get("sessionId") ?? "")
-    : ""
+  const isListingStep = pathname.startsWith("/checkout/project-details")
+  const isSessionStep =
+    pathname.startsWith("/checkout/") &&
+    !isListingStep &&
+    !pathname.startsWith("/checkout/cancel")
+  const sessionId = isSessionStep ? (searchParams.get("sessionId") ?? "") : ""
   const [loadState, setLoadState] = useState<LoadState>({
     sessionId: "",
     status: "ready",
@@ -58,14 +62,19 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     if (!sessionId) return
     let isActive = true
     setLoadState({ sessionId, status: "loading", session: null })
-    getCheckoutSession(sessionId).then((session) => {
-      if (!isActive) return
-      setLoadState({
-        sessionId,
-        status: session ? "ready" : "error",
-        session,
+    getCheckoutSession(sessionId)
+      .then((session) => {
+        if (!isActive) return
+        setLoadState({
+          sessionId,
+          status: session ? "ready" : "notFound",
+          session,
+        })
       })
-    })
+      .catch(() => {
+        if (!isActive) return
+        setLoadState({ sessionId, status: "error", session: null })
+      })
     return () => {
       isActive = false
     }
@@ -81,6 +90,26 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     }),
     [sessionId, session]
   )
+
+  if (isListingStep && !(searchParams.get("listingId") ?? "").trim()) {
+    notFound()
+  }
+
+  if (isSessionStep && !sessionId) {
+    notFound()
+  }
+
+  if (
+    sessionId &&
+    loadState.sessionId === sessionId &&
+    loadState.status === "notFound"
+  ) {
+    notFound()
+  }
+
+  if (session && !isCheckoutSessionAllowed(pathname, session.status)) {
+    notFound()
+  }
 
   if (
     sessionId &&

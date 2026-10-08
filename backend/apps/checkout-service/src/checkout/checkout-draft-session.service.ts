@@ -14,7 +14,6 @@ import { CheckoutDraft } from './entities/checkout-draft.entity';
 import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity';
 import {
   AppliedGiftCard,
-  AppliedPromo,
   CheckoutSession,
 } from './entities/checkout-session.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
@@ -26,7 +25,7 @@ const toCents = (dollars: number) => Math.round(dollars * 100);
 
 type FrozenCodes = {
   appliedGiftCards: AppliedGiftCard[] | null;
-  appliedPromos: AppliedPromo[] | null;
+  appliedPromoCode: string | null;
 };
 
 @Injectable()
@@ -56,7 +55,7 @@ export class CheckoutDraftSessionService {
       contractId: session.contractId,
       totalAmount: Number(session.totalAmount),
       appliedGiftCards: session.appliedGiftCards ?? [],
-      appliedPromos: session.appliedPromos ?? [],
+      appliedPromoCode: session.appliedPromoCode,
     };
   }
 
@@ -105,7 +104,7 @@ export class CheckoutDraftSessionService {
     clientId: string,
     pricing: DraftPricing,
   ): Promise<string> {
-    const frozen = this.freezeCodes(pricing);
+    const frozen = this.freezeCodes(pricing, draft);
 
     if (draft.sessionId) {
       const existing = await manager.findOne(CheckoutSession, {
@@ -139,27 +138,27 @@ export class CheckoutDraftSessionService {
         totalAmount: pricing.total,
         status: 'pending',
         appliedGiftCards: frozen.appliedGiftCards,
-        appliedPromos: frozen.appliedPromos,
+        appliedPromoCode: frozen.appliedPromoCode,
       }),
     );
     await manager.update(CheckoutDraft, draft.id, { sessionId: created.id });
     return created.id;
   }
 
-  private freezeCodes(pricing: DraftPricing): FrozenCodes {
+  private freezeCodes(
+    pricing: DraftPricing,
+    draft: CheckoutDraft,
+  ): FrozenCodes {
     const detailsOf = (key: string) =>
       pricing.lines.find((line) => line.key === key)?.details ?? [];
     const giftCards = detailsOf('giftCards').map((detail) => ({
       code: detail.code,
       amountUsed: Math.abs(detail.amount),
     }));
-    const promos = detailsOf('promo').map((detail) => ({
-      code: detail.code,
-      discountAmount: Math.abs(detail.amount),
-    }));
     return {
       appliedGiftCards: giftCards.length > 0 ? giftCards : null,
-      appliedPromos: promos.length > 0 ? promos : null,
+      appliedPromoCode:
+        pricing.promoCode?.status === 'valid' ? draft.promoCode : null,
     };
   }
 
@@ -172,8 +171,7 @@ export class CheckoutDraftSessionService {
       toCents(Number(session.totalAmount)) === toCents(pricing.total) &&
       JSON.stringify(session.appliedGiftCards ?? null) ===
         JSON.stringify(frozen.appliedGiftCards) &&
-      JSON.stringify(session.appliedPromos ?? null) ===
-        JSON.stringify(frozen.appliedPromos)
+      (session.appliedPromoCode ?? null) === frozen.appliedPromoCode
     );
   }
 

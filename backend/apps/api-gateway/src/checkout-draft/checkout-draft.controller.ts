@@ -141,10 +141,9 @@ export class CheckoutDraftController {
   removeDraftCode(
     @Param('draftId') draftId: string,
     @Param('code') code: string,
-    @Query('type') type: string,
     @UserId() clientId: string,
   ) {
-    return this.checkoutDraftService.removeDraftCode(draftId, code, type, clientId);
+    return this.checkoutDraftService.removeDraftCode(draftId, code, clientId);
   }
 
   @Post('drafts/:draftId/phases/:phaseId/duplicate')

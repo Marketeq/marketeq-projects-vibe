@@ -235,14 +235,13 @@ export default function ConfirmationPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
   const checkout = useCheckout()
-  const slug =
-    (!isTalentCheckout && checkout.slug) ||
-    (searchParams.get(slugParamName) ?? "")
+  const slug = isTalentCheckout
+    ? (searchParams.get(slugParamName) ?? "")
+    : (checkout.slug ?? "")
   const listingQuery = `${slugParamName}=${encodeURIComponent(slug)}`
-  const slugQuery =
-    !isTalentCheckout && checkout.sessionId
-      ? `sessionId=${encodeURIComponent(checkout.sessionId)}`
-      : listingQuery
+  const slugQuery = isTalentCheckout
+    ? listingQuery
+    : `sessionId=${encodeURIComponent(checkout.sessionId)}`
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(

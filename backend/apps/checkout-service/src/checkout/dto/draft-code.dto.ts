@@ -27,8 +27,3 @@ export class ApplyDraftCodeDto {
   })
   code!: string;
 }
-
-export class RemoveDraftCodeQueryDto {
-  @IsIn(DRAFT_CODE_TYPES)
-  type!: DraftCodeType;
-}

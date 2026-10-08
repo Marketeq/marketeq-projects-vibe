@@ -5,6 +5,8 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { CheckoutSession } from './checkout/entities/checkout-session.entity';
 import { Wallet } from './checkout/entities/wallet.entity';
 import { GiftCard } from './checkout/entities/gift-card.entity';
+import { PromoCode } from './checkout/entities/promo-code.entity';
+import { PromoRedemption } from './checkout/entities/promo-redemption.entity';
 import { WalletTransaction } from './checkout/entities/wallet-transaction.entity';
 import { PaymentFailure } from './checkout/entities/payment-failure.entity';
 import { InstallmentPayment } from './checkout/entities/installment-payment.entity';
@@ -44,6 +46,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
         WalletTransaction, PaymentFailure, InstallmentPayment,
         SavedBankAccount, WireTransfer, StripeMetadata,
         CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
+        PromoCode, PromoRedemption,
       ],
       synchronize: false,
       extra: {
@@ -59,6 +62,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
       WalletTransaction, PaymentFailure, InstallmentPayment,
       SavedBankAccount, WireTransfer, StripeMetadata,
       CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
+      PromoCode, PromoRedemption,
     ]),
     ClientsModule.register(
       [

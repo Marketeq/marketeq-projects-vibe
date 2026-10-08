@@ -1,5 +1,8 @@
 import { CheckoutAPI } from "@/service/http/checkout"
-import type { CheckoutDraftCode } from "@/lib/checkout/draft-summary"
+import type {
+  CheckoutDraftGiftCard,
+  CheckoutDraftPromoCode,
+} from "@/lib/checkout/draft-summary"
 
 export type CheckoutPricingLine = {
   key: string
@@ -15,7 +18,8 @@ export type CheckoutDraftPricing = {
   discountTotal: number
   giftCardAppliedTotal: number
   total: number
-  codes: CheckoutDraftCode[]
+  giftCards: CheckoutDraftGiftCard[]
+  promoCode: CheckoutDraftPromoCode | null
 }
 
 export const getCheckoutDraftPricing = async (
@@ -38,7 +42,8 @@ export const getCheckoutDraftPricing = async (
       discountTotal: Number(data.discountTotal) || 0,
       giftCardAppliedTotal: Number(data.giftCardAppliedTotal) || 0,
       total: data.total,
-      codes: Array.isArray(data.codes) ? data.codes : [],
+      giftCards: Array.isArray(data.giftCards) ? data.giftCards : [],
+      promoCode: data.promoCode ?? null,
     }
   } catch {
     return null

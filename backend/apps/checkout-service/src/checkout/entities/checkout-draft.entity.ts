@@ -38,8 +38,8 @@ export class CheckoutDraft {
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   giftCardCodes: string[];
 
-  @Column({ type: 'text', array: true, default: () => "'{}'" })
-  promoCodes: string[];
+  @Column({ type: 'uuid', nullable: true })
+  promoCode: string | null;
 
   @Index('IDX_drafts_sessionId')
   @Column({ type: 'uuid', nullable: true })

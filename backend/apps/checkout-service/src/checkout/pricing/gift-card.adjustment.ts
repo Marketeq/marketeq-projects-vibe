@@ -11,8 +11,8 @@ export class GiftCardAdjustment implements PricingAdjustment {
     let remainingCents = runningCents;
     const details: Array<{ code: string; amountCents: number }> = [];
 
-    for (const entry of context.codes) {
-      if (entry.type !== 'gift_card' || entry.status !== 'valid') continue;
+    for (const entry of context.giftCards) {
+      if (entry.status !== 'valid') continue;
       const usedCents = Math.min(
         Math.round(entry.amount * 100),
         remainingCents,
