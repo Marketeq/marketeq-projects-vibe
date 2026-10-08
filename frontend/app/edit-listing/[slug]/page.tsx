@@ -1166,10 +1166,10 @@ const Sidebar = ({
                         >
                           <span
                             className={cn(
-                              "text-sm leading-6",
+                              "text-sm leading-6 transition duration-300",
                               isSubActive
                                 ? "text-primary-500"
-                                : "text-gray-500"
+                                : "text-gray-500 hover:text-dark-blue-400"
                             )}
                           >
                             {field.label}
@@ -7451,7 +7451,7 @@ const OpenRolesContent = () => {
                                 {role}
                               </Badge>
                             ))}
-                            <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500">
+                            <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
                               + 8 more
                             </span>
                           </div>
@@ -7495,7 +7495,7 @@ const OpenRolesContent = () => {
                         </span>
                       </div>
                     ))}
-                    <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800">
+                    <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800 cursor-pointer transition duration-300 hover:opacity-100">
                       + 26 more
                     </span>
                   </div>
