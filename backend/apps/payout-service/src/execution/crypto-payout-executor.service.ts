@@ -19,6 +19,8 @@ import { ConversionService } from '../crypto/conversion.service';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutError } from '../common/errors/payout.error';
+import { ChainalysisService } from './chainalysis.service';
+import { KycClient } from '../common/kyc.client';
 
 // PS-12 §9.1: OFAC blocked countries (same as PS-07)
 const OFAC_BLOCKED_COUNTRIES = ['CU', 'IR', 'KP', 'SD', 'SY',
@@ -42,6 +44,8 @@ export class CryptoPayoutExecutorService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly chainalysis: ChainalysisService,
+    private readonly kycClient: KycClient,
   ) {}
 
   /**
@@ -218,10 +222,42 @@ export class CryptoPayoutExecutorService {
     // PS-12 §6: Minimum amount check
     this.minimumService.validateMinimum(parseFloat(payout.netAmountUsd), method.cryptoCurrency!, method.cryptoNetwork!);
 
-    // PS-12 §9.1: OFAC double-check at execution
-    // In production, also screen wallet address via Chainalysis API
-    // For v1: country-based OFAC check only
-    this.logger.log(`OFAC check for contractor ${payout.contractorId} (v1: country-based only)`);
+    // PS-12 §9.1: OFAC double-check at execution. OFAC_BLOCKED_COUNTRIES
+    // above existed but was never actually checked against anything — this
+    // was a log line, not a control. Country check is feature-flagged the
+    // same way as PS-35's biometric gate: kyc-identity-service's gate-status
+    // response has no contractorCountry field yet (confirmed), so a
+    // FEATURE_CRYPTO_OFAC_COUNTRY_CHECK_ENABLED default of false keeps this
+    // dormant rather than blocking every crypto payout the moment
+    // ofacFlagged/contractorCountry both read undefined.
+    if (this.config.get('FEATURE_CRYPTO_OFAC_COUNTRY_CHECK_ENABLED', 'false') === 'true') {
+      const kyc = await this.kycClient.getStatus(payout.contractorId);
+      const country = (kyc as any).contractorCountry as string | undefined;
+      if (country && OFAC_BLOCKED_COUNTRIES.includes(country.toUpperCase())) {
+        throw new PayoutError(
+          'This payout cannot be processed due to regulatory restrictions.',
+          HttpStatus.FORBIDDEN, 'ERR_PAYOUT_OFAC_BLOCKED',
+        );
+      }
+    }
+
+    // Chainalysis wallet-address screening — real data (method.cryptoAddress)
+    // is always available here, unlike the country check above, so this
+    // runs whenever Chainalysis is configured rather than behind a feature
+    // flag; ChainalysisService itself fails closed (503) if unconfigured or
+    // unreachable, per the same "never fail open" reasoning as PS-35 §8.
+    if (this.chainalysis.isConfigured()) {
+      const screening = await this.chainalysis.screenAddress(method.cryptoAddress!);
+      if (screening.blocked) {
+        this.logger.warn(`Chainalysis blocked payout ${payout.id}: ${method.cryptoAddress} matched ${screening.matchedCategory}`);
+        throw new PayoutError(
+          'This payout cannot be processed due to regulatory restrictions.',
+          HttpStatus.FORBIDDEN, 'ERR_PAYOUT_OFAC_BLOCKED',
+        );
+      }
+    } else {
+      this.logger.warn(`Chainalysis not configured — wallet screening skipped for payout ${payout.id}`);
+    }
   }
 
   // ─── Fail payout ──────────────────────────────────────────

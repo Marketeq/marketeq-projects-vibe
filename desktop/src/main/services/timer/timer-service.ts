@@ -15,9 +15,10 @@
 //   4. Computes elapsed time monotonically using process.hrtime.bigint() for
 //      safety against wall-clock skew, while still using Date.now() for
 //      persisted timestamps.
-//   5. Survives app restart: restoreFromDb() reads the latest open session
-//      and re-hydrates the FSM into `Paused` (never directly Running — the
-//      user must explicitly resume so we don't silently bill).
+//   5. Survives app restart: restoreFromDb() closes every session left open
+//      by an unclean shutdown (crash / force-kill) and leaves the FSM Idle —
+//      it never re-hydrates a session into Running or Paused, so a restart
+//      can't silently keep billing or resume capture for stale state.
 //   6. Enforces business rules from doc 22 (max session 14h, max break 4h,
 //      paid-break allowance).
 //
@@ -55,9 +56,9 @@ import type {
 // -----------------------------------------------------------------------------
 
 const MAX_SESSION_SEC = 14 * 60 * 60; // 14 hours
+/** How often (seconds) a Running session persists its billable total. */
+const CHECKPOINT_EVERY_SEC = 15;
 const MAX_BREAK_SEC = 4 * 60 * 60; // 4 hours
-/** Sessions older than this on crash recovery are force-stopped (doc 05 CRASH.01). */
-const CRASH_RECOVERY_CUTOFF_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 // -----------------------------------------------------------------------------
 // IPC channel names — exported so the preload + renderer can reference them.
@@ -210,6 +211,24 @@ export function createTimerService(deps: TimerServiceDeps) {
 
   // --------- tick loop (1 Hz while Running) ---------------------------------
   let tickHandle: NodeJS.Timeout | null = null;
+  let ticksSinceCheckpoint = 0;
+
+  // Persist billable-so-far to the session row. On a crash / force-kill the
+  // next boot's recovery sweep closes the session at this checkpoint, so at
+  // most CHECKPOINT_EVERY_SEC of tracked work can be lost — never the whole
+  // session, and never the dead time while the app was closed.
+  function checkpointSession() {
+    if (!activeSessionId) return;
+    try {
+      repos.session.checkpoint({
+        id: activeSessionId,
+        billableSeconds: totalBillableSec(),
+        at: Date.now(),
+      });
+    } catch (err) {
+      logger.warn({ err, sessionId: activeSessionId }, 'session checkpoint failed');
+    }
+  }
 
   function startTickLoop() {
     if (tickHandle) return;
@@ -221,6 +240,11 @@ export function createTimerService(deps: TimerServiceDeps) {
         runningSec: snap.runningSec,
         state: snap.state,
       });
+      ticksSinceCheckpoint += 1;
+      if (ticksSinceCheckpoint >= CHECKPOINT_EVERY_SEC) {
+        ticksSinceCheckpoint = 0;
+        checkpointSession();
+      }
       // Enforce max session duration (doc 22).
       if (snap.elapsedSec >= MAX_SESSION_SEC) {
         logger.warn({ sessionId: activeSessionId }, 'max session duration reached — auto-stopping');
@@ -474,6 +498,10 @@ export function createTimerService(deps: TimerServiceDeps) {
       runningStartedHr = null;
       runningStartedAt = null;
       stopTickLoop();
+      ticksSinceCheckpoint = 0;
+      // Paused / on break / idle: record the frozen total now, so a crash
+      // while not Running still recovers every second worked so far.
+      checkpointSession();
     }
 
     // Break reminders.
@@ -637,6 +665,18 @@ export function createTimerService(deps: TimerServiceDeps) {
     taskId: string;
     description?: string;
   }): Promise<TimerSnapshot> {
+    // A real, mirrored task must exist before a session can open — never a raw
+    // contract id or a synthetic placeholder. Guard here, before any FSM
+    // dispatch, so a bad id leaves the machine in Idle rather than advancing to
+    // Running with no session row (see startBreak's allowance guard below).
+    if (!repos.task.findById(input.taskId)) {
+      logger.warn(
+        { contractId: input.contractId, taskId: input.taskId },
+        'timer start refused: task not mirrored locally',
+      );
+      emitError('DTT-ERR-TIMER.03', 'selected task not found');
+      return snapshot();
+    }
     await safeDispatch({
       type: 'PICK_CONTRACT',
       contractId: input.contractId,
@@ -699,71 +739,36 @@ export function createTimerService(deps: TimerServiceDeps) {
   }
 
   // ---------------------------------------------------------------------------
-  // Restart recovery (doc 20 §"Recovery on restart")
+  // Restart recovery (doc 01 §18, doc 05 DTT-EDGE-CRASH.*)
   // ---------------------------------------------------------------------------
 
-  function restoreFromDb(): TimerSnapshot {
-    const userId = deps.getUserId?.() ?? repos.user.findFirst()?.id ?? null;
-    if (!userId) return snapshot();
-    const open = repos.session.findActive(userId);
-    if (!open) return snapshot();
-
-    // Phase 8: crash recovery cutoff — if the session is older than the
-    // threshold, force-stop it rather than resuming (doc 05 DTT-EDGE-CRASH.01).
-    const sessionAge = Date.now() - open.started_at;
-    if (sessionAge > CRASH_RECOVERY_CUTOFF_MS) {
+  function restoreFromDb() {
+    // After an unclean restart, never silently resume or bill (doc 01 §18,
+    // doc 20). A graceful quit closes the session via APP_QUIT; anything still
+    // open here is a crash / force-kill leftover. Close every one of them and
+    // leave the FSM Idle so the user can start fresh. Rows, time entries and
+    // screenshots are kept — only ended_at/end_reason are set. The
+    // Recover/Discard prompt (DTT Epic W) is separate feature work.
+    const rows = repos.session.closeAllOpen({
+      endedAt: Date.now(),
+      reason: 'crash_recover',
+    });
+    if (rows.length > 0) {
       logger.warn(
-        { sessionId: open.id, ageHours: Math.round(sessionAge / 3600000) },
-        'stale session found during crash recovery — force-stopping',
+        { count: rows.length },
+        'crash recovery: swept orphaned open session(s)',
       );
-      repos.session.closeActive({
-        id: open.id,
-        endedAt: Date.now(),
-        reason: 'crash_recover',
-        billableSeconds: open.billable_seconds,
-      });
       emit(TIMER_CHANNELS.error, {
         code: 'DTT-ERR-SYS.03',
-        message: 'A stale session was recovered and closed after an unexpected restart.',
+        message:
+          `Recovered from an unexpected restart — ${rows.length} unfinished ` +
+          `session(s) were closed. Start the timer again to continue tracking.`,
       });
-      return snapshot();
     }
-
-    // Rehydrate into Paused, not Running — doc 20 never silently bills the
-    // user after a crash. The renderer will show "Resume" and let the user
-    // confirm.
-    logger.info({ sessionId: open.id }, 'restoring open session into Paused');
-    activeSessionId = open.id as SessionId;
-    pickedContract = {
-      contractId: open.contract_id as ContractId,
-      taskId: open.task_id as TaskId,
+    return {
+      snapshot: snapshot(),
+      closed: rows,
     };
-    sessionStartedAt = open.started_at;
-    accumulatedRunningSec = open.billable_seconds;
-    // Drive the machine: Idle -> Counting -> Running -> Paused.
-    machine.send(
-      { type: 'PICK_CONTRACT', contractId: open.contract_id, taskId: open.task_id },
-      ctx(),
-    );
-    // Can't use our dispatchInternal because that re-opens a session row.
-    // Simulate by directly updating FSM to Running then Paused without effects.
-    // We use the raw transition() sequence, bypassing open_session handler.
-    const afterStart = transition('Counting', { type: 'START' }, ctx());
-    // skip the open_session effect — it's already in DB
-    for (const eff of afterStart.effects) {
-      if (eff.kind === 'audit') {
-        writeAudit(db, {
-          from: eff.from,
-          to: eff.to,
-          event: eff.event,
-          sessionId: activeSessionId,
-        });
-      }
-    }
-    machine.send({ type: 'START' }, ctx());
-    // Now pause.
-    dispatchInternal({ type: 'PAUSE' });
-    return snapshot();
   }
 
   // ---------------------------------------------------------------------------

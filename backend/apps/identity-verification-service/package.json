@@ -1,0 +1,27 @@
+{
+  "name": "@marketeq/identity-verification-service",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "nest build identity-verification-service",
+    "start": "node dist/apps/identity-verification-service/main",
+    "start:dev": "nest start identity-verification-service --watch",
+    "start:prod": "node dist/apps/identity-verification-service/main"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.913.0",
+    "@aws-sdk/s3-request-presigner": "^3.913.0",
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/microservices": "^10.0.0",
+    "@nestjs/platform-express": "^10.4.22",
+    "@nestjs/schedule": "^4.1.2",
+    "@nestjs/typeorm": "^10.0.0",
+    "amqplib": "^0.10.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.0",
+    "typeorm": "^0.3.26"
+  }
+}

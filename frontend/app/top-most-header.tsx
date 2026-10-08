@@ -98,6 +98,10 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
 
@@ -836,7 +840,7 @@ const Notifications = () => {
       return
     }
 
-    if (item.href) {
+    if (item.href && item.href !== "/notifications") {
       setOpen(false)
       router.push(item.href)
       return
@@ -848,10 +852,43 @@ const Notifications = () => {
     router.push(`/inbox?threadId=${thread.id}`)
   }
 
+  const getThreadOfferNotification = (thread: InboxThreadSummary) => {
+    if (thread.lastMessagePreview !== "No messages yet") return undefined
+
+    const otherParticipantId = thread.participantIds?.find(
+      (participantId) => participantId !== user?.id
+    )
+
+    return allNotifications.find((item) => {
+      if (!item.isOfferNotification) return false
+
+      const metadata = item.metadata
+      const notificationThreadId =
+        readMetadataString(metadata, "threadId") ||
+        readMetadataString(metadata, "messageThreadId")
+      if (notificationThreadId === thread.id) return true
+
+      if (!otherParticipantId) return false
+      return [
+        "actorId",
+        "senderId",
+        "senderUserId",
+        "submittedById",
+        "acceptedById",
+        "declinedById",
+        "withdrawnById",
+        "clientId",
+        "talentId",
+      ].some((key) => readMetadataString(metadata, key) === otherParticipantId)
+    })
+  }
+
   const renderInboxThreadItem = (thread: InboxThreadSummary) => {
+    const offerNotification = getThreadOfferNotification(thread)
     const timeLabel = thread.lastMessageAt
       ? formatNotificationTime(thread.lastMessageAt)
-      : ""
+      : offerNotification?.timeLabel || ""
+    const preview = offerNotification?.description ?? thread.lastMessagePreview
     return (
       <button
         key={thread.id}
@@ -900,7 +937,7 @@ const Notifications = () => {
                 : "text-gray-700"
             )}
           >
-            {thread.lastMessagePreview}
+            {preview}
           </div>
         </div>
       </button>
@@ -1013,7 +1050,7 @@ const Notifications = () => {
             {item.description}
           </div>
           {item.ctaLabel ? (
-            <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline underline-offset-2">
+            <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 underline-offset-2">
               {item.ctaLabel}
             </div>
           ) : null}
@@ -1025,25 +1062,34 @@ const Notifications = () => {
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <div className="relative inline-flex">
-            <IconButton
-              className="rounded-full"
-              size="md"
-              variant="ghost"
-              visual="gray"
-            >
-              <Bell className="size-[18px]" />
-            </IconButton>
-            {unreadBadgeCount + inboxTotalUnread > 0 ? (
-              <span className="absolute top-0 right-0 pointer-events-none inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-error-100 px-2 text-[10px] font-bold leading-[18px] text-error-500">
-                {unreadBadgeCount + inboxTotalUnread > 99
-                  ? "99+"
-                  : unreadBadgeCount + inboxTotalUnread}
-              </span>
-            ) : null}
-          </div>
-        </PopoverTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverTrigger asChild>
+              <div className="relative inline-flex">
+                <IconButton
+                  className="rounded-full"
+                  size="md"
+                  variant="ghost"
+                  visual="gray"
+                >
+                  <Bell className="size-[18px]" />
+                </IconButton>
+                {unreadBadgeCount + inboxTotalUnread > 0 ? (
+                  <span className="absolute top-0 right-0 pointer-events-none inline-flex h-[22px] min-w-[22px] items-center justify-center rounded-full bg-error-100 px-2 text-[10px] font-bold leading-[18px] text-error-500">
+                    {unreadBadgeCount + inboxTotalUnread > 99
+                      ? "99+"
+                      : unreadBadgeCount + inboxTotalUnread}
+                  </span>
+                ) : null}
+              </div>
+            </PopoverTrigger>
+          </TooltipTrigger>
+          {!open && (
+            <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+              Notifications
+            </TooltipContent>
+          )}
+        </Tooltip>
         <PopoverContent
           className="w-[370px] bg-white border border-gray-100 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)]"
           align="end"
@@ -1057,15 +1103,19 @@ const Notifications = () => {
             <TabsList className="w-full">
               <TabsTrigger value="Notifications">
                 Notifications
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {panelTabCount}
-                </span>
+                {panelTabCount > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {panelTabCount}
+                  </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="Messages">
                 Messages
-                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
-                  {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
-                </span>
+                {inboxTotalUnread > 0 && (
+                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gray-100 text-[10px] leading-[18px] text-gray-500 group-data-[state=active]:bg-primary-50 group-data-[state=active]:text-primary-500">
+                    {inboxTotalUnread > 99 ? "99+" : inboxTotalUnread}
+                  </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
@@ -1129,7 +1179,7 @@ const Notifications = () => {
                           </div>
                         )
                       }
-                      return inboxThreads.slice(0, 8).map(renderInboxThreadItem)
+                      return inboxThreads.filter(t => t.lastMessageAt).slice(0, 8).map(renderInboxThreadItem)
                     })()}
                   </div>
                 </ScrollArea>
@@ -1649,6 +1699,7 @@ const PATHNAMES = [
 const HAS_SIDEBAR_NAV = [
   "/talent-dashboard",
   "/client-dashboard",
+  "/client-stats",
   "/inbox",
   "/earnings",
   "/my-teams",
@@ -1662,6 +1713,8 @@ const HAS_SIDEBAR_NAV = [
   "/notifications",
   "/complete-profile",
   "/settings",
+  "/active-project",
+  "/billing",
 ]
 
 // Pages that have a secondary nav bar below the primary nav — shadow should only appear on the secondary nav, not the primary
@@ -1737,7 +1790,9 @@ export const TopMostHeader = ({
 
   // Show shadow: always on pages without secondary nav, or when secondary nav is hidden (scrolled away)
   const showNavShadow = !hasSecondaryNav || secondaryNavHidden
-  const hasSidebarNav = HAS_SIDEBAR_NAV.includes(pathname)
+  const hasSidebarNav = HAS_SIDEBAR_NAV.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  )
 
   return (
     <div
@@ -1760,45 +1815,62 @@ export const TopMostHeader = ({
         <div className="flex flex-auto gap-x-3 xs:max-lg:ml-3 xs:max-md:hidden">
           <SearchBar />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                className="gap-x-2 xs:max-lg:h-[34px] xs:max-lg:px-[12.6px] xs:max-lg:py-[7.2px] bg-white"
-                visual="gray"
-                variant="outlined"
-                size="md"
-              >
-                <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
-                  <span className="font-semibold">$ 1,540</span> USD
-                </span>
-                <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-[174px]">
-              <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
-                <Plus className="size-4" /> Add Funds
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
-                <Repeat className="size-4" /> Transfer Funds
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <TooltipProvider delayDuration={0}>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      className="gap-x-2 xs:max-lg:h-[34px] xs:max-lg:px-[12.6px] xs:max-lg:py-[7.2px] bg-white"
+                      visual="gray"
+                      variant="outlined"
+                      size="md"
+                    >
+                      <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
+                        <span className="font-semibold">$ 1,540</span> USD
+                      </span>
+                      <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+                  My Balance
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent className="w-[174px]">
+                <DropdownMenuItem onSelect={() => router.push("/add-funds")}>
+                  <Plus className="size-4" /> Add Funds
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push("/transfer-funds")}>
+                  <Repeat className="size-4" /> Transfer Funds
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TooltipProvider>
         </div>
 
         <div className="flex items-center">
           {user ? (
             <>
+              <TooltipProvider delayDuration={0}>
               <div className="flex items-center gap-x-1">
-                <InviteWindowTrigger asChild>
-                  <IconButton
-                    className="rounded-full"
-                    size="md"
-                    variant="ghost"
-                    visual="gray"
-                  >
-                    <Plus className="size-[18px]" />
-                  </IconButton>
-                </InviteWindowTrigger>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <InviteWindowTrigger asChild>
+                      <IconButton
+                        className="rounded-full"
+                        size="md"
+                        variant="ghost"
+                        visual="gray"
+                      >
+                        <Plus className="size-[18px]" />
+                      </IconButton>
+                    </InviteWindowTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={8} className="text-xs font-medium">
+                    Invite
+                  </TooltipContent>
+                </Tooltip>
                 <Notifications />
                 <IconButton
                   className="rounded-full lg:hidden"
@@ -1809,6 +1881,7 @@ export const TopMostHeader = ({
                   <ThreeHorizontalLines className="text-dark-blue-400" />
                 </IconButton>
               </div>
+              </TooltipProvider>
 
               <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger className="hidden lg:inline-flex items-center gap-x-2 px-3 py-1.5 rounded-[8px] hover:bg-gray-100 focus-visible:outline-none">

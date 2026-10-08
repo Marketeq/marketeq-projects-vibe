@@ -15,6 +15,9 @@ import type {
   AuthStatusChangedPayload,
   BackendContract,
   BackendTask,
+  CreateTaskInput,
+  CreateManualTimeInput,
+  CreateManualTimeResult,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -40,6 +43,7 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
+  TodayStatsDTO,
   UpdaterProgressInfo,
   UpdaterStatusDTO,
 } from '../shared/ipc-contracts';
@@ -280,6 +284,18 @@ const dtt = {
       ipcRenderer.invoke(IPC.contractsGetMine),
     getTasks: (contractId: string): Promise<BackendTask[]> =>
       ipcRenderer.invoke(IPC.contractsGetTasks, contractId),
+    createTask: (input: CreateTaskInput): Promise<BackendTask> =>
+      ipcRenderer.invoke(IPC.contractsCreateTask, input),
+  },
+
+  manualTime: {
+    create: (input: CreateManualTimeInput): Promise<CreateManualTimeResult> =>
+      ipcRenderer.invoke(IPC.manualTimeCreate, input),
+  },
+
+  stats: {
+    getToday: async (): Promise<TodayStatsDTO> =>
+      unwrapIpcResult<TodayStatsDTO>(await ipcRenderer.invoke(IPC.statsGetToday)),
   },
 
   sync: {

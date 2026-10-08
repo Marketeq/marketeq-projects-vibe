@@ -25,6 +25,7 @@ import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
+import PrivacySettings from "@/components/privacy-settings"
 import SecuritySettingsStepper from "@/components/security-settings"
 import { SettingsTaxInfo } from "@/components/settings-tax-info"
 import SettingsSidebar, {
@@ -81,6 +82,8 @@ import {
   X,
   X2,
   XCircle,
+  FilterLines,
+  ArrowRight,
 } from "@blend-metrics/icons"
 import {
   DropdownMenu,
@@ -154,9 +157,29 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
   useToast,
 } from "@/components/ui"
 
+
+// ── Integrations discover data ─────────────────────────────────────
+const INTEGRATIONS = [
+  { name: "Jira", description: "Track issues and manage agile projects with Jira integration.", tagline: "Track issues, boards, and sprints within Jira", color: "#2684FF", connected: true },
+  { name: "Asana", description: "Organize tasks and projects with your Asana workspace.", tagline: "Organize tasks and projects with Asana", color: "#F06A6A", connected: true },
+  { name: "Trello", description: "Manage boards, lists and cards from your Trello account.", tagline: "Manage boards, lists, and cards from Trello", color: "#0079BF", connected: true },
+  { name: "Slack", description: "Get real-time notifications and updates in your Slack channels.", tagline: "Get notifications, tasks, and slash commands within Slack", color: "#4A154B", connected: false },
+  { name: "Monday.com", description: "Sync workflows and track progress with Monday.com.", tagline: "Sync workflows and track progress with Monday.com", color: "#FF3D57", connected: false },
+  { name: "Notion", description: "Connect your Notion workspace for docs and knowledge base.", tagline: "Connect your Notion workspace for docs and wikis", color: "#000000", connected: false },
+  { name: "Wrike", description: "Collaborate on projects and tasks with Wrike integration.", tagline: "Collaborate on projects and tasks with Wrike", color: "#08CF65", connected: true },
+  { name: "Smartsheet", description: "Automate workflows and manage projects in Smartsheet.", tagline: "Automate workflows and manage projects in Smartsheet", color: "#0073EA", connected: false },
+  { name: "Airtable", description: "Connect your Airtable bases for flexible data management.", tagline: "Connect your Airtable bases for flexible data management", color: "#18BFFF", connected: false },
+  { name: "Basecamp", description: "Keep your team on the same page with Basecamp projects.", tagline: "Keep your team on the same page with Basecamp", color: "#1D2D35", connected: false },
+  { name: "Teamwork", description: "Manage client work and team collaboration with Teamwork.", tagline: "Manage client work and team collaboration with Teamwork", color: "#4461D7", connected: false },
+  { name: "Planview", description: "Enterprise-grade portfolio and resource management.", tagline: "Enterprise-grade portfolio and resource management", color: "#002D72", connected: false },
+] as const
 
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
@@ -202,6 +225,10 @@ export default function SettingsPage() {
   const routeTab = Array.isArray(segments) ? segments[0] : segments
   const tabParam = routeTab ?? searchParams.get("tab")
   const [activeTab, setActiveTab] = useState(tabParam || "personal-info")
+  const [selectedIntegration, setSelectedIntegration] = useState<(typeof INTEGRATIONS)[number] | null>(null)
+  const [detailTab, setDetailTab] = useState<"overview" | "settings">("overview")
+  const [uninstallDialogOpen, setUninstallDialogOpen] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
   useEffect(() => {
     if (tabParam) setActiveTab(tabParam)
@@ -2264,17 +2291,34 @@ export default function SettingsPage() {
               )}
 
               {activeTab === "privacy" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Privacy
-                </h1>
+                <>
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Privacy
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Control your profile visibility, contact preferences, and data settings.
+                    </p>
+                  </div>
+                  <div className="mt-6">
+                    <PrivacySettings />
+                  </div>
+                </>
               )}
 
               {activeTab === "notifications" && (
                 <>
-                  <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400 mb-6">
-                    Notifications
-                  </h1>
-                  <NotificationPreferences />
+                  <div className="flex w-[658px] flex-col items-start gap-3">
+                    <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                      Notifications
+                    </h1>
+                    <p className="w-full text-sm text-gray-500">
+                      Manage how and when you receive alerts and updates.
+                    </p>
+                  </div>
+                  <div className="mt-6">
+                    <NotificationPreferences />
+                  </div>
                 </>
               )}
 
@@ -4872,16 +4916,720 @@ export default function SettingsPage() {
                 </>
               )}
 
-              {activeTab === "integrations" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  Integrations
-                </h1>
+              {activeTab === "integrations" && !selectedIntegration && (
+                <>
+                  <div className="flex items-start justify-between gap-5">
+                    <div className="flex flex-col gap-3">
+                      <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                        Discover
+                      </h1>
+                      <p className="text-sm text-gray-500">
+                        Connect your favorite tools and apps to your account.
+                      </p>
+                    </div>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      className="group text-primary-500 font-semibold text-base shrink-0 gap-2"
+                      onClick={() => goToTab("my-apps")}
+                    >
+                      My Apps ({INTEGRATIONS.filter((i) => i.connected).length})
+                      <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-5 w-full rounded-lg border border-gray-200 overflow-hidden h-[186px] bg-gradient-to-r from-[#1a2744] via-[#2d4a7c] to-[#1a2744] flex items-center justify-center">
+                    <div className="flex gap-3 items-end">
+                      <div className="size-12 rounded-lg bg-[#00C2FF] opacity-80" />
+                      <div className="size-16 rounded-lg bg-[#00D4AA] opacity-80" />
+                      <div className="size-14 rounded-xl bg-[#FF6B35] opacity-80" />
+                      <div className="size-12 rounded-lg bg-[#FFB800] opacity-80" />
+                      <div className="size-10 rounded-full bg-[#00E676] opacity-80" />
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between gap-5">
+                    <InputGroup className="group/search w-[500px]">
+                      <InputLeftElement>
+                        <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+                      </InputLeftElement>
+                      <Input
+                        placeholder="Find integrations, apps, and more"
+                        className="pl-9 transition-[border-color] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
+                      />
+                    </InputGroup>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          leftIcon={<FilterLines className="size-5" />}
+                          rightIcon={<ChevronDown className="size-[15px]" />}
+                        >
+                          Most Popular
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem>Most Popular</DropdownMenuItem>
+                        <DropdownMenuItem>Recently Added</DropdownMenuItem>
+                        <DropdownMenuItem>Alphabetical</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-4 gap-6">
+                    {INTEGRATIONS.map((integration) => (
+                      <div
+                        key={integration.name}
+                        className="rounded-lg border border-gray-200 bg-white p-5 flex flex-col gap-2.5 cursor-pointer hover:border-2 hover:border-gray-300 hover:p-[19px] transition-colors duration-200"
+                        onClick={() => {
+                          setSelectedIntegration(integration)
+                          setDetailTab(integration.connected ? "settings" : "overview")
+                          setDescriptionExpanded(false)
+                        }}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div
+                            className="size-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+                            style={{ backgroundColor: integration.color }}
+                          >
+                            {integration.name.charAt(0)}
+                          </div>
+                          {integration.connected && (
+                            <Badge visual="success" size="sm">
+                              Connected
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-sm font-bold text-dark-blue-400">
+                          {integration.name}
+                        </p>
+                        <p className="text-xs text-gray-500 leading-normal">
+                          {integration.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
+              {/* ── Integration detail view ─────────────────────────── */}
+              {activeTab === "integrations" && selectedIntegration && (
+                <>
+                  <div className="flex gap-16 items-start w-full">
+                    {/* Left column */}
+                    <div className="flex flex-col gap-6 flex-1 min-w-0">
+                      {/* Back link */}
+                      <Button
+                        className="group self-start"
+                        variant="link"
+                        visual="gray"
+                        onClick={() => {
+                          setSelectedIntegration(null)
+                          setDetailTab("overview")
+                        }}
+                      >
+                        <ArrowLeft className="size-[15px] transition duration-300 group-hover:-translate-x-[4px]" />{" "}
+                        Back to Discover
+                      </Button>
+
+                      {/* Logo + name + tagline */}
+                      <div className="flex gap-6 items-end">
+                        <div
+                          className="size-[60px] rounded-lg flex items-center justify-center text-white font-bold text-xl shrink-0"
+                          style={{ backgroundColor: selectedIntegration.color }}
+                        >
+                          {selectedIntegration.name.charAt(0)}
+                        </div>
+                        <div className="flex flex-col gap-3 flex-1">
+                          <h1 className="text-[26px] leading-6 font-bold capitalize text-dark-blue-400">
+                            {selectedIntegration.name}
+                          </h1>
+                          <p className="text-base text-gray-500">
+                            {selectedIntegration.tagline}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Screenshot placeholder */}
+                      <div className="w-full h-[420px] rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                        <p className="text-sm text-gray-400">App preview</p>
+                      </div>
+
+                      {/* Tabs: Overview / Settings (only when connected) */}
+                      {selectedIntegration.connected ? (
+                        <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as "overview" | "settings")}>
+                          <TabsList className="border-b-0 px-0 justify-start">
+                            <TabsTrigger value="overview">Overview</TabsTrigger>
+                            <TabsTrigger value="settings">Settings</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="overview" className="mt-6">
+                            {/* Overview content */}
+                            <div className="flex flex-col gap-6">
+                              {/* Description */}
+                              <div className="flex flex-col gap-1.5 p-2.5">
+                                <p className={`text-base text-dark-blue-400 ${!descriptionExpanded ? "line-clamp-3" : ""}`}>
+                                  Connect {selectedIntegration.name} to bring Marketeq activity into your workspace. Once connected, channel messages can link to matching contacts and companies, flagged messages can become tasks or notes, and you will get notifications when contracts and payments update, all without leaving your {selectedIntegration.name} workspace.
+                                </p>
+                                {!descriptionExpanded && (
+                                  <Button variant="link" visual="gray" className="text-sm font-medium text-dark-blue-400 p-0 h-auto justify-start" onClick={() => setDescriptionExpanded(true)}>
+                                    Read more
+                                  </Button>
+                                )}
+                                <p className="text-xs text-gray-600 mt-3 leading-normal">
+                                  *Note that any information provided by a third party application provider, including pricing and payment details as possible, is subject to change and should be verified with the provider.
+                                </p>
+                              </div>
+
+                              {/* Key Features */}
+                              <div className="p-2.5">
+                                <p className="text-base font-medium text-dark-blue-400 mb-2.5">Key Features:</p>
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Sync channel messages to contacts &amp; companies</li></ul>
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Get notified on new payments</li></ul>
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Create tasks &amp; notes from flagged messages</li></ul>
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Manage everything from one connected workspace</li></ul>
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Get notified on contract status changes</li></ul>
+                                  <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Disconnect or switch accounts anytime</li></ul>
+                                </div>
+                              </div>
+
+                              {/* Synced Data */}
+                              <div className="flex flex-col gap-2.5 px-2.5">
+                                <p className="text-base font-semibold text-dark-blue-400">Synced Data</p>
+                                <div className="flex flex-col gap-5 p-2.5">
+                                  {/* Logos row */}
+                                  <div className="flex items-center">
+                                    <div className="flex-1 flex justify-center">
+                                      <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                        <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                                      </div>
+                                    </div>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-5 text-gray-400" />
+                                    </div>
+                                    <div className="flex-1 flex justify-center">
+                                      <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                        <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {/* Channel message row */}
+                                  <div className="flex items-center">
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Channel message</p>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-4 text-gray-400" />
+                                    </div>
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
+                                  </div>
+                                  {/* Direct message row */}
+                                  <div className="flex items-center">
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Direct message</p>
+                                    <div className="w-10 flex justify-center">
+                                      <ArrowRight className="size-4 text-gray-400" />
+                                    </div>
+                                    <p className="flex-1 text-sm text-dark-blue-400 text-center">Tasks and Notes</p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Legal info */}
+                              <div className="flex flex-col gap-2.5 p-2.5">
+                                <p className="text-base font-semibold text-dark-blue-400">Legal info</p>
+                                <p className="text-base text-dark-blue-400">
+                                  You understand that when using this integration, it is up to you to comply with applicable laws and regulations, as well as Marketeq&apos;s{" "}
+                                  <Button variant="link" visual="gray" className="text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto text-base inline">AUP</Button>
+                                  {" "}and{" "}
+                                  <Button variant="link" visual="gray" className="text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto text-base inline">Terms</Button>
+                                </p>
+                              </div>
+                            </div>
+                          </TabsContent>
+
+                          <TabsContent value="settings" className="mt-3">
+                            {/* Settings content */}
+                            <div className="flex flex-col gap-3">
+                              {/* Connected account card */}
+                              <div className="rounded-lg border border-gray-200 bg-white flex items-center gap-5 px-6 py-5">
+                                <div className="size-[52px] rounded-full bg-gray-200 border-4 border-white shrink-0 flex items-center justify-center">
+                                  <User01 className="size-5 text-gray-400" />
+                                </div>
+                                <div className="flex flex-col gap-1 flex-1">
+                                  <p className="text-base text-dark-blue-400">Connected Account</p>
+                                  <p className="text-xs text-gray-500">user@example.com</p>
+                                </div>
+                                <Button
+                                  variant="outlined"
+                                  visual="gray"
+                                  size="sm"
+                                  className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                                  leftIcon={<Dot className="size-2.5 text-success-500 fill-success-500" />}
+                                >
+                                  Connected
+                                </Button>
+                              </div>
+
+                              {/* Syncing Data card */}
+                              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="bg-white border-b border-gray-200 flex items-center gap-4 px-6 py-5">
+                                  <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                                    <ArrowRight className="size-5 text-gray-500" />
+                                  </div>
+                                  <div className="flex flex-col gap-2.5">
+                                    <p className="text-xl font-medium text-dark-blue-400">Syncing Data</p>
+                                    <p className="text-base text-gray-600">When messages happen in {selectedIntegration.name}, choose what gets created or updated in Marketeq.</p>
+                                  </div>
+                                </div>
+                                <div className="bg-white border-b border-gray-200 flex items-center justify-between px-6 py-5">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-base text-dark-blue-400">Sync channel messages to contacts &amp; companies</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <InfoCircle className="size-4 text-gray-400" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Automatically sync channel messages</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <Switch defaultChecked />
+                                </div>
+                                <div className="bg-white border-b border-gray-200 flex items-center justify-between px-6 py-5">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-base text-dark-blue-400">Send notifications to {selectedIntegration.name}</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <InfoCircle className="size-4 text-gray-400" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Send Marketeq notifications to {selectedIntegration.name}</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <Switch defaultChecked />
+                                </div>
+                                <div className="bg-white flex items-center justify-between px-6 py-5">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-base text-dark-blue-400">Create tasks &amp; notes from channel messages</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <InfoCircle className="size-4 text-gray-400" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Automatically create tasks from messages</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <Switch defaultChecked />
+                                </div>
+                              </div>
+
+                              {/* Notifications card */}
+                              <div className="rounded-lg border border-gray-200 overflow-hidden">
+                                <div className="bg-white border-b border-gray-200 flex items-center gap-4 px-6 py-5">
+                                  <div className="size-10 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                                    <Mail01 className="size-5 text-gray-500" />
+                                  </div>
+                                  <div className="flex flex-col gap-2.5">
+                                    <p className="text-xl font-medium text-dark-blue-400">Notifications</p>
+                                    <p className="text-base text-gray-600">Automatically post to {selectedIntegration.name} when things change on Marketeq.</p>
+                                  </div>
+                                </div>
+                                <div className="bg-white border-b border-gray-200 flex items-center justify-between px-6 py-5">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-base text-dark-blue-400">Notify on contract status change</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <InfoCircle className="size-4 text-gray-400" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Get notified when contract status changes</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <Switch defaultChecked />
+                                </div>
+                                <div className="bg-white flex items-center justify-between px-6 py-5">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-base text-dark-blue-400">Notify on new payment received</p>
+                                    <TooltipProvider>
+                                      <Tooltip>
+                                        <TooltipTrigger>
+                                          <InfoCircle className="size-4 text-gray-400" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>Get notified on new payments</TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  </div>
+                                  <Switch defaultChecked />
+                                </div>
+                              </div>
+                            </div>
+                          </TabsContent>
+                        </Tabs>
+                      ) : (
+                        /* Not connected: show overview content directly, no tabs */
+                        <div className="flex flex-col gap-6 mt-6">
+                          {/* Description */}
+                          <div className="flex flex-col gap-1.5 p-2.5">
+                            <p className={`text-base text-dark-blue-400 ${!descriptionExpanded ? "line-clamp-3" : ""}`}>
+                              Connect {selectedIntegration.name} to bring Marketeq activity into your workspace. Once connected, channel messages can link to matching contacts and companies, flagged messages can become tasks or notes, and you will get notifications when contracts and payments update, all without leaving your {selectedIntegration.name} workspace.
+                            </p>
+                            {!descriptionExpanded && (
+                              <Button variant="link" visual="gray" className="text-sm font-medium text-dark-blue-400 p-0 h-auto justify-start" onClick={() => setDescriptionExpanded(true)}>
+                                Read more
+                              </Button>
+                            )}
+                            <p className="text-xs text-gray-600 mt-3 leading-normal">
+                              *Note that any information provided by a third party application provider, including pricing and payment details as possible, is subject to change and should be verified with the provider.
+                            </p>
+                          </div>
+
+                          {/* Key Features */}
+                          <div className="p-2.5">
+                            <p className="text-base font-medium text-dark-blue-400 mb-2.5">Key Features:</p>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2.5">
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Sync channel messages to contacts &amp; companies</li></ul>
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Get notified on new payments</li></ul>
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Create tasks &amp; notes from flagged messages</li></ul>
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Manage everything from one connected workspace</li></ul>
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Get notified on contract status changes</li></ul>
+                              <ul className="list-disc ml-6 text-base text-dark-blue-400"><li>Disconnect or switch accounts anytime</li></ul>
+                            </div>
+                          </div>
+
+                          {/* Synced Data */}
+                          <div className="flex flex-col gap-2.5 px-2.5">
+                            <p className="text-base font-semibold text-dark-blue-400">Synced Data</p>
+                            <div className="flex flex-col gap-5 p-2.5">
+                              {/* Logos row */}
+                              <div className="flex items-center">
+                                <div className="flex-1 flex justify-center">
+                                  <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                    <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: selectedIntegration.color }}>{selectedIntegration.name.charAt(0)}</div>
+                                  </div>
+                                </div>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-5 text-gray-400" />
+                                </div>
+                                <div className="flex-1 flex justify-center">
+                                  <div className="size-[50px] rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                    <span className="text-xs font-bold text-dark-blue-400">M</span>
+                                  </div>
+                                </div>
+                              </div>
+                              {/* Channel message row */}
+                              <div className="flex items-center">
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Channel message</p>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-4 text-gray-400" />
+                                </div>
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Contacts, Companies, Notifications, Tasks, Notes</p>
+                              </div>
+                              {/* Direct message row */}
+                              <div className="flex items-center">
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Direct message</p>
+                                <div className="w-10 flex justify-center">
+                                  <ArrowRight className="size-4 text-gray-400" />
+                                </div>
+                                <p className="flex-1 text-sm text-dark-blue-400 text-center">Tasks and Notes</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Legal info */}
+                          <div className="flex flex-col gap-2.5 p-2.5">
+                            <p className="text-base font-semibold text-dark-blue-400">Legal info</p>
+                            <p className="text-base text-dark-blue-400">
+                              You understand that when using this integration, it is up to you to comply with applicable laws and regulations, as well as Marketeq&apos;s{" "}
+                              <Button variant="link" visual="gray" className="text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto text-base inline">AUP</Button>
+                              {" "}and{" "}
+                              <Button variant="link" visual="gray" className="text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto text-base inline">Terms</Button>
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right sidebar */}
+                    <div className="flex flex-col gap-6 w-[300px] shrink-0 pt-5">
+                      {/* Install / Uninstall button */}
+                      {selectedIntegration.connected ? (
+                        <Button
+                          size="sm"
+                          className="w-fit"
+                          onClick={() => setUninstallDialogOpen(true)}
+                        >
+                          Uninstall
+                        </Button>
+                      ) : (
+                        <>
+                          <Button size="sm" className="w-fit">Install App</Button>
+                          <Button variant="link" visual="gray" className="text-sm text-gray-500 font-semibold gap-2 p-0 h-auto justify-start">
+                            Open setup guide
+                            <LinkExternal01 className="size-4" />
+                          </Button>
+                        </>
+                      )}
+
+                      {/* Installed on (only when connected) */}
+                      {selectedIntegration.connected && (
+                        <div className="flex flex-col gap-2.5">
+                          <p className="text-xl font-medium text-dark-blue-400">Installed on</p>
+                          <p className="text-base text-gray-600">July 5, 2026</p>
+                        </div>
+                      )}
+
+                      {/* Details / Price (only when not connected) */}
+                      {!selectedIntegration.connected && (
+                        <div className="flex flex-col gap-2.5">
+                          <p className="text-xl font-medium text-dark-blue-400">Details</p>
+                          <p className="text-base text-dark-blue-400">Price</p>
+                          <p className="text-xl font-semibold text-dark-blue-400">Free</p>
+                        </div>
+                      )}
+
+                      {/* Total Installs */}
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-base font-medium text-dark-blue-400">Total Installs</p>
+                        <p className="text-base text-gray-600">8.1K installs</p>
+                      </div>
+
+                      {/* Works with */}
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-base font-medium text-dark-blue-400">Works with</p>
+                        <p className="text-base text-gray-600">Maestro</p>
+                      </div>
+
+                      {/* Benefits */}
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-xl font-medium text-dark-blue-400">Benefits</p>
+                        <div className="flex flex-col gap-4">
+                          {["Popular with businesses in the US", "Use directly in Marketeq", "Works with latest themes"].map((benefit) => (
+                            <div key={benefit} className="flex items-start gap-2">
+                              <div className="size-5 rounded-full bg-primary-50 flex items-center justify-center shrink-0">
+                                <Check className="size-2.5 text-primary-500" />
+                              </div>
+                              <p className="text-base text-gray-600">{benefit}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Requirements */}
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-xl font-medium text-dark-blue-400">Requirements</p>
+                        <div className="flex flex-col gap-4">
+                          <p className="text-base text-gray-600">{selectedIntegration.name} Subscription</p>
+                          <Button variant="link" visual="gray" className="text-sm text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto justify-start">
+                            Free, Standard, or Plus plans
+                          </Button>
+                          <p className="text-base text-gray-600">Works with latest themes</p>
+                        </div>
+                      </div>
+
+                      {/* Website */}
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xl font-medium text-dark-blue-400">Website</p>
+                        <Button variant="link" visual="gray" className="text-sm text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto justify-start">
+                          {selectedIntegration.name} Inc.
+                        </Button>
+                      </div>
+
+                      {/* Helpful Links */}
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-xl font-medium text-dark-blue-400">Helpful Links</p>
+                        <p className="text-base text-gray-600">By using this service, you agree to our</p>
+                        <Button variant="link" visual="gray" className="text-sm text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto justify-start">
+                          Privacy policy
+                        </Button>
+                        <p className="text-base text-gray-600">App support provided by {selectedIntegration.name} Inc.</p>
+                        <Button variant="link" visual="gray" className="text-sm text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto justify-start">
+                          Get support
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* More apps like this */}
+                  <div className="flex flex-col gap-5 mt-5 p-2.5">
+                    <p className="text-base font-semibold text-dark-blue-400">More apps like this</p>
+                    <div className="grid grid-cols-3 gap-6">
+                      {INTEGRATIONS.filter((i) => i.name !== selectedIntegration.name).slice(0, 3).map((app) => (
+                        <div
+                          key={app.name}
+                          className="bg-gray-100 rounded-lg p-2.5 flex items-center gap-2.5 cursor-pointer hover:bg-gray-200 transition-colors duration-200"
+                          onClick={() => {
+                            setSelectedIntegration(app)
+                            setDetailTab(app.connected ? "settings" : "overview")
+                            setDescriptionExpanded(false)
+                            contentRef.current?.scrollTo({ top: 0 })
+                          }}
+                        >
+                          <div className="size-10 rounded-lg bg-white flex items-center justify-center shrink-0">
+                            <div className="size-6 rounded flex items-center justify-center text-white text-xs font-bold" style={{ backgroundColor: app.color }}>{app.name.charAt(0)}</div>
+                          </div>
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <p className="text-xs font-bold text-dark-blue-400 truncate">{app.name}: Project Management Tool</p>
+                            <p className="text-[10px] text-dark-blue-400">104K</p>
+                            <p className="text-[10px] text-dark-blue-400 truncate">{app.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      className="text-sm text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 p-0 h-auto justify-start"
+                      onClick={() => {
+                        setSelectedIntegration(null)
+                        setDetailTab("overview")
+                      }}
+                    >
+                      Explore more apps
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {/* Uninstall confirmation dialog */}
+              <Dialog open={uninstallDialogOpen} onOpenChange={setUninstallDialogOpen}>
+                <DialogOverlay />
+                <DialogContent className="max-w-[487px] p-14 flex flex-col items-center gap-8">
+                  <div className="flex flex-col items-center gap-5">
+                    <div className="size-12 rounded-full bg-warning-100 border-8 border-warning-50 flex items-center justify-center">
+                      <AlertTriangle className="size-6 text-warning-500" />
+                    </div>
+                    <div className="flex flex-col items-center gap-2 text-center">
+                      <DialogTitle className="text-lg font-semibold text-gray-900">
+                        Are you sure you want to Uninstall this app?
+                      </DialogTitle>
+                      <DialogDescription className="text-sm text-gray-500">
+                        You will no longer have this application in your apps.
+                      </DialogDescription>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outlined"
+                      visual="gray"
+                      size="sm"
+                      onClick={() => setUninstallDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      visual="error"
+                      onClick={() => {
+                        const name = selectedIntegration?.name
+                        setUninstallDialogOpen(false)
+                        setSelectedIntegration(null)
+                        setDetailTab("overview")
+                        toast({ title: `${name} has been uninstalled`, variant: "success" })
+                      }}
+                    >
+                      Uninstall
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               {activeTab === "my-apps" && (
-                <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
-                  My Apps
-                </h1>
+                <>
+                  <div className="flex items-start justify-between gap-5">
+                    <div className="flex flex-col gap-3">
+                      <h1 className="text-[26px] leading-6 font-semibold capitalize text-dark-blue-400">
+                        My Apps
+                      </h1>
+                      <p className="text-sm text-gray-500">
+                        Manage the apps connected to your account.
+                      </p>
+                    </div>
+                    <Button
+                      variant="link"
+                      visual="gray"
+                      className="group text-primary-500 font-semibold text-base shrink-0 gap-2"
+                      onClick={() => goToTab("integrations")}
+                    >
+                      Integrations ({INTEGRATIONS.length})
+                      <ArrowRight className="size-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+                    </Button>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between gap-5">
+                    <InputGroup className="group/search w-[500px]">
+                      <InputLeftElement>
+                        <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+                      </InputLeftElement>
+                      <Input
+                        placeholder="Find integrations, apps, and more"
+                        className="pl-9 transition-[border-color] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
+                      />
+                    </InputGroup>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="bg-white border-gray-300 shadow-xs rounded-[5px]"
+                          leftIcon={<FilterLines className="size-5" />}
+                          rightIcon={<ChevronDown className="size-[15px]" />}
+                        >
+                          Filter
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem>All Apps</DropdownMenuItem>
+                        <DropdownMenuItem>Connected</DropdownMenuItem>
+                        <DropdownMenuItem>Recently Added</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <div className="mt-5 flex flex-col gap-2.5">
+                    {INTEGRATIONS.filter((i) => i.connected).map((app) => (
+                      <div
+                        key={app.name}
+                        className="rounded-lg border border-gray-200 bg-white p-3 flex items-center gap-2.5 cursor-pointer hover:border-2 hover:border-gray-300 hover:p-[11px] transition-colors duration-200"
+                        onClick={() => {
+                          setSelectedIntegration(app)
+                          setDetailTab("settings")
+                          goToTab("integrations")
+                        }}
+                      >
+                        <div
+                          className="size-10 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+                          style={{ backgroundColor: app.color }}
+                        >
+                          {app.name.charAt(0)}
+                        </div>
+                        <div className="flex flex-col gap-2.5 flex-1 px-2.5">
+                          <div className="flex items-center gap-2.5">
+                            <p className="text-sm font-bold text-dark-blue-400">{app.name}</p>
+                            <Badge visual="success" size="sm">Connected</Badge>
+                          </div>
+                          <p className="text-sm text-gray-600">{app.description}</p>
+                        </div>
+                        <IconButton
+                          variant="ghost"
+                          visual="gray"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                          }}
+                        >
+                          <DotsHorizontal className="size-4" />
+                        </IconButton>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
 
               {activeTab === "billing-overview" && (

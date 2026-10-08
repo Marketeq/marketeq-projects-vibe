@@ -13,7 +13,6 @@ export enum MethodType {
   BANK_STRIPE         = 'BANK_STRIPE',
   BANK_MANUAL         = 'BANK_MANUAL',
   WISE                = 'WISE',
-  PAYONEER            = 'PAYONEER',
   CRYPTO              = 'CRYPTO',
   MARKETEQ_DEBIT_CARD = 'MARKETEQ_DEBIT_CARD',
   TEQ_COIN            = 'TEQ_COIN',
@@ -25,6 +24,19 @@ export enum VerificationStatus {
   FAILED   = 'failed',
   EXPIRED  = 'expired',
   LOCKED   = 'locked',
+  // PS-34 §4.3: Stripe's risk engine escalated a cross-border connected
+  // account (UK/SEPA/AU/CA) past DOB collection to government ID + selfie.
+  // Not a failure — the contractor must complete a new Account Link.
+  PENDING_ADDITIONAL_KYC = 'pending_additional_kyc',
+  // PS-35 §6: method created, cannot receive payouts until the Didit
+  // biometric method gate clears. Set immediately on creation when the
+  // gate is REQUIRED; promoted to VERIFIED by the payout.method.biometric.verified
+  // consumer (consumers/identity-events.consumer.ts).
+  PENDING_BIOMETRIC = 'pending_biometric',
+  // PS-35 §6: all 3 Didit attempts exhausted. Terminal — method deactivated,
+  // contractor must contact support. Distinct from FAILED (micro-deposit
+  // attempts exhausted) so the two failure paths surface different copy.
+  VERIFICATION_FAILED = 'verification_failed',
 }
 
 // PS-10 §2: All 9 crypto providers
@@ -127,9 +139,15 @@ export class DepositMethod {
   @Column({ type: 'varchar', name: 'wise_recipient_id', nullable: true })
   wiseRecipientId: string | null;
 
-  // -- Payoneer fields --
-  @Column({ type: 'varchar', name: 'payoneer_payee_id', nullable: true })
-  payoneerPayeeId: string | null;
+  // -- Wise Platform fields (PS-34 §8) --
+  // Separate from the wise* OAuth fields above: Wise Platform is a B2B
+  // infrastructure integration (India/Japan/GCC/other local-bank delivery),
+  // not the contractor-owned-Wise-account OAuth path (PS-09 v2.0).
+  @Column({ type: 'varchar', name: 'wise_platform_recipient_id', nullable: true })
+  wisePlatformRecipientId: string | null;
+
+  @Column({ type: 'varchar', name: 'wise_platform_transfer_id', nullable: true })
+  wisePlatformTransferId: string | null;
 
   // -- Crypto fields (PS-10) --
   @Column({ name: 'crypto_provider', type: 'enum', enum: CryptoProvider, nullable: true })
@@ -172,6 +190,21 @@ export class DepositMethod {
   @Column({ name: 'card_balance_cap', type: 'numeric', precision: 18, scale: 8, default: 10000 })
   cardBalanceCap: string;
 
+  // PS-13 §5: admin-adjustable overrides — NULL means "use the hardcoded
+  // DEFAULT_*_LIMIT in card-issuance.service.ts." Only set once an admin
+  // actually calls the override endpoint.
+  @Column({ name: 'card_daily_limit_cents', type: 'int', nullable: true })
+  cardDailyLimitCents: number | null;
+
+  @Column({ name: 'card_weekly_limit_cents', type: 'int', nullable: true })
+  cardWeeklyLimitCents: number | null;
+
+  @Column({ name: 'card_monthly_limit_cents', type: 'int', nullable: true })
+  cardMonthlyLimitCents: number | null;
+
+  @Column({ name: 'card_single_limit_cents', type: 'int', nullable: true })
+  cardSingleLimitCents: number | null;
+
   @Column({ name: 'last_payout_at', type: 'timestamptz', nullable: true })
   lastPayoutAt: Date | null;
 
@@ -183,7 +216,7 @@ export class DepositMethod {
   @Column({ name: 'account_email', nullable: true, type: 'varchar' }) accountEmail: string | null;
   @Column({ name: 'account_identifier', nullable: true, type: 'varchar' }) accountIdentifier: string | null;
 
-  // PS-09 v2.0 §7/§9: US ABA routing number retrieved from the Wise/Payoneer
+  // PS-09 v2.0 §7/§9: US ABA routing number retrieved from the Wise
   // provider API via fetchBankingDetails() and registered as a Stripe
   // external_account. Not sensitive — public info for the receiving bank —
   // so stored in plaintext, unlike the OAuth tokens above.

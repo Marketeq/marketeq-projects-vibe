@@ -18,6 +18,9 @@ import type {
   AuthStatusChangedPayload,
   BackendContract,
   BackendTask,
+  CreateTaskInput,
+  CreateManualTimeInput,
+  CreateManualTimeResult,
   BreakExpiredPayload,
   BreakExpiringPayload,
   CaptureHealth,
@@ -42,6 +45,7 @@ import type {
   TimerStartArgs,
   TimerStopArgs,
   TimerTickPayload,
+  TodayStatsDTO,
 } from '../shared/ipc-contracts';
 import type { AppInfo, PingResult } from '../shared/types';
 
@@ -119,6 +123,15 @@ export interface DttOnboardingBridge {
 export interface DttContractsBridge {
   getMine: () => Promise<BackendContract[]>;
   getTasks: (contractId: string) => Promise<BackendTask[]>;
+  createTask: (input: CreateTaskInput) => Promise<BackendTask>;
+}
+
+export interface DttManualTimeBridge {
+  create: (input: CreateManualTimeInput) => Promise<CreateManualTimeResult>;
+}
+
+export interface DttStatsBridge {
+  getToday: () => Promise<TodayStatsDTO>;
 }
 
 export interface DttBridgeGlobal {
@@ -133,6 +146,8 @@ export interface DttBridgeGlobal {
   permissions: DttPermissionsBridge;
   auth: DttAuthBridge;
   contracts: DttContractsBridge;
+  manualTime: DttManualTimeBridge;
+  stats: DttStatsBridge;
   sync: DttSyncBridge;
   onboarding: DttOnboardingBridge;
 }

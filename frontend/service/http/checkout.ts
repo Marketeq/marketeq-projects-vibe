@@ -40,4 +40,7 @@ export const CheckoutAPI = {
   CheckCooldown: () => AxiosRequest.get("/v1/checkout/cooldown"),
 
   GetWalletBalance: () => AxiosRequest.get("/v1/checkout/wallet/balance"),
+
+  GetListingSummary: (listingId: string) =>
+    AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
 }

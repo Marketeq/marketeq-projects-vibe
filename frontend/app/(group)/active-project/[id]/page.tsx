@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { addDays, addWeeks, endOfWeek, format, isBefore, isValid, parse, startOfDay, startOfWeek } from "date-fns"
 import { preventDefault } from "@/utils/dom-utils"
@@ -45,6 +45,7 @@ import {
   Dialog,
   DialogContent,
   DialogClose,
+  DialogDescription,
   DialogTitle,
   IconButton,
   Table,
@@ -709,6 +710,7 @@ const SortableTaskRow = ({
 
 export default function ActiveProjectPage() {
   const params = useParams()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const contractTitle = searchParams.get("title") || "Marketeq Client Portal - Redesigning and Optimizing Website for Enhanced User Experience."
   const groupName = searchParams.get("group") || "My Contracts"
@@ -753,6 +755,11 @@ export default function ActiveProjectPage() {
   const [convertAssignees, setConvertAssignees] = useState<TeamMember[]>([])
   const [convertAssigneeOpen, setConvertAssigneeOpen] = useState(false)
   const [allAttachmentsOpen, setAllAttachmentsOpen] = useState(false)
+  const [endContractMember, setEndContractMember] = useState<TeamMember | null>(null)
+  const [reasonModalOpen, setReasonModalOpen] = useState(false)
+  const [reasonMember, setReasonMember] = useState<TeamMember | null>(null)
+  const [selectedReason, setSelectedReason] = useState("")
+  const [reasonDropdownOpen, setReasonDropdownOpen] = useState(false)
   const [attachmentSearch, setAttachmentSearch] = useState("")
   const [attachmentScope, setAttachmentScope] = useState(["all"])
   const [attachmentView, setAttachmentView] = useState(["grid"])
@@ -1077,7 +1084,7 @@ export default function ActiveProjectPage() {
       <div className={`flex bg-gray-50 min-h-screen transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}>
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px]">
           {/* Breadcrumb */}
           <Breadcrumb>
             <BreadcrumbItem>
@@ -2162,6 +2169,10 @@ export default function ActiveProjectPage() {
                                         {!isOwner && (
                                           <>
                                             <DropdownMenuSeparator />
+                                            <DropdownMenuItem className="text-error-600 focus:text-error-600" onSelect={() => setEndContractMember(member)}>
+                                              <XCircle className="size-4" />
+                                              End Contract
+                                            </DropdownMenuItem>
                                             <DropdownMenuItem className="text-error-600 focus:text-error-600">
                                               <XCircle className="size-4" />
                                               Remove from project
@@ -4334,6 +4345,122 @@ export default function ActiveProjectPage() {
               </>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* End Contract confirmation modal */}
+      <Dialog open={!!endContractMember} onOpenChange={(open) => { if (!open) setEndContractMember(null) }}>
+        <DialogContent className="max-w-[409px] p-0 gap-0 rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-gray-200 rounded-t-xl">
+            <div className="flex flex-col gap-2 text-dark-blue-400 w-[361px]">
+              <DialogTitle className="text-lg font-semibold leading-normal">
+                Are you sure you want to end the contract with {endContractMember?.name}{endContractMember?.username}?
+              </DialogTitle>
+              <DialogDescription className="text-sm font-light leading-5">
+                You&apos;ll be able to select a reason for ending the contract next.
+              </DialogDescription>
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-6 py-4 bg-gray-25 rounded-b-xl">
+            <DialogClose asChild>
+              <Button variant="ghost" visual="gray" className="opacity-50 gap-2 px-0 text-sm font-semibold leading-5 text-gray-500">
+                <X className="size-[15px]" />
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="outlined"
+              visual="error"
+              className="bg-white border border-error-300 text-error-500 rounded-[5px] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] px-3.5 py-2 text-sm font-semibold leading-5"
+              onClick={() => {
+                const member = endContractMember
+                setEndContractMember(null)
+                setReasonMember(member)
+                setSelectedReason("")
+                setReasonModalOpen(true)
+              }}
+            >
+              Yes, End Contract
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Why are you ending the contract? modal */}
+      <Dialog open={reasonModalOpen} onOpenChange={(open) => { if (!open) { setReasonModalOpen(false); setReasonMember(null); setSelectedReason(""); setReasonDropdownOpen(false) } }}>
+        <DialogContent className="max-w-[409px] p-0 gap-0 rounded-xl overflow-hidden">
+          <div className="p-6 border-b border-gray-200 rounded-t-xl">
+            <div className="flex flex-col gap-3 w-[361px]">
+              <div className="flex flex-col gap-2 text-dark-blue-400">
+                <DialogTitle className="text-lg font-semibold leading-normal">
+                  Why are you ending the contract?
+                </DialogTitle>
+                <DialogDescription className="text-sm font-light leading-5">
+                  Please select a reason from the available options.
+                </DialogDescription>
+              </div>
+              <div className="relative">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  className="bg-white border border-gray-300 rounded-[5px] shadow-xs px-3.5 py-2 gap-2 text-sm font-semibold leading-5 text-gray-800"
+                  onClick={() => setReasonDropdownOpen(!reasonDropdownOpen)}
+                >
+                  {selectedReason || "Select Reason"}
+                  <ChevronDown className="size-[15px]" />
+                </Button>
+                {reasonDropdownOpen && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-100 rounded-lg py-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)] z-50 min-w-[230px]">
+                    {[
+                      "Contact Successfully Completed",
+                      "Scope of Work Changed",
+                      "Issues with Collaboration",
+                      "Service No Longer Needed",
+                      "Other (Please Specify)",
+                    ].map((reason) => (
+                      <div
+                        key={reason}
+                        className="px-3 py-2.5 text-[13px] font-medium leading-[13.3px] text-gray-500 hover:bg-gray-50 hover:text-gray-900 cursor-pointer"
+                        onClick={() => {
+                          setSelectedReason(reason)
+                          setReasonDropdownOpen(false)
+                        }}
+                      >
+                        {reason === "Other (Please Specify)" ? (
+                          <>
+                            <span className="font-medium">Other</span>
+                            <span className="font-light">{" (Please Specify)"}</span>
+                          </>
+                        ) : reason}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-between px-6 py-4 bg-gray-25 rounded-b-xl">
+            <DialogClose asChild>
+              <Button variant="ghost" visual="gray" className="opacity-50 gap-2 px-0 text-sm font-semibold leading-5 text-gray-500">
+                <X className="size-[15px]" />
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="outlined"
+              visual="gray"
+              className={`bg-white border border-gray-300 rounded-[5px] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] px-3.5 py-2 text-sm font-semibold leading-5 text-gray-800 ${!selectedReason ? "opacity-50 pointer-events-none" : ""}`}
+              disabled={!selectedReason}
+              onClick={() => {
+                setReasonModalOpen(false)
+                setReasonMember(null)
+                setReasonDropdownOpen(false)
+                router.push(`/active-project/${params.id}/end-contract`)
+              }}
+            >
+              Confirm
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

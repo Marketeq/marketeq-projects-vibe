@@ -9,7 +9,7 @@ import {
   type NotificationItem,
   NotificationsAPI,
 } from "@/service/http/notifications"
-import { getOffer } from "@/service/http/offers"
+import { getOffer, listOffers } from "@/service/http/offers"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
@@ -198,6 +198,41 @@ export default function InboxRoot() {
           return marker.includes("offer")
         })
 
+        // BTB-284: list() has attached latestCounterOffer to every row far
+        // longer than the single-offer read has (PMCM-376 only added it to
+        // GET /offers/:id; list() already called the same
+        // fetchLatestCounterOffers helper before that PR existed). One call
+        // per load, not one per notification — built into one Map that every
+        // item below shares. limit
+        // 100 matches the notification fetch above; there's no id-filter
+        // param on this endpoint, so a talent with more than 100 offers
+        // could still miss one here, same as the notification fetch itself
+        // already can. A failed fetch must never break the notification
+        // list, which is this effect's primary job — swallow and carry on
+        // with whatever getOffer() gives each item below.
+        //
+        // Fetched lazily, at most once: only a backend that predates
+        // PMCM-376 omits latestCounterOffer from the single read entirely
+        // (undefined; null means "no counter offer"), so on a current
+        // backend this list call never fires and adds no latency — this
+        // effect reruns on every window focus and visibility change.
+        let counterOfferIdByOffer: Promise<Map<string, string>> | undefined
+        const loadCounterOfferIdByOffer = () => {
+          if (!counterOfferIdByOffer) {
+            counterOfferIdByOffer = listOffers({ limit: 100 })
+              .then((latestOffers) => {
+                const ids = new Map<string, string>()
+                for (const listItem of latestOffers.data) {
+                  const counterId = listItem.latestCounterOffer?.id
+                  if (counterId) ids.set(listItem.id, counterId)
+                }
+                return ids
+              })
+              .catch(() => new Map<string, string>())
+          }
+          return counterOfferIdByOffer
+        }
+
         const resolved = await Promise.all(
           offerItems.map(
             async (item): Promise<OfferNotificationMessageData | null> => {
@@ -229,9 +264,34 @@ export default function InboxRoot() {
                   (offer.clientId === getCurrentUser()?.id
                     ? offer.talentId
                     : offer.clientId)
+                const latestCounterOfferId =
+                  offer.latestCounterOffer !== undefined
+                    ? offer.latestCounterOffer?.id
+                    : (await loadCounterOfferIdByOffer()).get(offerId)
                 return {
                   id: item.id,
                   contractId: offerId,
+                  // PMCM-393 AC-42: live status from this same getOffer() call,
+                  // separate from `event` below (the notification's own fixed
+                  // event type, which never changes once the notification is
+                  // created). The seeded-fixture catch branch below has no
+                  // live offer to source this from and must leave it unset.
+                  offerStatus: offer.status,
+                  // PMCM-392 AC-40.06: same rule as offerStatus above — real,
+                  // live signal only. The seeded-fixture catch branch has no
+                  // live offer to source this from and must leave it unset,
+                  // not invent one.
+                  realContractId: offer.contractId,
+                  // PMCM-376: same rule again — real, live signal only, from
+                  // this same getOffer() call, once the deployed backend
+                  // serves it. BTB-284: falls back to the listOffers() map
+                  // above when the single-offer read doesn't have it
+                  // (deploy hasn't caught up to PMCM-376 yet) — either
+                  // source is the same real, live-only value, never
+                  // invented, and undefined still means "no live signal
+                  // from either" when this offer has never had a counter
+                  // offer.
+                  latestCounterOfferId,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
@@ -288,7 +348,14 @@ export default function InboxRoot() {
                     typeof metadata.originalStartDate === "string"
                       ? metadata.originalStartDate
                       : undefined,
-                  role: offer.contractTitle.split(/\s+[—-]\s+/)[0].trim(),
+                  role:
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : offer.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
+                          "Team Member",
                   duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
                   schedule:
                     offer.workSchedule.type === "FULL_TIME"
@@ -310,12 +377,30 @@ export default function InboxRoot() {
                     { month: "short", day: "numeric", year: "numeric" }
                   ),
                   seeded: metadata.seeded === true,
-                  clientPerspective: metadata.clientPerspective === true,
+                  // BTB-292: derived from the real offer's own parties, not
+                  // trusted from whatever wrote the notification metadata.
+                  // GET /v1/offers/:id is behind OfferPartyGuard, so by the
+                  // time this getOffer() call has already succeeded, the
+                  // viewer is guaranteed to be either offer.clientId or
+                  // offer.talentId — there's no reachable third case here
+                  // that this could misclassify into the wrong (more
+                  // powerful) view; a non-party viewer would have thrown
+                  // above and landed in the catch branch below instead.
+                  clientPerspective: offer.clientId === getCurrentUser()?.id,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
+                  // No backend producer writes offer notification metadata,
+                  // so metadata.withdrawalMessage is always undefined for a
+                  // real withdrawn offer — fall back to the real offer's own
+                  // withdrawalMessage (already fetched above) before giving
+                  // up to undefined, so the "No message was sent." fallback
+                  // only fires when the message is genuinely absent.
                   withdrawalMessage:
-                    typeof metadata.withdrawalMessage === "string"
+                    typeof metadata.withdrawalMessage === "string" &&
+                    metadata.withdrawalMessage.trim()
                       ? metadata.withdrawalMessage
-                      : undefined,
+                      : typeof offer.withdrawalMessage === "string"
+                        ? offer.withdrawalMessage
+                        : undefined,
                   declineReason:
                     typeof metadata.declineReason === "string"
                       ? metadata.declineReason
@@ -436,7 +521,15 @@ export default function InboxRoot() {
                       ? metadata.originalStartDate
                       : undefined,
                   role:
-                    typeof metadata.role === "string" ? metadata.role : "Role",
+                    typeof metadata.role === "string" && metadata.role.trim()
+                      ? metadata.role.trim()
+                      : typeof metadata.jobTitle === "string" &&
+                          metadata.jobTitle.trim()
+                        ? metadata.jobTitle.trim()
+                        : typeof metadata.contractTitle === "string"
+                          ? metadata.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
+                            "Team Member"
+                          : "Team Member",
                   duration:
                     typeof metadata.duration === "string"
                       ? metadata.duration
@@ -826,6 +919,9 @@ export default function InboxRoot() {
             counterOfferCard={counterOfferCard}
             declinedOfferCard={declinedOfferCard}
             offerNotificationMessages={offerNotificationMessages}
+            onOfferUpdateRequested={() =>
+              setOfferNotificationRefreshToken((value) => value + 1)
+            }
           />
 
           {rightSidebarOpen && (

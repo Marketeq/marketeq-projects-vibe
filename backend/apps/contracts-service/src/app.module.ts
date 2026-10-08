@@ -21,6 +21,8 @@ import { NotificationsClient } from './services/notifications.client';
 import { AuditLoggerService } from './services/audit-logger.service';
 import { TalentNetworkService } from './services/talent-network.service';
 import { UserServiceClient } from './services/user-service.client';
+import { ContractOwnerGuard } from './guards/contract-owner.guard';
+import { OfferAcceptedSubscriber } from './subscribers/offer-accepted.subscriber';
 
 // Import your entities
 import { Contract } from './entities/contract.entity';
@@ -67,6 +69,9 @@ import { JwtAuthGuard } from './middleware/jwt-auth.guard';
     AuditLoggerService,
     TalentNetworkService,
     UserServiceClient,
+    ContractOwnerGuard,
+    // OS-07: creates contracts from offer.accepted / offer.counter_accepted
+    OfferAcceptedSubscriber,
     // Global JWT guard
     {
       provide: APP_GUARD,

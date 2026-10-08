@@ -51,6 +51,10 @@ interface CounterOfferDialogProps {
   data: OfferDialogData
   message?: string
   submitDisabled?: boolean
+  /** PMCM-393 AC-42.04: set while the underlying offer has gone terminal
+   * mid-compose — shown next to the submit action, which the caller also
+   * disables via submitDisabled. */
+  terminalNotice?: string
   onMessageChange?: (value: string) => void
   onCancel?: () => void
   onReview?: () => void
@@ -91,6 +95,13 @@ const DURATION_OPTIONS = [
 
 const CUSTOM_DURATION_UNITS = ["Months", "Years"] as const
 const RECOMMENDED_MAX_HOURLY_RATE = 70
+// BTB-283: mirrors hire-me-button.tsx's own upper bounds for the same two
+// backend fields (offer-service's MAX_RATE / MAX_DURATION_MONTHS).
+const MAX_CUSTOM_RATE = 9999
+const CUSTOM_DURATION_MAX: Record<DurationUnit, number> = {
+  Months: 60,
+  Years: 5,
+}
 const SCHEDULE_OPTIONS = [
   { value: "full-time", label: "Full Time", detail: "over 30 hrs/week" },
   { value: "part-time", label: "Part Time", detail: "up to 30 hrs/week" },
@@ -300,6 +311,7 @@ export function CounterOfferDialog({
   data,
   message,
   submitDisabled = false,
+  terminalNotice,
   onMessageChange,
   onCancel,
   onReview,
@@ -358,10 +370,25 @@ export function CounterOfferDialog({
   const termLabelClassName =
     "flex h-10 w-40 shrink-0 flex-col justify-center"
   const dollarOfferRate = toDollarRate(data.offerRate)
+  const isRateChanged = state.rateValue.trim() !== dollarOfferRate
   const rateDisplay = getRateDisplayParts(dollarOfferRate)
   const showHighRateSuggestion =
     state.showCustomRateInput &&
     getNumericRate(state.rateValue) > RECOMMENDED_MAX_HOURLY_RATE
+  // BTB-283/AC-18.04: same shape as hire-me-button's isCustomRateIncomplete/
+  // isCustomDurationIncomplete — the row being open is the "value is a live
+  // custom entry" signal, so an empty or zero value is caught here rather
+  // than by isDirty seeing a truthy-but-meaningless string and calling the
+  // offer ready to review. getNumericRate already exists in this file
+  // (parses the formatted "$95/hr" string), so it's reused rather than a
+  // raw Number() on a value that would never parse as a plain number.
+  const isCustomRateIncomplete =
+    state.showCustomRateInput && !(getNumericRate(state.rateValue) > 0)
+  const isCustomDurationIncomplete =
+    state.showCustomDurationInput && !(Number(state.durationValue) > 0)
+  const isCustomScheduleIncomplete =
+    state.showCustomScheduleInput &&
+    !(Number(state.scheduleValue.replace(/\D/g, "")) > 0)
   const isResendMode =
     mode === "edit" && Boolean(editTitle?.startsWith("Resend"))
 
@@ -550,11 +577,20 @@ export function CounterOfferDialog({
                       Offer Rate
                     </div>
                     <div className="flex items-center gap-2 text-[15px] font-semibold leading-7 text-dark-blue-400">
-                      <ArrowRight className="size-4 text-success-500" />
+                      {/* The arrow stays in the DOM when the rate is
+                          unchanged, only hidden: chats-comp.tsx's client
+                          edit/resend review clones this svg as the arrow for
+                          its other changed rows. A div, not a span, so its
+                          "first span is the rate" read is unaffected. */}
+                      <div className={isRateChanged ? "contents" : "hidden"}>
+                        <ArrowRight className="size-4 text-success-500" />
+                      </div>
                       <span>{state.rateValue}</span>
-                      <span className="font-normal text-gray-400">
-                        (was {dollarOfferRate})
-                      </span>
+                      {isRateChanged ? (
+                        <span className="font-normal text-gray-400">
+                          (was {dollarOfferRate})
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -605,6 +641,18 @@ export function CounterOfferDialog({
                 </div>
               </div>
 
+              {terminalNotice ? (
+                <div className="border-t border-gray-100 px-6 pt-4">
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {terminalNotice}
+                    </AlertContent>
+                  </Alert>
+                </div>
+              ) : null}
               <div className="flex shrink-0 items-center justify-between border-t border-gray-100 px-6 py-4">
                 <Button variant="outlined" visual="gray" onClick={onCancel}>
                   {mode === "edit" ? "View Previous Offer" : "Previous Offer"}
@@ -621,6 +669,7 @@ export function CounterOfferDialog({
                     {mode === "edit" ? "Edit Offer" : "Edit Counter Offer"}
                   </Button>
                   <Button
+                    disabled={submitDisabled}
                     onClick={() =>
                       onSubmit?.({
                         offerRate: state.rateValue,
@@ -770,6 +819,24 @@ export function CounterOfferDialog({
                           }}
                           onChange={(event) => {
                             const input = event.currentTarget
+                            const digitsOnly = input.value.replace(
+                              /[^\d.]/g,
+                              ""
+                            )
+
+                            // BTB-283: bail before formatting/updating state
+                            // (and before scheduling the caret reposition
+                            // below) so a rejected keystroke leaves the
+                            // input exactly as it was — same "test the
+                            // candidate, don't commit it" shape as
+                            // hire-me-button's customRateValue guard.
+                            if (
+                              digitsOnly !== "" &&
+                              Number(digitsOnly) > MAX_CUSTOM_RATE
+                            ) {
+                              return
+                            }
+
                             const formattedRate = formatCustomHourlyRate(
                               input.value
                             )
@@ -889,24 +956,51 @@ export function CounterOfferDialog({
                             inputMode="numeric"
                             placeholder="Enter duration"
                             value={state.durationValue}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              const digits = event.target.value.replace(
+                                /\D/g,
+                                ""
+                              )
+
+                              // BTB-283: same "test the candidate, bail
+                              // without updating state" shape as
+                              // hire-me-button's customDurationValue guard.
+                              if (
+                                digits !== "" &&
+                                Number(digits) >
+                                  CUSTOM_DURATION_MAX[state.durationUnit]
+                              ) {
+                                return
+                              }
+
                               updateState((previous) => ({
                                 ...previous,
-                                durationValue: event.target.value.replace(
-                                  /\D/g,
-                                  ""
-                                ),
+                                durationValue: digits,
                               }))
-                            }
+                            }}
                           />
                           <Select
                             value={state.durationUnit}
-                            onValueChange={(value) =>
+                            onValueChange={(value) => {
+                              // BTB-283: same defect reached through a
+                              // different path — a value valid under the
+                              // old unit can exceed the new one's max with
+                              // no keystroke to catch it. Same clamp shape
+                              // as hire-me-button's customDurationUnit
+                              // onValueChange.
+                              const nextUnit = value as DurationUnit
+                              const max = CUSTOM_DURATION_MAX[nextUnit]
+
                               updateState((previous) => ({
                                 ...previous,
-                                durationUnit: value as DurationUnit,
+                                durationUnit: nextUnit,
+                                durationValue:
+                                  previous.durationValue !== "" &&
+                                  Number(previous.durationValue) > max
+                                    ? String(max)
+                                    : previous.durationValue,
                               }))
-                            }
+                            }}
                           >
                             <SelectTrigger className="w-24 px-3 text-left text-sm font-normal leading-5 text-gray-black shadow-xs">
                               {state.durationUnit}
@@ -1126,6 +1220,7 @@ export function CounterOfferDialog({
                       </div>
                       <Calendar
                         value={state.startDateValue}
+                        minValue={new Date()}
                         focusedValue={calendarFocusedValue}
                         onFocusedValueChange={setCalendarFocusedValue}
                         onValueChange={(value) => {
@@ -1168,6 +1263,17 @@ export function CounterOfferDialog({
                 </div>
               </div>
 
+              {terminalNotice ? (
+                <Alert className="min-h-[auto] p-4">
+                  <AlertIcon className="shrink-0">
+                    <Info className="size-5" />
+                  </AlertIcon>
+                  <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                    {terminalNotice}
+                  </AlertContent>
+                </Alert>
+              ) : null}
+
               <div className="flex items-center justify-end gap-3">
                 <Button
                   variant="ghost"
@@ -1182,7 +1288,10 @@ export function CounterOfferDialog({
                   disabled={
                     submitDisabled ||
                     !projectSelected ||
-                    (!isDirty && !isResendMode)
+                    (!isDirty && !isResendMode) ||
+                    isCustomRateIncomplete ||
+                    isCustomDurationIncomplete ||
+                    isCustomScheduleIncomplete
                   }
                   onClick={handleReview}
                 >

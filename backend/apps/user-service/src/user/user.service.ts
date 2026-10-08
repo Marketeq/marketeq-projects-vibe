@@ -268,7 +268,7 @@ export class UserService {
   ): Promise<TimeZoneResolution & { updated: boolean }> {
     const user = await this.getUserByClaims(claims);
 
-    const resolution = this.timezoneResolutionService.resolve(
+    const resolution = await this.timezoneResolutionService.resolve(
       req,
       clientTimeZone,
       user.timezone ?? null,

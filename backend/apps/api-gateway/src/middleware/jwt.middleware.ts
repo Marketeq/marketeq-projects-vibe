@@ -81,11 +81,11 @@ const PUBLIC_PATTERNS = [
   // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
   // route under this namespace does not silently make it unauthenticated.
   /^\/v1\/webhooks\/(?:stripe|ramp)$/,
-  // Wise/Payoneer redirect the browser here straight from the
+  // Wise redirects the browser here straight from the
   // provider's own login page — there's no Marketeq session cookie to send,
   // same reasoning as the webhooks entry above. payout-service's own
   // @Public() on this route is powerless against this upstream gateway check.
-  /^\/v1\/oauth\/(?:wise|payoneer)\/callback$/,
+  /^\/v1\/oauth\/wise\/callback$/,
   // Renders the invite banner / accept-invite flow before the visitor is
   // signed in. The route is already @Public() in invitations-service, but
   // that decorator is powerless against this upstream gateway check, same as
@@ -101,8 +101,19 @@ const PUBLIC_PATTERNS = [
   /^(?:\/api)?\/v1\/notifications\/preferences\/email\/verify$/,
 ]
 
-function isPublic(path: string): boolean {
+// Method-scoped public routes. Didit calls this directly — no Marketeq
+// session exists to send. Authenticity is verified downstream by
+// identity-verification-service (X-Signature-V2 HMAC, timestamp window,
+// replay/idempotency), not by gateway JWT auth. Matched on method AND exact
+// path so GET/PUT/PATCH/DELETE, trailing slashes, extra segments and sibling
+// routes under /v1/identity-verification all stay JWT-protected.
+const PUBLIC_METHOD_ROUTES: ReadonlyArray<{ method: string; path: string }> = [
+  { method: 'POST', path: '/v1/identity-verification/webhooks/didit-kyc' },
+]
+
+function isPublic(path: string, method: string): boolean {
   if (PUBLIC_EXACT_ROUTES.has(path)) return true
+  if (PUBLIC_METHOD_ROUTES.some((r) => r.method === method && r.path === path)) return true
   return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 
@@ -117,7 +128,7 @@ export class JwtMiddleware implements NestMiddleware {
     // (no /api) or NEXT_PUBLIC_API_BASE_URL (with /api) hit the same routes.
     const rawPath = req.originalUrl.split('?')[0]
     const reqPath = rawPath.replace(/^\/api(?=\/|$)/, '') || '/'
-    const pub = isPublic(reqPath)
+    const pub = isPublic(reqPath, req.method)
 
     const authHeader = req.headers.authorization
     const cookieToken = (req as any).cookies?.access_token
@@ -138,8 +149,8 @@ export class JwtMiddleware implements NestMiddleware {
     }
 
     try {
-      const payload = this.jwt.verify<{ sub: string; email: string; role?: string }>(token)
-      ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role }
+      const payload = this.jwt.verify<{ sub: string; email: string; role?: string; sid?: string }>(token)
+      ;(req as any).user = { userId: payload.sub, email: payload.email, role: payload.role, sid: payload.sid }
       next()
     } catch (err: any) {
       // Public routes can proceed even with an invalid token

@@ -1,5 +1,6 @@
 import { Injectable, HttpStatus } from '@nestjs/common';
 import { PayoutError } from '../common/errors/payout.error';
+import { isOfacBlockedCountry } from '../common/ofac-countries';
 
 const SEPA_COUNTRIES = new Set([
   'AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE',
@@ -10,8 +11,6 @@ const SEPA_COUNTRIES = new Set([
 const UK_COUNTRIES = new Set(['GB','GG','JE','IM']);
 
 const GCC_COUNTRIES = new Set(['AE','SA','QA','BH','KW','OM']);
-
-const OFAC_BLOCKED = new Set(['CU','IR','KP','SD','SY']);
 
 const SEPA_CURRENCY_MAP: Record<string, string> = {
   BG:'BGN', CZ:'CZK', DK:'DKK', HU:'HUF', PL:'PLN', RO:'RON',
@@ -30,7 +29,7 @@ export class BankValidationService {
   validate(dto: any): void {
     // OFAC check first
     const country = dto.bankCountry?.toUpperCase();
-    if (OFAC_BLOCKED.has(country)) {
+    if (isOfacBlockedCountry(country)) {
       throw new PayoutError('Payouts to this country are not currently supported.',
         HttpStatus.BAD_REQUEST, 'ERR_DEPOSIT_COUNTRY_RESTRICTED');
     }
@@ -127,6 +126,14 @@ export class BankValidationService {
         if (!/^\d{3}$/.test(dto.bankBranchCode ?? '')) errors.push('ERR_BANK_BRANCH_CODE_INVALID');
         if (!/^\d{7}$/.test(dto.bankAccountNumber ?? '')) errors.push('ERR_BANK_ACCOUNT_NUMBER_INVALID');
         if (dto.bankCurrency !== 'JPY') errors.push('ERR_BANK_CURRENCY_MISMATCH');
+        // PS-36 §7: the Zengin recipient Wise creates from this method
+        // requires accountType (FUTSU/TOUZA) — this field existed on the DTO
+        // as optional with nothing ever enforcing it was actually sent, so a
+        // submission missing it sailed through this validator and only
+        // failed later, opaquely, inside verifyViaWisePlatform's Wise API
+        // call. Validating it here gives the contractor the same
+        // field-specific error every other JP field already gets instead.
+        if (!['FUTSU', 'TOUZA'].includes(dto.bankAccountType)) errors.push('ERR_BANK_ACCOUNT_TYPE_INVALID');
         break;
 
       case 'CA':

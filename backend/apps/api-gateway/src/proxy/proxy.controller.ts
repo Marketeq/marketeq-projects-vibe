@@ -66,6 +66,9 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   nda: 'legal',                    // legal-service NDA endpoints
   resume: 'users',                  // resume upload/parse lives in user-service
   'dashboard-tasks': 'users',       // personal to-do tasks live in user-service
+  privacy: 'users',                  // privacy settings live in user-service
+  'identity-verification': 'identityVerification',
+  location: 'location',              // location-service: IP/GPS resolution
 }
 
 const USER_SERVICE_V1_RESOURCES = new Set([
@@ -226,6 +229,10 @@ export class ProxyController {
       // boot-all.js runs this on 3033 and sets RESUME_PARSING_SERVICE_URL to match;
       // the 3028 default is the ecosystem.config.js port used by local PM2.
       'resume-parsing-service': process.env.RESUME_PARSING_SERVICE_URL || 'http://localhost:3028',
+      'location-service': process.env.LOCATION_SERVICE_URL || 'http://localhost:3036',
+      // boot-all.js runs this on 3035 and sets IDENTITY_VERIFICATION_SERVICE_URL to
+      // match; the 3019 default is the service's own `PORT ?? 3019` for local runs.
+      'identity-verification-service': process.env.IDENTITY_VERIFICATION_SERVICE_URL || 'http://localhost:3019',
     }
 
     const results: Record<string, { status: string; code: number }> = {}
@@ -364,10 +371,18 @@ export class ProxyController {
       // Without this branch, /v1/earnings/* silently fell through to the 'v1'
       // default (transaction-service) instead of earnings-service.
       prefix = 'earnings'
+    } else if (prefix === 'v1' && segments[1] === 'checkout') {
+      // checkout-service's controller is @Controller("v1/checkout"), so it
+      // expects the full /v1/checkout/... path unchanged. Without this
+      // branch, /v1/checkout/* silently fell through to the 'v1' default
+      // (transaction-service) and 404'd — every CheckoutAPI call from the
+      // frontend (session, wallet balance, gift cards, status, cancel) was
+      // broken through the gateway.
+      prefix = 'checkout'
     } else if (prefix === 'v1' && (segments[1] === 'deposit-methods')) {
       prefix = 'deposit-methods'
     } else if (prefix === 'v1' && segments[1] === 'oauth') {
-      // /v1/oauth/:provider/callback (Wise/Payoneer OAuth redirect
+      // /v1/oauth/:provider/callback (Wise OAuth redirect
       // target) lives in payout-service. Without this branch it silently
       // fell through to the 'v1' default (transaction-service) and 404'd,
       // so the OAuth callback that actually persists tokens never ran.
@@ -395,6 +410,12 @@ export class ProxyController {
       // contract" list) lives in contracts-service. Without this branch it
       // fell through to the 'v1' default (transaction-service) and 404'd.
       prefix = 'contracts'
+    } else if (prefix === 'v1' && segments[1] === 'identity-verification') {
+      // identity-verification-service's controller is @Controller('v1/identity-verification'),
+      // so — like checkout-service — it expects the full /v1/identity-verification/...
+      // path unchanged. Without this branch, /v1/identity-verification/* silently
+      // fell through to the 'v1' default (transaction-service) and 404'd.
+      prefix = 'identity-verification'
     } else if (prefix === 'v1' && segments[1] === 'job-listings') {
       // /v1/job-listings and /v1/job-listings/:id/phases live in
       // listings-service. Without this branch they fell through to the 'v1'

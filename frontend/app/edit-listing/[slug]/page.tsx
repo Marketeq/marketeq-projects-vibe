@@ -20,6 +20,7 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -29,7 +30,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
+import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -732,20 +733,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Web App",
-  "Mobile App",
-  "Desktop App",
-  "SaaS Platform",
-  "API / Backend",
-  "E-commerce Store",
-  "Landing Page",
-  "Chrome Extension",
-  "CLI Tool",
-  "Game",
-] as const
 
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
@@ -4716,7 +4703,17 @@ const TaskDialog = ({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
+    // QA-199/PMCM-397: modal (the default) makes Radix wrap this dialog's
+    // content in a scroll lock (react-remove-scroll) that only recognizes
+    // scrollable elements that are DOM descendants of the dialog's own
+    // portal. The Location/Role comboboxes below are cmdk popovers that
+    // portal to document.body as a *separate* tree, so the lock intercepts
+    // their wheel events and blocks scrolling entirely — reproduced and
+    // confirmed fixed by this prop alone (before: scrollTop stuck at 0 on
+    // every wheel tick; after: scrolls normally). Non-modal still closes on
+    // outside click/Escape; it only drops the focus trap and body scroll
+    // lock, which this single-field-at-a-time add-task form doesn't rely on.
+    <Dialog open={isOpen} onOpenChange={toggleIsOpen} modal={false}>
       <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
         <form
           className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]"
@@ -5945,12 +5942,36 @@ const ProjectScope = ({
       const taskDays = (((phase as any)?.rows ?? []) as any[])
         .map((row: any) => {
           const dur = row?.duration
-          if (!dur) return 0
-          const val = Number(dur.value) || 0
-          if (val <= 0) return 0
-          if (dur.type === "weeks") return val * 7
-          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-          return val
+          // QA-200/PMCM-397: this only handled "weeks" and "hours",
+          // silently treating a "months" duration as raw days (e.g. "2
+          // months" counted as 2 days) and giving up entirely (0) on any
+          // row whose duration didn't arrive as the {value, type} object —
+          // never falling back to estimatedHours the way
+          // estimateScopeBudgetCents (this same memo's budget calculation,
+          // a few lines below) already does. Matched here to that
+          // reference implementation.
+          if (dur && typeof dur === "object") {
+            const val = Number(dur.value) || 0
+            if (val > 0) {
+              if (dur.type === "weeks") return val * 7
+              if (dur.type === "months") return val * 30
+              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+              return val
+            }
+          }
+          if (typeof dur === "string" && dur.trim()) {
+            const [rv, ru] = dur.trim().split(/\s+/)
+            const v = Number(rv) || 0
+            const u = (ru || "days").toLowerCase()
+            if (v > 0) {
+              if (u.startsWith("week")) return v * 7
+              if (u.startsWith("month")) return v * 30
+              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+              return v
+            }
+          }
+          const hrs = Number(row?.estimatedHours) || 0
+          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
         })
         .filter((d: number) => d > 0)
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
@@ -5968,13 +5989,25 @@ const ProjectScope = ({
       }
     }
     const computedCents = estimateScopeBudgetCents(scopePhases)
+    // QA-178/PMCM-397: always prefer the freshly-computed total.
+    // pricingBudgetCents only updates ~1.5-2s after a change, via the
+    // debounced ReplaceProjectScope round-trip (see the ReplaceProjectScope
+    // callers below) — so any edit made before that round-trip lands, or
+    // any edit made again in that window, was masked by a stale number.
+    // This is what made phase deletion look broken while task deletion
+    // looked fine: both mutate `phases` through the same setPhases path
+    // and land in this same memo, but by the time a *later* edit (e.g. a
+    // phase delete) ran, an *earlier* edit's round-trip had already primed
+    // a stale positive pricingBudgetCents that outranked anything computed
+    // live afterward — including the AC's "reset to zero when every phase
+    // is deleted" case, since a stale positive number would win over a
+    // correctly-computed 0.
     return {
-      budgetTotalCents:
-        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      budgetTotalCents: computedCents,
       durationLabel: label,
       durationDays: totalDays,
     }
-  }, [phases, pricingBudgetCents])
+  }, [phases])
 
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
@@ -7121,6 +7154,14 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
   teamMemberIds: string[]
   setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  // QA-180/PMCM-399: emails invited (search or email) via the shared
+  // InviteWindow while this listing's dialog context was active — shown
+  // as "Pending Invite" rows below teamMemberIds' real members. Locally
+  // tracked: invitations-service has no per-listing correlation, so this
+  // can't be re-derived from a server-side "pending invites for this
+  // project" query, only from what this session actually sent.
+  pendingInviteEmails: string[]
+  setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
   pricingBudgetCents: number
   scopeType: ScopeType
@@ -7155,8 +7196,14 @@ const Team = () => {
   const mapRole = (role?: string) =>
     role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
 
-  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
-    useProjectScopeContext()
+  const {
+    teamMemberIds,
+    setTeamMemberIds,
+    pendingInviteEmails,
+    setPendingInviteEmails,
+    draftProjectId,
+    projectScopeMethods,
+  } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
   const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
@@ -7266,6 +7313,30 @@ const Team = () => {
       } as any).catch(() => {})
     }
   }
+  // QA-180/PMCM-399: same persistence shape as persistTeam above, for the
+  // emails invited via the shared InviteWindow (search or email method)
+  // while this listing's dialog context was active. Passed as
+  // context.onInvited to inviteWindow.toggle below. Uses the functional
+  // setState form (unlike persistTeam) because this fires from a callback
+  // captured at dialog-open time, so teamMemberIds's simpler
+  // read-then-persistTeam(next) shape could dedupe against a stale prev.
+  const handleInvited = React.useCallback(
+    (emails: string[]) => {
+      if (!emails.length) return
+      setPendingInviteEmails((prev) => {
+        const next = Array.from(
+          new Set([...prev, ...emails.map((email) => email.toLowerCase())])
+        )
+        if (draftProjectId) {
+          ProjectAPI.UpdateProjectDraft(draftProjectId, {
+            pendingInviteEmails: next,
+          } as any).catch(() => {})
+        }
+        return next
+      })
+    },
+    [draftProjectId, setPendingInviteEmails]
+  )
   const addToProject = (userId: string) => {
     persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
     setAddQuery("")
@@ -7531,7 +7602,21 @@ const Team = () => {
               <Button
                 variant="outlined"
                 visual="gray"
-                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+                onClick={() =>
+                  inviteWindow.toggle(true, "Invite Team Members", {
+                    // QA-180/PMCM-399: without this the shared dialog
+                    // treats any custom-titled caller as share-flavored
+                    // and skips company assignment, which is why contact
+                    // search always came back empty here — company never
+                    // got picked, so useCompanyMembers had nothing to
+                    // search. teamInvite: true keeps the custom title but
+                    // still shows the company step, same as the default
+                    // "Invite Your Team" flow.
+                    teamInvite: true,
+                    listingId: draftProjectId,
+                    onInvited: handleInvited,
+                  })
+                }
               >
                 <Plus className="size-[15px]" />
                 Add Team Member
@@ -7784,6 +7869,55 @@ const Team = () => {
                     </TableRow>
                     )
                   })}
+                  {/* QA-180/PMCM-399 AC: invited-but-not-yet-accepted addresses
+                  show as "Pending Invite" here, same table/columns as real
+                  members — no role yet (nothing to assign until they accept),
+                  no dropdown (nothing to manage besides canceling). */}
+                  {pendingInviteEmails.map((email) => (
+                    <TableRow key={`pending-invite-${email}`}>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-x-3">
+                          <Avatar size="sm">
+                            <AvatarFallback>
+                              {email.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {email}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm text-gray-400">—</span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm font-semibold text-gray-500">
+                          Pending Invite
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          className="text-error-600"
+                          onClick={() => {
+                            const next = pendingInviteEmails.filter(
+                              (e) => e !== email
+                            )
+                            setPendingInviteEmails(next)
+                            if (draftProjectId) {
+                              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                                pendingInviteEmails: next,
+                              } as any).catch(() => {})
+                            }
+                          }}
+                        >
+                          Cancel Invite
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -8861,6 +8995,7 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
@@ -8944,6 +9079,9 @@ function PublishProject({
     }
   }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [isAccessDenied, setIsAccessDenied] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [faqs, setFaqs] = useState<WizardFaq[]>([])
   const [faqModerationError, setFaqModerationError] = useState<string | null>(
@@ -8961,7 +9099,17 @@ function PublishProject({
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
+  const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
+  // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
+  // saveMedia had no ref here and its effect's cleanup only cleared the
+  // interval — a media change made within the ~2s polling window, followed
+  // by navigating to the other editor (or a hard reload before the next
+  // tick), was silently dropped: never reaches the backend, so whichever
+  // editor loads next hydrates the pre-change media. Reusing the same
+  // flush-on-unmount/flush-on-unload pattern every sibling autosave here
+  // already has.
+  const saveMediaRef = useRef<() => Promise<void>>(async () => {})
   const lastFaqsPayloadRef = useRef<string>("")
   const faqsRef = useRef<WizardFaq[]>([])
   const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
@@ -9019,7 +9167,19 @@ function PublishProject({
     setStepValid(2, projectScopeSchema.safeParse(scopePhases))
   }, [scopePhases, setStepValid])
   useEffect(() => {
-    setStepValid(3, teamMemberIds.length > 0)
+    // QA-198/PMCM-395: teamMemberIds never contains the project owner's own
+    // id — inProject() (in the Team step) treats role "owner" as always
+    // in-project without ever writing to teamMemberIds, and addable()
+    // excludes anyone already inProject, so the owner can never be
+    // programmatically added to this array. A solo owner is therefore
+    // permanently "0 members" by this check alone, even though the Team
+    // table already shows them (You / Owner) with nothing left to fill
+    // in. The account owner always counts as the team's one required
+    // member, matching what the UI already displays.
+    setStepValid(
+      3,
+      teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)
+    )
   }, [teamMemberIds, setStepValid])
   useEffect(() => {
     setStepValid(4, completedFaqCount >= 3)
@@ -9030,7 +9190,10 @@ function PublishProject({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
       1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
       2: projectScopeSchema.safeParse(scopePhases),
-      3: teamMemberIds.length > 0,
+      // QA-198/PMCM-395: same owner-always-counts fix as setStepValid(3, ...)
+      // above — this is the Publish button's own separate validity check
+      // (PMCM-401), and it was blocked by the identical stale condition.
+      3: teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id),
       4: completedFaqCount >= 3,
     }
     return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
@@ -9057,7 +9220,15 @@ function PublishProject({
         if (slug) {
           try {
             response = await ProjectAPI.GetProjectBySlug(slug)
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // that must stop here, not fall through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             response = null
           }
         }
@@ -9067,7 +9238,15 @@ function PublishProject({
           const urlParams = new URLSearchParams(window.location.search)
           const existingDraftId = urlParams.get("draftId")
           if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-            response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            try {
+              response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            } catch (err: any) {
+              if (err?.response?.status === 403) {
+                setIsAccessDenied(true)
+                return
+              }
+              throw err
+            }
           }
         }
 
@@ -9075,7 +9254,11 @@ function PublishProject({
         if (!response?.data && slug && UUID_PATTERN.test(slug)) {
           try {
             response = await ProjectAPI.GetProjectDraft(slug)
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             // fall through to create a fresh draft below
           }
         }
@@ -9103,6 +9286,11 @@ function PublishProject({
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPendingInviteEmails(
+          Array.isArray(draft?.pendingInviteEmails)
+            ? draft.pendingInviteEmails.map(String)
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
@@ -9358,6 +9546,7 @@ function PublishProject({
 
       if (serializedPayload === lastScopePayloadRef.current) return
 
+      scopeSavesInFlightRef.current += 1
       try {
         const scopeRes = await ProjectAPI.ReplaceProjectScope(
           draftProjectId,
@@ -9371,6 +9560,8 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project scope draft", error)
+      } finally {
+        scopeSavesInFlightRef.current -= 1
       }
     }
 
@@ -9378,6 +9569,11 @@ function PublishProject({
 
     void saveScope()
     const interval = setInterval(() => {
+      // Never stack ticks: until a save resolves, the payload still differs
+      // from lastScopePayloadRef, so a slow save got re-sent every 2s — the
+      // pile-up that took listings-service down on 2026-10-03. The flushes
+      // on cleanup and beforeunload still go out regardless.
+      if (scopeSavesInFlightRef.current > 0) return
       void saveScope()
     }, 2000)
 
@@ -9458,6 +9654,7 @@ function PublishProject({
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveMediaRef.current()
       void saveFaqsRef.current()
       void saveVideoRef.current()
     }
@@ -9613,11 +9810,16 @@ function PublishProject({
       }
     }
 
+    saveMediaRef.current = saveMedia
+
     const interval = setInterval(() => {
       void saveMedia()
     }, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveMedia()
+    }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(
@@ -9631,6 +9833,8 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
@@ -9646,6 +9850,8 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
@@ -9704,6 +9910,35 @@ function PublishProject({
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
   }, [toggleIsSaveExitDialogOpen, router])
+
+  // QA-196/PMCM-402: reusing the same "not found" empty-state pattern
+  // already used on the public listing page and the my-listings editor
+  // (centered AlertCircle + heading + description + button) rather than
+  // inventing a new one, per the design-system reuse rule.
+  if (isAccessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask the
+            listing owner to add you to the team if you should be able to
+            edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -9820,19 +10055,10 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
-  const router = useRouter()
-  const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -9844,12 +10070,13 @@ export default function PublishRootProject() {
     return null
   }
 
-  if (!isAuthLoading && !user) {
-    return null
-  }
-
+  // PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+  // full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+  // requires everywhere on listing pages. AuthenticatedRoute gives the same
+  // "protected route" behavior (spinner, then the modal, then the page)
+  // every other gated route already uses, with no full-page redirect.
   return (
-    <>
+    <AuthenticatedRoute>
       <PublishProject
         slug={params.slug}
         projectInfo={<ProjectInfo />}
@@ -9857,6 +10084,6 @@ export default function PublishRootProject() {
         projectScope={<ProjectScope />}
       />
       <Toaster />
-    </>
+    </AuthenticatedRoute>
   )
 }

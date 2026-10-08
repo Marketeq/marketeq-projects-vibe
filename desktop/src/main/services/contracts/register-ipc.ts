@@ -10,7 +10,13 @@
 import { ipcMain } from 'electron';
 import type { Logger } from 'pino';
 import { IPC } from '../../../shared/ipc-contracts';
-import type { BackendContract, BackendTask } from '../../../shared/ipc-contracts';
+import type {
+  BackendContract,
+  BackendTask,
+  CreateManualTimeInput,
+  CreateManualTimeResult,
+  CreateTaskInput,
+} from '../../../shared/ipc-contracts';
 import type { ContractRepo } from '../../db/repos/contract.repo';
 import type { TaskRepo } from '../../db/repos/task.repo';
 
@@ -21,10 +27,41 @@ export interface ContractsIpcDeps {
   apiBaseUrl: string;
   contractRepo?: ContractRepo;
   taskRepo?: TaskRepo;
+  /** Silent refresh on a 401 (auth-service handleUnauthorized); true = new token ready. */
+  onUnauthorized?: () => Promise<boolean>;
 }
 
 export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
   const log = deps.logger?.child({ svc: 'contracts-ipc' });
+
+  // Every backend call goes through here. The access token is short-lived
+  // (15 min), so a 401 triggers one silent refresh and one retry with the
+  // new token — same contract as the sync api-client (doc 15 §7). Without
+  // this, contracts and tasks stopped loading once the token expired.
+  const authedFetch = async (
+    url: string,
+    init: { method: string; body?: string } = { method: 'GET' },
+  ): Promise<Response> => {
+    const send = (token: string | null) =>
+      fetch(url, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${token ?? ''}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    const res = await send(deps.getAccessToken());
+    if (res.status !== 401 || !deps.onUnauthorized) return res;
+    let refreshed = false;
+    try {
+      refreshed = await deps.onUnauthorized();
+    } catch (err) {
+      log?.warn({ err }, 'token refresh threw');
+    }
+    if (!refreshed) return res;
+    log?.debug({ url }, '401 — refreshed, retrying once');
+    return send(deps.getAccessToken());
+  };
 
   // Authenticated fetch of a contract's tasks — the token is required,
   // the backend route is not public (doc 15: the token only lives here,
@@ -34,17 +71,9 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
   // not two.
   const fetchTasksForContract = async (
     contractId: string,
-    token: string,
   ): Promise<BackendTask[]> => {
-    const res = await fetch(
+    const res = await authedFetch(
       `${deps.apiBaseUrl}/tasks/contract/${encodeURIComponent(contractId)}`,
-      {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      },
     );
     if (!res.ok) {
       log?.warn({ contractId, status: res.status }, 'failed to fetch tasks for contract');
@@ -66,13 +95,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     const url = `${deps.apiBaseUrl}/contracts/talent/${encodeURIComponent(userId)}`;
     log?.info({ url }, 'fetching contracts from backend');
 
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const res = await authedFetch(url);
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
@@ -85,8 +108,8 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     const contracts: BackendContract[] = Array.isArray(data) ? data : [];
     log?.info({ count: contracts.length }, 'contracts fetched');
 
-    // Mirror each contract + a default task into local SQLite so
-    // the session table's FK constraints are satisfied.
+    // Mirror each contract and its real tasks into local SQLite so the
+    // session table's FK constraints are satisfied.
     if (deps.contractRepo && deps.taskRepo) {
       const now = Date.now();
       for (const c of contracts) {
@@ -104,19 +127,11 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             screenshot_interval_seconds: 60,
             mirrored_at: now,
           });
-          // Ensure a default task row exists for this contract
-          // Mirror real tasks from TTS API into local SQLite
-          const taskId = `task-${c.id}`;
-          deps.taskRepo.upsert({
-            id: taskId,
-            contract_id: c.id,
-            name: c.title || 'General work',
-            archived: 0,
-            mirrored_at: now,
-          });
-          // Also fetch and mirror real tasks from TTS
+          // Mirror only the contract's real tasks from TTS into local SQLite.
+          // No synthetic "task-<id>" placeholder — a session must reference a
+          // real task, and an unknown id should fail fast, not be made valid.
           try {
-            const tasks = await fetchTasksForContract(c.id, token);
+            const tasks = await fetchTasksForContract(c.id);
             for (const t of tasks) {
               deps.taskRepo.upsert({
                 id: t.id,
@@ -126,7 +141,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
                 mirrored_at: now,
               });
             }
-          } catch { /* TTS unavailable — default task is enough */ }
+          } catch { /* TTS unavailable — real tasks sync on the next fetch */ }
         } catch (err) {
           log?.warn({ err, contractId: c.id }, 'failed to mirror contract to local db');
         }
@@ -146,14 +161,112 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
       log?.warn('contracts:get-tasks called without auth');
       return [];
     }
-    return fetchTasksForContract(contractId, token);
+    return fetchTasksForContract(contractId);
+  };
+
+  // Create a real task in TTS, then mirror it into local SQLite right away
+  // so the timer can start a session against it — the session row's FK
+  // needs the task to exist locally, and a renderer-only placeholder id
+  // would never match anything on the backend.
+  const handleCreateTask = async (
+    _evt: unknown,
+    input: CreateTaskInput,
+  ): Promise<BackendTask> => {
+    const token = deps.getAccessToken();
+    const userId = deps.getUserId();
+    if (!token || !userId) {
+      log?.warn('contracts:create-task called without auth');
+      throw new Error('Not signed in');
+    }
+    const name = input?.name?.trim();
+    if (!input?.contractId || !name) {
+      throw new Error('A contract and a task name are required');
+    }
+
+    const res = await authedFetch(`${deps.apiBaseUrl}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({ contractId: input.contractId, name, createdBy: userId }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      log?.error({ status: res.status, body, contractId: input.contractId }, 'failed to create task');
+      throw new Error(`Failed to create task: ${res.status}`);
+    }
+
+    const task = (await res.json()) as BackendTask;
+    log?.info({ taskId: task.id, contractId: task.contractId }, 'task created');
+
+    if (deps.taskRepo) {
+      try {
+        deps.taskRepo.upsert({
+          id: task.id,
+          contract_id: task.contractId,
+          name: task.name,
+          archived: task.archived ? 1 : 0,
+          mirrored_at: Date.now(),
+        });
+      } catch (err) {
+        log?.warn({ err, taskId: task.id }, 'failed to mirror new task to local db');
+      }
+    }
+    return task;
+  };
+
+  // Manual time (US-087–092): submit for client review. Validation failures
+  // come back as { ok: false } with the server's message so the form can
+  // show it inline — including the soft overlap warning, which the user can
+  // confirm and resubmit with confirmOverlap.
+  const handleCreateManualTime = async (
+    _evt: unknown,
+    input: CreateManualTimeInput,
+  ): Promise<CreateManualTimeResult> => {
+    if (!deps.getAccessToken()) {
+      return { ok: false, message: 'You are signed out. Sign in again to submit time.' };
+    }
+    let res: Response;
+    try {
+      res = await authedFetch(`${deps.apiBaseUrl}/manual-time`, {
+        method: 'POST',
+        body: JSON.stringify({
+          contractId: input.contractId,
+          taskId: input.taskId,
+          startTime: input.startTime,
+          endTime: input.endTime,
+          notes: input.notes,
+          confirmOverlap: input.confirmOverlap,
+        }),
+      });
+    } catch (err) {
+      log?.warn({ err }, 'manual time submit failed (network)');
+      return { ok: false, message: "We couldn't reach the server. Check your connection and try again." };
+    }
+    const body = (await res.json().catch(() => ({}))) as {
+      id?: string;
+      message?: string | string[];
+      errorCode?: string;
+    };
+    if (!res.ok) {
+      const message = Array.isArray(body.message) ? body.message[0] : body.message;
+      log?.warn({ status: res.status, code: body.errorCode }, 'manual time rejected');
+      return {
+        ok: false,
+        code: body.errorCode,
+        message: message || `We couldn't submit this time (${res.status}). Please try again.`,
+      };
+    }
+    log?.info({ id: body.id, contractId: input.contractId }, 'manual time submitted');
+    return { ok: true, id: body.id ?? '' };
   };
 
   ipcMain.handle(IPC.contractsGetMine, handle);
   ipcMain.handle(IPC.contractsGetTasks, handleGetTasks);
+  ipcMain.handle(IPC.contractsCreateTask, handleCreateTask);
+  ipcMain.handle(IPC.manualTimeCreate, handleCreateManualTime);
 
   return () => {
     ipcMain.removeHandler(IPC.contractsGetMine);
     ipcMain.removeHandler(IPC.contractsGetTasks);
+    ipcMain.removeHandler(IPC.contractsCreateTask);
+    ipcMain.removeHandler(IPC.manualTimeCreate);
   };
 }

@@ -7,15 +7,23 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI } from "@/service/http/user"
+import { CheckoutAPI } from "@/service/http/checkout"
 import {
   getCheckoutProjectSummary,
   titleizeCheckoutSlug,
   type CheckoutProjectSummary,
+  type CheckoutRawTeamMember,
 } from "@/lib/checkout/project-summary"
+import {
+  getCheckoutScopeSummary,
+  type CheckoutScopeSummary,
+} from "@/lib/checkout/scope-summary"
 import { cn } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
+  AlertCircle,
   ArrowDown,
   ArrowLeft,
   ChevronDown,
@@ -51,6 +59,11 @@ import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -146,8 +159,8 @@ const Dropdown = ({
   })
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="group bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
-        <span className="text-xs leading-[18px] font-medium text-gray-700">
+      <DropdownMenuTrigger className="group max-w-full overflow-hidden bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
+        <span className="min-w-0 truncate text-xs leading-[18px] font-medium text-gray-700">
           {state ? state : placeholder}
         </span>
         <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
@@ -202,6 +215,44 @@ const Dropdown = ({
   )
 }
 
+const PhaseDropdown = ({
+  options,
+  value,
+  onValueChange,
+}: {
+  options: string[]
+  value?: string
+  onValueChange?: (value: string) => void
+}) => {
+  const [state, setState] = useControllableState({
+    onChange: onValueChange,
+    value,
+  })
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="group max-w-full overflow-hidden bg-white data-[state=open]:bg-gray-100 hover:bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed hover:border-gray-300 hover:border-dashed border-solid rounded-[5px] inline-flex items-center gap-x-1.5">
+        <span className="min-w-0 truncate text-xs leading-[18px] font-medium text-gray-700">
+          {state || "Unassigned"}
+        </span>
+        <ChevronDown className="group-data-[state=open]:inline-block hidden size-[18px] shrink-0 text-gray-500" />
+      </DropdownMenuTrigger>
+
+      <DropdownMenuContent align="start" className="min-w-max">
+        <DropdownMenuRadioGroup value={state} onValueChange={setState}>
+          <DropdownMenuRadioItem hideIndicator={false} value="Unassigned">
+            Unassigned
+          </DropdownMenuRadioItem>
+          {options.map((option) => (
+            <DropdownMenuRadioItem key={option} hideIndicator={false} value={option}>
+              {option}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 type PaymentPlanOption = {
   id: string
   label: string
@@ -222,93 +273,6 @@ type CheckoutTeamMember = {
   source?: "All" | "Favorites" | "Talent Network"
   favorite?: boolean
 }
-
-const initialCheckoutTeamMembers: CheckoutTeamMember[] = [
-  {
-    id: "chris-1",
-    name: "Chris",
-    handle: "@uxdesignmaster",
-    role: "Product Manager",
-    phases: "4 Phases",
-    experience: "Guru",
-    location: "United States",
-    rate: "$500/hr",
-    status: "Confirmed",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "parth-1",
-    name: "Parth",
-    handle: "@topanalyst",
-    role: "Business Analyst",
-    phases: "Research",
-    experience: "Junior",
-    location: "United States",
-    rate: "$30/hr",
-    status: "Confirmed",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "dheeraj-1",
-    name: "Dheeraj",
-    handle: "@topfrontend",
-    role: "Front-End Developer",
-    phases: "Front-End",
-    experience: "Junior",
-    location: "India",
-    rate: "$130/hr",
-    status: "Pending Invite",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "abdul-1",
-    name: "Abdul",
-    handle: "@topfullstack",
-    role: "Full Stack Developer",
-    phases: "Back-End",
-    experience: "Medior",
-    location: "Pakistan",
-    rate: "$55/hr",
-    status: "Pending Invite",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "waseem-1",
-    name: "Waseem",
-    handle: "@topbackend",
-    role: "Full Stack Developer",
-    phases: "Back-End",
-    experience: "Senior",
-    location: "India",
-    rate: "$80/hr",
-    status: "Pending Invite",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "andrew-1",
-    name: "Andrew",
-    handle: "@topqa",
-    role: "QA Test Engineer",
-    phases: "Testing",
-    experience: "Junior",
-    location: "United States",
-    rate: "$195/hr",
-    status: "Pending Invite",
-    avatarSrc: "/man.jpg",
-  },
-  {
-    id: "unassigned-1",
-    name: "Unassigned Member",
-    handle: "",
-    role: "UX Researcher",
-    phases: "2 Phases",
-    experience: "Medior",
-    location: "United States",
-    rate: "$30/hr",
-    status: "Unassigned",
-    avatarSrc: "",
-  },
-]
 
 const replacementTeamMembers: CheckoutTeamMember[] = [
   {
@@ -369,6 +333,27 @@ const replacementTeamMembers: CheckoutTeamMember[] = [
   },
 ]
 
+const phaseOrdinalWords = [
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
+  "Eleven",
+  "Twelve",
+]
+
+// "Phase One", "Phase Two", ... is a generated label for the phase's
+// position, not part of the scope data — phase.phaseName (e.g.
+// "Reconnaissance") is the separate, real name shown next to it.
+const getPhaseOrdinalLabel = (phaseIndex: number): string =>
+  `Phase ${phaseOrdinalWords[phaseIndex] ?? phaseIndex + 1}`
+
 const safeDecodeSlug = (value: string): string => {
   try {
     return decodeURIComponent(value)
@@ -400,8 +385,14 @@ const getShortHandle = (handle?: string | null) => {
 }
 
 const renderRate = (rate?: string | null) => {
-  const value = rate || "$30/hr"
-  const [amount, unit = ""] = value.split("/")
+  if (!rate || rate === "Rate not set") {
+    return (
+      <span className="inline-flex h-5 items-center whitespace-nowrap text-sm leading-5 font-normal text-[#475467]">
+        --
+      </span>
+    )
+  }
+  const [amount, unit = ""] = rate.split("/")
 
   return (
     <span className="inline-flex h-5 w-[47px] items-center whitespace-nowrap text-sm leading-5">
@@ -413,7 +404,7 @@ const renderRate = (rate?: string | null) => {
   )
 }
 
-export default function CheckoutPage() {
+function CheckoutPageInner() {
   const params = useParams()
   const pathname = usePathname()
   const router = useRouter()
@@ -435,6 +426,13 @@ export default function CheckoutPage() {
   )
   const [projectSummary, setProjectSummary] =
     React.useState<CheckoutProjectSummary | null>(null)
+  const [isProjectSummaryLoading, setIsProjectSummaryLoading] =
+    React.useState(!isTalentCheckout)
+  const [projectSummaryError, setProjectSummaryError] = React.useState(false)
+  const [projectSummaryRetryKey, setProjectSummaryRetryKey] = React.useState(0)
+  const [scopeSummary, setScopeSummary] =
+    React.useState<CheckoutScopeSummary | null>(null)
+  const [isScopeSummaryLoading, setIsScopeSummaryLoading] = React.useState(false)
   const [isTalentProfileLoading, setIsTalentProfileLoading] =
     React.useState(isTalentCheckout)
   const [selectedRateValue, setSelectedRateValue] = React.useState(
@@ -465,7 +463,7 @@ export default function CheckoutPage() {
     memberAvatarSrc: string
   } | null>(null)
   const [teamMembers, setTeamMembers] = React.useState<CheckoutTeamMember[]>(
-    initialCheckoutTeamMembers
+    []
   )
   const [selectedReplacementId, setSelectedReplacementId] = React.useState<
     string | null
@@ -517,16 +515,28 @@ export default function CheckoutPage() {
     if (isTalentCheckout) return
 
     let isActive = true
+    setIsProjectSummaryLoading(true)
+    setProjectSummaryError(false)
 
     const loadProjectSummary = async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
       try {
-        const summary = await getCheckoutProjectSummary(decodedSlug)
+        const summary = await getCheckoutProjectSummary(
+          decodedSlug,
+          controller.signal
+        )
         if (isActive) {
           setProjectSummary(summary)
         }
       } catch {
         if (isActive) {
-          setProjectSummary(null)
+          setProjectSummaryError(true)
+        }
+      } finally {
+        clearTimeout(timeoutId)
+        if (isActive) {
+          setIsProjectSummaryLoading(false)
         }
       }
     }
@@ -536,7 +546,90 @@ export default function CheckoutPage() {
     return () => {
       isActive = false
     }
-  }, [decodedSlug, isTalentCheckout])
+  }, [decodedSlug, isTalentCheckout, projectSummaryRetryKey])
+
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+    const listingId = projectSummary?.id
+    if (!listingId) return
+
+    let isActive = true
+    setIsScopeSummaryLoading(true)
+
+    const loadScopeSummary = async () => {
+      const summary = await getCheckoutScopeSummary(listingId)
+      if (isActive) {
+        setScopeSummary(summary)
+        setIsScopeSummaryLoading(false)
+      }
+    }
+
+    loadScopeSummary()
+
+    return () => {
+      isActive = false
+    }
+  }, [isTalentCheckout, projectSummary?.id])
+
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+    if (!projectSummary) return
+
+    setTeamMembers(
+      projectSummary.teamMembers.map((member) => ({
+        id: member.id,
+        name: member.name,
+        handle: member.username ? `@${member.username}` : "",
+        role: member.role || "Team Member",
+        phases: "Unassigned",
+        experience: member.experienceLevel || "",
+        location: member.location || "",
+        rate: member.rate ? `$${member.rate}/hr` : "Rate not set",
+        status: "Confirmed",
+        avatarSrc: member.avatarUrl || "",
+      }))
+    )
+  }, [isTalentCheckout, projectSummary])
+
+  // Scope tasks only carry a role name (from the listing's scope, not a real
+  // assignment), so the actual assignee shown here is looked up from the
+  // real assigned roster (`projectSummary.team`) by matching role — the same
+  // roster the Team Members tab renders. Falls back to "Unassigned" when no
+  // team member has been assigned to that role yet.
+  const assigneeByRole = React.useMemo(() => {
+    const map = new Map<string, CheckoutRawTeamMember>()
+    for (const member of projectSummary?.teamMembers ?? []) {
+      if (member.role && !map.has(member.role.trim().toLowerCase())) {
+        map.set(member.role.trim().toLowerCase(), member)
+      }
+    }
+    return map
+  }, [projectSummary?.teamMembers])
+
+  const getTaskAssignee = (roleName: string | null) =>
+    (roleName && assigneeByRole.get(roleName.trim().toLowerCase())) || null
+
+  const getTaskAssigneeName = (roleName: string | null) =>
+    getTaskAssignee(roleName)?.name || "Unassigned"
+
+  // Real phase names from this project's own scope, so the Team Members
+  // tab's Phase dropdown offers actual phases instead of an empty list.
+  const scopePhaseNames = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          (scopeSummary?.phases ?? [])
+            .map((phase) => phase.phaseName)
+            .filter(Boolean)
+        )
+      ),
+    [scopeSummary?.phases]
+  )
+
+  const getTaskAssigneeHandle = (roleName: string | null) => {
+    const username = getTaskAssignee(roleName)?.username
+    return username ? `@${username}` : null
+  }
 
   const talentName = talentProfile?.firstName || fallbackTalentName
   const talentUsername = talentProfile?.username || decodedSlug
@@ -552,6 +645,7 @@ export default function CheckoutPage() {
       : "Team details unavailable"
   const checkoutProjectDateRange =
     projectSummary?.dateRangeLabel || "Timeline unavailable"
+  const checkoutProjectDuration = projectSummary?.durationLabel || null
   const selectedRate =
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
@@ -589,6 +683,35 @@ export default function CheckoutPage() {
   const formattedEstimatedTax = `$${estimatedTax.toFixed(2)}/hr`
   const formattedTotalHourlyRate = `$${totalHourlyRate.toFixed(2)}/hr`
   const formattedWeeklyCost = `$${Math.round(estimatedWeeklyCost).toLocaleString()}/wk`
+
+  // Tax has no backend source yet; per the checkout spec's documented fallback
+  // for an unavailable tax service, show $0.00 rather than guessing a rate.
+  const projectCheckoutEstimatedTax = 0
+  const projectCheckoutCost = projectSummary?.projectCost ?? null
+  // Balance applied is shown and applied on the Payment Details step, not here.
+  const centsFormatter = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    []
+  )
+  const formattedProjectCheckoutCost =
+    projectCheckoutCost !== null
+      ? formatter.format(projectCheckoutCost)
+      : "Pricing unavailable"
+  const formattedProjectCheckoutTax = centsFormatter.format(
+    projectCheckoutEstimatedTax
+  )
+  const formattedProjectCheckoutTotal =
+    projectCheckoutCost !== null
+      ? formatter.format(
+          Math.max(0, projectCheckoutCost + projectCheckoutEstimatedTax)
+        )
+      : "Pricing unavailable"
 
   const recommendations = [
     {
@@ -752,7 +875,8 @@ export default function CheckoutPage() {
 
   const leaveCheckoutForProjectPlanning = React.useCallback(() => {
     setCheckoutExitDialog(null)
-  }, [])
+    router.push(`/edit-listing/${safeSlugSegment}`)
+  }, [router, safeSlugSegment])
 
   const continueToPaymentDetails = React.useCallback(() => {
     if (isTalentCheckout) {
@@ -964,6 +1088,45 @@ export default function CheckoutPage() {
     })
   }
 
+  const retryProjectSummary = () => {
+    setProjectSummaryRetryKey((count) => count + 1)
+  }
+
+  if (!isTalentCheckout && projectSummaryError) {
+    return (
+      <div className="bg-gray-50 pt-[64px]">
+        <CheckoutNavigation
+          currentStep={1}
+          logoHref=""
+          firstStepLabel="Project Details"
+        />
+        <div className="px-[150px] py-[50px]">
+          <div className="max-w-[1140px] mx-auto">
+            <Alert variant="error" className="items-center p-5">
+              <AlertIcon>
+                <AlertCircle className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>Something went wrong</AlertTitle>
+                <AlertDescription className="mt-1">
+                  We couldn&apos;t load your project details. Please try
+                  again.
+                </AlertDescription>
+                <Button
+                  variant="filled"
+                  className="mt-4"
+                  onClick={retryProjectSummary}
+                >
+                  Try Again
+                </Button>
+              </AlertContent>
+            </Alert>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation
@@ -988,8 +1151,7 @@ export default function CheckoutPage() {
             }}
             className="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-700 transition-colors duration-300 mb-6"
           >
-            <ArrowLeft className="size-4" />{" "}
-            {isTalentCheckout ? "Back to profile" : "Back to project"}
+            <ArrowLeft className="size-4" /> Back
           </button>
 
           <h1 className="text-2xl leading-[.7] font-bold text-dark-blue-400">
@@ -1314,48 +1476,106 @@ export default function CheckoutPage() {
                 </>
               ) : (
                 <>
-                  <div className="p-5 border flex items-center gap-x-3 border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                    <div className="relative h-[92px] overflow-hidden w-[181px] border border-[#DFDFDF] rounded-md shrink-0">
-                      <NextImage
-                        className="object-cover"
-                        src={checkoutProjectImage}
-                        alt={checkoutProjectTitle}
-                        sizes="25vw"
-                        fill
-                      />
-                    </div>
+                  <div className="p-5 border flex items-center gap-x-3 border-gray-200 rounded-[8px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                    {isProjectSummaryLoading ? (
+                      <div
+                        className="relative h-[92px] overflow-hidden w-[181px] rounded-md shrink-0 bg-gray-100"
+                        aria-hidden="true"
+                      >
+                        <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                      </div>
+                    ) : (
+                      <div className="relative h-[92px] overflow-hidden w-[181px] border border-[#DFDFDF] rounded-md shrink-0">
+                        <NextImage
+                          className="object-cover"
+                          src={checkoutProjectImage}
+                          alt={checkoutProjectTitle}
+                          sizes="25vw"
+                          fill
+                        />
+                      </div>
+                    )}
 
                     <div className="flex-auto flex items-center gap-x-5">
                       <div className="flex-auto">
-                        <h1 className="text-sm font-medium leading-5 border-gray-800">
-                          {checkoutProjectTitle}
-                        </h1>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-5 w-40 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <h1 className="text-sm font-medium leading-5 text-gray-800">
+                            {checkoutProjectTitle}
+                          </h1>
+                        )}
 
                         <div className="mt-2 inline-flex items-center gap-x-2">
-                          <UserGroup />
-                          <span className="text-xs leading-5 font-semibold text-primary-500">
-                            {checkoutProjectTeamLabel}
-                          </span>
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-4 w-28 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <>
+                              <UserGroup />
+                              <span className="text-xs leading-5 font-semibold text-primary-500">
+                                {checkoutProjectTeamLabel}
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex mt-2 items-center gap-x-2">
-                          <span className="text-[13px] leading-none font-semibold text-[#122A4B]">
-                            {checkoutProjectDateRange}
-                          </span>
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-4 w-24 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <span className="text-[13px] leading-none font-semibold text-[#122A4B]">
+                              {checkoutProjectDateRange}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="inline-flex flex-col items-end gap-y-[26px]">
-                        <Badge size="md" visual="primary">
-                          8 months
-                        </Badge>
+                      <div className="self-stretch inline-flex flex-col items-end justify-between">
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-6 w-16 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : checkoutProjectDuration ? (
+                          <Badge size="md" visual="primary">
+                            {checkoutProjectDuration}
+                          </Badge>
+                        ) : null}
 
-                        <div className="inline-flex flex-col gap-y-0.5">
-                          <span className="inline-block text-dark-blue-400 text-xl leading-none font-semibold">
-                            $94,000
-                          </span>
-                          <span className="inline-block text-dark-blue-400 text-xs leading-none">
-                            Project Cost
-                          </span>
+                        <div className="inline-flex flex-col gap-y-0.5 items-end">
+                          {isProjectSummaryLoading ? (
+                            <div
+                              className="relative h-6 w-20 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <span className="inline-block text-dark-blue-400 text-xl leading-none font-semibold">
+                              {formattedProjectCheckoutCost}
+                            </span>
+                          )}
+                          {!isProjectSummaryLoading && (
+                            <span className="inline-block text-[#122a4b] text-xs leading-none">
+                              Project Cost
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1364,15 +1584,15 @@ export default function CheckoutPage() {
                   <div className="mt-6">
                     <Tabs defaultValue="Project Scope">
                       <div className="flex items-center justify-between">
-                        <TabsList className="p-1 rounded-[5px] gap-x-2 h-11 bg-white border border-gray-200">
+                        <TabsList className="h-auto items-center p-1 rounded-[5px] gap-x-2 gap-y-0 bg-white border border-gray-200">
                           <DisclosureTrigger
-                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] data-[state=active]:bg-gray-100 text-gray-700"
+                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] text-gray-700 data-[state=active]:bg-gray-100 data-[state=inactive]:rounded-[6px] data-[state=inactive]:text-gray-500"
                             value="Project Scope"
                           >
                             Project Scope
                           </DisclosureTrigger>
                           <DisclosureTrigger
-                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] data-[state=active]:bg-gray-100 text-gray-700"
+                            className="focus-visible:outline-none transition duration-300 h-9 shrink-0 inline-flex items-center justify-center py-2 px-3 text-xs leading-5 font-semibold rounded-[4px] text-gray-700 data-[state=active]:bg-gray-100 data-[state=inactive]:rounded-[6px] data-[state=inactive]:text-gray-500"
                             value="Team Members"
                           >
                             Team Members
@@ -1389,30 +1609,31 @@ export default function CheckoutPage() {
                         </Button>
                       </div>
                       <TabsContent value="Team Members">
-                        <div className="rounded-lg mt-6 bg-white border border-gray-200 overflow-hidden">
-                          <Table>
+                        <div className="rounded-lg mt-6 bg-white border border-gray-200 shadow-xs overflow-hidden">
+                          <Table className="table-fixed">
                             <TableHeader className="bg-gray-50 [&_tr]:border-t-0">
                               <TableRow className="hover:bg-transparent">
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[24.66%] h-11 px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   <span className="inline-flex items-center gap-x-1">
                                     Name <ArrowDown className="size-[15px]" />
                                   </span>
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Phase
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Experience
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Location
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Rate
                                 </TableHead>
-                                <TableHead className="bg-gray-50 hover:text-gray-600">
+                                <TableHead className="w-[13.5%] h-11 p-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600">
                                   Status
                                 </TableHead>
+                                <TableHead className="w-[7.85%] h-11 pl-3 pr-6 py-3 text-xs leading-[18px] font-medium text-gray-600 bg-gray-50 hover:text-gray-600" />
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -1420,11 +1641,11 @@ export default function CheckoutPage() {
                                 teamMembers.map((member) => (
                                   <TableRow
                                     key={member.id}
-                                    className="hover:bg-white"
+                                    className="h-[72px] hover:bg-white"
                                   >
-                                    <TableCell className="py-4 px-6">
-                                      <span className="inline-flex items-start gap-x-2">
-                                        <Avatar size="sm">
+                                    <TableCell className="h-[72px] pl-6 pr-3 py-4 align-middle">
+                                      <span className="flex items-center gap-x-2">
+                                        <Avatar size="sm" className="shrink-0">
                                           {member.avatarSrc ? (
                                             <AvatarImage
                                               src={member.avatarSrc}
@@ -1436,52 +1657,60 @@ export default function CheckoutPage() {
                                           </AvatarFallback>
                                         </Avatar>
 
-                                        <span className="inline-flex flex-col">
-                                          <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                            {member.name}
+                                        <span className="flex min-w-0 flex-col leading-[16.263px]">
+                                          <span className="flex items-baseline gap-x-px truncate text-xs text-dark-blue-400">
+                                            <span className="font-semibold">
+                                              {member.name}
+                                            </span>
+                                            {member.handle ? (
+                                              <span className="truncate font-normal">
+                                                {member.handle}
+                                              </span>
+                                            ) : null}
                                           </span>
-                                          {member.handle ? (
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              {member.handle}
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              {member.role}
-                                            </span>
-                                          )}
+                                          <span className="truncate text-xs font-normal text-gray-500">
+                                            {member.role}
+                                          </span>
                                         </span>
                                       </span>
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
-                                      <Badge
-                                        className="text-xs leading-[18px] rounded-[5px] border border-gray-200 bg-white"
-                                        visual="gray"
-                                        size="lg"
-                                      >
-                                        {member.phases}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="py-4 px-6">
-                                      <Dropdown
-                                        defaultValue={member.experience}
+                                    <TableCell className="h-[72px] p-3 align-middle">
+                                      <PhaseDropdown
+                                        options={scopePhaseNames}
+                                        value={member.phases}
+                                        onValueChange={(value) =>
+                                          setTeamMembers((current) =>
+                                            current.map((m) =>
+                                              m.id === member.id
+                                                ? { ...m, phases: value }
+                                                : m
+                                            )
+                                          )
+                                        }
                                       />
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
+                                      <Dropdown
+                                        defaultValue={member.experience}
+                                        placeholder="None"
+                                      />
+                                    </TableCell>
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <CountriesCombobox
-                                        triggerClassName="group border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
+                                        triggerClassName="group max-w-full overflow-hidden border-gray-200 data-[state=open]:border-gray-300 data-[state=open]:border-dashed data-[state=open]:bg-gray-100 hover:border-gray-300 hover:border-dashed bg-white hover:bg-gray-100 border-solid"
                                         defaultValue={member.location}
                                       />
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       <span className="whitespace-nowrap inline-block text-sm leading-5 text-gray-600">
                                         {member.rate}
                                       </span>
                                     </TableCell>
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] p-3 align-middle">
                                       {renderTeamMemberStatus(member)}
                                     </TableCell>
 
-                                    <TableCell className="py-4 px-6">
+                                    <TableCell className="h-[72px] pl-3 pr-6 py-4 align-middle">
                                       {renderTeamMemberActions(member)}
                                     </TableCell>
                                   </TableRow>
@@ -1492,7 +1721,9 @@ export default function CheckoutPage() {
                                     className="py-10 px-6 text-center text-sm text-gray-500"
                                     colSpan={7}
                                   >
-                                    No team members selected.
+                                    {isProjectSummaryLoading
+                                      ? "Loading team members…"
+                                      : "No team members selected."}
                                   </TableCell>
                                 </TableRow>
                               )}
@@ -1677,687 +1908,159 @@ export default function CheckoutPage() {
                       </TabsContent>
                       <TabsContent value="Project Scope">
                         <div className="mt-6">
-                          <Accordion
-                            type="multiple"
-                            defaultValue={["item-1", "item-2", "item-3"]}
-                            className="flex-auto space-y-3"
-                          >
-                            <AccordionItem
-                              value="item-1"
-                              className="rounded-lg border border-gray-200 shadow-sm bg-white"
+                          {isScopeSummaryLoading ? (
+                            <div className="space-y-3" aria-hidden="true">
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                              <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                                <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                              </div>
+                            </div>
+                          ) : scopeSummary && scopeSummary.phases.length > 0 ? (
+                            <Accordion
+                              type="multiple"
+                              defaultValue={scopeSummary.phases.map((phase) => phase.id)}
+                              className="flex-auto space-y-3"
                             >
-                              <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                                <div className="inline-flex items-center gap-x-3.5">
-                                  <AccordionTrigger asChild>
-                                    <IconButton variant="ghost" visual="gray">
-                                      <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </IconButton>
-                                  </AccordionTrigger>
+                              {scopeSummary.phases.map((phase, phaseIndex) => {
+                                // Dummy 7-day-per-phase timeline (no real start/end
+                                // dates exist yet): phase N spans Day (8N+1) - Day (8N+8).
+                                const phaseStartDay = phaseIndex * 8 + 1
+                                const phaseEndDay = phaseStartDay + 7
 
-                                  <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                    Phase One{" "}
-                                    <span className="font-light">Research</span>
-                                  </span>
-                                </div>
+                                return (
+                                <AccordionItem
+                                  key={phase.id}
+                                  value={phase.id}
+                                  className="overflow-hidden rounded-lg border border-gray-200 shadow-xs bg-white"
+                                >
+                                  <div className="flex items-center justify-between gap-x-4 border-b border-gray-200 p-3">
+                                    <div className="inline-flex items-center gap-x-2">
+                                      <AccordionTrigger asChild>
+                                        <IconButton
+                                          variant="ghost"
+                                          visual="gray"
+                                          className="size-8"
+                                        >
+                                          <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
+                                        </IconButton>
+                                      </AccordionTrigger>
 
-                                <div className="inline-flex items-center gap-x-8">
-                                  <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 1
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      -
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 8
-                                    </span>
+                                      <span className="inline-flex items-center gap-x-1.5 text-base md:text-[18px] whitespace-nowrap">
+                                        <span className="font-semibold leading-7 text-gray-900">
+                                          {getPhaseOrdinalLabel(phaseIndex)}
+                                        </span>
+                                        <span className="font-light leading-5 text-gray-600">
+                                          {phase.phaseName}
+                                        </span>
+                                      </span>
+                                    </div>
+
+                                    <div className="inline-flex items-center gap-x-8">
+                                      <span className="inline-flex items-center gap-x-2 text-[13px] font-semibold leading-none text-[#122a4b]">
+                                        <span>Day {phaseStartDay}</span>
+                                        <span>-</span>
+                                        <span>Day {phaseEndDay}</span>
+                                      </span>
+
+                                      <Button
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="bg-white"
+                                        onClick={() => setCheckoutExitDialog("add-task")}
+                                      >
+                                        <Plus className="size-[15px]" />
+                                        Add task
+                                      </Button>
+                                    </div>
                                   </div>
 
-                                  <Button
-                                    visual="gray"
-                                    variant="outlined"
-                                    onClick={() =>
-                                      setCheckoutExitDialog("add-task")
-                                    }
-                                  >
-                                    <Plus className="size-[15px]" />
-                                    Add Task
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <DisclosureContent>
-                                <Table>
-                                  <TableHeader className="bg-gray-50">
-                                    <TableRow className="hover:bg-transparent">
-                                      <TableHead className="hover:text-gray-600">
-                                        Task
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Description
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Assignee
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Duration
-                                      </TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                  </TableBody>
-                                </Table>
-                              </DisclosureContent>
-                            </AccordionItem>
-                            <AccordionItem
-                              value="item-2"
-                              className="rounded-lg border border-gray-200 shadow-sm bg-white"
-                            >
-                              <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                                <div className="inline-flex items-center gap-x-3.5">
-                                  <AccordionTrigger asChild>
-                                    <IconButton
-                                      className="size-8"
-                                      variant="ghost"
-                                      visual="gray"
-                                    >
-                                      <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </IconButton>
-                                  </AccordionTrigger>
-
-                                  <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                    Phase Two{" "}
-                                    <span className="font-light">Design</span>
-                                  </span>
-                                </div>
-
-                                <div className="inline-flex items-center gap-x-8">
-                                  <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 9
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      -
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 24
-                                    </span>
-                                  </div>
-
-                                  <Button
-                                    visual="gray"
-                                    variant="outlined"
-                                    onClick={() =>
-                                      setCheckoutExitDialog("add-task")
-                                    }
-                                  >
-                                    <Plus className="size-[15px]" />
-                                    Add Task
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <DisclosureContent>
-                                <Table>
-                                  <TableHeader className="bg-gray-50">
-                                    <TableRow className="hover:bg-transparent">
-                                      <TableHead className="hover:text-gray-600">
-                                        Task
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Description
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Assignee
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Duration
-                                      </TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                  </TableBody>
-                                </Table>
-                              </DisclosureContent>
-                            </AccordionItem>
-                            <AccordionItem
-                              value="item-3"
-                              className="rounded-lg border border-gray-200 shadow-sm bg-white"
-                            >
-                              <div className="flex items-center justify-between gap-x-4 px-3 py-3">
-                                <div className="inline-flex items-center gap-x-3.5">
-                                  <AccordionTrigger asChild>
-                                    <IconButton variant="ghost" visual="gray">
-                                      <ChevronDown className="size-5 shrink-0 text-gray-500 group-data-[state=open]/item:-rotate-180 transition duration-300" />
-                                    </IconButton>
-                                  </AccordionTrigger>
-
-                                  <span className="text-base md:text-[18px] font-semibold leading-7 text-gray-900">
-                                    Phase Three{" "}
-                                    <span className="font-light">
-                                      Front-End
-                                    </span>
-                                  </span>
-                                </div>
-
-                                <div className="inline-flex items-center gap-x-8">
-                                  <div className="inline-flex items-center gap-x-2 md:pl-0 pl-10">
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 25
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      -
-                                    </span>
-                                    <span className="text-xs leading-[14.52px] md:text-[13px] md:leading-[15.73px] text-dark-blue-400 font-semibold">
-                                      Day 48
-                                    </span>
-                                  </div>
-
-                                  <Button
-                                    visual="gray"
-                                    variant="outlined"
-                                    onClick={() =>
-                                      setCheckoutExitDialog("add-task")
-                                    }
-                                  >
-                                    <Plus className="size-[15px]" />
-                                    Add Task
-                                  </Button>
-                                </div>
-                              </div>
-
-                              <DisclosureContent>
-                                <Table>
-                                  <TableHeader className="bg-gray-50">
-                                    <TableRow className="hover:bg-transparent">
-                                      <TableHead className="hover:text-gray-600">
-                                        Task
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Description
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Assignee
-                                      </TableHead>
-                                      <TableHead className="hover:text-gray-600">
-                                        Duration
-                                      </TableHead>
-                                    </TableRow>
-                                  </TableHeader>
-                                  <TableBody>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                    <TableRow className="hover:bg-white">
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap font-semibold text-dark-blue-400">
-                                          Consumer Research
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm font-extralight line-clamp-2 text-dark-blue-400">
-                                          Conduct research to understand
-                                          consumer needs, behaviors, and
-                                          preferences for product optimization.
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="inline-flex items-start gap-x-2">
-                                          <Avatar>
-                                            <AvatarImage
-                                              src="/man.jpg"
-                                              alt="Man"
-                                            />
-                                            <AvatarFallback>M</AvatarFallback>
-                                          </Avatar>
-
-                                          <span className="inline-flex flex-col">
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-semibold text-dark-blue-400">
-                                              Christopher
-                                            </span>
-                                            <span className="text-xs text-nowrap leading-[16.26px] font-extralight text-dark-blue-400">
-                                              @topdesigner321
-                                            </span>
-                                          </span>
-                                        </span>
-                                      </TableCell>
-                                      <TableCell className="py-4 px-6">
-                                        <span className="text-sm text-nowrap line-clamp-2 text-dark-blue-400">
-                                          40 hours
-                                        </span>
-                                      </TableCell>
-                                    </TableRow>
-                                  </TableBody>
-                                </Table>
-                              </DisclosureContent>
-                            </AccordionItem>
-                          </Accordion>
+                                  <DisclosureContent>
+                                    <Table className="table-fixed">
+                                        <TableHeader className="bg-gray-50 [&_tr]:border-y-0 [&_tr]:border-b">
+                                          <TableRow className="hover:bg-transparent">
+                                            <TableHead className="w-[22.93%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Task
+                                            </TableHead>
+                                            <TableHead className="w-[40.52%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Description
+                                            </TableHead>
+                                            <TableHead className="w-[23.30%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Assignee
+                                            </TableHead>
+                                            <TableHead className="w-[13.26%] h-[44px] px-6 py-3 text-xs leading-[18px] font-medium text-gray-600 hover:text-gray-600">
+                                              Duration
+                                            </TableHead>
+                                          </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                          {phase.tasks.map((task) => (
+                                            <TableRow
+                                              key={task.id}
+                                              className="h-[72px] hover:bg-white"
+                                            >
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="block truncate text-sm leading-5 font-semibold text-gray-900">
+                                                  {task.title}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="line-clamp-2 text-sm leading-5 font-normal text-gray-600">
+                                                  {task.description || "No description provided"}
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="flex items-center gap-x-2">
+                                                  <Avatar size="sm" className="shrink-0">
+                                                    {getTaskAssignee(task.roleName)?.avatarUrl ? (
+                                                      <AvatarImage
+                                                        src={getTaskAssignee(task.roleName)!.avatarUrl!}
+                                                        alt={getTaskAssigneeName(task.roleName)}
+                                                      />
+                                                    ) : null}
+                                                    <AvatarFallback>
+                                                      {getTaskAssigneeName(task.roleName)
+                                                        .slice(0, 1)
+                                                        .toUpperCase()}
+                                                    </AvatarFallback>
+                                                  </Avatar>
+                                                  <span className="flex min-w-0 flex-col leading-[16.263px]">
+                                                    <span className="truncate text-xs font-semibold text-gray-900">
+                                                      {getTaskAssigneeName(task.roleName)}
+                                                    </span>
+                                                    {getTaskAssigneeHandle(task.roleName) ? (
+                                                      <span className="truncate text-xs font-normal text-gray-500">
+                                                        {getTaskAssigneeHandle(task.roleName)}
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                </span>
+                                              </TableCell>
+                                              <TableCell className="h-[72px] px-6 py-4 align-middle">
+                                                <span className="text-sm leading-5 text-nowrap font-normal text-gray-600">
+                                                  {task.estimatedHours
+                                                    ? `${task.estimatedHours} hours`
+                                                    : "Duration unavailable"}
+                                                </span>
+                                              </TableCell>
+                                            </TableRow>
+                                          ))}
+                                        </TableBody>
+                                    </Table>
+                                  </DisclosureContent>
+                                </AccordionItem>
+                                )
+                              })}
+                            </Accordion>
+                          ) : (
+                            <p className="text-sm font-light text-dark-blue-400">
+                              Project scope unavailable.
+                            </p>
+                          )}
                         </div>
                       </TabsContent>
                     </Tabs>
@@ -2366,8 +2069,8 @@ export default function CheckoutPage() {
               )}
             </div>
             <div className="w-[305px] shrink-0 bg-white">
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,0.02)]">
-                <h1 className="text-base font-semibold leading-none text-dark-blue-400">
+              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                <h1 className="text-base font-semibold leading-[normal] text-dark-blue-400">
                   Price Details
                 </h1>
 
@@ -2566,25 +2269,35 @@ export default function CheckoutPage() {
                         <span className="text-xs font-light text-dark-blue-400">
                           Project cost
                         </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $94,000
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedProjectCheckoutCost}
+                          </span>
+                        )}
                       </li>
                       <li className="flex items-center justify-between">
                         <span className="text-xs font-light text-dark-blue-400">
                           Estimated tax *
                         </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $0.00
-                        </span>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span className="text-xs font-light text-dark-blue-400">
-                          Balance applied
-                        </span>
-                        <span className="text-xs text-dark-blue-400">
-                          $0.00
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedProjectCheckoutTax}
+                          </span>
+                        )}
                       </li>
                     </ul>
 
@@ -2593,9 +2306,18 @@ export default function CheckoutPage() {
                         <span className="text-xs font-light text-dark-blue-400">
                           Total amount to be paid
                         </span>
-                        <span className="text-base font-bold leading-none text-dark-blue-400">
-                          $94,000
-                        </span>
+                        {isProjectSummaryLoading ? (
+                          <div
+                            className="relative h-4 w-16 overflow-hidden rounded bg-gray-100"
+                            aria-hidden="true"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ) : (
+                          <span className="text-base font-bold leading-none text-dark-blue-400">
+                            {formattedProjectCheckoutTotal}
+                          </span>
+                        )}
                       </li>
                     </ul>
                   </>
@@ -2607,7 +2329,7 @@ export default function CheckoutPage() {
                     size="md"
                     onClick={continueToPaymentDetails}
                   >
-                    {isTalentCheckout ? "Proceed to Payment" : "Continue"}
+                    Proceed to Payment
                   </Button>
                 </div>
 
@@ -2647,7 +2369,7 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="mt-[21.33px] flex items-center justify-center">
-                  <Button variant="link" visual="gray">
+                  <Button variant="link" visual="gray" className="text-xs">
                     Add Gift Card / Promo Code
                   </Button>
                 </div>
@@ -3038,5 +2760,13 @@ export default function CheckoutPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <AuthenticatedRoute>
+      <CheckoutPageInner />
+    </AuthenticatedRoute>
   )
 }

@@ -47,10 +47,14 @@ export class ThresholdCheckService {
 
     this.logger.log(`Schedule ${schedule.id} skipped: balance $${availableBalanceUSD} < threshold $${threshold} (miss #${newMissCount})`);
 
-    // PS-17 §5.2: Notify at miss 3 and every 3rd miss thereafter
-    if (newMissCount % 3 === 0) {
+    // PS-17 §5.2/§5.3, PS-23 §3.4: the real payout.scheduled.skipped event —
+    // notifyContractor mirrors the "every 3rd miss" rule the log line below
+    // already described, but this previously only published the generic
+    // payout.schedule.updated (kept as-is, additive) and never the
+    // dedicated skipped event notification-service's consumer expects.
+    const notifyContractor = newMissCount % 3 === 0;
+    if (notifyContractor) {
       this.logger.log(`Threshold miss notification for schedule ${schedule.id} (miss #${newMissCount})`);
-      // In production: publish to RabbitMQ for notification-service
       await this.publisher.publishScheduleUpdated({
         contractorId: schedule.contractorId,
         schedule: {
@@ -62,6 +66,18 @@ export class ThresholdCheckService {
         updatedAt: new Date().toISOString(),
       });
     }
+
+    await this.publisher.publishScheduledSkipped({
+      scheduleId: schedule.id,
+      contractorId: schedule.contractorId,
+      frequency: schedule.frequency,
+      skipReason: 'BELOW_THRESHOLD',
+      thresholdUSD: threshold,
+      currentBalanceUSD: availableBalanceUSD,
+      consecutiveMissCount: newMissCount,
+      notifyContractor,
+      nextExecutionAt: schedule.nextExecutionAt?.toISOString() ?? new Date().toISOString(),
+    });
 
     return { proceed: false };
   }

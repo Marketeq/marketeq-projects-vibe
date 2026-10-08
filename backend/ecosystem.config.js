@@ -70,7 +70,8 @@ module.exports = {
     // exist in this file, where payout-service is on 3022. Moving this to
     // 3033 breaks resume parsing under PM2 -- the gateway keeps calling 3028.
     svc('resume-parsing-service', 3028),
-    svc('location-service', 3030),
+    svc('location-service', 3036),
+    svc('identity-verification-service', 3019),
     // Port must match LEGAL_SERVICE_URL (listings-service) and the api-gateway
     // default in proxy.controller.ts. legal-service's own default is 3015.
     svc('legal-service', 3032),

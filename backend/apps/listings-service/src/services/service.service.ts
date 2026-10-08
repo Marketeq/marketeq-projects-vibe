@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClientProxy } from '@nestjs/microservices';
@@ -21,8 +21,94 @@ export class ServicesService {
     private readonly userProfileClient: UserProfileClient,
   ) {}
 
-  findAll(status = ListingStatus.Published) {
-    return this.repo.find({ where: { status, listingType: 'service' }, order: { createdAt: 'DESC' } });
+  async findAll(status = ListingStatus.Published) {
+    const items = await this.repo.find({ where: { status, listingType: 'service' }, order: { createdAt: 'DESC' } });
+    const teamByService = await this.resolveTeamAvatars(items);
+    return items.map((item) => {
+      const team = teamByService.get(String(item.id));
+      return {
+        ...item,
+        teamAvatars: team?.avatars ?? [],
+        teamMembers: team?.members ?? [],
+      };
+    });
+  }
+
+  private async resolveTeamAvatars(
+    services: Service[],
+  ): Promise<Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>> {
+    const idsByService = new Map<string, string[]>();
+    const allIds = new Set<string>();
+    for (const s of services) {
+      const memberIds =
+        Array.isArray((s as any).teamMemberIds) && (s as any).teamMemberIds.length
+          ? (s as any).teamMemberIds
+          : (s as any).userId
+            ? [String((s as any).userId)]
+            : [];
+      idsByService.set(String(s.id), memberIds);
+      memberIds.forEach((id: string) => allIds.add(id));
+    }
+    if (allIds.size === 0) return new Map();
+
+    const rows: Array<{ id: string; avatarUrl: string | null; firstName: string | null; username: string | null }> =
+      await this.repo.manager.query(
+        `SELECT id::text, "avatarUrl", "firstName", username FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        [Array.from(allIds)],
+      );
+    const infoById = new Map(rows.map((r) => [r.id, { avatarUrl: r.avatarUrl, firstName: r.firstName, username: r.username }]));
+
+    const missingIds = Array.from(allIds).filter((id) => !infoById.has(id));
+    if (missingIds.length) {
+      const authRows: Array<{ id: string; email: string | null }> = await this.repo.manager.query(
+        `SELECT id::text, email FROM public.users WHERE id = ANY($1::uuid[])`,
+        [missingIds],
+      );
+      for (const r of authRows) {
+        const namePart = r.email ? r.email.split('@')[0] : null;
+        infoById.set(r.id, { avatarUrl: null, firstName: namePart, username: null });
+      }
+    }
+
+    const result = new Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>();
+    for (const [serviceId, memberIds] of idsByService) {
+      const validMembers = memberIds.filter((id: string) => infoById.has(id)).slice(0, 4);
+      result.set(serviceId, {
+        avatars: validMembers.map((id: string) => infoById.get(id)?.avatarUrl ?? ''),
+        members: validMembers.map((id: string) => {
+          const info = infoById.get(id);
+          return {
+            avatarUrl: info?.avatarUrl ?? '',
+            firstName: info?.firstName ?? '',
+            username: info?.username ?? '',
+          };
+        }),
+      });
+    }
+    return result;
+  }
+
+  async claim(id: string, userId: string) {
+    if (!userId) throw new ForbiddenException('Sign in to claim a service');
+
+    const result = await this.repo
+      .createQueryBuilder()
+      .update(Service)
+      .set({ userId })
+      .where('id = :id', { id })
+      .andWhere('"userId" IS NULL')
+      .execute();
+
+    if (!result.affected) {
+      const existing = await this.repo.findOne({ where: { id } });
+      if (!existing) throw new NotFoundException('Service not found');
+      if (existing.userId === userId) return this.findOne(id);
+      throw new ConflictException('This service has just been claimed by someone else');
+    }
+
+    const claimed = await this.repo.findOne({ where: { id } });
+    if (claimed) this.emitAlgoliaUpsert(claimed);
+    return this.findOne(id);
   }
 
   async findOne(id: string) {
@@ -34,6 +120,16 @@ export class ServicesService {
   async findBySlug(slug: string) {
     const item = await this.repo.findOne({ where: { slug, listingType: 'service' } });
     if (!item) throw new NotFoundException('Service not found');
+    // QA-192/PMCM-402: archiving must hide the listing outright, even
+    // though the `publishedSnapshot` exception below is otherwise correct
+    // (it exists so a service being re-edited after publish keeps showing
+    // its last-published content publicly while the draft is in progress).
+    // Without this, an archived service that had ever been published stays
+    // fully visible via its old public slug — the exact case this ticket
+    // is about.
+    if (item.status === ListingStatus.Archived) {
+      throw new NotFoundException('Service not found');
+    }
     if (item.status !== ListingStatus.Published && !item.publishedSnapshot) {
       throw new NotFoundException('Service not found');
     }

@@ -5,11 +5,13 @@ import { Global, Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { EarningsClient } from './earnings.client';
 import { KycClient } from './kyc.client';
+import { IdentityServiceClient } from './identity.client';
+import { UserClient } from './user.client';
 
 @Global()
 @Module({
   imports: [HttpModule],
-  providers: [EarningsClient, KycClient],
-  exports: [EarningsClient, KycClient],
+  providers: [EarningsClient, KycClient, IdentityServiceClient, UserClient],
+  exports: [EarningsClient, KycClient, IdentityServiceClient, UserClient],
 })
 export class CommonModule {}

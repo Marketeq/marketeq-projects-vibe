@@ -2,7 +2,12 @@
 
 import { useState } from "react"
 import { CaseStudyAPI } from "@/service/http/case-study"
-import { addSection, regionsToSchemaJson, type EditorRegion } from "@/lib/case-study-mapper"
+import {
+  addSection,
+  regionsToSchemaJson,
+  DEFAULT_CASE_STUDY_TITLE,
+  type EditorRegion,
+} from "@/lib/case-study-mapper"
 import {
   Button,
   Dialog,
@@ -13,8 +18,6 @@ import {
 } from "@/components/ui"
 import { useToast } from "@/components/ui/toast/use-toast"
 import { SECTION_TILES } from "./template-dialog"
-
-const DEFAULT_TITLE = "Your case study's title"
 
 /**
  * "Start Creating Your Case Study" modal — the entry point from the
@@ -45,7 +48,7 @@ export function CreateCaseStudyModal({
     if (isCreating) return
     setIsCreating(true)
     try {
-      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_TITLE })
+      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_CASE_STUDY_TITLE })
       onOpenChange(false)
       onCreated(data.id)
     } catch {
@@ -59,7 +62,7 @@ export function CreateCaseStudyModal({
     if (isCreating) return
     setIsCreating(true)
     try {
-      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_TITLE })
+      const { data } = await CaseStudyAPI.Create({ title: DEFAULT_CASE_STUDY_TITLE })
       const sections = SECTION_TILES.reduce<EditorRegion[]>(
         (regions, { type }) => addSection(regions, type),
         []

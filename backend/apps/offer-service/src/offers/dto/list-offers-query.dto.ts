@@ -1,6 +1,6 @@
 // apps/offer-service/src/offers/dto/list-offers-query.dto.ts
 // GET /v1/offers — query params for the offers inbox list.
-import { IsOptional, IsInt, Min, Max, IsIn, IsArray, IsEnum } from 'class-validator';
+import { IsOptional, IsInt, Min, Max, IsIn, IsArray, IsEnum, IsUUID } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { OfferStatus } from '../enums/offer-status.enum';
 import { LIST_DEFAULT_PAGE_SIZE, LIST_MAX_PAGE_SIZE } from '../../common/constants/offer.constants';
@@ -52,4 +52,11 @@ export class ListOffersQueryDto {
   @IsOptional()
   @IsIn(['client', 'talent'], { message: 'as must be either client or talent.' })
   as?: ViewerRoleFilter;
+
+  // PMCM-393 AC-41.02: narrows the result to offers with this talent. Never
+  // widens it — the party filter above is always built from the JWT's
+  // userId, this only ANDs onto it (see OffersService.list()).
+  @IsOptional()
+  @IsUUID('4', { message: 'talentId must be a valid UUID.' })
+  talentId?: string;
 }

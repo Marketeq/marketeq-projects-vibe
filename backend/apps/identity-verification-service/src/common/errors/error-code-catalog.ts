@@ -1,0 +1,140 @@
+export type CallerAudience = 'end-user' | 'vendor-webhook' | 'internal-service' | 'any-caller';
+
+export interface ErrorCatalogEntry {
+  code: string;
+  httpStatus: number | 'varies';
+  meaning: string;
+  source: string;
+  callerAudience: CallerAudience;
+  safeToDisplayVerbatim: boolean | 'depends';
+  messagingNote: string;
+}
+
+export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
+  {
+    code: 'VALIDATION_ERROR',
+    httpStatus: 400,
+    meaning: 'One or more request fields failed a class-validator rule. details.errors lists each failure.',
+    source: 'Global ValidationPipe (Doc 04 Step 9)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'details.errors names request field properties — these are the same field names the caller submitted.',
+  },
+  {
+    code: 'DOCUMENT_EXPIRED',
+    httpStatus: 400,
+    meaning: 'expirationDate is in the past.',
+    source: 'SVC-12 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is a plain, user-safe sentence.',
+  },
+  {
+    code: 'NO_DETECTED_LOCATION',
+    httpStatus: 409,
+    meaning: 'Nothing to confirm — no detected country is on the profile yet.',
+    source: 'SVC-02 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is a plain, user-safe sentence.',
+  },
+  {
+    code: 'CLASSIFICATION_REQUIRED',
+    httpStatus: 409,
+    meaning: 'A travel duration was submitted before a Temporarily Traveling classification exists.',
+    source: 'SVC-04, SVC-05 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is a plain, user-safe sentence.',
+  },
+  {
+    code: 'DUPLICATE_DOCUMENT',
+    httpStatus: 409,
+    meaning: 'This document is already on file under a different account.',
+    source: 'SVC-17 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'details only carries the calling profile\'s own newly-created documentId — the other profile\'s id is never exposed.',
+  },
+  {
+    code: 'RETRY_LIMIT_EXCEEDED',
+    httpStatus: 429,
+    meaning: 'The three-attempt limit has been reached.',
+    source: 'SVC-15 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is a plain, user-safe sentence.',
+  },
+  {
+    code: 'VPN_PROXY_DETECTED',
+    httpStatus: 403,
+    meaning: 'Verification cannot proceed while a VPN or proxy is detected.',
+    source: '00 §4 (Doc 04 Step 2a)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message does not describe the detection mechanism.',
+  },
+  {
+    code: 'VENDOR_UNAVAILABLE',
+    httpStatus: 502,
+    meaning: 'Didit could not be reached, returned a non-2xx response, or returned a malformed body.',
+    source: 'Doc 04 Section 4, via Doc 04 Step 2a (Doc 05 Step 3a throws it)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is generic ("temporarily unavailable... try again shortly"). details may carry vendorStatus or malformed_vendor_response.',
+  },
+  {
+    code: 'PROFILE_NOT_FOUND',
+    httpStatus: 404,
+    meaning: 'No profile exists for the given userId (internal-controller path only).',
+    source: 'Doc 04 Section 4 (Doc 04 Step 2a)',
+    callerAudience: 'internal-service',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Only reachable through the internal controller once InternalServiceGuard is replaced.',
+  },
+  {
+    code: 'DOCUMENT_NOT_FOUND',
+    httpStatus: 404,
+    meaning: 'documentId does not exist or does not belong to the caller.',
+    source: 'Doc 04 Step 2a',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message does not distinguish "does not exist" from "belongs to someone else" — intentionally.',
+  },
+  {
+    code: 'INVALID_SIGNATURE',
+    httpStatus: 401,
+    meaning: "Didit's webhook signature didn't match, or was missing.",
+    source: 'Doc 05 Step 9b',
+    callerAudience: 'vendor-webhook',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Caller is Didit — message is generic and reveals nothing about the signing secret.',
+  },
+  {
+    code: 'UNKNOWN_VENDOR_SESSION',
+    httpStatus: 404,
+    meaning: 'The webhook referenced a vendor_session_id this service never issued.',
+    source: 'Doc 05 Step 9b',
+    callerAudience: 'vendor-webhook',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Caller is Didit — message is generic and safe.',
+  },
+  {
+    code: 'REQUEST_FAILED',
+    httpStatus: 'varies',
+    meaning: 'Fallback for any NestJS HttpException not covered by the codes above.',
+    source: 'AllExceptionsFilter branch 3 (Doc 04 Step 6b)',
+    callerAudience: 'any-caller',
+    safeToDisplayVerbatim: 'depends',
+    messagingNote: 'Today, the only two real call sites are BearerAuthGuard and InternalServiceGuard placeholder rejections — both are internal-only text, not safe to display verbatim.',
+  },
+  {
+    code: 'INTERNAL_ERROR',
+    httpStatus: 500,
+    meaning: 'Anything unexpected.',
+    source: 'AllExceptionsFilter branch 4 (Doc 04 Step 6b)',
+    callerAudience: 'any-caller',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed string "Something went wrong. Try again." by design — never the real exception\'s message or stack.',
+  },
+] as const;

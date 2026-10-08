@@ -7,6 +7,7 @@ import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { PortfolioItem } from './entities/portfolio-item.entity';
 import { CaseStudy } from './entities/case-study.entity';
 import { CaseStudyBlock } from './entities/case-study-block.entity';
+import { CaseStudyLike } from './entities/case-study-like.entity';
 import { PortfolioService } from './services/portfolio.service';
 import { SlugService } from './services/slug.service';
 import { CaseStudyService } from './services/case-study.service';
@@ -71,14 +72,14 @@ class RabbitMQCoreModule {
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
-        entities: [PortfolioItem, CaseStudy, CaseStudyBlock],
+        entities: [PortfolioItem, CaseStudy, CaseStudyBlock, CaseStudyLike],
         synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: (config.get('DATABASE_SSL_ENABLED') ?? 'false').toLowerCase() === 'true' ? { rejectUnauthorized: false } : false,
       }),
     }),
-    TypeOrmModule.forFeature([PortfolioItem, CaseStudy, CaseStudyBlock]),
+    TypeOrmModule.forFeature([PortfolioItem, CaseStudy, CaseStudyBlock, CaseStudyLike]),
     RabbitMQCoreModule.forRoot(),
   ],
   controllers: [PortfolioController, MediaController, CaseStudyController],

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { CreateGroupDto } from '../dtos/create-group.dto';
 import { CreateContractDto } from '../dtos/create-contract.dto';
-import { ContractStatus } from '../entities/enums';
+import { ContractStatus, GroupType } from '../entities/enums';
 import { ContractGroup } from '../entities/contract-group.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -24,6 +24,38 @@ const ADDABLE_STATUS_PRECEDENCE: ContractStatus[] = [
   ContractStatus.EXPIRED,
   ContractStatus.CLOSED,
 ];
+
+// The subset of offer-service's offer.accepted payload this service needs.
+// Mirrors OfferAcceptedPayload in apps/offer-service — kept local because
+// services don't import each other's code.
+export interface AcceptedOfferInput {
+  offerId: string;
+  clientId: string;
+  talentId: string;
+  jobListingId: string | null;
+  contractType: string;
+  contractTitle: string | null;
+  terms: {
+    rate: number;
+    durationMonths: number;
+    workSchedule: { type: string; hoursPerWeek?: number };
+  };
+}
+
+// offer-service ContractType -> contracts-service GroupType.
+const OFFER_CONTRACT_TYPE_TO_GROUP: Record<string, GroupType> = {
+  PROJECT: GroupType.PROJECT,
+  SERVICE: GroupType.SERVICE,
+  TEAM: GroupType.TEAM,
+  CONTRACT: GroupType.JOB,
+};
+
+// offer-service WorkScheduleType -> Contract.schedule vocabulary.
+const WORK_SCHEDULE_TO_CONTRACT: Record<string, string> = {
+  FULL_TIME: 'full-time',
+  PART_TIME: 'part-time',
+  CUSTOM: 'custom',
+};
 
 @Injectable()
 export class GroupsService {
@@ -76,6 +108,74 @@ export class GroupsService {
         contracts: savedContracts,
       };
     });
+  }
+
+  // OS-07 (CR-01): the only path that turns an accepted offer into a
+  // contract. Terms come from the offer.accepted / offer.counter_accepted
+  // payload, never from the frontend. One offer is one talent, so this is a
+  // one-contract group, created PENDING — the deposit-cleared webhook is
+  // still what activates it (Contract Start Flow, doc 4).
+  //
+  // Idempotent on offerId: a redelivered event returns the contract that
+  // already exists instead of creating a second one. The partial unique
+  // index on contracts.offerId backs this up under concurrent delivery.
+  async createFromAcceptedOffer(
+    offer: AcceptedOfferInput,
+  ): Promise<{ contract: Contract; created: boolean }> {
+    const existing = await this.contractRepository.findOne({
+      where: { offerId: offer.offerId },
+    });
+    if (existing) return { contract: existing, created: false };
+
+    const groupType = OFFER_CONTRACT_TYPE_TO_GROUP[offer.contractType] ?? GroupType.JOB;
+    const listingRef = {
+      projectId: groupType === GroupType.PROJECT ? offer.jobListingId ?? undefined : undefined,
+      serviceId: groupType === GroupType.SERVICE ? offer.jobListingId ?? undefined : undefined,
+      teamId: groupType === GroupType.TEAM ? offer.jobListingId ?? undefined : undefined,
+      jobId: groupType === GroupType.JOB ? offer.jobListingId ?? undefined : undefined,
+    };
+
+    try {
+      const contract = await this.contractGroupRepository.manager.transaction(async (manager) => {
+        const groupRepo = manager.getRepository(ContractGroup);
+        const contractRepo = manager.getRepository(Contract);
+
+        const group = await groupRepo.save(
+          groupRepo.create({
+            type: groupType,
+            ownerClientId: offer.clientId,
+            ...listingRef,
+            depositPaid: false,
+          }),
+        );
+
+        return contractRepo.save(
+          contractRepo.create({
+            groupId: group.id,
+            clientId: offer.clientId,
+            talentId: offer.talentId,
+            offerId: offer.offerId,
+            title: offer.contractTitle?.trim() || 'Untitled contract',
+            rate: offer.terms.rate,
+            schedule: WORK_SCHEDULE_TO_CONTRACT[offer.terms.workSchedule?.type] ?? 'custom',
+            duration: `${offer.terms.durationMonths} ${offer.terms.durationMonths === 1 ? 'month' : 'months'}`,
+            ...listingRef,
+            status: ContractStatus.PENDING,
+          }),
+        );
+      });
+      return { contract, created: true };
+    } catch (err) {
+      // Lost a race with a concurrent delivery of the same offer — the
+      // other one's contract is the answer.
+      if ((err as { code?: string })?.code === '23505') {
+        const winner = await this.contractRepository.findOne({
+          where: { offerId: offer.offerId },
+        });
+        if (winner) return { contract: winner, created: false };
+      }
+      throw err;
+    }
   }
 
   async getGroup(id: string) {

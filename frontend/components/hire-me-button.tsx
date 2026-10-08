@@ -15,6 +15,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import { AnimatePresence, motion } from "framer-motion"
+import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
 import {
   logHireFlowInitiated,
@@ -23,6 +24,7 @@ import {
   type ContractGroupSummary,
   type ContractGroupMemberSummary,
 } from "@/service/http/contracts"
+import { listOffers } from "@/service/http/offers"
 import { ProjectAPI } from "@/service/http/project"
 import type { UserProfile } from "@/types/user"
 import NextImage from "@/components/next-image"
@@ -56,6 +58,10 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -81,6 +87,11 @@ export function getDefaultJobTitle(
   return (
     jobTitles?.find((job: any) => job.isDefault || job.saveAsDefault)?.jobTitle ||
     jobTitles?.[0]?.jobTitle ||
+    // GET /talent/users/:username (how this modal seeds and refetches the
+    // profile) never loads jobTitles, so both rungs above are always
+    // undefined here — recentJobTitle is a plain column on users and is the
+    // only rung left that can carry a real title on username-reached profiles.
+    profile?.recentJobTitle ||
     legacyRole ||
     fallback
   )
@@ -209,6 +220,11 @@ const isWeekendDate = (date: Date): boolean => {
   const day = date.getDay()
   return day === 0 || day === 6
 }
+
+// BTB-271: mirrors offer-service's MAX_RATE (offer.constants.ts) — the
+// backend's real ceiling for the rate field, so this doesn't invent a
+// number of its own.
+const MAX_CUSTOM_RATE = 9999
 
 // T3/FR-1/AC-8.1: no backend endpoint computes this. offer-service
 // specified it in full — offer-response.interface.ts's startDateDisplay
@@ -455,6 +471,16 @@ const CUSTOM_HOURS_MAX: Record<string, number> = {
   month: 744, // 31 * 24
 }
 
+// BTB-272: mirrors offer-service's MAX_DURATION_MONTHS (offer.constants.ts,
+// 60 months = 5 years) — the backend's real ceiling for durationMonths.
+// Per-unit, not a flat constant, because Months and Years are the same
+// backend field at two different scales, same shape as CUSTOM_HOURS_MAX
+// above.
+const CUSTOM_DURATION_MAX: Record<"Months" | "Years", number> = {
+  Months: 60,
+  Years: 5,
+}
+
 // Local copy of the shimmer pattern from talent-profile/page.tsx:531 — not
 // extracted to components/ui, that's a separate PR.
 const Shimmer = ({ className }: { className?: string }) => (
@@ -617,6 +643,12 @@ export function OfferDialog({
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
+  // BTB-260: 0 is rejected at input time (onChange guard below), so the only
+  // way tryConfirmCustomSchedule can still fail is an empty hours field —
+  // this surfaces that instead of the row stalling with no feedback.
+  const [customHoursError, setCustomHoursError] = React.useState<
+    string | null
+  >(null)
   // "day" | "week" | "month" | "" — "" means no frequency chosen yet.
   // Defaults to "week" per explicit request — not an empty placeholder,
   // and not "day" (Figma's own rest state) — overridden on purpose.
@@ -914,7 +946,12 @@ export function OfferDialog({
     (isStepThree
       ? Boolean(
           schedule &&
-          selectedContractId &&
+          // BTB-262: selectedContractId is only ever set when there was a
+          // list to choose from (or edit mode's static placeholder). On the
+          // T1-10 fallthrough (no existing contracts, isStepThree entered via
+          // !hasExistingContracts) it stays null forever, so requiring it
+          // unconditionally made this permanently false for that route.
+          (!hasExistingContracts || Boolean(selectedContractId)) &&
           selectedRate &&
           selectedDuration &&
           selectedStartDateAction &&
@@ -973,6 +1010,7 @@ export function OfferDialog({
     setShowValidationErrors(false)
     setCustomScheduleOpen(false)
     setCustomHours("")
+    setCustomHoursError(null)
     setCustomRateValue("")
     setCustomDurationValue("")
     setCustomDurationUnit("Months")
@@ -1090,8 +1128,14 @@ export function OfferDialog({
       parsedHours <= CUSTOM_HOURS_MAX[frequency] &&
       frequency
     ) {
+      setCustomHoursError(null)
       setSchedule("custom")
       setCustomScheduleOpen(false)
+    } else {
+      // BTB-260: the row used to just sit there on invalid input. Enter
+      // (new onKeyDown below) and blur both land here now, so both get the
+      // same message instead of silently doing nothing.
+      setCustomHoursError("Please enter the number of hours.")
     }
   }
 
@@ -1453,30 +1497,36 @@ export function OfferDialog({
                           variant="outlined"
                           visual="gray"
                           onClick={() => {
-                            // FR-13/AC-20.1: this used to be
-                            // setOfferSent(false), reopening the draft form.
-                            // AC-20.1 says "review the SENT offer details" —
-                            // the draft form is what's being edited, not
-                            // what was sent. The checkout confirmation
-                            // page's own heading ("Please confirm your offer
-                            // details below") is what actually reviews the
-                            // submitted offer, and it's also the only entry
-                            // point into the Stripe flow anywhere in the app
-                            // (see the T4-B report) — this redirect used to
-                            // fire unconditionally on success; now it only
-                            // fires from here, so it can't be skipped.
-                            onOpenChange(false)
-                            router.push(
-                              `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
-                            )
+                            // QA bug fix / AC-10.06: this used to redirect to
+                            // /talent-checkout unconditionally — the same
+                            // page the bug is about, reached one click
+                            // later instead of automatically. There is no
+                            // offer id on this path (T2-14: nothing here
+                            // ever creates one), so per AC-10.06 ("If
+                            // 'Review Your Offer' fails to load the offer
+                            // detail (offer ID not found), an error toast is
+                            // shown... The user remains on the confirmation
+                            // screen") this is the not-found case, always.
+                            // No navigation, no modal close.
+                            toast({
+                              variant: "destructive",
+                              description:
+                                "We couldn't load this offer right now. Please try again.",
+                              duration: 5000,
+                            })
                           }}
                         >
                           Review Your Offer
                         </Button>
                         <Button
                           onClick={() => {
+                            // AC-10.03: "closes modal and returns to the
+                            // talent profile or marketplace" — Hire Me was
+                            // opened from the talent's profile, so closing
+                            // the modal alone already returns the client
+                            // there. /find-jobs is a talent-facing job
+                            // search; a client has no reason to land on it.
                             onOpenChange(false)
-                            router.push("/find-jobs")
                           }}
                         >
                           Continue Browsing
@@ -1934,6 +1984,7 @@ export function OfferDialog({
                                   className="w-full"
                                   type="text"
                                   inputMode="decimal"
+                                  maxLength={7}
                                   placeholder="Enter hourly rate"
                                   value={customRateValue}
                                   onChange={(event) => {
@@ -1945,8 +1996,22 @@ export function OfferDialog({
                                     // allowed here unlike customHours — this
                                     // is a dollar rate, not a whole-hours
                                     // count, and cents are a normal input.
+                                    //
+                                    // BTB-271: maxLength above stops the
+                                    // extreme case (a 50-digit paste); this
+                                    // adds a magnitude ceiling for a
+                                    // short-but-over-limit value like
+                                    // "10000". A non-finite parse (bare ".")
+                                    // falls through to the regex's own
+                                    // judgement — Number(".") is NaN, and
+                                    // that must not block a leading decimal
+                                    // point the regex already allows.
                                     const value = event.target.value
-                                    if (/^\d*(\.\d{0,2})?$/.test(value)) {
+                                    if (
+                                      /^\d*(\.\d{0,2})?$/.test(value) &&
+                                      (!Number.isFinite(Number(value)) ||
+                                        Number(value) <= MAX_CUSTOM_RATE)
+                                    ) {
                                       setCustomRateValue(value)
                                     }
                                   }}
@@ -2013,25 +2078,55 @@ export function OfferDialog({
                                   className="flex-1"
                                   type="text"
                                   inputMode="numeric"
+                                  maxLength={2}
                                   placeholder="Enter duration"
                                   value={customDurationValue}
                                   onChange={(event) => {
                                     // Same whole-value keystroke rejection as
                                     // customHours/customRateValue — integers
                                     // only, no fractional months/years.
+                                    //
+                                    // BTB-272: maxLength above stops the
+                                    // extreme case (a 50-digit paste); this
+                                    // adds a per-unit magnitude ceiling —
+                                    // unlike customRateValue's guard, no
+                                    // NaN-fallback is needed here, since
+                                    // /^\d*$/ never produces anything but ""
+                                    // or a plain digit string, and Number()
+                                    // of either is always finite.
                                     const value = event.target.value
-                                    if (/^\d*$/.test(value)) {
+                                    if (
+                                      /^\d*$/.test(value) &&
+                                      (value === "" ||
+                                        Number(value) <=
+                                          CUSTOM_DURATION_MAX[
+                                            customDurationUnit
+                                          ])
+                                    ) {
                                       setCustomDurationValue(value)
                                     }
                                   }}
                                 />
                                 <Select
                                   value={customDurationUnit}
-                                  onValueChange={(value) =>
-                                    setCustomDurationUnit(
-                                      value as "Months" | "Years"
-                                    )
-                                  }
+                                  onValueChange={(value) => {
+                                    // BTB-272: same defect reached through a
+                                    // different path — a value valid under
+                                    // the old unit can exceed the new one's
+                                    // max with no keystroke to catch it.
+                                    // Same clamp shape as customHours' Select
+                                    // onValueChange above (T1-12).
+                                    const nextUnit = value as
+                                      | "Months"
+                                      | "Years"
+                                    const max = CUSTOM_DURATION_MAX[nextUnit]
+                                    const clamped =
+                                      Number(customDurationValue) > max
+                                        ? String(max)
+                                        : customDurationValue
+                                    setCustomDurationUnit(nextUnit)
+                                    setCustomDurationValue(clamped)
+                                  }}
                                 >
                                   <SelectTrigger className="w-[140px] shrink-0 text-left">
                                     <SelectValue />
@@ -2148,14 +2243,32 @@ export function OfferDialog({
                                     // question for the lead, not built.
                                     // T1-12: same rejection, extended with
                                     // the per-frequency max.
+                                    // BTB-260: also reject a non-empty value
+                                    // that parses to 0 ("0", "00") the same
+                                    // way — empty stays allowed so the field
+                                    // can still be cleared.
                                     const value = event.target.value
                                     if (
                                       /^\d*$/.test(value) &&
+                                      (value === "" || Number(value) > 0) &&
                                       Number(value) <=
                                         CUSTOM_HOURS_MAX[customFrequency]
                                     ) {
                                       setCustomHours(value)
+                                      setCustomHoursError(null)
                                     }
+                                  }}
+                                  onKeyDown={(event) => {
+                                    // BTB-260: Enter had no handler at all —
+                                    // route it through the same confirm used
+                                    // by blur so both take identical
+                                    // success/failure paths.
+                                    if (event.key !== "Enter") return
+                                    event.preventDefault()
+                                    tryConfirmCustomSchedule(
+                                      customHours,
+                                      customFrequency
+                                    )
                                   }}
                                   onBlur={(event) => {
                                     // Same blur-vs-click race T1-5 fixed on
@@ -2248,6 +2361,11 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
+                              {customHoursError ? (
+                                <ErrorMessage className="mt-1">
+                                  {customHoursError}
+                                </ErrorMessage>
+                              ) : null}
                             </div>
                           ) : null}
 
@@ -2267,6 +2385,9 @@ export function OfferDialog({
                                 // then reopening the row would show a blank
                                 // Select now that its placeholder is gone.
                                 setCustomFrequency("week")
+                                // BTB-260: same reasoning — don't leave a
+                                // stale error visible if the row is reopened.
+                                setCustomHoursError(null)
                               } else {
                                 // A tile click may have a commit in flight
                                 // (T1-11's 200ms delay). Without cancelling
@@ -2410,7 +2531,7 @@ export function OfferDialog({
                                       <DisclosureContent className="shadow-xl">
                                         <div className="relative mt-1">
                                           <span className="absolute left-6 top-5 z-10 flex items-center gap-0.5 text-[14px] font-semibold leading-normal text-dark-blue-400">
-                                            {focusedStartDate.getFullYear()}
+                                            {focusedStartDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
                                             <ChevronRight className="size-4 text-primary-500" />
                                           </span>
                                           <Calendar
@@ -2423,8 +2544,18 @@ export function OfferDialog({
                                             // just styles it gray.
                                             minValue={new Date()}
                                             onValueChange={(date) => {
-                                              setSelectedStartDate(date)
-                                              setFocusedStartDate(date)
+                                              // BTB-266: matches
+                                              // computeEstimatedStartDate's
+                                              // existing weekend handling —
+                                              // silent snap to the following
+                                              // Monday, no toast/warning.
+                                              const adjusted = isWeekendDate(
+                                                date
+                                              )
+                                                ? getNextMondayOnOrAfter(date)
+                                                : date
+                                              setSelectedStartDate(adjusted)
+                                              setFocusedStartDate(adjusted)
                                               setSelectedStartDateAction(
                                                 "change"
                                               )
@@ -2454,14 +2585,25 @@ export function OfferDialog({
                                   Optional
                                 </span>
                               </div>
-                              <Textarea
-                                className="mt-3 min-h-[110px]"
-                                placeholder="Write your message"
-                                value={message}
-                                onChange={(event) =>
-                                  setMessage(event.target.value)
-                                }
-                              />
+                              <div className="mt-3 flex flex-col gap-2">
+                                <Textarea
+                                  className="min-h-[110px]"
+                                  placeholder="Write your message"
+                                  maxLength={500}
+                                  value={message}
+                                  onChange={(event) =>
+                                    setMessage(event.target.value)
+                                  }
+                                />
+                                <span className="text-right text-[10px] font-medium leading-4 text-gray-400">
+                                  {/* BTB-273: same boolean-gate-not-live-filter
+                                  mechanism as contractTitle.trim() above —
+                                  collapse to 0 only when the whole value is
+                                  whitespace, don't recompute a trimmed length
+                                  for a value that has real content. */}
+                                  {message.trim() === "" ? 0 : message.length}/500
+                                </span>
+                              </div>
                             </div>
                           ) : null}
 
@@ -2714,13 +2856,29 @@ export function OfferDialog({
                     return
                   }
 
-                  // Reached only when there's no real submission to call
-                  // "successful": isStepFour (new-contract path — T2-14,
-                  // POST /contract-groups was never wired) and isEditMode
-                  // (editing an ALREADY-sent offer, not sending a new one —
-                  // "Offer Sent!" copy would be wrong here regardless of
-                  // wiring). Both keep exactly today's behaviour; FR-13 only
-                  // changes the path above that actually submits something.
+                  // QA bug fix: isStepFour (existing contracts, "create a new
+                  // contract" — T2-14, POST /contract-groups still isn't
+                  // wired) used to fall through to the router.push below,
+                  // same as the zero-existing-contracts case. AC-10.01
+                  // ("no full page navigation occurs") applies to both —
+                  // neither has a real submission to call "successful", but
+                  // both show the same in-modal confirmation the real
+                  // addContractGroupMember path above already shows, rather
+                  // than navigating away.
+                  if (!isEditMode) {
+                    onSaveOffer?.({
+                      selectedRate,
+                      schedule,
+                      selectedDuration: resolvedDuration,
+                      customRate: resolvedCustomRate,
+                    })
+                    setOfferSent(true)
+                    return
+                  }
+
+                  // Edit mode only from here down: editing an ALREADY-sent
+                  // offer, not sending a new one — "Offer Sent!" copy would
+                  // be wrong regardless of wiring. Unchanged.
                   onSaveOffer?.({
                     selectedRate,
                     schedule,
@@ -2728,11 +2886,6 @@ export function OfferDialog({
                     customRate: resolvedCustomRate,
                   })
                   onOpenChange(false)
-                  if (!isEditMode) {
-                    router.push(
-                      `/talent-checkout/${checkoutSlug}?${buildCheckoutSearchParams().toString()}`
-                    )
-                  }
                 }}
               >
                 {isSubmittingOffer
@@ -2751,6 +2904,75 @@ export function OfferDialog({
 
 export function HireMeButton({ profile, buttonProps }: HireMeButtonProps) {
   const [open, setOpen] = React.useState(false)
+  const { user } = useAuth()
+
+  // BTB-261: `profile && !profile.availability`, not `!profile?.availability`
+  // — the latter is also true while profile is still undefined during load,
+  // which would flash the button disabled before the real value is known.
+  const isUnavailable = Boolean(profile && !profile.availability)
+  const isOwnProfile = Boolean(user?.id && profile?.id && user.id === profile.id)
+
+  // PMCM-393 AC-41.02/41.04: does the viewing client already have an active
+  // (PENDING/COUNTERED) offer out to this talent? talentId only narrows an
+  // already-JWT-scoped query (see ListOffersQueryDto/OfferListQueryBuilder),
+  // it can't widen it. Guarded so an unauthenticated visitor makes no
+  // request at all (not a 401 swallowed after the fact), and a talent
+  // viewing their own profile — never a client of themselves — doesn't
+  // trigger one either.
+  const [hasActiveOfferWithTalent, setHasActiveOfferWithTalent] =
+    React.useState(false)
+  React.useEffect(() => {
+    if (!user?.id || !profile?.id || isOwnProfile) {
+      setHasActiveOfferWithTalent(false)
+      return
+    }
+
+    // Same isActive-flag pattern as the contract-groups fetch above — a
+    // stale response from a superseded profile must not set state.
+    let isActive = true
+    listOffers({
+      talentId: profile.id,
+      status: ["PENDING", "COUNTERED"],
+      limit: 1,
+    })
+      .then((response) => {
+        if (!isActive) return
+        setHasActiveOfferWithTalent((response.data?.length ?? 0) > 0)
+      })
+      .catch(() => {
+        if (!isActive) return
+        setHasActiveOfferWithTalent(false)
+      })
+    return () => {
+      isActive = false
+    }
+  }, [user?.id, profile?.id, isOwnProfile])
+
+  if (isUnavailable || hasActiveOfferWithTalent) {
+    // isUnavailable wins when both are true: it isn't self-resolvable by
+    // the client, unlike the active-offer case (withdraw and retry).
+    const tooltipMessage = isUnavailable
+      ? "This talent is not currently available for hire."
+      : "You already have an active offer with this talent."
+    return (
+      <TooltipProvider delayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* A natively disabled button swallows pointer events, so the
+            tooltip trigger has to be this wrapping span, not the button
+            itself — same pattern as HideToggle in recent-questions-manager.tsx. */}
+            <span className="inline-flex">
+              <Button {...buttonProps} disabled aria-disabled="true">
+                <Plus className="size-[15px]" />
+                Hire Me
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{tooltipMessage}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
 
   return (
     <OfferDialog

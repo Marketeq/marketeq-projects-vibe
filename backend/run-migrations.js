@@ -47,6 +47,55 @@ function findCompiledDataSource(serviceDir) {
     path.join(__dirname, 'dist', serviceDir, serviceDir, 'src', 'data-source.js'),
     path.join(__dirname, 'dist', serviceDir, 'config', 'data-source.js'),
     path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'data-source.js'),
+    // identity-verification-service keeps its data-source and migrations under
+    // src/database/. Without this entry it was dropped by discoverServices()
+    // with no output at all, so its three migrations never ran and
+    // "identity_verification.identity_verification_profiles" was never created —
+    // the daily 09:00 Scheduler job had been failing on it unnoticed.
+    path.join(__dirname, 'dist', serviceDir, 'src', 'database', 'data-source.js'),
+    path.join(__dirname, 'dist', serviceDir, 'database', 'data-source.js'),
+    // offer-service names its CLI data-source typeorm.config.ts rather than
+    // data-source.ts. Its compiled migrations glob is __dirname-relative and so
+    // still resolves correctly under dist/, which is what makes it safe to read
+    // here.
+    //
+    // A fresh `nest build offer-service` emits it at
+    // dist/apps/offer-service/apps/offer-service/src/config/typeorm.config.js
+    // (the service imports from libs/, so tsc roots the output at backend/),
+    // and neither of the two shorter paths below existed in the image. That is why
+    // offer-service was missing from the boot report entirely, and why
+    // AddContractIdToOffers never ran: every GET /v1/offers then 500'd on
+    // "column o.contract_id does not exist". The migrations themselves are
+    // compiled next to it via tsconfig.app.json's "migrations/**/*" include.
+    path.join(__dirname, 'dist', serviceDir, serviceDir, 'src', 'config', 'typeorm.config.js'),
+    path.join(__dirname, 'dist', serviceDir, 'src', 'config', 'typeorm.config.js'),
+    path.join(__dirname, 'dist', serviceDir, 'config', 'typeorm.config.js'),
+    // Deliberately NOT probed: dist/<service>/typeorm.config.js at the service
+    // root. time-tracking-service keeps its data-source there, but the file sits
+    // outside its tsconfig's "include": ["src/**/*"], so the build never emits
+    // it — any copy present locally is a stale artifact from an older layout,
+    // and a freshly built image has none. Probing it would therefore find
+    // nothing in production and, locally, would load a months-old config whose
+    // migrations glob resolves to nothing: "up to date (0 applied)" for a
+    // service with 12 unapplied migrations. A false clean is worse than the
+    // honest "no data-source" warning it gets today. Bringing it under the
+    // reporter means moving the config into src/ (so it is actually compiled)
+    // first — not adding a path here.
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+/**
+ * A service that ships compiled migrations but exposes no data-source is a
+ * silent hole: nothing can ever apply those migrations and, before this check,
+ * nothing said so. Used to turn that into a visible warning rather than an
+ * absence. Mirrors the migration layouts actually present in this monorepo.
+ */
+function findCompiledMigrationsDir(serviceDir) {
+  const candidates = [
+    path.join(__dirname, 'dist', serviceDir, 'migrations'),
+    path.join(__dirname, 'dist', serviceDir, 'src', 'migrations'),
+    path.join(__dirname, 'dist', serviceDir, 'src', 'database', 'migrations'),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
@@ -58,12 +107,22 @@ function findCompiledDataSource(serviceDir) {
  */
 function discoverServices() {
   const distApps = path.join(__dirname, 'dist', 'apps');
-  if (!fs.existsSync(distApps)) return [];
-  return fs
+  if (!fs.existsSync(distApps)) return { services: [], orphanMigrations: [] };
+
+  const all = fs
     .readdirSync(distApps, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => `apps/${entry.name}`)
-    .filter((dir) => findCompiledDataSource(dir));
+    .map((entry) => `apps/${entry.name}`);
+
+  return {
+    services: all.filter((dir) => findCompiledDataSource(dir)),
+    // Services with migrations on disk but no data-source to run them. Most
+    // services legitimately have neither and are simply absent from both lists;
+    // it is the combination that signals a gap worth reporting.
+    orphanMigrations: all.filter(
+      (dir) => !findCompiledDataSource(dir) && findCompiledMigrationsDir(dir),
+    ),
+  };
 }
 
 /**
@@ -73,6 +132,11 @@ function discoverServices() {
  */
 async function pendingFor(dataSource) {
   const schema = dataSource.options.schema || 'public';
+  // Services that share a schema can keep their own bookkeeping table
+  // (legal-service: ls_migrations, suggestions-service: sug_migrations), and
+  // TypeORM itself reads that one. Reading "migrations" regardless listed every
+  // applied migration of theirs as PENDING.
+  const table = dataSource.options.migrationsTableName || 'migrations';
   // dataSource.migrations holds instances, not classes, so `.name` is defined
   // only for migrations that declare it as a field — the rest reported blank.
   // This mirrors how TypeORM's own MigrationExecutor resolves the name.
@@ -83,7 +147,7 @@ async function pendingFor(dataSource) {
   let applied = [];
   try {
     const rows = await dataSource.query(
-      `SELECT name FROM "${schema}"."migrations"`,
+      `SELECT name FROM "${schema}"."${table}"`,
     );
     applied = rows.map((r) => r.name);
   } catch (err) {
@@ -94,6 +158,7 @@ async function pendingFor(dataSource) {
   const appliedSet = new Set(applied);
   return {
     schema,
+    table,
     appliedCount: applied.length,
     pending: registered.filter((name) => !appliedSet.has(name)),
   };
@@ -118,19 +183,20 @@ async function processService(serviceDir) {
 
   try {
     if (!dataSource.isInitialized) await dataSource.initialize();
-    const { schema, appliedCount, pending } = await pendingFor(dataSource);
+    const { schema, table, appliedCount, pending } = await pendingFor(dataSource);
 
     if (MODE === 'apply' && pending.length > 0) {
       const ran = await dataSource.runMigrations({ transaction: 'all' });
       return {
         name,
         schema,
+        table,
         appliedCount,
         applied: ran.map((m) => m.name),
         pending: [],
       };
     }
-    return { name, schema, appliedCount, pending };
+    return { name, schema, table, appliedCount, pending };
   } catch (err) {
     return { name, error: err.message };
   } finally {
@@ -141,7 +207,7 @@ async function processService(serviceDir) {
 }
 
 async function main() {
-  const all = discoverServices();
+  const { services: all, orphanMigrations } = discoverServices();
   const targets =
     SELECTED.length === 1 && SELECTED[0] === 'all'
       ? all
@@ -168,16 +234,21 @@ async function main() {
     results.push(await processService(dir));
   }
 
-  const perSchema = new Map();
+  // Keyed by the bookkeeping table, not the schema: two services in "public"
+  // with their own tables (ls_migrations, sug_migrations) do not share rows.
+  const bookkeeping = (r) => `"${r.schema}"."${r.table}"`;
+  const perTable = new Map();
   for (const r of results) {
     if (!r.schema) continue;
-    perSchema.set(r.schema, (perSchema.get(r.schema) || 0) + 1);
+    perTable.set(bookkeeping(r), (perTable.get(bookkeeping(r)) || 0) + 1);
   }
-  const sharesSchema = (r) => r.schema && perSchema.get(r.schema) > 1;
+  const sharesTable = (r) => r.schema && perTable.get(bookkeeping(r)) > 1;
   const appliedNote = (r) =>
-    sharesSchema(r)
-      ? `${r.appliedCount} applied in shared schema "${r.schema}"`
-      : `${r.appliedCount} applied`;
+    sharesTable(r)
+      ? `${r.appliedCount} applied in shared table ${bookkeeping(r)}`
+      : r.table === 'migrations'
+        ? `${r.appliedCount} applied`
+        : `${r.appliedCount} applied in ${bookkeeping(r)}`;
 
   for (const r of results) {
     if (r.skipped) {
@@ -202,17 +273,33 @@ async function main() {
     }
   }
 
-  const shared = [...perSchema.entries()].filter(([, count]) => count > 1);
-  for (const [schema, count] of shared) {
+  const shared = [...perTable.entries()].filter(([, count]) => count > 1);
+  for (const [table, count] of shared) {
     const names = results
-      .filter((r) => r.schema === schema)
+      .filter((r) => r.schema && bookkeeping(r) === table)
       .map((r) => r.name)
       .join(', ');
     console.warn(
-      `[migrations] NOTE: ${count} services share schema "${schema}" and therefore share ` +
-        `its single "${schema}".migrations table, so each one's applied-count includes the ` +
-        `others' rows and its pending list is measured against them: ${names}. ` +
+      `[migrations] NOTE: ${count} services share the single ${table} bookkeeping table, ` +
+        `so each one's applied-count includes the others' rows and its pending list is ` +
+        `measured against them: ${names}. ` +
         'Resolve the shared bookkeeping before applying migrations for any of them.',
+    );
+  }
+
+  // Reported after the per-service lines so it reads as a gap in the report
+  // above rather than a service result. These never reach `targets`, so before
+  // this they produced no output whatsoever — the failure mode that hid
+  // identity-verification-service's missing schema for as long as it existed.
+  if (orphanMigrations.length > 0) {
+    const names = orphanMigrations
+      .map((dir) => dir.replace(/^apps\//, ''))
+      .join(', ');
+    console.warn(
+      `[migrations] NOTE: ${orphanMigrations.length} service(s) ship compiled migrations ` +
+        `but expose no data-source, so nothing can apply them and they are absent from ` +
+        `the report above: ${names}. Add a data-source (see any service's ` +
+        'src/data-source.ts) to bring them under migration control.',
     );
   }
 

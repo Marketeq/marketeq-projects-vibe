@@ -11,6 +11,7 @@ import {
   ActiveOfferAlreadyExistsException,
   OfferNotResendableException,
   InternalOfferException,
+  OfferNotActionableException,
 } from '../common/exceptions/offer.exceptions';
 import { OutboxService } from '../outbox/outbox.service';
 import { AblyService } from '../realtime/ably.service';
@@ -43,6 +44,13 @@ import {
 // Re-export for counter-offers service
 export { OfferConcurrentModificationException };
 
+// PMCM-393 AC-41.01/41.06: name of the partial unique index added in
+// migrations/1789622400000-AddOfferOneActivePerPairIndex.ts. Kept as a
+// literal here (not imported) — migrations are self-contained SQL, not
+// coupled to application code — so this must be kept in sync by hand if
+// the index is ever renamed.
+const ACTIVE_OFFER_UNIQUE_INDEX = 'uq_offers_one_active_per_pair';
+
 @Injectable()
 export class OffersService {
   private readonly logger = new Logger(OffersService.name);
@@ -68,8 +76,21 @@ export class OffersService {
   }
 
   // Backward-compat alias used by controller GET :id
-  async findById(id: string): Promise<Offer> {
-    return this.findByIdOrThrow(id);
+  // PMCM-376: additive only — every Offer field stays exactly as it was;
+  // latestCounterOffer is a new field, populated the same way list() does
+  // (same helper, same DISTINCT ON latest-by-created_at semantics, same
+  // null-when-absent behaviour). findByIdOrThrow's other callers (CAS
+  // preconditions) are untouched — this extra query only runs on this
+  // controller-facing read path.
+  async findById(
+    id: string,
+  ): Promise<Offer & { latestCounterOffer: LatestCounterOfferSummary | null }> {
+    const offer = await this.findByIdOrThrow(id);
+    const latestCounterOffers = await this.fetchLatestCounterOffers([id]);
+    return {
+      ...offer,
+      latestCounterOffer: latestCounterOffers.get(id) ?? null,
+    };
   }
 
   // ============================================================
@@ -112,6 +133,13 @@ export class OffersService {
 
     if (query.status && query.status.length > 0) {
       qb.andWhere('o.status IN (:...statuses)', { statuses: query.status });
+    }
+
+    // PMCM-393 AC-41.02: ANDed onto the partyFilter WHERE above, which is
+    // always built from userId (the JWT) — this can only narrow the result
+    // to one talent, never widen it to another caller's offers.
+    if (query.talentId) {
+      qb.andWhere('o.talent_id = :talentId', { talentId: query.talentId });
     }
 
     qb.orderBy(`o.${sortSpec.column}`, sortSpec.direction)
@@ -442,6 +470,43 @@ export class OffersService {
   }
 
   // ============================================================
+  // raiseIfActiveOfferConflict() — PMCM-393 AC-41.01/41.06
+  // checkActiveOfferConstraint() above is check-then-insert with a real
+  // race window; uq_offers_one_active_per_pair (see the migration) is the
+  // actual DB-level backstop. Scoped to that index by name — a 23505 on
+  // any other constraint (or any other error) is rethrown unchanged by the
+  // caller, never swallowed here.
+  // ============================================================
+
+  private async raiseIfActiveOfferConflict(
+    error: unknown,
+    clientId: string,
+    talentId: string,
+  ): Promise<void> {
+    const driverError = (error as { driverError?: { code?: string; constraint?: string } })?.driverError;
+    const code = (error as { code?: string })?.code ?? driverError?.code;
+    const constraint = (error as { constraint?: string })?.constraint ?? driverError?.constraint;
+
+    if (code !== '23505' || constraint !== ACTIVE_OFFER_UNIQUE_INDEX) return;
+
+    const existing = await this.offerRepo.findOne({
+      where: [
+        { clientId, talentId, status: OfferStatus.PENDING },
+        { clientId, talentId, status: OfferStatus.COUNTERED },
+      ],
+      select: ['id', 'status'],
+    });
+
+    // If the conflicting row can't be found (it would have to have
+    // transitioned away in the few-ms window between the failed insert and
+    // this re-query), fall through and let the caller rethrow the original
+    // error rather than inventing an offer id.
+    if (existing) {
+      throw new ActiveOfferAlreadyExistsException(existing.id, existing.status);
+    }
+  }
+
+  // ============================================================
   // create() — CLIENT creates a new offer
   // ============================================================
 
@@ -454,43 +519,53 @@ export class OffersService {
 
     const expiresAt = calculateExpiresAt();
 
-    const updatedOffer = await this.dataSource.transaction(async (em) => {
-      const result = await em.query(`
-        INSERT INTO offer_service.offers (
-          client_id, talent_id, job_listing_id,
-          contract_type, contract_title, status,
-          rate, currency_code, duration_months,
-          work_schedule, start_date, message,
-          expires_at, warning_sent_at, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, NULL, NOW(), NOW())
-        RETURNING *
-      `, [
-        userId, dto.talentId, dto.jobListingId,
-        dto.contractType, dto.contractTitle,
-        dto.rate, dto.currencyCode, dto.durationMonths,
-        JSON.stringify(dto.workSchedule), dto.startDate,
-        dto.message ?? null, expiresAt.toISOString(),
-      ]);
+    let updatedOffer: Offer;
+    try {
+      updatedOffer = await this.dataSource.transaction(async (em) => {
+        const result = await em.query(`
+          INSERT INTO offer_service.offers (
+            client_id, talent_id, job_listing_id,
+            contract_type, contract_title, status,
+            rate, currency_code, duration_months,
+            work_schedule, start_date, message,
+            expires_at, warning_sent_at, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, NULL, NOW(), NOW())
+          RETURNING *
+        `, [
+          userId, dto.talentId, dto.jobListingId,
+          dto.contractType, dto.contractTitle,
+          dto.rate, dto.currencyCode, dto.durationMonths,
+          JSON.stringify(dto.workSchedule), dto.startDate,
+          dto.message ?? null, expiresAt.toISOString(),
+        ]);
 
-      const rows = Array.isArray(result[0]) && Array.isArray(result[0]) ? result[0] : result;
-      const saved = this.mapRawToOffer(rows[0] ?? rows);
+        const rows = Array.isArray(result[0]) && Array.isArray(result[0]) ? result[0] : result;
+        const saved = this.mapRawToOffer(rows[0] ?? rows);
 
-      await this.outboxService.write({
-        aggregateId: saved.id,
-        eventType: OFFER_EVENTS.CREATED,
-        routingKey: OFFER_EVENTS.CREATED,
-        exchange: OFFER_EXCHANGE,
-        payload: buildOfferCreatedPayload(saved) as any,
-      }, em);
+        await this.outboxService.write({
+          aggregateId: saved.id,
+          eventType: OFFER_EVENTS.CREATED,
+          routingKey: OFFER_EVENTS.CREATED,
+          exchange: OFFER_EXCHANGE,
+          payload: buildOfferCreatedPayload(saved) as any,
+        }, em);
 
-      await this.offerHistoryService.append({
-        offerId: saved.id, eventType: OFFER_EVENTS.CREATED,
-        actor: 'CLIENT', actorId: userId,
-        terms: this.termsFromOffer(saved),
-      }, em);
+        await this.offerHistoryService.append({
+          offerId: saved.id, eventType: OFFER_EVENTS.CREATED,
+          actor: 'CLIENT', actorId: userId,
+          terms: this.termsFromOffer(saved),
+        }, em);
 
-      return saved;
-    });
+        return saved;
+      });
+    } catch (error) {
+      // PMCM-393 AC-41.01/41.06: the checkActiveOfferConstraint() call above
+      // already caught the common case — this only fires in the race window
+      // between that check and this insert. Re-raises the same 409 rather
+      // than letting a raw 23505 surface as a 500.
+      await this.raiseIfActiveOfferConflict(error, userId, dto.talentId);
+      throw error;
+    }
 
     this.ablyService.publish(updatedOffer.id, updatedOffer, null, false);
     return updatedOffer;
@@ -505,7 +580,9 @@ export class OffersService {
     const offer = await this.findByIdOrThrow(id);
 
     OfferStateMachine.assertIsClient(offer, userId);
-    OfferStateMachine.assertCanTransition(offer.status, OfferStatus.PENDING); // must be PENDING
+    if (offer.status !== OfferStatus.PENDING) {
+      throw new OfferNotActionableException(offer.status);
+    }
 
     const previousTerms = this.termsFromOffer(offer);
     const newExpiresAt = calculateExpiresAt();
@@ -590,50 +667,57 @@ export class OffersService {
 
     const expiresAt = calculateExpiresAt();
 
-    const newOffer = await this.dataSource.transaction(async (em) => {
-      const result = await em.query(`
-        INSERT INTO offer_service.offers (
-          client_id, talent_id, job_listing_id,
-          contract_type, contract_title, status,
-          rate, currency_code, duration_months,
-          work_schedule, start_date, message,
-          expires_at, warning_sent_at, original_offer_id,
-          created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, NULL, $13, NOW(), NOW())
-        RETURNING *
-      `, [
-        userId, originalOffer.talentId, originalOffer.jobListingId,
-        dto?.contractType ?? originalOffer.contractType,
-        dto?.contractTitle ?? originalOffer.contractTitle,
-        dto?.rate ?? originalOffer.rate,
-        dto?.currencyCode ?? originalOffer.currencyCode,
-        dto?.durationMonths ?? originalOffer.durationMonths,
-        JSON.stringify(dto?.workSchedule ?? originalOffer.workSchedule),
-        dto?.startDate ?? originalOffer.startDate,
-        dto?.message ?? null,
-        expiresAt.toISOString(),
-        originalOfferId,
-      ]);
+    let newOffer: Offer;
+    try {
+      newOffer = await this.dataSource.transaction(async (em) => {
+        const result = await em.query(`
+          INSERT INTO offer_service.offers (
+            client_id, talent_id, job_listing_id,
+            contract_type, contract_title, status,
+            rate, currency_code, duration_months,
+            work_schedule, start_date, message,
+            expires_at, warning_sent_at, original_offer_id,
+            created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, NULL, $13, NOW(), NOW())
+          RETURNING *
+        `, [
+          userId, originalOffer.talentId, originalOffer.jobListingId,
+          dto?.contractType ?? originalOffer.contractType,
+          dto?.contractTitle ?? originalOffer.contractTitle,
+          dto?.rate ?? originalOffer.rate,
+          dto?.currencyCode ?? originalOffer.currencyCode,
+          dto?.durationMonths ?? originalOffer.durationMonths,
+          JSON.stringify(dto?.workSchedule ?? originalOffer.workSchedule),
+          dto?.startDate ?? originalOffer.startDate,
+          dto?.message ?? null,
+          expiresAt.toISOString(),
+          originalOfferId,
+        ]);
 
-      const rows = Array.isArray(result[0]) && Array.isArray(result[0]) ? result[0] : result;
-      const saved = this.mapRawToOffer(rows[0] ?? rows);
+        const rows = Array.isArray(result[0]) && Array.isArray(result[0]) ? result[0] : result;
+        const saved = this.mapRawToOffer(rows[0] ?? rows);
 
-      await this.outboxService.write({
-        aggregateId: saved.id,
-        eventType: OFFER_EVENTS.RESENT,
-        routingKey: OFFER_EVENTS.RESENT,
-        exchange: OFFER_EXCHANGE,
-        payload: buildOfferResentPayload(saved) as any,
-      }, em);
+        await this.outboxService.write({
+          aggregateId: saved.id,
+          eventType: OFFER_EVENTS.RESENT,
+          routingKey: OFFER_EVENTS.RESENT,
+          exchange: OFFER_EXCHANGE,
+          payload: buildOfferResentPayload(saved) as any,
+        }, em);
 
-      await this.offerHistoryService.append({
-        offerId: saved.id, eventType: OFFER_EVENTS.RESENT,
-        actor: 'CLIENT', actorId: userId,
-        terms: this.termsFromOffer(saved),
-      }, em);
+        await this.offerHistoryService.append({
+          offerId: saved.id, eventType: OFFER_EVENTS.RESENT,
+          actor: 'CLIENT', actorId: userId,
+          terms: this.termsFromOffer(saved),
+        }, em);
 
-      return saved;
-    });
+        return saved;
+      });
+    } catch (error) {
+      // PMCM-393 AC-41.01/41.06: same race-window backstop as create() above.
+      await this.raiseIfActiveOfferConflict(error, userId, originalOffer.talentId);
+      throw error;
+    }
 
     this.ablyService.publish(newOffer.id, newOffer, null, false);
     return newOffer;

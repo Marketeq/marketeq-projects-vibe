@@ -40,6 +40,7 @@ interface FallbackHits {
 export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbFallbackService.name)
   private pool: Pool | null = null
+  private talentNameSql: Promise<string> | null = null
 
   // Maps a category + requested sort field to a real, hardcoded SQL ORDER BY
   // expression. Only fields present here are honored — sort.field is looked
@@ -282,6 +283,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
       if (category === SearchCategory.TALENT) {
         const params: any[] = [pattern]
         const clauses: string[] = []
+        const nameSql = await this.resolveTalentNameSql()
 
         // cms.talent_profiles has no skills/industries/languages/rate columns
         // on the main row — Payload stores those array fields as child
@@ -335,6 +337,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
             pattern,
             clauses,
             params,
+            nameSql,
           )
           // No match is a real, empty answer — not a reason to ignore the
           // filter and hand back everybody.
@@ -391,7 +394,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
 
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
         const result = await this.pool.query(
-          `SELECT id, name, username, availability,
+          `SELECT id, ${nameSql} AS name, username, availability,
                   (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
                   (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
                   (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
@@ -399,7 +402,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                   COUNT(*) OVER () AS total_count
            FROM cms.talent_profiles
            WHERE status = 'active'
-             AND ${this.freeTextClause(['name', 'username', 'overview::text'])}
+             AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -407,7 +410,6 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         )
         rows = result.rows.map((r) => ({
           id: r.id,
-          // cms.talent_profiles stores one `name`, not first_name/last_name.
           name: r.name || r.username,
           username: r.username,
           availability: r.availability,
@@ -722,6 +724,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     pattern: string,
     clauses: string[],
     params: any[],
+    nameSql: string,
   ): Promise<Map<string, DerivedCategories>> {
     const empty = new Map<string, DerivedCategories>()
     if (!this.pool) return empty
@@ -748,7 +751,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                 ) AS texts
            FROM cms.talent_profiles
           WHERE status = 'active'
-            AND ${this.freeTextClause(['name', 'username', 'overview::text'])}
+            AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
             ${filterSql}
           LIMIT ${DbFallbackService.MAX_SEMANTIC_CANDIDATES}`,
         probeParams,
@@ -1057,6 +1060,45 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     if (!values?.length) return null
     const idx = params.push(values.map((v) => v.toLowerCase()))
     return `EXISTS (SELECT 1 FROM ${childTable} c WHERE c._parent_id = talent_profiles.id AND lower(c."${column}") = ANY($${idx}::text[]))`
+  }
+
+  /**
+   * SQL expression for a talent's display name. Which columns hold it depends
+   * on the database: the TalentProfiles collection stores firstName/lastName
+   * (first_name/last_name), but databases whose cms schema predates that split
+   * still carry a single `name`, and Payload's schema push is what decides.
+   * Naming a column that isn't there fails the whole talent query with 42703,
+   * so the shape is read from information_schema instead of assumed.
+   *
+   * Cached after the first successful probe; a failed probe is not cached, so
+   * the next search retries it.
+   */
+  private resolveTalentNameSql(): Promise<string> {
+    if (!this.talentNameSql) {
+      this.talentNameSql = this.probeTalentNameSql().catch((err) => {
+        this.talentNameSql = null
+        throw err
+      })
+    }
+    return this.talentNameSql
+  }
+
+  private async probeTalentNameSql(): Promise<string> {
+    if (!this.pool) return 'NULL::text'
+    const result = await this.pool.query(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'cms'
+          AND table_name = 'talent_profiles'
+          AND column_name IN ('first_name', 'last_name', 'name')`,
+    )
+    const present = new Set(result.rows.map((row) => row.column_name as string))
+    const parts = ['first_name', 'last_name']
+      .filter((column) => present.has(column))
+      .map((column) => `talent_profiles.${column}`)
+    if (parts.length) return `NULLIF(btrim(concat_ws(' ', ${parts.join(', ')})), '')`
+    if (present.has('name')) return 'talent_profiles.name'
+    return 'NULL::text'
   }
 
   private empty(limit: number, page: number): FallbackHits {

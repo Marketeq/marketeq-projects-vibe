@@ -19,6 +19,19 @@ const apiProxyTarget = normalizeProxyTarget(
 )
 
 const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow",
+          },
+        ],
+      },
+    ]
+  },
   typescript: {
     // Pre-existing type errors from merged PRs — tracked for cleanup separately.
     // Build must pass so staging is testable.

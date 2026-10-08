@@ -26,6 +26,9 @@ import { createScreenshotService } from './services/capture/screenshot-service';
 import { createActivityMonitor } from './services/capture/activity-monitor';
 import { startInputActivity, stopInputActivity } from './services/capture/input-activity';
 import { createCleanupJob } from './services/capture/cleanup-job';
+import { createAppUsageTracker, type AppUsageTracker } from './services/capture/app-usage-tracker';
+import { createActivityWatchTracker } from './services/capture/activitywatch-tracker';
+import { mapTimerStateToCapturePayload } from './services/capture/timer-state-adapter';
 import { createCaptureSupervisor } from './services/capture/capture-supervisor';
 import { registerCaptureIpcHandlers } from './services/capture/register-ipc';
 import { createApiClient } from './services/sync/api-client';
@@ -58,6 +61,7 @@ import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
 import { registerContractsIpc } from './services/contracts/register-ipc';
+import { registerStatsIpc } from './services/stats/register-ipc';
 import {
   createWindowManager,
   resolveRendererPaths,
@@ -149,6 +153,10 @@ async function bootstrap(): Promise<void> {
   // --- Phase 2: Timer service (9-state FSM) ----------------------------
   let timerService: TimerService | null = null;
   let detachIpcHandlers: (() => void) | null = null;
+  // Sessions the crash-recovery sweep closed at startup — each gets a backend
+  // close enqueued once the outbox exists (Phase 4).
+  let recoveredSessions: ReturnType<TimerService['restoreFromDb']>['closed'] =
+    [];
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -177,8 +185,9 @@ async function bootstrap(): Promise<void> {
       getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
       getDeviceId: () => repos.device.findSelf()?.id ?? null,
     });
-    // Restore any open session that was left behind by a previous crash.
-    timerService.restoreFromDb();
+    // Close any session left open by a previous crash / force-kill. Never
+    // silently resumes — the FSM stays Idle. Rows are kept (only ended_at set).
+    recoveredSessions = timerService.restoreFromDb().closed;
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
     logger.info('phase 2 timer service wired');
   } catch (err) {
@@ -274,10 +283,29 @@ async function bootstrap(): Promise<void> {
       apiBaseUrl,
       contractRepo: repos.contract,
       taskRepo: repos.task,
+      onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
     logger.info('contracts IPC wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize contracts IPC');
+  }
+
+  // --- Today stats IPC (local SQLite aggregate, no network) -------------
+  let detachStatsIpc: (() => void) | null = null;
+  try {
+    if (!timerService) throw new Error('timer service not initialized');
+    const db = initDatabase();
+    const repos = createRepos(db);
+    detachStatsIpc = registerStatsIpc({
+      logger,
+      sessionRepo: repos.session,
+      contractRepo: repos.contract,
+      timer: timerService,
+      getUserId: () => authService?.getCurrentUser()?.id ?? repos.user.findFirst()?.id ?? null,
+    });
+    logger.info('today stats IPC wired');
+  } catch (err) {
+    logger.error({ err }, 'failed to initialize today stats IPC');
   }
 
   // --- Phase 6: onboarding wizard --------------------------------------
@@ -305,6 +333,7 @@ async function bootstrap(): Promise<void> {
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
   let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
+  let detachCaptureTimerBridge: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -312,12 +341,53 @@ async function bootstrap(): Promise<void> {
       logger,
       permissionGrantRepo: repos.permissionGrant,
     });
+    // Real event-driven tracking via a locally-run ActivityWatch, with an
+    // automatic fallback to 15s polling if the bundled binaries are
+    // missing, blocked, or fail to start on this machine — app tracking
+    // never drops to zero, it just degrades to the previous behavior.
+    //
+    // The polling tracker only ever runs when ActivityWatch has genuinely
+    // failed — its own startup check came back negative, or one of its two
+    // child processes exited mid-session — never as a standing "just in
+    // case" companion. Each polling sample shells out to PowerShell/
+    // osascript; running that on a timer for the length of every session
+    // regardless of whether it's needed was wasted work for the common
+    // case where ActivityWatch is working fine.
+    const pollingTracker = createAppUsageTracker({
+      logger,
+      options: { pollIntervalMs: 15_000 },
+    });
+    let fallbackActive = false;
+    const awTracker = createActivityWatchTracker({
+      logger,
+      options: { dbPath: path.join(app.getPath('userData'), 'dtt', 'activitywatch') },
+      onAvailabilityChange: (available) => {
+        if (!available && !fallbackActive) {
+          fallbackActive = true;
+          pollingTracker.start();
+          logger.info('activitywatch unavailable — starting polling tracker fallback');
+        }
+      },
+    });
+    const appUsageTracker: AppUsageTracker = {
+      start: () => {
+        fallbackActive = false;
+        awTracker.start();
+      },
+      stop: () => {
+        pollingTracker.stop();
+        awTracker.stop();
+        fallbackActive = false;
+      },
+      drain: () => (awTracker.isAvailable() ? awTracker.drain() : pollingTracker.drain()),
+    };
     screenshotService = createScreenshotService({
       logger,
       screenshotRepo: repos.screenshot,
       sessionRepo: repos.session,
       preferenceRepo: repos.preference,
       permissions,
+      appUsageTracker,
     });
     const activityMonitor = createActivityMonitor({
       logger,
@@ -333,6 +403,7 @@ async function bootstrap(): Promise<void> {
       logger,
       screenshotService,
       activityMonitor,
+      appUsageTracker,
       cleanupJob,
       permissions,
       preferenceRepo: repos.preference,
@@ -347,6 +418,30 @@ async function bootstrap(): Promise<void> {
       captureSupervisor,
     });
     captureSupervisor.start();
+
+    // Bridge real timer state into capture — this is what actually pauses
+    // screenshots/activity during idle, pause, and breaks. Its own
+    // subscription (not the Phase 6 one below, which is for
+    // tray/notifications) so it's live from the moment capture starts, not
+    // whenever Phase 6 happens to run.
+    if (timerService && captureSupervisor) {
+      const cs = captureSupervisor;
+      detachCaptureTimerBridge = timerService.attachEventBus((evt: TimerBusEvent) => {
+        if (evt.channel === TIMER_CHANNELS.stateChanged) {
+          try {
+            cs.handleTimerState(
+              mapTimerStateToCapturePayload({
+                state: evt.payload.state,
+                activeSessionId: evt.payload.activeSessionId,
+              }),
+            );
+          } catch (err) {
+            logger.warn({ err }, 'timer bus → capture bridge failed');
+          }
+        }
+      });
+    }
+
     // Separate keyboard/mouse activity measurement — feeds real percentages
     // into each screenshot upload (see event-bridge.ts). Non-fatal if the
     // native input hook is unavailable.
@@ -393,6 +488,23 @@ async function bootstrap(): Promise<void> {
     realtimeClient = createRealtimeClient({ api, logger });
     network.start();
     worker.start();
+
+    // Mirror the web "Screen Capture Settings" choice into local preferences,
+    // where the screenshot service reads it at each capture.
+    const syncCapturePreference = () => {
+      if (!authService?.getCurrentUser()) return;
+      api
+        .getTimePreferences()
+        .then((prefs) => {
+          if (prefs.captureMode) {
+            repos.preference.set('dtt.captureMode', JSON.stringify(prefs.captureMode));
+          }
+        })
+        .catch((err) => logger.debug({ err }, 'capture preference sync failed'));
+    };
+    syncCapturePreference();
+    const capturePrefTimer = setInterval(syncCapturePreference, 5 * 60 * 1000);
+    app.on('before-quit', () => clearInterval(capturePrefTimer));
     detachSyncIpc = registerSyncIpcHandlers({
       logger,
       worker,
@@ -410,6 +522,25 @@ async function bootstrap(): Promise<void> {
         listTimeEntriesForSession: (sessionId) => repos.timeEntry.listForSession(sessionId),
         logger,
       }).detach;
+    }
+
+    // Push a close to the backend for every crash-swept session. If the
+    // backend never knew about it (session.start hadn't synced yet), this
+    // 404s and the outbox dead-letters it immediately — same idempotent,
+    // non-retryable-4xx handling every other outbox write already relies on.
+    // FIFO puts this after the original POST /sessions.
+    for (const s of recoveredSessions) {
+      outbox.enqueue({
+        kind: 'session.close',
+        method: 'POST',
+        path: `/sessions/${s.id}/close`,
+        id: `req_ses-close-${s.id}`,
+        payload: {
+          endedAt: s.endedAt,
+          reason: s.endReason ?? 'crash_recover',
+          billableSeconds: s.billableSeconds,
+        },
+      });
     }
 
     stopSync = async () => {
@@ -489,10 +620,10 @@ async function bootstrap(): Promise<void> {
       fallbackIcon,
       windowManager,
       onStartTimer: () => {
-        void timerService?.startTimer({
-          contractId: 'default',
-          taskId: 'default',
-        });
+        // The tray cannot know which task to start — bring the window forward
+        // so the user selects a contract + task there. Starting requires a real
+        // task (see timer-service.startTimer).
+        void windowManager?.showMainWindow();
       },
       onPauseTimer: async () => {
         await timerService?.pauseTimer();
@@ -607,6 +738,25 @@ async function bootstrap(): Promise<void> {
     logger.info('phase 7 auto-updater skipped (dev mode)');
   }
 
+  // Close the active session BEFORE anything is torn down. APP_QUIT's
+  // effects write ended_at/billable_seconds and the event-bridge enqueues the
+  // backend session.close into the (SQLite) outbox — both need the DB and the
+  // timer's bus alive. It used to be fired without awaiting, right before
+  // dispose() and the DB close, so it never landed: every quit left the
+  // session open and the next boot "crash-recovered" it with 0 billable.
+  let sessionClosedForQuit = false;
+  const closeSessionForQuit = async () => {
+    if (sessionClosedForQuit) return;
+    sessionClosedForQuit = true;
+    try {
+      if (timerService && timerService.getSnapshot().activeSessionId) {
+        await timerService.dispatch({ type: 'APP_QUIT' });
+      }
+    } catch (err) {
+      logger.warn({ err }, 'error while closing the active session on quit');
+    }
+  };
+
   app.on('before-quit', (evt) => {
     // Confirm-before-quit when there's an active session.
     if (windowManager && !windowManager.isQuitting()) {
@@ -614,9 +764,18 @@ async function bootstrap(): Promise<void> {
       void (async () => {
         const ok = await windowManager!.confirmQuit();
         if (!ok) return;
+        await closeSessionForQuit();
         windowManager!.prepareToQuit();
         app.quit();
       })();
+      return;
+    }
+
+    // Quit paths that skip the confirm (updater restart, OS shutdown, no
+    // window manager): hold the quit once to close the session first.
+    if (!sessionClosedForQuit && timerService?.getSnapshot().activeSessionId) {
+      evt.preventDefault();
+      void closeSessionForQuit().then(() => app.quit());
       return;
     }
 
@@ -651,13 +810,18 @@ async function bootstrap(): Promise<void> {
       logger.warn({ err }, 'error while detaching contracts ipc');
     }
     try {
+      detachStatsIpc?.();
+    } catch (err) {
+      logger.warn({ err }, 'error while detaching stats ipc');
+    }
+    try {
       updaterSvc?.dispose();
       detachUpdaterIpc?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping updater service');
     }
     try {
-      timerService?.dispatch({ type: 'APP_QUIT' }).catch(() => undefined);
+      // The session was already closed by closeSessionForQuit() above.
       timerService?.dispose();
       detachIpcHandlers?.();
     } catch (err) {

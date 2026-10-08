@@ -47,7 +47,7 @@ import {
 import { Money } from "@/components/money"
 import { NextImage } from "@/components/next-image"
 import { NextLink } from "@/components/next-link"
-import { claimProject } from "@/src/lib/api/claim"
+import { claimProject, claimService } from "@/src/lib/api/claim"
 import {
   isTalentAccount,
   NoTeamAssigned,
@@ -102,7 +102,9 @@ interface ProjectLikeProps {
   reviewCount?: number
   status?: ListingStatus
   /** Avatar URLs to render in the bottom avatar group. Ignored if avatarsSlot is provided. */
-  collaborators?: string[]
+  collaborators: string[]
+  /** Rich team member info — when 1 member, shows name + avatar inline. */
+  teamMembers?: Array<{ avatarUrl: string; firstName: string; username: string }>
   /**
    * Custom element to render in place of the default AvatarGroup.
    * Use this when you need tooltips, custom images, or other complex behavior.
@@ -234,6 +236,7 @@ function ProjectListingCard({
   reviewCount,
   status,
   collaborators,
+  teamMembers,
   avatarsSlot,
   badge,
   href,
@@ -254,7 +257,25 @@ function ProjectListingCard({
   // The unclaimed-team empty state is a talent-facing call to action. Clients
   // and signed-out visitors just don't see the row until somebody owns it.
   const isTalent = isTalentAccount(user)
-  const hasTeam = !!collaborators && collaborators.length > 0
+  // Optimistic: after a successful claim, show the claiming user's avatar
+  // immediately without waiting for the parent to re-fetch collaborators.
+  const [claimedByMe, setClaimedByMe] = React.useState(false)
+  const hasTeam = claimedByMe || (!!collaborators && collaborators.length > 0)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const rawOnClaim =
+    onClaim ??
+    (isUuid
+      ? kind === "service"
+        ? () => claimService(id)
+        : kind === "project"
+          ? () => claimProject(id)
+          : undefined
+      : undefined)
+  const effectiveOnClaim = rawOnClaim
+    ? async () => {
+        await rawOnClaim()
+      }
+    : undefined
   const computedHref =
     href ??
     (cardVariant === "job" || cardVariant === "job-grid"
@@ -337,179 +358,206 @@ function ProjectListingCard({
     const jobDescription =
       plainDescription ||
       "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt."
-    const primarySkills = ["Visual Design", "Tailwind CSS", "Next.js"]
-    const secondarySkills = ["Wireframing", "Figma"]
+    const matchedSkills = ["Visual Design", "Tailwind CSS"]
+    const unmatchedSkills = ["Next.js", "Wireframing", "Figma"]
     const gridVariantIndex = getStableVariantIndex(id, 4)
     const earningsVariantIndex = getStableVariantIndex(`${id}-earnings`, 3)
     const showPaymentVerified = gridVariantIndex === 1 || gridVariantIndex === 3
     const showNdaRequired = gridVariantIndex === 2 || gridVariantIndex === 3
     const showServiceBadge = gridVariantIndex === 0 || gridVariantIndex === 3
+    const hasBadges = showPaymentVerified || showNdaRequired
+
+    // Shared sub-sections used by both No Badges and With Badges layouts
+    const skillsSection = (
+      <div className="flex w-full flex-col gap-[12px] items-start">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[13px] font-medium text-[#22376b]">
+          2 of 9 skills match
+        </span>
+        <div className="flex w-full content-center flex-wrap items-center gap-[8px]">
+          {matchedSkills.map((skill) => (
+            <Badge
+              key={skill}
+              visual="gray"
+              className="rounded-[16px] gap-[4px] pl-[6px] pr-[8px] text-[#344054]"
+            >
+              <Check className="size-3 shrink-0 text-primary-500" />
+              {skill}
+            </Badge>
+          ))}
+          {unmatchedSkills.map((skill) => (
+            <Badge
+              key={skill}
+              visual="gray"
+              className="rounded-[16px] text-[#344054]"
+            >
+              {skill}
+            </Badge>
+          ))}
+          <NextLink
+            href={computedHref}
+            className="px-[8px] py-[2px] text-[12px] font-medium leading-[18px] text-[#22376b] hover:underline focus-visible:outline-none"
+          >
+            + 10 more
+          </NextLink>
+        </div>
+      </div>
+    )
+
+    const categoryFavSection = (
+      <div className="flex w-full content-center flex-wrap items-center justify-between gap-y-[12px]">
+        <div className="flex items-center gap-[12px]">
+          <div className="flex items-center gap-[4px] rounded-[16px] border border-[#d0d5dd] bg-white py-[4px] pl-[12px] pr-[10px]">
+            <File02 className="size-[14px] shrink-0 text-gray-400" />
+            <span className="text-[12px] font-semibold leading-[20px] text-[#363f72] whitespace-nowrap">
+              Mobile Application
+            </span>
+          </div>
+
+          {showServiceBadge && (
+            <div className="flex items-center gap-[4px] rounded-[5px] border border-[#d0d5dd] bg-white px-[8px] py-[6px]">
+              <RefreshCw className="size-[14px] shrink-0 text-primary-500" />
+              <span className="text-[12px] font-semibold text-[#22376b] whitespace-nowrap">
+                Service
+              </span>
+            </div>
+          )}
+        </div>
+
+        {favoriteSlot ?? (
+          <IconButton
+            variant="ghost"
+            visual="gray"
+            size="sm"
+            className="h-auto w-auto p-0 text-gray-300 hover:bg-transparent hover:text-gray-400 focus:bg-transparent"
+          >
+            <Star className="size-[18px]" />
+          </IconButton>
+        )}
+      </div>
+    )
 
     return (
-      <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
-        <div className="flex items-start justify-between gap-4">
-          <NextLink
-            href={computedHref}
-            className="max-w-[195px] line-clamp-2 text-[16px] font-bold leading-normal text-dark-blue-400 focus-visible:outline-none hover:underline"
-          >
-            {title || "The Ultimate Mobile App Experience"}
-          </NextLink>
-
-          <div className="shrink-0 self-start text-right">
-            {earningsVariantIndex === 0 && (
-              <>
-                <div className="text-[18px] font-bold leading-7 text-dark-blue-400">
-                  $90,200
-                </div>
-                <div className="text-[13px] font-light leading-5 text-gray-500">
-                  Earnings Opportunity
-                </div>
-              </>
-            )}
-
-            {earningsVariantIndex === 1 && (
-              <div className="inline-flex items-center justify-end gap-2 pt-1 text-xs font-medium leading-[18px] text-dark-blue-400">
-                <HelpCircle className="size-[14px] shrink-0 text-gray-400" />
-                <span>Earnings Unavailable</span>
-              </div>
-            )}
-
-            {earningsVariantIndex === 2 && (
-              <>
-                <div className="text-[18px] font-bold leading-7 text-dark-blue-400">
-                  $90,200/mo
-                </div>
-                <div className="text-[13px] font-light leading-5 text-gray-500">
-                  Earnings Opportunity
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {(showPaymentVerified || showNdaRequired) && (
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {showPaymentVerified && (
-              <Button
-                type="button"
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
-                leftIcon={
-                  <DollarSign className="size-[14px] text-success-600" />
-                }
-              >
-                Payment Verified
-              </Button>
-            )}
-
-            {showNdaRequired && (
-              <Button
-                type="button"
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
-                leftIcon={<File02 className="size-[14px] text-primary-500" />}
-              >
-                NDA Required
-              </Button>
-            )}
-          </div>
+      <article
+        className={cn(
+          "flex flex-col items-start rounded-[8px] border border-[#eaecf0] bg-white p-[20px] drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]",
+          hasBadges
+            ? "gap-[20px] justify-center"
+            : "h-[336px] justify-between"
         )}
-
-        <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-[13px] font-medium leading-5 text-dark-blue-400">
-            1 matching role
-          </span>
-          <NextLink
-            href={computedHref}
-            className="text-sm font-semibold leading-5 text-primary-500 focus-visible:outline-none hover:underline"
+      >
+        {/* Top section */}
+        <div className="flex w-full flex-col items-start">
+          <div
+            className={cn(
+              "flex w-full flex-col",
+              hasBadges ? "gap-[12px]" : "gap-[14px]"
+            )}
           >
-            UX Researcher
-          </NextLink>
-        </div>
-
-        <p className="mt-4 line-clamp-2 text-sm font-light leading-normal text-dark-blue-400">
-          {jobDescription}
-        </p>
-
-        <div className="mt-auto pt-6">
-          <div className="text-[13px] font-medium leading-5 text-dark-blue-400">
-            2 of 9 skills match
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {primarySkills.map((skill, index) => (
-              <Badge
-                key={skill}
-                className="gap-x-1.5 bg-gray-100 text-dark-blue-400"
-                visual="gray"
-              >
-                {index < 2 && <Check className="size-3.5 text-primary-500" />}
-                {skill}
-              </Badge>
-            ))}
-          </div>
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {secondarySkills.map((skill) => (
-              <Badge
-                key={skill}
-                className="bg-gray-100 text-dark-blue-400"
-                visual="gray"
-              >
-                {skill}
-              </Badge>
-            ))}
-            <Button
-              type="button"
-              variant="link"
-              visual="gray"
-              className="font-medium text-dark-blue-400 no-underline hover:no-underline"
+            <div
+              className={cn(
+                "flex w-full flex-col",
+                hasBadges && "gap-[12px]"
+              )}
             >
-              + 10 more
-            </Button>
-          </div>
-
-          <div className="mt-6 flex items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outlined"
-                visual="gray"
-                size="sm"
-                className="h-auto rounded-full px-3 py-1 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-none"
-                leftIcon={<File02 className="size-[14px] text-gray-400" />}
-              >
-                Mobile Application
-              </Button>
-
-              {showServiceBadge && (
-                <Button
-                  type="button"
-                  variant="outlined"
-                  visual="gray"
-                  size="sm"
-                  className="h-auto rounded-[5px] px-3 py-1 text-xs font-semibold leading-[18px] text-primary-500 shadow-none"
-                  leftIcon={<RefreshCw className="size-[14px]" />}
+              {/* Title + Earnings row */}
+              <div className="flex w-full flex-wrap items-start gap-x-[24px]">
+                <NextLink
+                  href={computedHref}
+                  className="min-w-px flex-[1_0_0] overflow-hidden text-ellipsis text-[16px] font-bold leading-normal text-[#22376b] focus-visible:outline-none hover:underline"
                 >
-                  Service
-                </Button>
+                  {title || "The Ultimate Mobile App Experience"}
+                </NextLink>
+
+                <div className="flex shrink-0 flex-col gap-[4px] items-end text-right whitespace-nowrap text-[#22376b]">
+                  {earningsVariantIndex === 0 && (
+                    <>
+                      <span className="text-[20px] font-semibold leading-normal">
+                        $90,200
+                      </span>
+                      <span className="text-[12px] font-light leading-normal">
+                        Earnings Opportunity
+                      </span>
+                    </>
+                  )}
+
+                  {earningsVariantIndex === 1 && (
+                    <div className="flex items-center gap-[8px]">
+                      <HelpCircle className="size-[18px] shrink-0" />
+                      <span className="text-[12px] font-medium leading-normal">
+                        Earnings Unavailable
+                      </span>
+                    </div>
+                  )}
+
+                  {earningsVariantIndex === 2 && (
+                    <>
+                      <span className="text-[20px] font-semibold leading-normal">
+                        $90,200/mo
+                      </span>
+                      <span className="text-[12px] font-light leading-normal">
+                        Earnings Opportunity
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Badge row */}
+              {hasBadges && (
+                <div className="flex w-full items-center gap-[12px]">
+                  {showPaymentVerified && (
+                    <div className="flex items-center gap-[4px] rounded-[5px] border border-[#d0d5dd] bg-white px-[8px] py-[6px]">
+                      <DollarSign className="size-[14px] shrink-0 text-success-600" />
+                      <span className="text-[12px] font-semibold text-[#22376b] whitespace-nowrap">
+                        Payment Verified
+                      </span>
+                    </div>
+                  )}
+                  {showNdaRequired && (
+                    <div className="flex items-center gap-[4px] rounded-[5px] border border-[#d0d5dd] bg-white px-[8px] py-[6px]">
+                      <File02 className="size-[14px] shrink-0 text-primary-500" />
+                      <span className="text-[12px] font-semibold text-[#22376b] whitespace-nowrap">
+                        NDA Required
+                      </span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            <IconButton
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="h-auto w-auto p-0 text-gray-300 hover:bg-transparent hover:text-gray-400 focus:bg-transparent"
-            >
-              <Star className="size-[18px]" />
-            </IconButton>
+            {/* Matching role */}
+            <div className="flex w-full items-center gap-[12px]">
+              <span className="text-[13px] font-medium text-[#22376b] whitespace-nowrap">
+                1 matching role
+              </span>
+              <NextLink
+                href={computedHref}
+                className="text-[14px] font-semibold leading-[20px] text-[#306cfe] whitespace-nowrap focus-visible:outline-none hover:underline"
+              >
+                UX Researcher
+              </NextLink>
+            </div>
+
+            {/* Description */}
+            <p className="w-full overflow-hidden text-ellipsis text-[14px] font-light leading-normal text-[#22376b]">
+              {jobDescription}
+            </p>
           </div>
         </div>
+
+        {/* Bottom: No Badges wraps skills + category/fav together;
+            With Badges renders them as separate card children */}
+        {hasBadges ? (
+          <>
+            {skillsSection}
+            {categoryFavSection}
+          </>
+        ) : (
+          <div className="flex w-full flex-col items-start gap-[20px]">
+            {skillsSection}
+            {categoryFavSection}
+          </div>
+        )}
       </article>
     )
   }
@@ -746,29 +794,82 @@ function ProjectListingCard({
                 >
                   {optionsSlot}
                 </span>
+              ) : favoriteSlot ? (
+                <span
+                  className="inline-flex h-6 shrink-0 items-center"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  {favoriteSlot}
+                </span>
               ) : null}
             </div>
 
             {avatarsSlot ??
-              (hasTeam ? (
-                <AvatarGroup
-                  max={5}
-                  size="sm"
-                  excess
-                  excessClassName="border-gray-300 text-gray-500"
-                >
-                  {collaborators.map((src, i) => (
-                    <Avatar
-                      key={i}
+              (!hasTeam ? (
+                isTalent ? (
+                  <NoTeamAssigned
+                    kind={kind === "service" ? "service" : "project"}
+                    onClaim={effectiveOnClaim}
+                    onClaimComplete={() => setClaimedByMe(true)}
+                    editHref={`/my-listings/${id}`}
+                  />
+                ) : (
+                  <span />
+                )
+              ) : (
+                (() => {
+                  const solo = claimedByMe && collaborators.length === 0
+                    ? { avatarUrl: (user as any)?.avatarUrl ?? "", firstName: (user as any)?.firstName || (user as any)?.username || "You", username: (user as any)?.username ?? "" }
+                    : collaborators.length === 1 && teamMembers?.[0]
+                      ? teamMembers[0]
+                      : null
+                  if (solo) {
+                    return (
+                      <div className="flex items-center gap-x-2 min-w-0">
+                        <Avatar
+                          size="sm"
+                          className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                        >
+                          {solo.avatarUrl ? (
+                            <AvatarImage src={solo.avatarUrl} alt={solo.firstName || "Team"} />
+                          ) : null}
+                          <AvatarFallback>
+                            {(solo.firstName || solo.username || "?").charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                          {solo.firstName || solo.username}
+                          {solo.username && solo.firstName ? (
+                            <span className="font-extralight text-gray-400"> @{solo.username}</span>
+                          ) : null}
+                        </span>
+                      </div>
+                    )
+                  }
+                  return (
+                    <AvatarGroup
+                      max={5}
                       size="sm"
-                      className="border-2 border-white hover:ring-0 active:ring-0"
+                      excess
+                      excessClassName="border-gray-300 text-gray-500"
                     >
-                      <AvatarImage src={src} alt="Collaborator" />
-                      <AvatarFallback />
-                    </Avatar>
-                  ))}
-                </AvatarGroup>
-              ) : null)}
+                      {collaborators.map((src, i) => (
+                        <Avatar
+                          key={i}
+                          size="sm"
+                          className="border-2 border-white hover:ring-0 active:ring-0"
+                        >
+                          <AvatarImage src={src} alt="Collaborator" />
+                          <AvatarFallback />
+                        </Avatar>
+                      ))}
+                    </AvatarGroup>
+                  )
+                })()
+              ))}
           </div>
 
           <div className="flex items-end justify-between gap-x-6">
@@ -815,12 +916,17 @@ function ProjectListingCard({
   }
 
   return (
-    <article className="flex h-full flex-col rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] ">
+    <article className="relative flex h-full flex-col rounded-[8px] border border-[#eaecf0] bg-white p-[20px] drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]">
       <NextLink
         href={computedHref}
         className="block focus-visible:outline-none group/card"
       >
-        <div className="h-[140px] rounded-[6px] overflow-hidden bg-white relative group border border-black/15 cursor-pointer">
+        <div className={cn(
+          "h-[140px] overflow-hidden bg-white relative group cursor-pointer",
+          kind === "service"
+            ? "rounded-[8px]"
+            : "rounded-[6px] border-b border-[rgba(0,0,0,0.15)]"
+        )}>
           {mediaUrl ? (
             <NextImage
               className="object-cover group-hover:scale-150 transition [transition-duration:3000ms]"
@@ -834,38 +940,23 @@ function ProjectListingCard({
               <Briefcase className="size-10 text-gray-300" />
             </div>
           )}
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-2">
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between p-2.5">
             {badgeText ? (
-              <span className="inline-flex max-w-[60%] items-center gap-1 truncate rounded-[5px] bg-black/[.57] px-1.5 py-1 text-[10px] font-bold text-white shadow">
+              <span className="inline-flex max-w-[60%] items-center gap-[4px] truncate rounded-[5px] bg-black/[.57] px-[6px] py-[4px] text-[10px] font-bold text-white">
                 {kind === "service" && (
-                  <RefreshCw className="size-3 shrink-0 text-[#98B6FF]" />
+                  <RefreshCw className="size-[10.8px] shrink-0 text-[#98B6FF]" />
                 )}
                 <span className="truncate">{badgeText}</span>
               </span>
             ) : (
               <span />
             )}
-
-            {mode !== "owned" &&
-            cardVariant !== "is-favorited" &&
-            favoriteSlot ? (
-              <span
-                className="pointer-events-auto inline-flex shrink-0"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                }}
-              >
-                {favoriteSlot}
-              </span>
-            ) : (
-              <span />
-            )}
+            <span />
           </div>
         </div>
 
-        <div className="mt-3 flex items-start gap-x-3">
-          <span className="line-clamp-2 min-w-0 flex-auto text-base font-bold leading-normal text-dark-blue-400">
+        <div className="mt-3 flex flex-wrap gap-[0px_12px] items-start w-full">
+          <span className="line-clamp-2 flex-[1_0_0] min-w-px font-bold text-[#22376b] text-[16px]">
             <span className="hover:underline">{title}</span>
           </span>
 
@@ -893,9 +984,9 @@ function ProjectListingCard({
             typeof reviewCount === "number" &&
             reviewCount > 0 &&
             typeof rating === "number" && (
-            <div className="inline-flex shrink-0 items-center gap-x-1">
-              <Star className="size-[15px] text-primary-500 fill-primary-500" />
-              <span className="inline-flex items-center gap-x-1 text-sm font-medium leading-normal text-dark-blue-400">
+            <div className="inline-flex shrink-0 items-center gap-[4px] justify-center overflow-clip">
+              <Star className="size-[15px] text-primary-500 fill-primary-500 shrink-0" />
+              <span className="font-medium text-[#22376b] text-[14px] text-center whitespace-nowrap">
                 {rating.toFixed(1)}{" "}
                 {typeof reviewCount === "number" && (
                   <span className="font-light">({reviewCount})</span>
@@ -906,27 +997,27 @@ function ProjectListingCard({
         </div>
 
         {plainDescription && (
-          <p className="mt-3 line-clamp-3 text-sm font-light leading-normal text-dark-blue-400">
+          <p className="mt-3 font-light overflow-hidden text-[#22376b] text-[14px] text-ellipsis line-clamp-3">
             {plainDescription}
           </p>
         )}
 
-        <div className="mt-[14px] flex flex-col gap-y-3">
+        <div className="mt-[14px] flex flex-col gap-[12px]">
           {kind !== "service" && durationText && (
-            <div className="flex items-center gap-x-[6.4px]">
+            <div className="flex gap-[6.4px] items-center">
               <Clock className="size-[18px] shrink-0 text-primary-500" />
-              <span className="text-sm font-medium leading-normal text-dark-blue-400">
+              <span className="font-medium text-[#22376b] text-[14px] whitespace-nowrap">
                 {durationText}
               </span>
             </div>
           )}
 
-          <div className="flex items-center gap-x-[6.4px]">
+          <div className="flex gap-[6.4px] items-center">
             <Money className="size-[18px] shrink-0 text-primary-500" />
-            <span className="flex items-center text-sm font-medium leading-normal text-dark-blue-400">
+            <span className="font-medium text-[#22376b] text-[14px] whitespace-nowrap">
               {budgetText}
               {kind === "service" ? (
-                <span className="text-center text-xs font-light leading-normal">
+                <span className="text-center font-light text-[12px]">
                   {budgetSuffix}
                 </span>
               ) : (
@@ -937,42 +1028,77 @@ function ProjectListingCard({
         </div>
       </NextLink>
 
-      <div className="mt-auto pt-5 flex items-end justify-between">
+      {mode !== "owned" &&
+      cardVariant !== "is-favorited" &&
+      favoriteSlot ? (
+        <span className="absolute top-7 right-7 z-10 inline-flex shrink-0">
+          {favoriteSlot}
+        </span>
+      ) : null}
+
+      <div className="mt-auto pt-5 flex flex-wrap items-end justify-between gap-y-[12.8px] w-full">
         {avatarsSlot ??
           (!hasTeam ? (
             isTalent ? (
               <NoTeamAssigned
                 kind={kind === "service" ? "service" : "project"}
-                onClaim={
-                onClaim ??
-                (kind === "project" ? () => claimProject(id) : undefined)
-              }
-              // /my-listings/:id is the in-line editor (edit in place with a
-              // client-view preview). /edit-listing/:id is the full edit flow.
-              editHref={`/my-listings/${id}`}
+                onClaim={effectiveOnClaim}
+                onClaimComplete={() => setClaimedByMe(true)}
+                editHref={`/my-listings/${id}`}
               />
             ) : (
               <span />
             )
           ) : (
-          <AvatarGroup
-            max={5}
-            size="sm"
-            excess
-            excessClassName="border-gray-300 text-gray-500"
-          >
-            {collaborators.map((src, i) => (
-              <Avatar
-                key={i}
+          (() => {
+            const solo = claimedByMe && collaborators.length === 0
+              ? { avatarUrl: (user as any)?.avatarUrl ?? "", firstName: (user as any)?.firstName || (user as any)?.username || "You", username: (user as any)?.username ?? "" }
+              : collaborators.length === 1 && teamMembers?.[0]
+                ? teamMembers[0]
+                : null
+            if (solo) {
+              return (
+                <div className="flex items-center gap-x-2 min-w-0">
+                  <Avatar
+                    size="sm"
+                    className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                  >
+                    {solo.avatarUrl ? (
+                      <AvatarImage src={solo.avatarUrl} alt={solo.firstName || "Team"} />
+                    ) : null}
+                    <AvatarFallback>
+                      {(solo.firstName || solo.username || "?").charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                    {solo.firstName || solo.username}
+                    {solo.username && solo.firstName ? (
+                      <span className="font-extralight text-gray-400"> @{solo.username}</span>
+                    ) : null}
+                  </span>
+                </div>
+              )
+            }
+            return (
+              <AvatarGroup
+                max={5}
                 size="sm"
-                className="border-2 border-white hover:ring-0 active:ring-0"
+                excess
+                excessClassName="border-gray-300 text-gray-500"
               >
-                <AvatarImage src={src} alt="Collaborator" />
-                <AvatarFallback />
-              </Avatar>
-            ))}
-          </AvatarGroup>
-          ))}
+                {collaborators.map((src, i) => (
+                  <Avatar
+                    key={i}
+                    size="sm"
+                    className="border-2 border-white hover:ring-0 active:ring-0"
+                  >
+                    <AvatarImage src={src} alt="Collaborator" />
+                    <AvatarFallback />
+                  </Avatar>
+                ))}
+              </AvatarGroup>
+            )
+          })()))}
 
         {cardVariant === "is-favorited" && optionsSlot ? (
           <span
@@ -1023,18 +1149,18 @@ function TeamListingCard({
     memberAvatars && memberAvatars.length > 0 ? memberAvatars : ["/woman.jpg"]
 
   return (
-    <article className="h-full flex flex-col p-5 border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] rounded-lg bg-white ">
-      <div className="flex items-start justify-between">
+    <article className="h-full flex flex-col gap-[20px] overflow-clip p-[20px] border border-[#eaecf0] shadow-[0px_1px_5px_0px_rgba(16,24,40,0.02)] rounded-[8px] bg-white">
+      <div className="content-start flex flex-wrap gap-y-[12.8px] items-start justify-between w-full">
         <AvatarGroup
           max={3}
-          size="md"
+          size="lg"
           excess
           excessClassName="border-gray-300 text-gray-500"
         >
           {avatars.map((src, i) => (
             <Avatar
               key={i}
-              size="md"
+              size="lg"
               className="border-2 border-white hover:ring-0 active:ring-0"
             >
               <AvatarImage src={src} alt="Team member" />
@@ -1046,111 +1172,116 @@ function TeamListingCard({
       </div>
 
       {rate && (
-        <div className="mt-5 flex items-center">
-          <span className="text-sm font-bold text-dark-blue-400 leading-none">
-            {rate}
+        <div className="flex items-center text-[#22376b] text-center whitespace-nowrap">
+          <span className="flex items-start font-bold text-[14px]">
+            {rate.replace(/\/hr$/i, "")}
           </span>
+          {/\/hr$/i.test(rate) && (
+            <span className="font-light text-[10px]">/hr</span>
+          )}
         </div>
       )}
 
-      <div className="mt-5">
-        <NextLink
-          href={computedHref}
-          className="focus-visible:outline-none text-base leading-none text-dark-blue-400 font-bold hover:underline"
-        >
-          {name}
-          {handle && (
-            <span className="font-light text-gray-500"> {handle}</span>
+      <div className="flex flex-col gap-[14px] items-start w-full">
+        <div className="flex flex-col gap-[8px] items-start text-[#22376b] whitespace-nowrap w-full">
+          <div className="flex flex-col gap-[2px] items-start w-full">
+            <NextLink
+              href={computedHref}
+              className="focus-visible:outline-none flex gap-[2px] items-center text-center hover:underline"
+            >
+              <span className="font-bold text-[16px]">{name}</span>
+              {handle && (
+                <span className="flex items-center font-light text-[14px]">{handle}</span>
+              )}
+            </NextLink>
+
+            {tagline && (
+              <p className="capitalize font-medium min-w-full overflow-hidden text-[12px] text-ellipsis w-[min-content]">
+                {tagline}
+              </p>
+            )}
+          </div>
+
+          {experience && (
+            <p className="font-light overflow-hidden text-[11px] text-ellipsis">
+              {experience}
+            </p>
           )}
-        </NextLink>
-
-        {tagline && (
-          <h3 className="mt-0.5 text-xs font-medium text-dark-blue-400 leading-none">
-            {tagline}
-          </h3>
-        )}
-
-        {experience && (
-          <p className="mt-2 text-[11px] font-light leading-none text-dark-blue-400">
-            {experience}
-          </p>
-        )}
+        </div>
 
         {locations && (
-          <div className="mt-3.5 flex items-center gap-x-1">
-            <MarkerPin02 className="size-3 text-gray-500" />
-            <span className="leading-4 text-[10px] font-medium text-gray-500">
+          <div className="flex gap-[4px] items-center overflow-clip w-full">
+            <MarkerPin02 className="size-[12px] shrink-0 text-[#667085]" />
+            <span className="font-medium text-[#667085] text-[10px] text-center whitespace-nowrap leading-[16px]">
               {locations}
             </span>
           </div>
         )}
 
         {(typeof rating === "number" || typeof projectCount === "number") && (
-          <div className="mt-3.5 flex items-center gap-x-2">
+          <div className="flex gap-[8px] items-center w-full">
             {typeof rating === "number" && (
-              <div className="flex items-center gap-x-2">
-                <div className="flex items-center gap-x-[5px] py-[3px] px-1.5 rounded-[3.03px] bg-[#F2F4F7] shadow-[0px_0.57px_1.14px_0px_rgba(16,24,40,.05)]">
-                  <div className="flex items-center gap-x-[3px]">
-                    {Array.from({ length: 5 }).map((_, k) => (
-                      <Star
-                        key={k}
-                        className="size-3 text-primary-500 fill-primary-500 shrink-0"
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                    {rating.toFixed(1)}
-                  </span>
+              <div className="bg-[#f2f4f7] flex gap-[5px] items-center justify-center overflow-clip px-[6px] py-[3px] rounded-[3px] shadow-[0px_0.571px_1.142px_0px_rgba(16,24,40,0.05)]">
+                <div className="flex gap-[3px] items-center">
+                  {Array.from({ length: 5 }).map((_, k) => (
+                    <Star
+                      key={k}
+                      className="size-[12px] text-primary-500 fill-primary-500 shrink-0"
+                    />
+                  ))}
                 </div>
+                <span className="font-medium text-[#22376b] text-[12px] text-center whitespace-nowrap">
+                  {rating.toFixed(1)}
+                </span>
               </div>
             )}
             {typeof projectCount === "number" && (
-              <span className="text-xs font-semibold leading-none text-dark-blue-400">
-                {projectCount} {projectCount === 1 ? "Project" : "Projects"}
+              <span className="font-medium text-[#22376b] text-[12px] whitespace-nowrap">
+                {projectCount} {projectCount === 1 ? "project" : "projects"}
               </span>
             )}
           </div>
         )}
+      </div>
 
-        {skills && skills.length > 0 && (
-          <div className="mt-5 flex gap-2 flex-wrap">
-            {skills.map((skill) => (
-              <Badge key={skill} className="bg-transparent" visual="gray">
-                {skill}
-              </Badge>
+      {skills && skills.length > 0 && (
+        <div className="content-center flex flex-wrap font-medium gap-[12px] items-center text-[#22376b] text-[12px] text-center leading-[18px] whitespace-nowrap w-full">
+          {skills.map((skill) => (
+            <span key={skill} className="capitalize">
+              {skill}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {previousClientLogos && previousClientLogos.length > 0 && (
+        <div className="flex flex-col gap-[8px] items-start w-full">
+          <p className="font-light overflow-hidden text-[#22376b] text-[11px] text-ellipsis whitespace-nowrap">
+            Previous clients
+          </p>
+          <div className="flex gap-[12px] h-[28px] items-center w-full">
+            {previousClientLogos.map((logo, i) => (
+              <div
+                key={`${logo}-${i}`}
+                className="size-[28px] shrink-0 relative overflow-hidden"
+              >
+                <img
+                  src={logo}
+                  alt="Previous client"
+                  width={28}
+                  height={28}
+                  loading="lazy"
+                  decoding="async"
+                  className="size-full object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none"
+                  }}
+                />
+              </div>
             ))}
           </div>
-        )}
-
-        {previousClientLogos && previousClientLogos.length > 0 && (
-          <div className="mt-5">
-            <span className="block text-[11px] font-light text-dark-blue-400">
-              Previous clients
-            </span>
-            <div className="mt-2 flex items-center flex-wrap gap-3">
-              {previousClientLogos.map((logo, i) => (
-                <div
-                  key={`${logo}-${i}`}
-                  className="size-[25px] rounded-full shrink-0 relative bg-gray-50 overflow-hidden flex items-center justify-center"
-                >
-                  <img
-                    src={logo}
-                    alt="Previous client"
-                    width={25}
-                    height={25}
-                    loading="lazy"
-                    decoding="async"
-                    className="size-full object-contain"
-                    onError={(e) => {
-                      e.currentTarget.style.display = "none"
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </article>
   )
 }

@@ -4,7 +4,7 @@
 //   - BANK_STRIPE/BANK_MANUAL (ACH): dayOfWeek/dayOfMonth is the ARRIVAL
 //     day. Back-calculate the initiation date via AchInitiationCalculator
 //     (T-2 business days, weekend/holiday-adjusted).
-//   - WISE/PAYONEER/CRYPTO/everything else: dayOfWeek/dayOfMonth IS the
+//   - WISE/CRYPTO/everything else: dayOfWeek/dayOfMonth IS the
 //     initiation day directly — no back-calculation, no weekend/holiday
 //     adjustment (PS-32 §4.3 — those rails run 24/7).
 // Previously this ignored dayOfWeek/dayOfMonth entirely and always snapped
@@ -18,6 +18,21 @@ import { MethodType } from '../entities/deposit-method.entity';
 import { AchInitiationCalculatorService } from './ach-initiation-calculator.service';
 
 export const ACH_METHOD_TYPES: MethodType[] = [MethodType.BANK_STRIPE, MethodType.BANK_MANUAL];
+
+// PS-34 §7 / PS-41 §5: BANK_MANUAL is ACH-arrival-day semantics ONLY for US
+// bank accounts — international BANK_MANUAL (routed through Stripe
+// cross-border or Wise Platform, see bank-payout-executor.service.ts) is an
+// initiation-day method like WISE, with no back-calculation and no
+// weekend/holiday adjustment. A method with no bankCountry recorded is
+// treated as US — every BANK_MANUAL row created before PS-34 shipped is a US
+// account (international entry didn't exist yet), so this is backward
+// compatible rather than a behavior change for those rows.
+export function isAchMethod(methodType: MethodType | null, bankCountry?: string | null): boolean {
+  if (!methodType) return false;
+  if (methodType === MethodType.BANK_STRIPE) return true;
+  if (methodType === MethodType.BANK_MANUAL) return !bankCountry || bankCountry.toUpperCase() === 'US';
+  return false;
+}
 
 @Injectable()
 export class NextExecutionService {
@@ -40,7 +55,11 @@ export class NextExecutionService {
    * so it is kept populated and correct rather than dropped) — see
    * nextExecutionAt for the doc-accurate field name going forward.
    */
-  async advanceNextExecution(schedule: PayoutSchedule, primaryMethodType: MethodType | null): Promise<void> {
+  async advanceNextExecution(
+    schedule: PayoutSchedule,
+    primaryMethodType: MethodType | null,
+    bankCountry?: string | null,
+  ): Promise<void> {
     const next = this.calculateNext(
       schedule.frequency,
       schedule.dayOfWeek,
@@ -49,6 +68,7 @@ export class NextExecutionService {
       primaryMethodType,
       new Date(),
       schedule.customIntervalDays,
+      bankCountry,
     );
 
     await this.scheduleRepo.update(schedule.id, {
@@ -72,13 +92,14 @@ export class NextExecutionService {
     primaryMethodType: MethodType | null,
     from: Date,
     customIntervalDays: number | null = null,
+    bankCountry?: string | null,
   ): Date {
     // Unknown/missing primary method (e.g. deactivated between ticks): fall
     // back to non-ACH treatment. This under-adjusts rather than over-
     // adjusts — it never back-calculates against a method that turns out
     // not to be ACH, and the schedule will self-correct once a valid
     // primary method resolves on the next update/tick.
-    const isACH = !!primaryMethodType && ACH_METHOD_TYPES.includes(primaryMethodType);
+    const isACH = isAchMethod(primaryMethodType, bankCountry);
 
     switch (frequency) {
       case ScheduleFrequency.DAILY:

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(./top-most-header.tsx)",
+      "Edit(./auth.tsx)",
+      "Edit(./user.ts)",
+      "Edit(./service/index.ts)",
+      "Edit(./app/talent-profile/page.tsx)"
+    ]
+  }
+}

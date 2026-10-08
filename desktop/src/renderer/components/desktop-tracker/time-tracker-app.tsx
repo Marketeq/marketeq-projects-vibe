@@ -14,6 +14,9 @@ import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu, MenuSection } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
 import { ManualTimeForm } from "./manual-time-form"
+import { deriveUiRunningPaused, computeDisplayedElapsedSec, decideActiveTaskAction } from "./timer-ui-state"
+import { IdleResolutionModal } from "../../views/IdleResolutionModal"
+import type { IdleResolutionNeededPayload, TimerSnapshotDTO } from "../../../shared/ipc-contracts"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +25,8 @@ interface Contract {
   name: string
   clientHandle: string
   avatarSrc?: string
+  /** Hourly rate for this contract (from the contracts API). */
+  rate?: number
   tasks: TaskEntry[]
 }
 
@@ -31,6 +36,53 @@ interface DayGroup {
   totalHours: string
   hourlyRate: number
   contracts: Contract[]
+}
+
+interface TodayTaskStat {
+  contractId: string
+  taskId: string
+  trackedSeconds: number
+  firstStartedAt: number
+  lastEndedAt: number | null
+  /** The live session's share of trackedSeconds (0 unless running). */
+  liveSeconds?: number
+}
+
+interface TodayStats {
+  trackedSeconds: number
+  earnedCents: number
+  currency: string
+  goalSeconds: number
+  tasks?: TodayTaskStat[]
+  lastTask?: { contractId: string; taskId: string } | null
+  yesterday?: { trackedSeconds: number; earnedCents: number; tasks: TodayTaskStat[] }
+}
+
+// ── Persisted UI state (per device) ─────────────────────────────────────────
+
+const EXPANDED_CARDS_KEY = "dtt.ui.expandedCards"
+const COLLAPSED_DAYS_KEY = "dtt.ui.collapsedDays"
+
+function cardKey(dayLabel: string, contractId: string): string {
+  return `${dayLabel}:${contractId}`
+}
+
+function readStoredSet(key: string): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(key)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function writeStoredSet(key: string, value: Set<string>): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...value]))
+  } catch {
+    // Storage unavailable — the state just won't survive a relaunch.
+  }
 }
 
 interface TimeTrackerAppProps {
@@ -563,10 +615,31 @@ export function TimeTrackerApp({
       return next
     })
   }, [])
-  const [days, setDays] = React.useState<DayGroup[]>(initialDays || [])
+  // Always start with a "Today" row so the locally-computed todayStats
+  // below has somewhere to render even if the contracts fetch never
+  // succeeds (e.g. offline right after a restart) — fetchContracts()
+  // overwrites this with real contract data once/if it succeeds.
+  const [days, setDays] = React.useState<DayGroup[]>(
+    initialDays || [{ label: "Today", fullDate: formatDate(), totalHours: "0", hourlyRate: 75, contracts: [] }]
+  )
   const [contractsLoaded, setContractsLoaded] = React.useState(false)
-  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(new Set())
-  const [collapsedDays, setCollapsedDays] = React.useState<Set<number>>(new Set())
+
+  // ── "Today" hours/earnings — persisted locally, survives app restarts ──
+  const [todayStats, setTodayStats] = React.useState<TodayStats | null>(null)
+  // Expanded contract cards, keyed per strip ("Today:<id>", "Yesterday:<id>")
+  // so the same contract's cards open/close independently in each strip
+  // (DTT-AC-024.2), and collapsed strips by label. Both persist across
+  // launches (DTT-AC-024.2 / AC-040.1 persistence clause). localStorage is a
+  // per-device UI preference; it can be unavailable, so every access is
+  // guarded and the app works without it.
+  const [expandedContracts, setExpandedContracts] = React.useState<Set<string>>(
+    () => readStoredSet(EXPANDED_CARDS_KEY),
+  )
+  const [collapsedDays, setCollapsedDays] = React.useState<Set<string>>(
+    () => readStoredSet(COLLAPSED_DAYS_KEY),
+  )
+  React.useEffect(() => { writeStoredSet(EXPANDED_CARDS_KEY, expandedContracts) }, [expandedContracts])
+  React.useEffect(() => { writeStoredSet(COLLAPSED_DAYS_KEY, collapsedDays) }, [collapsedDays])
 
   // Search
   const [searchValue, setSearchValue] = React.useState("")
@@ -579,6 +652,31 @@ export function TimeTrackerApp({
   const [activeTask, setActiveTask] = React.useState<{ taskName: string; contractName: string; contractId: string; clientHandle: string; taskId?: string } | null>(null)
   const [trackingStartTime, setTrackingStartTime] = React.useState<Date | null>(null)
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  // The displayed clock is always "backend-confirmed elapsed seconds, plus
+  // real time since that confirmation" — never computed from an absolute
+  // start time. See timer-ui-state.ts for why (that's what caused the
+  // clock to silently jump forward by the paused/idle duration on resume).
+  const elapsedBaselineRef = React.useRef<{ sec: number; at: number }>({ sec: 0, at: Date.now() })
+  // "Paused" covers two different backend states (manual/idle pause vs. on
+  // break), and ending each one is a different IPC call (resume vs.
+  // breakEnd). This ref — not state, since nothing needs to re-render off
+  // it directly — lets handlePause pick the right one.
+  const isOnBreakRef = React.useRef(false)
+  // Mirrors `activeTask` for reading inside applyTimerSnapshot without
+  // making that callback depend on (and go stale with) activeTask itself.
+  const activeTaskRef = React.useRef(activeTask)
+  React.useEffect(() => { activeTaskRef.current = activeTask }, [activeTask])
+  // The backend snapshot only carries contractId/taskId, not display names.
+  // When a real running/paused session is confirmed but the renderer has no
+  // activeTask for it (e.g. the window reloaded mid-session — confirmed
+  // live: the header card's clock/controls never appear afterward because
+  // they're gated on `isRunning && activeTask`), this is where we're told
+  // what to look up once `days` (task/contract names) is loaded. Existing
+  // design is unchanged — this only restores the data that design expects.
+  const [pendingPickedContract, setPendingPickedContract] = React.useState<{ contractId: string; taskId: string } | null>(null)
+  // Idle event the backend is waiting on the user to resolve (Keep / Discard /
+  // Convert to break). Non-null renders the IdleResolutionModal below.
+  const [pendingIdle, setPendingIdle] = React.useState<IdleResolutionNeededPayload | null>(null)
 
   // Clock
   const [utcTime, setUtcTime] = React.useState(formatUtcTime())
@@ -632,6 +730,10 @@ export function TimeTrackerApp({
   const [taskCreatedAlert, setTaskCreatedAlert] = React.useState<string | null>(null)
   const taskCreatedTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Floating alert after manual time is submitted for review (AC-091.1)
+  const [manualTimeAlert, setManualTimeAlert] = React.useState(false)
+  const manualTimeTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Manual time entry
   const [showManualTime, setShowManualTime] = React.useState(false)
 
@@ -664,14 +766,12 @@ export function TimeTrackerApp({
                   duration: "00:00:00",
                 }))
               }
-            } catch { /* fallback */ }
-            if (tasks.length === 0) {
-              tasks = [{ id: `task-${c.id}`, name: "General work", timeRange: "Not started", duration: "00:00:00" }]
-            }
+            } catch { /* no tasks — the card shows its "Add A Task" empty state */ }
             return {
               id: c.id,
               name: c.title || "Untitled Contract",
               clientHandle: c.clientName || c.clientId?.slice(0, 12) || "client",
+              rate: Number(c.rate) || 0,
               tasks,
             }
           })
@@ -695,6 +795,197 @@ export function TimeTrackerApp({
     return () => { cancelled = true }
   }, [])
 
+  // ── "Today" hours/earnings — fetched from local SQLite via IPC, so it
+  // survives app restarts (unlike the ephemeral `days` state above) ──────
+  const refreshTodayStats = React.useCallback(async () => {
+    try {
+      const stats = await window.dtt?.stats?.getToday?.()
+      if (stats) setTodayStats(stats)
+    } catch (err) {
+      console.error("Failed to fetch today stats:", err)
+    }
+  }, [])
+
+  const applyTimerSnapshot = React.useCallback((snap: TimerSnapshotDTO) => {
+    elapsedBaselineRef.current = { sec: snap.elapsedSec, at: Date.now() }
+    setElapsed(snap.elapsedSec)
+    const { isRunning: running, isPaused: paused } = deriveUiRunningPaused(snap)
+    setIsRunning(running)
+    setIsPaused(paused)
+    isOnBreakRef.current = snap.isOnBreak
+    if (!snap.pendingIdle) setPendingIdle(null)
+    // Counting is the in-between step of Start, not "tracking ended" — see
+    // decideActiveTaskAction in timer-ui-state.ts.
+    const taskAction = decideActiveTaskAction({
+      state: snap.state,
+      running,
+      hasPickedContract: !!snap.pickedContract,
+      hasActiveTask: !!activeTaskRef.current,
+    })
+    if (taskAction === 'clear') {
+      setActiveTask(null)
+      setTrackingStartTime(null)
+      setPendingPickedContract(null)
+    } else if (taskAction === 'restore' && snap.pickedContract) {
+      setPendingPickedContract(snap.pickedContract)
+    }
+  }, [])
+
+  // Resolves the restore-after-remount case above once the task/contract
+  // names (`days`) are available — they're fetched by a separate effect and
+  // may not have loaded yet at the moment a snapshot needs them.
+  React.useEffect(() => {
+    if (!pendingPickedContract) return
+    for (const day of days) {
+      const contract = day.contracts.find((c) => c.id === pendingPickedContract.contractId)
+      const task = contract?.tasks.find((t) => t.id === pendingPickedContract.taskId)
+      if (contract && task) {
+        setActiveTask({ taskName: task.name, contractName: contract.name, contractId: contract.id, clientHandle: contract.clientHandle, taskId: task.id })
+        setPendingPickedContract(null)
+        return
+      }
+    }
+  }, [pendingPickedContract, days])
+
+  React.useEffect(() => {
+    refreshTodayStats()
+    // Hydrate from whatever the backend's real state already is right now —
+    // not just future transitions. Without this, a remount while a session
+    // is already running/paused/on-break (confirmed live: happens on an HMR
+    // reload, and would equally happen on an app relaunch mid-session per
+    // the main process's own "crash recovery: swept orphaned open session"
+    // path) leaves the UI stuck on default Idle-ish state showing the wrong
+    // button and clock until the next real transition happens to fire.
+    window.dtt?.timer?.getState?.().then((snap) => {
+      if (snap) applyTimerSnapshot(snap)
+    }).catch((err: unknown) => console.error("timer.getState failed:", err))
+    const off = window.dtt?.timer?.onStateChanged?.((snap) => {
+      refreshTodayStats()
+      applyTimerSnapshot(snap)
+    })
+    return () => { off?.() }
+  }, [refreshTodayStats, applyTimerSnapshot])
+
+  // Idle popup — the backend FSM is correctly detecting idle and freezing
+  // billable time/capture already; this is what actually shows the prompt
+  // and lets the user resolve it, instead of nothing happening visibly.
+  React.useEffect(() => {
+    const off = window.dtt?.timer?.onIdleResolutionNeeded?.((payload) => setPendingIdle(payload))
+    return () => { off?.() }
+  }, [])
+
+  React.useEffect(() => {
+    if (!isRunning || isPaused) return
+    const id = setInterval(refreshTodayStats, 30_000)
+    return () => clearInterval(id)
+  }, [isRunning, isPaused, refreshTodayStats])
+
+  // ── Restore today's work into the task list ─────────────────────────────
+  // Sessions live in local SQLite, so after a quit + relaunch each task shows
+  // the time worked on it today and its first-start / last-end range, instead
+  // of every task resetting to "Not started".
+  // The Yesterday strip (DTT-AC-024.1) is rebuilt from yesterday's saved
+  // sessions: only contracts/tasks with tracked time, each with its own time.
+  React.useEffect(() => {
+    if (!contractsLoaded || !todayStats) return
+    const withStat = (t: TaskEntry, stat: TodayTaskStat): TaskEntry => ({
+      ...t,
+      duration: formatDuration(stat.trackedSeconds),
+      timeRange: `${formatTimeOfDay(new Date(stat.firstStartedAt))} - ${
+        stat.lastEndedAt ? formatTimeOfDay(new Date(stat.lastEndedAt)) : "now"
+      }`,
+      progress: Math.min(Math.round((stat.trackedSeconds / (8 * 3600)) * 100), 100),
+    })
+    const todayByTask = new Map((todayStats.tasks ?? []).map((t) => [t.taskId, t]))
+    const yesterdayByTask = new Map((todayStats.yesterday?.tasks ?? []).map((t) => [t.taskId, t]))
+    setDays((prev) => {
+      if (!prev[0]) return prev
+      const today = { ...prev[0] }
+      today.contracts = today.contracts.map((c) => ({
+        ...c,
+        tasks: c.tasks.map((t) => {
+          const stat = todayByTask.get(t.id)
+          return stat ? withStat(t, stat) : t
+        }),
+      }))
+
+      const yesterdayContracts: Contract[] = today.contracts
+        .map((c) => ({
+          ...c,
+          tasks: c.tasks.flatMap((t) => {
+            const stat = yesterdayByTask.get(t.id)
+            return stat ? [withStat(t, stat)] : []
+          }),
+        }))
+        .filter((c) => c.tasks.length > 0)
+
+      const next: DayGroup[] = [today]
+      if (yesterdayContracts.length > 0) {
+        const y = new Date()
+        y.setDate(y.getDate() - 1)
+        next.push({
+          label: "Yesterday",
+          fullDate: y.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+          totalHours: today.totalHours,
+          hourlyRate: today.hourlyRate,
+          contracts: yesterdayContracts,
+        })
+      }
+      return next
+    })
+  }, [contractsLoaded, todayStats])
+
+  // ── Live row for the task being tracked (US-043) ────────────────────────
+  // Only the active task's row in Today changes each second: its saved time
+  // (without the live session) plus the running clock. Other rows keep the
+  // saved totals from todayStats.
+  const displayDays = React.useMemo(() => {
+    if (!isRunning || !activeTask?.taskId || !days[0]) return days
+    const stat = todayStats?.tasks?.find((t) => t.taskId === activeTask.taskId)
+    const savedSeconds = stat ? stat.trackedSeconds - (stat.liveSeconds ?? 0) : 0
+    const started = stat?.firstStartedAt ?? trackingStartTime?.getTime() ?? Date.now()
+    const today = {
+      ...days[0],
+      contracts: days[0].contracts.map((c) =>
+        c.id !== activeTask.contractId
+          ? c
+          : {
+              ...c,
+              tasks: c.tasks.map((t) =>
+                t.id !== activeTask.taskId
+                  ? t
+                  : {
+                      ...t,
+                      duration: formatDuration(savedSeconds + elapsed),
+                      timeRange: `${formatTimeOfDay(new Date(started))} - now`,
+                    },
+              ),
+            },
+      ),
+    }
+    return [today, ...days.slice(1)]
+  }, [days, isRunning, activeTask, todayStats, elapsed, trackingStartTime])
+
+  // ── Pre-select the previous task on relaunch ────────────────────────────
+  // Once, after contracts load: select the task of the most recent session
+  // so "Start" continues where the user left off. The timer is never
+  // auto-started — an unclean exit must not silently resume billing.
+  const restoredLastTaskRef = React.useRef(false)
+  React.useEffect(() => {
+    if (restoredLastTaskRef.current || !contractsLoaded || isRunning) return
+    const last = todayStats?.lastTask
+    if (!last) return
+    restoredLastTaskRef.current = true
+    for (const day of days) {
+      const c = day.contracts.find((x) => x.id === last.contractId)
+      const t = c?.tasks.find((x) => x.id === last.taskId)
+      if (c && t) {
+        setSelectedTask({ id: t.id, taskName: t.name, contractName: c.name, clientHandle: c.clientHandle })
+        return
+      }
+    }
+  }, [contractsLoaded, todayStats, days, isRunning])
+
   // ── Live clock ──────────────────────────────────────────────────────────
   React.useEffect(() => {
     const id = setInterval(() => setUtcTime(formatUtcTime()), 10000)
@@ -702,12 +993,13 @@ export function TimeTrackerApp({
   }, [])
 
   // ── Timer tick ──────────────────────────────────────────────────────────
+  // Extrapolates from the last backend-confirmed baseline (reset on every
+  // real state change above), not from an absolute start time — see
+  // timer-ui-state.ts for why that distinction is what actually matters.
   React.useEffect(() => {
-    if (isRunning && !isPaused && trackingStartTime) {
+    if (isRunning && !isPaused) {
       const tick = () => {
-        const now = Date.now()
-        const elapsedMs = now - trackingStartTime.getTime()
-        setElapsed(Math.floor(elapsedMs / 1000))
+        setElapsed(computeDisplayedElapsedSec(elapsedBaselineRef.current, Date.now()))
       }
       tick() // immediate update
       intervalRef.current = setInterval(tick, 1000)
@@ -715,7 +1007,7 @@ export function TimeTrackerApp({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isRunning, isPaused, trackingStartTime])
+  }, [isRunning, isPaused])
 
   // ── Scroll handler — show minimized bar once expanded header + controls scroll away ──
   const handleContentScroll = React.useCallback(() => {
@@ -732,7 +1024,18 @@ export function TimeTrackerApp({
   const hours = Math.floor(elapsed / 3600)
   const minutes = Math.floor((elapsed % 3600) / 60)
   const seconds = elapsed % 60
-  const amountEarned = `$${((elapsed / 3600) * hourlyRate).toFixed(2)}`
+  // Live earnings use the rate of the contract actually being tracked. This
+  // used to be the first contract's rate (or a hard-coded $75) no matter
+  // which contract was running.
+  const activeRate = React.useMemo(() => {
+    if (!activeTask) return 0
+    for (const day of days) {
+      const c = day.contracts.find((x) => x.id === activeTask.contractId)
+      if (c?.rate !== undefined) return c.rate
+    }
+    return 0
+  }, [days, activeTask])
+  const amountEarned = `$${((elapsed / 3600) * activeRate).toFixed(2)}`
 
   const searchResults: SearchResult[] = React.useMemo(() => {
     if (!searchValue.trim()) return []
@@ -758,12 +1061,17 @@ export function TimeTrackerApp({
 
   const allContracts = React.useMemo(() => {
     const seen = new Set<string>()
-    const list: { id: string; name: string; clientHandle?: string }[] = []
+    const list: { id: string; name: string; clientHandle?: string; tasks: { id: string; name: string }[] }[] = []
     for (const day of days) {
       for (const c of day.contracts) {
         if (!seen.has(c.id)) {
           seen.add(c.id)
-          list.push({ id: c.id, name: c.name, clientHandle: c.clientHandle })
+          list.push({
+            id: c.id,
+            name: c.name,
+            clientHandle: c.clientHandle,
+            tasks: c.tasks.map((t) => ({ id: t.id, name: t.name })),
+          })
         }
       }
     }
@@ -829,34 +1137,67 @@ export function TimeTrackerApp({
 
   // ── Actions ─────────────────────────────────────────────────────────────
 
-  const toggleContract = (id: string) => {
-    const isOpening = !expandedContracts.has(id)
+  // Pin a card at the top of the scroll area. Shared by toggleContract and
+  // openContract.
+  const scrollContractIntoView = (id: string) => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const el = document.getElementById(`contract-${id}`)
+        const container = scrollRef.current
+        if (el && container) {
+          const cardRect = el.getBoundingClientRect()
+          const containerRect = container.getBoundingClientRect()
+          const scrollTarget = container.scrollTop + (cardRect.top - containerRect.top) - 52 // 48px sticky header + 4px breathing room
+          container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" })
+        }
+      }, 250)
+    })
+  }
+
+  // Force-open a contract card (never toggles it shut) and scroll it into view.
+  // Used when the user clicks ▶ on a contract header — per spec that only
+  // re-scopes to the contract's tasks, it must not start the timer.
+  const openContract = (id: string) => {
+    const key = cardKey("Today", id)
+    const alreadyOpen = expandedContracts.has(key)
+    setExpandedContracts((prev) => new Set(prev).add(key))
+    if (!alreadyOpen) scrollContractIntoView(id)
+  }
+
+  // A real task from the backend must be selected before the timer can start.
+  // Reject a missing id, the raw contract id, the synthetic "task-<contractId>"
+  // mirror placeholder, or a locally-created "t-<timestamp>" row — each
+  // produces a session the website cannot map back to a task. A bare
+  // "task-" prefix is NOT a placeholder signal: real TTS task ids use it too
+  // (e.g. the seeded "task-seed-a-1"), and rejecting the prefix silently
+  // blocked the timer on every one of them.
+  const isRealTaskId = (id: string | undefined, contractId: string): id is string =>
+    !!id && id !== contractId && id !== `task-${contractId}` && !/^t-\d+$/.test(id)
+
+  const toggleContract = (id: string, dayLabel = "Today") => {
+    const key = cardKey(dayLabel, id)
+    const isOpening = !expandedContracts.has(key)
     setExpandedContracts((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
-    // Single scroll: pin the card at the top, ensuring header is at least collapsed
-    if (isOpening) {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          const el = document.getElementById(`contract-${id}`)
-          const container = scrollRef.current
-          if (el && container) {
-            const cardRect = el.getBoundingClientRect()
-            const containerRect = container.getBoundingClientRect()
-            const scrollTarget = container.scrollTop + (cardRect.top - containerRect.top) - 52 // 48px sticky header + 4px breathing room
-            container.scrollTo({ top: Math.max(0, scrollTarget), behavior: "smooth" })
-          }
-        }, 250)
-      })
+    // Single scroll: pin the card at the top, ensuring header is at least collapsed.
+    // Only Today's cards carry the scroll-target DOM id.
+    if (isOpening && dayLabel === "Today") {
+      scrollContractIntoView(id)
     }
   }
 
   const startTimerImmediate = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
+    if (!isRealTaskId(taskId, contractId)) {
+      console.error("startTimer blocked: no real task selected", { contractId, taskId })
+      return
+    }
     setActiveTask({ taskName, contractName, contractId, clientHandle: clientHandle || "", taskId })
     setTrackingStartTime(new Date())
+    elapsedBaselineRef.current = { sec: 0, at: Date.now() }
     setElapsed(0)
     setIsRunning(true)
     setIsPaused(false)
@@ -868,11 +1209,15 @@ export function TimeTrackerApp({
     // Start the main process timer → creates a session → enables screenshots
     window.dtt?.timer?.start?.({
       contractId,
-      taskId: taskId || contractId,
+      taskId,
     }).catch((err: unknown) => console.error("timer.start failed:", err))
   }
 
   const startTimer = (taskName: string, contractName: string, contractId: string, taskId?: string, clientHandle?: string) => {
+    if (!isRealTaskId(taskId, contractId)) {
+      console.error("startTimer blocked: no real task selected", { contractId, taskId })
+      return
+    }
     // Begin 3-2-1 countdown
     setCountdown(3)
     pendingStartRef.current = () => startTimerImmediate(taskName, contractName, contractId, taskId, clientHandle)
@@ -906,63 +1251,38 @@ export function TimeTrackerApp({
     }
   }
 
+  // Neither handler optimistically mutates local state anymore — the real
+  // outcome (success or failure) comes back through the onStateChanged
+  // subscription above, which is the only source of truth for isRunning/
+  // isPaused/elapsed/activeTask now. Optimistically flipping the UI here
+  // regardless of whether the backend call actually succeeded was the exact
+  // bug: Stop/Pause looked like they'd worked even when the backend was
+  // still stuck (confirmed live — clicking Stop while idle left the FSM in
+  // IdleSoftPaused, but the UI showed "stopped" anyway).
   const handlePause = () => {
-    if (isPaused) {
-      window.dtt?.timer?.resume?.().catch((err: unknown) => console.error("timer.resume failed:", err))
-    } else {
-      window.dtt?.timer?.pause?.().catch((err: unknown) => console.error("timer.pause failed:", err))
-    }
-    setIsPaused(!isPaused)
+    // Resuming from a break is a different FSM transition (BREAK_END) than
+    // resuming from a manual/idle pause (RESUME) — dispatching the wrong one
+    // is a silent no-op, confirmed live: clicking "Resume Time" while on
+    // break left the backend stuck in OnBreakUnpaid.
+    const action = isPaused
+      ? (isOnBreakRef.current ? window.dtt?.timer?.breakEnd : window.dtt?.timer?.resume)
+      : window.dtt?.timer?.pause
+    action?.().catch((err: unknown) => console.error("timer.pause/resume/breakEnd failed:", err))
   }
 
   const handleStop = () => {
-    // Stop the main process timer → closes the session
+    // Stop the main process timer → closes the session. The resulting
+    // Idle/Counting state change (via onStateChanged) is what actually
+    // clears isRunning/activeTask/trackingStartTime — see above. The
+    // stopped session is saved in local SQLite; that same state change also
+    // triggers refreshTodayStats(), which writes the real task row's time
+    // and range from that saved data.
     window.dtt?.timer?.stop?.({ reason: 'user_stop' }).catch((err: unknown) => console.error("timer.stop failed:", err))
-
-    if (!isRunning || !activeTask || !trackingStartTime) {
-      setIsRunning(false)
-      setIsPaused(false)
-      setElapsed(0)
-      setActiveTask(null)
-      return
-    }
-
-    const endTime = new Date()
-    const newTask: TaskEntry = {
-      id: `t-${Date.now()}`,
-      name: activeTask.taskName,
-      timeRange: `${formatTimeOfDay(trackingStartTime)} - ${formatTimeOfDay(endTime)}`,
-      duration: formatDuration(elapsed),
-      progress: Math.min(Math.round((elapsed / (8 * 3600)) * 100), 100),
-    }
-
-    setDays((prev) => {
-      const next = [...prev]
-      const today = { ...next[0] }
-      today.contracts = today.contracts.map((c) => {
-        if (c.id === activeTask.contractId) {
-          return { ...c, tasks: [...c.tasks, newTask] }
-        }
-        return c
-      })
-      if (!today.contracts.find((c) => c.id === activeTask.contractId)) {
-        today.contracts = [
-          ...today.contracts,
-          { id: activeTask.contractId, name: activeTask.contractName, clientHandle: "user", tasks: [newTask] },
-        ]
-      }
-      next[0] = today
-      return next
-    })
-
-    setIsRunning(false)
-    setIsPaused(false)
-    setElapsed(0)
-    setActiveTask(null)
-    setTrackingStartTime(null)
   }
 
   const handlePlayTask = (taskId: string, contractId?: string) => {
+    // Ignore synthetic / local ids that don't exist on the backend.
+    if (!isRealTaskId(taskId, contractId ?? "")) return
     // If already tracking, switch immediately (no countdown)
     const start = isRunning ? startTimerImmediate : startTimer
     for (const day of days) {
@@ -978,29 +1298,22 @@ export function TimeTrackerApp({
   }
 
   const handlePlayContract = (contractId: string) => {
-    const start = isRunning ? startTimerImmediate : startTimer
-    for (const day of days) {
-      const c = day.contracts.find((co) => co.id === contractId)
-      if (c) {
-        if (c.tasks.length > 0) {
-          start(c.tasks[0].name, c.name, c.id, c.tasks[0].id, c.clientHandle)
-        } else {
-          start("General work", c.name, c.id, undefined, c.clientHandle)
-        }
-        return
-      }
-    }
+    // The contract-header ▶ never starts the timer — selecting a contract only
+    // re-scopes to its tasks (spec DTT-AC-026.2). Open the card so the user
+    // can click ▶ on a specific task row.
+    openContract(contractId)
   }
 
   const handleSwitchContract = (contractId: string) => {
-    // Stop current tracking, switch to new contract, start immediately
+    // Don't auto-pick tasks[0]. Surface the target contract's tasks and let the
+    // user choose a row (which starts via handlePlayTask). Contract selection
+    // alone never starts the timer.
     for (const day of days) {
       const c = day.contracts.find((co) => co.id === contractId)
       if (c) {
-        const taskName = c.tasks.length > 0 ? c.tasks[0].name : "General work"
-        const taskId = c.tasks.length > 0 ? c.tasks[0].id : undefined
-        startTimerImmediate(taskName, c.name, c.id, taskId, c.clientHandle)
-        // Show floating alert
+        setView("main") // no-op if already on main
+        openContract(contractId)
+        // Confirm the context switch to the user
         setSwitchAlert(c.name)
         if (switchAlertTimeout.current) clearTimeout(switchAlertTimeout.current)
         switchAlertTimeout.current = setTimeout(() => setSwitchAlert(null), 3000)
@@ -1014,10 +1327,31 @@ export function TimeTrackerApp({
     setView("new-task")
   }
 
-  const handleCreateTask = (data: { contractId: string; taskName: string; notes: string }) => {
+  // Guards against a double-click firing two POSTs for one task.
+  const creatingTaskRef = React.useRef(false)
+
+  const handleCreateTask = async (data: { contractId: string; taskName: string; notes: string }) => {
+    if (creatingTaskRef.current) return
+    creatingTaskRef.current = true
+    let created: { id: string; name: string } | undefined
+    try {
+      // Persist to the backend first — the timer can only start a session
+      // against a task id that exists in TTS and in the local SQLite mirror.
+      created = await window.dtt?.contracts?.createTask?.({
+        contractId: data.contractId,
+        name: data.taskName,
+      })
+    } catch (err) {
+      console.error("Failed to create task:", err)
+    } finally {
+      creatingTaskRef.current = false
+    }
+    // On failure stay on the form so the user's entry isn't lost.
+    if (!created) return
+
     const newTask: TaskEntry = {
-      id: `t-${Date.now()}`,
-      name: data.taskName,
+      id: created.id,
+      name: created.name,
       timeRange: "Not started",
       duration: "00:00:00",
     }
@@ -1035,7 +1369,7 @@ export function TimeTrackerApp({
       return next
     })
 
-    setExpandedContracts((prev) => new Set(prev).add(data.contractId))
+    setExpandedContracts((prev) => new Set(prev).add(cardKey("Today", data.contractId)))
     setView("main")
 
     // Show task created alert
@@ -1103,6 +1437,7 @@ export function TimeTrackerApp({
           <NewTaskForm
             contracts={allContracts}
             defaultContractId={newTaskContractId}
+            lockContract={!!newTaskContractId}
             onCancel={() => setView("main")}
             onCreate={handleCreateTask}
           />
@@ -1124,10 +1459,16 @@ export function TimeTrackerApp({
           <ManualTimeForm
             contracts={allContracts}
             onCancel={() => setView("main")}
-            onSubmit={(data) => {
-              // TODO: wire to backend / local DB
-              console.log("Manual time submitted:", data)
-              setView("main")
+            onSubmit={async (data) => {
+              const result = await window.dtt?.manualTime?.create?.(data)
+              if (!result) return { ok: false, message: "Manual time isn't available right now. Please try again." }
+              if (result.ok) {
+                setView("main")
+                setManualTimeAlert(true)
+                if (manualTimeTimeout.current) clearTimeout(manualTimeTimeout.current)
+                manualTimeTimeout.current = setTimeout(() => setManualTimeAlert(false), 3000)
+              }
+              return result
             }}
           />
         </div>
@@ -1369,22 +1710,39 @@ export function TimeTrackerApp({
                 </div>
               </div>
             )}
-            {days.map((day, dayIdx) => {
-              const dayCollapsed = collapsedDays.has(dayIdx)
+            {displayDays.map((day, dayIdx) => {
+              const dayCollapsed = collapsedDays.has(day.label)
+              const isToday = day.label === "Today"
+              // Today and Yesterday come from saved sessions (per-contract
+              // rates); other strips fall back to their task durations.
+              const dayStats = isToday
+                ? todayStats
+                : day.label === "Yesterday" && todayStats?.yesterday
+                  ? { ...todayStats.yesterday, goalSeconds: todayStats.goalSeconds }
+                  : null
+              const hoursTracked = dayStats
+                ? (dayStats.trackedSeconds / 3600).toFixed(1)
+                : calcDayTrackedHours(day.contracts)
+              const totalHoursDisplay = dayStats
+                ? (dayStats.goalSeconds / 3600).toFixed(1)
+                : day.totalHours
+              const earned = dayStats
+                ? `$${(dayStats.earnedCents / 100).toFixed(2)}`
+                : calcDayEarnings(day.contracts, day.hourlyRate)
               return (
                 <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 100}ms`, animationFillMode: "both" }}>
                   <DaySummary
                     label={day.label}
                     fullDate={day.fullDate}
-                    hoursTracked={calcDayTrackedHours(day.contracts)}
-                    totalHours={day.totalHours}
-                    earned={calcDayEarnings(day.contracts, day.hourlyRate)}
+                    hoursTracked={hoursTracked}
+                    totalHours={totalHoursDisplay}
+                    earned={earned}
                     collapsed={dayCollapsed}
                     onToggle={() => {
                       setCollapsedDays((prev) => {
                         const next = new Set(prev)
-                        if (next.has(dayIdx)) next.delete(dayIdx)
-                        else next.add(dayIdx)
+                        if (next.has(day.label)) next.delete(day.label)
+                        else next.add(day.label)
                         return next
                       })
                     }}
@@ -1393,7 +1751,7 @@ export function TimeTrackerApp({
                   <Collapsible open={!dayCollapsed}>
                     <div className="px-2 pb-2 space-y-2">
                       {day.contracts.map((contract, cIdx) => (
-                        <div key={contract.id} id={`contract-${contract.id}`} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 100) + (cIdx * 80)}ms`, animationFillMode: "both" }}>
+                        <div key={contract.id} id={isToday ? `contract-${contract.id}` : undefined} className="animate-stagger-in" style={{ animationDelay: `${(dayIdx * 100) + (cIdx * 80)}ms`, animationFillMode: "both" }}>
                         <ContractEntry
                           contractId={contract.id}
                           contractName={contract.name}
@@ -1401,9 +1759,9 @@ export function TimeTrackerApp({
                           avatarSrc={contract.avatarSrc}
                           totalHours={calcTotalHours(contract.tasks)}
                           tasks={contract.tasks}
-                          isExpanded={expandedContracts.has(contract.id)}
+                          isExpanded={expandedContracts.has(cardKey(day.label, contract.id))}
                           activeContractId={activeTask?.contractId || null}
-                          onToggle={() => toggleContract(contract.id)}
+                          onToggle={() => toggleContract(contract.id, day.label)}
                           onAddTask={() => handleAddTask(contract.id)}
                           onPlay={() => handlePlayContract(contract.id)}
                           onPlayTask={(taskId) => handlePlayTask(taskId)}
@@ -1459,6 +1817,37 @@ export function TimeTrackerApp({
             </span>
           </div>
         </div>,
+        document.body
+      )}
+
+      {manualTimeAlert && ReactDOM.createPortal(
+        <div className="fixed bottom-4 left-4 z-[300] animate-fade-in">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+            <svg className="h-4 w-4 text-success-500 shrink-0" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-sm text-dark-blue-400">
+              Manual time submitted for review
+            </span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {pendingIdle && ReactDOM.createPortal(
+        <IdleResolutionModal
+          payload={pendingIdle}
+          onResolve={async (resolution) => {
+            try {
+              await window.dtt?.timer?.resolveIdle?.({ resolution })
+            } catch (err) {
+              console.error("resolveIdle failed:", err)
+            } finally {
+              setPendingIdle(null)
+            }
+          }}
+        />,
         document.body
       )}
     </div>

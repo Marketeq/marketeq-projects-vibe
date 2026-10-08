@@ -30,6 +30,12 @@ import {
 import { OfferHistoryService } from '../offer-history/offer-history.service';
 import { OfferTermsSnapshot } from '../offer-history/entities/offer-history-event.entity';
 import { normalizeDateOnly } from '../common/utils/normalize-date-only';
+import { calculateExpiresAt } from '../scheduler/ttl.helper';
+import {
+  CounterOfferNotActionableException,
+  CounterOfferWithdrawnException,
+  CounterOfferExpiredException,
+} from '../common/exceptions/offer.exceptions';
 
 @Injectable()
 export class CounterOffersService {
@@ -80,8 +86,7 @@ export class CounterOffersService {
       `, [offerId]);
 
       // Step B: Create the new counter offer.
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 14); // 14-day TTL
+      const expiresAt = calculateExpiresAt();
 
       const insertResult = await em.query(`
         INSERT INTO offer_service.counter_offers (
@@ -146,14 +151,29 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(coId, offerId);
 
     OfferStateMachine.assertIsNonSubmitter(co, offer, requesterId);
+
+    if (co.status === CounterOfferStatus.WITHDRAWN) {
+      throw new CounterOfferWithdrawnException();
+    }
+    if (
+      co.status === CounterOfferStatus.EXPIRED ||
+      (co.status === CounterOfferStatus.PENDING && co.expiresAt <= new Date())
+    ) {
+      throw new CounterOfferExpiredException();
+    }
+
     OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.ACCEPTED);
 
     const { acceptedCO, acceptedOffer } = await this.dataSource.transaction(async (em) => {
-      // CAS on counter offer.
+      // CAS on counter offer. expires_at > NOW() closes the race where the
+      // counter offer has passed its expiry but the TTL sweeper hasn't
+      // flipped its status yet — the pre-transaction check above can't
+      // fully close that on its own. Only ever evaluated when status is
+      // already 'PENDING', so no other status is affected by this.
       const coResult = await em.query(`
         UPDATE offer_service.counter_offers
           SET status = 'ACCEPTED', accepted_at = NOW(), updated_at = NOW()
-        WHERE id = $1 AND status = 'PENDING'
+        WHERE id = $1 AND status = 'PENDING' AND expires_at > NOW()
         RETURNING *
       `, [coId]);
 
@@ -219,13 +239,31 @@ export class CounterOffersService {
       const coCount = typeof coResult[1] === 'number' ? coResult[1] : coRows.length;
       if (coCount === 0) throw new OfferConcurrentModificationException(coId);
 
-      // Restore parent offer to PENDING.
-      const offerResult = await em.query(`
-        UPDATE offer_service.offers
-          SET status = 'PENDING', updated_at = NOW()
-        WHERE id = $1 AND status = 'COUNTERED'
-        RETURNING *
-      `, [offerId]);
+      // AC-28.03: the primary offer only restores to PENDING if it hasn't
+      // independently expired while sitting COUNTERED. The TTL sweeper only
+      // ever targets status = 'PENDING' — a COUNTERED row's expires_at can
+      // drift into the past with no one ever flipping it to EXPIRED, so
+      // decline() has to make that determination itself, from the offer
+      // already fetched before this transaction opened. When it has expired,
+      // write the exact shape the sweeper would have written (status +
+      // expired_at only — expires_at stays as the historical expiry,
+      // warning_sent_at is untouched, since it's only meaningful for PENDING
+      // offers). Otherwise, restore to PENDING exactly as before.
+      const hasIndependentlyExpired = offer.expiresAt <= new Date();
+
+      const offerResult = hasIndependentlyExpired
+        ? await em.query(`
+            UPDATE offer_service.offers
+              SET status = 'EXPIRED', expired_at = NOW(), updated_at = NOW()
+            WHERE id = $1 AND status = 'COUNTERED'
+            RETURNING *
+          `, [offerId])
+        : await em.query(`
+            UPDATE offer_service.offers
+              SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
+            WHERE id = $1 AND status = 'COUNTERED'
+            RETURNING *
+          `, [offerId, calculateExpiresAt().toISOString()]);
 
       const offerRows = Array.isArray(offerResult[0]) ? offerResult[0] : offerResult;
       const restoredOffer = offerRows.length > 0 ? this.mapRawToOffer(offerRows[0]) : offer;
@@ -260,9 +298,11 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(coId, offerId);
 
     OfferStateMachine.assertIsSubmitter(co, requesterId);
-    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.WITHDRAWN);
+    if (co.status !== CounterOfferStatus.PENDING) {
+      throw new CounterOfferNotActionableException(co.status);
+    }
 
-    const withdrawalMessage = dto?.withdrawalMessage ?? dto?.message ?? null;
+    const withdrawalMessage = dto?.message ?? null;
 
     const { withdrawnCO, restoredOffer } = await this.dataSource.transaction(async (em) => {
       const coResult = await em.query(`
@@ -278,10 +318,10 @@ export class CounterOffersService {
 
       const offerResult = await em.query(`
         UPDATE offer_service.offers
-          SET status = 'PENDING', updated_at = NOW()
+          SET status = 'PENDING', updated_at = NOW(), expires_at = $2, warning_sent_at = NULL
         WHERE id = $1 AND status = 'COUNTERED'
         RETURNING *
-      `, [offerId]);
+      `, [offerId, calculateExpiresAt().toISOString()]);
 
       const offerRows = Array.isArray(offerResult[0]) ? offerResult[0] : offerResult;
       const restoredOffer = offerRows.length > 0 ? this.mapRawToOffer(offerRows[0]) : offer;
@@ -363,7 +403,7 @@ export class CounterOffersService {
   }
 
   // ============================================================
-  // editCO() — SUBMITTER edits their own PENDING CO (in-place, no TTL reset)
+  // editCO() — SUBMITTER edits their own PENDING CO (in-place, resets TTL)
   // ============================================================
 
   async edit(offerId: string, id: string, userId: string, dto: any): Promise<CounterOffer> {
@@ -371,13 +411,19 @@ export class CounterOffersService {
     const co = await this.findCOByIdOrThrow(id, offerId);
 
     OfferStateMachine.assertIsSubmitter(co, userId);
-    OfferStateMachine.assertCanTransitionCO(co.status, CounterOfferStatus.PENDING); // must be PENDING
+    if (co.status !== CounterOfferStatus.PENDING) {
+      throw new CounterOfferNotActionableException(co.status);
+    }
 
     const previousTerms = this.termsFromCO(co);
 
-    const setParts: string[] = ['updated_at = NOW()'];
-    const values: unknown[] = [id];
-    let paramIdx = 2;
+    const setParts: string[] = [
+      'updated_at = NOW()',
+      'expires_at = $2',
+      'warning_sent_at = NULL',
+    ];
+    const values: unknown[] = [id, calculateExpiresAt().toISOString()];
+    let paramIdx = 3;
 
     const editableFields: Record<string, string> = {
       rate: 'rate', currencyCode: 'currency_code', durationMonths: 'duration_months',

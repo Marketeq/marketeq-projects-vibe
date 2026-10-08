@@ -102,7 +102,15 @@ export class ProjectsService {
       where: { status, listingType: 'project' },
       order: { featured: 'DESC', createdAt: 'DESC' },
     });
-    return items.map((item) => this.shapeProject(item));
+    const teamByProject = await this.resolveTeamAvatars(items);
+    return items.map((item) => {
+      const team = teamByProject.get(String(item.id));
+      return {
+        ...this.shapeProject(item),
+        teamAvatars: team?.avatars ?? [],
+        teamMembers: team?.members ?? [],
+      };
+    });
   }
 
   async findOne(id: string) {
@@ -170,12 +178,13 @@ export class ProjectsService {
     const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
     if (!visibleIds.length) return [];
 
-    const [users, skillRows, langRows] = await Promise.all([
+    const [profileUsers, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
         id: string; firstName: string; lastName: string; username: string | null;
         avatarUrl: string | null; recentJobTitle: string | null; location: string | null;
+        rate: string | null; rateMin: number | null; rateMax: number | null;
       }>>(
-        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location
+        `SELECT id::text, "firstName", "lastName", username, "avatarUrl", "recentJobTitle", location, rate, "rateMin", "rateMax"
          FROM user_service.users WHERE id = ANY($1::uuid[])`,
         [visibleIds],
       ),
@@ -187,7 +196,36 @@ export class ProjectsService {
         `SELECT "userId"::text, name FROM user_service.languages WHERE "userId" = ANY($1::uuid[])`,
         [visibleIds],
       ),
+      this.repo.manager.query<Array<{ userId: string; startDate: string | null; endDate: string | null }>>(
+        `SELECT "userId"::text, "startDate", "endDate" FROM user_service.experience WHERE "userId" = ANY($1::uuid[])`,
+        [visibleIds],
+      ),
     ]);
+
+    // Users who exist in the auth table (public.users) but haven't completed
+    // their user-service profile yet (e.g. just claimed a project). Fall back
+    // to the auth table so the owner still appears in the team list.
+    const foundIds = new Set(profileUsers.map((u) => u.id));
+    const missingIds = visibleIds.filter((id) => !foundIds.has(id));
+    let authFallbackUsers: typeof profileUsers = [];
+    if (missingIds.length) {
+      authFallbackUsers = await this.repo.manager.query(
+        `SELECT id::text, email, username FROM public.users WHERE id = ANY($1::uuid[])`,
+        [missingIds],
+      ).then((rows: any[]) => rows.map((r) => ({
+        id: r.id,
+        firstName: r.username ?? r.email?.split('@')[0] ?? '',
+        lastName: '',
+        username: r.username ?? r.email?.split('@')[0] ?? r.id,
+        avatarUrl: null,
+        recentJobTitle: null,
+        location: null,
+        rate: null,
+        rateMin: null,
+        rateMax: null,
+      })));
+    }
+    const users = [...profileUsers, ...authFallbackUsers];
 
     const skillsByUser = new Map<string, string[]>();
     skillRows.forEach((s) => {
@@ -201,6 +239,19 @@ export class ProjectsService {
       arr.push(l.name);
       langsByUser.set(l.userId, arr);
     });
+    const experienceLevelByUser = new Map<string, string | null>();
+    const experienceEntriesByUser = new Map<
+      string,
+      Array<{ startDate: string | null; endDate: string | null }>
+    >();
+    experienceRows.forEach((e) => {
+      const arr = experienceEntriesByUser.get(e.userId) ?? [];
+      arr.push({ startDate: e.startDate, endDate: e.endDate });
+      experienceEntriesByUser.set(e.userId, arr);
+    });
+    experienceEntriesByUser.forEach((entries, userId) => {
+      experienceLevelByUser.set(userId, this.resolveExperienceLevel(entries));
+    });
 
     const ownerUserId = String(project.userId ?? '');
     return users
@@ -213,6 +264,11 @@ export class ProjectsService {
         avatarUrl: u.avatarUrl ?? null,
         role: u.recentJobTitle ?? 'Team Member',
         location: u.location ?? null,
+        // `rate` is a Postgres `numeric` column — node-postgres returns those
+        // as strings (not numbers) to avoid precision loss, so coerce here
+        // rather than leaking that quirk to callers expecting a real number.
+        rate: u.rate != null ? Number(u.rate) : (u.rateMin ?? null),
+        experienceLevel: experienceLevelByUser.get(u.id) ?? null,
         isLead: u.id === String(project.userId),
         isOnline: false,
         skills: skillsByUser.get(u.id) ?? [],
@@ -223,6 +279,38 @@ export class ProjectsService {
         if (b.id === ownerUserId) return 1;
         return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
       });
+  }
+
+  // Sum of actual work durations across a user's experience rows, bucketed
+  // into the same Student/Junior/Mediator/Senior/Guru brackets the
+  // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
+  // years). Each entry contributes its own (end - start) individually so
+  // career gaps don't inflate the total.
+  private resolveExperienceLevel(
+    entries: Array<{ startDate: string | null; endDate: string | null }>,
+  ): string | null {
+    const MS_PER_YEAR = 1000 * 60 * 60 * 24 * 365.25;
+    let totalMs = 0;
+    let validEntries = 0;
+
+    for (const entry of entries) {
+      const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
+      if (Number.isNaN(start)) continue;
+      const end = entry.endDate ? Date.parse(entry.endDate) : Date.now();
+      if (end > start) {
+        totalMs += end - start;
+        validEntries++;
+      }
+    }
+    if (!validEntries) return null;
+
+    const years = totalMs / MS_PER_YEAR;
+
+    if (years < 2) return 'Student';
+    if (years < 3) return 'Junior';
+    if (years < 5) return 'Mediator';
+    if (years < 10) return 'Senior';
+    return 'Guru';
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -526,6 +614,8 @@ export class ProjectsService {
       status: project.status,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      projectDatePublished: project.projectDatePublished ?? null,
+      durationMonths: project.durationMonths ?? null,
       budget,
       priceMin: budget,
       budgetUsdCents: budget != null ? Math.round(budget * 100) : null,
@@ -607,31 +697,35 @@ export class ProjectsService {
       .sort((a, b) => b.engagement - a.engagement || b.score - a.score)
       .slice(0, 6);
 
-    const avatarsByProject = await this.resolveTeamAvatars(
+    const teamByProject = await this.resolveTeamAvatars(
       top.map((entry) => entry.candidate),
     );
 
-    return top.map(({ candidate, score }) => ({
-      id: String(candidate.id),
-      slug: candidate.slug,
-      title: candidate.title,
-      shortDescription: candidate.shortDescription ?? null,
-      thumbnail: candidate.mediaUrls?.[0] ?? null,
-      budget:
-        candidate.budget != null && candidate.budget !== ('' as any)
-          ? Number(candidate.budget)
-          : null,
-      duration: candidate.duration ?? null,
-      rating: candidate.rating != null ? Number(candidate.rating) : 0,
-      reviewCount: candidate.reviewCount ?? 0,
-      teamAvatars: avatarsByProject.get(String(candidate.id)) ?? [],
-      score,
-    }));
+    return top.map(({ candidate, score }) => {
+      const team = teamByProject.get(String(candidate.id));
+      return {
+        id: String(candidate.id),
+        slug: candidate.slug,
+        title: candidate.title,
+        shortDescription: candidate.shortDescription ?? null,
+        thumbnail: candidate.mediaUrls?.[0] ?? null,
+        budget:
+          candidate.budget != null && candidate.budget !== ('' as any)
+            ? Number(candidate.budget)
+            : null,
+        duration: candidate.duration ?? null,
+        rating: candidate.rating != null ? Number(candidate.rating) : 0,
+        reviewCount: candidate.reviewCount ?? 0,
+        teamAvatars: team?.avatars ?? [],
+        teamMembers: team?.members ?? [],
+        score,
+      };
+    });
   }
 
   private async resolveTeamAvatars(
     projects: Project[],
-  ): Promise<Map<string, string[]>> {
+  ): Promise<Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>> {
     const idsByProject = new Map<string, string[]>();
     const allIds = new Set<string>();
     for (const p of projects) {
@@ -646,22 +740,41 @@ export class ProjectsService {
     }
     if (allIds.size === 0) return new Map();
 
-    const rows: Array<{ id: string; avatarUrl: string | null }> =
+    const rows: Array<{ id: string; avatarUrl: string | null; firstName: string | null; username: string | null }> =
       await this.repo.manager.query(
-        `SELECT id::text, "avatarUrl" FROM user_service.users WHERE id = ANY($1::uuid[])`,
+        `SELECT id::text, "avatarUrl", "firstName", username FROM user_service.users WHERE id = ANY($1::uuid[])`,
         [Array.from(allIds)],
       );
-    const avatarById = new Map(rows.map((r) => [r.id, r.avatarUrl]));
+    const infoById = new Map(rows.map((r) => [r.id, { avatarUrl: r.avatarUrl, firstName: r.firstName, username: r.username }]));
 
-    const result = new Map<string, string[]>();
-    for (const [projectId, memberIds] of idsByProject) {
-      result.set(
-        projectId,
-        memberIds
-          .map((id) => avatarById.get(id))
-          .filter((url): url is string => Boolean(url))
-          .slice(0, 4),
+    // Users who exist in auth (public.users) but not in user_service.users
+    // still count as team members — e.g. someone who just claimed a project.
+    const missingIds = Array.from(allIds).filter((id) => !infoById.has(id));
+    if (missingIds.length) {
+      const authRows: Array<{ id: string; email: string | null }> = await this.repo.manager.query(
+        `SELECT id::text, email FROM public.users WHERE id = ANY($1::uuid[])`,
+        [missingIds],
       );
+      for (const r of authRows) {
+        const namePart = r.email ? r.email.split('@')[0] : null;
+        infoById.set(r.id, { avatarUrl: null, firstName: namePart, username: null });
+      }
+    }
+
+    const result = new Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>();
+    for (const [projectId, memberIds] of idsByProject) {
+      const validMembers = memberIds.filter((id) => infoById.has(id)).slice(0, 4);
+      result.set(projectId, {
+        avatars: validMembers.map((id) => infoById.get(id)?.avatarUrl ?? ''),
+        members: validMembers.map((id) => {
+          const info = infoById.get(id);
+          return {
+            avatarUrl: info?.avatarUrl ?? '',
+            firstName: info?.firstName ?? '',
+            username: info?.username ?? '',
+          };
+        }),
+      });
     }
     return result;
   }

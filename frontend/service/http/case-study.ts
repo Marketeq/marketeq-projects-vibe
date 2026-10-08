@@ -26,8 +26,16 @@ export interface CaseStudy {
   coverImageOffsetX: number
   coverImageOffsetY: number
   skills: string[]
+  likesCount: number
   createdAt: string
   updatedAt: string
+}
+
+/** Reply shape of both case-study like routes. */
+export interface CaseStudyLikeState {
+  /** Whether the CURRENT viewer has liked it — not whether anyone has. */
+  liked: boolean
+  likesCount: number
 }
 
 export interface ListCaseStudiesParams {
@@ -110,6 +118,16 @@ export const CaseStudyAPI = {
   },
   GetPublicBySlug: (slug: string) => {
     return AxiosRequest.get(`${BASE}/case-studies/public/${slug}`)
+  },
+  GetLikeState: (id: string) => {
+    return AxiosRequest.get(`${BASE}/case-studies/${id}/like`)
+  },
+  /** Likes it, or removes this viewer's like if they already had one. */
+  ToggleLike: (id: string) => {
+    return AxiosRequest.post<Record<string, never>>(
+      `${BASE}/case-studies/${id}/like`,
+      {}
+    )
   },
   RequestUpload: (fileName: string, fileSize: number) => {
     return AxiosRequest.post<{ fileName: string; fileSize: number }>(
