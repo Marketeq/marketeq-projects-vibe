@@ -14,6 +14,9 @@ import { ContractEntry, TaskEntry } from "./contract-entry"
 import { AccountMenu, MenuSection } from "./account-menu"
 import { NewTaskForm } from "./new-task-form"
 import { ManualTimeForm } from "./manual-time-form"
+import { deriveUiRunningPaused, computeDisplayedElapsedSec, decideActiveTaskAction } from "./timer-ui-state"
+import { IdleResolutionModal } from "../../views/IdleResolutionModal"
+import type { IdleResolutionNeededPayload, TimerSnapshotDTO } from "../../../shared/ipc-contracts"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -649,6 +652,31 @@ export function TimeTrackerApp({
   const [activeTask, setActiveTask] = React.useState<{ taskName: string; contractName: string; contractId: string; clientHandle: string; taskId?: string } | null>(null)
   const [trackingStartTime, setTrackingStartTime] = React.useState<Date | null>(null)
   const intervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null)
+  // The displayed clock is always "backend-confirmed elapsed seconds, plus
+  // real time since that confirmation" — never computed from an absolute
+  // start time. See timer-ui-state.ts for why (that's what caused the
+  // clock to silently jump forward by the paused/idle duration on resume).
+  const elapsedBaselineRef = React.useRef<{ sec: number; at: number }>({ sec: 0, at: Date.now() })
+  // "Paused" covers two different backend states (manual/idle pause vs. on
+  // break), and ending each one is a different IPC call (resume vs.
+  // breakEnd). This ref — not state, since nothing needs to re-render off
+  // it directly — lets handlePause pick the right one.
+  const isOnBreakRef = React.useRef(false)
+  // Mirrors `activeTask` for reading inside applyTimerSnapshot without
+  // making that callback depend on (and go stale with) activeTask itself.
+  const activeTaskRef = React.useRef(activeTask)
+  React.useEffect(() => { activeTaskRef.current = activeTask }, [activeTask])
+  // The backend snapshot only carries contractId/taskId, not display names.
+  // When a real running/paused session is confirmed but the renderer has no
+  // activeTask for it (e.g. the window reloaded mid-session — confirmed
+  // live: the header card's clock/controls never appear afterward because
+  // they're gated on `isRunning && activeTask`), this is where we're told
+  // what to look up once `days` (task/contract names) is loaded. Existing
+  // design is unchanged — this only restores the data that design expects.
+  const [pendingPickedContract, setPendingPickedContract] = React.useState<{ contractId: string; taskId: string } | null>(null)
+  // Idle event the backend is waiting on the user to resolve (Keep / Discard /
+  // Convert to break). Non-null renders the IdleResolutionModal below.
+  const [pendingIdle, setPendingIdle] = React.useState<IdleResolutionNeededPayload | null>(null)
 
   // Clock
   const [utcTime, setUtcTime] = React.useState(formatUtcTime())
@@ -778,11 +806,73 @@ export function TimeTrackerApp({
     }
   }, [])
 
+  const applyTimerSnapshot = React.useCallback((snap: TimerSnapshotDTO) => {
+    elapsedBaselineRef.current = { sec: snap.elapsedSec, at: Date.now() }
+    setElapsed(snap.elapsedSec)
+    const { isRunning: running, isPaused: paused } = deriveUiRunningPaused(snap)
+    setIsRunning(running)
+    setIsPaused(paused)
+    isOnBreakRef.current = snap.isOnBreak
+    if (!snap.pendingIdle) setPendingIdle(null)
+    // Counting is the in-between step of Start, not "tracking ended" — see
+    // decideActiveTaskAction in timer-ui-state.ts.
+    const taskAction = decideActiveTaskAction({
+      state: snap.state,
+      running,
+      hasPickedContract: !!snap.pickedContract,
+      hasActiveTask: !!activeTaskRef.current,
+    })
+    if (taskAction === 'clear') {
+      setActiveTask(null)
+      setTrackingStartTime(null)
+      setPendingPickedContract(null)
+    } else if (taskAction === 'restore' && snap.pickedContract) {
+      setPendingPickedContract(snap.pickedContract)
+    }
+  }, [])
+
+  // Resolves the restore-after-remount case above once the task/contract
+  // names (`days`) are available — they're fetched by a separate effect and
+  // may not have loaded yet at the moment a snapshot needs them.
+  React.useEffect(() => {
+    if (!pendingPickedContract) return
+    for (const day of days) {
+      const contract = day.contracts.find((c) => c.id === pendingPickedContract.contractId)
+      const task = contract?.tasks.find((t) => t.id === pendingPickedContract.taskId)
+      if (contract && task) {
+        setActiveTask({ taskName: task.name, contractName: contract.name, contractId: contract.id, clientHandle: contract.clientHandle, taskId: task.id })
+        setPendingPickedContract(null)
+        return
+      }
+    }
+  }, [pendingPickedContract, days])
+
   React.useEffect(() => {
     refreshTodayStats()
-    const off = window.dtt?.timer?.onStateChanged?.(() => { refreshTodayStats() })
+    // Hydrate from whatever the backend's real state already is right now —
+    // not just future transitions. Without this, a remount while a session
+    // is already running/paused/on-break (confirmed live: happens on an HMR
+    // reload, and would equally happen on an app relaunch mid-session per
+    // the main process's own "crash recovery: swept orphaned open session"
+    // path) leaves the UI stuck on default Idle-ish state showing the wrong
+    // button and clock until the next real transition happens to fire.
+    window.dtt?.timer?.getState?.().then((snap) => {
+      if (snap) applyTimerSnapshot(snap)
+    }).catch((err: unknown) => console.error("timer.getState failed:", err))
+    const off = window.dtt?.timer?.onStateChanged?.((snap) => {
+      refreshTodayStats()
+      applyTimerSnapshot(snap)
+    })
     return () => { off?.() }
-  }, [refreshTodayStats])
+  }, [refreshTodayStats, applyTimerSnapshot])
+
+  // Idle popup — the backend FSM is correctly detecting idle and freezing
+  // billable time/capture already; this is what actually shows the prompt
+  // and lets the user resolve it, instead of nothing happening visibly.
+  React.useEffect(() => {
+    const off = window.dtt?.timer?.onIdleResolutionNeeded?.((payload) => setPendingIdle(payload))
+    return () => { off?.() }
+  }, [])
 
   React.useEffect(() => {
     if (!isRunning || isPaused) return
@@ -903,12 +993,13 @@ export function TimeTrackerApp({
   }, [])
 
   // ── Timer tick ──────────────────────────────────────────────────────────
+  // Extrapolates from the last backend-confirmed baseline (reset on every
+  // real state change above), not from an absolute start time — see
+  // timer-ui-state.ts for why that distinction is what actually matters.
   React.useEffect(() => {
-    if (isRunning && !isPaused && trackingStartTime) {
+    if (isRunning && !isPaused) {
       const tick = () => {
-        const now = Date.now()
-        const elapsedMs = now - trackingStartTime.getTime()
-        setElapsed(Math.floor(elapsedMs / 1000))
+        setElapsed(computeDisplayedElapsedSec(elapsedBaselineRef.current, Date.now()))
       }
       tick() // immediate update
       intervalRef.current = setInterval(tick, 1000)
@@ -916,7 +1007,7 @@ export function TimeTrackerApp({
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isRunning, isPaused, trackingStartTime])
+  }, [isRunning, isPaused])
 
   // ── Scroll handler — show minimized bar once expanded header + controls scroll away ──
   const handleContentScroll = React.useCallback(() => {
@@ -1106,6 +1197,7 @@ export function TimeTrackerApp({
     }
     setActiveTask({ taskName, contractName, contractId, clientHandle: clientHandle || "", taskId })
     setTrackingStartTime(new Date())
+    elapsedBaselineRef.current = { sec: 0, at: Date.now() }
     setElapsed(0)
     setIsRunning(true)
     setIsPaused(false)
@@ -1159,38 +1251,33 @@ export function TimeTrackerApp({
     }
   }
 
+  // Neither handler optimistically mutates local state anymore — the real
+  // outcome (success or failure) comes back through the onStateChanged
+  // subscription above, which is the only source of truth for isRunning/
+  // isPaused/elapsed/activeTask now. Optimistically flipping the UI here
+  // regardless of whether the backend call actually succeeded was the exact
+  // bug: Stop/Pause looked like they'd worked even when the backend was
+  // still stuck (confirmed live — clicking Stop while idle left the FSM in
+  // IdleSoftPaused, but the UI showed "stopped" anyway).
   const handlePause = () => {
-    if (isPaused) {
-      window.dtt?.timer?.resume?.().catch((err: unknown) => console.error("timer.resume failed:", err))
-    } else {
-      window.dtt?.timer?.pause?.().catch((err: unknown) => console.error("timer.pause failed:", err))
-    }
-    setIsPaused(!isPaused)
+    // Resuming from a break is a different FSM transition (BREAK_END) than
+    // resuming from a manual/idle pause (RESUME) — dispatching the wrong one
+    // is a silent no-op, confirmed live: clicking "Resume Time" while on
+    // break left the backend stuck in OnBreakUnpaid.
+    const action = isPaused
+      ? (isOnBreakRef.current ? window.dtt?.timer?.breakEnd : window.dtt?.timer?.resume)
+      : window.dtt?.timer?.pause
+    action?.().catch((err: unknown) => console.error("timer.pause/resume/breakEnd failed:", err))
   }
 
   const handleStop = () => {
-    // Stop the main process timer → closes the session
+    // Stop the main process timer → closes the session. The resulting
+    // Idle/Counting state change (via onStateChanged) is what actually
+    // clears isRunning/activeTask/trackingStartTime — see above. The
+    // stopped session is saved in local SQLite; that same state change also
+    // triggers refreshTodayStats(), which writes the real task row's time
+    // and range from that saved data.
     window.dtt?.timer?.stop?.({ reason: 'user_stop' }).catch((err: unknown) => console.error("timer.stop failed:", err))
-
-    if (!isRunning || !activeTask || !trackingStartTime) {
-      setIsRunning(false)
-      setIsPaused(false)
-      setElapsed(0)
-      setActiveTask(null)
-      return
-    }
-
-    // The stopped session is now saved in local SQLite; the timer's state
-    // change triggers refreshTodayStats(), which writes the real task row's
-    // time and range from that saved data. (This used to append a separate
-    // "t-<timestamp>" row instead — it vanished on relaunch and couldn't be
-    // started, since it isn't a real task.)
-
-    setIsRunning(false)
-    setIsPaused(false)
-    setElapsed(0)
-    setActiveTask(null)
-    setTrackingStartTime(null)
   }
 
   const handlePlayTask = (taskId: string, contractId?: string) => {
@@ -1745,6 +1832,22 @@ export function TimeTrackerApp({
             </span>
           </div>
         </div>,
+        document.body
+      )}
+
+      {pendingIdle && ReactDOM.createPortal(
+        <IdleResolutionModal
+          payload={pendingIdle}
+          onResolve={async (resolution) => {
+            try {
+              await window.dtt?.timer?.resolveIdle?.({ resolution })
+            } catch (err) {
+              console.error("resolveIdle failed:", err)
+            } finally {
+              setPendingIdle(null)
+            }
+          }}
+        />,
         document.body
       )}
     </div>
