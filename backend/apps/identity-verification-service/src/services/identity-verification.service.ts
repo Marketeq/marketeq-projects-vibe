@@ -40,6 +40,7 @@ import {
   hashDocumentNumber,
 } from '../common/security/document-fingerprint';
 import { coarseFailureReason } from '../common/status/coarse-failure-reason';
+import { AccountGateDecision, deriveMissingRequirements } from '../common/gate/account-gate-decision';
 import {
   DocumentVerificationProvider,
   DOCUMENT_VERIFICATION_PROVIDER,
@@ -800,6 +801,34 @@ export class IdentityVerificationService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
+  }
+
+  // Canonical gate decision for consuming services (RabbitMQ request/reply,
+  // see IdentityVerificationGateController). Delegates to
+  // getStatusForInternalCaller so gate_open/in_grace keep exactly one
+  // definition. An account with no profile has verified nothing: the gate is
+  // closed and both requirements are outstanding - it must never fall through
+  // to "open" the way a missing row could if this simply propagated the
+  // ProfileNotFoundException as an error.
+  async getAccountGateDecision(userId: string): Promise<AccountGateDecision> {
+    try {
+      const status = await this.getStatusForInternalCaller(userId);
+      // The raw statuses and inGrace stay in this service: they only feed the
+      // two fields that are sent.
+      return {
+        gateOpen: status.gateOpen,
+        missingRequirements: deriveMissingRequirements(
+          status.identityVerificationStatus,
+          status.locationVerificationStatus,
+          status.gateOpen,
+        ),
+      };
+    } catch (err) {
+      if (err instanceof ProfileNotFoundException) {
+        return { gateOpen: false, missingRequirements: 'both' };
+      }
+      throw err;
+    }
   }
 
   async handleDiditWebhook(

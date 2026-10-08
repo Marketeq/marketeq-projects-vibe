@@ -16,6 +16,7 @@ import { FreeKycService } from './services/free-kyc.service';
 import { VerificationSummaryService } from './services/verification-summary.service';
 import { IdentityVerificationController } from './controllers/identity-verification.controller';
 import { IdentityVerificationInternalController } from './controllers/identity-verification-internal.controller';
+import { IdentityVerificationGateController } from './controllers/identity-verification-gate.controller';
 import { IdentityVerificationWebhooksController } from './controllers/identity-verification-webhooks.controller';
 import { IdentityVerificationSandboxController } from './controllers/identity-verification-sandbox.controller';
 import { IdentityVerificationService } from './services/identity-verification.service';
@@ -68,6 +69,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
   controllers: [
     IdentityVerificationController,
     IdentityVerificationInternalController,
+    IdentityVerificationGateController,
     IdentityVerificationWebhooksController,
     // Sandbox-only diagnostic routes — 404 outside NODE_ENV=development, see
     // SandboxOnlyGuard. Not part of the real talent-dashboard flow.
