@@ -56,3 +56,16 @@ export function isActiveTravelUpdate(
   if (popup !== "reminder") return false
   return freshSummary?.travelModeExpired !== true
 }
+
+/**
+ * Whether a fresh /me read says Travel Mode is in force right now: a valid activation
+ * (travelModeEndsAt is set only for one) that has not ended. "Verify My Account" uses it
+ * to tell the flow that "Temporarily traveling" changes nothing for this traveler, the
+ * same way the reminder's Update action does. Anything unknown or unreadable is "not in
+ * force", so the flow behaves exactly as before.
+ */
+export function isTravelModeInForce(
+  summary: { travelModeEndsAt: string | null; travelModeExpired: boolean | null } | null
+): boolean {
+  return summary?.travelModeEndsAt != null && summary.travelModeExpired === false
+}

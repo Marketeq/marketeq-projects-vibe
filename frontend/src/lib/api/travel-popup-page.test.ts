@@ -154,7 +154,8 @@ describe("Update opens the existing flow at the location-update screen", () => {
   })
 
   it("the normal Verify path keeps its default start (an Update-launched flow is reset)", () => {
-    assert.ok(page.includes("setFlowLaunch((prev) => (prev.initialState ? { key: prev.key + 1 } : prev))"))
+    assert.ok(page.includes("prev.initialState || Boolean(prev.activeTravelModeUpdate) !== activeTravelModeUpdate"))
+    assert.ok(page.includes("? { key: prev.key + 1, ...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {}) }"))
     assert.ok(
       page.includes(
         "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n  }>({ key: 0 })"
@@ -185,8 +186,9 @@ describe("Update tells the flow WHY the popup opened (an explicit prop, not init
     assert.ok(page.includes("initialState={flowLaunch.initialState}"))
   })
 
-  it("only the Update action ever sets it: a normal Verify launch carries no flag", () => {
+  it("only an in-force Travel Mode sets it: a Verify launch for anyone else carries no flag", () => {
     assert.equal((page.match(/activeTravelModeUpdate[,:]/g) ?? []).length >= 1, true)
-    assert.ok(page.includes("prev.initialState ? { key: prev.key + 1 } : prev"))
+    assert.ok(page.includes("const activeTravelModeUpdate = isTravelModeInForce(summary)"))
+    assert.ok(page.includes("...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {})"))
   })
 })

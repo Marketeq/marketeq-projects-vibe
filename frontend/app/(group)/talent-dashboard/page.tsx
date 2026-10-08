@@ -60,6 +60,7 @@ import {
 import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
+  isTravelModeInForce,
   TRAVEL_POPUP_DURATION_MS,
 } from "@/src/lib/api/travel-popup"
 import {
@@ -408,8 +409,16 @@ export default function TalentDashboard() {
       // browser's location permission is requested.
       const location = await getDetectedLocation({ useBrowserLocation: true })
       setDetectedLocation(location)
-      // A flow last started by the Travel Mode Update action starts fresh here.
-      setFlowLaunch((prev) => (prev.initialState ? { key: prev.key + 1 } : prev))
+      // A flow last started by the Travel Mode Update action starts fresh here. A traveler
+      // whose Travel Mode is already in force is told so (from the /me read above), so
+      // "Temporarily traveling" closes with the existing confirmation instead of asking for
+      // a second duration; everyone else gets exactly the flow they always did.
+      const activeTravelModeUpdate = isTravelModeInForce(summary)
+      setFlowLaunch((prev) =>
+        prev.initialState || Boolean(prev.activeTravelModeUpdate) !== activeTravelModeUpdate
+          ? { key: prev.key + 1, ...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {}) }
+          : prev
+      )
       setIdentityFlowOpen(true)
       return
     }
