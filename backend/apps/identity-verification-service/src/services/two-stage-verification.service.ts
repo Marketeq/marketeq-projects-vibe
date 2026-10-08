@@ -615,6 +615,8 @@ export class TwoStageVerificationService {
 
     if (outcome === 'verified') {
       profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
+      // A successful (re-)verification ends any renewal window (TRVG2 §2.7).
+      profile.expiredAt = null;
     } else {
       const attemptTotal = await getAccountWideAttemptCount(this.attemptRepos(), profileId);
       if (attemptTotal >= RETRY_LIMIT) {

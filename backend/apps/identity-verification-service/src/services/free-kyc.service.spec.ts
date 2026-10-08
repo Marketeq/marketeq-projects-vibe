@@ -599,6 +599,18 @@ describe('FreeKycService', () => {
     });
 
     describe('every Didit status', () => {
+      it('Approved on reconcile after expiry → verified and expiredAt cleared', async () => {
+        const row = activeRow();
+        const h = build({
+          activeSession: row,
+          profile: inProgressProfile({ expiredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) }),
+          decision: { status: 'Approved' },
+        });
+        await expect(h.service.startOrResume('user-1')).rejects.toBeInstanceOf(KycNotStartableException);
+        expect(h.profile.identityVerificationStatus).toBe(IdentityVerificationStatus.VERIFIED);
+        expect(h.profile.expiredAt).toBeNull();
+      });
+
       it('Approved → profile verified, session approved, NO new session (not startable)', async () => {
         const { h, row } = setup('Approved');
         await expect(h.service.startOrResume('user-1')).rejects.toBeInstanceOf(KycNotStartableException);
@@ -1052,6 +1064,39 @@ describe('FreeKycService', () => {
         const h = build({ session: session({ status: HostedKycSessionStatus.APPROVED }), profile: profileIn(IdentityVerificationStatus.VERIFIED) });
         await run(h, eventBody({ status: 'Kyc Expired' }));
         expect(h.profile.identityVerificationStatus).toBe(IdentityVerificationStatus.EXPIRED);
+        expect(h.profile.expiredAt).toBeInstanceOf(Date);
+      });
+
+      it('Approved after expiry (renewal) → verified and expiredAt cleared', async () => {
+        const h = build({
+          session: session(),
+          profile: confirmedProfile({
+            identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS,
+            expiredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+          }),
+        });
+        await run(h, eventBody({ status: 'Approved' }));
+        expect(h.profile.identityVerificationStatus).toBe(IdentityVerificationStatus.VERIFIED);
+        expect(h.profile.expiredAt).toBeNull();
+      });
+
+      it('a declined renewal keeps expiredAt so the grace window continues', async () => {
+        const expiredAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+        const h = build({
+          session: session(),
+          profile: confirmedProfile({ identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS, expiredAt }),
+        });
+        await run(h, eventBody({ status: 'Declined' }));
+        expect(h.profile.identityVerificationStatus).not.toBe(IdentityVerificationStatus.VERIFIED);
+        expect(h.profile.expiredAt).toBe(expiredAt);
+      });
+
+      it('expiring again after a renewal stamps a fresh expiredAt', async () => {
+        const h = build({
+          session: session({ status: HostedKycSessionStatus.APPROVED }),
+          profile: confirmedProfile({ identityVerificationStatus: IdentityVerificationStatus.VERIFIED, expiredAt: null }),
+        });
+        await run(h, eventBody({ status: 'Kyc Expired' }));
         expect(h.profile.expiredAt).toBeInstanceOf(Date);
       });
 

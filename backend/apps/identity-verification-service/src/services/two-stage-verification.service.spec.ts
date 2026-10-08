@@ -749,6 +749,30 @@ describe('TwoStageVerificationService', () => {
       );
     });
 
+    it('clears expiredAt when the profile becomes VERIFIED (renewal complete)', async () => {
+      const { service, profileRepository } = buildService({
+        documentRepository: {
+          findOne: jest.fn().mockResolvedValue({ id: 'doc-1', profileId: 'profile-1', documentCheckStatus: DocumentCheckStatus.APPROVED }),
+        },
+        profileRepository: {
+          findOne: jest.fn().mockResolvedValue({
+            id: 'profile-1',
+            identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS,
+            expiredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+          }),
+        },
+        biometricSessionRepository: {
+          findOne: jest.fn().mockResolvedValue({ profileId: 'profile-1', documentId: 'doc-1', diditSessionId: 'didit-sess-1', status: BiometricSessionStatus.CREATED, lastEventTimestamp: null }),
+          save: jest.fn((d: any) => Promise.resolve(d)),
+        },
+      });
+      const { body, signature } = signedBody();
+      await service.handleBiometricSessionWebhook(body, { signature, timestamp: String(nowSeconds - 10) }, nowSeconds);
+      expect(profileRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ identityVerificationStatus: IdentityVerificationStatus.VERIFIED, expiredAt: null }),
+      );
+    });
+
     it('marks the profile FAILED when the biometric session is Declined, even if the document check was Approved', async () => {
       const { service, profileRepository } = buildService({
         documentRepository: {

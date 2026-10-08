@@ -728,6 +728,8 @@ export class FreeKycService {
         // Reached only when the profile was not already verified (guarded above),
         // so this is a real transition: announce it once the transaction commits.
         profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
+        // A successful (re-)verification ends any renewal window (TRVG2 §2.7).
+        profile.expiredAt = null;
         signal.verified = { profileId: profile.id, userId: profile.userId };
         break;
       case HostedKycSessionStatus.DECLINED: {

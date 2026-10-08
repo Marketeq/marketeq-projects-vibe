@@ -297,6 +297,68 @@ describe('IdentityVerificationService', () => {
     });
   });
 
+  describe('getStatusForInternalCaller — grace is a renewal window, never a VERIFIED bypass', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const gate = async (over: Record<string, unknown>) => {
+      const profile = {
+        id: 'profile-1',
+        identityVerificationStatus: IdentityVerificationStatus.EXPIRED,
+        locationVerificationStatus: LocationVerificationStatus.VERIFIED,
+        expiredAt: new Date(Date.now() - 10 * DAY),
+        createdAt: new Date('2026-01-01'),
+        updatedAt: new Date('2026-01-02'),
+        ...over,
+      } as IdentityVerificationProfile;
+      const { service } = buildService({
+        profileRepository: { findOne: jest.fn().mockResolvedValue(profile) },
+      });
+      return service.getStatusForInternalCaller('user-1');
+    };
+
+    it('expiration: EXPIRED inside the window keeps the gate open through grace only', async () => {
+      expect(await gate({})).toMatchObject({ isVerified: false, inGrace: true, gateOpen: true });
+    });
+
+    it.each([
+      IdentityVerificationStatus.IN_PROGRESS,
+      IdentityVerificationStatus.PENDING,
+      IdentityVerificationStatus.FAILED,
+    ])('renewal in %s inside the window keeps the gate open', async (identityVerificationStatus) => {
+      expect(await gate({ identityVerificationStatus })).toMatchObject({ inGrace: true, gateOpen: true });
+    });
+
+    it.each([
+      IdentityVerificationStatus.EXPIRED,
+      IdentityVerificationStatus.IN_PROGRESS,
+      IdentityVerificationStatus.FAILED,
+    ])('failed or unfinished renewal in %s closes the gate once 30 days have passed', async (identityVerificationStatus) => {
+      expect(
+        await gate({ identityVerificationStatus, expiredAt: new Date(Date.now() - 31 * DAY) }),
+      ).toMatchObject({ inGrace: false, gateOpen: false });
+    });
+
+    it('successful re-verification: VERIFIED with a stale expiredAt is verified, not in grace', async () => {
+      expect(
+        await gate({ identityVerificationStatus: IdentityVerificationStatus.VERIFIED }),
+      ).toMatchObject({ isVerified: true, inGrace: false, gateOpen: true });
+    });
+
+    it('relocation after re-verification: location reset must not be rescued by a stale expiredAt', async () => {
+      expect(
+        await gate({
+          identityVerificationStatus: IdentityVerificationStatus.VERIFIED,
+          locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED,
+        }),
+      ).toMatchObject({ isVerified: false, inGrace: false, gateOpen: false });
+    });
+
+    it('an expired account whose location was reset stays open while in the window (grace is independent of location)', async () => {
+      expect(
+        await gate({ locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }),
+      ).toMatchObject({ isVerified: false, inGrace: true, gateOpen: true });
+    });
+  });
+
   describe('getStatusForInternalCaller — hosted attempt count and summary (Part 3)', () => {
     const profileWith = (over: Record<string, unknown> = {}) =>
       ({
