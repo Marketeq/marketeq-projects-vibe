@@ -18,7 +18,12 @@ export default new DataSource({
   // run-migrations.js. __dirname + '*.{ts,js}' resolves in both places:
   // apps/time-tracking-service/migrations for the CLI,
   // dist/apps/time-tracking-service/migrations for the compiled reporter.
-  migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+  // src/migrations holds the migrations the service build compiles and
+  // app.module's migrationsRun applies on boot; the CLI reads both folders.
+  migrations: [
+    join(__dirname, 'migrations', '*.{ts,js}'),
+    join(__dirname, 'src', 'migrations', '*.{ts,js}'),
+  ],
   // Staging's Postgres does not support SSL, so keying this off NODE_ENV made
   // every production-mode connection attempt fail outright. DATABASE_SSL_ENABLED
   // is the flag the rest of this monorepo already uses for the same decision

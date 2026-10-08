@@ -24,6 +24,7 @@ import { FavoritesModule } from './favorites/favorites.module';
 import { TeamsModule } from './teams/teams.module';
 import { CompaniesModule } from './companies/companies.module';
 import { AllowedIpsModule } from './allowed-ips/allowed-ips.module';
+import { AuditModule } from './audit/audit.module';
 import { UserMangementModule } from './user-mangement/user-mangement.module';
 import { OffersModule } from './offers/offers.modules';
 import { HireRequestsModule } from './hire-requests/hire-requests.module';
@@ -79,6 +80,7 @@ import { PrivacyModule } from './privacy/privacy.module';
     TeamsModule,
     CompaniesModule,
     AllowedIpsModule,
+    AuditModule,
     SimilarProfileModule,
     AffiliatedTeamModule,
     FavoritesModule,

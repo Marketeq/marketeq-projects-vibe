@@ -32,12 +32,17 @@ class RabbitMQCoreModule {
       this.logger.warn('RABBITMQ_URI/RABBITMQ_URL not set — case study events disabled');
       return { module: RabbitMQCoreModule, imports: [], exports: [] };
     }
+    // @golevelup/nestjs-rabbitmq pulls in a nested amqplib whose default frameMax
+    // (4096) is below RabbitMQ's enforced minimum (8192), so every connection gets
+    // rejected unless frameMax is set via the URI query string — amqplib reads it
+    // from there, not from connectionManagerOptions/socket options.
+    const uriWithFrameMax = `${rabbitmqUrl}${rabbitmqUrl.includes('?') ? '&' : '?'}frameMax=131072`;
     return {
       module: RabbitMQCoreModule,
       imports: [
         (RabbitMQModule as any).forRoot(RabbitMQModule, {
           exchanges: [{ name: 'marketeq.case_studies', type: 'topic' }],
-          uri: rabbitmqUrl,
+          uri: uriWithFrameMax,
           connectionInitOptions: { wait: true },
           defaultRpcErrorHandler: (channel: any, msg: any, _err: any) => {
             channel.nack(msg, false, false);

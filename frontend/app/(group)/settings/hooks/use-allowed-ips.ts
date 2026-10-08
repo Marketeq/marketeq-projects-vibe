@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import AllowedIpsAPI, {
   type AllowedIp,
   type AllowedIpInput,
+  type OverlappingAllowedIp,
 } from "@/service/http/allowed-ips"
 
 /** The shape the IP Restrictions table renders. */
@@ -73,12 +74,41 @@ export function useAllowedIps(enabled: boolean) {
    * 200-row import something the user has to diff by hand.
    */
   const addMany = useCallback(
-    async (inputs: AllowedIpInput[]): Promise<{ added: number; skipped: string[] }> => {
-      if (inputs.length === 0) return { added: 0, skipped: [] }
-      const res = await AllowedIpsAPI.createMany(inputs)
-      const created = (res.data?.created ?? []).map(toEntry)
+    async (
+      inputs: AllowedIpInput[],
+      onProgress?: (percent: number) => void
+    ): Promise<{
+      added: number
+      skipped: string[]
+      overlapping: OverlappingAllowedIp[]
+    }> => {
+      if (inputs.length === 0)
+        return { added: 0, skipped: [], overlapping: [] }
+
+      // The DTO rejects more than 500 entries per request (@ArrayMaxSize),
+      // while the per-account cap is 1,000 — so sending the whole file in one
+      // call made any import above 500 rows fail outright, and importing a
+      // full allowance impossible. Chunking is also what makes progress real:
+      // a completed chunk is the only honest thing there is to report.
+      const CHUNK = 500
+      const created: AllowedIpEntry[] = []
+      const skipped: string[] = []
+      const overlapping: OverlappingAllowedIp[] = []
+
+      for (let i = 0; i < inputs.length; i += CHUNK) {
+        const res = await AllowedIpsAPI.createMany(inputs.slice(i, i + CHUNK))
+        created.push(...(res.data?.created ?? []).map(toEntry))
+        skipped.push(...(res.data?.skipped ?? []))
+        overlapping.push(...(res.data?.overlapping ?? []))
+        onProgress?.(
+          Math.round((Math.min(i + CHUNK, inputs.length) / inputs.length) * 100)
+        )
+      }
+
+      // One state update at the end rather than per chunk: a 1,000-row import
+      // would otherwise re-render the whole list twice mid-flight.
       setEntries((prev) => [...created, ...prev])
-      return { added: created.length, skipped: res.data?.skipped ?? [] }
+      return { added: created.length, skipped, overlapping }
     },
     []
   )

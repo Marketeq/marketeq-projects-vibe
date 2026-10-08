@@ -510,13 +510,16 @@ export class PublishService {
   ): Promise<number> {
     const base = this.configService.get<string>('PRICING_SERVICE_URL');
     if (!base || !role) return 0;
+    // Full 5-level scale, matching ps_platform_rate_averages and Step 4's
+    // picker — no collapsing. The old 3-level 'mid' value is not supported;
+    // it falls through unmapped and pricing-service's @IsIn rejects it,
+    // same zero-rate fallback as any other unresolvable lookup.
     const EXP: Record<string, string> = {
-      student: 'junior',
+      student: 'student',
       junior: 'junior',
-      medior: 'mid',
-      mid: 'mid',
+      medior: 'medior',
       senior: 'senior',
-      guru: 'senior',
+      guru: 'guru',
     };
     const experience = experienceLevel
       ? (EXP[experienceLevel.toLowerCase()] ?? experienceLevel.toLowerCase())

@@ -68,8 +68,10 @@ export class IdentityVerificationController {
     return { ok: true };
   }
 
+  // Informational status read: works behind a VPN or proxy so the dashboard can
+  // render the banner. Every advancing route (connection-check, home-country,
+  // travel classification, Didit, documents) keeps its VpnProxyCheckGuard.
   @Get('me')
-  @UseGuards(VpnProxyCheckGuard)
   async getMyStatus(@Req() req: AuthenticatedRequest): Promise<ProfileStatusResponseDto> {
     const ip = getEffectiveClientIp(req);
     const profile = await this.service.getOrCreateProfile(req.userId, ip);

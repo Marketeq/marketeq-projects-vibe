@@ -62,7 +62,14 @@ const sharedAccountTail: SidebarItem[] = [
 
 const signInSecurityItems: SidebarItem[] = [
   { href: "/settings/login-password", label: "Login & Password", icon: Lock },
-  { href: "/settings/two-factor-auth", label: "Two-Factor Auth", icon: Shield01 },
+  // Two-Factor Auth is commented out, not deleted. The tab is designed as an
+  // SMS magic-link flow and we are not building SMS yet, so every control on it
+  // either does nothing or sends a text that cannot be delivered. The TOTP flow
+  // that does work is reachable from Account Recovery > App Authenticator.
+  // Restore this when there is an SMS provider, or when the tab is redesigned
+  // around codes. Note the /settings/two-factor-auth route still resolves if
+  // typed directly -- this hides the link, it does not remove the page.
+  // { href: "/settings/two-factor-auth", label: "Two-Factor Auth", icon: Shield01 },
   { href: "/settings/social-login", label: "Social Login", icon: LogIn01 },
   { href: "/settings/account-recovery", label: "Account Recovery", icon: RefreshCcw05 },
 ]

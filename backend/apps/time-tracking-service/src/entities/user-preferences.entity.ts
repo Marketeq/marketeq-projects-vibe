@@ -37,6 +37,27 @@ export class UserPreferences {
   })
   timeFormat: '12h' | '24h';
 
+  @Column({ name: 'default_screenshot_view', type: 'text', default: 'hour' })
+  defaultScreenshotView: string;
+
+  @Column({ name: 'show_tooltips', default: true })
+  showTooltips: boolean;
+
+  @Column({ name: 'capture_mode', type: 'text', default: 'active' })
+  captureMode: string;
+
+  @Column({ name: 'notify_manual_time', default: true })
+  notifyManualTime: boolean;
+
+  @Column({ name: 'notify_reassignment', default: true })
+  notifyReassignment: boolean;
+
+  @Column({ name: 'notify_weekly_report', default: true })
+  notifyWeeklyReport: boolean;
+
+  @Column({ name: 'notify_screenshot_comments', default: true })
+  notifyScreenshotComments: boolean;
+
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

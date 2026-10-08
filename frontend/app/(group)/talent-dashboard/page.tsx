@@ -29,7 +29,6 @@ import {
 import {
   cooldownRetryAt,
   formatRetryAt,
-  shouldOpenFirstTimeGate,
   shouldShowProfileBanner,
   startIdentityOnlyForDashboard,
   verifyActionFor,
@@ -169,11 +168,9 @@ export default function TalentDashboard() {
   const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
 
   // Identity verification entry prompt (AccountVerificationGate, Figma node
-  // 13101-47588). It opens automatically on load/refresh only for a FIRST
-  // verification (the backend says to confirm the location or start identity), and
-  // it also carries the in-place connection-check error state. Rejected, resumed
-  // and re-verifying users get the dashboard banner instead; an unreadable or
-  // unknown status opens nothing.
+  // 13101-47588). Viewing the dashboard is not a gated action, so it never opens on
+  // load: only the explicit Verify My Account action (or its in-place
+  // connection-check error state) opens it. The dashboard banner is the passive entry.
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
   // The dashboard banner ("Your profile is not public"): shown while the backend says
   // the account is actionable and incomplete. Dismissing it is in-memory only — no
@@ -216,13 +213,11 @@ export default function TalentDashboard() {
 
   const runIdentityVerificationCheck = useCallback(async () => {
     // The backend's nextAction is the only input. The banner shows for the actionable,
-    // incomplete states; the first-time modal gate additionally opens for a first
-    // verification. In review, the cooldown, complete, an unknown value and an
-    // unreadable status show neither. While the backend says to wait for a retry
+    // incomplete states and never opens the blocking gate on load. In review, the
+    // cooldown, complete, an unknown value and an unreadable status show no banner. While the backend says to wait for a retry
     // window, only the approved third-attempt dialog is shown.
     const summary = await fetchIdentityVerificationSummary()
     setProfileBannerShown(shouldShowProfileBanner(summary))
-    setVerificationGateOpen(shouldOpenFirstTimeGate(summary))
     setCooldownRetryTime(cooldownRetryAt(summary))
     setTravelSummary(summary)
     setLocationMismatchOpen(shouldShowLocationMismatchPrompt(summary))

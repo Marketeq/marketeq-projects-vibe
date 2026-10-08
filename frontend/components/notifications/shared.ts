@@ -81,19 +81,65 @@ export async function requestBrowserNotificationPermission(): Promise<BrowserPer
 }
 
 /**
- * Renders a stored E.164 number the way the design shows it — "(704) 555-0127"
- * rather than "+17045550127".
+ * The region assumed for a stored number that carries no country code.
  *
- * Falls back to the raw string whenever the number cannot be parsed, so a value
- * saved before this formatter existed, or one from a country the library does
- * not recognise, still displays instead of disappearing.
+ * libphonenumber cannot parse "7045550127" without being told where it is
+ * from — it throws — which is why such values used to fall through and render
+ * as raw digits.
+ */
+const DEFAULT_PHONE_REGION = "US"
+
+/** "(704) 555-0127" from ten digits, the shape the design shows. */
+function formatNorthAmericanDigits(digits: string): string | null {
+  const national =
+    digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits
+  if (national.length !== 10) return null
+  return `(${national.slice(0, 3)}) ${national.slice(3, 6)}-${national.slice(6)}`
+}
+
+/**
+ * Renders a stored number the way the design shows it — "(704) 555-0127"
+ * rather than "+17045550127" or a bare "7045550127".
+ *
+ * Three passes, widening as they go, because the column was showing raw digits
+ * for two separate reasons:
+ *
+ * 1. E.164 as stored. This always worked.
+ * 2. A number with no country code. `parseAndKeepRawInput` **throws** without a
+ *    region, so every value saved in national form fell straight to the raw
+ *    fallback. Parsed against DEFAULT_PHONE_REGION instead.
+ * 3. A number libphonenumber rejects as not a real allocation — "0000000000",
+ *    or an area code starting with 1. `isValidNumber` says no, but the column
+ *    should still show a phone number rather than a digit run, so ten digits
+ *    are formatted positionally as a last resort.
+ *
+ * Anything genuinely unreadable still returns unchanged: a value from a country
+ * the library does not recognise should display, not disappear.
  */
 export function formatPhoneForDisplay(phone: string): string {
-  try {
-    const parsed = phoneUtil.parseAndKeepRawInput(phone)
-    if (!phoneUtil.isValidNumber(parsed)) return phone
-    return phoneUtil.format(parsed, PhoneNumberFormat.NATIONAL)
-  } catch {
-    return phone
+  const trimmed = phone?.trim()
+  if (!trimmed) return phone
+
+  for (const region of [null, DEFAULT_PHONE_REGION]) {
+    try {
+      const parsed = region
+        ? phoneUtil.parse(trimmed, region)
+        : phoneUtil.parseAndKeepRawInput(trimmed)
+      if (phoneUtil.isValidNumber(parsed)) {
+        return phoneUtil.format(parsed, PhoneNumberFormat.NATIONAL)
+      }
+    } catch {
+      // Try the next pass rather than giving up on the number.
+    }
   }
+
+  // Only for numbers that are, or could be, North American: a "+" followed by
+  // some other country's dial code must not be reshaped into a US layout.
+  const digits = trimmed.replace(/\D/g, "")
+  if (!trimmed.startsWith("+") || digits.startsWith("1")) {
+    const positional = formatNorthAmericanDigits(digits)
+    if (positional) return positional
+  }
+
+  return phone
 }

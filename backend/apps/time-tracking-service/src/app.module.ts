@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
@@ -13,6 +14,8 @@ import { TooltipsModule } from './tooltips/tooltips.module';
 import { TasksModule } from './tasks/tasks.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { TimeTrackingConsumer } from './consumers/time-tracking.consumer';
+import { ContractsModule } from './contracts/contracts.module';
+import { TalentNotificationsModule } from './notifications/talent-notifications.module';
 
 // Entities for TypeORM root registration
 import { ActivityWatchEvent } from './entities/activity-watch-event.entity';
@@ -71,6 +74,9 @@ import { DeviceRegistration } from './entities/device-registration.entity';
       },
     }),
 
+    ScheduleModule.forRoot(),
+    ContractsModule,
+    TalentNotificationsModule,
     ActivityWatchModule,
     HealthModule,
     ScreenshotsModule,

@@ -23,20 +23,28 @@ export class EarningsSyncService {
     try {
       const day = capturedAt.toLocaleDateString('en-CA');
 
+      // Blurred time counts when the contract's blurred_billable setting says
+      // so (default true). Deleted time never counts, and flagged time waits
+      // until the client reviews it (review clears is_flagged) — per the
+      // Screenshot Deletion and Moderation backend docs.
       // Query TTS-owned tables only (time_tracking schema)
       const aggRows = await this.ds.query(
-        `SELECT
+        `WITH rules AS (
+           SELECT coalesce((SELECT blurred_billable FROM time_tracking.admin_settings WHERE scope_id = $2), true) AS blurred_billable
+         )
+         SELECT
            count(*)::int                     AS screenshot_count,
            min(captured_at)                  AS first_at,
            max(captured_at)                  AS last_at,
            round(avg(keyboard_pct)::numeric) AS avg_kbd,
            round(avg(mouse_pct)::numeric)    AS avg_mouse
-         FROM time_tracking.screenshots
+         FROM time_tracking.screenshots, rules
          WHERE user_id     = $1
            AND contract_id = $2
            AND ($3::text IS NULL OR task_id = $3)
            AND is_deleted  = false
-           AND is_blurred  = false
+           AND is_flagged  = false
+           AND (is_blurred = false OR rules.blurred_billable)
            AND captured_at IS NOT NULL
            AND date_trunc('day', captured_at) = $4::date`,
         [userId, contractId, taskId, day],

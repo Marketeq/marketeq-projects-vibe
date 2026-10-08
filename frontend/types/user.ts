@@ -20,6 +20,7 @@ export type User = {
   lastName?: string | null
   avatarUrl?: string | null
   phone?: string | null
+  currency?: string | null
   role: ROLE
   userType?: string | null
   accountType?: ROLE

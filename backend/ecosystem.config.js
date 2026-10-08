@@ -72,6 +72,9 @@ module.exports = {
     svc('resume-parsing-service', 3028),
     svc('location-service', 3036),
     svc('identity-verification-service', 3019),
+    // Port must match LEGAL_SERVICE_URL (listings-service) and the api-gateway
+    // default in proxy.controller.ts. legal-service's own default is 3015.
+    svc('legal-service', 3032),
     {
       name: 'cms-service',
       script: npmLauncher,

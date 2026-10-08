@@ -51,4 +51,5 @@ Team entity also has: `logo`, `specializations[]`, `completedProjects`
 - `STRAPI_SYNC_TOKEN` env var renamed to `CMS_SYNC_TOKEN`
 - `synchronize: true` in app.module.ts — auto-creates/updates tables (dev only, set to false before prod)
 - Two `project` table representations: `project` (TypeORM entity) and `projects` (used by cms-projects controller). The cms-projects controller reads from `projects`.
+- 2026-10-02: Added `POST /v1/job-listings/:id/smart-assistant/edit-selection` for non-persisting selected-text Smart Assistant edits. It returns replacement text only; frontend applies insertion locally.
 - Project scope saves (`PUT /publish/project/:id/scope`) go through `PhaseRepository.replaceForProject`: one transaction under a per-project advisory lock, batched queries, `createdAt` stepped 1ms per row because the draft endpoints order tasks by it. `PublishService` coalesces concurrent saves per project (latest payload wins). Before this, ~190 sequential queries per save plus the editor's 2s re-send exhausted the 128 MB heap on 2026-10-03 (PR #739).
