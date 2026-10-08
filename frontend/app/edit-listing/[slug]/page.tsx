@@ -57,6 +57,7 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowUpLeft,
+  ArrowUpRight,
   ChartBreakoutCircle,
   Check,
   XCircle,
@@ -200,6 +201,7 @@ import {
   AvatarFallback,
   AvatarImage,
   Badge,
+  BadgeCloseButton,
   Button,
   Dialog,
   DialogClose,
@@ -703,7 +705,13 @@ const meta = {
     { label: "Experience", name: "experience" },
     { label: "Duration", name: "duration" },
   ],
-  Team: [] as { label: string; name: string }[],
+  Team: [
+    { label: "Open Roles", name: "openRoles" },
+    { label: "Application Questions", name: "applicationQuestions" },
+    { label: "Members", name: "members" },
+    { label: "Requests", name: "requests" },
+    { label: "Invites", name: "invites" },
+  ] as { label: string; name: string }[],
   Questions: [
     { label: "FAQ's", name: "faqs" },
     { label: "Recent Questions", name: "recentQuestions" },
@@ -842,7 +850,7 @@ const Sidebar = ({
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
     useProjectInfoContext()
   const mediaMethods = useMediaContext()
-  const { projectScopeMethods, setTaskSearchDialogOpen } =
+  const { projectScopeMethods, setTaskSearchDialogOpen, teamSubTab, setTeamSubTab } =
     useProjectScopeContext()
   const [phases] = projectScopeMethods
   // Show status icons only after the user has started filling Project Scope
@@ -1020,7 +1028,13 @@ const Sidebar = ({
               )}
             </button>
 
-            {isActive && (
+            <div
+              className={cn(
+                "grid transition-[grid-template-rows] duration-300 ease-in-out",
+                isActive ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+              )}
+            >
+              <div className="overflow-hidden">
               <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
@@ -1141,6 +1155,28 @@ const Sidebar = ({
                         ) : null}
                       </div>
                     ))}
+                  {label === "Team" &&
+                    meta.Team.map((field, i) => {
+                      const isSubActive = teamSubTab === field.name
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3 cursor-pointer"
+                          key={i}
+                          onClick={() => setTeamSubTab(field.name)}
+                        >
+                          <span
+                            className={cn(
+                              "text-sm leading-6",
+                              isSubActive
+                                ? "text-primary-500"
+                                : "text-gray-500"
+                            )}
+                          >
+                            {field.label}
+                          </span>
+                        </div>
+                      )
+                    })}
                   {label === "Questions" &&
                     meta[label].map((field, i) => {
                       const hasValue =
@@ -1172,7 +1208,8 @@ const Sidebar = ({
                       )
                     })}
               </div>
-            )}
+              </div>
+            </div>
           </div>
         )
       })}
@@ -7166,10 +7203,384 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   pricingBudgetCents: number
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
+  teamSubTab: string
+  setTeamSubTab: React.Dispatch<React.SetStateAction<string>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
+
+type TeamSubTab = "openRoles" | "applicationQuestions" | "members" | "requests" | "invites"
+
+const TEAM_SUB_TAB_LABELS: Record<TeamSubTab, string> = {
+  openRoles: "Open Roles",
+  applicationQuestions: "Application Questions",
+  members: "Members",
+  requests: "Requests",
+  invites: "Invites",
+}
+
+// ---------------------------------------------------------------------------
+// Open Roles sub-tab content (pixel-perfect from Figma node 13101:118765)
+// ---------------------------------------------------------------------------
+const SAMPLE_SELECTED_ROLES = [
+  "Product Designer",
+  "UX Researcher",
+  "Frontend Developer",
+  "iOS Developer",
+  "Android Developer",
+  "Backend Engineer",
+  "UX Writer",
+  "DevOps Engineer",
+  "QA Engineer",
+  "React Native Dev",
+  "Full Stack Developer",
+  "Product Manager",
+]
+
+const SAMPLE_SUGGESTED_ROLES = [
+  "UX Researcher",
+  "Project Manager",
+  "QA Engineer",
+]
+
+const SAMPLE_ROLE_OPTIONS = [
+  "Product Designer",
+  "UX Researcher",
+  "Frontend Developer",
+  "iOS Developer",
+]
+
+const SAMPLE_ROLE_QUESTIONS = [
+  "What is your experience with mobile design systems?",
+  "Describe a challenging task you solved.",
+]
+
+const OpenRolesContent = () => {
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(SAMPLE_SELECTED_ROLES)
+  const MAX_ROLES = 15
+
+  const removeRole = (role: string) => {
+    setSelectedRoles((prev) => prev.filter((r) => r !== role))
+  }
+
+  const addRole = (role: string) => {
+    if (selectedRoles.length < MAX_ROLES && !selectedRoles.includes(role)) {
+      setSelectedRoles((prev) => [...prev, role])
+    }
+  }
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]">
+        {/* Left column */}
+        <div className="flex-auto min-w-0 flex flex-col">
+          <div className="flex flex-col gap-[18px]">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Open Roles
+            </h1>
+
+            <div className="flex flex-col gap-6">
+              {/* Roles input section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-3 items-end">
+                    <p className="flex-1 min-w-0 text-sm leading-5 font-normal text-gray-500">
+                      Specify the roles needed for this project, select a minimum of 3 and a maximum of 15. Roles are derived from your project categories.
+                    </p>
+                    <span className={cn(
+                      "shrink-0 text-xs font-normal text-right whitespace-nowrap",
+                      selectedRoles.length >= MAX_ROLES ? "text-warning-500" : "text-gray-500"
+                    )}>
+                      {selectedRoles.length}/{MAX_ROLES}
+                    </span>
+                  </div>
+
+                  {/* Roles input box */}
+                  <div className={cn(
+                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-start",
+                    selectedRoles.length >= MAX_ROLES ? "border-warning-300" : "border-gray-300"
+                  )}>
+                    {selectedRoles.map((role) => (
+                      <Badge
+                        key={role}
+                        visual="primary"
+                        size="sm"
+                        className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                      >
+                        {role}
+                        <BadgeCloseButton onClick={() => removeRole(role)}>
+                          <X className="size-3" />
+                        </BadgeCloseButton>
+                      </Badge>
+                    ))}
+                    {selectedRoles.length < MAX_ROLES && (
+                      <Badge
+                        visual="gray"
+                        size="sm"
+                        className="pl-1.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200"
+                      >
+                        <Plus className="size-3" />
+                        Add Role
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedRoles.length >= MAX_ROLES && (
+                    <p className="text-sm leading-5 font-normal text-warning-500">
+                      You've reached the maximum of {MAX_ROLES} roles.
+                    </p>
+                  )}
+                </div>
+
+                {/* Suggested Roles */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                    Suggested Roles
+                  </span>
+                  <div className="flex flex-wrap content-start gap-3">
+                    {SAMPLE_SUGGESTED_ROLES.map((role) => (
+                      <Badge
+                        key={role}
+                        visual="gray"
+                        size="md"
+                        className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                        onClick={() => addRole(role)}
+                      >
+                        {role}
+                        <Plus className="size-3.5 text-gray-500" />
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Empty state — shown when all roles are removed */}
+              {selectedRoles.length === 0 && (
+                <div className="flex flex-col gap-3 items-center justify-center p-4 rounded-[5px]">
+                  <div className="flex flex-col gap-2 items-center text-center">
+                    <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                      No Open Roles yet
+                    </h2>
+                    <p className="text-sm leading-5 font-light text-dark-blue-400">
+                      Start by adding open roles to define who you're looking for.
+                    </p>
+                  </div>
+                  <Button
+                    visual="gray"
+                    variant="outlined"
+                    className="bg-white"
+                    onClick={() => {
+                      /* TODO: open role picker */
+                    }}
+                  >
+                    <Plus className="size-[15px]" />
+                    Add Open Roles
+                  </Button>
+                </div>
+              )}
+
+              {/* Question preview card */}
+              <div className="flex flex-col gap-2">
+                <p className="text-sm leading-5 font-normal text-gray-500">
+                  This question appears when talent requests to join the project.
+                </p>
+
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                  <div className="flex gap-2.5 items-start">
+                    <div className="shrink-0 w-[15px] pt-[3px]">
+                      <Lock01 className="size-[15px] text-gray-500" />
+                    </div>
+
+                    <div className="flex-1 min-w-0 flex flex-col gap-3">
+                      {/* Question title + tags */}
+                      <div className="flex items-center">
+                        <div className="flex gap-6 items-center">
+                          <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
+                            Which role are you interested in?
+                          </span>
+                          <div className="flex gap-2 items-center">
+                            <Badge
+                              visual="gray"
+                              size="sm"
+                              className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                            >
+                              Default
+                            </Badge>
+                            <Badge
+                              visual="gray"
+                              size="sm"
+                              className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
+                            >
+                              Multi-Select
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="w-full h-px bg-gray-200" />
+
+                      {/* Available Options */}
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-3 items-center">
+                          <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
+                            Available Options
+                          </span>
+                          <Button
+                            variant="link"
+                            visual="primary"
+                            className="gap-1 text-xs font-bold leading-5 underline"
+                          >
+                            Edit Roles
+                            <ArrowUpRight className="size-[15px]" />
+                          </Button>
+                        </div>
+
+                        <div className="flex flex-wrap content-center gap-2.5 items-center">
+                          {SAMPLE_ROLE_OPTIONS.map((role) => (
+                            <Badge
+                              key={role}
+                              visual="gray"
+                              size="sm"
+                              className="h-[26px] pl-2 pr-1.5 py-0.5"
+                            >
+                              {role}
+                            </Badge>
+                          ))}
+                          <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500">
+                            + 8 more
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Role-Specific Questions */}
+              <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <span className="text-base font-semibold text-dark-blue-400">
+                      Role-Specific Questions
+                    </span>
+                    <p className="text-sm font-normal leading-5 text-gray-600">
+                      Here are your current Role-Specific questions. Click Edit to update them.
+                    </p>
+                  </div>
+                  <Button
+                    visual="gray"
+                    variant="outlined"
+                    className="shrink-0 bg-white"
+                  >
+                    <Edit03 className="size-[15px]" />
+                    Edit Role Questions
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap content-start gap-3">
+                  {SAMPLE_ROLE_QUESTIONS.map((q) => (
+                    <div
+                      key={q}
+                      className="bg-white border-[1.5px] border-gray-300 rounded-full px-3 py-1 flex items-center justify-center cursor-pointer transition duration-300 hover:bg-gray-50 hover:border-gray-400"
+                    >
+                      <span className="text-sm font-medium leading-5 text-gray-700">
+                        {q}
+                      </span>
+                    </div>
+                  ))}
+                  <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800">
+                    + 26 more
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right column — Arrow + Tip sidebar */}
+        <div className="shrink-0 self-start sticky top-6 xs:max-[1024px]:hidden flex items-start pt-6">
+          {/* Connector arrow (Figma 13101:176334) */}
+          <div className="flex items-center justify-center mr-[-8px] shrink-0 w-[25.455px] h-[71px]">
+            <svg className="rotate-90" width="71" height="20" viewBox="0 0 182.364 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 19V20V20V19ZM167 19V18V18V19ZM1 1.00001H0V11H1H2V1.00001H1ZM9 19V20L167 20V19V18L9 18V19ZM175 11H176V1H175H174V11H175ZM167 19V20C171.971 20 176 15.9705 176 11H175H174C174 14.866 170.866 18 167 18V19ZM1 11H0C0 15.9706 4.02944 20 9 20V19V18C5.13401 18 2 14.866 2 11H1ZM175.707 0.292893C175.317 -0.0976311 174.683 -0.0976311 174.293 0.292893L167.929 6.65685C167.538 7.04738 167.538 7.68054 167.929 8.07107C168.319 8.46159 168.953 8.46159 169.343 8.07107L175 2.41421L180.657 8.07107C181.047 8.46159 181.681 8.46159 182.071 8.07107C182.462 7.68054 182.462 7.04738 182.071 6.65685L175.707 0.292893Z" fill="#D0D5DD"/>
+            </svg>
+          </div>
+
+          <div className="p-5 rounded-lg w-[269px] bg-primary-50 flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-x-2">
+                <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
+                <span className="text-base leading-[30px] font-semibold capitalize text-gray-800">
+                  Tip
+                </span>
+              </div>
+              <p className="text-xs leading-normal text-black/60 tracking-[0.12px]">
+                A great title gives your audience a reason to open your project
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {/* Video player (Figma I13101:120092;112:190717) */}
+              <div className="w-full h-[141px] rounded-lg relative overflow-hidden cursor-pointer group/video">
+                <div className="absolute inset-0 bg-black/56 rounded-lg z-[1]" />
+                <div className="absolute inset-0 bg-black/10 rounded-lg z-[2]" />
+                {/* Play button */}
+                <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[58px] z-10 transition duration-300 group-hover/video:scale-110" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="24" fill="white" fillOpacity="0.3" />
+                  <circle cx="24" cy="24" r="18" fill="white" fillOpacity="0.4" />
+                  <path d="M20 16L32 24L20 32V16Z" fill="white" />
+                </svg>
+                {/* Duration badge */}
+                <div className="absolute bottom-[9.2px] right-[9.5px] bg-gray-500 rounded-[3.22px] px-[4.6px] py-[4.6px] z-10">
+                  <span className="text-xs font-normal leading-[24.7px] text-white text-center">01:20</span>
+                </div>
+                {/* Text overlay */}
+                <div className="absolute left-[12.4px] top-[47.6px] flex flex-col gap-1 z-10">
+                  <span className="text-xs font-medium leading-[27.6px] text-white/80">Part 1</span>
+                  <span className="text-[15.3px] font-medium leading-[36.8px] text-white">How to get started</span>
+                </div>
+              </div>
+
+              {/* Tip card 1 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Focus on purpose
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Use impactful keywords that communicate value and make it easy to identify in a list of projects.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tip card 2 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Keep it short and sweet
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Try to trim your project title to be less than 6 words
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
 
 const Team = () => {
   const [members, setMembers] = React.useState<any[]>([])
@@ -7203,6 +7614,7 @@ const Team = () => {
     setPendingInviteEmails,
     draftProjectId,
     projectScopeMethods,
+    teamSubTab,
   } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
@@ -7358,6 +7770,45 @@ const Team = () => {
     )
   }
 
+  if (teamSubTab === "openRoles") {
+    return <OpenRolesContent />
+  }
+
+  if (teamSubTab !== "members") {
+    const subLabel = TEAM_SUB_TAB_LABELS[teamSubTab as TeamSubTab] ?? teamSubTab
+    return (
+      <ScrollArea
+        className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+        scrollBar={<ScrollBar className="w-4 p-1" />}
+      >
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+          <div className="flex-auto min-w-0">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              {subLabel}
+            </h1>
+            <p className="mt-2 text-sm text-gray-500">
+              {teamSubTab === "applicationQuestions" &&
+                "Add screening questions that applicants must answer when requesting to join your project."}
+              {teamSubTab === "requests" &&
+                "Review and manage incoming join requests from talent who want to work on your project."}
+              {teamSubTab === "invites" &&
+                "Track invitations you have sent to talent for this project."}
+            </p>
+            <div className="mt-10 flex flex-col items-center justify-center py-16 text-center">
+              <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <Info className="size-5 text-gray-400" />
+              </div>
+              <p className="text-sm text-gray-500">
+                {subLabel} will be available here once the project is published.
+              </p>
+            </div>
+          </div>
+        </div>
+      </ScrollArea>
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -7367,7 +7818,7 @@ const Team = () => {
       <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
         <div className="flex-auto min-w-0">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-            Team
+            Members
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             Select a team member to transfer lead status and all related
@@ -8995,6 +9446,7 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
@@ -9839,6 +10291,8 @@ function PublishProject({
       pricingBudgetCents,
       scopeType,
       setScopeType,
+      teamSubTab,
+      setTeamSubTab,
     }),
     [
       projectScopeMethods,
@@ -9856,6 +10310,8 @@ function PublishProject({
       pricingBudgetCents,
       scopeType,
       setScopeType,
+      teamSubTab,
+      setTeamSubTab,
     ]
   )
   //  Validate the current step when Next is clicked
