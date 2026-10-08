@@ -34,6 +34,7 @@ const WORKING_DAYS_PER_WEEK = 5;
 const EXPERIENCE_LEVEL_MAP: Record<string, string> = {
   student: 'student',
   junior:  'junior',
+  mid:     'medior',
   medior:  'medior',
   senior:  'senior',
   guru:    'guru',

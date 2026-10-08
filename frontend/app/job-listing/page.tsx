@@ -14538,13 +14538,14 @@ const NdaPreviewDialog = ({
             NDA Sample
           </DialogTitle>
           <DialogClose asChild>
-            <button
-              type="button"
-              className="flex size-6 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500 focus-visible:outline-none"
+            <IconButton
+              variant="ghost"
+              visual="gray"
+              className="size-6 text-gray-400 hover:text-gray-500"
               aria-label="Close NDA preview"
             >
               <X2 className="size-6" />
-            </button>
+            </IconButton>
           </DialogClose>
         </DialogHeader>
         <div className="max-h-[640px] overflow-y-auto bg-gray-100 px-8 py-6">
@@ -16935,16 +16936,17 @@ const FinalServiceReviewStep = ({
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {serviceAssistantFollowUpSuggestions.length > 0 ? (
                 <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
-                  <button
-                    type="button"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
                     onClick={() =>
                       setShowServiceAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
                     <span className="flex-1">
                       {showServiceAssistantFollowUps
-                        ? "Use this suggestions"
+                        ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
@@ -16953,7 +16955,7 @@ const FinalServiceReviewStep = ({
                         showServiceAssistantFollowUps && "rotate-180"
                       )}
                     />
-                  </button>
+                  </Button>
                   {showServiceAssistantFollowUps ? (
                     <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
                       {serviceAssistantFollowUpSuggestions.map((suggestion) => (
@@ -16998,14 +17000,15 @@ const FinalServiceReviewStep = ({
                     <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
                       “{serviceAssistant.selectedText}
                     </p>
-                    <button
-                      type="button"
-                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
                       aria-label="Clear selected text"
                       onClick={serviceAssistant.clearSelectedText}
                     >
                       <X2 className="size-5" />
-                    </button>
+                    </IconButton>
                   </div>
                 ) : null}
                 <Textarea
@@ -17899,16 +17902,17 @@ const FinalProjectReviewStep = ({
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {projectAssistantFollowUpSuggestions.length > 0 ? (
                 <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
-                  <button
-                    type="button"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs font-normal leading-[18px] text-gray-400"
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
                     onClick={() =>
                       setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
                     <span className="flex-1">
                       {showProjectAssistantFollowUps
-                        ? "Use this suggestions"
+                        ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
@@ -17917,7 +17921,7 @@ const FinalProjectReviewStep = ({
                         showProjectAssistantFollowUps && "rotate-180"
                       )}
                     />
-                  </button>
+                  </Button>
                   {showProjectAssistantFollowUps ? (
                     <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
                       {projectAssistantFollowUpSuggestions.map((suggestion) => (
@@ -17962,14 +17966,15 @@ const FinalProjectReviewStep = ({
                     <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
                       “{projectAssistant.selectedText}
                     </p>
-                    <button
-                      type="button"
-                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
                       aria-label="Clear selected text"
                       onClick={projectAssistant.clearSelectedText}
                     >
                       <X2 className="size-5" />
-                    </button>
+                    </IconButton>
                   </div>
                 ) : null}
                 <Textarea
@@ -21114,16 +21119,17 @@ const ExistingContractFinalReviewStep = ({
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
               {roleAssistantFollowUpSuggestions.length > 0 ? (
                 <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
-                  <button
-                    type="button"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch text-left text-xs leading-[18px] font-normal text-gray-400"
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs leading-[18px] font-normal text-gray-400 hover:bg-transparent"
                     onClick={() =>
                       setShowRoleAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
                     <span className="flex-1">
                       {showRoleAssistantFollowUps
-                        ? "Use this suggestions"
+                        ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
@@ -21132,7 +21138,7 @@ const ExistingContractFinalReviewStep = ({
                         showRoleAssistantFollowUps && "rotate-180",
                       )}
                     />
-                  </button>
+                  </Button>
                   {showRoleAssistantFollowUps ? (
                     <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
                       {roleAssistantFollowUpSuggestions.map((suggestion) => (
@@ -21172,14 +21178,15 @@ const ExistingContractFinalReviewStep = ({
                     <p className="min-w-0 flex-1 truncate text-sm leading-5 font-normal text-dark-blue-400">
                       “{roleAssistant.selectedText}
                     </p>
-                    <button
-                      type="button"
-                      className="inline-flex size-5 shrink-0 items-center justify-center text-gray-400 hover:text-gray-500"
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
                       aria-label="Clear selected text"
                       onClick={roleAssistant.clearSelectedText}
                     >
                       <X2 className="size-5" />
-                    </button>
+                    </IconButton>
                   </div>
                 ) : null}
                 <Textarea
@@ -21701,7 +21708,7 @@ const TeamRoles = ({
             </h1>
             <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
               Add the roles, locations, and experience levels you&apos;re
-              looking for—we&apos;ll estimate pay rates and help you build the
+              looking for, we&apos;ll estimate pay rates and help you build the
               right team faster.
             </p>
           </div>

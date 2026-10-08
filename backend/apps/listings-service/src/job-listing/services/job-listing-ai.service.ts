@@ -1151,10 +1151,8 @@ export class JobListingAiService {
 
       const apiUrl =
         this.config.get<string>("GROQ_API_URL") ?? this.defaultApiUrl;
-      const model = this.config.get<string>("GROQ_MODEL");
-      if (!model) {
-        throw new Error("GROQ_MODEL is not configured");
-      }
+      const model = this.config.get<string>("GROQ_MODEL") ?? "llama-3.1-8b-instant";
+
       const maxTokens =
         options.maxTokens ??
         this.configNumber("GROQ_MAX_TOKENS", DEFAULT_GROQ_MAX_TOKENS);
