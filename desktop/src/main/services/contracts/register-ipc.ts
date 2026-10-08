@@ -83,6 +83,29 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     return Array.isArray(data) ? data : [];
   };
 
+  // The client's picture for the contract card. A contract only carries the
+  // client's id and name, so this reads `avatarUrl` from the same
+  // `GET /users/:id` profile the web's UserAPI.getProfile uses. The client
+  // profile page shows that field as the company logo, so it already covers
+  // "company logo, else avatar". Any failure is null — the card falls back
+  // to its letter, and the contract list still loads.
+  const fetchClientAvatarUrl = async (clientId: string): Promise<string | null> => {
+    try {
+      const res = await authedFetch(
+        `${deps.apiBaseUrl}/users/${encodeURIComponent(clientId)}`,
+      );
+      if (!res.ok) {
+        log?.warn({ clientId, status: res.status }, 'failed to fetch client avatar');
+        return null;
+      }
+      const data = await res.json();
+      return typeof data?.avatarUrl === 'string' && data.avatarUrl ? data.avatarUrl : null;
+    } catch (err) {
+      log?.warn({ err, clientId }, 'failed to fetch client avatar');
+      return null;
+    }
+  };
+
   const handle = async (): Promise<BackendContract[]> => {
     const token = deps.getAccessToken();
     const userId = deps.getUserId();
@@ -107,6 +130,17 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     // The backend returns an array of Contract entities
     const contracts: BackendContract[] = Array.isArray(data) ? data : [];
     log?.info({ count: contracts.length }, 'contracts fetched');
+
+    // One lookup per client, not per contract — a client can hire on several.
+    const clientIds = [...new Set(contracts.map((c) => c.clientId).filter(Boolean))];
+    const avatarByClient = new Map(
+      await Promise.all(
+        clientIds.map(async (id) => [id, await fetchClientAvatarUrl(id)] as const),
+      ),
+    );
+    for (const c of contracts) {
+      c.clientAvatarUrl = avatarByClient.get(c.clientId) ?? null;
+    }
 
     // Mirror each contract and its real tasks into local SQLite so the
     // session table's FK constraints are satisfied.

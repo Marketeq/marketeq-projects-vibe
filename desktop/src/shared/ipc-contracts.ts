@@ -543,6 +543,8 @@ export interface BackendContract {
   groupId: string;
   clientId: string;
   clientName?: string;
+  /** Client's picture (their profile avatarUrl), added by the desktop main process. */
+  clientAvatarUrl?: string | null;
   talentId: string;
   title: string;
   rate: number;
