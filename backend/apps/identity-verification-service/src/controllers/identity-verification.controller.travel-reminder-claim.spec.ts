@@ -230,10 +230,10 @@ describe('POST /v1/identity-verification/travel-reminder/claim', () => {
   });
 
   describe('no VPN guard', () => {
-    it('is not guarded by VpnProxyCheckGuard: with that guard denying, /me is refused but the claim works', async () => {
+    it('is not guarded by VpnProxyCheckGuard: with that guard denying, a guarded route is refused but the claim works', async () => {
       await build(dueDay3(), false);
 
-      await request(app.getHttpServer()).get(ME).set(auth()).expect(403);
+      await request(app.getHttpServer()).get('/v1/identity-verification/connection-check').set(auth()).expect(403);
       const res = await claim().expect(200);
 
       expect(res.body).toEqual({ claimed: true });

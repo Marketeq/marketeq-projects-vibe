@@ -213,7 +213,7 @@ describe("what is preserved around the banner", () => {
   it("rejected users no longer get the modal-style gate automatically (banner instead)", () => {
     assert.ok(page.includes('reason="unstarted"'))
     assert.ok(!page.includes("setGateReason"))
-    assert.ok(page.includes("setVerificationGateOpen(shouldOpenFirstTimeGate(summary))"))
+    assert.ok(!page.includes("shouldOpenFirstTimeGate"))
   })
   it("a verified status elsewhere hides the banner too", () => {
     assert.match(page, /if \(status !== "verified"\) return\s+setVerificationGateOpen\(false\)\s+setIdentityFlowOpen\(false\)\s+setProfileBannerShown\(false\)/)

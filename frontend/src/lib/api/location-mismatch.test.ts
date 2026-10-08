@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import type { DetectedLocation } from "./detected-location"
+import { shouldShowProfileBanner } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 import {
   type MismatchDeps,
@@ -92,6 +93,22 @@ describe("when the prompt shows", () => {
     )
     assert.equal(shouldShowLocationMismatchPrompt(summary(complete)), false)
     assert.equal(shouldShowLocationMismatchPrompt(null), false)
+  })
+
+  it("a first-time unverified user gets the banner, never the mismatch popup, even without the auto-opening gate", () => {
+    for (const nextAction of ["confirm_location", "start_identity"]) {
+      for (const locationMismatch of [false, true]) {
+        const first = summary({ nextAction, fullyVerified: false, locationMismatch })
+        assert.equal(shouldShowProfileBanner(first), true, nextAction)
+        assert.equal(shouldShowLocationMismatchPrompt(first), false, `${nextAction}/${locationMismatch}`)
+      }
+    }
+    const load = page.slice(
+      page.indexOf("const runIdentityVerificationCheck"),
+      page.indexOf("// A start attempt rejected as not startable")
+    )
+    assert.ok(load.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
+    assert.ok(!load.includes("setVerificationGateOpen"))
   })
 
   it("never competes with the first-time gate", () => {
@@ -216,10 +233,8 @@ describe("the first-time flow is preserved", () => {
     assert.ok(flow.includes("How long are you traveling?"))
   })
 
-  it("leaves the first-time gate and Verify My Account path in the page as they were", () => {
-    assert.ok(
-      page.includes("setVerificationGateOpen(shouldOpenFirstTimeGate(summary))")
-    )
+  it("never opens the blocking gate on load, and leaves the Verify My Account path as it was", () => {
+    assert.ok(!page.includes("shouldOpenFirstTimeGate"))
     assert.ok(
       page.includes("const handleVerifyMyAccount = useCallback(async () => {")
     )

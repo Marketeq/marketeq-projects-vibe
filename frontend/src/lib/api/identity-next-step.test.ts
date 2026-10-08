@@ -194,10 +194,11 @@ describe("dashboard wiring and boundaries (source guards)", () => {
   const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// A start attempt rejected as not startable"))
   const handler = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("}, [runIdentityVerificationCheck])"))
 
-  it("the load check reads only the backend summary: banner, first-time gate and cooldown dialog come from it", () => {
+  it("the load check reads only the backend summary: banner and cooldown dialog come from it, and it never opens the blocking gate", () => {
     assert.ok(check.includes("const summary = await fetchIdentityVerificationSummary()"))
     assert.ok(check.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
-    assert.ok(check.includes("setVerificationGateOpen(shouldOpenFirstTimeGate(summary))"))
+    assert.ok(!check.includes("setVerificationGateOpen"), "dashboard load must not open the gate")
+    assert.ok(!page.includes("shouldOpenFirstTimeGate"))
     assert.ok(check.includes("setCooldownRetryTime(cooldownRetryAt(summary))"))
     assert.ok(!check.includes("checkIdentityVerificationStatus"), "no older status-check fallback")
   })
