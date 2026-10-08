@@ -109,16 +109,16 @@ export class ContractPartiesClient implements OnModuleInit, OnModuleDestroy {
     try {
       await this.ensureConnected();
     } catch {
-      throw new ServiceUnavailableException('Contract lookup is unavailable — try again shortly');
+      throw new ServiceUnavailableException('Contract lookup is unavailable. Try again shortly');
     }
     const channel = this.channel;
-    if (!channel) throw new ServiceUnavailableException('Contract lookup is unavailable — try again shortly');
+    if (!channel) throw new ServiceUnavailableException('Contract lookup is unavailable. Try again shortly');
 
     const correlationId = randomUUID();
     return new Promise<ContractParties[]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(correlationId);
-        reject(new ServiceUnavailableException('Contract lookup timed out — try again shortly'));
+        reject(new ServiceUnavailableException('Contract lookup timed out. Try again shortly'));
       }, REQUEST_TIMEOUT_MS);
       this.pending.set(correlationId, { resolve, reject, timer });
       channel.sendToQueue(CONTRACT_PARTIES_QUEUE, Buffer.from(JSON.stringify(body)), {
@@ -138,12 +138,12 @@ export class ContractPartiesClient implements OnModuleInit, OnModuleDestroy {
     try {
       const reply = JSON.parse(msg.content.toString()) as { contracts?: ContractParties[]; error?: string };
       if (reply.error || !Array.isArray(reply.contracts)) {
-        p.reject(new ServiceUnavailableException('Contract lookup failed — try again shortly'));
+        p.reject(new ServiceUnavailableException('Contract lookup failed. Try again shortly'));
         return;
       }
       p.resolve(reply.contracts);
     } catch {
-      p.reject(new ServiceUnavailableException('Contract lookup failed — try again shortly'));
+      p.reject(new ServiceUnavailableException('Contract lookup failed. Try again shortly'));
     }
   }
 
@@ -185,7 +185,7 @@ export class ContractPartiesClient implements OnModuleInit, OnModuleDestroy {
     this.connection = null;
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new ServiceUnavailableException('Contract lookup is unavailable — try again shortly'));
+      p.reject(new ServiceUnavailableException('Contract lookup is unavailable. Try again shortly'));
     }
     this.pending.clear();
     if (this.shuttingDown || this.reconnectTimer) return;
