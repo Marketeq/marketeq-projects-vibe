@@ -28,7 +28,10 @@ export const createManualTime = async (data: {
   return res.data
 }
 
-export const getManualTime = async (): Promise<ManualTimeDTO[]> => {
-  const res = await AxiosRequest.get("/manual-time")
+/** The caller's own entries, or with "client" those logged on the caller's client contracts. */
+export const getManualTime = async (
+  view: "talent" | "client" = "talent"
+): Promise<ManualTimeDTO[]> => {
+  const res = await AxiosRequest.get("/manual-time", view === "client" ? { params: { view } } : undefined)
   return res.data
 }
