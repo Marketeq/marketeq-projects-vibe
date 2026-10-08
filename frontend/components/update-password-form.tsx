@@ -16,6 +16,7 @@ import { SubmitHandler, useForm, useWatch } from "react-hook-form"
 import { z } from "zod"
 import { Button } from "./ui"
 import { Spinner } from "./ui/spinner/spinner"
+import { Checkbox } from "./ui/checkbox"
 import { Input, InputRightElement } from "./ui/input"
 import { InputGroup } from "./ui/input-group"
 import { Label } from "./ui/label"
@@ -162,28 +163,24 @@ export const UpdatePasswordForm = ({
 
             <div className="inline-grid mt-3 grid-cols-2 gap-x-10 gap-y-2">
               <div className="flex items-center gap-x-2">
-                {containsNumberOfChars({
-                  value: password,
-                  numberOfChars: 8,
-                }) ? (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full text-white bg-success-500">
-                    <Check className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full border-[1.5px] border-gray-300" />
-                )}
+                <Checkbox
+                  size="md"
+                  variant="circular"
+                  checked={containsNumberOfChars({
+                    value: password,
+                    numberOfChars: 8,
+                  })}
+                />
                 <span className="text-sm font-medium leading-5 text-dark-blue-400">
                   At least 8 characters
                 </span>
               </div>
               <div className="flex items-center gap-x-2">
-                {containsOneNumber(password) ? (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full text-white bg-success-500">
-                    <Check className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full border-[1.5px] border-gray-300" />
-                )}
+                <Checkbox
+                  size="md"
+                  variant="circular"
+                  checked={containsOneNumber(password)}
+                />
 
                 <span className="text-sm font-medium leading-5 text-dark-blue-400">
                   One number
@@ -191,39 +188,33 @@ export const UpdatePasswordForm = ({
               </div>
 
               <div className="flex items-center gap-x-2">
-                {containsOneUpperCaseLetter(password) ? (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full text-white bg-success-500">
-                    <Check className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full border-[1.5px] border-gray-300" />
-                )}
+                <Checkbox
+                  size="md"
+                  variant="circular"
+                  checked={containsOneUpperCaseLetter(password)}
+                />
 
                 <span className="text-sm font-medium leading-5 text-dark-blue-400">
                   One uppercase letter
                 </span>
               </div>
               <div className="flex items-center gap-x-2">
-                {containsOneSymbol(password) ? (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full text-white bg-success-500">
-                    <Check className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full border-[1.5px] border-gray-300" />
-                )}
+                <Checkbox
+                  size="md"
+                  variant="circular"
+                  checked={containsOneSymbol(password)}
+                />
 
                 <span className="text-sm font-medium leading-5 text-dark-blue-400">
                   One symbol
                 </span>
               </div>
               <div className="flex items-center gap-x-2">
-                {containsOneLowerCaseLetter(password) ? (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full text-white bg-success-500">
-                    <Check className="size-3.5" />
-                  </span>
-                ) : (
-                  <span className="size-5 inline-flex items-center justify-center shrink-0 rounded-full border-[1.5px] border-gray-300" />
-                )}
+                <Checkbox
+                  size="md"
+                  variant="circular"
+                  checked={containsOneLowerCaseLetter(password)}
+                />
 
                 <span className="text-sm font-medium leading-5 text-dark-blue-400">
                   One lowercase letter

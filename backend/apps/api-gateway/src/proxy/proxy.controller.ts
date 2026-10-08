@@ -16,6 +16,9 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   'user-keys': 'users',
   devices: 'users',
   notifications: 'notifications',
+  // Contact Support (account recovery) — notification-service owns the
+  // @Controller('support') that serves it.
+  support: 'support',
   search: 'search',
   algolia: 'algolia',
   favorites: 'favorites',

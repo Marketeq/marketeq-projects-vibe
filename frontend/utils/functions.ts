@@ -281,12 +281,20 @@ export const containsOneUpperCaseLetter = (value: string) => {
 
 /**
  * Tests whether the given value contains at least one symbol.
+ *
+ * Any non-alphanumeric character counts, which is what auth-service enforces
+ * in `StrongPassword` (`/[^a-zA-Z0-9]/`). This used to be a closed list of
+ * fourteen characters, so 18 symbols the API accepts -- `~ ( ) [ ] { } / \ | ;
+ * : " ' < > =` and a backtick -- left the rule unmet. On /forgot-password that
+ * holds Save disabled with nothing on screen explaining why, which is the worst
+ * possible moment for it: the user is already locked out.
+ *
  * @param value - The string needs to be tested.
  */
 export const containsOneSymbol = (value: string) => {
   const { success } = z
     .string()
-    .refine((data) => /(?=.*[-+_!@#$%^&*., ?])/.test(data))
+    .refine((data) => /[^a-zA-Z0-9]/.test(data))
     .safeParse(value)
   return success
 }

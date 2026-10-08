@@ -22,6 +22,10 @@ export class ProxyService {
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',
       notifications: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',
+      // Contact Support (account recovery) is served by notification-service's
+      // @Controller('support'); it owns Brevo, so the mail goes out from the
+      // service that already sends mail rather than a second Brevo client.
+      support: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',
       search: config.get('SEARCH_SERVICE_URL') || 'http://localhost:3007',
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
@@ -73,6 +77,13 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // auth-service parses this with ua-parser-js to label a session's
+      // browser/OS (createSession) and to tell the user which device changed
+      // their password. Without it every session records as a bare "desktop"
+      // with no browser or OS, and the notification email cannot name the
+      // device — same class of silent breakage as the x-forwarded-for case
+      // below, and invisible because an absent header is not an error.
+      ...(req.headers['user-agent'] ? { 'user-agent': req.headers['user-agent'] as string } : {}),
       // Company-scoped invitations routes (CompanyContextGuard) read this
       // to authorize the caller against :companyId.
       ...(req.headers['x-company-id'] ? { 'x-company-id': req.headers['x-company-id'] as string } : {}),

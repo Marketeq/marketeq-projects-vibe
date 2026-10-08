@@ -1,8 +1,15 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { useBillingExportStore } from "@/lib/billing-export"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { useDropzone } from "react-dropzone"
 import Cookies from "js-cookie"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
@@ -10,8 +17,13 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { UserAPI, UserProfilePayload } from "@/service/http/user"
 import { useRefreshUser } from "../hooks/use-refresh-user"
 import { useCompanyInfo } from "../hooks/use-company-info"
+import { useSecurityQuestions } from "../hooks/use-security-questions"
 import { useClientIp } from "../hooks/use-client-ip"
 import { useAllowedIps } from "../hooks/use-allowed-ips"
+import {
+  fingerprintFailureMessage,
+  promptForFingerprint,
+} from "@/lib/webauthn"
 import AllowedIpsAPI from "@/service/http/allowed-ips"
 import { AuthAPI } from "@/service/http/auth"
 import { ClientAPI } from "@/service/http/client"
@@ -39,7 +51,9 @@ import { PhoneNumberInput, isPhoneValid } from "@/components/phone-number-input"
 import dynamic from "next/dynamic"
 import { AndroidBrand, AppleBrand, MicrosoftBrand } from "@blend-metrics/icons/brands"
 import {
+  AlertCircle,
   AlertTriangle,
+  Scan,
   ArrowDown,
   ArrowUp,
   Check,
@@ -132,6 +146,8 @@ import {
   DialogDescription,
   DialogOverlay,
   DialogTitle,
+  ErrorMessage,
+  SixDigitPinInput,
   IconButton,
   Input,
   InputGroup,
@@ -184,6 +200,28 @@ const INTEGRATIONS = [
 // Cap on how many IPs one dialog can add before "Add More" greys out.
 const MAX_IP_ROWS = 10
 
+/**
+ * One line for the outcome of an import.
+ *
+ * An address can now be left out for two different reasons — it was already on
+ * the list, or an entry already on the list covers it — and they need saying
+ * separately. "Skipped 3" over a table that grew by none reads as a glitch;
+ * naming the reason is what makes it actionable.
+ */
+const summariseIpImport = (
+  added: number,
+  skipped: number,
+  overlapping: number
+): string => {
+  const notes: string[] = []
+  if (skipped > 0) notes.push(`skipped ${skipped} already on your list`)
+  if (overlapping > 0)
+    notes.push(`skipped ${overlapping} overlapping an existing entry`)
+  return notes.length > 0
+    ? `Added ${added}, ${notes.join(", ")}`
+    : "Successfully added IP addresses"
+}
+
 // Current session first, then most recently active — the ordering
 // ActiveSessionsModal already uses. Shared so the initial load and the refetch
 // after a removal cannot drift apart, which is what made the list silently
@@ -217,6 +255,7 @@ export default function SettingsPage() {
   const router = useRouter()
   const routeParams = useParams()
   const searchParams = useSearchParams()
+  const pathname = usePathname()
 
   // /settings/<tab> is the real URL. ?tab= is still honoured so links shared
   // before this existed keep working, and bare /settings lands on the first
@@ -736,40 +775,277 @@ export default function SettingsPage() {
     passwordForm.next !== "" ||
     passwordForm.confirm !== ""
 
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [isSavingPassword, setIsSavingPassword] = useState(false)
+
   const [isDiscardOpen, setIsDiscardOpen] = useState(false)
   const [isFingerprintOpen, setIsFingerprintOpen] = useState(false)
   const [acceptsFingerprintTerms, setAcceptsFingerprintTerms] = useState(false)
+  const [fingerprintError, setFingerprintError] = useState<string | null>(null)
+  const [isEnrollingFingerprint, setIsEnrollingFingerprint] = useState(false)
 
   const [isFingerprintEnabled, setIsFingerprintEnabled] = useState(false)
 
+  /**
+   * Fingerprint enrolment is remembered per device, not on the account.
+   *
+   * A WebAuthn platform credential lives in *this* device's authenticator, so
+   * "fingerprint login is on" is a fact about this browser on this machine and
+   * not something that should follow the user to another one. It is keyed by
+   * user id so two accounts on a shared machine do not inherit each other's.
+   *
+   * It is also the only place it can live today: lib/webauthn.ts generates the
+   * challenge in the browser and discards the credential, because there is no
+   * credentials table and no verification endpoint. Storing a server-side flag
+   * would assert an enrolment the server cannot verify — the same shape as the
+   * bugs this branch has been removing. When real WebAuthn lands, this reads
+   * from the server instead and this comment goes with it.
+   *
+   * Read in an effect rather than a useState initialiser so the server render
+   * and the first client render agree; localStorage does not exist during SSR.
+   */
+  const fingerprintStorageKey = user?.id
+    ? `marketeq-fingerprint-enabled:${user.id}`
+    : null
+
+  useEffect(() => {
+    if (!fingerprintStorageKey) return
+    try {
+      setIsFingerprintEnabled(
+        window.localStorage.getItem(fingerprintStorageKey) === "true"
+      )
+    } catch {
+      // Private browsing and blocked storage both throw. The control still
+      // works for this session; it just will not be remembered.
+    }
+  }, [fingerprintStorageKey])
+
   const closeFingerprint = () => {
     setAcceptsFingerprintTerms(false)
+    setFingerprintError(null)
     setIsFingerprintOpen(false)
   }
 
-  const handleEnableFingerprint = () => {
-    setIsFingerprintEnabled(true)
-    setSavedAlertMessage("Successfully enabled fingerprint login")
-    setIsSavedAlertMounted(true)
-    closeFingerprint()
+  /**
+   * Actually prompts the device's sensor before turning the setting on.
+   *
+   * The dialog says "Confirm your fingerprint on your device" and used to turn
+   * the setting on without asking anything, so a device with no sensor at all
+   * still reported success.
+   *
+   * Note what this still is not: the credential is not stored or verified
+   * server-side, so this switch does not yet let anyone sign in with a
+   * fingerprint. See lib/webauthn.ts.
+   */
+  const handleEnableFingerprint = async () => {
+    if (isEnrollingFingerprint) return
+
+    setIsEnrollingFingerprint(true)
+    setFingerprintError(null)
+    try {
+      await promptForFingerprint({
+        id: user?.id ?? "unknown",
+        name: user?.email ?? user?.username ?? "Marketeq user",
+        displayName:
+          [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
+          user?.username ||
+          "Marketeq user",
+      })
+      setIsFingerprintEnabled(true)
+      // Persisted only after the sensor actually confirmed, so a cancelled or
+      // failed scan leaves nothing behind.
+      if (fingerprintStorageKey) {
+        try {
+          window.localStorage.setItem(fingerprintStorageKey, "true")
+        } catch {
+          // Storage unavailable — the badge holds for this session only.
+        }
+      }
+      setSavedAlertMessage("Successfully enabled fingerprint login")
+      setIsSavedAlertMounted(true)
+      closeFingerprint()
+    } catch (failure) {
+      // Stays open on failure: the person is mid-task and the usual fix is to
+      // try the scan again, not to start over.
+      setFingerprintError(fingerprintFailureMessage(failure))
+    } finally {
+      setIsEnrollingFingerprint(false)
+    }
   }
 
   const closeUpdatePassword = () => {
     setPasswordForm({ current: "", next: "", confirm: "" })
     setVisiblePasswords({ current: false, next: false, confirm: false })
+    setPasswordError(null)
     setIsUpdatePasswordOpen(false)
   }
 
-  const handlePasswordSave = () => {
-    setSavedAlertMessage("Your password has been updated")
-    setIsSavedAlertMounted(true)
-    closeUpdatePassword()
+  /**
+   * Only reports success once the server has confirmed it. The screen used to
+   * announce "Your password has been updated" without calling anything, which
+   * told someone their password had changed when it had not.
+   *
+   * A failure leaves the form open with what they typed intact -- clearing it
+   * would make them retype a password they got right to fix the one they got
+   * wrong.
+   */
+  const handlePasswordSave = async () => {
+    if (!canSavePassword || isSavingPassword) return
+
+    setIsSavingPassword(true)
+    setPasswordError(null)
+    try {
+      await AuthAPI.ChangePassword({
+        currentPassword: passwordForm.current,
+        newPassword: passwordForm.next,
+      })
+      setSavedAlertMessage("Your password has been updated")
+      setIsSavedAlertMounted(true)
+      closeUpdatePassword()
+    } catch (error: any) {
+      const raw =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message
+      // ValidationPipe returns an array of messages; everything else is one
+      // finished sentence already, so it is surfaced as the server wrote it
+      // rather than wrapped in "Please try again" -- retrying does not help an
+      // account that signs in with a social provider.
+      setPasswordError(
+        (Array.isArray(raw) ? raw.join(". ") : raw) ||
+          "Something went wrong. Please try again."
+      )
+    } finally {
+      setIsSavingPassword(false)
+    }
   }
 
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [showSessionsModal, setShowSessionsModal] = useState(false)
   const [twoFactorPhone, setTwoFactorPhone] = useState("")
   const isTwoFactorEnabled = user?.twoFactorEnabled ?? false
+
+  const [isAuthenticatorOpen, setIsAuthenticatorOpen] = useState(false)
+  const [authenticatorQr, setAuthenticatorQr] = useState<string | null>(null)
+  const [authenticatorCode, setAuthenticatorCode] = useState("")
+  const [authenticatorError, setAuthenticatorError] = useState<string | null>(
+    null
+  )
+  const [isAuthenticatorBusy, setIsAuthenticatorBusy] = useState(false)
+
+  // Derived, not local state: enrolment lives on the account, so a local flag
+  // reads false again on every reload and the badge disappears even though the
+  // authenticator is still enrolled.
+  const isAuthenticatorEnabled = user?.twoFactorEnabled ?? false
+
+  /**
+   * Fills in twoFactorEnabled, which `user` arrives without.
+   *
+   * AuthProvider loads the user from GET /user/me, served by user-service —
+   * and twoFactorEnabled is a column on auth-service's user table, which has
+   * no counterpart there. So the field is always undefined on load and the
+   * badge stayed hidden on every reload for an account that *is* enrolled;
+   * it only appeared for the moment after enrolling, from the in-memory
+   * setUser below. The login response does carry the flag, but a page opened
+   * on an existing session never sees that response.
+   *
+   * Read from the service that owns it and folded into the same user object,
+   * so this badge and the Two-Factor section keep reading it as they already
+   * do rather than each growing their own source of truth.
+   */
+  useEffect(() => {
+    if (!user?.id) return
+
+    let cancelled = false
+    AuthAPI.GetTwoFactorStatus()
+      .then((res) => {
+        if (cancelled) return
+        const data = (res as any)?.data ?? res
+        const enabled: boolean = data?.enabled ?? false
+        const method = (data?.method ?? null) as "totp" | "sms" | null
+        // Returning prev unchanged when it already agrees keeps this from
+        // re-rendering in a loop off its own write.
+        setUser((prev) =>
+          prev &&
+          (prev.twoFactorEnabled !== enabled || prev.twoFactorMethod !== method)
+            ? { ...prev, twoFactorEnabled: enabled, twoFactorMethod: method }
+            : prev
+        )
+      })
+      .catch(() => {
+        // Advisory only: if the status cannot be read, leave the badge hidden
+        // rather than assert an enrolment we could not confirm.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, setUser])
+
+  /**
+   * The QR is minted server-side and the secret stored encrypted against the
+   * account, so it is fetched when the modal opens rather than held in advance
+   * — generating one the person never scans would rotate a secret for nothing.
+   */
+  const openAuthenticator = async () => {
+    setIsAuthenticatorOpen(true)
+    setAuthenticatorCode("")
+    setAuthenticatorError(null)
+    setAuthenticatorQr(null)
+
+    // Generating again would rotate the stored secret and invalidate the
+    // authenticator already enrolled, so the server refuses it. Say so here
+    // rather than spending a request to be told.
+    if (isAuthenticatorEnabled) {
+      setAuthenticatorError(
+        "An authenticator app is already enrolled on this account."
+      )
+      return
+    }
+
+    setIsAuthenticatorBusy(true)
+    try {
+      const res = await AuthAPI.GenerateTwoFactor()
+      const data = (res as any)?.data ?? res
+      setAuthenticatorQr(data?.qrCodeDataUrl ?? null)
+    } catch (error) {
+      const message = (error as any)?.response?.data?.message
+      setAuthenticatorError(
+        Array.isArray(message)
+          ? message[0]
+          : (message ??
+            "We could not start authenticator setup. Try again shortly.")
+      )
+    } finally {
+      setIsAuthenticatorBusy(false)
+    }
+  }
+
+  const verifyAuthenticator = async () => {
+    setAuthenticatorError(null)
+    setIsAuthenticatorBusy(true)
+    try {
+      await AuthAPI.EnableTwoFactor({ code: authenticatorCode, method: "totp" })
+      // Mirrors what TwoFactorSetupModal does after a successful enable, so
+      // the badge updates immediately rather than waiting for a refetch.
+      setUser((prev) =>
+        prev ? { ...prev, twoFactorEnabled: true, twoFactorMethod: "totp" } : prev
+      )
+      setIsAuthenticatorOpen(false)
+      setSavedAlertMessage("Successfully added app authenticator")
+      setIsSavedAlertMounted(true)
+    } catch (error) {
+      const message = (error as any)?.response?.data?.message
+      setAuthenticatorError(
+        Array.isArray(message)
+          ? message[0]
+          : (message ?? "That code was not accepted. Try the next one.")
+      )
+    } finally {
+      setIsAuthenticatorBusy(false)
+    }
+  }
+
   const [addedTwoFactorNumbers, setAddedTwoFactorNumbers] = useState<string[]>(
     []
   )
@@ -949,25 +1225,88 @@ export default function SettingsPage() {
   }
 
   const [isSecurityQuestionsOpen, setIsSecurityQuestionsOpen] = useState(false)
-  const [areSecurityQuestionsSaved, setAreSecurityQuestionsSaved] =
+  const [isSavingSecurityQuestions, setIsSavingSecurityQuestions] =
     useState(false)
+  const [securityQuestionsError, setSecurityQuestionsError] = useState<
+    string | null
+  >(null)
+  // `question` holds the catalogue id, not the prompt. The id is what the
+  // answer is stored against; the prompt is display text and may be reworded.
   const [securityQuestions, setSecurityQuestions] = useState([
     { question: "", answer: "" },
     { question: "", answer: "" },
   ])
 
-  const securityQuestionOptions = [
-    "What is the name of your first pet?",
-    "What was the name of your first school?",
-    "What city were you born in?",
-    "What is your mother's maiden name?",
-    "What was the make of your first car?",
-    "What is your favourite book?",
-  ]
+  const {
+    catalog: securityQuestionOptions,
+    // Both counts come from the catalogue endpoint rather than being written
+    // into the copy, for the same reason the prompts do: the server owns how
+    // many answers are required and allowed, and a hardcoded "two" here would
+    // go quietly wrong the day REQUIRED_SECURITY_ANSWERS changes.
+    requiredAnswers: requiredSecurityAnswers,
+    maxAnswers: maxSecurityQuestions,
+    configuredIds: savedSecurityQuestionIds,
+    isConfigured: areSecurityQuestionsSaved,
+    promptFor: securityQuestionPrompt,
+    save: saveSecurityQuestions,
+  } = useSecurityQuestions(activeTab === "account-recovery")
+
+  /**
+   * Reopens the modal on the questions the account actually answered, with the
+   * answer fields blank. Blank is not an oversight: an answer is hashed on the
+   * way in and there is no endpoint that returns it, so the only honest thing
+   * to show is which questions are set. Saving replaces the whole set, so every
+   * answer has to be retyped — which is also what stops a half-filled form from
+   * silently wiping the answers it did not carry.
+   */
+  useEffect(() => {
+    if (savedSecurityQuestionIds.length === 0) return
+    setSecurityQuestions(
+      savedSecurityQuestionIds.map((questionId) => ({
+        question: questionId,
+        answer: "",
+      }))
+    )
+  }, [savedSecurityQuestionIds])
 
   const canSaveSecurityQuestions = securityQuestions.every(
     (q) => q.question !== "" && q.answer.trim() !== ""
   )
+
+  /**
+   * Persists the answers. Closes the modal and shows the saved alert only on a
+   * success — the button used to do both unconditionally while storing nothing,
+   * so the Enabled badge appeared for an account that had answered nothing and
+   * the recovery flow had no answers to check.
+   */
+  const handleSaveSecurityQuestions = async () => {
+    setSecurityQuestionsError(null)
+    setIsSavingSecurityQuestions(true)
+    try {
+      await saveSecurityQuestions(
+        securityQuestions.map((entry) => ({
+          questionId: entry.question,
+          answer: entry.answer,
+        }))
+      )
+      setIsSecurityQuestionsOpen(false)
+      setSavedAlertMessage("Successfully saved security questions")
+      setIsSavedAlertMounted(true)
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.errors?.message ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Something went wrong"
+      // Reported inline rather than as a toast, matching Company Info: toasts
+      // in this screen confirm successes only.
+      setSecurityQuestionsError(
+        message.startsWith("Please") ? message : `Please try again. ${message}`
+      )
+    } finally {
+      setIsSavingSecurityQuestions(false)
+    }
+  }
 
   const updateSecurityQuestion = (
     index: number,
@@ -978,17 +1317,151 @@ export default function SettingsPage() {
       prev.map((q, i) => (i === index ? { ...q, [field]: value } : q))
     )
 
-  const [isPhoneVerificationOpen, setIsPhoneVerificationOpen] = useState(false)
-  const [recoveryPhone, setRecoveryPhone] = useState("")
-  const [isRecoveryLinkSent, setIsRecoveryLinkSent] = useState(false)
-  const [isRecoveryPhoneVerified, setIsRecoveryPhoneVerified] = useState(false)
-  const recoveryPhoneLast4 = recoveryPhone.replace(/\D/g, "").slice(-4)
+  // Phone Verification state -- commented out with its row and dialogs in the
+  // Account Recovery tab. SMS has no provider, so none of this can complete.
+  // Kept so restoring the feature is one uncomment in three places.
+  //
+  // const [isPhoneVerificationOpen, setIsPhoneVerificationOpen] = useState(false)
+  // const [recoveryPhone, setRecoveryPhone] = useState("")
+  // const [isRecoveryLinkSent, setIsRecoveryLinkSent] = useState(false)
+  // const [isRecoveryPhoneVerified, setIsRecoveryPhoneVerified] = useState(false)
+  // const recoveryPhoneLast4 = recoveryPhone.replace(/\D/g, "").slice(-4)
+  //
+  // const closeRecoveryMagicLink = () => {
+  //   setIsRecoveryPhoneVerified(true)
+  //   setSavedAlertMessage("Successfully added account recovery number")
+  //   setIsSavedAlertMounted(true)
+  //   setIsRecoveryLinkSent(false)
+  // }
 
-  const closeRecoveryMagicLink = () => {
-    setIsRecoveryPhoneVerified(true)
-    setSavedAlertMessage("Successfully added account recovery number")
-    setIsSavedAlertMounted(true)
-    setIsRecoveryLinkSent(false)
+  const [isRecoveryEmailOpen, setIsRecoveryEmailOpen] = useState(false)
+  const [recoveryEmail, setRecoveryEmail] = useState("")
+  const [isRecoveryEmailLinkSent, setIsRecoveryEmailLinkSent] = useState(false)
+  const [isRecoveryEmailVerified, setIsRecoveryEmailVerified] = useState(false)
+  const [recoveryEmailError, setRecoveryEmailError] = useState<string | null>(
+    null
+  )
+  // Set when the confirmation link from the email failed to resolve to an
+  // account. Holds the address so the modal can name it; null means closed.
+  const [recoveryNotFoundEmail, setRecoveryNotFoundEmail] = useState<
+    string | null
+  >(null)
+  const [isRecoveryEmailSending, setIsRecoveryEmailSending] = useState(false)
+
+  /**
+   * The recovery-email link is followed from a mail client and lands on
+   * /recovery-email/confirm, which performs the verification and then sends
+   * the person here with the outcome. Reading it from the URL is what puts
+   * the result in front of them on the screen it belongs to.
+   *
+   * The params are stripped once read, so a refresh does not replay the
+   * modal and a copied URL does not carry a stale result.
+   */
+  useEffect(() => {
+    const outcome = searchParams.get("recovery")
+    if (!outcome) return
+
+    if (outcome === "not-found") {
+      // The address is read back from the server rather than carried in the
+      // URL: a failed token cannot tell us which address it was for, and an
+      // email address does not belong in a query string. The still-pending
+      // value is exactly the one they were trying to confirm.
+      AuthAPI.GetRecoveryEmail()
+        .then((res) => {
+          const data = (res as any)?.data ?? res
+          setRecoveryNotFoundEmail(data?.pendingRecoveryEmail ?? "")
+        })
+        .catch(() => setRecoveryNotFoundEmail(""))
+    } else if (outcome === "confirmed") {
+      setIsRecoveryEmailVerified(true)
+      setSavedAlertMessage("Successfully added account recovery email")
+      setIsSavedAlertMounted(true)
+    }
+
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete("recovery")
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [searchParams, router, pathname])
+
+  // The badge reflects a *proven* address only. A pending one is deliberately
+  // not shown as enabled — it is not usable for recovery until confirmed.
+  useEffect(() => {
+    let cancelled = false
+    AuthAPI.GetRecoveryEmail()
+      .then((res) => {
+        if (cancelled) return
+        const data = (res as any)?.data ?? res
+        if (data?.recoveryEmail) {
+          setIsRecoveryEmailVerified(true)
+          setRecoveryEmail(data.recoveryEmail)
+        }
+      })
+      .catch(() => {
+        // A failed read must not break the tab; the row simply shows no badge.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const submitRecoveryEmail = async () => {
+    setRecoveryEmailError(null)
+    setIsRecoveryEmailSending(true)
+    try {
+      await AuthAPI.SetRecoveryEmail({ email: recoveryEmail.trim() })
+      setIsRecoveryEmailOpen(false)
+      setIsRecoveryEmailLinkSent(true)
+    } catch (error) {
+      const message =
+        (error as any)?.response?.data?.message ??
+        "We could not send that link. Try again."
+      setRecoveryEmailError(
+        Array.isArray(message) ? message[0] : String(message)
+      )
+    } finally {
+      setIsRecoveryEmailSending(false)
+    }
+  }
+
+  const resendRecoveryEmail = async () => {
+    setIsRecoveryEmailSending(true)
+    try {
+      await AuthAPI.ResendRecoveryEmail()
+    } catch {
+      // Swallowed on purpose: the modal's whole message is "we sent a link",
+      // and a failed resend does not change what the person should do next.
+    } finally {
+      setIsRecoveryEmailSending(false)
+    }
+  }
+  // Gates the Send Link button the way isPhoneValid does for the phone
+  // sibling. Deliberately permissive — the authority on an address is the
+  // server that has to deliver to it, and there is no such endpoint yet.
+  const isRecoveryEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    recoveryEmail.trim()
+  )
+
+  /**
+   * Dismissing the "check your email" modal is not confirmation — the address
+   * only becomes usable when the emailed link is followed. Re-reads the server
+   * state instead of assuming, so the badge appears if they confirmed in
+   * another tab and stays away if they did not.
+   */
+  const closeRecoveryEmailMagicLink = () => {
+    setIsRecoveryEmailLinkSent(false)
+    AuthAPI.GetRecoveryEmail()
+      .then((res) => {
+        const data = (res as any)?.data ?? res
+        if (data?.recoveryEmail) {
+          setIsRecoveryEmailVerified(true)
+          setSavedAlertMessage("Successfully added account recovery email")
+          setIsSavedAlertMounted(true)
+        }
+      })
+      .catch(() => {
+        // Leave the badge as it was rather than guessing.
+      })
   }
 
   const twoFactorNumbers = [
@@ -1200,7 +1673,19 @@ export default function SettingsPage() {
   const handleCompanySave = async () => {
     setCompanyError(null)
     try {
-      await saveCompanyInfo(companyForm, logoFile)
+      const { logoError } = await saveCompanyInfo(companyForm, logoFile)
+
+      if (logoError) {
+        // The details did save; only the logo did not. The pending file and
+        // its preview stay put so retrying does not mean picking the file
+        // again, and no success toast fires — the save was partial, and
+        // saying otherwise is how someone ends up with no logo and no idea.
+        setCompanyError(
+          `Your company details were saved, but the logo was not. ${logoError}`
+        )
+        return
+      }
+
       setLogoFile(null)
       // The upload is now the saved logo, so the pending preview retires and
       // logoSrc falls through to company.logoUrl. Leaving it set would keep
@@ -1353,9 +1838,19 @@ export default function SettingsPage() {
         await updateAllowedIp(editingIpId, updated)
         setSavedAlertMessage("Successfully updated IP address")
       } else {
-        const { added, skipped } = await addAllowedIps(entries)
-        // Nothing new means every address was already on the list. Saying so
-        // beats a success alert over a table that did not change.
+        const { added, skipped, overlapping } = await addAllowedIps(entries)
+        // Nothing new means every address was already on the list, or an
+        // existing entry already covers it. Saying so beats a success alert
+        // over a table that did not change — and the two reasons need telling
+        // apart, because the fix differs.
+        if (added === 0 && overlapping.length > 0) {
+          setIpSaveError(
+            overlapping.length === 1
+              ? `${overlapping[0].address} overlaps ${overlapping[0].conflictsWith}, which is already on your list`
+              : `${overlapping.length} addresses overlap entries already on your list`
+          )
+          return
+        }
         if (added === 0 && skipped.length > 0) {
           setIpSaveError(
             skipped.length === 1
@@ -1365,9 +1860,7 @@ export default function SettingsPage() {
           return
         }
         setSavedAlertMessage(
-          skipped.length > 0
-            ? `Added ${added}, skipped ${skipped.length} already on your list`
-            : "Successfully added IP addresses"
+          summariseIpImport(added, skipped.length, overlapping.length)
         )
       }
     } catch (err: any) {
@@ -1523,16 +2016,17 @@ export default function SettingsPage() {
     if (csvEntries.length === 0 || csvStatus !== "done") return
     setIpSaveError(null)
     try {
-      const { added, skipped } = await addAllowedIps(
+      // Sent in chunks of 500, so this is real completion, not a timer.
+      setCsvProgress(0)
+      const { added, skipped, overlapping } = await addAllowedIps(
         csvEntries.map((entry) => ({
           address: entry.address,
           description: entry.description,
-        }))
+        })),
+        setCsvProgress
       )
       setSavedAlertMessage(
-        skipped.length > 0
-          ? `Added ${added}, skipped ${skipped.length} already on your list`
-          : "Successfully added IP addresses"
+        summariseIpImport(added, skipped.length, overlapping.length)
       )
     } catch (err: any) {
       setIpSaveError(
@@ -2388,7 +2882,11 @@ export default function SettingsPage() {
                           Fingerprint Login
                         </span>
                         {isFingerprintEnabled && (
-                          <Badge visual="success" size="sm">
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
                             Enabled
                           </Badge>
                         )}
@@ -2411,9 +2909,9 @@ export default function SettingsPage() {
                     <p className="w-full text-sm text-gray-500">
                       Marketeq recommends avoiding using personal information in
                       passwords and using a unique password for each account.{" "}
-                      <a href="#" className="underline">
+                      <Button variant="link" className="inline h-auto p-0 underline">
                         Learn more
-                      </a>
+                      </Button>
                     </p>
                   </div>
 
@@ -2575,14 +3073,20 @@ export default function SettingsPage() {
                       <span className="text-sm font-medium leading-[17px] text-gray-700">
                         Forgot your password?
                       </span>
-                      <a
-                        href="#"
-                        className="text-sm font-medium leading-[17px] text-primary-500 underline"
+                      <Button
+                        variant="link"
+                        className="inline h-auto p-0 text-sm font-medium leading-[17px] text-primary-500 underline"
                       >
                         Request a new one
-                      </a>
+                      </Button>
                     </div>
                   </div>
+
+                  {passwordError && (
+                    <p className="w-full text-xs font-medium text-error-500">
+                      {passwordError}
+                    </p>
+                  )}
 
                   <div className="flex w-full justify-end gap-x-3">
                     <Button
@@ -2600,7 +3104,7 @@ export default function SettingsPage() {
                     <Button
                       size="sm"
                       onClick={handlePasswordSave}
-                      disabled={!canSavePassword}
+                      disabled={!canSavePassword || isSavingPassword}
                     >
                       Save Changes
                     </Button>
@@ -2658,9 +3162,10 @@ export default function SettingsPage() {
                         </Button>
                         <Button
                           size="lg"
+                          disabled={!canSavePassword || isSavingPassword}
                           onClick={() => {
                             setIsDiscardOpen(false)
-                            handlePasswordSave()
+                            void handlePasswordSave()
                           }}
                         >
                           Save & Exit
@@ -2711,30 +3216,40 @@ export default function SettingsPage() {
                         />
                         <span className="text-sm font-medium capitalize text-gray-700">
                           Accept{" "}
-                          <a href="#" className="underline">
+                          <Button variant="link" className="inline h-auto p-0 underline">
                             Terms &amp; Conditions
-                          </a>
+                          </Button>
                         </span>
                       </div>
                     </div>
 
-                    <div className="flex w-full items-start justify-center gap-x-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        onClick={closeFingerprint}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={!acceptsFingerprintTerms}
-                        onClick={handleEnableFingerprint}
-                        leftIcon={<Check className="size-[15px]" />}
-                      >
-                        Enable Fingerprint Login
-                      </Button>
+                    <div className="flex w-full flex-col items-center gap-3">
+                      {fingerprintError && (
+                        <p className="w-full text-center text-xs font-medium text-error-500">
+                          {fingerprintError}
+                        </p>
+                      )}
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={closeFingerprint}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !acceptsFingerprintTerms || isEnrollingFingerprint
+                          }
+                          onClick={handleEnableFingerprint}
+                          leftIcon={<Check className="size-[15px]" />}
+                        >
+                          Enable Fingerprint Login
+                        </Button>
+                      </div>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -2912,9 +3427,9 @@ export default function SettingsPage() {
 
                       <p className="w-full text-center text-sm text-gray-500">
                         No longer have access to this email?{" "}
-                        <a href="#" className="underline">
+                        <Button variant="link" className="inline h-auto p-0 underline">
                           Start account recovery
-                        </a>
+                        </Button>
                       </p>
 
                       <IconButton
@@ -2950,6 +3465,13 @@ export default function SettingsPage() {
                   </div>
 
                   <div className="mt-6 flex w-[550px] flex-col items-start gap-2.5">
+                    {/* Phone Verification is commented out, not deleted: it is
+                        the only recovery option that needs SMS, and there is no
+                        provider wired up. Per CTorres we are not building SMS
+                        yet, so the row would open a flow that cannot deliver.
+                        Its two dialogs below are commented out with it.
+                        Restore all three together when a provider exists.
+
                     <Button
                       variant="ghost"
                       visual="gray"
@@ -2978,6 +3500,7 @@ export default function SettingsPage() {
                         <ChevronRight className="size-5 text-gray-500" />
                       </span>
                     </Button>
+                    */}
 
                     <Button
                       variant="ghost"
@@ -3012,6 +3535,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       visual="gray"
                       size="sm"
+                      onClick={() => setIsRecoveryEmailOpen(true)}
                       className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                     >
                       <span className="flex items-center gap-x-3">
@@ -3021,6 +3545,18 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium leading-[17px] text-gray-900">
                           Recovery Email
                         </span>
+                        {/* Proven addresses only. A pending one is deliberately
+                            not badged -- it cannot recover anything until the
+                            emailed link is followed. */}
+                        {isRecoveryEmailVerified && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
                       </span>
                       <span className="flex size-8 items-center justify-center rounded-[5px]">
                         <ChevronRight className="size-5 text-gray-500" />
@@ -3031,6 +3567,7 @@ export default function SettingsPage() {
                       variant="ghost"
                       visual="gray"
                       size="sm"
+                      onClick={openAuthenticator}
                       className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
                     >
                       <span className="flex items-center gap-x-3">
@@ -3040,6 +3577,15 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium leading-[17px] text-gray-900">
                           App Authenticator
                         </span>
+                        {isAuthenticatorEnabled && (
+                          <Badge
+                            visual="success"
+                            size="sm"
+                            className="bg-success-50"
+                          >
+                            Enabled
+                          </Badge>
+                        )}
                       </span>
                       <span className="flex size-8 items-center justify-center rounded-[5px]">
                         <ChevronRight className="size-5 text-gray-500" />
@@ -3092,9 +3638,11 @@ export default function SettingsPage() {
                             Security Questions
                           </DialogTitle>
                           <DialogDescription className="w-full text-sm text-gray-500">
-                            Torem ipsum dolor sit amet, consectetur adipiscing
-                            elit. Nunc vulputate libero et velit interdum, ac
-                            aliquet odio mattis.
+                            These confirm it&apos;s you if you ever can&apos;t
+                            sign in. Answer at least {requiredSecurityAnswers},
+                            and pick ones you&apos;ll still remember in a year.
+                            Capital letters and extra spaces don&apos;t matter,
+                            but answers can&apos;t be viewed again once saved.
                           </DialogDescription>
                         </div>
 
@@ -3121,16 +3669,17 @@ export default function SettingsPage() {
                                   <ListboxButton
                                     placeholder="Select a question"
                                     displayValue={(val) =>
-                                      (val as string) || null
+                                      securityQuestionPrompt(val as string) ||
+                                      null
                                     }
                                   />
                                   <ListboxOptions>
                                     {securityQuestionOptions.map((option) => (
                                       <ListboxOption
-                                        key={option}
-                                        value={option}
+                                        key={option.id}
+                                        value={option.id}
                                       >
-                                        {option}
+                                        {option.prompt}
                                       </ListboxOption>
                                     ))}
                                   </ListboxOptions>
@@ -3156,38 +3705,447 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
+                      {securityQuestionsError && (
+                        <p className="w-full text-xs font-medium text-error-500">
+                          {securityQuestionsError}
+                        </p>
+                      )}
+
                       <div className="flex w-full items-start justify-end gap-x-3">
+                        {/* Capped at maxSecurityQuestions, which the catalogue
+                            endpoint reports so this button and the server
+                            validator cannot disagree. Disabling is the hint --
+                            the cap is enforced by @ArrayMaxSize regardless. */}
                         <Button
                           variant="outlined"
                           visual="gray"
                           size="sm"
+                          disabled={
+                            securityQuestions.length >= maxSecurityQuestions
+                          }
                           onClick={() =>
-                            setSecurityQuestions((prev) => [
-                              ...prev,
-                              { question: "", answer: "" },
-                            ])
+                            setSecurityQuestions((prev) =>
+                              prev.length >= maxSecurityQuestions
+                                ? prev
+                                : [...prev, { question: "", answer: "" }]
+                            )
                           }
                         >
                           Add Question
                         </Button>
                         <Button
                           size="sm"
-                          disabled={!canSaveSecurityQuestions}
-                          onClick={() => {
-                            setAreSecurityQuestionsSaved(true)
-                            setIsSecurityQuestionsOpen(false)
-                            setSavedAlertMessage(
-                              "Successfully saved security questions"
-                            )
-                            setIsSavedAlertMounted(true)
-                          }}
+                          disabled={
+                            !canSaveSecurityQuestions ||
+                            isSavingSecurityQuestions
+                          }
+                          onClick={() => void handleSaveSecurityQuestions()}
                           leftIcon={<Save01 className="size-[15px]" />}
                         >
-                          Save Security Questions
+                          {isSavingSecurityQuestions
+                            ? "Saving..."
+                            : "Save Security Questions"}
                         </Button>
                       </div>
                     </DialogContent>
                   </Dialog>
+
+                  <Dialog
+                    open={isRecoveryEmailOpen}
+                    onOpenChange={setIsRecoveryEmailOpen}
+                  >
+                    <DialogContent
+                      className="flex w-[467px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsRecoveryEmailOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                            Recovery Email
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            Enter an email to use for account recovery and
+                            we&apos;ll send a magic link. You&apos;ll be able to
+                            use this email if you ever need to recover your
+                            account.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-1.5">
+                          <Label size="sm" className="text-gray-700">
+                            Email
+                          </Label>
+                          <Input
+                            type="email"
+                            placeholder="you@me.com"
+                            value={recoveryEmail}
+                            isInvalid={!!recoveryEmailError}
+                            onChange={(e) => {
+                              setRecoveryEmail(e.target.value)
+                              setRecoveryEmailError(null)
+                            }}
+                          />
+                          {recoveryEmailError && (
+                            <ErrorMessage>{recoveryEmailError}</ErrorMessage>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex w-full items-start justify-end gap-x-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={() => setIsRecoveryEmailOpen(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !isRecoveryEmailValid || isRecoveryEmailSending
+                          }
+                          onClick={submitRecoveryEmail}
+                          leftIcon={<Send01 className="size-[15px]" />}
+                        >
+                          Send Link
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isRecoveryEmailLinkSent}
+                    onOpenChange={(open) =>
+                      open
+                        ? setIsRecoveryEmailLinkSent(true)
+                        : closeRecoveryEmailMagicLink()
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[548px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-[55px] shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-center gap-5">
+                        <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-primary-25 bg-primary-50">
+                          <Mail01 className="size-6 text-primary-500" />
+                        </span>
+
+                        <div className="flex w-full flex-col items-center gap-2">
+                          <DialogTitle className="w-full text-center text-lg leading-7 font-semibold text-gray-900">
+                            Please check your email
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-center text-sm text-gray-500">
+                            We&apos;ve just sent a magic link to{" "}
+                            <span className="font-semibold text-gray-900">
+                              {recoveryEmail.trim()}
+                            </span>
+                          </DialogDescription>
+                          <p className="w-full text-center text-sm text-gray-500">
+                            If you don&apos;t see the email, be sure to check
+                            your spam folder.
+                            <br />
+                            The link will expire in{" "}
+                            <span className="font-semibold text-gray-900">
+                              24 hours.
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        disabled={isRecoveryEmailSending}
+                        onClick={resendRecoveryEmail}
+                      >
+                        Resend Link
+                      </Button>
+
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={closeRecoveryEmailMagicLink}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Reached by following the link in the recovery email when
+                      the token no longer resolves to an account. */}
+                  <Dialog
+                    open={!!recoveryNotFoundEmail}
+                    onOpenChange={(open) =>
+                      open ? undefined : setRecoveryNotFoundEmail(null)
+                    }
+                  >
+                    <DialogContent
+                      className="flex w-[512px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <div className="flex w-full flex-col items-start gap-8">
+                        <div className="flex w-full flex-col items-start gap-10">
+                          <div className="flex w-full flex-col items-start gap-5">
+                            <div className="flex w-full items-start justify-between gap-5">
+                              <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-error-50 bg-error-100">
+                                <AlertCircle className="size-6 text-error-500" />
+                              </span>
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                size="sm"
+                                className="size-9 rounded-[5px] p-2"
+                                onClick={() => setRecoveryNotFoundEmail(null)}
+                              >
+                                <X className="size-5 text-gray-500" />
+                              </IconButton>
+                            </div>
+
+                            <div className="flex w-full flex-col items-start gap-2">
+                              <DialogTitle className="w-full text-lg leading-7 font-semibold text-gray-900">
+                                No account found
+                              </DialogTitle>
+                              <DialogDescription className="w-full text-sm text-gray-500">
+                                {recoveryNotFoundEmail ? (
+                                  <>
+                                    We couldn&apos;t find an account associated
+                                    with the email
+                                    <br />
+                                    <span className="font-semibold text-gray-900">
+                                      {recoveryNotFoundEmail}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    That confirmation link is no longer valid.
+                                    It may already have been used, or it may
+                                    have expired.
+                                  </>
+                                )}
+                              </DialogDescription>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-x-3">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setRecoveryNotFoundEmail(null)
+                                setRecoveryEmail("")
+                                setRecoveryEmailError(null)
+                                setIsRecoveryEmailOpen(true)
+                              }}
+                            >
+                              Try a Different Email
+                            </Button>
+                            <Button
+                              asChild
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                            >
+                              <Link href="/contact-support">
+                                Contact Support
+                              </Link>
+                            </Button>
+                          </div>
+                        </div>
+
+                        <p className="w-full text-sm text-gray-500">
+                          Need to try another way?{" "}
+                          <Button variant="link" className="inline h-auto p-0 underline">
+                            Start account recovery
+                          </Button>
+                        </p>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isAuthenticatorOpen}
+                    onOpenChange={setIsAuthenticatorOpen}
+                  >
+                    <DialogContent
+                      className="flex max-h-[calc(100vh-4rem)] w-[467px] max-w-[calc(100vw-2rem)] flex-col items-center gap-8 overflow-y-auto p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                      dialogOverlay={
+                        <DialogOverlay className="backdrop-blur-[8px]" />
+                      }
+                    >
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        size="sm"
+                        className="absolute right-2.5 top-2.5 size-[38px] rounded-[5px]"
+                        onClick={() => setIsAuthenticatorOpen(false)}
+                      >
+                        <X className="size-6 text-gray-500 opacity-50" />
+                      </IconButton>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <DialogTitle className="w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                            App Authenticator
+                          </DialogTitle>
+                          <DialogDescription className="w-full text-sm text-gray-500">
+                            An authenticator app generates a 6-digit code that
+                            changes every 30 seconds. Once this is on,
+                            you&apos;ll enter a code from the app every time you
+                            sign in.
+                          </DialogDescription>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 1: Download the App
+                          </p>
+                          <p className="w-full text-sm text-gray-500">
+                            Install an authenticator app on your phone. Google
+                            Authenticator, Microsoft Authenticator, Authy and
+                            1Password all work.
+                          </p>
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 2: Scan this Code
+                          </p>
+                          <p className="w-full text-sm text-gray-500">
+                            In the app, add a new account and scan the code
+                            below. It will appear as Marketeq, listed under your
+                            email address.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 208x206 per the design. The QR is a data: URL minted
+                          by auth-service, so there is no remote image to load. */}
+                      <div className="flex h-[206px] w-[208px] items-center justify-center">
+                        {authenticatorQr ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={authenticatorQr}
+                            alt="Authenticator setup QR code"
+                            width={208}
+                            height={206}
+                            className="h-[206px] w-[208px] object-contain"
+                          />
+                        ) : authenticatorError ? (
+                          // Without this the slot spins forever on a failed
+                          // generate, which reads as a hang rather than a
+                          // refusal. The reason renders below the pin input.
+                          <span className="flex size-12 items-center justify-center rounded-[28px] border-8 border-error-50 bg-error-100">
+                            <AlertCircle className="size-6 text-error-500" />
+                          </span>
+                        ) : (
+                          <Spinner
+                            size={32}
+                            className="stroke-primary-500"
+                            trackClassName="stroke-gray-200"
+                            strokeWidth={2}
+                          />
+                        )}
+                      </div>
+
+                      <div className="flex w-full flex-col items-start gap-5">
+                        <div className="flex w-full flex-col items-start gap-2">
+                          <p className="w-full text-sm font-bold leading-5 text-dark-blue-400">
+                            Step 3: Enter the Verification Code
+                          </p>
+                          <p className="w-full text-sm leading-5 text-dark-blue-400">
+                            Type the verification code from your authenticator
+                            app below.
+                          </p>
+                        </div>
+
+                        {/* SixDigitPinInput owns its own state machine and
+                            exposes no value, and components/ui is read-only —
+                            so the digits are read back off the inputs it
+                            renders rather than by modifying the component. */}
+                        <div
+                          className="flex w-full justify-center"
+                          onInput={(e) => {
+                            const digits = Array.from(
+                              e.currentTarget.querySelectorAll("input")
+                            )
+                              .map((input) => input.value)
+                              .join("")
+                            setAuthenticatorCode(digits)
+                            setAuthenticatorError(null)
+                          }}
+                        >
+                          {/* Figma gives each box flex-grow:1 inside the
+                              419px row — 57.17px each once the 28px dash and
+                              six 8px gaps are taken out. The component
+                              hardcodes w-16 (64px), which overflows to 460px
+                              and crowds the modal edges. cva here is plain
+                              concatenation, not twMerge, so a w-[57.17px]
+                              override would only win by stylesheet accident;
+                              flex-1 sets flex-basis instead and never
+                              collides with the w-16. */}
+                          {/* The component colours typed text and placeholder
+                              alike (text-gray-300), so entered digits stay as
+                              faint as the 000-000 hint. text-gray-black is what
+                              Input uses for typed text.
+
+                              The important modifier, not an arbitrary variant:
+                              cva here is plain concatenation rather than
+                              twMerge, so a bare text-* ties with the base class
+                              and wins only by stylesheet order. An earlier
+                              version keyed this off :not(:placeholder-shown),
+                              which also depends on zag rendering a placeholder
+                              attribute — ! needs neither. placeholder:text-gray-300
+                              is a separate selector, so the hint stays grey.
+                              Matches /forgot-password, which uses the same
+                              component for the same step. */}
+                          <SixDigitPinInput
+                            className="w-full"
+                            pinInputClassName="min-w-0 flex-1 !text-gray-black"
+                          />
+                        </div>
+
+                        {authenticatorError && (
+                          <ErrorMessage>{authenticatorError}</ErrorMessage>
+                        )}
+                      </div>
+
+                      <div className="flex w-full items-start justify-center gap-x-3">
+                        <Button
+                          size="sm"
+                          disabled={
+                            authenticatorCode.length !== 6 ||
+                            isAuthenticatorBusy ||
+                            !authenticatorQr
+                          }
+                          onClick={verifyAuthenticator}
+                          leftIcon={<Scan className="size-[15px]" />}
+                        >
+                          Verify Code &amp; Activate
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Phone Verification dialogs -- commented out with the row
+                      above. SMS has no provider, so Send Link could never
+                      deliver. Restore with the row.
 
                   <Dialog
                     open={isPhoneVerificationOpen}
@@ -3303,9 +4261,9 @@ export default function SettingsPage() {
 
                       <p className="w-full text-center text-sm text-gray-500">
                         No longer have access to this email?{" "}
-                        <a href="#" className="underline">
+                        <Button variant="link" className="inline h-auto p-0 underline">
                           Start account recovery
-                        </a>
+                        </Button>
                       </p>
 
                       <IconButton
@@ -3319,6 +4277,7 @@ export default function SettingsPage() {
                       </IconButton>
                     </DialogContent>
                   </Dialog>
+                  */}
                 </>
               )}
 
@@ -3450,12 +4409,13 @@ export default function SettingsPage() {
                               </TableCell>
                               <TableCell className="h-[72px] px-6 py-4" onClick={(e) => e.stopPropagation()}>
                                 {member.company ? (
-                                  <a
-                                    href="/client-profile"
-                                    className="text-sm font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline"
+                                  <Button
+                                    variant="link"
+                                    className="inline h-auto p-0 text-sm font-semibold leading-5 text-primary-500 transition-colors hover:text-primary-700 hover:underline"
+                                    onClick={() => window.location.href = '/client-profile'}
                                   >
                                     {member.company}
-                                  </a>
+                                  </Button>
                                 ) : (
                                   <span className="text-sm leading-5 text-gray-300">
                                     &mdash;
@@ -4175,9 +5135,9 @@ export default function SettingsPage() {
                             Control which IP addresses are allowed to access
                             your account. Any device outside these addresses
                             will be blocked from signing in.{" "}
-                            <a href="#" className="text-primary-500 underline">
+                            <Button variant="link" className="inline h-auto p-0 text-primary-500 underline">
                               Learn More
-                            </a>
+                            </Button>
                             .
                           </p>
                         </div>
@@ -4443,9 +5403,9 @@ export default function SettingsPage() {
                           <>
                             Upload a CSV file to add multiple IP addresses at
                             once. Each address should be on its own line.{" "}
-                            <a href="#" className="text-primary-500 underline">
+                            <Button variant="link" className="inline h-auto p-0 text-primary-500 underline">
                               Sample CSV
-                            </a>
+                            </Button>
                             .
                           </>
                         )}

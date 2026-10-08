@@ -16,6 +16,7 @@ import { AuthService } from './auth.service';
 import { User } from '../user/entities/user.entity';
 import { Session } from '../session/entities/session.entity';
 import { PasswordHistory } from '../password-history/entities/password-history.entity';
+import { SecurityQuestionAnswer } from '../security-questions/entities/security-question-answer.entity';
 import { BrevoService } from '../brevo/brevo.service';
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -82,6 +83,10 @@ describe('AuthService — OAuth account creation & linking', () => {
         { provide: getRepositoryToken(User), useValue: mockUserRepository },
         { provide: getRepositoryToken(Session), useValue: mockSessionRepository },
         { provide: getRepositoryToken(PasswordHistory), useValue: mockPasswordHistoryRepository },
+        // Constructor index [3]. Nothing under test here touches security
+        // questions, so an empty stub is enough — it exists only so Nest can
+        // construct AuthService.
+        { provide: getRepositoryToken(SecurityQuestionAnswer), useValue: {} },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: BrevoService, useValue: mockBrevoService },
