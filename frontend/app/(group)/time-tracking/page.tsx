@@ -5041,7 +5041,6 @@ export default function TimeTrackingPage() {
                         : undefined
                     }
                     preset={datePreset}
-                    maxValue={new Date()}
                     onCancel={() => setDateOpen(false)}
                     onApply={(range, preset) => {
                       if (range) {

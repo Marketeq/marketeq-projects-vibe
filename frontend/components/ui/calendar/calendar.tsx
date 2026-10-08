@@ -457,7 +457,6 @@ const DualCalendar = ({
   onValueChange,
   onCancel,
   onApply,
-  maxValue,
 }: {
   left?: () => React.ReactNode
   focusedValue?: Date
@@ -466,11 +465,6 @@ const DualCalendar = ({
   onValueChange?: (value: RangeValue) => void
   onCancel?: () => void
   onApply?: (value: RangeValue | undefined) => void
-  // Optional and additive — existing callers that don't pass it are
-  // unaffected. Forwarded to AriaRangeCalendar's own maxValue, which both
-  // visually disables and blocks selection of anything after it; typed
-  // dates past it are ignored the same way.
-  maxValue?: Date
 }) => {
   const [date, setDate] = React.useState<{
     start: string
@@ -505,18 +499,7 @@ const DualCalendar = ({
   const stateRef = React.useRef(state)
   stateRef.current = state
 
-  const maxDayKey = maxValue && isValid(maxValue) ? format(maxValue, "yyyy-MM-dd") : ""
-  const maxDayKeyRef = React.useRef(maxDayKey)
-  maxDayKeyRef.current = maxDayKey
-
   const handleSelectionChange = React.useCallback((newValue: RangeValue) => {
-    if (
-      maxDayKeyRef.current &&
-      (format(newValue.start, "yyyy-MM-dd") > maxDayKeyRef.current ||
-        format(newValue.end, "yyyy-MM-dd") > maxDayKeyRef.current)
-    ) {
-      return
-    }
     const nextKey = rangeDayKey(newValue)
     if (rangeDayKey(stateRef.current) === nextKey) return
     setState(newValue)
@@ -596,7 +579,6 @@ const DualCalendar = ({
           visibleDuration={{ months: 2 }}
           value={calendarValue}
           onChange={handleAriaChange}
-          maxValue={maxDayKey ? parseDate(maxDayKey) : undefined}
           className="flex-1"
         >
           <header className="flex justify-between items-center px-6 pt-5">
@@ -818,7 +800,6 @@ const DoubleCalendar = ({
   onPresetChange,
   onCancel,
   onApply,
-  maxValue,
 }: {
   value?: RangeValue
   onValueChange?: (value: RangeValue) => void
@@ -828,8 +809,6 @@ const DoubleCalendar = ({
   onPresetChange?: (value: string) => void
   onCancel?: () => void
   onApply?: (value: RangeValue | undefined, preset: string) => void
-  // Optional — forwarded to DualCalendar; see its maxValue.
-  maxValue?: Date
 }) => {
   const [focusedValueState, setFocusedValueState] = useControllableState<
     Date | undefined
@@ -871,7 +850,6 @@ const DoubleCalendar = ({
       value={rangeState}
       onValueChange={handleRange}
       onCancel={onCancel}
-      maxValue={maxValue}
       onApply={() =>
         onApply?.(
           presetState === "all time" ? undefined : rangeState,
