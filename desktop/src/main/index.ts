@@ -488,6 +488,23 @@ async function bootstrap(): Promise<void> {
     realtimeClient = createRealtimeClient({ api, logger });
     network.start();
     worker.start();
+
+    // Mirror the web "Screen Capture Settings" choice into local preferences,
+    // where the screenshot service reads it at each capture.
+    const syncCapturePreference = () => {
+      if (!authService?.getCurrentUser()) return;
+      api
+        .getTimePreferences()
+        .then((prefs) => {
+          if (prefs.captureMode) {
+            repos.preference.set('dtt.captureMode', JSON.stringify(prefs.captureMode));
+          }
+        })
+        .catch((err) => logger.debug({ err }, 'capture preference sync failed'));
+    };
+    syncCapturePreference();
+    const capturePrefTimer = setInterval(syncCapturePreference, 5 * 60 * 1000);
+    app.on('before-quit', () => clearInterval(capturePrefTimer));
     detachSyncIpc = registerSyncIpcHandlers({
       logger,
       worker,
