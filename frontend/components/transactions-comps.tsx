@@ -3194,8 +3194,13 @@ export const OverviewTab = ({
         return { visual: "error", label: formatLockedBadge(m.lockedUntil) }
       case "expired":
         return { visual: "gray", label: "Expired" }
+      // PS-27/PS-28 + BTB-296: a failed verification is a red "Verification
+      // Failed" badge. `verification_failed` is the identity-check variant
+      // (all Didit attempts used, PS-35); without its own case it fell
+      // through to "Pending Verification".
       case "failed":
-        return { visual: "gray", label: "Failed" }
+      case "verification_failed":
+        return { visual: "error", label: "Verification Failed" }
       default:
         return { visual: "warning", label: "Pending Verification" }
     }
