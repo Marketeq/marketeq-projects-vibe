@@ -1750,6 +1750,13 @@ function ProjectDetailsInner() {
   > | null>(null)
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+  // PMCM-256 follow-up: rejected-media errors render inline under the
+  // dropzone/grid (Figma has no error state for Media — this follows the
+  // existing video-URL inline-error pattern), not as toasts.
+  const [featuredImageError, setFeaturedImageError] = React.useState<
+    string | null
+  >(null)
+  const [galleryError, setGalleryError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     galleryUrlsRef.current = project.mediaUrls ?? []
@@ -1923,15 +1930,25 @@ function ProjectDetailsInner() {
 
       const requested = Array.from(files)
       const validFiles: File[] = []
+      // PMCM-256 follow-up: inline, not a toast per rejected file — if
+      // several files fail, show the first message (valid files in the
+      // same batch still upload). Set once at the end so a later check
+      // (the 8-image cap, below) can still override it — never cleared
+      // partway through only to be stomped by a later failure in the
+      // same call.
+      let nextGalleryError: string | null = null
       for (const file of requested) {
         const validationError = validateImageFileBeforeUpload(file)
         if (validationError) {
-          toast({ title: validationError, variant: "destructive" })
+          if (!nextGalleryError) nextGalleryError = validationError
           continue
         }
         validFiles.push(file)
       }
-      if (validFiles.length === 0) return
+      if (validFiles.length === 0) {
+        setGalleryError(nextGalleryError)
+        return
+      }
 
       // PMCM-256 AC2: cap additional images at 8 total — occupied slots
       // plus uploads already in flight plus this batch — matching the
@@ -1946,15 +1963,16 @@ function ProjectDetailsInner() {
           8 - occupiedCount - inFlightCount
         )
         if (availableSlots < validFiles.length) {
-          toast({
-            title: "You can upload a maximum of 8 images.",
-            variant: "destructive",
-          })
+          nextGalleryError = "You can upload a maximum of 8 images."
         }
         filesToUpload = validFiles.slice(0, availableSlots)
-        if (filesToUpload.length === 0) return
+        if (filesToUpload.length === 0) {
+          setGalleryError(nextGalleryError)
+          return
+        }
       }
 
+      setGalleryError(nextGalleryError)
       setHasChanges(true)
 
       // Reserve the next free slot so concurrent uploads never collide.
@@ -2037,10 +2055,12 @@ function ProjectDetailsInner() {
               // file was never accepted. Previously this fell into the same
               // branch as the 503 case above and showed a local preview of
               // an image that was never actually uploaded.
-              toast({
-                title: backendErrorMessage(err) || "Upload failed. Please try again.",
-                variant: "destructive",
-              })
+              // PMCM-256 follow-up: inline, not a toast — this is a
+              // rejected-media error (the backend's own type/size
+              // validation), same category as the client-side checks above.
+              setGalleryError(
+                backendErrorMessage(err) || "Upload failed. Please try again."
+              )
             }
           }
 
@@ -2076,6 +2096,10 @@ function ProjectDetailsInner() {
       )
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
+      // PMCM-256 follow-up: deleting a slot frees capacity (relevant to
+      // the 8-image-cap error) and is itself a form of "the grid changed",
+      // so any stale rejected-media error no longer applies.
+      setGalleryError(null)
       setHiddenImages((prev) => {
         const next = new Set(prev)
         next.delete(index)
@@ -2186,9 +2210,14 @@ function ProjectDetailsInner() {
     async (file: File) => {
       const validationError = validateImageFileBeforeUpload(file)
       if (validationError) {
-        toast({ title: validationError, variant: "destructive" })
+        // PMCM-256 follow-up: rejected-media errors (type/size/count) are
+        // inline under the dropzone, not toasts — Figma has no error
+        // state for Media, so this follows the existing video-URL inline
+        // error pattern already in this file.
+        setFeaturedImageError(validationError)
         return
       }
+      setFeaturedImageError(null)
       setHasChanges(true)
       setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
@@ -2213,6 +2242,7 @@ function ProjectDetailsInner() {
         const url = res?.data?.featuredImage || res?.data?.url
         if (url) {
           setProject((prev: any) => ({ ...prev, featuredImage: url }))
+          setFeaturedImageError(null)
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
@@ -2234,10 +2264,12 @@ function ProjectDetailsInner() {
           // file was never accepted. Previously this fell into the same
           // branch as the 503 case above and showed a local preview of
           // an image that was never actually uploaded.
-          toast({
-            title: backendErrorMessage(err) || "Upload failed. Please try again.",
-            variant: "destructive",
-          })
+          // PMCM-256 follow-up: inline, not a toast — this is a rejected-
+          // media error (the backend's own type/size validation), same
+          // category as the client-side validationError above.
+          setFeaturedImageError(
+            backendErrorMessage(err) || "Upload failed. Please try again."
+          )
         }
       } finally {
         setFeaturedUploading(false)
@@ -4295,6 +4327,11 @@ function ProjectDetailsInner() {
                       </>
                     )}
                   </div>
+                  {featuredImageError && (
+                    <ErrorMessage size="sm" className="mt-1.5">
+                      {featuredImageError}
+                    </ErrorMessage>
+                  )}
                   {SHOW_PUBLISH_VALIDATION &&
                     publishAttempted &&
                     !project.featuredImage &&
@@ -4983,6 +5020,12 @@ function ProjectDetailsInner() {
                     </div>
                   </div>
                 </DndContext>
+
+                {galleryError && (
+                  <ErrorMessage size="sm" className="mt-1.5">
+                    {galleryError}
+                  </ErrorMessage>
+                )}
 
                 {SHOW_PUBLISH_VALIDATION &&
                   publishAttempted &&

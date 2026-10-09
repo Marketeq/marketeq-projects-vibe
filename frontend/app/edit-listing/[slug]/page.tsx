@@ -4039,7 +4039,8 @@ const mediaFormSchema = z
           }
         },
         {
-          message: "Please enter a valid URL",
+          // PMCM-256 follow-up: match the inline editor's copy exactly.
+          message: "Please enter a valid YouTube or Vimeo URL.",
         }
       )
       .optional(),
