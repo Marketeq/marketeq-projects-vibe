@@ -196,15 +196,27 @@ type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter a task name"),
   role: z.string().min(1, "Please select a role"),
+  // PMCM-257 fix: reverted to optional (matches dev-main) — the
+  // TaskDialog using this schema has no location input at all (it's set
+  // afterward in the PhaseTable's own location column), so requiring it
+  // here made "Add Task" permanently fail on a field the user can't see
+  // or fill from this dialog. Location-required is now enforced where
+  // location is actually editable — see the location column below.
   location: z.string().optional().default(""),
   experience: z.enum(EXPERIENCE_LEVELS, {
     required_error: "Please select an experience level",
     invalid_type_error: "Please select an experience level",
   }),
   duration: z.object({
-    value: z.coerce.number({
-      invalid_type_error: "Please enter a valid number",
-    }),
+    value: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+      })
+      // PMCM-257: "Task with 0 hours → inline 'Minimum 1 hour per task.'
+      // on that row." Checked on the raw entered value/unit (not
+      // converted through durationToHours) — the concrete, named failure
+      // case is literally 0, regardless of unit.
+      .min(1, "Minimum 1 hour per task."),
     type: z.enum(DURATION_TYPE, {
       invalid_type_error: "Please select an option",
       required_error: "Please select an option",
@@ -664,6 +676,20 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 
+// PMCM-257: matches a phase's own name OR any of its task rows' task/
+// role/location text against the normalized search query.
+const matchesPhaseSearch = (phase: Phase, normalizedQuery: string) => {
+  if (!normalizedQuery) return true
+  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
+    return true
+  }
+  return (phase.rows ?? []).some((row) =>
+    [row.task, row.role, row.location].some((value) =>
+      normalizeSearchText(value).includes(normalizedQuery)
+    )
+  )
+}
+
 const numberToWord = (num: number) => {
   const words = [
     "One",
@@ -847,6 +873,17 @@ type DurationFormValues = {
     type: "hours" | "days" | "weeks" | "months"
   }
 }
+
+// PMCM-257: this dialog previously had no resolver at all — a plain HTML
+// min={1} on the number input, which React Hook Form's handleSubmit does
+// not enforce, so 0 (or a negative value) saved silently. Same rule as
+// taskFormSchema.duration above.
+const durationFormSchema = z.object({
+  duration: z.object({
+    value: z.coerce.number().min(1, "Minimum 1 hour per task."),
+    type: z.enum(DURATION_TYPE),
+  }),
+})
 
 interface DurationDialogProps {
   open: boolean
@@ -2243,15 +2280,27 @@ const columns = [
         )
       }
 
+      // PMCM-257: location is required per task, but only enforceable
+      // here — the TaskDialog that creates the row has no location input
+      // at all (location is set afterward, in this column). Assigned
+      // rows take the assignee's own country (the branch above), so this
+      // only ever applies to an unassigned row.
+      const isMissing = !currentValue.trim()
       return (
         <TableCell className="px-3 py-4">
           <CountriesCombobox
             placeholder="Location"
             value={currentValue}
+            triggerClassName={isMissing ? "border-error-500" : undefined}
             onValueChange={(v) => {
               table.options.meta?.updateData(index, id, v)
             }}
           />
+          {isMissing && (
+            <ErrorMessage size="sm" className="mt-1">
+              Please select a location
+            </ErrorMessage>
+          )}
         </TableCell>
       )
     },
@@ -2429,7 +2478,13 @@ const DurationDialog = ({
   onDurationFormValuesChange,
   onOpenChange,
 }: DurationDialogProps) => {
-  const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<DurationFormValues>({
+    resolver: zodResolver(durationFormSchema),
     defaultValues: durationFormValues || {
       duration: { value: 1, type: "days" },
     },
@@ -2484,6 +2539,10 @@ const DurationDialog = ({
                     min={1}
                     className="w-[100px]"
                     placeholder="1"
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
                   />
                 )}
               />
@@ -2509,6 +2568,11 @@ const DurationDialog = ({
                 )}
               />
             </div>
+            {hookFormHasError({ errors, name: "duration.value" }) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message")}
+              </ErrorMessage>
+            )}
           </div>
           <DialogFooter className="gap-x-3">
             <DialogClose asChild>
@@ -2571,6 +2635,12 @@ export function ScopeBuilder({
     null
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  // PMCM-257: this input previously had no value/onChange at all — a
+  // static placeholder with nothing wired up. getPhaseSearchTargetId/
+  // getTaskSearchTargetId below are unused dead code (confirmed via
+  // grep — no call sites), so there's no existing scroll-to-target
+  // behavior this filter could break.
+  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
 
   // Local state for phases — replaces useProjectScopeContext
   const [phases, setPhases] = useControllableState<Phase[]>({
@@ -3119,11 +3189,11 @@ export function ScopeBuilder({
               ?
             </DialogTitle>
             <DialogDescription>
-              This action will modify the entire {scopeType} scope. You&apos;ll
-              need to manually update the{" "}
-              {pendingScopeType === "service" ? "service" : "project"} plan
-              details, including time intervals for each phase and other related
-              settings. You can undo this at anytime.
+              This action will clear your entire {scopeType} scope so you can
+              rebuild it as a{" "}
+              {pendingScopeType === "service" ? "service" : "project"}{" "}
+              — phases, tasks, duration, and budget will all reset. You can
+              undo this at anytime.
             </DialogDescription>
 
             <DialogFooter className="mt-8 grid gap-x-3">
@@ -3140,7 +3210,18 @@ export function ScopeBuilder({
               <Button
                 onClick={() => {
                   const previousType = scopeType
+                  // PMCM-257: a Project-shaped scope (flat phases, no
+                  // phaseType) and a Service-shaped scope (ongoing/
+                  // recurring/setup phaseType, see the Phase interface)
+                  // are incompatible shapes — the dialog used to only
+                  // flip the type label and leave the old phases/tasks in
+                  // place, telling the seller to "manually update" them.
+                  // Now it actually clears state, and Undo restores both
+                  // the type and the exact previous phases (not just the
+                  // label) so nothing is lost by mistake.
+                  const previousPhases = phases
                   if (pendingScopeType) {
+                    setPhases([{ phaseName: "" }])
                     onScopeTypeChange?.(pendingScopeType)
                     toast({
                       variant: "success",
@@ -3149,7 +3230,10 @@ export function ScopeBuilder({
                         <ToastAction
                           altText="Undo"
                           className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
-                          onClick={() => onScopeTypeChange?.(previousType)}
+                          onClick={() => {
+                            setPhases(previousPhases)
+                            onScopeTypeChange?.(previousType)
+                          }}
                         >
                           Undo
                         </ToastAction>
@@ -3168,19 +3252,43 @@ export function ScopeBuilder({
       </Dialog>
 
       <InputGroup>
-        <Input type="text" placeholder="Find a phase or task" />
+        <Input
+          type="text"
+          placeholder="Find a phase or task"
+          value={phaseSearchQuery}
+          onChange={(event) => setPhaseSearchQuery(event.target.value)}
+        />
         <InputLeftElement>
           <SearchMd className="text-gray-500 h-5 w-5" />
         </InputLeftElement>
       </InputGroup>
 
-      <Accordion
-        value={accordionState}
-        onValueChange={setAccordionState}
-        type="multiple"
-        className="flex-auto space-y-3"
-      >
-        {phases.map(({ phaseName, rows, phaseType }, index) => (
+      {(() => {
+        const normalizedQuery = normalizeSearchText(phaseSearchQuery)
+        const hasVisiblePhase = phases.some((phase) =>
+          matchesPhaseSearch(phase, normalizedQuery)
+        )
+        if (normalizedQuery && !hasVisiblePhase) {
+          return (
+            <p className="py-6 text-center text-sm text-gray-500">
+              No phases found
+            </p>
+          )
+        }
+        return (
+          <Accordion
+            value={accordionState}
+            onValueChange={setAccordionState}
+            type="multiple"
+            className="flex-auto space-y-3"
+          >
+            {phases.map(({ phaseName, rows, phaseType }, index) => {
+              if (
+                !matchesPhaseSearch({ phaseName, rows, phaseType }, normalizedQuery)
+              ) {
+                return null
+              }
+              return (
           <ArrayNavigator key={index} value={phases} index={index}>
             {rows ? (
               <AccordionItem value={`item-${index}`} asChild>
@@ -3452,8 +3560,11 @@ export function ScopeBuilder({
               </AccordionItem>
             )}
           </ArrayNavigator>
-        ))}
-      </Accordion>
+              )
+            })}
+          </Accordion>
+        )
+      })()}
 
       <Button
         className="mt-5"

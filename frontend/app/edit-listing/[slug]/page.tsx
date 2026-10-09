@@ -827,9 +827,14 @@ const taskFormSchema = z.object({
     invalid_type_error: "Please enter/select at least 1 experience level",
   }),
   duration: z.object({
-    value: z.coerce.number({
-      invalid_type_error: "Please enter a valid number",
-    }),
+    value: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+      })
+      // PMCM-257: "Task with 0 hours → inline 'Minimum 1 hour per task.'
+      // on that row." Checked on the raw entered value/unit — the
+      // concrete, named failure case is literally 0, regardless of unit.
+      .min(1, "Minimum 1 hour per task."),
     type: z.enum(DURATION_TYPE, {
       invalid_type_error: "Please select an option",
       required_error: "Please select an option",
@@ -868,7 +873,21 @@ const pickFromProjectScopeSchema = (
   }
 }
 
-const projectScopeSchema = pickFromProjectScopeSchema()
+// PMCM-257: called with no options before, so rowSchema.pick({}) picked
+// zero fields — any object (even `{}`) satisfied every row, so "at least
+// one phase with at least one valid task" (AC5) was actually just "at
+// least one phase with at least one row of any shape." Picking the
+// fields that make a task real enforces role/location/experience/
+// duration (which now includes the min-1-hour check above) for section
+// completeness, matching the per-field TaskDialog validation used when
+// adding a task.
+const projectScopeSchema = pickFromProjectScopeSchema({
+  task: true,
+  role: true,
+  location: true,
+  experience: true,
+  duration: true,
+})
 
 const Sidebar = ({
   hasFaqs = false,
@@ -5555,6 +5574,24 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+
+// PMCM-257: matches a phase's own name OR any of its task rows'
+// task/role/location text against the normalized search query. Mirrors
+// the same helper added to scope-builder/index.tsx's ScopeBuilder.
+const matchesPhaseSearch = (
+  phase: Pick<Phase, "phaseName" | "rows">,
+  normalizedQuery: string
+) => {
+  if (!normalizedQuery) return true
+  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
+    return true
+  }
+  return (phase.rows ?? []).some((row) =>
+    [row.task, row.role, row.location].some((value) =>
+      normalizeSearchText(value).includes(normalizedQuery)
+    )
+  )
+}
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -6106,6 +6143,11 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  // PMCM-257: this search input previously had no value/onChange — a
+  // static placeholder. getPhaseSearchTargetId/getTaskSearchTargetId
+  // above are unused dead code (confirmed via grep — no call sites), so
+  // there's no existing scroll-to-target behavior this filter could break.
+  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
   const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
 
   useEffect(() => {
@@ -6159,9 +6201,30 @@ const ProjectScope = ({
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
-  const handleScopeTypeChange = (type: ScopeType) => {
+  // PMCM-257: this used to switch instantly — no confirmation, and
+  // (because it never touched `phases`) no clearing of the now-
+  // incompatible scope data either, leaving a Project-shaped scope
+  // (flat phases) sitting under a "Service" label or vice versa. Gated
+  // behind a confirm dialog now (state below), matching the inline
+  // editor's shared ScopeBuilder component, which already had the
+  // dialog but had the identical "doesn't actually clear" gap.
+  const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = React.useState(false)
+  const [pendingScopeType, setPendingScopeType] =
+    React.useState<ScopeType | null>(null)
+
+  const requestScopeTypeChange = (type: ScopeType) => {
     if (type === scopeType) return
+    setPendingScopeType(type)
+    setScopeTypeConfirmOpen(true)
+  }
+
+  const confirmScopeTypeChange = () => {
+    const type = pendingScopeType
+    if (!type) return
+    const previousType = scopeType
+    const previousPhases = phases
     setScopeType(type)
+    setPhases([{ phaseName: "" }])
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
@@ -6170,7 +6233,26 @@ const ProjectScope = ({
     toast({
       variant: "success",
       title: type === "service" ? "Switched to Service" : "Switched to Project",
+      action: (
+        <ToastAction
+          altText="Undo"
+          className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+          onClick={() => {
+            setScopeType(previousType)
+            setPhases(previousPhases)
+            if (draftProjectId) {
+              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                listingType: previousType,
+              }).catch(() => {})
+            }
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
     })
+    setPendingScopeType(null)
+    setScopeTypeConfirmOpen(false)
   }
   // Scope assignees must be members ON this project (Chris 07-28) — the owner
   // (self) plus added members — never the whole roster.
@@ -6758,6 +6840,17 @@ const ProjectScope = ({
     }
   }
 
+  // PMCM-257: this dialog previously had no resolver at all — a plain
+  // HTML min={1} on the number input, which React Hook Form's
+  // handleSubmit does not enforce, so 0 (or a negative value) saved
+  // silently. Same rule as taskFormSchema.duration above.
+  const durationFormSchema = z.object({
+    duration: z.object({
+      value: z.coerce.number().min(1, "Minimum 1 hour per task."),
+      type: z.enum(DURATION_TYPE),
+    }),
+  })
+
   interface DurationDialogProps {
     open: boolean
     durationFormValues?: DurationFormValues
@@ -6771,7 +6864,13 @@ const ProjectScope = ({
     onDurationFormValuesChange,
     onOpenChange,
   }: DurationDialogProps) => {
-    const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+    const {
+      control,
+      handleSubmit,
+      reset,
+      formState: { errors },
+    } = useForm<DurationFormValues>({
+      resolver: zodResolver(durationFormSchema),
       defaultValues: durationFormValues || {
         duration: { value: 1, type: "days" },
       },
@@ -6815,6 +6914,10 @@ const ProjectScope = ({
                     min={1}
                     className="w-24"
                     placeholder="Value"
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
                   />
                 )}
               />
@@ -6845,6 +6948,11 @@ const ProjectScope = ({
                 )}
               />
             </div>
+            {hookFormHasError({ errors, name: "duration.value" }) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message")}
+              </ErrorMessage>
+            )}
             <DialogFooter>
               <Button type="submit">Save</Button>
               <DialogClose asChild>
@@ -6988,7 +7096,7 @@ const ProjectScope = ({
                   <DropdownMenuContent align="end" className="w-[280px]">
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("project")}
+                      onClick={() => requestScopeTypeChange("project")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {!isService && (
@@ -7004,7 +7112,7 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("service")}
+                      onClick={() => requestScopeTypeChange("service")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {isService && (
@@ -7020,6 +7128,47 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* PMCM-257: mirrors the confirm dialog already built into
+                    the shared scope-builder/index.tsx ScopeBuilder (used by
+                    the inline editor) — same copy/structure, since the
+                    wizard has its own separate phase/task UI here rather
+                    than rendering <ScopeBuilder>. */}
+                <Dialog
+                  open={scopeTypeConfirmOpen}
+                  onOpenChange={setScopeTypeConfirmOpen}
+                >
+                  <DialogContent className="max-w-sm">
+                    <DialogTitle>
+                      Change to{" "}
+                      {pendingScopeType === "service" ? "Service" : "Project"}?
+                    </DialogTitle>
+                    <DialogDescription>
+                      This action will clear your entire{" "}
+                      {isService ? "service" : "project"} scope so you can
+                      rebuild it as a{" "}
+                      {pendingScopeType === "service" ? "service" : "project"}{" "}
+                      — phases, tasks, duration, and budget will all reset.
+                      You can undo this at anytime.
+                    </DialogDescription>
+
+                    <DialogFooter className="mt-8 grid gap-x-3">
+                      <DialogClose asChild>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          onClick={() => setPendingScopeType(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </DialogClose>
+
+                      <Button onClick={confirmScopeTypeChange}>
+                        Yes, Change
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="flex items-center">
                   <Button
@@ -7052,19 +7201,41 @@ const ProjectScope = ({
             </div>
 
             <InputGroup>
-              <Input type="text" placeholder="Find a phase or task" />
+              <Input
+                type="text"
+                placeholder="Find a phase or task"
+                value={phaseSearchQuery}
+                onChange={(event) => setPhaseSearchQuery(event.target.value)}
+              />
               <InputLeftElement>
                 <SearchMd className="text-gray-500 h-5 w-5" />
               </InputLeftElement>
             </InputGroup>
 
+            {(() => {
+              const normalizedQuery = normalizeSearchText(phaseSearchQuery)
+              const hasVisiblePhase = phases.some((phase) =>
+                matchesPhaseSearch(phase, normalizedQuery)
+              )
+              if (normalizedQuery && !hasVisiblePhase) {
+                return (
+                  <p className="py-6 text-center text-sm text-gray-500">
+                    No phases found
+                  </p>
+                )
+              }
+              return (
             <Accordion
               value={accordionState}
               onValueChange={setAccordionState}
               type="multiple"
               className="flex-auto space-y-3"
             >
-              {phases.map(({ phaseName, rows }, index) => (
+              {phases.map(({ phaseName, rows }, index) => {
+                if (!matchesPhaseSearch({ phaseName, rows }, normalizedQuery)) {
+                  return null
+                }
+                return (
                 <ArrayNavigator key={index} value={phases} index={index}>
                   {rows ? (
                     <AccordionItem value={`item-${index}`} asChild>
@@ -7299,8 +7470,11 @@ const ProjectScope = ({
                     </AccordionItem>
                   )}
                 </ArrayNavigator>
-              ))}
+                )
+              })}
             </Accordion>
+              )
+            })()}
 
             <Button
               className="mt-5"
