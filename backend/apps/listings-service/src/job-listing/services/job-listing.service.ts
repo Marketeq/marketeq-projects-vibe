@@ -11,7 +11,10 @@ import { Repository } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
-import sanitizeHtml from "sanitize-html";
+// sanitize-html is CommonJS (`module.exports = sanitizeHtml`, no `.default`). The
+// backend compiles without esModuleInterop, so a default import emits
+// `sanitize_html_1.default(...)` and throws "is not a function" at runtime.
+import sanitizeHtml = require("sanitize-html");
 import { v4 as uuidv4 } from "uuid";
 import { JobListing } from "../entities/job-listing.entity";
 import { TeamMemberRow } from "../entities/job-listing-role-row.entity";
