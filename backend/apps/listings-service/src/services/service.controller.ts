@@ -52,14 +52,18 @@ export class ServicesController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateServiceDto) {
-    return this.service.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateServiceDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.update(id, dto, userId);
   }
 
   @Put(':id/publish')
   @UseGuards(JwtAuthGuard)
-  publish(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.publish(id);
+  publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
+    return this.service.publish(id, userId);
   }
 
   @Put(':id/archive')

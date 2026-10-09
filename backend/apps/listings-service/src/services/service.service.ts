@@ -1,6 +1,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ConflictException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { isUUID } from 'class-validator';
 import { ClientProxy } from '@nestjs/microservices';
 import { Service } from './entities/service.entity';
 import { CreateServiceDto } from './dto/create-service.dto';
@@ -8,6 +9,8 @@ import { UpdateServiceDto } from './dto/update-service.dto';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
+import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
+import { VerificationRequiredException } from '../identity-gate/identity-gate.exceptions';
 
 @Injectable()
 export class ServicesService {
@@ -19,7 +22,34 @@ export class ServicesService {
     @Inject('ALGOLIA_CLIENT')
     private readonly algoliaClient: ClientProxy,
     private readonly userProfileClient: UserProfileClient,
+    private readonly identityGate: IdentityVerificationGateClient,
   ) {}
+
+  // The listing type defines the context: a service is a talent-owned listing,
+  // so every publish / republish / claim of one is a talent action and is
+  // gated (G2) whatever roles the account holds. The owner is userId when set,
+  // otherwise createdBy only when it is a real user id - system values such as
+  // 'n8n-seed' or 'seed:n8n-automation' are not owners.
+  private ownerOf(service: Pick<Service, 'userId' | 'createdBy'>): string | null {
+    if (service.userId) return service.userId;
+    return service.createdBy && isUUID(service.createdBy) ? service.createdBy : null;
+  }
+
+  private assertOwner(service: Pick<Service, 'userId' | 'createdBy'>, actorId: string): void {
+    const owner = this.ownerOf(service);
+    if (!actorId || !owner || owner !== actorId) {
+      throw new ForbiddenException('You do not own this service');
+    }
+  }
+
+  /** Throws 403 VERIFICATION_REQUIRED (own requirements) or 503 when unanswered. */
+  private async assertGateOpen(talentId: string, disclose = true): Promise<void> {
+    const decision = await this.identityGate.checkGate(talentId);
+    if (decision.gateOpen) return;
+    throw new VerificationRequiredException(
+      disclose ? (decision.missingRequirements as 'identity' | 'location' | 'both') : undefined,
+    );
+  }
 
   async findAll(status = ListingStatus.Published) {
     const items = await this.repo.find({ where: { status, listingType: 'service' }, order: { createdAt: 'DESC' } });
@@ -90,6 +120,19 @@ export class ServicesService {
 
   async claim(id: string, userId: string) {
     if (!userId) throw new ForbiddenException('Sign in to claim a service');
+
+    const current = await this.repo.findOne({ where: { id, listingType: 'service' } });
+    if (!current) throw new NotFoundException('Service not found');
+    if (current.userId === userId) return this.findOne(id);
+    if (current.userId) {
+      throw new ConflictException('This service has just been claimed by someone else');
+    }
+    // Only a system-seeded service (no real-user creator) is claimable, or a
+    // service the claimer created themselves.
+    const creator = this.ownerOf(current);
+    if (creator && creator !== userId) throw new ForbiddenException('You do not own this service');
+    // Claiming is a talent action: gate it before any ownership change.
+    await this.assertGateOpen(userId);
 
     const result = await this.repo
       .createQueryBuilder()
@@ -223,6 +266,7 @@ export class ServicesService {
   }
 
   async create(dto: CreateServiceDto, userId: string) {
+    if (dto.status === ListingStatus.Published) await this.assertGateOpen(userId);
     const item = this.repo.create({
       ...dto,
       createdBy: userId,
@@ -234,16 +278,42 @@ export class ServicesService {
     return saved;
   }
 
-  async update(id: string, dto: UpdateServiceDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateServiceDto, actorId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwner(existing, actorId);
+    // A status write that makes a non-public service public is a publish.
+    if (dto.status === ListingStatus.Published && existing.status !== ListingStatus.Published) {
+      await this.assertGateOpen(actorId);
+    }
+    return this.applyUpdate(id, dto);
+  }
+
+  /**
+   * CMS-driven status sync (internal token, no acting user). A service with a
+   * real talent owner is gated on that owner when the patch would make it
+   * public; the owner's missing requirements are not disclosed to the system
+   * caller. A system-seeded service has no talent owner and is exempt.
+   */
+  async updateFromCms(id: string, patch: UpdateServiceDto) {
+    const existing = await this.findOne(id);
+    const owner = this.ownerOf(existing);
+    if (owner && patch.status === ListingStatus.Published && existing.status !== ListingStatus.Published) {
+      await this.assertGateOpen(owner, false);
+    }
+    return this.applyUpdate(id, patch);
+  }
+
+  private async applyUpdate(id: string, dto: UpdateServiceDto) {
     await this.repo.update(id, dto);
     const updated = await this.repo.findOne({ where: { id } });
     if (updated) this.emitAlgoliaUpsert(updated);
     return this.findOne(id);
   }
 
-  async publish(id: string) {
-    await this.findOne(id);
+  async publish(id: string, actorId: string) {
+    const existing = await this.findOne(id);
+    this.assertOwner(existing, actorId);
+    await this.assertGateOpen(actorId);
     await this.repo.update(id, { status: ListingStatus.Published });
     this.logger.log(`Published service ${id}`);
     const published = await this.repo.findOne({ where: { id } });
