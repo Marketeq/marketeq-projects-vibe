@@ -267,7 +267,9 @@ export function createEventBridge(deps: EventBridgeDeps) {
             minutes: [
               {
                 id: s.id,
-                minuteStartAt: s.sampledAt,
+                // TTS validates this as an ISO 8601 string (@IsISO8601),
+                // so the epoch-ms sample time is sent as an ISO date.
+                minuteStartAt: new Date(s.sampledAt).toISOString(),
                 active: s.active,
               },
             ],

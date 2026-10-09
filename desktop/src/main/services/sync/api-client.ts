@@ -685,7 +685,7 @@ export function createApiClient(config: ApiClientConfig) {
     // activity --------------------------------------------------------------
     async postActivityBatch(input: {
       sessionId: string;
-      minutes: Array<{ id: string; minuteStartAt: number; active: boolean }>;
+      minutes: Array<{ id: string; minuteStartAt: string; active: boolean }>;
       idempotencyKey: string;
     }): Promise<ActivityBatchResponse> {
       const { sessionId, idempotencyKey, minutes } = input;
