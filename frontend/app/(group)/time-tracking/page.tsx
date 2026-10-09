@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -135,6 +136,9 @@ import { FiFigma } from "react-icons/fi"
 import { FaChrome, FaSlack, FaGithub, FaGoogle, FaTerminal, FaApple, FaSafari } from "react-icons/fa"
 import { type ManualTimeDTO, getManualTime } from "@/service/http/manual-time"
 import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { checkTimeTrackerDownload } from "@/service/http/time-tracker-download"
+import { downloadBlockFor } from "@/src/lib/api/time-tracker-download"
 import { createContractTask, getTasksForContract } from "@/service/http/tasks"
 import {
   type ScreenshotRulesDTO,
@@ -3848,6 +3852,10 @@ function DownloadDesktopTrackerDialog({
   const { toast } = useToast()
   const [platform, setPlatform] = useState<DesktopPlatform>("mac-arm64")
   const [downloadStarted, setDownloadStarted] = useState(false)
+  const [verificationBlock, setVerificationBlock] = useState<
+    "verification_required" | "verification_unavailable" | null
+  >(null)
+  const router = useRouter()
 
   const selected = platformOptions[platform]
   const isMac = selected.os === "mac"
@@ -3857,10 +3865,29 @@ function DownloadDesktopTrackerDialog({
     if (open) {
       setPlatform(detectPlatform())
       setDownloadStarted(false)
+      setVerificationBlock(null)
     }
   }, [open])
 
-  const triggerDownload = () => {
+  // G8: the backend's identity gate is asked first, for the button and for the
+  // automatic start alike. Only an allowed answer continues to the release URL;
+  // a block opens the existing AccountVerificationGate popup instead.
+  const startDownload = useCallback(async () => {
+    try {
+      await checkTimeTrackerDownload()
+    } catch (err) {
+      const block = downloadBlockFor(err)
+      if (block) {
+        setVerificationBlock(block)
+        return
+      }
+      toast({
+        title: "Download failed",
+        description: apiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      })
+      return
+    }
     const a = document.createElement("a")
     a.href = selected.downloadUrl
     a.download = selected.fileName
@@ -3875,37 +3902,44 @@ function DownloadDesktopTrackerDialog({
     if (typeof window !== "undefined") {
       window.location.href = selected.downloadUrl
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected])
+
+  const triggerDownload = () => {
+    void startDownload()
   }
 
   // Auto-start the download when the dialog opens (per flowchart Step 2).
   // Only for platforms whose installers actually exist — otherwise we'd
   // send the user into a 404 without their consent.
   useEffect(() => {
-    if (!open || downloadStarted) return
+    if (!open || downloadStarted || verificationBlock) return
     if (!selected.available) return
-    const t = setTimeout(() => {
-      const a = document.createElement("a")
-      a.href = selected.downloadUrl
-      a.download = selected.fileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setDownloadStarted(true)
-      toast({
-        title: "Download started",
-        description: `${selected.fileName} is downloading to your Downloads folder.`,
-      })
-      if (typeof window !== "undefined") {
-        window.location.href = selected.downloadUrl
-      }
-    }, 400)
+    const t = setTimeout(() => void startDownload(), 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selected.available])
 
   const otherOsPlatform: DesktopPlatform = isMac ? "win-x64" : "mac-arm64"
 
+  // "Verify My Account" in the existing popup continues on the talent dashboard,
+  // where the existing verification banner starts verification.
+  const goVerify = () => {
+    setVerificationBlock(null)
+    onOpenChange(false)
+    router.push("/talent-dashboard")
+  }
+
   return (
+    <>
+    <AccountVerificationGate
+      open={open && verificationBlock !== null}
+      reason={verificationBlock === "verification_unavailable" ? "status_unavailable" : "unstarted"}
+      connectionCheckState="idle"
+      onVerify={goVerify}
+      onRetryConnectionCheck={goVerify}
+      onDismissConnectionError={() => setVerificationBlock(null)}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
         {/* Header */}
@@ -4057,6 +4091,7 @@ function DownloadDesktopTrackerDialog({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 }
 

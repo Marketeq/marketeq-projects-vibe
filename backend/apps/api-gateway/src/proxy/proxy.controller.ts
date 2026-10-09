@@ -463,7 +463,7 @@ export class ProxyController {
     // time-tracking-service mounts these at /settings and /tooltips. They are
     // exposed as /time-tracking/settings/... and /time-tracking/tooltips/...
     // so the generic names don't claim a top-level gateway prefix.
-    if (segments[0] === 'time-tracking' && ['settings', 'tooltips'].includes(segments[1])) {
+    if (segments[0] === 'time-tracking' && ['settings', 'tooltips', 'downloads'].includes(segments[1])) {
       downstreamPath = '/' + segments.slice(1).join('/')
     }
     if (serviceName === 'checkout' && segments[0] === 'checkout') {
