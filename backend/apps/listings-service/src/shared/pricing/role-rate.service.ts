@@ -2,7 +2,27 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import * as jwt from 'jsonwebtoken';
 import { hourlyRateForTask, popularRegionForRole } from '../utils/pricing';
+import { COUNTRY_TO_REGION } from '../../job-listing/services/job-listing-budget.service';
+
+const COUNTRY_TO_REGION_LOWER: Record<string, string> = Object.fromEntries(
+  Object.entries(COUNTRY_TO_REGION).map(([country, region]) => [
+    country.toLowerCase(),
+    region,
+  ]),
+);
+
+const normalizeLocation = (location: string | null): string | undefined =>
+  location ? COUNTRY_TO_REGION_LOWER[location.toLowerCase()] : undefined;
+
+const normalizeExperienceLevel = (
+  experienceLevel: string | null,
+): string | undefined => {
+  if (!experienceLevel) return undefined;
+  const key = experienceLevel.toLowerCase();
+  return key === 'mid' ? 'medior' : key;
+};
 
 // ── RoleRateService ───────────────────────────────────────────────────────
 // Fetches the hourly median rate for a role from pricing-service, with a
@@ -37,9 +57,11 @@ export class RoleRateService {
           {
             params: {
               role:       roleTitle,
-              location:   location       ?? undefined,
-              experience: experienceLevel ?? undefined,
+              location:   normalizeLocation(location),
+              experience: normalizeExperienceLevel(experienceLevel),
             },
+            headers: { Authorization: `Bearer ${this.signInternalToken()}` },
+            timeout: 2000,
           },
         ),
       );
@@ -61,5 +83,10 @@ export class RoleRateService {
     });
     // hourlyRateForTask returns dollars — convert to USD cents
     return fallbackRate * 100;
+  }
+
+  private signInternalToken(): string {
+    const secret = this.config.get<string>('JWT_SECRET') ?? '';
+    return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
   }
 }
