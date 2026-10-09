@@ -687,6 +687,14 @@ These are reusable composed modules built from base UI components. Located at `f
 - **Exports**: Sidebar navigation components for account pages; uses `SidebarItem` type with badge formatting
 - **Dependencies**: NextLink, Badge, IconButton, useInboxThreads
 
+### AccountVerificationGate
+- **File**: `account-verification-gate.tsx`
+- **Import**: `import { AccountVerificationGate, type ConnectionCheckState } from "@/components/account-verification-gate"`
+- **Exports**: `AccountVerificationGate`, `AccountVerificationGateReason`, `ConnectionCheckState`
+- **Key Props**: `open`, `reason: "unstarted" | "status_unavailable"`, `connectionCheckState: "idle" | "checking" | "unavailable"`, `onVerify`, `onRetryConnectionCheck`, `onDismissConnectionError`
+- **Usage**: Talent dashboard "Verify My Account" entry prompt for Identity Verification (Figma node 13101-47588), including the connection-check error and Retry state
+- **Dependencies**: Dialog, DialogContent, Button (base UI only), AlertTriangle / RefreshCw icons
+
 ### ActiveSessionsModal
 - **File**: `active-sessions-modal.tsx`
 - **Import**: `import { ... } from "@/components/active-sessions-modal"`
@@ -788,6 +796,14 @@ These are reusable composed modules built from base UI components. Located at `f
 - **File**: `hire-me-button.tsx`
 - **Import**: `import { ... } from "@/components/hire-me-button"`
 - **Exports**: Hire me CTA button
+
+### IdentityVerificationFlow
+- **File**: `identity-verification-flow.tsx`
+- **Import**: `import { IdentityVerificationFlow } from "@/components/identity-verification-flow"`
+- **Exports**: `IdentityVerificationFlow`, `VerificationContext`
+- **Key Props**: `open`, `onOpenChange`, `detectedLocation`, `initialState?`, `activeTravelModeUpdate?` (plus preview-only `simulate*ForPreview` flags, honoured only when `NODE_ENV === "development"`)
+- **Usage**: Talent dashboard Identity Verification flow: home-country confirmation (hands off to the Didit-hosted Free KYC), Travel Mode classification and duration, location update. Markup mirrors `stories/identity-verification-entire.stories.tsx`
+- **Dependencies**: Dialog, Button, Alert, RadioGroup, Label, Toast, Popover, Command (own-combobox), Spinner, Leaflet map
 
 ### InboxComps
 - **File**: `inbox-comps.tsx`

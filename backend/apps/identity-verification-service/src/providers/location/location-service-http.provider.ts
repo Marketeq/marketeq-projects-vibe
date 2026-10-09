@@ -105,12 +105,13 @@ function isValidIpResolutionShape(value: unknown): value is LocationServiceIpRes
 export class LocationServiceHttpProvider implements LocationProvider {
   private readonly logger = new Logger(LocationServiceHttpProvider.name);
   // No env file was edited to add this — falls back to location-service's
-  // own documented local port (LS-00 §7 / ecosystem.config.js), matching the
-  // same "config.get(...) || local default" convention already used for
-  // every other inter-service URL in this repo (e.g. api-gateway's
+  // own port (3036: its main.ts default, ecosystem.config.js and boot-all.js),
+  // matching the same "config.get(...) || local default" convention already
+  // used for every other inter-service URL in this repo (e.g. api-gateway's
   // proxy.service.ts serviceMap). Set LOCATION_SERVICE_URL to override.
+  // (3030 is wallet-service under boot-all.js.)
   private readonly baseUrl =
-    process.env.LOCATION_SERVICE_URL || 'http://localhost:3030';
+    process.env.LOCATION_SERVICE_URL || 'http://localhost:3036';
   private readonly timeoutMs = 5000;
 
   // Country-only, identity-relevant lookup. This is what home-country
