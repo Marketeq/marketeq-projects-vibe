@@ -5,7 +5,10 @@
     "build": "nest build identity-verification-service",
     "start": "node dist/apps/identity-verification-service/main",
     "start:dev": "nest start identity-verification-service --watch",
-    "start:prod": "node dist/apps/identity-verification-service/main"
+    "start:prod": "node dist/apps/identity-verification-service/main",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.913.0",
@@ -15,13 +18,31 @@
     "@nestjs/microservices": "^10.0.0",
     "@nestjs/platform-express": "^10.4.22",
     "@nestjs/schedule": "^4.1.2",
+    "@nestjs/throttler": "^6.7.0",
     "@nestjs/typeorm": "^10.0.0",
     "amqplib": "^0.10.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
+    "geoip-lite": "^2.0.1",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.0",
     "typeorm": "^0.3.26"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "coverageDirectory": "../coverage",
+    "testEnvironment": "node"
   }
 }
