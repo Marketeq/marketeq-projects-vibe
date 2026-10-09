@@ -4,7 +4,7 @@
 // Requires credentials: render-api-key
 //
 // Can also be called as a pre-deploy gate from staging-orchestrator:
-//   build job: 'render-env-guard', parameters: [string(name: 'MODE', value: 'check')]
+//   build job: '/marketeq-projects-vibe/monitoring/render-env-guard', parameters: [string(name: 'MODE', value: 'check')]
 
 pipeline {
     agent any
