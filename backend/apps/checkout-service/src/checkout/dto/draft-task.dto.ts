@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsInt,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -40,6 +41,17 @@ export class AddDraftTaskDto {
   @Min(1)
   @Max(100000)
   durationHours!: number;
+
+  @IsOptional()
+  @IsIn(['full_time', 'part_time', 'custom'])
+  workSchedule?: 'full_time' | 'part_time' | 'custom';
+
+  @ValidateIf((dto) => dto.workSchedule === 'custom')
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  customHoursPerWeek?: number;
 
   @Transform(trim)
   @IsString()
@@ -84,6 +96,17 @@ export class UpdateDraftTaskDto {
   @Min(1)
   @Max(100000)
   durationHours?: number;
+
+  @ValidateIf(isSent)
+  @IsIn(['full_time', 'part_time', 'custom'])
+  workSchedule?: 'full_time' | 'part_time' | 'custom';
+
+  @ValidateIf((_dto, value) => value !== undefined && value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  customHoursPerWeek?: number | null;
 
   @ValidateIf(isSent)
   @Transform(trim)
@@ -144,6 +167,24 @@ export class ReplaceDraftMemberDto {
 
   @IsUUID()
   toUserId!: string;
+
+  @ValidateIf(isSent)
+  @IsUUID()
+  fromUserId?: string;
+
+  @ValidateIf(isSent)
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(255)
+  roleKey?: string;
+}
+
+export class RemoveDraftMemberDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version!: number;
 
   @ValidateIf(isSent)
   @IsUUID()

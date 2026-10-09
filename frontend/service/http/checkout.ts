@@ -21,6 +21,8 @@ export type DraftTaskInput = {
   title: string
   roleName: string
   durationHours: number
+  workSchedule?: "full_time" | "part_time" | "custom"
+  customHoursPerWeek?: number | null
   experienceLevel: string
   location?: string[]
   assigneeUserId?: string | null
@@ -125,6 +127,15 @@ export const CheckoutAPI = {
     AxiosRequest.del(`/v1/checkout/drafts/${draftId}/team/${userId}`, {
       params: { version },
     }),
+
+  RemoveDraftMemberAndTasks: (
+    draftId: string,
+    data: { version: number; fromUserId?: string; roleKey?: string }
+  ) =>
+    AxiosRequest.post(
+      `/v1/checkout/drafts/${draftId}/team/remove-member`,
+      data
+    ),
 
   DuplicateDraftPhase: (draftId: string, phaseId: string, version: number) =>
     AxiosRequest.post(

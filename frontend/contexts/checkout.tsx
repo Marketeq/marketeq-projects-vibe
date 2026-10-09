@@ -21,6 +21,7 @@ import {
   AlertDescription,
   AlertIcon,
   AlertTitle,
+  Button,
 } from "@/components/ui"
 
 type CheckoutContextValue = {
@@ -58,6 +59,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     session: null,
   })
 
+  const [retryKey, setRetryKey] = useState(0)
+
   useEffect(() => {
     if (!sessionId) return
     let isActive = true
@@ -78,7 +81,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isActive = false
     }
-  }, [sessionId])
+  }, [sessionId, retryKey])
 
   const session = loadState.sessionId === sessionId ? loadState.session : null
   const value = useMemo<CheckoutContextValue>(
@@ -133,8 +136,15 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
             <AlertContent>
               <AlertTitle>We were unable to load your checkout</AlertTitle>
               <AlertDescription className="mt-1">
-                Please start checkout again from the project page.
+                Please try again or start checkout again from the project page.
               </AlertDescription>
+              <Button
+                variant="filled"
+                className="mt-4"
+                onClick={() => setRetryKey((count) => count + 1)}
+              >
+                Try Again
+              </Button>
             </AlertContent>
           </Alert>
         </div>

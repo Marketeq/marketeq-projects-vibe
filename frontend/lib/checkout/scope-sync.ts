@@ -8,6 +8,8 @@ type TaskFields = {
   title: string
   roleName: string
   durationHours: number
+  workSchedule: "full_time" | "part_time" | "custom"
+  customHoursPerWeek: number | null
   experienceLevel: string
   location: string[]
   assigneeUserId: string | null
@@ -60,6 +62,11 @@ export const createScopeSyncState = (
         title: task.title,
         roleName: task.roleName ?? "",
         durationHours: task.estimatedHours ?? 0,
+        workSchedule:
+          task.workSchedule === "part_time" || task.workSchedule === "custom"
+            ? task.workSchedule
+            : "full_time",
+        customHoursPerWeek: task.customHoursPerWeek ?? null,
         experienceLevel: task.experienceLevel ?? "",
         location: task.location ?? [],
         assigneeUserId: task.assigneeUserId,
@@ -100,6 +107,8 @@ const toFields = (task: {
   experienceLevel: string | null
   location: string[] | null
   assigneeUserId: string | null
+  workSchedule: string | null
+  customHoursPerWeek: number | null
 }): TaskFields | null => {
   const title = task.title.trim()
   const roleName = (task.roleName ?? "").trim()
@@ -117,6 +126,12 @@ const toFields = (task: {
       task.assigneeUserId && UUID_PATTERN.test(task.assigneeUserId)
         ? task.assigneeUserId
         : null,
+    workSchedule:
+      task.workSchedule === "part_time" || task.workSchedule === "custom"
+        ? task.workSchedule
+        : "full_time",
+    customHoursPerWeek:
+      task.workSchedule === "custom" ? task.customHoursPerWeek : null,
   }
 }
 
@@ -302,6 +317,12 @@ export const syncScopeChanges = async (
         }
         if (item.fields.durationHours !== known.durationHours) {
           changes.durationHours = item.fields.durationHours
+        }
+        if (item.fields.workSchedule !== known.workSchedule) {
+          changes.workSchedule = item.fields.workSchedule
+        }
+        if (item.fields.customHoursPerWeek !== known.customHoursPerWeek) {
+          changes.customHoursPerWeek = item.fields.customHoursPerWeek
         }
         if (item.fields.experienceLevel !== known.experienceLevel) {
           changes.experienceLevel = item.fields.experienceLevel

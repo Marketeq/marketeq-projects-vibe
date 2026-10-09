@@ -20,6 +20,7 @@ export type CheckoutDraftPricing = {
   total: number
   giftCards: CheckoutDraftGiftCard[]
   promoCode: CheckoutDraftPromoCode | null
+  giftCardLockedUntil: string | null
 }
 
 export const getCheckoutDraftPricing = async (
@@ -44,6 +45,10 @@ export const getCheckoutDraftPricing = async (
       total: data.total,
       giftCards: Array.isArray(data.giftCards) ? data.giftCards : [],
       promoCode: data.promoCode ?? null,
+      giftCardLockedUntil:
+        typeof data.giftCardLockedUntil === "string"
+          ? data.giftCardLockedUntil
+          : null,
     }
   } catch {
     return null

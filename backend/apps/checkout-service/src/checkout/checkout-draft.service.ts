@@ -20,11 +20,19 @@ import {
   AddDraftPhaseDto,
   AddDraftTaskDto,
   DuplicateDraftPhaseDto,
+  RemoveDraftMemberDto,
   ReplaceDraftMemberDto,
   UpdateDraftRoleDto,
   UpdateDraftPhaseDto,
   UpdateDraftTaskDto,
 } from './dto/draft-task.dto';
+import {
+  DraftMembers,
+  WorkScheduleType,
+  effectiveTaskSchedule,
+  resolveMemberSchedule,
+  scheduleToTaskColumns,
+} from './checkout-draft-schedule.util';
 
 type ListingTask = {
   title?: string;
@@ -33,6 +41,9 @@ type ListingTask = {
   location?: string[];
   experienceLevel?: string;
   estimatedHours?: number;
+  workSchedule?: WorkScheduleType;
+  customHours?: number | null;
+  customFrequency?: string | null;
 };
 
 type ListingPhase = {
@@ -58,13 +69,29 @@ const OPEN_ROLE_LOCATION = 'United States';
 const normalizeKeyPart = (value: string | null): string =>
   (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
-const HOURS_PER_DAY = 8;
+const WORKING_DAYS_PER_WEEK = 5;
 
-const taskDays = (hours: number | null): number =>
-  hours !== null && hours > 0 ? Math.ceil(hours / HOURS_PER_DAY) : 0;
+const taskDays = (
+  task: CheckoutDraftTaskEntity,
+  members: DraftMembers,
+): number => {
+  const hours = Number(task.durationHours) || 0;
+  return hours > 0
+    ? Math.ceil(
+        hours /
+          (effectiveTaskSchedule(task, members).weeklyHours /
+            WORKING_DAYS_PER_WEEK),
+      )
+    : 0;
+};
 
-const phaseLengthDays = (taskHours: (number | null)[]): number =>
-  taskHours.length === 0 ? 0 : Math.max(...taskHours.map(taskDays));
+const phaseLengthDays = (
+  tasks: CheckoutDraftTaskEntity[],
+  members: DraftMembers,
+): number =>
+  tasks.length === 0
+    ? 0
+    : Math.max(...tasks.map((task) => taskDays(task, members)));
 
 const uniqueIds = (ids: Iterable<string>): string[] => Array.from(new Set(ids));
 
@@ -174,7 +201,10 @@ export class CheckoutDraftService {
           ? titles[0]
           : `${titles.length} Phase`;
 
-    const assignedIds = uniqueIds([...draft.memberUserIds, ...assigned.keys()]);
+    const assignedIds = uniqueIds([
+      ...Object.keys(draft.members),
+      ...assigned.keys(),
+    ]);
     const [listingTeam, rates] = await Promise.all([
       this.summaryService.fetchListingTeam(draft.listingId),
       this.summaryService.estimateRoleRates(
@@ -257,12 +287,23 @@ export class CheckoutDraftService {
         order: phase.order,
         startDay: phase.startDay,
         endDay: phase.endDay,
-        tasks: phase.tasks.map((task) => this.toTaskResponse(task)),
+        tasks: phase.tasks.map((task) =>
+          this.toTaskResponse(task, draft.members),
+        ),
       })),
     };
   }
 
-  private toTaskResponse(task: CheckoutDraftTaskEntity) {
+  private async loadMembers(draftId: string): Promise<DraftMembers> {
+    const draft = await this.repo.findOneOrFail({ where: { id: draftId } });
+    return draft.members;
+  }
+
+  private toTaskResponse(
+    task: CheckoutDraftTaskEntity,
+    members: DraftMembers,
+  ) {
+    const schedule = effectiveTaskSchedule(task, members);
     return {
       id: task.id,
       title: task.title,
@@ -270,6 +311,11 @@ export class CheckoutDraftService {
       location: task.location,
       experienceLevel: task.experienceLevel,
       durationHours: task.durationHours,
+      workSchedule: schedule.workSchedule,
+      customHoursPerWeek: schedule.customHoursPerWeek,
+      customHours: schedule.customHours,
+      customFrequency: schedule.customFrequency,
+      locked: schedule.locked,
       assigneeUserId: task.assigneeUserId,
       order: task.order,
     };
@@ -298,12 +344,17 @@ export class CheckoutDraftService {
         order: { order: 'ASC' },
       });
       let nextStartDay = 1;
-      const assignees = new Set<string>();
+      const members: DraftMembers = { ...draft.members };
+      for (const phase of phases) {
+        for (const task of phase.tasks) {
+          if (task.assigneeUserId && !members[task.assigneeUserId]) {
+            members[task.assigneeUserId] = resolveMemberSchedule();
+          }
+        }
+      }
       const phaseDays: { id: string; startDay: number; endDay: number }[] = [];
       for (const phase of phases) {
-        const days = phaseLengthDays(
-          phase.tasks.map((task) => task.durationHours),
-        );
+        const days = phaseLengthDays(phase.tasks, members);
         const startDay = nextStartDay;
         nextStartDay += days;
         const endDay = days > 0 ? nextStartDay - 1 : startDay;
@@ -314,18 +365,14 @@ export class CheckoutDraftService {
           });
         }
         phaseDays.push({ id: phase.id, startDay, endDay });
-        for (const task of phase.tasks) {
-          if (task.assigneeUserId) assignees.add(task.assigneeUserId);
-        }
       }
 
       const durationDays = nextStartDay > 1 ? nextStartDay - 1 : null;
-      const memberUserIds = uniqueIds([...draft.memberUserIds, ...assignees]);
-      const teamMemberCount = memberUserIds.length;
+      const teamMemberCount = Object.keys(members).length;
       const nextVersion = draft.version + 1;
       await manager.update(CheckoutDraft, draft.id, {
         version: nextVersion,
-        memberUserIds,
+        members,
       });
 
       return {
@@ -466,15 +513,19 @@ export class CheckoutDraftService {
         );
         const isListedMember =
           Boolean(match.fromUserId) &&
-          draft.memberUserIds.includes(match.fromUserId as string);
+          draft.members[match.fromUserId as string] !== undefined;
         if (matched.length === 0 && !isListedMember) {
           throw new NotFoundException('No tasks found for that member');
         }
+        const departing = match.fromUserId
+          ? draft.members[match.fromUserId]
+          : undefined;
         const openRoleDefaults = toUserId
           ? {}
           : {
               experienceLevel: OPEN_ROLE_EXPERIENCE,
               location: [OPEN_ROLE_LOCATION],
+              ...(departing ? scheduleToTaskColumns(departing) : {}),
             };
         if (matched.length > 0) {
           await manager.update(
@@ -484,13 +535,12 @@ export class CheckoutDraftService {
           );
         }
         if (match.fromUserId) {
-          draft.memberUserIds = uniqueIds(
-            toUserId
-              ? draft.memberUserIds.map((id) =>
-                  id === match.fromUserId ? toUserId : id,
-                )
-              : draft.memberUserIds.filter((id) => id !== match.fromUserId),
-          );
+          const nextMembers = { ...draft.members };
+          delete nextMembers[match.fromUserId];
+          if (toUserId && !nextMembers[toUserId]) {
+            nextMembers[toUserId] = resolveMemberSchedule(undefined, departing);
+          }
+          draft.members = nextMembers;
         }
         return matched.map((task) => ({
           id: task.id,
@@ -544,6 +594,56 @@ export class CheckoutDraftService {
       { fromUserId: userId },
       null,
     );
+  }
+
+  async removeMemberAndTasks(
+    clientId: string,
+    draftId: string,
+    dto: RemoveDraftMemberDto,
+  ) {
+    if (Boolean(dto.fromUserId) === Boolean(dto.roleKey)) {
+      throw new BadRequestException(
+        'Send exactly one of fromUserId and roleKey',
+      );
+    }
+
+    const wantedRoleKey = dto.roleKey ? normalizeKeyPart(dto.roleKey) : null;
+    const { result: deletedTaskIds, ...summary } = await this.applyScopeChange(
+      clientId,
+      draftId,
+      dto.version,
+      async (manager, draft) => {
+        const tasks = await manager.find(CheckoutDraftTaskEntity, {
+          where: { phase: { draftId } },
+        });
+        const matched = tasks.filter((task) =>
+          dto.fromUserId
+            ? task.assigneeUserId === dto.fromUserId
+            : !task.assigneeUserId &&
+              `${normalizeKeyPart(task.roleName)}|${normalizeKeyPart(task.experienceLevel)}` ===
+                wantedRoleKey,
+        );
+        const isListedMember =
+          Boolean(dto.fromUserId) &&
+          draft.members[dto.fromUserId as string] !== undefined;
+        if (matched.length === 0 && !isListedMember) {
+          throw new NotFoundException('No tasks found for that member');
+        }
+
+        const ids = matched.map((task) => task.id);
+        if (ids.length > 0) {
+          await manager.delete(CheckoutDraftTaskEntity, { id: In(ids) });
+        }
+        if (dto.fromUserId) {
+          const nextMembers = { ...draft.members };
+          delete nextMembers[dto.fromUserId];
+          draft.members = nextMembers;
+        }
+        return ids;
+      },
+    );
+    const team = await this.getTeam(clientId, draftId);
+    return { deletedTaskIds, members: team.members, ...summary };
   }
 
   async updateRole(clientId: string, draftId: string, dto: UpdateDraftRoleDto) {
@@ -636,6 +736,8 @@ export class CheckoutDraftService {
                 title: task.title,
                 roleName: task.roleName,
                 durationHours: task.durationHours,
+                workSchedule: task.workSchedule,
+                customHoursPerWeek: task.customHoursPerWeek,
                 experienceLevel: task.experienceLevel,
                 location: task.location,
                 assigneeUserId: task.assigneeUserId,
@@ -650,9 +752,10 @@ export class CheckoutDraftService {
     const phase = await this.dataSource.transaction((manager) =>
       this.toPhaseResponse(manager, result.phaseId),
     );
+    const members = await this.loadMembers(draftId);
     return {
       phase,
-      tasks: result.tasks.map((task) => this.toTaskResponse(task)),
+      tasks: result.tasks.map((task) => this.toTaskResponse(task, members)),
       ...summary,
     };
   }
@@ -730,11 +833,18 @@ export class CheckoutDraftService {
       clientId,
       draftId,
       dto.version,
-      async (manager) => {
+      async (manager, draft) => {
         const phase = await manager.findOne(CheckoutDraftPhaseEntity, {
           where: { id: phaseId, draftId },
         });
         if (!phase) throw new NotFoundException('Phase not found');
+        const ownSchedule = dto.assigneeUserId
+          ? resolveMemberSchedule(undefined, draft.members[dto.assigneeUserId])
+          : resolveMemberSchedule({
+              workSchedule: dto.workSchedule,
+              customHours: dto.customHoursPerWeek,
+              customFrequency: 'per_week',
+            });
         const last = await manager.findOne(CheckoutDraftTaskEntity, {
           where: { phaseId },
           order: { order: 'DESC' },
@@ -745,6 +855,7 @@ export class CheckoutDraftService {
             title: dto.title,
             roleName: dto.roleName,
             durationHours: dto.durationHours,
+            ...scheduleToTaskColumns(ownSchedule),
             experienceLevel: dto.experienceLevel,
             location: dto.location?.length
               ? dto.location
@@ -757,7 +868,8 @@ export class CheckoutDraftService {
         );
       },
     );
-    return { task: this.toTaskResponse(result), ...summary };
+    const members = await this.loadMembers(draftId);
+    return { task: this.toTaskResponse(result, members), ...summary };
   }
 
   async updateTask(
@@ -775,6 +887,8 @@ export class CheckoutDraftService {
         | 'title'
         | 'roleName'
         | 'durationHours'
+        | 'workSchedule'
+        | 'customHoursPerWeek'
         | 'experienceLevel'
         | 'location'
         | 'assigneeUserId'
@@ -792,8 +906,47 @@ export class CheckoutDraftService {
       clientId,
       draftId,
       version,
-      async (manager) => {
+      async (manager, draft) => {
         const task = await this.findDraftTask(manager, draftId, taskId);
+        const nextAssignee =
+          changes.assigneeUserId !== undefined
+            ? changes.assigneeUserId
+            : task.assigneeUserId;
+        if (nextAssignee) {
+          delete changes.workSchedule;
+          delete changes.customHoursPerWeek;
+          if (nextAssignee !== task.assigneeUserId) {
+            Object.assign(
+              changes,
+              scheduleToTaskColumns(
+                resolveMemberSchedule(undefined, draft.members[nextAssignee]),
+              ),
+            );
+          }
+        } else {
+          if (task.assigneeUserId) {
+            const departing = draft.members[task.assigneeUserId];
+            if (departing) {
+              const kept = scheduleToTaskColumns(departing);
+              changes.workSchedule ??= kept.workSchedule;
+              changes.customHoursPerWeek ??= kept.customHoursPerWeek;
+            }
+          }
+          const workSchedule = changes.workSchedule ?? task.workSchedule;
+          const customHoursPerWeek =
+            changes.customHoursPerWeek ?? task.customHoursPerWeek;
+          if (
+            workSchedule === 'custom' &&
+            (!customHoursPerWeek || customHoursPerWeek < 1)
+          ) {
+            throw new BadRequestException(
+              'Custom hours per week are required for a custom work schedule',
+            );
+          }
+          if (workSchedule !== 'custom') {
+            changes.customHoursPerWeek = null;
+          }
+        }
         if (Object.keys(changes).length > 0) {
           await manager.update(CheckoutDraftTaskEntity, task.id, changes);
         }
@@ -812,7 +965,8 @@ export class CheckoutDraftService {
         return task;
       },
     );
-    return { task: this.toTaskResponse(result), ...summary };
+    const members = await this.loadMembers(draftId);
+    return { task: this.toTaskResponse(result, members), ...summary };
   }
 
   async deleteTask(
@@ -898,7 +1052,7 @@ export class CheckoutDraftService {
       listingId: draft.listingId,
       title: draft.title,
       mediaUrl: draft.mediaUrl,
-      teamMemberCount: draft.memberUserIds.length,
+      teamMemberCount: Object.keys(draft.members).length,
       durationDays,
       createdAt: draft.createdAt,
       updatedAt: draft.updatedAt,
@@ -924,10 +1078,24 @@ export class CheckoutDraftService {
     listingTeam: { id: string }[],
   ) {
     const listingPhases = Array.isArray(project.scope) ? project.scope : [];
+    const members: DraftMembers = {};
+    for (const listingPhase of listingPhases) {
+      for (const task of listingPhase?.tasks ?? []) {
+        const id = task?.assigneeUserId;
+        if (id && UUID_PATTERN.test(id) && !members[id]) {
+          members[id] = resolveMemberSchedule(task);
+        }
+      }
+    }
+    for (const member of listingTeam) {
+      const id = String(member.id);
+      if (UUID_PATTERN.test(id) && !members[id]) {
+        members[id] = resolveMemberSchedule();
+      }
+    }
     let nextStartDay = 1;
     const plans = listingPhases.map((listingPhase, phaseIndex) => {
       const tasks = (listingPhase?.tasks ?? []).map((task, taskIndex) => {
-        const hours = Number(task?.estimatedHours);
         const assigneeUserId =
           task?.assigneeUserId && UUID_PATTERN.test(task.assigneeUserId)
             ? task.assigneeUserId
@@ -941,13 +1109,24 @@ export class CheckoutDraftService {
               ? []
               : [OPEN_ROLE_LOCATION],
           experienceLevel:
-            task?.experienceLevel || (assigneeUserId ? null : OPEN_ROLE_EXPERIENCE),
-          durationHours: Number.isFinite(hours) ? Math.round(hours) : null,
+            task?.experienceLevel ||
+            (assigneeUserId ? null : OPEN_ROLE_EXPERIENCE),
+          durationHours:
+            Number.isFinite(Number(task?.estimatedHours)) &&
+            Number(task?.estimatedHours) > 0
+              ? Math.round(Number(task.estimatedHours))
+              : null,
+          ...scheduleToTaskColumns(
+            resolveMemberSchedule(
+              task,
+              assigneeUserId ? members[assigneeUserId] : undefined,
+            ),
+          ),
           assigneeUserId,
           order: taskIndex + 1,
         });
       });
-      const days = phaseLengthDays(tasks.map((task) => task.durationHours));
+      const days = phaseLengthDays(tasks, members);
       const startDay = nextStartDay;
       nextStartDay = startDay + days;
       return {
@@ -959,23 +1138,13 @@ export class CheckoutDraftService {
       };
     });
 
-    const allTasks = plans.flatMap((plan) => plan.tasks);
-    const memberUserIds = uniqueIds(
-      [
-        ...listingTeam.map((member) => String(member.id)),
-        ...allTasks.map((task) => task.assigneeUserId),
-      ].filter(
-        (id): id is string => Boolean(id) && UUID_PATTERN.test(id as string),
-      ),
-    );
-
     const draft = await manager.save(
       manager.create(CheckoutDraft, {
         clientId,
         listingId,
         title: project.title ?? null,
         mediaUrl: project.mediaUrls?.[0] || project.featuredImage || null,
-        memberUserIds,
+        members,
       }),
     );
 

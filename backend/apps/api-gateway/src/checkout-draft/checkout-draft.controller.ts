@@ -114,6 +114,17 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.updateDraftRole(draftId, body, clientId);
   }
 
+  @Post('drafts/:draftId/team/remove-member')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  removeDraftMemberAndTasks(
+    @Param('draftId') draftId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.removeDraftMemberAndTasks(draftId, body, clientId);
+  }
+
   @Delete('drafts/:draftId/team/:userId')
   @UseGuards(JwtAuthGuard)
   removeDraftMember(

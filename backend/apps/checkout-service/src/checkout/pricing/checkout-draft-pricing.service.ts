@@ -35,10 +35,12 @@ export class CheckoutDraftPricingService {
         ),
       ),
     );
-    const [memberRates, { giftCards, promo }] = await Promise.all([
-      this.summaryService.fetchMemberRates(draft.listingId, assigneeIds),
-      this.codeService.listCodes(draft),
-    ]);
+    const [memberRates, { giftCards, promo }, giftCardLock] =
+      await Promise.all([
+        this.summaryService.fetchMemberRates(draft.listingId, assigneeIds),
+        this.codeService.listCodes(draft),
+        this.codeService.getGiftCardLock(clientId),
+      ]);
 
     const projectCost = await this.summaryService.priceScope(
       phases.map((phase) => ({
@@ -101,11 +103,17 @@ export class CheckoutDraftPricingService {
       total: toDollars(runningCents),
       giftCards,
       promoCode,
+      giftCardLockedUntil: giftCardLock.lockedUntil
+        ? giftCardLock.lockedUntil.toISOString()
+        : null,
     };
   }
 
   async getCodes(clientId: string, draftId: string) {
-    const { giftCards, promoCode } = await this.getPricing(clientId, draftId);
-    return { giftCards, promoCode };
+    const { giftCards, promoCode, giftCardLockedUntil } = await this.getPricing(
+      clientId,
+      draftId,
+    );
+    return { giftCards, promoCode, giftCardLockedUntil };
   }
 }

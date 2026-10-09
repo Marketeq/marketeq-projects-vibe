@@ -50,6 +50,7 @@ import { CalculateRateEstimateDto } from './dto/calculate-rate-estimate.dto';
 import {
   AddDraftPhaseDto,
   DuplicateDraftPhaseDto,
+  RemoveDraftMemberDto,
   ReplaceDraftMemberDto,
   UpdateDraftRoleDto,
   AddDraftTaskDto,
@@ -184,6 +185,21 @@ export class CheckoutController {
     @ClientId() clientId: string,
   ) {
     return this.checkoutDraftService.removeMember(clientId, draftId, userId, version);
+  }
+
+  @Post("drafts/:draftId/team/remove-member")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  removeDraftMemberAndTasks(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: RemoveDraftMemberDto,
+  ) {
+    return this.checkoutDraftService.removeMemberAndTasks(
+      clientId,
+      draftId,
+      dto,
+    );
   }
 
   @Post("drafts/:draftId/apply-code")

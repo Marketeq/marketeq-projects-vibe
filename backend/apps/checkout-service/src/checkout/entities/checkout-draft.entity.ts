@@ -10,6 +10,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { CheckoutSession } from './checkout-session.entity';
+import { DraftMembers } from '../checkout-draft-schedule.util';
 
 @Entity('drafts')
 @Unique(['clientId', 'listingId'])
@@ -32,8 +33,8 @@ export class CheckoutDraft {
   @Column({ type: 'text', nullable: true })
   mediaUrl: string | null;
 
-  @Column({ type: 'uuid', array: true, default: () => "'{}'" })
-  memberUserIds: string[];
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  members: DraftMembers;
 
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   giftCardCodes: string[];

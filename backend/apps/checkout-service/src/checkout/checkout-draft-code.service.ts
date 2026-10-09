@@ -2,6 +2,8 @@ import {
   BadGatewayException,
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -13,6 +15,7 @@ import { CheckoutDraft } from './entities/checkout-draft.entity';
 import { GiftCard } from './entities/gift-card.entity';
 import { PromoCode, PromoDiscountType } from './entities/promo-code.entity';
 import { PromoRedemption } from './entities/promo-redemption.entity';
+import { GiftCardAttempt } from './entities/gift-card-attempt.entity';
 import { loadOwnedDraft, releaseSession } from './checkout-draft.util';
 import { ApplyDraftCodeDto, DraftCodeType } from './dto/draft-code.dto';
 
@@ -42,6 +45,11 @@ export type DraftCodes = {
 };
 
 const MAX_GIFT_CARDS = 5;
+const MAX_FAILED_GIFT_CARD_ATTEMPTS = 5;
+const GIFT_CARD_LOCK_MS = 60 * 60 * 1000;
+
+export const GIFT_CARD_LOCKED_MESSAGE =
+  'Too many invalid gift card attempts. Please try again in 1 hour.';
 
 const stripDashes = (value: string) => value.toUpperCase().replace(/-/g, '');
 
@@ -102,10 +110,15 @@ export class CheckoutDraftCodeService {
       const current = this.codesOf(draft, type);
 
       if (!current.some((item) => sameCode(type, item, code))) {
+        if (type === 'gift_card') await this.assertGiftCardsUnlocked(clientId);
         await releaseSession(manager, draft);
         const [entry] = await this.verifyCodes(type, [code], manager);
         if (entry.status === 'unverified') {
           throw new BadGatewayException('Could not verify the code right now');
+        }
+        if (type === 'gift_card' && entry.status === 'not_found') {
+          const lockedUntil = await this.recordFailedGiftCardAttempt(clientId);
+          if (lockedUntil) throw this.giftCardLockedError(lockedUntil);
         }
         if (entry.status !== 'valid') {
           throw new BadRequestException(
@@ -126,6 +139,72 @@ export class CheckoutDraftCodeService {
         Object.assign(draft, this.columnFor(type, next));
       }
     });
+  }
+
+  async getGiftCardLock(clientId: string): Promise<{ lockedUntil: Date | null }> {
+    const row = await this.dataSource.manager.findOne(GiftCardAttempt, {
+      where: { clientId },
+    });
+    const lockedUntil =
+      row?.lockedUntil && row.lockedUntil.getTime() > Date.now()
+        ? row.lockedUntil
+        : null;
+    return { lockedUntil };
+  }
+
+  private async assertGiftCardsUnlocked(clientId: string) {
+    const { lockedUntil } = await this.getGiftCardLock(clientId);
+    if (lockedUntil) throw this.giftCardLockedError(lockedUntil);
+  }
+
+  private giftCardLockedError(lockedUntil: Date) {
+    return new HttpException(
+      {
+        statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        code: 'GIFT_CARD_LOCKED',
+        message: GIFT_CARD_LOCKED_MESSAGE,
+        lockedUntil: lockedUntil.toISOString(),
+      },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+
+  private async recordFailedGiftCardAttempt(
+    clientId: string,
+  ): Promise<Date | null> {
+    try {
+      return await this.dataSource.manager.transaction(async (manager) => {
+        await manager
+          .createQueryBuilder()
+          .insert()
+          .into(GiftCardAttempt)
+          .values({ clientId, failedCount: 0 })
+          .orIgnore()
+          .execute();
+        const row = await manager.findOneOrFail(GiftCardAttempt, {
+          where: { clientId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const now = Date.now();
+        const expired = row.lockedUntil && row.lockedUntil.getTime() <= now;
+        const failedCount = (expired ? 0 : row.failedCount) + 1;
+        const lockedUntil =
+          failedCount >= MAX_FAILED_GIFT_CARD_ATTEMPTS
+            ? new Date(now + GIFT_CARD_LOCK_MS)
+            : null;
+        await manager.update(GiftCardAttempt, clientId, {
+          failedCount,
+          lockedUntil,
+          updatedAt: new Date(now),
+        });
+        return lockedUntil;
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Could not record gift card attempt: ${err instanceof Error ? err.message : err}`,
+      );
+      return null;
+    }
   }
 
   async removeCode(clientId: string, draftId: string, rawCode: string) {

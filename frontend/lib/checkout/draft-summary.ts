@@ -51,24 +51,20 @@ const toDraftSummary = (data: any): CheckoutDraftSummary => ({
 
 export const getCheckoutDraftSummary = async (
   listingId: string
-): Promise<CheckoutDraftSummary | null> => {
+): Promise<CheckoutDraftSummary> => {
   try {
-    try {
-      return toDraftSummary((await CheckoutAPI.GetListingDraft(listingId)).data)
-    } catch (error) {
-      if (getStatus(error) !== 404) throw error
-    }
-
-    try {
-      await CheckoutAPI.CreateListingDraft(listingId)
-    } catch (error) {
-      if (getStatus(error) !== 409) throw error
-    }
-
     return toDraftSummary((await CheckoutAPI.GetListingDraft(listingId)).data)
-  } catch {
-    return null
+  } catch (error) {
+    if (getStatus(error) !== 404) throw error
   }
+
+  try {
+    await CheckoutAPI.CreateListingDraft(listingId)
+  } catch (error) {
+    if (getStatus(error) !== 409) throw error
+  }
+
+  return toDraftSummary((await CheckoutAPI.GetListingDraft(listingId)).data)
 }
 
 export const getDraftDurationLabel = (days: number | null): string | null => {

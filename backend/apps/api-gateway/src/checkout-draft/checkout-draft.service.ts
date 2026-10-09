@@ -103,6 +103,14 @@ export class CheckoutDraftGatewayService {
     return this.forward('post', `/drafts/${draftId}/team/update-role`, clientId, `update a role in checkout draft ${draftId}`, { body });
   }
 
+  async removeDraftMemberAndTasks(
+    draftId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    return this.forward('post', `/drafts/${draftId}/team/remove-member`, clientId, `remove a member from checkout draft ${draftId}`, { body });
+  }
+
   async removeDraftMember(
     draftId: string,
     userId: string,

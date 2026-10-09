@@ -19,8 +19,13 @@ export class CheckoutDraftTaskEntity {
   @Column({ type: 'uuid' })
   phaseId: string;
 
-  @ManyToOne(() => CheckoutDraftPhaseEntity, (phase) => phase.tasks, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'phaseId', foreignKeyConstraintName: 'FK_draft_tasks_phase' })
+  @ManyToOne(() => CheckoutDraftPhaseEntity, (phase) => phase.tasks, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({
+    name: 'phaseId',
+    foreignKeyConstraintName: 'FK_draft_tasks_phase',
+  })
   phase: CheckoutDraftPhaseEntity;
 
   @Column()
@@ -37,6 +42,12 @@ export class CheckoutDraftTaskEntity {
 
   @Column({ type: 'int', nullable: true })
   durationHours: number | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'full_time' })
+  workSchedule: string;
+
+  @Column({ type: 'int', nullable: true })
+  customHoursPerWeek: number | null;
 
   @Column({ type: 'uuid', nullable: true })
   assigneeUserId: string | null;

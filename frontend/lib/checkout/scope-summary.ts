@@ -8,6 +8,11 @@ export type CheckoutDraftTask = {
   location: string[] | null
   experienceLevel: string | null
   estimatedHours: number | null
+  workSchedule: string | null
+  customHoursPerWeek: number | null
+  customHours: number | null
+  customFrequency: string | null
+  locked: boolean
 }
 
 export type CheckoutDraftPhase = {
@@ -51,6 +56,11 @@ export const getCheckoutScopeSummary = async (
           location: task.location,
           experienceLevel: task.experienceLevel,
           estimatedHours: task.durationHours,
+          workSchedule: task.workSchedule ?? "full_time",
+          customHoursPerWeek: task.customHoursPerWeek ?? null,
+          customHours: task.customHours ?? null,
+          customFrequency: task.customFrequency ?? null,
+          locked: Boolean(task.locked),
         })),
       })),
       projectCost: null,

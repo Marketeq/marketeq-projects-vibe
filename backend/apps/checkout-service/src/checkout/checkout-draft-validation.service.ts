@@ -60,7 +60,9 @@ export class CheckoutDraftValidationService {
   ): BlockingReason[] {
     const tasks = phases.flatMap((phase) => phase.tasks);
     if (tasks.length === 0) return [];
-    return draft.memberUserIds.length > 0 ? [] : [{ code: 'TEAM_EMPTY' }];
+    return Object.keys(draft.members).length > 0
+      ? []
+      : [{ code: 'TEAM_EMPTY' }];
   }
 
   private async checkPrice(
