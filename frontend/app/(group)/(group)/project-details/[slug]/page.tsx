@@ -2357,8 +2357,12 @@ export default function ProjectDetails({
                     if (Array.isArray(mediaObj?.hiddenImages))
                       hiddenUrls.push(...mediaObj.hiddenImages)
                   }
+                  // PMCM-256 follow-up: gallery slots now persist "" in
+                  // place of a removed image (so other slots don't shift
+                  // in the editor) — a buyer-facing page must never render
+                  // one of those as an empty gallery tile.
                   const visibleGallery = galleryUrls.filter(
-                    (u) => !hiddenUrls.includes(u)
+                    (u) => u && !hiddenUrls.includes(u)
                   )
                   const composedMediaUrls = featuredImage
                     ? [featuredImage, ...visibleGallery]

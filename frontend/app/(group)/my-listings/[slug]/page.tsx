@@ -187,10 +187,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   Favorite,
   FavoriteRoot,
   HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -389,6 +391,21 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+// PMCM-256: toEmbedUrl silently returns an unrecognized URL unchanged
+// (no error) — this is the actual gate: only a URL toEmbedUrl can convert
+// is a valid YouTube/Vimeo URL, so re-running the same two patterns here
+// is how "invalid" gets defined for the video field's inline error.
+const isValidVideoUrl = (raw?: string | null): boolean => {
+  if (!raw) return false
+  const url = raw.trim()
+  if (!url) return false
+  return (
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/.test(
+      url
+    ) || /vimeo\.com\/(?:video\/)?(\d+)/.test(url)
+  )
+}
+
 const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
   const yt = raw.match(
@@ -408,6 +425,24 @@ const backendErrorMessage = (err: any): string => {
 const isModerationRejection = (err: any): boolean =>
   err?.response?.status === 400 &&
   /moderation|rejected|violat/i.test(backendErrorMessage(err))
+
+// PMCM-256: reject before any network call for the two things the backend
+// has always enforced anyway (allowed mimetypes, 10MB max — see
+// publish.module.ts/upload.validator.ts) — avoids a round trip just to
+// learn a file was always going to be rejected, and surfaces the ticket's
+// exact copy instead of whatever the generic backend error text is.
+const IMAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"])
+
+const validateImageFileBeforeUpload = (file: File): string | null => {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return "Only JPG and PNG files are supported."
+  }
+  if (file.size > IMAGE_MAX_SIZE_BYTES) {
+    return "File size must be 10 MB or less."
+  }
+  return null
+}
 
 const moderationFieldLabel = (field?: string | null): string | null => {
   switch (field) {
@@ -1150,7 +1185,7 @@ function SortableGalleryItem({
   isHidden: boolean
   isUploading: boolean
   isCompleting: boolean
-  onUpload: (files: FileList | null, replaceIndex?: number) => void
+  onUpload: (files: FileList | File[] | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
   onUploadComplete: () => void
@@ -1253,6 +1288,44 @@ function SortableGalleryItem({
               </TooltipProvider>
               {/* Action buttons */}
               <div className="absolute inset-0 flex items-center justify-center gap-x-2 z-10">
+                {/* PMCM-256: true edit (scale/rotate) via the catalogued
+                    ImageEditor, matching the same component's usage inside
+                    rich-text-editor.tsx's image toolbar. Save re-uploads
+                    through the same handleGalleryUpload path (moderation
+                    included) and only swaps the stored URL on success —
+                    on failure the original image is left untouched since
+                    nothing is placed until finalUrl resolves. */}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <ImageEditor
+                        variant="image"
+                        defaultDataUrl={url}
+                        defaultFileName={
+                          url?.split("?")[0].split("/").pop() || "image.jpg"
+                        }
+                        editDialogTitle="Edit Image"
+                        onSaveImage={(file) => onUpload([file], index)}
+                        startingPoint={({ onEdit }) => (
+                          <button
+                            type="button"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                            onClick={onEdit}
+                          >
+                            <Edit03 className="size-4 text-white" />
+                          </button>
+                        )}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      visual="white"
+                      className="text-xs"
+                    >
+                      Edit image
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1270,7 +1343,7 @@ function SortableGalleryItem({
                           input.click()
                         }}
                       >
-                        <Edit03 className="size-4 text-white" />
+                        <Upload01 className="size-4 text-white" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent
@@ -1797,6 +1870,9 @@ function ProjectDetailsInner() {
       ? arr[0] ?? ""
       : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
+  const [videoUrlError, setVideoUrlError] = React.useState<string | null>(
+    null
+  )
   const { toast } = useToast()
 
   const updateGalleryScrollState = React.useCallback(() => {
@@ -1821,14 +1897,52 @@ function ProjectDetailsInner() {
   }, [])
 
   const handleGalleryUpload = React.useCallback(
-    async (files: FileList | null, replaceIndex?: number) => {
+    async (files: FileList | File[] | null, replaceIndex?: number) => {
       if (!files || files.length === 0) return
       if (!project.id || !isRealBackendId(project.id)) {
-        console.error(
-          "Cannot upload images — project has no backend ID yet. Save the project first."
-        )
+        // PMCM-256: was a silent console.error-and-return — nothing told
+        // the seller why their drop did nothing.
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
+
+      const requested = Array.from(files)
+      const validFiles: File[] = []
+      for (const file of requested) {
+        const validationError = validateImageFileBeforeUpload(file)
+        if (validationError) {
+          toast({ title: validationError, variant: "destructive" })
+          continue
+        }
+        validFiles.push(file)
+      }
+      if (validFiles.length === 0) return
+
+      // PMCM-256 AC2: cap additional images at 8 total — occupied slots
+      // plus uploads already in flight plus this batch — matching the
+      // backend's @ArrayMaxSize(8)/multer maxCount(8). Replacing an
+      // existing slot never counts against the cap, it isn't adding one.
+      let filesToUpload = validFiles
+      if (replaceIndex === undefined) {
+        const occupiedCount = galleryUrlsRef.current.filter(Boolean).length
+        const inFlightCount = galleryReservedRef.current.size
+        const availableSlots = Math.max(
+          0,
+          8 - occupiedCount - inFlightCount
+        )
+        if (availableSlots < validFiles.length) {
+          toast({
+            title: "You can upload a maximum of 8 images.",
+            variant: "destructive",
+          })
+        }
+        filesToUpload = validFiles.slice(0, availableSlots)
+        if (filesToUpload.length === 0) return
+      }
+
       setHasChanges(true)
 
       // Reserve the next free slot so concurrent uploads never collide.
@@ -1861,8 +1975,12 @@ function ProjectDetailsInner() {
           try {
             await ProjectAPI.UpdateGalleryImages(
               project.id,
-              galleryUrlsRef.current.filter(
-                (u: string) => u && !u.startsWith("blob:")
+              // PMCM-256: map, don't filter — a filter here compacts the
+              // array, which desyncs the persisted order from the grid's
+              // fixed-by-index slots the next time this loads. Empty/blob
+              // entries become "" in place instead of being dropped.
+              galleryUrlsRef.current.map((u: string) =>
+                u && !u.startsWith("blob:") ? u : ""
               )
             )
           } catch (err) {
@@ -1872,7 +1990,7 @@ function ProjectDetailsInner() {
       }
 
       await Promise.all(
-        Array.from(files).map(async (file) => {
+        filesToUpload.map(async (file) => {
           const targetIndex =
             replaceIndex !== undefined ? replaceIndex : reserveSlot()
           setUploadingSlots((prev) => new Set(prev).add(targetIndex))
@@ -1908,7 +2026,7 @@ function ProjectDetailsInner() {
               // branch as the 503 case above and showed a local preview of
               // an image that was never actually uploaded.
               toast({
-                title: backendErrorMessage(err) || "Failed to upload image. Please try again.",
+                title: backendErrorMessage(err) || "Upload failed. Please try again.",
                 variant: "destructive",
               })
             }
@@ -1936,14 +2054,14 @@ function ProjectDetailsInner() {
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
-      // First 3 slots: clear in place so visible grid doesn't shift
-      // Beyond slot 2: remove and shift remaining images forward
-      const newUrls =
-        index < 3
-          ? currentUrls.map((url: string, i: number) =>
-              i === index ? "" : url
-            )
-          : currentUrls.filter((_: string, i: number) => i !== index)
+      // PMCM-256: every slot clears in place — the grid renders by raw
+      // array index (allUrls[index]), so the previous index>=3 branch's
+      // .filter() silently shifted every later slot's image down one
+      // (and desynced hiddenImages' indices with it). No slot's removal
+      // may ever move another slot's image or hidden state.
+      const newUrls = currentUrls.map((url: string, i: number) =>
+        i === index ? "" : url
+      )
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
       setHiddenImages((prev) => {
@@ -1956,7 +2074,9 @@ function ProjectDetailsInner() {
         try {
           await ProjectAPI.UpdateGalleryImages(
             project.id,
-            newUrls.filter((u: string) => u && !u.startsWith("blob:"))
+            // Map, don't filter — preserve position so the persisted
+            // order matches the grid's fixed-by-index slots on reload.
+            newUrls.map((u: string) => (u && !u.startsWith("blob:") ? u : ""))
           )
         } catch (err) {
           console.error("Failed to save gallery after delete:", err)
@@ -1975,8 +2095,9 @@ function ProjectDetailsInner() {
 
       if (project.id && isRealBackendId(project.id)) {
         const urls: string[] = project.mediaUrls ?? []
-        const additional = urls.filter(
-          (u: string) => u && !u.startsWith("blob:")
+        // Map, don't filter — preserve position (see handleGalleryDelete).
+        const additional = urls.map((u: string) =>
+          u && !u.startsWith("blob:") ? u : ""
         )
         const hidden = Array.from(next)
           .map((i) => urls[i])
@@ -2035,7 +2156,10 @@ function ProjectDetailsInner() {
       if (prev.id && isRealBackendId(prev.id)) {
         ProjectAPI.UpdateGalleryImages(
           prev.id,
-          reordered.filter((u: string) => u && !u.startsWith("blob:"))
+          // Map, don't filter — preserve position (see handleGalleryDelete).
+          reordered.map((u: string) =>
+            u && !u.startsWith("blob:") ? u : ""
+          )
         ).catch((err: any) =>
           console.error("Failed to save gallery reorder:", err)
         )
@@ -2048,12 +2172,25 @@ function ProjectDetailsInner() {
 
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
+      const validationError = validateImageFileBeforeUpload(file)
+      if (validationError) {
+        toast({ title: validationError, variant: "destructive" })
+        return
+      }
       setHasChanges(true)
       setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
+        // PMCM-256: previously fell straight through to a local preview
+        // with no explanation — the image looked uploaded but wasn't
+        // persisted anywhere yet. Still show the preview (reasonable
+        // stand-in until the draft exists), but now say why.
         const localUrl = URL.createObjectURL(file)
         setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
         setFeaturedUploading(false)
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
       const formData = new FormData()
@@ -2086,7 +2223,7 @@ function ProjectDetailsInner() {
           // branch as the 503 case above and showed a local preview of
           // an image that was never actually uploaded.
           toast({
-            title: backendErrorMessage(err) || "Failed to upload featured image. Please try again.",
+            title: backendErrorMessage(err) || "Upload failed. Please try again.",
             variant: "destructive",
           })
         }
@@ -4027,6 +4164,36 @@ function ProjectDetailsInner() {
                               "pointer-events-none !opacity-0"
                           )}
                         >
+                          {/* PMCM-256: true edit (scale/rotate) via the
+                              catalogued ImageEditor, same pattern/component
+                              used inside rich-text-editor.tsx's image
+                              toolbar — Save re-uploads through the same
+                              handleFeaturedImageUpload path (moderation
+                              included), only swapping the stored URL on a
+                              successful response. */}
+                          <ImageEditor
+                            variant="image"
+                            defaultDataUrl={project.featuredImage}
+                            defaultFileName={
+                              project.featuredImage
+                                ?.split("?")[0]
+                                .split("/")
+                                .pop() || "image.jpg"
+                            }
+                            editDialogTitle="Edit Image"
+                            onSaveImage={(file) =>
+                              handleFeaturedImageUpload(file)
+                            }
+                            startingPoint={({ onEdit }) => (
+                              <button
+                                type="button"
+                                className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                                onClick={onEdit}
+                              >
+                                <Edit03 className="size-3.5 text-white" />
+                              </button>
+                            )}
+                          />
                           <button
                             type="button"
                             className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
@@ -4044,7 +4211,7 @@ function ProjectDetailsInner() {
                               input.click()
                             }}
                           >
-                            <Edit03 className="size-3.5 text-white" />
+                            <Upload01 className="size-3.5 text-white" />
                           </button>
                           <button
                             type="button"
@@ -4704,6 +4871,7 @@ function ProjectDetailsInner() {
                                     setVideoUrlInput(
                                       project.featuredVideo || ""
                                     )
+                                    setVideoUrlError(null)
                                     setVideoDialogOpen(true)
                                   }}
                                 >
@@ -4824,6 +4992,7 @@ function ProjectDetailsInner() {
                     <DropdownMenuItem
                       onSelect={() => {
                         setVideoUrlInput(project.featuredVideo || "")
+                        setVideoUrlError(null)
                         setVideoDialogOpen(true)
                       }}
                     >
@@ -10700,9 +10869,18 @@ function ProjectDetailsInner() {
                           <Input
                             placeholder="www.video.com"
                             value={videoUrlInput}
-                            onChange={(e) => setVideoUrlInput(e.target.value)}
+                            onChange={(e) => {
+                              setVideoUrlInput(e.target.value)
+                              if (videoUrlError) setVideoUrlError(null)
+                            }}
+                            isInvalid={Boolean(videoUrlError)}
                           />
                         </InputGroup>
+                        {videoUrlError && (
+                          <ErrorMessage size="sm" className="mt-1.5">
+                            {videoUrlError}
+                          </ErrorMessage>
+                        )}
                       </div>
                     </div>
 
@@ -10720,6 +10898,18 @@ function ProjectDetailsInner() {
                             const fullUrl = url.startsWith("http")
                               ? url
                               : `https://${url}`
+                            // PMCM-256: invalid URL gets an inline error and
+                            // nothing is saved — toEmbedUrl silently passes
+                            // through anything it doesn't recognize, so
+                            // without this gate a typo'd URL would still
+                            // autosave and render as a raw, unresolved
+                            // iframe src on the client view.
+                            if (!isValidVideoUrl(fullUrl)) {
+                              setVideoUrlError(
+                                "Please enter a valid YouTube or Vimeo URL."
+                              )
+                              return
+                            }
                             setProject((prev: any) => ({
                               ...prev,
                               featuredVideo: fullUrl,

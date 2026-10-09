@@ -215,6 +215,7 @@ import {
   Dropzone,
   HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -225,6 +226,7 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  ONE_MB,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -362,6 +364,46 @@ const UUID_PATTERN =
 
 type PersistedMediaFile = File & {
   __persistedUrl?: string
+}
+
+// PMCM-256: Dropzone/SquareShapeDropzone (catalogued, frozen) generate
+// their own error text — "Must be in .png .jpg .jpeg format(s)" for a
+// rejected extension, and react-dropzone's own "File is larger than N
+// bytes" for maxSize — neither matches the ticket's exact required copy.
+// Both only ever surface through the page-level onError prop, so remap
+// here instead of touching the frozen component.
+const MEDIA_FILE_TYPE_ERROR = "Only JPG and PNG files are supported."
+const MEDIA_FILE_SIZE_ERROR = "File size must be 10 MB or less."
+const MEDIA_MAX_SIZE_BYTES = 10 * ONE_MB
+
+const mapDropzoneErrorMessage = (message?: string): string | undefined => {
+  if (!message) return message
+  if (/larger than/i.test(message)) return MEDIA_FILE_SIZE_ERROR
+  if (/must be in/i.test(message)) return MEDIA_FILE_TYPE_ERROR
+  return message
+}
+
+// PMCM-256: mirrors mediaFormSchema's featuredVideo .refine() check below —
+// used by the saveVideo autosave effect so an invalid URL is never
+// persisted even though it's already blocked from reaching backend-submit
+// via the form's own validation. Not derived from the schema object
+// directly since mediaFormSchema is wrapped in a trailing object-level
+// .refine(), which doesn't expose .shape.
+const isValidFeaturedVideoUrl = (value: string): boolean => {
+  const rawValue = value?.trim()
+  if (!rawValue) return true // empty is allowed — video is optional
+  const normalized = /^https?:\/\//i.test(rawValue)
+    ? rawValue
+    : `https://${rawValue.replace(/^\/+/, "")}`
+  try {
+    const parsed = new URL(normalized)
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.includes(".")
+    )
+  } catch {
+    return false
+  }
 }
 
 const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
@@ -4068,6 +4110,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     trigger,
     setValue,
   } = useMediaContext()
+  const { isExistingPublishedListing } = useProjectScopeContext()
 
   const formHiddenImages =
     (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
@@ -4263,48 +4306,114 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               <Controller
                 control={control}
                 name="featuredImages"
-                render={({ field: { value, onChange } }) => (
-                  <Dropzone
-                    className="transition-colors duration-300"
-                    size="lg"
-                    icon
-                    value={value ?? []}
-                    onValueChange={(value) => {
-                      ref.current.forEach((cb) => cb())
-                      ref.current.clear()
+                render={({ field: { value, onChange } }) => {
+                  const currentMeta = value?.[0]?.meta
+                  const currentUrl =
+                    currentMeta && isPersistedMediaFile(currentMeta)
+                      ? currentMeta.__persistedUrl
+                      : undefined
+                  return (
+                    <>
+                      <Dropzone
+                        className="transition-colors duration-300"
+                        size="lg"
+                        icon
+                        maxSize={MEDIA_MAX_SIZE_BYTES}
+                        value={value ?? []}
+                        onValueChange={(nextValue) => {
+                          // PMCM-256/QA-176/PMCM-396: a published listing
+                          // can't be left with no featured image — the
+                          // backend already rejects a bare clear, but it
+                          // can't undo this Dropzone's own optimistic
+                          // empty state, so block the clear here instead,
+                          // matching the inline editor's guard.
+                          if (
+                            isExistingPublishedListing &&
+                            (value?.length ?? 0) > 0 &&
+                            (nextValue?.length ?? 0) === 0
+                          ) {
+                            setError("featuredImages", {
+                              message:
+                                "This listing is published. A replacement image must be uploaded first.",
+                            })
+                            return
+                          }
 
-                      onChange(value)
+                          ref.current.forEach((cb) => cb())
+                          ref.current.clear()
 
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 50,
-                              }))
-                            ),
-                          ONE_SECOND * 3
-                        ).cancel
-                      )
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 100,
-                              }))
-                            ),
-                          ONE_SECOND * 6
-                        ).cancel
-                      )
-                    }}
-                    onError={(message) =>
-                      setError("featuredImages", { message })
-                    }
-                  />
-                )}
+                          onChange(nextValue)
+
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 50,
+                                  }))
+                                ),
+                              ONE_SECOND * 3
+                            ).cancel
+                          )
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                ),
+                              ONE_SECOND * 6
+                            ).cancel
+                          )
+                        }}
+                        onError={(message) =>
+                          setError("featuredImages", {
+                            message: mapDropzoneErrorMessage(message),
+                          })
+                        }
+                      />
+                      {/* PMCM-256: true edit (scale/rotate) via the
+                          catalogued ImageEditor — Dropzone's own hover
+                          overlay (frozen) only exposes Change/Remove, with
+                          no slot for a third action, so this renders
+                          alongside it rather than inside it. Save feeds
+                          the edited file back into this same RHF field,
+                          so it uploads through the exact same saveMedia
+                          autosave path (moderation included) and only
+                          swaps in once that succeeds. */}
+                      {currentUrl && (
+                        <ImageEditor
+                          variant="image"
+                          defaultDataUrl={currentUrl}
+                          defaultFileName={
+                            currentUrl.split("?")[0].split("/").pop() ||
+                            "featured-image.jpg"
+                          }
+                          editDialogTitle="Edit Image"
+                          onSaveImage={(file) =>
+                            onChange([
+                              { meta: file, hasError: false, progress: 100 },
+                            ])
+                          }
+                          startingPoint={({ onEdit }) => (
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              className="mt-1"
+                              onClick={onEdit}
+                            >
+                              Edit image
+                            </Button>
+                          )}
+                        />
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -4348,33 +4457,78 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                           ? meta.__persistedUrl
                           : undefined
                       return (
-                        <SquareShapeDropzone
-                          className="transition-colors duration-300"
-                          value={value}
-                          onValueChange={(value) => {
-                            onChange(
-                              value?.map((item) => ({ ...item, progress: 50 }))
-                            )
-                            window.setTimeout(() => {
+                        <div>
+                          <SquareShapeDropzone
+                            className="transition-colors duration-300"
+                            value={value}
+                            maxSize={MEDIA_MAX_SIZE_BYTES}
+                            onValueChange={(value) => {
                               onChange(
                                 value?.map((item) => ({
                                   ...item,
-                                  progress: 100,
+                                  progress: 50,
                                 }))
                               )
-                            }, ONE_SECOND * 2)
-                            isSubmitted ? trigger("additionalImages") : noop
-                          }}
-                          onError={(message) =>
-                            setError(`additionalImages.${index}`, { message })
-                          }
-                          isHidden={
-                            url ? hiddenImages.includes(url) : undefined
-                          }
-                          onToggleHidden={
-                            url ? (h) => setHiddenForUrl(url, h) : undefined
-                          }
-                        />
+                              window.setTimeout(() => {
+                                onChange(
+                                  value?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                )
+                              }, ONE_SECOND * 2)
+                              isSubmitted ? trigger("additionalImages") : noop
+                            }}
+                            onError={(message) =>
+                              setError(`additionalImages.${index}`, {
+                                message: mapDropzoneErrorMessage(message),
+                              })
+                            }
+                            isHidden={
+                              url ? hiddenImages.includes(url) : undefined
+                            }
+                            onToggleHidden={
+                              url ? (h) => setHiddenForUrl(url, h) : undefined
+                            }
+                          />
+                          {/* PMCM-256: see the Featured Image ImageEditor
+                              comment above — same reasoning, rendered
+                              alongside this slot since the frozen
+                              SquareShapeDropzone has no slot for a third
+                              overlay action. */}
+                          {url && (
+                            <ImageEditor
+                              variant="image"
+                              defaultDataUrl={url}
+                              defaultFileName={
+                                url.split("?")[0].split("/").pop() ||
+                                "additional-image.jpg"
+                              }
+                              editDialogTitle="Edit Image"
+                              onSaveImage={(file) =>
+                                onChange([
+                                  {
+                                    meta: file,
+                                    hasError: false,
+                                    progress: 100,
+                                  },
+                                ])
+                              }
+                              startingPoint={({ onEdit }) => (
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  visual="gray"
+                                  size="sm"
+                                  className="mt-0.5 w-full"
+                                  onClick={onEdit}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                            />
+                          )}
+                        </div>
                       )
                     }}
                   />
@@ -7273,6 +7427,12 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   pendingInviteEmails: string[]
   setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
+  // PMCM-256: whether this draft was already a published/live listing when
+  // the wizard loaded — distinct from isProjectSubmitted above, which only
+  // tracks "submitted during this session" and resets on a fresh load.
+  // Used to block clearing the featured image without a replacement
+  // (QA-176/PMCM-396), matching the inline editor's guard.
+  isExistingPublishedListing: boolean
   pricingBudgetCents: number
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
@@ -9522,6 +9682,8 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isExistingPublishedListing, setIsExistingPublishedListing] =
+    useState(false)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
@@ -9812,6 +9974,7 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setIsExistingPublishedListing(draft?.status === "published")
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
@@ -9919,9 +10082,16 @@ function PublishProject({
               "featured-image.jpg"
             )
           : null
+        // PMCM-256 follow-up: additionalImages can now contain "" placeholders
+        // for a cleared slot (gallery slots persist in place, see
+        // handleGalleryDelete-equivalent fixes). hydrateRemoteMediaFile("")
+        // would fetch("") — resolves against the current page in a browser,
+        // producing a bogus "file" rather than an empty slot. Map position
+        // to null instead of calling it, so index alignment with the
+        // per-slot additionalImages.${index} fields below is preserved.
         const hydratedAdditionalImages = await Promise.all(
           (persistedMedia?.additionalImages ?? []).map((url: string) =>
-            hydrateRemoteMediaFile(url, "additional-image.jpg")
+            url ? hydrateRemoteMediaFile(url, "additional-image.jpg") : null
           )
         )
 
@@ -9935,13 +10105,9 @@ function PublishProject({
                 },
               ]
             : [],
-          additionalImages: hydratedAdditionalImages.map((file) => [
-            {
-              meta: file,
-              progress: 100,
-              hasError: false,
-            },
-          ]),
+          additionalImages: hydratedAdditionalImages.map((file) =>
+            file ? [{ meta: file, progress: 100, hasError: false }] : []
+          ),
           featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
           hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
@@ -10156,6 +10322,12 @@ function PublishProject({
       const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
 
       if (videoUrl === lastVideoUrlRef.current) return
+      // PMCM-256: invalid URL gets an inline error (mediaFormSchema's
+      // featuredVideo .refine()) and nothing saved — without this gate,
+      // this 2s-interval autosave persisted whatever was typed regardless
+      // of validity, since it reads form state directly rather than
+      // going through form validation.
+      if (!isValidFeaturedVideoUrl(videoUrl)) return
 
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
@@ -10278,14 +10450,24 @@ function PublishProject({
                 },
               ]
             : [],
+          // PMCM-256 follow-up: a blank slot must reset to an empty
+          // array (SquareShapeDropzone's own "empty" shape), not a
+          // PersistedMediaFile wrapping an empty URL — the latter reads
+          // as "has a file" with nothing to actually preview.
           additionalImages: (nextMedia.additionalImages ?? []).map(
-            (url: string) => [
-              {
-                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
-                progress: 100,
-                hasError: false,
-              },
-            ]
+            (url: string) =>
+              url
+                ? [
+                    {
+                      meta: buildPersistedMediaFile(
+                        url,
+                        "additional-image.jpg"
+                      ),
+                      progress: 100,
+                      hasError: false,
+                    },
+                  ]
+                : []
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
           hiddenImages: nextMedia.hiddenImages ?? [],
@@ -10365,6 +10547,7 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
       scopeType,
       setScopeType,
@@ -10384,6 +10567,7 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
       scopeType,
       setScopeType,
