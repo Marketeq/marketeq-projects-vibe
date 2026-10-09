@@ -4417,13 +4417,21 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                               { meta: file, hasError: false, progress: 100 },
                             ])
                           }
-                          startingPoint={({ onEdit }) => (
+                          startingPoint={({ open, onEdit }) => (
+                            // PMCM-256 fix: ImageEditor's state machine
+                            // has no EDIT transition from "ideal" —
+                            // open() sends REMOVE first (ideal→removing,
+                            // dataUrl is set so no file picker opens),
+                            // then onEdit() sends EDIT (removing→editing).
                             <Button
                               type="button"
                               variant="link"
                               visual="gray"
                               className="mt-1"
-                              onClick={onEdit}
+                              onClick={() => {
+                                open()
+                                onEdit()
+                              }}
                             >
                               Edit image
                             </Button>
@@ -4533,14 +4541,23 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                                   },
                                 ])
                               }
-                              startingPoint={({ onEdit }) => (
+                              startingPoint={({ open, onEdit }) => (
+                                // PMCM-256 fix: ImageEditor's state
+                                // machine has no EDIT transition from
+                                // "ideal" — open() sends REMOVE first
+                                // (ideal→removing, dataUrl is set so no
+                                // file picker opens), then onEdit() sends
+                                // EDIT (removing→editing).
                                 <Button
                                   type="button"
                                   variant="link"
                                   visual="gray"
                                   size="sm"
                                   className="mt-0.5 w-full"
-                                  onClick={onEdit}
+                                  onClick={() => {
+                                    open()
+                                    onEdit()
+                                  }}
                                 >
                                   Edit
                                 </Button>

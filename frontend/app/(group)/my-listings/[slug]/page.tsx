@@ -1297,26 +1297,38 @@ function SortableGalleryItem({
                     nothing is placed until finalUrl resolves. */}
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
-                    <TooltipTrigger asChild>
-                      <ImageEditor
-                        variant="image"
-                        defaultDataUrl={url}
-                        defaultFileName={
-                          url?.split("?")[0].split("/").pop() || "image.jpg"
-                        }
-                        editDialogTitle="Edit Image"
-                        onSaveImage={(file) => onUpload([file], index)}
-                        startingPoint={({ onEdit }) => (
+                    {/* PMCM-256 fix: ImageEditor's state machine has no
+                        EDIT transition from its initial "ideal" state —
+                        only UPLOAD/REMOVE — so onEdit() alone was a no-op.
+                        open() sends REMOVE first (ideal→removing, since
+                        dataUrl is set and skipUploadDialog is false, so no
+                        file picker opens), then onEdit() sends EDIT
+                        (removing→editing). Also: ImageEditor itself isn't
+                        a DOM element, so TooltipTrigger asChild moves
+                        inside startingPoint to wrap the actual button. */}
+                    <ImageEditor
+                      variant="image"
+                      defaultDataUrl={url}
+                      defaultFileName={
+                        url?.split("?")[0].split("/").pop() || "image.jpg"
+                      }
+                      editDialogTitle="Edit Image"
+                      onSaveImage={(file) => onUpload([file], index)}
+                      startingPoint={({ open, onEdit }) => (
+                        <TooltipTrigger asChild>
                           <button
                             type="button"
                             className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
-                            onClick={onEdit}
+                            onClick={() => {
+                              open()
+                              onEdit()
+                            }}
                           >
                             <Edit03 className="size-4 text-white" />
                           </button>
-                        )}
-                      />
-                    </TooltipTrigger>
+                        </TooltipTrigger>
+                      )}
+                    />
                     <TooltipContent
                       side="bottom"
                       visual="white"
@@ -4184,11 +4196,19 @@ function ProjectDetailsInner() {
                             onSaveImage={(file) =>
                               handleFeaturedImageUpload(file)
                             }
-                            startingPoint={({ onEdit }) => (
+                            startingPoint={({ open, onEdit }) => (
+                              // PMCM-256 fix: ImageEditor's state machine
+                              // has no EDIT transition from "ideal" —
+                              // open() sends REMOVE first (ideal→removing,
+                              // dataUrl is set so no file picker opens),
+                              // then onEdit() sends EDIT (removing→editing).
                               <button
                                 type="button"
                                 className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
-                                onClick={onEdit}
+                                onClick={() => {
+                                  open()
+                                  onEdit()
+                                }}
                               >
                                 <Edit03 className="size-3.5 text-white" />
                               </button>
