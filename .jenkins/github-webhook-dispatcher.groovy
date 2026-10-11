@@ -36,6 +36,16 @@
 //       * Branch Freshness keeping its own status description
 //       * the open-PR Branch Freshness re-check on every protected-branch push
 //     Pasting this file into the job would apply them; do that deliberately.
+//
+// UPDATE 2026-10-09: the vibe jobs moved into folders under
+// `marketeq-projects-vibe/`:
+//   - `pr-merge-gates`: the six PR gates, post-merge-audit, login-violation-alert
+//   - `deploy`: staging-orchestrator, vercel-deploy
+//   - `monitoring`: the scheduled checks
+// The live job and this file now start them by absolute path
+// ('/marketeq-projects-vibe/...'). A bare name such as 'sop-check' no longer
+// resolves from this root-level job. Only the job paths changed in this file;
+// the three repo-only items above are still repo-only.
 // =============================================================================
 pipeline {
     agent any
@@ -184,7 +194,7 @@ def dispatchVibe(event) {
         parallel(
             'SOP Check': {
                 try {
-                    build job: 'sop-check', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/sop-check', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'PR_TITLE', value: pr_title),
                         string(name: 'PR_BODY', value: pr_body),
@@ -199,7 +209,7 @@ def dispatchVibe(event) {
             },
             'Deep Regression': {
                 try {
-                    build job: 'deep-regression-check', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/deep-regression-check', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'BASE_REF', value: pr_base_ref),
                         string(name: 'HEAD_SHA', value: pr_head_sha),
@@ -212,7 +222,7 @@ def dispatchVibe(event) {
             },
             'Branch Freshness': {
                 try {
-                    build job: 'branch-freshness', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/branch-freshness', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'BASE_REF', value: pr_base_ref),
                         string(name: 'HEAD_SHA', value: pr_head_sha)
@@ -224,7 +234,7 @@ def dispatchVibe(event) {
             },
             'Secret Scan': {
                 try {
-                    build job: 'gitleaks', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/gitleaks', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'BASE_SHA', value: ''),
                         string(name: 'SCAN_TYPE', value: 'pr')
@@ -236,7 +246,7 @@ def dispatchVibe(event) {
             },
             'Login Gate': {
                 try {
-                    build job: 'login-gate', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/login-gate', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'PR_AUTHOR', value: pr_author),
                         string(name: 'BASE_REF', value: pr_base_ref),
@@ -249,7 +259,7 @@ def dispatchVibe(event) {
             },
             'Code Review': {
                 try {
-                    build job: 'code-review', parameters: [
+                    build job: '/marketeq-projects-vibe/pr-merge-gates/code-review', parameters: [
                         string(name: 'PR_NUMBER', value: pr_number),
                         string(name: 'BASE_REF', value: pr_base_ref),
                         string(name: 'HEAD_SHA', value: pr_head_sha)
@@ -288,20 +298,20 @@ def dispatchVibe(event) {
         echo "==> Push to ${branch} by ${pusher_name} (sha: ${push_after}, forced: ${forced})"
 
         // Post-merge checks (fire-and-forget)
-        build job: 'post-merge-audit', wait: false, parameters: [
+        build job: '/marketeq-projects-vibe/pr-merge-gates/post-merge-audit', wait: false, parameters: [
             string(name: 'BRANCH', value: branch),
             string(name: 'PUSHER', value: pusher_name),
             string(name: 'COMMIT_SHA', value: push_after),
             booleanParam(name: 'FORCED', value: forced == 'true')
         ]
 
-        build job: 'login-violation-alert', wait: false, parameters: [
+        build job: '/marketeq-projects-vibe/pr-merge-gates/login-violation-alert', wait: false, parameters: [
             string(name: 'BRANCH', value: branch),
             string(name: 'PUSHER', value: pusher_name),
             string(name: 'COMMIT_SHA', value: push_after)
         ]
 
-        build job: 'gitleaks', wait: false, parameters: [
+        build job: '/marketeq-projects-vibe/pr-merge-gates/gitleaks', wait: false, parameters: [
             string(name: 'PR_NUMBER', value: ''),
             string(name: 'BASE_SHA', value: ''),
             string(name: 'SCAN_TYPE', value: 'push')
@@ -312,7 +322,7 @@ def dispatchVibe(event) {
         // Deploy: trigger staging-orchestrator for full deploy pipeline
         // (handles Vercel deploy + Render deploy for staging/live-mvp + smoke tests)
         echo "==> Triggering deploy for ${branch} (sha: ${push_after})"
-        build job: 'staging-orchestrator', wait: false, parameters: [
+        build job: '/marketeq-projects-vibe/deploy/staging-orchestrator', wait: false, parameters: [
             string(name: 'BRANCH', value: branch),
             string(name: 'COMMIT_SHA', value: push_after),
             string(name: 'EVENT', value: 'push'),
@@ -337,7 +347,7 @@ def dispatchVibe(event) {
                     def nums = prList.split(' ')
                     echo "Re-checking branch freshness for ${nums.size()} open PR(s) against ${branch}"
                     for (int i = 0; i < nums.size(); i++) {
-                        build job: 'branch-freshness', wait: false, parameters: [
+                        build job: '/marketeq-projects-vibe/pr-merge-gates/branch-freshness', wait: false, parameters: [
                             string(name: 'PR_NUMBER', value: nums[i]),
                             string(name: 'BASE_REF', value: branch),
                             string(name: 'HEAD_SHA', value: '')
