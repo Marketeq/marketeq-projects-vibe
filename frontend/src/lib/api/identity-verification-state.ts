@@ -69,6 +69,10 @@ export interface IdentityVerificationSummaryView {
   flowState: IdentityFlowState
   nextAction: NextAction | null
   fullyVerified: boolean | null
+  // gate_open exactly as the backend sent it (null when absent or malformed). Unlike
+  // fullyVerified it is true inside the 30-day grace window; any screen that gates an
+  // action must read this, never fullyVerified. Nothing is derived here.
+  gateOpen: boolean | null
   attemptsUsed: number | null
   attemptsRemaining: number | null
   maxAttempts: number | null
@@ -106,6 +110,7 @@ export function parseIdentityVerificationSummary(
     flowState: mapNextActionToFlowState(body.nextAction),
     nextAction,
     fullyVerified: bool(body.fullyVerified),
+    gateOpen: bool(body.gateOpen),
     attemptsUsed: count(body.attemptsUsed),
     attemptsRemaining: count(body.attemptsRemaining),
     maxAttempts: count(body.maxAttempts),

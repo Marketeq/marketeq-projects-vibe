@@ -53,3 +53,31 @@ export function deriveMissingRequirements(
   // than report 'none' on a closed gate if that invariant is ever broken.
   return 'both';
 }
+
+// The single definition of gate_open for a profile (TRVG2 section 2):
+// gate_open = is_verified OR in_grace. Shared by the internal status (RabbitMQ
+// gate decision) and the GET /me response, so no reader recomputes it.
+// Grace is a renewal window: it holds through EXPIRED, IN_PROGRESS, PENDING and
+// FAILED renewal states (TRVG2 2.7/2.8) for 30 days after expired_at, but never
+// for a currently VERIFIED identity, so a stale expired_at cannot keep a gate open.
+export const GRACE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface GateProfileInput {
+  identityVerificationStatus: IdentityVerificationStatus;
+  locationVerificationStatus: LocationVerificationStatus;
+  expiredAt?: Date | null;
+}
+
+export function computeGateState(
+  profile: GateProfileInput,
+  nowMs: number,
+): { isVerified: boolean; inGrace: boolean; gateOpen: boolean } {
+  const isVerified =
+    profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
+    profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
+  const inGrace =
+    profile.expiredAt instanceof Date &&
+    profile.identityVerificationStatus !== IdentityVerificationStatus.VERIFIED &&
+    nowMs - profile.expiredAt.getTime() < GRACE_WINDOW_MS;
+  return { isVerified, inGrace, gateOpen: isVerified || inGrace };
+}

@@ -40,7 +40,7 @@ import {
   hashDocumentNumber,
 } from '../common/security/document-fingerprint';
 import { coarseFailureReason } from '../common/status/coarse-failure-reason';
-import { AccountGateDecision, deriveMissingRequirements } from '../common/gate/account-gate-decision';
+import { AccountGateDecision, computeGateState, deriveMissingRequirements } from '../common/gate/account-gate-decision';
 import {
   DocumentVerificationProvider,
   DOCUMENT_VERIFICATION_PROVIDER,
@@ -771,17 +771,8 @@ export class IdentityVerificationService {
     // Hosted Free KYC current-cycle count and the stable next action. The old
     // all-rows counter (every pipeline, never reset) is deliberately not used here.
     const summary = await this.verificationSummary.summarize(profile);
-    const isVerified =
-      profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
-      profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
-    // Grace is a renewal window: it holds through EXPIRED, IN_PROGRESS, PENDING
-    // and FAILED renewal states (TRVG2 §2.7/§2.8), but never for a currently
-    // VERIFIED identity, so a stale expired_at cannot keep a gate open.
-    const inGrace =
-      profile.expiredAt !== null &&
-      profile.identityVerificationStatus !== IdentityVerificationStatus.VERIFIED &&
-      Date.now() - profile.expiredAt.getTime() < 30 * 24 * 60 * 60 * 1000;
-    const gateOpen = isVerified || inGrace;
+    // gate_open has one definition (common/gate/account-gate-decision.ts).
+    const { isVerified, inGrace, gateOpen } = computeGateState(profile, Date.now());
 
     return {
       identityVerificationStatus: profile.identityVerificationStatus,
