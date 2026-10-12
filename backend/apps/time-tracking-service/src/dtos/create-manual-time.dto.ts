@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -5,13 +6,14 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
 export class CreateManualTimeDto {
   // AC-76.04 / AC-77.02: manual time is always logged against a contract.
-  @IsString()
-  @IsNotEmpty({ message: 'Contract is required.' })
+  // One rule, so a missing contract returns a single message.
+  @Matches(/\S/, { message: 'Contract is required.' })
   contractId: string;
 
   @IsOptional()
@@ -24,7 +26,9 @@ export class CreateManualTimeDto {
   @IsDateString()
   endTime: string;
 
+  // BTB-332: whitespace is trimmed, so a spaces-only note is saved as no note.
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
   @IsString()
   @MaxLength(500)
   notes?: string;
