@@ -3522,7 +3522,11 @@ export const OverviewTab = ({
 
   return (
     <>
-      <div className="flex gap-6">
+      {/* BTB-306: below 1440px the right column used to be hidden entirely
+          (no Withdraw Funds on 1280/1366 laptops). It now stacks above the
+          main content there (AC-01.01: balance card first); 1440px+ is
+          unchanged. */}
+      <div className="flex flex-col min-[1440px]:flex-row gap-6">
         {/* Main Content */}
         <div className="flex-1 space-y-5 min-w-0">
           {/* Dismissible for the session — closing it doesn't resolve the
@@ -3819,6 +3823,42 @@ export const OverviewTab = ({
                     <span className="text-sm whitespace-nowrap shrink-0">
                       <span className="font-bold text-[#22376B]">
                         {summary?.thisMonth.hoursLabel ?? "—"}
+                      </span>{" "}
+                      <span className="text-[#667085]">Logged</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* BTB-327: All Time (Epic Overview §4.2) — lifetime amount,
+                    same markup as This Week/This Month; no period-over-period
+                    change for a lifetime total. */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <span className="text-base font-medium text-[#22376B]">
+                      All Time
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <HelpCircle className="size-4 text-[#98A2B3]" />
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>Your lifetime earnings on Marketeq.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <FigmaAmount
+                    amount={summary?.allTime.amount}
+                    symbol={currencySymbol(
+                      summary?.allTime.displayCurrency || "USD"
+                    )}
+                    size="md"
+                  />
+                  <div className="flex items-center justify-end gap-3 mt-2 min-h-[20px]">
+                    <span className="text-sm whitespace-nowrap shrink-0">
+                      <span className="font-bold text-[#22376B]">
+                        {summary?.allTime.hoursLabel ?? "—"}
                       </span>{" "}
                       <span className="text-[#667085]">Logged</span>
                     </span>
@@ -7657,7 +7697,7 @@ export const OverviewTab = ({
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-[372px] shrink-0 space-y-5 hidden min-[1440px]:block">
+        <div className="w-full min-[1440px]:w-[372px] shrink-0 space-y-5 order-first min-[1440px]:order-none">
           {/* Available for Withdrawal */}
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
             <div className="flex items-center gap-1.5 mb-4">
