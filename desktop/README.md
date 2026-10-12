@@ -69,7 +69,7 @@ desktop/
 ├── tsconfig.{json,main,preload,renderer}.json
 ├── vite.config.ts
 ├── resources/
-│   ├── icon.png             # placeholder — replace with real 1024px artwork
+│   ├── icon.png             # app icon, 1024px (icon.ico is generated from it)
 │   ├── entitlements.mac.plist
 │   └── installer.nsh        # NSIS custom install script
 ├── src/

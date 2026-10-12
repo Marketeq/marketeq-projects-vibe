@@ -14,6 +14,8 @@ export class DevicesService {
     // Upsert by installation UUID
     const existing = await this.repo.findOneBy({ installationUuid: dto.installationUuid });
     if (existing) {
+      // Whoever is signed in on this installation now owns it.
+      existing.userId = userId;
       existing.appVersion = dto.appVersion;
       existing.osVersion = dto.osVersion;
       existing.lastSeenAt = new Date();
