@@ -29,6 +29,16 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
@@ -6227,6 +6237,7 @@ const ProjectScope = ({
     scopeType,
     setScopeType,
     draftProjectId,
+    initialPricingPeriod,
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
@@ -6333,59 +6344,14 @@ const ProjectScope = ({
 
   // Budget + duration computed from the scope (same helper/rate-card as the
   // inline my-listings view) — replaces the hardcoded sidebar figures.
+  // PMCM-258: duration day-counting now comes from the shared
+  // frontend/lib/listing-pricing.ts module instead of this file's own copy
+  // (which, per QA-200/PMCM-397, already matched my-listings' months
+  // handling — now both pages share one implementation instead of two
+  // copies that have to be kept in sync by hand).
   const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
     const scopePhases = Array.isArray(phases) ? phases : []
-    let totalDays = 0
-    for (const phase of scopePhases) {
-      const taskDays = (((phase as any)?.rows ?? []) as any[])
-        .map((row: any) => {
-          const dur = row?.duration
-          // QA-200/PMCM-397: this only handled "weeks" and "hours",
-          // silently treating a "months" duration as raw days (e.g. "2
-          // months" counted as 2 days) and giving up entirely (0) on any
-          // row whose duration didn't arrive as the {value, type} object —
-          // never falling back to estimatedHours the way
-          // estimateScopeBudgetCents (this same memo's budget calculation,
-          // a few lines below) already does. Matched here to that
-          // reference implementation.
-          if (dur && typeof dur === "object") {
-            const val = Number(dur.value) || 0
-            if (val > 0) {
-              if (dur.type === "weeks") return val * 7
-              if (dur.type === "months") return val * 30
-              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-              return val
-            }
-          }
-          if (typeof dur === "string" && dur.trim()) {
-            const [rv, ru] = dur.trim().split(/\s+/)
-            const v = Number(rv) || 0
-            const u = (ru || "days").toLowerCase()
-            if (v > 0) {
-              if (u.startsWith("week")) return v * 7
-              if (u.startsWith("month")) return v * 30
-              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-              return v
-            }
-          }
-          const hrs = Number(row?.estimatedHours) || 0
-          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-        })
-        .filter((d: number) => d > 0)
-      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
-    }
-    let label = "—"
-    if (totalDays > 0) {
-      if (totalDays < 7) {
-        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
-      } else if (totalDays < 28) {
-        const w = Math.max(1, Math.ceil(totalDays / 7))
-        label = `${w} Week${w !== 1 ? "s" : ""}`
-      } else {
-        const m = Math.max(1, Math.ceil(totalDays / 30))
-        label = `${m} Month${m !== 1 ? "s" : ""}`
-      }
-    }
+    const totalDays = scopeDurationDays(scopePhases as any)
     const computedCents = estimateScopeBudgetCents(scopePhases)
     // QA-178/PMCM-397: always prefer the freshly-computed total.
     // pricingBudgetCents only updates ~1.5-2s after a change, via the
@@ -6402,25 +6368,53 @@ const ProjectScope = ({
     // correctly-computed 0.
     return {
       budgetTotalCents: computedCents,
-      durationLabel: label,
+      durationLabel: formatDuration(totalDays),
       durationDays: totalDays,
     }
   }, [phases])
 
-  const formatBudget = React.useCallback(
-    (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
+  // PMCM-258/AC5: the wizard previously had no period selector at all —
+  // the sidebar budget was always shown "per week". Mirrors the
+  // hydrate-once-then-persist-on-change pattern used in my-listings so the
+  // seller's choice here round-trips through the same `pricingPeriod`
+  // draft field.
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>("week")
+  const pricingPeriodHydratedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (!initialPricingPeriod) return
+    pricingPeriodHydratedRef.current = true
+    setBudgetPeriodState(normalizePeriod(initialPricingPeriod))
+  }, [initialPricingPeriod])
+
+  const setBudgetPeriod = React.useCallback(
+    (next: PricingPeriod) => {
+      setBudgetPeriodState(next)
+      if (draftProjectId) {
+        ProjectAPI.UpdateProjectDraft(draftProjectId, {
+          pricingPeriod: next,
+        } as any).catch(() => {})
       }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [draftProjectId]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isService),
+    [durationDays, isService]
+  )
+
+  React.useEffect(() => {
+    if (!availableBudgetPeriods.includes(budgetPeriod)) {
+      setBudgetPeriodState(resolvePeriod(budgetPeriod, durationDays, isService))
+    }
+  }, [availableBudgetPeriods, budgetPeriod, durationDays, isService])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: PricingPeriod) => {
+      if (cents <= 0) return "$0"
+      return `$${costPerPeriod(cents, durationDays, period).toLocaleString()}`
     },
     [durationDays]
   )
@@ -7095,12 +7089,23 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      {formatBudget(budgetTotalCents, "week")}
+                      {formatBudget(budgetTotalCents, budgetPeriod)}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
-                    <Badge visual="gray" className="rounded-[5px]">
-                      week
-                    </Badge>
+                    <Listbox value={budgetPeriod} onChange={setBudgetPeriod}>
+                      <ListboxButton
+                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
+                        iconClassName="ml-1"
+                        placeholder="Select"
+                      />
+                      <ListboxOptions className="w-[153px]">
+                        {availableBudgetPeriods.map((period) => (
+                          <ListboxOption key={period} value={period}>
+                            {PERIOD_WIDGET_LABELS[period]}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </Listbox>
                   </div>
                 </div>
                 <ShieldDollar className="size-10 text-primary-500" />
@@ -7693,6 +7698,10 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   // (QA-176/PMCM-396), matching the inline editor's guard.
   isExistingPublishedListing: boolean
   pricingBudgetCents: number
+  // PMCM-258/AC5: the seller's saved pricing-period preference, hydrated
+  // once from the draft on load — read-only from ProjectScope's side, it
+  // only seeds that component's own `budgetPeriod` state once.
+  initialPricingPeriod: string | null
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
   teamSubTab: string
@@ -9947,6 +9956,12 @@ function PublishProject({
   const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  // PMCM-258/AC5: the seller's saved display-period preference, hydrated
+  // once from the draft below and read (not written) by ProjectScope via
+  // context — same read-only-from-context shape as pricingBudgetCents.
+  const [initialPricingPeriod, setInitialPricingPeriod] = useState<
+    string | null
+  >(null)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishAttempted, setPublishAttempted] = useState(false)
@@ -10245,6 +10260,7 @@ function PublishProject({
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        setInitialPricingPeriod(draft?.pricingPeriod ?? null)
         const draftIsService =
           draft?.listingType === "service" ||
           (Array.isArray(draft?.scope) &&
@@ -10821,6 +10837,7 @@ function PublishProject({
       draftProjectId,
       isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
       teamSubTab,
@@ -10841,6 +10858,7 @@ function PublishProject({
       draftProjectId,
       isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
       teamSubTab,

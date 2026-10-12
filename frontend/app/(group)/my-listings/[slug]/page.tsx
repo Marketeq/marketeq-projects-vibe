@@ -118,6 +118,16 @@ import {
   type ProjectStaticIcon,
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Combobox,
@@ -3308,7 +3318,15 @@ function ProjectDetailsInner() {
   }, [])
 
   // ── Budget & Duration computed from scope ──────────────────────────────────
-  const [budgetPeriod, setBudgetPeriod] = React.useState("week")
+  // PMCM-258: duration day-counting, the duration label, the available
+  // periods, and the cost-per-period math all now come from the shared
+  // frontend/lib/listing-pricing.ts module — this page no longer keeps
+  // its own copy. See that module for the exact rules (months factor,
+  // Yearly threshold, rounding).
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>(
+    "week"
+  )
+  const pricingPeriodHydratedRef = React.useRef(false)
 
   const isServiceListing =
     project?.listingType === "service" ||
@@ -3323,66 +3341,23 @@ function ProjectDetailsInner() {
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
+      const totalDays = scopeDurationDays(phases)
 
-      // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
-      // Matches the scope builder's getPhaseDurationInDays logic.
-      let totalDays = 0
-      for (const phase of phases) {
-        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
-          .map((row: any) => {
-            const dur = row.duration
-            // Object form { value, type }
-            if (dur && typeof dur === "object") {
-              const val = Number(dur.value) || 0
-              if (val > 0) {
-                if (dur.type === "weeks") return val * 7
-                if (dur.type === "months") return val * 30
-                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-                return val // days
-              }
-            }
-            // String form, e.g. "2 weeks" (relational scope stores it this way)
-            if (typeof dur === "string" && dur.trim()) {
-              const [rv, ru] = dur.trim().split(/\s+/)
-              const v = Number(rv) || 0
-              const u = (ru || "days").toLowerCase()
-              if (v > 0) {
-                if (u.startsWith("week")) return v * 7
-                if (u.startsWith("month")) return v * 30
-                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-                return v
-              }
-            }
-            // Fall back to estimatedHours at 40 hrs/week.
-            const hrs = Number(row.estimatedHours) || 0
-            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-          })
-          .filter((d: number) => d > 0)
-        if (taskDurations.length > 0) {
-          totalDays += Math.max(...taskDurations)
-        }
-      }
-
-      // Display rules from docs:
-      // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
-      let durationLabel = "—"
+      // durationValue/durationUnit feed the "Starting from a {value} {unit}
+      // duration" sentence elsewhere on this page — formatDuration() only
+      // returns the combined label, so these mirror its own bucketing.
       let durationValue = 0
       let durationUnit = ""
       if (totalDays > 0) {
         if (totalDays < 7) {
           durationValue = totalDays
           durationUnit = "day"
-          durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
         } else if (totalDays < 28) {
-          const weeks = Math.max(1, Math.ceil(totalDays / 7))
-          durationValue = weeks
+          durationValue = Math.max(1, Math.ceil(totalDays / 7))
           durationUnit = "week"
-          durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
         } else {
-          const months = Math.max(1, Math.ceil(totalDays / 30))
-          durationValue = months
+          durationValue = Math.max(1, Math.ceil(totalDays / 30))
           durationUnit = "month"
-          durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
         }
       }
 
@@ -3415,7 +3390,13 @@ function ProjectDetailsInner() {
           ? pricingCents
           : storedCents
 
-      return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
+      return {
+        budgetTotalCents,
+        durationLabel: formatDuration(totalDays),
+        durationValue,
+        durationUnit,
+        durationDays: totalDays,
+      }
     }, [
       project.scope,
       project.budgetUsdCents,
@@ -3423,23 +3404,62 @@ function ProjectDetailsInner() {
       project.budget,
     ])
 
+  // PMCM-258/AC5: hydrate the saved period preference once, the first
+  // time it's actually loaded (undefined = not hydrated yet; null = no
+  // preference was ever saved, so the existing "week" default stands).
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (project.pricingPeriod === undefined) return
+    pricingPeriodHydratedRef.current = true
+    if (project.pricingPeriod) {
+      setBudgetPeriodState(normalizePeriod(project.pricingPeriod))
+    }
+  }, [project.pricingPeriod])
+
+  // E2: if the selected period is no longer available (e.g. duration
+  // dropped under 52 weeks while Yearly was selected), fall back to
+  // biweek automatically.
+  React.useEffect(() => {
+    const resolved = resolvePeriod(
+      budgetPeriod,
+      durationDays,
+      isServiceListing,
+      budgetPeriod
+    )
+    if (resolved !== budgetPeriod) setBudgetPeriodState(resolved)
+  }, [budgetPeriod, durationDays, isServiceListing])
+
+  // PMCM-258/AC5: changing the period saves it through the same draft-save
+  // path as every other field on this page.
+  const setBudgetPeriod = React.useCallback(
+    (period: string) => {
+      const normalized = normalizePeriod(period)
+      setBudgetPeriodState(normalized)
+      if (project.id && isRealBackendId(project.id)) {
+        ProjectAPI.UpdateProjectDraft(project.id, {
+          pricingPeriod: normalized,
+        } as any).catch((err: any) =>
+          console.error("Failed to save pricing period:", err)
+        )
+      }
+    },
+    [project.id]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isServiceListing),
+    [durationDays, isServiceListing]
+  )
+
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      // Number of periods in the project duration
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
-      }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      const perPeriod = Math.round(total / numPeriods)
-      return `$${perPeriod.toLocaleString()}`
+      const perPeriod = costPerPeriod(
+        cents,
+        durationDays,
+        normalizePeriod(period)
+      )
+      return perPeriod > 0 ? `$${perPeriod.toLocaleString()}` : "$0"
     },
     [durationDays]
   )
@@ -3693,6 +3713,7 @@ function ProjectDetailsInner() {
             rating: 4.9,
             reviewCount: 14,
             listingType: d.listingType || "project",
+            pricingPeriod: d.pricingPeriod ?? null,
           })
           if (d.projectType || d.listingType)
             setInfoProjectType(d.projectType || d.listingType)
@@ -10386,13 +10407,13 @@ function ProjectDetailsInner() {
                         </span>
                         <div className="mt-2 flex items-baseline gap-x-1.5">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {formatBudget(budgetTotalCents, "week")}
+                            {formatBudget(budgetTotalCents, budgetPeriod)}
                           </span>
                           <span className="text-sm text-dark-blue-400">
                             per
                           </span>
                           <Badge visual="gray" className="rounded-[5px]">
-                            week
+                            {PERIOD_WIDGET_LABELS[budgetPeriod]}
                           </Badge>
                         </div>
                       </div>
@@ -10511,15 +10532,9 @@ function ProjectDetailsInner() {
                           placeholder="Select"
                         />
                         <ListboxOptions className="w-[153px]">
-                          {[
-                            "week",
-                            "2-week",
-                            "month",
-                            "quarter",
-                            ...(durationDays >= 365 ? ["year"] : []),
-                          ].map((timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
+                          {availableBudgetPeriods.map((period) => (
+                            <ListboxOption key={period} value={period}>
+                              {PERIOD_WIDGET_LABELS[period]}
                             </ListboxOption>
                           ))}
                         </ListboxOptions>

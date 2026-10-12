@@ -622,6 +622,7 @@ export class ProjectsService {
       updatedAt: project.updatedAt,
       projectDatePublished: project.projectDatePublished ?? null,
       durationMonths: project.durationMonths ?? null,
+      pricingPeriod: project.pricingPeriod ?? null,
       budget,
       priceMin: budget,
       budgetUsdCents: budget != null ? Math.round(budget * 100) : null,

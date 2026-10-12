@@ -106,6 +106,13 @@ export class Project {
   @Column({ nullable: true, type: 'int' })
   durationMonths?: number;
 
+  // PMCM-258: the seller's chosen display period for the Budget Calculator's
+  // cost-per-period figure. Same column the publish module's draft-save
+  // entity (publish/.../entities/project.entity.ts) writes — both classes
+  // map to this schema's single `project` table.
+  @Column({ nullable: true, type: 'varchar', length: 20 })
+  pricingPeriod?: string | null;
+
   @Column({ nullable: true, type: 'int' })
   estimatedHours?: number;
 

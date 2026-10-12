@@ -530,9 +530,18 @@ export class PublishService {
         fullDescription: dto.fullDescription
           ? sanitizeProjectFullDescription(dto.fullDescription)
           : '',
-        budget: dto.budget ?? null,
+        // PMCM-258/X1: budget and duration are seller-visible but
+        // server-computed — a client-sent value is never trusted, even
+        // on first create. `budget` gets its real value from the first
+        // scope save (writeProjectScope's updatePublishedSnapshot);
+        // `durationMonths` has no equivalent compute-and-write path today,
+        // so it's just left null rather than inventing one. The DTO still
+        // accepts both fields (backwards-compat for any client still
+        // sending them), they're just never persisted.
+        budget: null,
         initialTeamBudget: dto.initialTeamBudget ?? null,
-        durationMonths: dto.durationMonths ?? null,
+        durationMonths: null,
+        pricingPeriod: dto.pricingPeriod ?? null,
         location: dto.location ?? null,
         timezone: dto.timezone ?? null,
         categories: dto.categories ?? [],
@@ -861,12 +870,18 @@ export class PublishService {
         ? sanitizeProjectFullDescription(dto.fullDescription)
         : dto.fullDescription;
     }
-    if (dto.budget !== undefined) payload.budget = dto.budget;
+    // PMCM-258/X1: budget and duration are server-computed — a client-
+    // sent value is never persisted here, even on update. `budget` is
+    // kept current by every scope save instead (writeProjectScope's
+    // updatePublishedSnapshot); `durationMonths` has no equivalent
+    // compute-and-write path today, so dto.durationMonths is simply
+    // ignored rather than inventing one. Both DTO fields stay accepted
+    // (backwards-compat), just unused here.
     if (dto.initialTeamBudget !== undefined) {
       payload.initialTeamBudget = dto.initialTeamBudget;
     }
-    if (dto.durationMonths !== undefined) {
-      payload.durationMonths = dto.durationMonths;
+    if (dto.pricingPeriod !== undefined) {
+      payload.pricingPeriod = dto.pricingPeriod;
     }
     if (dto.location !== undefined) payload.location = dto.location;
     if (dto.timezone !== undefined) payload.timezone = dto.timezone;

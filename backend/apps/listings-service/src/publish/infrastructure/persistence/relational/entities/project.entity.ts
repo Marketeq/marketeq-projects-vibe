@@ -77,6 +77,14 @@ export class ProjectEntity extends EntityRelationalHelper implements Project {
   @Column({ type: Number, nullable: true })
   durationMonths: number;
 
+  // PMCM-258: the seller's chosen display period for the Budget
+  // Calculator's cost-per-period figure (week|biweek|month|quarter|year).
+  // Null means "no preference saved yet" — callers default to a sensible
+  // period themselves (the buyer page defaults to "biweek" per spec).
+  // Never used to compute the total/duration — only how one is sliced.
+  @Column({ name: 'pricingPeriod', type: String, length: 20, nullable: true })
+  pricingPeriod: string | null;
+
   // Generated column — derived from scope roles. See the projects entity and
   // the AddProjectTeamSizeDerived migration.
   @Column({ type: Number, nullable: true, insert: false, update: false })

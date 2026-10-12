@@ -3,12 +3,23 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+
+// PMCM-258: the five canonical period keys the Budget Calculator/buyer
+// page pricing module (frontend/lib/listing-pricing.ts) understands.
+export const PRICING_PERIODS = [
+  'week',
+  'biweek',
+  'month',
+  'quarter',
+  'year',
+] as const;
 import { Transform, Type } from 'class-transformer';
 import { ProjectCategorySelectionDto } from './project-category-selection.dto';
 
@@ -60,6 +71,14 @@ export class UpsertProjectDraftDto {
   @IsOptional()
   @IsNumber()
   durationMonths?: number;
+
+  // PMCM-258: display-only preference — never used to compute the total
+  // or the duration, only which slice of it is shown. Null/omitted means
+  // "no preference saved yet."
+  @ApiProperty({ required: false, enum: PRICING_PERIODS })
+  @IsOptional()
+  @IsIn(PRICING_PERIODS)
+  pricingPeriod?: string;
 
   @ApiProperty({ required: false })
   @IsOptional()
