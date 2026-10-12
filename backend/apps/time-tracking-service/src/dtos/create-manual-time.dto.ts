@@ -9,9 +9,10 @@ import {
 } from 'class-validator';
 
 export class CreateManualTimeDto {
-  @IsOptional()
+  // AC-76.04 / AC-77.02: manual time is always logged against a contract.
   @IsString()
-  contractId?: string;
+  @IsNotEmpty({ message: 'Contract is required.' })
+  contractId: string;
 
   @IsOptional()
   @IsString()
