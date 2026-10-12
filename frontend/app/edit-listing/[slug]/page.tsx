@@ -118,6 +118,7 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
 import {
   AddRoleDialog,
+  convertPhasesForScopeType,
   countryFromLocation,
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
@@ -4699,6 +4700,30 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   )
 }
 
+// PMCM-257 follow-up: extracted so the scope-type switch confirm dialog's
+// "Learn More" can reuse the same tip video instead of duplicating it.
+// Mirrors the identical extraction in scope-builder/index.tsx.
+const ProjectScopeTipVideo = () => (
+  <>
+    <DialogHeader>
+      <DialogTitle>Project Scope Tip Video</DialogTitle>
+    </DialogHeader>
+    {PROJECT_SCOPE_TIP_VIDEO_URL ? (
+      <ReactPlayer
+        controls
+        width="100%"
+        height={300}
+        url={PROJECT_SCOPE_TIP_VIDEO_URL}
+      />
+    ) : (
+      <p className="text-sm text-gray-500">
+        Tip video URL is not configured yet. Add
+        `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
+      </p>
+    )}
+  </>
+)
+
 const ProjectScopeTip = ({
   showArrow,
   closeTrigger,
@@ -4750,22 +4775,7 @@ const ProjectScopeTip = ({
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Project Scope Tip Video</DialogTitle>
-          </DialogHeader>
-          {PROJECT_SCOPE_TIP_VIDEO_URL ? (
-            <ReactPlayer
-              controls
-              width="100%"
-              height={300}
-              url={PROJECT_SCOPE_TIP_VIDEO_URL}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">
-              Tip video URL is not configured yet. Add
-              `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
-            </p>
-          )}
+          <ProjectScopeTipVideo />
         </DialogContent>
       </Dialog>
 
@@ -6227,6 +6237,8 @@ const ProjectScope = ({
   // editor's shared ScopeBuilder component, which already had the
   // dialog but had the identical "doesn't actually clear" gap.
   const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = React.useState(false)
+  const [scopeTypeLearnMoreOpen, setScopeTypeLearnMoreOpen] =
+    React.useState(false)
   const [pendingScopeType, setPendingScopeType] =
     React.useState<ScopeType | null>(null)
 
@@ -6242,7 +6254,12 @@ const ProjectScope = ({
     const previousType = scopeType
     const previousPhases = phases
     setScopeType(type)
-    setPhases([{ phaseName: "" }])
+    // PMCM-257 follow-up: previously cleared the scope on switch — per
+    // product direction this now converts and preserves phaseName/rows/
+    // order instead (convertPhasesForScopeType, same helper the inline
+    // editor's ScopeBuilder uses). Undo still restores the exact previous
+    // phases (not the converted ones) and the exact previous type.
+    setPhases(convertPhasesForScopeType(phases, type))
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
@@ -7156,35 +7173,68 @@ const ProjectScope = ({
                   open={scopeTypeConfirmOpen}
                   onOpenChange={setScopeTypeConfirmOpen}
                 >
-                  <DialogContent className="max-w-sm">
-                    <DialogTitle>
-                      Change to{" "}
-                      {pendingScopeType === "service" ? "Service" : "Project"}?
-                    </DialogTitle>
-                    <DialogDescription>
-                      This action will clear your entire{" "}
-                      {isService ? "service" : "project"} scope so you can
-                      rebuild it as a{" "}
-                      {pendingScopeType === "service" ? "service" : "project"}{" "}
-                      — phases, tasks, duration, and budget will all reset.
-                      You can undo this at anytime.
-                    </DialogDescription>
+                  {/* Figma specs 409px; max-w-sm (384px) is the nearest
+                      standard Tailwind class — no arbitrary value added. */}
+                  <DialogContent className="max-w-sm p-0">
+                    <div className="p-6 border-b border-gray-200">
+                      <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                        Change to{" "}
+                        {pendingScopeType === "service"
+                          ? "Service"
+                          : "Project"}
+                        ?
+                      </DialogTitle>
+                      <DialogDescription className="mt-2 text-sm font-light text-dark-blue-400">
+                        {pendingScopeType === "service"
+                          ? "This action will modify the entire project scope. You'll need to manually update the service plan details, including time intervals for each phase and other related settings. You can undo this at anytime."
+                          : "This action will modify the entire service scope. You'll need to manually update the project plan details, including the duration of each phase and other related settings. You can undo this at anytime."}
+                      </DialogDescription>
+                      <Dialog
+                        open={scopeTypeLearnMoreOpen}
+                        onOpenChange={setScopeTypeLearnMoreOpen}
+                      >
+                        <DialogTrigger asChild>
+                          {/* visual="gray" variant="link" already gives
+                              text-gray-500, and size defaults to "sm"
+                              (text-sm) — only font-semibold/underline
+                              (persistent)/capitalize aren't covered by
+                              the variant. */}
+                          <Button
+                            type="button"
+                            variant="link"
+                            visual="gray"
+                            className="mt-3 font-semibold underline capitalize"
+                          >
+                            Learn More
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[560px]">
+                          <ProjectScopeTipVideo />
+                        </DialogContent>
+                      </Dialog>
+                    </div>
 
-                    <DialogFooter className="mt-8 grid gap-x-3">
+                    <div className="bg-gray-25 px-6 py-4 rounded-b-xl flex items-center justify-between">
                       <DialogClose asChild>
                         <Button
-                          variant="outlined"
+                          className="opacity-50 hover:opacity-100"
+                          variant="link"
                           visual="gray"
                           onClick={() => setPendingScopeType(null)}
                         >
+                          <X className="size-[15px]" />
                           Cancel
                         </Button>
                       </DialogClose>
 
-                      <Button onClick={confirmScopeTypeChange}>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={confirmScopeTypeChange}
+                      >
                         Yes, Change
                       </Button>
-                    </DialogFooter>
+                    </div>
                   </DialogContent>
                 </Dialog>
 
