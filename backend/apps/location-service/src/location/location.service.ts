@@ -58,6 +58,14 @@ export interface IpResolution {
   currency: string | null;
   timezone: string | null;
   coordinates: [number, number] | null;
+  // Additive, display-only. geoip-lite supplies city/region only for some IPs;
+  // when it has neither it falls back to a COUNTRY centroid for `coordinates`,
+  // which is not a location of the caller. coordinatePrecision says which:
+  // 'city' | 'region' when the database had that level, 'country' when the
+  // coordinates are only the country-level fallback, null when none.
+  city: string | null;
+  region: string | null;
+  coordinatePrecision: 'city' | 'region' | 'country' | null;
 }
 
 export interface CoordinateResolution {
@@ -65,6 +73,10 @@ export interface CoordinateResolution {
   city: string | null;
   state: string | null;
   country: string | null;
+  // Additive. ISO 3166-1 alpha-2 (uppercase) and ISO 3166-2 subdivision code
+  // when LocationIQ supplies them; null when it does not — never guessed.
+  countryCode: string | null;
+  regionCode: string | null;
 }
 
 // ── Service ──
@@ -97,6 +109,9 @@ export class LocationService {
       currency: null,
       timezone: null,
       coordinates: null,
+      city: null,
+      region: null,
+      coordinatePrecision: null,
     };
 
     if (!ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('10.') || ip.startsWith('192.168.')) {
@@ -111,10 +126,14 @@ export class LocationService {
       result.country = countryCode;
       result.currency = countryCode ? (COUNTRY_CURRENCY[countryCode] ?? null) : null;
 
+      result.city = geo.city || null;
+      result.region = geo.region || null;
+
       if (Array.isArray(geo.ll) && geo.ll.length >= 2) {
         const [lat, lon] = geo.ll;
         if (Number.isFinite(lat) && Number.isFinite(lon)) {
           result.coordinates = [lat, lon];
+          result.coordinatePrecision = result.city ? 'city' : result.region ? 'region' : 'country';
           const candidates = geoTz(lat, lon);
           if (Array.isArray(candidates) && candidates.length > 0) {
             const tz = candidates[0].trim();
@@ -171,17 +190,28 @@ export class LocationService {
       const parts = [city, state, country].filter(Boolean);
       if (parts.length === 0) return null;
 
+      const rawCountryCode = typeof address.country_code === 'string' ? address.country_code.toUpperCase() : '';
+      const countryCode = /^[A-Z]{2}$/.test(rawCountryCode) ? rawCountryCode : null;
+      // Nominatim-style "US-IL": keep only the subdivision part, if well-formed.
+      const iso = typeof address['ISO3166-2-lvl4'] === 'string' ? address['ISO3166-2-lvl4'] : '';
+      const regionMatch = /^[A-Z]{2}-([A-Z0-9]{1,3})$/.exec(iso);
+      const regionCode = regionMatch ? regionMatch[1] : null;
+
       const result: CoordinateResolution = {
         location: parts.join(', '),
         city,
         state,
         country,
+        countryCode,
+        regionCode,
       };
 
       this.coordCache.set(cacheKey, result);
       return result;
     } catch (err) {
-      this.logger.warn(`Reverse geocode failed for ${lat},${lon}: ${(err as Error).message}`);
+      // Fixed message only: neither the coordinates nor the request URL (which
+      // carries the API key) may reach the logs.
+      this.logger.warn('Reverse geocode failed');
       return null;
     }
   }

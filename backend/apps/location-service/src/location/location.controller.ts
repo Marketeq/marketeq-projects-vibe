@@ -23,6 +23,9 @@ export class LocationController {
         currency: null,
         timezone: null,
         coordinates: null,
+        city: null,
+        region: null,
+        coordinatePrecision: null,
       };
     }
     return this.locationService.resolveIp(ip);

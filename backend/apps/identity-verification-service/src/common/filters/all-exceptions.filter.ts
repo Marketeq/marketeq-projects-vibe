@@ -7,6 +7,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { ThrottlerException } from '@nestjs/throttler';
 import { DomainException } from '../errors/domain-exceptions';
 import { ErrorResponseDto } from '../../dto/response/error.response.dto';
 
@@ -36,6 +37,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
         details: { errors: Array.isArray(body.message) ? body.message : [body.message] },
       };
       response.status(HttpStatus.BAD_REQUEST).json(errorBody);
+      return;
+    }
+
+    if (exception instanceof ThrottlerException) {
+      const errorBody: ErrorResponseDto = {
+        code: 'RATE_LIMITED',
+        message: 'Too many requests. Try again later.',
+      };
+      response.status(HttpStatus.TOO_MANY_REQUESTS).json(errorBody);
       return;
     }
 

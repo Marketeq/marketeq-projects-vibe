@@ -232,7 +232,7 @@ pipeline {
                 // Vercel is NOT git-triggered for this repo. The vercel-deploy job creates the
                 // deployment via the Vercel API and blocks until it reports READY, so there is
                 // no need to sleep and guess in the smoke test below.
-                build job: 'vercel-deploy', wait: true, propagate: true, parameters: [
+                build job: '/marketeq-projects-vibe/deploy/vercel-deploy', wait: true, propagate: true, parameters: [
                     string(name: 'DEPLOY_BRANCH', value: params.TARGET_BRANCH),
                     string(name: 'DEPLOY_SHA', value: env.PUSHED_SHA),
                     booleanParam(name: 'DRY_RUN', value: false)

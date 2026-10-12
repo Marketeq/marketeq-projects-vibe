@@ -1,6 +1,17 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import * as path from 'path';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+import { config as loadEnv } from 'dotenv';
+
+const envPaths = [
+  resolve(process.cwd(), 'apps/identity-verification-service/.env'),
+  resolve(__dirname, '..', '..', '.env'),
+  resolve(process.cwd(), '.env'),
+];
+const envPath = envPaths.find((candidate) => existsSync(candidate));
+loadEnv(envPath ? { path: envPath } : undefined);
 
 export const identityVerificationDataSourceOptions: DataSourceOptions = {
   type: 'postgres',

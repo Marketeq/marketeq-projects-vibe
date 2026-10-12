@@ -16,7 +16,7 @@ export const IDENTITY_VERIFICATION_EVENT_CATALOG: readonly EventCatalogEntry[] =
   },
   {
     eventType: IdentityVerificationEventType.TRAVEL_MODE_STILL_ACTIVE,
-    description: 'The daily reminder sweep found a profile due for a Travel Mode reminder, not on a skip day.',
+    description: 'The daily reminder sweep processed a Travel Mode reminder due on day 3 or day 7 after activation, while Travel Mode had not expired.',
     wired: true,
     emittedBy: 'TravelModeReminderJob (Doc 05 Step 10)',
   },
@@ -28,9 +28,9 @@ export const IDENTITY_VERIFICATION_EVENT_CATALOG: readonly EventCatalogEntry[] =
   },
   {
     eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
-    description: 'The Didit webhook reported outcome "approved".',
+    description: 'A hosted Free KYC session was approved by Didit and the profile newly became verified. Published once, after the transition commits.',
     wired: true,
-    emittedBy: 'IdentityVerificationService.handleDiditWebhook (Doc 05 Step 11)',
+    emittedBy: 'FreeKycService (signed webhook or authenticated reconciliation); the retired legacy handleDiditWebhook no longer publishes it',
   },
   {
     eventType: IdentityVerificationEventType.LOCATION_VERIFIED,

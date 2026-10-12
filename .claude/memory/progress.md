@@ -28,6 +28,7 @@
 
 ## In Progress
 - homepage (api-gateway module + frontend SSR) — ~85% complete, backend done, frontend wired, tests pending
+- identity-verification-service + location-service (branch `identity-verification/integration`) — core service, VPN/proxy detection (proxycheck.io), and location detection are real and tested, all committed (4 commits), branch synced 0-behind dev-main. Blocked end-to-end by api-gateway's frozen `proxy.service.ts` missing route entries (CTO-only fix, not yet applied). Didit real document/face-match/liveness scanner integration has a fully corrected implementation plan but zero code written. Document-selection screen (country → accepted document types) plumbing is real and tested (backend endpoint + submit-time validation, 103/103 tests) but deliberately not backed by a real Didit data source yet — verified none is publicly supported, user chose to hold that decision — uncommitted. See `.claude/memory/services/identity-verification-service.md` for full detail.
 
 ## Available Now (no blocking dependencies)
 These can be built immediately in parallel:

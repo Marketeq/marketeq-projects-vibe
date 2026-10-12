@@ -79,7 +79,7 @@ export class IdentityVerificationProfile {
     type: 'enum',
     enum: IdentityVerificationStatus,
     enumName: 'identity_verification_status_enum',
-    default: IdentityVerificationStatus.NOT_VERIFIED,
+    default: IdentityVerificationStatus.UNSTARTED,
   })
   identityVerificationStatus!: IdentityVerificationStatus;
 
@@ -95,6 +95,34 @@ export class IdentityVerificationProfile {
     default: LocationVerificationStatus.NOT_VERIFIED,
   })
   locationVerificationStatus!: LocationVerificationStatus;
+
+  // --- Document Expiry and Re-Verification (TRVG2 §1.1, §3) ---
+  // Population and the scheduled evaluation that transitions VERIFIED ->
+  // EXPIRED live in StatusAutoClearJob.
+  @Column({ name: 'document_expires_on', type: 'date', nullable: true })
+  documentExpiresOn!: string | null;
+
+  @Column({ name: 'last_evaluated_at', type: 'timestamptz', nullable: true })
+  lastEvaluatedAt!: Date | null;
+
+  // --- Grace Window & Age-Block Clearing (TRVG2 §1.1, §2, §3) ---
+  // expiredAt drives the 30-day grace window (in_grace); set when the
+  // profile transitions into EXPIRED. eligibleOn clears BLOCKED_AGE
+  // automatically once reached (the holder's 18th birthday, derived from
+  // the document at read time and discarded — no date of birth is held).
+  @Column({ name: 'expired_at', type: 'timestamptz', nullable: true })
+  expiredAt!: Date | null;
+
+  @Column({ name: 'eligible_on', type: 'date', nullable: true })
+  eligibleOn!: string | null;
+
+  // Not part of Doc 03's confirmed schema. TRVG2 §3 confirms FAILED_FINAL
+  // auto-clears after a 24h cooldown but names no column to time it from;
+  // `updated_at` is unsuitable since unrelated writes also bump it. This
+  // is this pass's own narrow engineering addition, flagged here the same
+  // way Doc 05 flagged its own pending_verification_sessions addition.
+  @Column({ name: 'failed_final_at', type: 'timestamptz', nullable: true })
+  failedFinalAt!: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

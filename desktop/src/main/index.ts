@@ -414,6 +414,7 @@ async function bootstrap(): Promise<void> {
   let captureSupervisor: ReturnType<typeof createCaptureSupervisor> | null =
     null;
   let screenshotService: ReturnType<typeof createScreenshotService> | null = null;
+  let activityMonitor: ReturnType<typeof createActivityMonitor> | null = null;
   let detachCaptureTimerBridge: (() => void) | null = null;
   try {
     const db = initDatabase();
@@ -470,7 +471,7 @@ async function bootstrap(): Promise<void> {
       permissions,
       appUsageTracker,
     });
-    const activityMonitor = createActivityMonitor({
+    activityMonitor = createActivityMonitor({
       logger,
       activityRepo: repos.activity,
       preferenceRepo: repos.preference,
@@ -598,6 +599,7 @@ async function bootstrap(): Promise<void> {
         outbox,
         timer: timerService,
         screenshotService: screenshotService ?? undefined,
+        activityMonitor: activityMonitor ?? undefined,
         getDeviceId: () => repos.device.findSelf()?.id ?? null,
         getUserId: () => authService?.getCurrentUser()?.id ?? null,
         getSessionById: (id) => repos.session.findById(id),

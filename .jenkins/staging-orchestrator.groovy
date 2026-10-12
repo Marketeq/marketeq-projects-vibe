@@ -45,7 +45,7 @@ pipeline {
         stage('Deploy Frontend (Vercel)') {
             when { expression { return params.DRY_RUN == false } }
             steps {
-                build job: 'vercel-deploy', parameters: [
+                build job: '/marketeq-projects-vibe/deploy/vercel-deploy', parameters: [
                     string(name: 'DEPLOY_BRANCH', value: params.BRANCH),
                     string(name: 'DEPLOY_SHA', value: params.COMMIT_SHA),
                     booleanParam(name: 'DRY_RUN', value: false)
@@ -61,7 +61,7 @@ pipeline {
         stage('Render Env Guard') {
             when { expression { return (params.BRANCH == 'live-mvp' || params.BRANCH == 'staging') && params.DRY_RUN == false } }
             steps {
-                build job: 'render-env-guard', parameters: [
+                build job: '/marketeq-projects-vibe/monitoring/render-env-guard', parameters: [
                     string(name: 'MODE', value: 'check')
                 ], wait: true, propagate: true
             }
@@ -164,7 +164,7 @@ PYEOF
         stage('Post-Deploy Env Verify') {
             when { expression { return (params.BRANCH == 'live-mvp' || params.BRANCH == 'staging') && params.DRY_RUN == false } }
             steps {
-                build job: 'render-env-guard', parameters: [
+                build job: '/marketeq-projects-vibe/monitoring/render-env-guard', parameters: [
                     string(name: 'MODE', value: '--repair')
                 ], wait: true, propagate: true
             }
