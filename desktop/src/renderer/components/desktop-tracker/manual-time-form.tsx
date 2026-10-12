@@ -47,6 +47,11 @@ const MAX_DURATION_HOURS = 24
 const MIN_NOTES = 10
 const MAX_NOTES = 500
 
+// Notes are counted in characters, not UTF-16 units, so an emoji counts as one
+// (matches the backend's 500-character limit) and is never cut in half.
+const charCount = (s: string) => Array.from(s).length
+const clampChars = (s: string, max: number) => Array.from(s).slice(0, max).join("")
+
 // AC-092.1 — exact wording from doc 03/08.
 const REVIEW_NOTE =
   "Manual time requires client approval and is not covered by Hourly Protection. Use the timer when possible."
@@ -414,12 +419,12 @@ export function ManualTimeForm({
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-sm font-semibold text-dark-blue-400">Notes</label>
             <span className="text-xs text-gray-400">
-              {notes.length}/{MAX_NOTES}
+              {charCount(notes)}/{MAX_NOTES}
             </span>
           </div>
           <textarea
             value={notes}
-            onChange={(e) => setNotes(e.target.value.slice(0, MAX_NOTES))}
+            onChange={(e) => setNotes(clampChars(e.target.value, MAX_NOTES))}
             onBlur={() => markTouched("notes")}
             placeholder="What were you working on?"
             rows={3}
