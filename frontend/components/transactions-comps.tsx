@@ -8725,6 +8725,12 @@ export const PayoutScheduleDialog = ({
                                     100,
                                     Math.max(0, parseInt(e.target.value) || 0)
                                   )
+                                  // BTB-302: React leaves a number input's DOM text alone
+                                  // when it parses to the same value ("050" == 50), so
+                                  // leading zeros stuck around. Show the stored number.
+                                  if (e.target.value !== String(typed)) {
+                                    e.target.value = String(typed)
+                                  }
                                   setPrimarySplitPercent(
                                     row.isPrimary ? typed : 100 - typed
                                   )
@@ -11664,7 +11670,7 @@ export const PayoutsTab = ({
   // up to 15s, or indefinitely if the contractor didn't have another
   // non-terminal row keeping the poll alive — only a manual refresh or a
   // new withdrawal (which re-mounts/re-triggers loadPayouts) would show it.
-  const { isLive } = useEarningsChannel({
+  useEarningsChannel({
     onBalanceUpdated: React.useCallback((evt: EarningsRealtimeEvent) => {
       if (evt.mutationType === "payout_completed") {
         loadPayouts(true)
@@ -11678,10 +11684,8 @@ export const PayoutsTab = ({
     }, [loadPayouts]),
   })
 
-  // AC-29.01/29.02/29.03: 15s poll as a fallback for while the Ably channel
-  // is disconnected (isLive false) — mirrors the gating pattern already
-  // used by useEarningsChannel's other consumers. Still scoped to pages
-  // with a non-terminal row, same as before.
+  // AC-29.01/29.02/29.03: 15s poll as a backstop to the Ably push above.
+  // Scoped to pages with a non-terminal row, same as before.
   const NON_TERMINAL_STATUSES = new Set([
     "pending_verification",
     "awaiting_edd",
@@ -11689,11 +11693,15 @@ export const PayoutsTab = ({
     "processing",
   ])
   const hasInFlight = payouts.some((p) => NON_TERMINAL_STATUSES.has(p.status))
+  // BTB-270: poll even while Ably is live. The live update depends on
+  // payout.completed → earnings-service → balance.updated reaching this tab;
+  // if any hop drops it, a connected tab (poll off) stayed on "Processing"
+  // until a refresh. Only runs while a row is still in flight.
   useEffect(() => {
-    if (!hasInFlight || isLive) return
+    if (!hasInFlight) return
     const id = setInterval(() => loadPayouts(true), 15_000)
     return () => clearInterval(id)
-  }, [hasInFlight, isLive, loadPayouts])
+  }, [hasInFlight, loadPayouts])
 
   return (
     <div className="space-y-5">

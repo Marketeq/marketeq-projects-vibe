@@ -1081,11 +1081,26 @@ export class PayoutService {
       trigger: r.trigger,
       failureReason: r.failureReason,
       methodType: r.depositMethod?.methodType ?? null,
-      methodLabel: r.depositMethod?.displayLabel ?? r.depositMethod?.nickname ?? null,
+      methodLabel: this.historyMethodLabel(r.depositMethod),
       createdAt: r.createdAt.toISOString(),
       settledAt: r.completedAt?.toISOString() ?? null,
       estimatedArrivalAt: this.estimateArrival(r),
     };
+  }
+
+  // BTB-294: name a bank the way Connected Accounts does — its nickname (the
+  // bank name the contractor entered) plus the masked last 4 — instead of the
+  // generic "Bank ••••1234" displayLabel that manual US banks get. Other
+  // method types keep displayLabel.
+  private historyMethodLabel(m: DepositMethod | null | undefined): string | null {
+    if (!m) return null;
+    const isBank = m.methodType === MethodType.BANK_MANUAL || m.methodType === MethodType.BANK_STRIPE;
+    if (isBank && m.nickname) {
+      const mask = m.displayLabel?.match(/(••••\d+|\.{3,4}\d+)$/)?.[1]
+        ?? (m.bankAccountLast4 ? `••••${m.bankAccountLast4}` : null);
+      return mask ? `${m.nickname} ${mask}` : m.nickname;
+    }
+    return m.displayLabel ?? m.nickname ?? null;
   }
 
   // ─── Response Mappers ─────────────────────────────────────────
