@@ -146,7 +146,11 @@ import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
-import { ScopeBuilder, estimateScopeBudgetCents } from "@/components/scope-builder"
+import {
+  ensureServicePhaseTypes,
+  estimateScopeBudgetCents,
+  ScopeBuilder,
+} from "@/components/scope-builder"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -3590,7 +3594,8 @@ function ProjectDetailsInner() {
               } catch {
                 /* ignore */
               }
-              return (d.scope ?? []).map((phase: any, phaseIdx: number) => {
+              const mappedScope = (d.scope ?? []).map(
+                (phase: any, phaseIdx: number) => {
                 const rawTasks = phase.rows || phase.task || []
                 return {
                   phaseName:
@@ -3675,7 +3680,15 @@ function ProjectDetailsInner() {
                       }
                     : {}),
                 }
-              })
+                }
+              )
+              // PMCM-257 follow-up 2: an older service draft saved before
+              // phaseType was required stays untyped on disk — normalize
+              // once on hydration so the header never falls back to
+              // "Phase One" (project scopes are returned as-is).
+              return d.listingType === "service"
+                ? ensureServicePhaseTypes(mappedScope)
+                : mappedScope
             })(),
             rating: 4.9,
             reviewCount: 14,

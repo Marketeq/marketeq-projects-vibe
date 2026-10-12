@@ -120,6 +120,7 @@ import {
   AddRoleDialog,
   convertPhasesForScopeType,
   countryFromLocation,
+  ensureServicePhaseTypes,
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
   PhaseHeaderMeta,
@@ -6312,6 +6313,22 @@ const ProjectScope = ({
       expandAll()
     },
   })
+
+  // PMCM-257 follow-up 2: Service scope must never have an untyped phase
+  // (the header falls back to "Phase One" otherwise) — covers a scope
+  // that was already "service" when this page mounted but had an
+  // untyped phase slip through some other path. Hydration (draftIsService)
+  // and the scope-type-switch confirm (confirmScopeTypeChange) already
+  // normalize on their own; this is the catch-all. After normalizing,
+  // every phase has a phaseType, so the guard condition is false on the
+  // next run and this does not loop.
+  useEffect(() => {
+    if (scopeType !== "service") return
+    if (phases.some((phase) => !phase.phaseType)) {
+      setPhases(ensureServicePhaseTypes(phases))
+    }
+  }, [scopeType, phases, setPhases])
+
   const success = projectScopeSchema.safeParse(phases)
 
   // Budget + duration computed from the scope (same helper/rate-card as the
@@ -10400,7 +10417,20 @@ function PublishProject({
             }))
           : []
 
-        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        // PMCM-257 follow-up 2: an older service draft saved before
+        // phaseType was required stays untyped on disk — normalize once
+        // on hydration so the header never falls back to "Phase One"
+        // (project scopes are passed through as-is). The empty-scope
+        // fallback also needs to start typed for a fresh service draft.
+        projectScopeMethods[1](
+          draftIsService
+            ? ensureServicePhaseTypes(
+                scope.length > 0 ? scope : [{ phaseName: "" }]
+              )
+            : scope.length > 0
+              ? scope
+              : [{}]
+        )
         lastScopePayloadRef.current = JSON.stringify(
           buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
         )

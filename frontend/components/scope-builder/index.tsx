@@ -484,21 +484,40 @@ export const getPhaseDurationLabel = (phases: Phase[], phaseIndex: number) => {
 // phaseType) and Service (setup/recurring/ongoing) shapes on a scope-type
 // switch, preserving phaseName/rows/order instead of clearing them —
 // replaces the earlier clear-on-switch behavior per product direction.
+//
+// PMCM-257 follow-up 2: the "service" branch is non-destructive and
+// doubles as the general-purpose "every phase must have a phaseType in
+// Service scope" normalizer (see ensureServicePhaseTypes below) — an
+// already-typed phase (and its recurrenceSchedule/recurrenceCount) is
+// left untouched; only an untyped phase gets assigned one. This keeps
+// Project→Service conversion's own output identical to before (project
+// phases have no phaseType at all, so index 0 still becomes "setup" and
+// the rest "recurring") while also being safe to call on a scope that's
+// already partially or fully typed.
 export function convertPhasesForScopeType(
   phases: Phase[],
   target: ScopeType
 ): Phase[] {
   if (target === "service") {
-    return phases.map((phase, index) =>
-      index === 0
-        ? { ...phase, phaseType: "setup" as const }
-        : {
-            ...phase,
-            phaseType: "recurring" as const,
-            recurrenceSchedule: "monthly" as const,
-            recurrenceCount: 1,
-          }
-    )
+    const hasSetup = phases.some((phase) => phase.phaseType === "setup")
+    return phases.map((phase, index) => {
+      if (phase.phaseType) {
+        // Already typed — keep it and its recurrence fields as-is.
+        return phase
+      }
+      if (index === 0 && !hasSetup) {
+        return { ...phase, phaseType: "setup" as const }
+      }
+      // Every other untyped phase, and an untyped phase at index 0 when
+      // some other phase already claims "setup" — never auto-assign
+      // "ongoing".
+      return {
+        ...phase,
+        phaseType: "recurring" as const,
+        recurrenceSchedule: "monthly" as const,
+        recurrenceCount: 1,
+      }
+    })
   }
 
   // target === "project": omit the service-only keys entirely (not set to
@@ -509,6 +528,14 @@ export function convertPhasesForScopeType(
     return rest
   })
 }
+
+// PMCM-257 follow-up 2: Service scope must never show the Project header
+// fallback ("Phase One") — every phase needs a phaseType. This is just
+// convertPhasesForScopeType's non-destructive "service" branch under a
+// name that reads correctly at a normalization call site (no actual
+// scope-type switch happening).
+export const ensureServicePhaseTypes = (phases: Phase[]): Phase[] =>
+  convertPhasesForScopeType(phases, "service")
 
 const RECURRENCE_LABEL: Record<RecurrenceSchedule, string> = {
   weekly: "Weekly",
@@ -2683,12 +2710,33 @@ export function ScopeBuilder({
 
   // Local state for phases — replaces useProjectScopeContext
   const [phases, setPhases] = useControllableState<Phase[]>({
-    defaultValue: initialPhases ?? [{ phaseName: "" }],
+    // PMCM-257 follow-up 2: a fresh/empty Service scope must start typed
+    // ("Setup", not "Phase One") — this only matters when `initialPhases`
+    // is undefined/empty (uncontrolled fallback); once a real scope
+    // exists, the normalization effect below handles any untyped phase.
+    defaultValue:
+      initialPhases ??
+      (scopeType === "service"
+        ? [{ phaseName: "", phaseType: "setup" }]
+        : [{ phaseName: "" }]),
     value: initialPhases,
     onChange: (value) => {
       onPhasesChange?.(value)
     },
   })
+
+  // PMCM-257 follow-up 2: Service scope must never have an untyped phase
+  // (the header falls back to "Phase One" otherwise) — this catches an
+  // older service draft saved before phaseType was required, or a scope
+  // hydrated after the type already switched. Runs once per untyped
+  // scope: after normalizing, every phase has a phaseType, so the guard
+  // condition is false on the next run and this does not loop.
+  useEffect(() => {
+    if (scopeType !== "service") return
+    if (phases.some((phase) => !phase.phaseType)) {
+      setPhases(ensureServicePhaseTypes(phases))
+    }
+  }, [scopeType, phases, setPhases])
 
   // Task search dialog state — managed internally
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
