@@ -74,6 +74,10 @@ export class EarningsService {
     }
     if (q.status === 'failed') qb.andWhere('ec.status = :rev', { rev: 'reversed' });
     if (q.status === 'paid') qb.andWhere('ec.status = :pd', { pd: 'paid' });
+
+    // BTB-311: Unpaid = earned but not yet paid out (status 'confirmed').
+
+    if (q.status === 'unpaid') qb.andWhere('ec.status = :up', { up: 'confirmed' });
     if (q.search && q.search.length >= 2) {
       const term = `%${q.search.toLowerCase()}%`;
       qb.leftJoin(ContractLabelCache,'clcs','clcs.contractId = ec.contractId')
@@ -114,6 +118,10 @@ export class EarningsService {
       }
       if (q.status === 'failed') rawQb.andWhere('ec.status = :rev', { rev: 'reversed' });
       if (q.status === 'paid') rawQb.andWhere('ec.status = :pd', { pd: 'paid' });
+
+      // BTB-311: Unpaid = earned but not yet paid out (status 'confirmed').
+
+      if (q.status === 'unpaid') rawQb.andWhere('ec.status = :up', { up: 'confirmed' });
       if (q.search && q.search.length >= 2) {
         const term = `%${q.search.toLowerCase()}%`;
         rawQb.leftJoin(ContractLabelCache,'clcs','clcs.contract_id = ec.contract_id')
@@ -136,6 +144,10 @@ export class EarningsService {
       if (q.status !== 'failed') countQb.andWhere('ec.status != :rev', { rev: 'reversed' });
       if (q.status === 'failed') countQb.andWhere('ec.status = :rev', { rev: 'reversed' });
       if (q.status === 'paid') countQb.andWhere('ec.status = :pd', { pd: 'paid' });
+
+      // BTB-311: Unpaid = earned but not yet paid out (status 'confirmed').
+
+      if (q.status === 'unpaid') countQb.andWhere('ec.status = :up', { up: 'confirmed' });
       if (q.projectId) countQb.andWhere('ec.project_id = :pid', { pid: q.projectId });
       if (q.entryType) {
         const dbType = q.entryType === 'automated' ? 'screenshot' : 'manual';

@@ -10237,7 +10237,7 @@ export const EarningsTab = ({
       ? [
           {
             key: "statusFilter",
-            label: statusFilter === "paid" ? "Paid" : "Reversed",
+            label: statusFilter === "paid" ? "Paid" : statusFilter === "unpaid" ? "Unpaid" : "Failed",
             onRemove: () => {
               setStatusFilter("")
               setCurrentPage(1)
@@ -10560,7 +10560,8 @@ export const EarningsTab = ({
               <SelectContent>
                 <SelectItem value="all-statuses">All Statuses</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="failed">Reversed</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
           </div>
