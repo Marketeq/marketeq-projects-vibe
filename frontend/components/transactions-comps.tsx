@@ -8685,6 +8685,12 @@ export const PayoutScheduleDialog = ({
                                     100,
                                     Math.max(0, parseInt(e.target.value) || 0)
                                   )
+                                  // BTB-302: React leaves a number input's DOM text alone
+                                  // when it parses to the same value ("050" == 50), so
+                                  // leading zeros stuck around. Show the stored number.
+                                  if (e.target.value !== String(typed)) {
+                                    e.target.value = String(typed)
+                                  }
                                   setPrimarySplitPercent(
                                     row.isPrimary ? typed : 100 - typed
                                   )
