@@ -22,11 +22,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       : null
 
     const isProd = process.env.NODE_ENV === 'production'
+    const detail = isProd ? '' : (exception instanceof Error ? exception.stack : String(exception))
 
-    this.logger.error(
-      `${request.method} ${request.url} — ${status}`,
-      isProd ? '' : (exception instanceof Error ? exception.stack : String(exception)),
-    )
+    // originalUrl, not url: for exceptions thrown in middleware (JwtMiddleware)
+    // url is relative to the mount point and always reads "/". The query string
+    // is dropped so tokens and codes in it never reach the logs.
+    const path = (request.originalUrl || request.url || '').split('?')[0]
+    const line = `${request.method} ${path} — ${status}`
+
+    // 4xx are client errors handled as designed (mostly logged-out 401s, which
+    // JwtMiddleware already logs), so they are WARN. ERROR is kept for 5xx,
+    // which is what the staging monitor's error scan is meant to catch.
+    if (status < 500) {
+      this.logger.warn(detail ? `${line}\n${detail}` : line)
+    } else {
+      this.logger.error(line, detail)
+    }
 
     response.status(status).json({
       statusCode: status,

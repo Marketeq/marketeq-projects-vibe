@@ -59,6 +59,14 @@ export default function TransactionsPage() {
     const tab = searchParams.get("tab")
     if (tab) setActiveTab(tab)
   }, [searchParams])
+  // BTB-286: keep the URL in step with the tab the contractor clicks. If it
+  // stayed on ?tab=payouts after switching to Overview, a later "View Payout
+  // History" pushed that same URL, searchParams didn't change, and the effect
+  // above never switched back — the modal just closed.
+  const selectTab = (tab: string) => {
+    setActiveTab(tab)
+    router.replace(`/earnings?tab=${tab}`, { scroll: false })
+  }
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // US-75: Log Time is reachable in-place from the Earnings area, rather than
@@ -171,7 +179,7 @@ export default function TransactionsPage() {
               Financials
             </h1>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={selectTab}>
               {/* Tab Header */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <TabsList className="border-b-0">
@@ -223,7 +231,7 @@ export default function TransactionsPage() {
                         visual="gray"
                         size="sm"
                         leftIcon={<CalendarCheck01 className="size-4 text-[#22376B]" />}
-                        onClick={() => setActiveTab("payouts")}
+                        onClick={() => selectTab("payouts")}
                       >
                         View Deposit Schedule
                       </Button>
@@ -321,7 +329,7 @@ export default function TransactionsPage() {
               <TabsContent value="overview" className="mt-5">
                 <OverviewTab
                   key={overviewRefreshKey}
-                  onNavigateTab={setActiveTab}
+                  onNavigateTab={selectTab}
                   onEditPayoutSchedule={() => setShowPayoutSchedule(true)}
                   onOpenHelp={() => setShowHelp(true)}
                   openAddMethodSignal={openAddMethodSignal}

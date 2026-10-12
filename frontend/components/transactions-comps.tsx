@@ -3522,7 +3522,11 @@ export const OverviewTab = ({
 
   return (
     <>
-      <div className="flex gap-6">
+      {/* BTB-306: below 1440px the right column used to be hidden entirely
+          (no Withdraw Funds on 1280/1366 laptops). It now stacks above the
+          main content there (AC-01.01: balance card first); 1440px+ is
+          unchanged. */}
+      <div className="flex flex-col min-[1440px]:flex-row gap-6">
         {/* Main Content */}
         <div className="flex-1 space-y-5 min-w-0">
           {/* Dismissible for the session — closing it doesn't resolve the
@@ -3819,6 +3823,42 @@ export const OverviewTab = ({
                     <span className="text-sm whitespace-nowrap shrink-0">
                       <span className="font-bold text-[#22376B]">
                         {summary?.thisMonth.hoursLabel ?? "—"}
+                      </span>{" "}
+                      <span className="text-[#667085]">Logged</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* BTB-327: All Time (Epic Overview §4.2) — lifetime amount,
+                    same markup as This Week/This Month; no period-over-period
+                    change for a lifetime total. */}
+                <div>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <span className="text-base font-medium text-[#22376B]">
+                      All Time
+                    </span>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <HelpCircle className="size-4 text-[#98A2B3]" />
+                        </TooltipTrigger>
+                        <TooltipContent visual="white" size="md">
+                          <p>Your lifetime earnings on Marketeq.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <FigmaAmount
+                    amount={summary?.allTime.amount}
+                    symbol={currencySymbol(
+                      summary?.allTime.displayCurrency || "USD"
+                    )}
+                    size="md"
+                  />
+                  <div className="flex items-center justify-end gap-3 mt-2 min-h-[20px]">
+                    <span className="text-sm whitespace-nowrap shrink-0">
+                      <span className="font-bold text-[#22376B]">
+                        {summary?.allTime.hoursLabel ?? "—"}
                       </span>{" "}
                       <span className="text-[#667085]">Logged</span>
                     </span>
@@ -7657,7 +7697,7 @@ export const OverviewTab = ({
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-[372px] shrink-0 space-y-5 hidden min-[1440px]:block">
+        <div className="w-full min-[1440px]:w-[372px] shrink-0 space-y-5 order-first min-[1440px]:order-none">
           {/* Available for Withdrawal */}
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
             <div className="flex items-center gap-1.5 mb-4">
@@ -8685,6 +8725,12 @@ export const PayoutScheduleDialog = ({
                                     100,
                                     Math.max(0, parseInt(e.target.value) || 0)
                                   )
+                                  // BTB-302: React leaves a number input's DOM text alone
+                                  // when it parses to the same value ("050" == 50), so
+                                  // leading zeros stuck around. Show the stored number.
+                                  if (e.target.value !== String(typed)) {
+                                    e.target.value = String(typed)
+                                  }
                                   setPrimarySplitPercent(
                                     row.isPrimary ? typed : 100 - typed
                                   )
@@ -10237,7 +10283,7 @@ export const EarningsTab = ({
       ? [
           {
             key: "statusFilter",
-            label: statusFilter === "paid" ? "Paid" : "Reversed",
+            label: statusFilter === "paid" ? "Paid" : statusFilter === "unpaid" ? "Unpaid" : "Failed",
             onRemove: () => {
               setStatusFilter("")
               setCurrentPage(1)
@@ -10560,7 +10606,8 @@ export const EarningsTab = ({
               <SelectContent>
                 <SelectItem value="all-statuses">All Statuses</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="failed">Reversed</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -11623,7 +11670,7 @@ export const PayoutsTab = ({
   // up to 15s, or indefinitely if the contractor didn't have another
   // non-terminal row keeping the poll alive — only a manual refresh or a
   // new withdrawal (which re-mounts/re-triggers loadPayouts) would show it.
-  const { isLive } = useEarningsChannel({
+  useEarningsChannel({
     onBalanceUpdated: React.useCallback((evt: EarningsRealtimeEvent) => {
       if (evt.mutationType === "payout_completed") {
         loadPayouts(true)
@@ -11637,10 +11684,8 @@ export const PayoutsTab = ({
     }, [loadPayouts]),
   })
 
-  // AC-29.01/29.02/29.03: 15s poll as a fallback for while the Ably channel
-  // is disconnected (isLive false) — mirrors the gating pattern already
-  // used by useEarningsChannel's other consumers. Still scoped to pages
-  // with a non-terminal row, same as before.
+  // AC-29.01/29.02/29.03: 15s poll as a backstop to the Ably push above.
+  // Scoped to pages with a non-terminal row, same as before.
   const NON_TERMINAL_STATUSES = new Set([
     "pending_verification",
     "awaiting_edd",
@@ -11648,11 +11693,15 @@ export const PayoutsTab = ({
     "processing",
   ])
   const hasInFlight = payouts.some((p) => NON_TERMINAL_STATUSES.has(p.status))
+  // BTB-270: poll even while Ably is live. The live update depends on
+  // payout.completed → earnings-service → balance.updated reaching this tab;
+  // if any hop drops it, a connected tab (poll off) stayed on "Processing"
+  // until a refresh. Only runs while a row is still in flight.
   useEffect(() => {
-    if (!hasInFlight || isLive) return
+    if (!hasInFlight) return
     const id = setInterval(() => loadPayouts(true), 15_000)
     return () => clearInterval(id)
-  }, [hasInFlight, isLive, loadPayouts])
+  }, [hasInFlight, loadPayouts])
 
   return (
     <div className="space-y-5">
