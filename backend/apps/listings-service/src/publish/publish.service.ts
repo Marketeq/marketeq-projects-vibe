@@ -46,7 +46,7 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
-import sanitizeHtml from 'sanitize-html';
+import sanitizeHtml = require('sanitize-html');
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
