@@ -113,7 +113,7 @@ const ROUTES: RouteCase[] = [
   { name: 'add break', method: 'post', path: '/sessions/s1/breaks', auth: 'bearer', body: { id: 'b-new', kind: 'paid', startedAt: iso(-3) }, invalidBody: { id: 'b-new' } },
   { name: 'edit break', method: 'patch', path: '/breaks/b1', auth: 'bearer', body: { endedAt: iso(-1) }, invalidBody: { endedAt: 'nope' } },
   { name: 'add idle time', method: 'post', path: '/sessions/s1/idles', auth: 'bearer', body: { id: 'i-new', startedAt: iso(-9), endedAt: iso(-8), seconds: 60 }, invalidBody: { id: 'i-new' } },
-  { name: 'submit manual time', method: 'post', path: '/manual-time', auth: 'jwt', body: { startTime: iso(-120), endTime: iso(-60), notes: 'work' }, invalidBody: { startTime: 'nope' } },
+  { name: 'submit manual time', method: 'post', path: '/manual-time', auth: 'jwt', body: { contractId: 'c1', startTime: iso(-120), endTime: iso(-60), notes: 'work' }, invalidBody: { startTime: 'nope' } },
 ];
 
 describe('G8 - time tracker verification gate', () => {
