@@ -35,6 +35,14 @@ import { StripeService } from './stripe/stripe.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { InternalTokenGuard } from './guards/internal-token.guard';
 
+const requireRabbitmqUrl = (): string => {
+  const url = process.env.RABBITMQ_URL;
+  if (!url) {
+    throw new Error('RABBITMQ_URL is required for checkout-service');
+  }
+  return url;
+};
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -74,7 +82,7 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
         name,
         transport: Transport.RMQ,
         options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          urls: [requireRabbitmqUrl()],
           queue,
           queueOptions: { durable: true },
         },

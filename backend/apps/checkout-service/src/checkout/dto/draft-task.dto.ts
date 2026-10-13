@@ -14,6 +14,8 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+const EXPERIENCE_LEVELS = ['Student', 'Junior', 'Medior', 'Senior', 'Guru'];
+
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -57,6 +59,7 @@ export class AddDraftTaskDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @IsIn(EXPERIENCE_LEVELS)
   experienceLevel!: string;
 
   @IsOptional()
@@ -113,6 +116,7 @@ export class UpdateDraftTaskDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @IsIn(EXPERIENCE_LEVELS)
   experienceLevel?: string;
 
   @ValidateIf(isSent)
@@ -215,6 +219,7 @@ export class UpdateDraftRoleDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @IsIn(EXPERIENCE_LEVELS)
   experienceLevel?: string;
 
   @ValidateIf(isSent)

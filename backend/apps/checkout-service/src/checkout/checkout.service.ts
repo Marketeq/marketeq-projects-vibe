@@ -146,14 +146,6 @@ export class CheckoutService {
     return { checkoutUrl: stripeSession.url };
   }
 
-  async applyGiftCard(code: string) {
-    const giftCard = await this.giftCardRepo.findOne({
-      where: { code, isActive: true },
-    });
-    if (!giftCard) return { valid: false, amount: 0 };
-    return { valid: true, amount: giftCard.remainingAmount };
-  }
-
   async useWallet(userId: string, amount: number) {
     const wallet = await this.walletRepo.findOne({ where: { userId } });
     if (!wallet || wallet.balance < amount) {

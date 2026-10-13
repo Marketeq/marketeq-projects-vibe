@@ -32,6 +32,22 @@ export const loadOwnedDraft = async (
   return draft;
 };
 
+export const assertDraftNotPaid = async (
+  manager: EntityManager,
+  draft: Pick<CheckoutDraft, 'sessionId'>,
+): Promise<void> => {
+  if (!draft.sessionId) return;
+  const session = await manager.findOne(CheckoutSession, {
+    where: { id: draft.sessionId },
+  });
+  if (session?.status === 'success') {
+    throw new ConflictException({
+      code: 'SESSION_ALREADY_PAID',
+      message: 'This checkout has already been paid',
+    });
+  }
+};
+
 export const releaseSession = async (
   manager: EntityManager,
   draft: CheckoutDraft,

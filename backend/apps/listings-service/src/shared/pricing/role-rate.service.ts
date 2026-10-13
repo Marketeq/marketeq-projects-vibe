@@ -1,8 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import * as jwt from 'jsonwebtoken';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ClientProxy, RmqRecordBuilder } from '@nestjs/microservices';
+import { firstValueFrom, timeout } from 'rxjs';
 import { hourlyRateForTask, popularRegionForRole } from '../utils/pricing';
 import { COUNTRY_TO_REGION } from '../../job-listing/services/job-listing-budget.service';
 
@@ -36,14 +34,15 @@ const normalizeExperienceLevel = (
 //   2. Static rate table (hourlyRateForTask) using the most popular
 //      sourcing region for the role — produces realistic estimates
 //      when the platform lacks transaction history for a role/region combo.
+export const PRICING_RPC = 'PRICING_RPC';
+
+const RATE_RPC_TIMEOUT_MS = 2000;
+
 @Injectable()
 export class RoleRateService {
   private readonly logger = new Logger(RoleRateService.name);
 
-  constructor(
-    private readonly http: HttpService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(@Inject(PRICING_RPC) private readonly pricing: ClientProxy) {}
 
   async getRateUsdCents(
     roleTitle: string,
@@ -51,21 +50,19 @@ export class RoleRateService {
     experienceLevel: string | null,
   ): Promise<number> {
     try {
-      const response = await firstValueFrom(
-        this.http.get(
-          `${this.config.get('PRICING_SERVICE_URL')}/v1/rates`,
-          {
-            params: {
-              role:       roleTitle,
-              location:   normalizeLocation(location),
-              experience: normalizeExperienceLevel(experienceLevel),
-            },
-            headers: { Authorization: `Bearer ${this.signInternalToken()}` },
-            timeout: 2000,
-          },
-        ),
+      const record = new RmqRecordBuilder({
+        role: roleTitle,
+        location: normalizeLocation(location),
+        experience: normalizeExperienceLevel(experienceLevel),
+      })
+        .setOptions({ expiration: String(RATE_RPC_TIMEOUT_MS) })
+        .build();
+      const data = await firstValueFrom(
+        this.pricing
+          .send<{ hourlyRateMedianUsdCents?: number | null }>('rate.get', record)
+          .pipe(timeout(RATE_RPC_TIMEOUT_MS)),
       );
-      const median = response.data.hourlyRateMedianUsdCents;
+      const median = data?.hourlyRateMedianUsdCents;
       if (median != null) return median;
 
       this.logger.log(
@@ -83,10 +80,5 @@ export class RoleRateService {
     });
     // hourlyRateForTask returns dollars — convert to USD cents
     return fallbackRate * 100;
-  }
-
-  private signInternalToken(): string {
-    const secret = this.config.get<string>('JWT_SECRET') ?? '';
-    return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
   }
 }

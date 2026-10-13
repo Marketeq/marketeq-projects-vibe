@@ -31,7 +31,6 @@ import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
 import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { UseWalletDto } from './dto/use-wallet.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
@@ -73,7 +72,7 @@ export class CheckoutController {
   @Post("listings/:listingId/draft")
   @UseGuards(InternalTokenGuard)
   createListingDraft(
-    @Param('listingId') listingId: string,
+    @Param('listingId', ParseUUIDPipe) listingId: string,
     @ClientId() clientId: string,
   ) {
     return this.checkoutDraftService.createDraft(clientId, listingId);
@@ -336,12 +335,6 @@ export class CheckoutController {
       successUrl: dto.successUrl,
       cancelUrl: dto.cancelUrl,
     });
-  }
-
-  @Post("apply-giftcard")
-  @UseGuards(JwtAuthGuard)
-  applyGiftCard(@Body() dto: ApplyGiftCardDto) {
-    return this.checkoutService.applyGiftCard(dto.code);
   }
 
   @Post("use-wallet")

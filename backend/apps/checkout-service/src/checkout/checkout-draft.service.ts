@@ -12,6 +12,7 @@ import { CheckoutDraftTaskEntity } from './entities/checkout-draft-task.entity';
 import { CheckoutSession } from './entities/checkout-session.entity';
 import { CheckoutSummaryService } from './checkout-summary.service';
 import {
+  assertDraftNotPaid,
   isDraftExpired,
   loadOwnedDraft,
   releaseSession,
@@ -69,6 +70,9 @@ const OPEN_ROLE_LOCATION = 'United States';
 const normalizeKeyPart = (value: string | null): string =>
   (value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+const normalizeRoleKey = (value: string): string =>
+  value.split('|').map(normalizeKeyPart).join('|');
+
 const WORKING_DAYS_PER_WEEK = 5;
 
 const taskDays = (
@@ -111,6 +115,7 @@ export class CheckoutDraftService {
     if (!draft || isDraftExpired(draft)) {
       throw new NotFoundException('Draft not found');
     }
+    await assertDraftNotPaid(this.repo.manager, draft);
     await this.touchLastOpened(draft.id);
     return this.toResponse(draft, await this.loadDurationDays(draft.id));
   }
@@ -494,7 +499,7 @@ export class CheckoutDraftService {
     toUserId: string | null,
   ) {
     const wantedRoleKey = match.roleKey
-      ? normalizeKeyPart(match.roleKey)
+      ? normalizeRoleKey(match.roleKey)
       : null;
     const { result: updatedTasks, ...summary } = await this.applyScopeChange(
       clientId,
@@ -572,6 +577,7 @@ export class CheckoutDraftService {
     if (dto.fromUserId && dto.fromUserId === dto.toUserId) {
       throw new BadRequestException('Cannot replace a member with themselves');
     }
+    await this.summaryService.assertUserExists(dto.toUserId);
     return this.reassignTasks(
       clientId,
       draftId,
@@ -607,7 +613,7 @@ export class CheckoutDraftService {
       );
     }
 
-    const wantedRoleKey = dto.roleKey ? normalizeKeyPart(dto.roleKey) : null;
+    const wantedRoleKey = dto.roleKey ? normalizeRoleKey(dto.roleKey) : null;
     const { result: deletedTaskIds, ...summary } = await this.applyScopeChange(
       clientId,
       draftId,
@@ -650,7 +656,7 @@ export class CheckoutDraftService {
     if (dto.experienceLevel === undefined && dto.location === undefined) {
       throw new BadRequestException('No fields to update');
     }
-    const wantedRoleKey = normalizeKeyPart(dto.roleKey);
+    const wantedRoleKey = normalizeRoleKey(dto.roleKey);
     const { result: updatedTasks, ...summary } = await this.applyScopeChange(
       clientId,
       draftId,
@@ -957,7 +963,10 @@ export class CheckoutDraftService {
             order: { order: 'ASC' },
           });
           const others = siblings.filter((item) => item.id !== task.id);
-          const position = Math.min(order, others.length + 1);
+          if (order > others.length + 1) {
+            throw new BadRequestException('Order is out of range');
+          }
+          const position = order;
           others.splice(position - 1, 0, task);
           await this.renumberTasks(manager, others);
           task.order = position;
@@ -998,6 +1007,7 @@ export class CheckoutDraftService {
       where: { clientId, listingId },
     });
     if (existing && !isDraftExpired(existing)) {
+      await assertDraftNotPaid(this.repo.manager, existing);
       await this.touchLastOpened(existing.id);
       throw new ConflictException({
         message: 'Draft already exists',

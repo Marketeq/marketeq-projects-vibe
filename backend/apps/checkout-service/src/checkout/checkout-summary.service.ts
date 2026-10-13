@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ClientProxy } from '@nestjs/microservices';
+import { ClientProxy, RmqRecordBuilder } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { CheckoutRateSelectionDto } from './dto/calculate-rate-estimate.dto';
 import { LISTINGS_RPC, PRICING_RPC, USER_RPC } from './rpc-clients';
@@ -146,8 +146,11 @@ export class CheckoutSummaryService {
     pattern: string,
     data: unknown,
   ): Promise<T> {
+    const record = new RmqRecordBuilder(data)
+      .setOptions({ expiration: String(this.rpcTimeoutMs) })
+      .build();
     return firstValueFrom(
-      client.send<T>(pattern, data).pipe(timeout(this.rpcTimeoutMs)),
+      client.send<T>(pattern, record).pipe(timeout(this.rpcTimeoutMs)),
     );
   }
 
@@ -231,50 +234,29 @@ export class CheckoutSummaryService {
       };
     });
 
-    const resolvedIndices: number[] = [];
-    const rolesToPrice: typeof roles = [];
-    roles.forEach((role, index) => {
-      if (role.location) {
-        resolvedIndices.push(index);
-        rolesToPrice.push(role);
-      }
-    });
-
-    const pricingRoles: PricingBudgetRoleResult[] = roles.map(() => ({
-      hourlyRateUsdCents: null,
-      isStale: false,
-      noData: true,
-    }));
-
-    if (rolesToPrice.length > 0) {
-      try {
-        const response = await this.call<{ roles?: PricingBudgetRoleResult[] }>(
-          this.pricing,
-          'budget.calculate',
-          { roles: rolesToPrice },
-        );
-        const pricedResults = response?.roles;
-        if (
-          !Array.isArray(pricedResults) ||
-          pricedResults.length !== rolesToPrice.length
-        ) {
-          throw new BadGatewayException(
-            'Pricing service returned an invalid response',
-          );
-        }
-        resolvedIndices.forEach((roleIndex, i) => {
-          pricingRoles[roleIndex] = pricedResults[i];
-        });
-      } catch (err) {
-        if (err instanceof BadGatewayException) throw err;
-        this.logger.warn(
-          `Failed to estimate rates for listing ${listingId}: ${errorMessage(err)}`,
-        );
-        throw new BadGatewayException(
-          'Pricing estimate is temporarily unavailable',
-        );
-      }
-    }
+    const pricingRoles: PricingBudgetRoleResult[] = await Promise.all(
+      roles.map(async (role) => {
+        const total = await this.priceScope([
+          {
+            tasks: [
+              {
+                roleName: role.roleTitle,
+                experienceLevel: role.experienceLevel ?? null,
+                location: role.location ?? null,
+                estimatedHours: 1,
+                hourlyRate: null,
+              },
+            ],
+          },
+        ]);
+        const cents = Math.round(total * 100);
+        return {
+          hourlyRateUsdCents: cents > 0 ? cents : null,
+          isStale: false,
+          noData: cents <= 0,
+        };
+      }),
+    );
 
     return {
       listingId,
@@ -381,6 +363,18 @@ export class CheckoutSummaryService {
     } catch (err) {
       this.logger.warn(`Failed to fetch user ${userId}: ${errorMessage(err)}`);
       return null;
+    }
+  }
+
+  async assertUserExists(userId: string): Promise<void> {
+    try {
+      await this.call<unknown>(this.users, 'user.profile.get', { id: userId });
+    } catch (err) {
+      if ((err as { statusCode?: number })?.statusCode === 404) {
+        throw new BadRequestException('That team member does not exist');
+      }
+      this.logger.warn(`Failed to verify user ${userId}: ${errorMessage(err)}`);
+      throw new BadGatewayException('User service is unavailable');
     }
   }
 

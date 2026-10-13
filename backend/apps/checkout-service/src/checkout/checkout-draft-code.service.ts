@@ -91,7 +91,12 @@ export class CheckoutDraftCodeService {
     manager?: EntityManager,
   ): Promise<DraftCodes> {
     const [giftCards, promo] = await Promise.all([
-      this.verifyCodes('gift_card', draft.giftCardCodes ?? [], manager),
+      this.verifyCodes(
+        'gift_card',
+        draft.giftCardCodes ?? [],
+        draft.clientId,
+        manager,
+      ),
       this.loadPromoEntry(draft, manager),
     ]);
     return { giftCards, promo };
@@ -112,7 +117,12 @@ export class CheckoutDraftCodeService {
       if (!current.some((item) => sameCode(type, item, code))) {
         if (type === 'gift_card') await this.assertGiftCardsUnlocked(clientId);
         await releaseSession(manager, draft);
-        const [entry] = await this.verifyCodes(type, [code], manager);
+        const [entry] = await this.verifyCodes(
+          type,
+          [code],
+          clientId,
+          manager,
+        );
         if (entry.status === 'unverified') {
           throw new BadGatewayException('Could not verify the code right now');
         }
@@ -340,14 +350,18 @@ export class CheckoutDraftCodeService {
   private async verifyCodes(
     type: DraftCodeType,
     codes: string[],
+    clientId: string,
     manager?: EntityManager,
   ): Promise<DraftGiftCardEntry[]> {
     if (codes.length === 0) return [];
-    return type === 'gift_card' ? this.verifyGiftCards(codes, manager) : [];
+    return type === 'gift_card'
+      ? this.verifyGiftCards(codes, clientId, manager)
+      : [];
   }
 
   private async verifyGiftCards(
     allCodes: string[],
+    clientId: string,
     manager?: EntityManager,
   ): Promise<DraftGiftCardEntry[]> {
     const seen = new Set<string>();
@@ -382,7 +396,12 @@ export class CheckoutDraftCodeService {
     const byCode = new Map(rows.map((row) => [stripDashes(row.code), row]));
     const now = Date.now();
     return codes.map((code) => {
-      const row = byCode.get(stripDashes(code));
+      const found = byCode.get(stripDashes(code));
+      const row =
+        found &&
+        (!found.redeemedByUserId || found.redeemedByUserId === clientId)
+          ? found
+          : undefined;
       const remaining = row ? Number(row.remainingAmount) : 0;
       let status: DraftCodeStatus = 'valid';
       if (!row) status = 'not_found';
