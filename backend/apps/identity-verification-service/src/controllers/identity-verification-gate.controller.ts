@@ -3,9 +3,13 @@ import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { SkipThrottle } from '@nestjs/throttler';
 import { IdentityVerificationService } from '../services/identity-verification.service';
 import {
+  ACCOUNT_GATE_CHECK_BATCH_PATTERN,
   ACCOUNT_GATE_CHECK_PATTERN,
+  AccountGateBatchReply,
+  AccountGateBatchRequest,
   AccountGateCheckRequest,
   AccountGateDecision,
+  MAX_GATE_CHECK_BATCH,
 } from '../common/gate/account-gate-decision';
 
 // RabbitMQ request/reply surface for the synchronous gate check. It is
@@ -31,5 +35,25 @@ export class IdentityVerificationGateController {
       throw new RpcException({ code: 'INVALID_GATE_CHECK_REQUEST', message: 'userId is required.' });
     }
     return this.service.getAccountGateDecision(userId);
+  }
+
+  // Same decision for many accounts in one round trip (G5 roster filtering).
+  // A request that does not name 1..MAX distinct-string accounts is rejected
+  // outright rather than answered for a subset the caller did not ask for.
+  @MessagePattern(ACCOUNT_GATE_CHECK_BATCH_PATTERN)
+  async checkBatch(@Payload() payload: Partial<AccountGateBatchRequest>): Promise<AccountGateBatchReply> {
+    const userIds = payload?.userIds;
+    const valid =
+      Array.isArray(userIds) &&
+      userIds.length > 0 &&
+      userIds.length <= MAX_GATE_CHECK_BATCH &&
+      userIds.every((id) => typeof id === 'string' && id.trim().length > 0);
+    if (!valid) {
+      throw new RpcException({
+        code: 'INVALID_GATE_CHECK_REQUEST',
+        message: `userIds must be 1-${MAX_GATE_CHECK_BATCH} non-empty strings.`,
+      });
+    }
+    return { decisions: await this.service.getAccountGateDecisions(userIds as string[]) };
   }
 }

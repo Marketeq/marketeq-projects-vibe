@@ -14,6 +14,26 @@ import {
 export const IDENTITY_VERIFICATION_RPC_QUEUE = 'identity_verification_rpc_queue';
 export const ACCOUNT_GATE_CHECK_PATTERN = 'identity_verification.gate_check';
 
+// Batch form of the same decision, for consumers that filter a result set (G5:
+// a roster of members) and must not make one request per account. One reply
+// carries one decision per requested account, each computed by exactly the
+// same gate_open definition as the single check.
+export const ACCOUNT_GATE_CHECK_BATCH_PATTERN = 'identity_verification.gate_check_batch';
+// Upper bound on accounts per batch request; consumers chunk above it.
+export const MAX_GATE_CHECK_BATCH = 100;
+
+export interface AccountGateBatchRequest {
+  userIds: string[];
+}
+
+export interface AccountGateBatchEntry extends AccountGateDecision {
+  userId: string;
+}
+
+export interface AccountGateBatchReply {
+  decisions: AccountGateBatchEntry[];
+}
+
 // Which requirement(s) keep the gate closed. 'none' whenever the gate is open,
 // including when it is open only because the account is inside its grace
 // window.

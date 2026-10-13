@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { QueryFailedError, Repository } from 'typeorm';
+import { In, QueryFailedError, Repository } from 'typeorm';
 
 import { User } from '../user/entities/user.entity';
 import { CreateTalentDto } from './dto/create-talent.dto';
@@ -19,6 +19,7 @@ import { Language } from '../languages/languages.entity';
 import { UserService } from '../user/user.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { TalentProfile } from '../talent-profile/entities/talent-profile.entity';
+import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service';
 
 @Injectable()
 export class TalentService {
@@ -45,6 +46,7 @@ export class TalentService {
     private readonly talentProfileRepository: Repository<TalentProfile>,
     private readonly r2Service: R2Service,
     private readonly userService: UserService,
+    private readonly discoveryGate: TalentDiscoveryGateService,
   ) {}
 
   async createTalent(
@@ -163,11 +165,33 @@ export class TalentService {
    * so cards never fall back to the placeholder.
    */
   async listTalentUsers(limit = 24): Promise<any[]> {
-    const users = await this.userRepository.find({
-      where: { userType: 'talent' },
-      take: limit,
-      order: { onboardedAt: 'DESC' },
-    });
+    // G1: only talent whose gate is open reach the marketplace browse list. A
+    // light scan (account id only) walks the original order in pages until
+    // `limit` visible talent are found or the table is exhausted - however
+    // many hidden accounts come first - asking identity in batches. Only the
+    // visible accounts are then loaded and hydrated, so a hidden talent's
+    // profile data is never read. A viewer's own verification state plays no
+    // part here.
+    const visibleIds = (
+      await this.discoveryGate.collectVisible<Pick<User, 'id'>>({
+        fetchChunk: (offset, size) =>
+          this.userRepository.find({
+            select: { id: true },
+            where: { userType: 'talent' },
+            skip: offset,
+            take: size,
+            order: { onboardedAt: 'DESC', id: 'ASC' },
+          }),
+        userIdOf: (u) => u.id,
+        wanted: limit,
+        chunkSize: 200,
+      })
+    ).map((u) => u.id);
+    const loaded = visibleIds.length
+      ? await this.userRepository.find({ where: { id: In(visibleIds) } })
+      : [];
+    const byId = new Map(loaded.map((u) => [u.id, u]));
+    const users = visibleIds.map((id) => byId.get(id)).filter((u): u is User => Boolean(u));
 
     if (users.length === 0) return [];
 

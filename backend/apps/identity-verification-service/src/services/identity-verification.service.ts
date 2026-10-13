@@ -2,7 +2,8 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
+import { DataSource, In, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
+import { isUUID } from 'class-validator';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -40,7 +41,7 @@ import {
   hashDocumentNumber,
 } from '../common/security/document-fingerprint';
 import { coarseFailureReason } from '../common/status/coarse-failure-reason';
-import { AccountGateDecision, computeGateState, deriveMissingRequirements } from '../common/gate/account-gate-decision';
+import { AccountGateBatchEntry, AccountGateDecision, computeGateState, deriveMissingRequirements } from '../common/gate/account-gate-decision';
 import {
   DocumentVerificationProvider,
   DOCUMENT_VERIFICATION_PROVIDER,
@@ -820,6 +821,44 @@ export class IdentityVerificationService {
       }
       throw err;
     }
+  }
+
+  // Batch form of getAccountGateDecision (G5): one query for every requested
+  // account, with gate_open computed by the same computeGateState. An account
+  // with no profile has verified nothing and is reported closed, exactly as in
+  // the single check, so a missing row can never read as "open". Every
+  // requested id gets exactly one entry.
+  async getAccountGateDecisions(userIds: string[]): Promise<AccountGateBatchEntry[]> {
+    const unique = Array.from(new Set(userIds));
+    // user_id is a uuid column: a non-uuid id cannot match a profile, and must
+    // not make the whole query throw and take the other accounts down with it.
+    const queryable = unique.filter((id) => isUUID(id));
+    const profiles = queryable.length
+      ? await this.profileRepository.find({ where: { userId: In(queryable) } })
+      : [];
+    const byUser = new Map(profiles.map((p) => [p.userId, p]));
+    const nowMs = Date.now();
+
+    const decisions: AccountGateBatchEntry[] = [];
+    for (const userId of unique) {
+      const found = byUser.get(userId);
+      if (!found) {
+        decisions.push({ userId, gateOpen: false, missingRequirements: 'both' });
+        continue;
+      }
+      const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
+      const { gateOpen } = computeGateState(profile, nowMs);
+      decisions.push({
+        userId,
+        gateOpen,
+        missingRequirements: deriveMissingRequirements(
+          profile.identityVerificationStatus,
+          profile.locationVerificationStatus,
+          gateOpen,
+        ),
+      });
+    }
+    return decisions;
   }
 
   async handleDiditWebhook(

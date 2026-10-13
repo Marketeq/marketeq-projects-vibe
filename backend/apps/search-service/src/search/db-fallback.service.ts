@@ -9,6 +9,7 @@ import {
   normalizeLooseText,
   normalizedTextSql,
 } from '../config/search-config'
+import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service'
 
 /**
  * Categories derived for a profile by category-service rather than stored on
@@ -98,6 +99,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject('CATEGORY_CLIENT')
     private readonly categoryClient: ClientProxy,
+    private readonly discoveryGate: TalentDiscoveryGateService,
   ) {}
 
   onModuleInit() {
@@ -393,38 +395,76 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         if (experienceClause) clauses.push(experienceClause)
 
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
-        const result = await this.pool.query(
-          `SELECT id, ${nameSql} AS name, username, availability,
-                  (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
-                  (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
-                  (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
-                  (SELECT EXTRACT(YEAR FROM AGE(now(), MIN(we.start_date)))::int FROM cms.talent_profiles_work_experience we WHERE we._parent_id = talent_profiles.id) AS years_of_experience,
-                  COUNT(*) OVER () AS total_count
+        // G1 - marketplace discovery gate. Visibility is decided for EVERY
+        // matching talent (no scan ceiling), from a light id-only query in the
+        // final ranking order, asking identity in batches. The requested page
+        // is then cut from the visible list, so the total, page count and page
+        // contents are exact, and only the page's visible talent are ever read
+        // in full - a hidden talent's profile data is never loaded.
+        const candidates = await this.pool.query(
+          `SELECT id, source_id, uuid
            FROM cms.talent_profiles
            WHERE status = 'active'
              AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
              ${filterSql}
-           ORDER BY ${orderBy}
-           LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
+           ORDER BY ${orderBy}, id ASC`,
           params,
         )
-        rows = result.rows.map((r) => ({
-          id: r.id,
-          name: r.name || r.username,
-          username: r.username,
-          availability: r.availability,
-          hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
-          job_title: r.job_title ?? undefined,
-          skills: Array.isArray(r.skills) ? r.skills : undefined,
-          // Derived, not stored — only present when a category filter was
-          // applied, since that's the only time we've paid to match. Result
-          // cards fall back to showing no category chips otherwise, which is
-          // what they already do for an untagged profile.
-          categories: derivedByProfileId?.get(String(r.id))?.categories,
-          subcategories: derivedByProfileId?.get(String(r.id))?.subcategories,
-          years_of_experience: r.years_of_experience != null ? Number(r.years_of_experience) : undefined,
-          total_count: r.total_count,
-        }))
+        const { visible, failed } = await this.discoveryGate.evaluate(
+          candidates.rows.map((r) => r.source_id || r.uuid),
+        )
+        if (failed) return this.empty(limit, page)
+
+        const visibleIds: number[] = candidates.rows
+          .filter((r) => {
+            const account = r.source_id || r.uuid
+            return typeof account === 'string' && visible.has(account)
+          })
+          .map((r) => r.id)
+        const total = visibleIds.length
+        const pageIds = visibleIds.slice(page * limit, page * limit + limit)
+
+        let hits: any[] = []
+        if (pageIds.length) {
+          const detail = await this.pool.query(
+            `SELECT id, ${nameSql} AS name, username, availability,
+                    (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
+                    (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
+                    (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
+                    (SELECT EXTRACT(YEAR FROM AGE(now(), MIN(we.start_date)))::int FROM cms.talent_profiles_work_experience we WHERE we._parent_id = talent_profiles.id) AS years_of_experience
+             FROM cms.talent_profiles
+             WHERE id = ANY($1::int[])`,
+            [pageIds],
+          )
+          const byId = new Map<number, any>(detail.rows.map((r) => [r.id, r]))
+          hits = pageIds
+            .map((id) => byId.get(id))
+            .filter(Boolean)
+            .map((r) => ({
+              objectID: r.id,
+              id: r.id,
+              name: r.name || r.username,
+              username: r.username,
+              availability: r.availability,
+              hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
+              job_title: r.job_title ?? undefined,
+              skills: Array.isArray(r.skills) ? r.skills : undefined,
+              // Derived, not stored - only present when a category filter was
+              // applied, since that's the only time we've paid to match.
+              categories: derivedByProfileId?.get(String(r.id))?.categories,
+              subcategories: derivedByProfileId?.get(String(r.id))?.subcategories,
+              years_of_experience: r.years_of_experience != null ? Number(r.years_of_experience) : undefined,
+            }))
+        }
+
+        return {
+          hits,
+          nbHits: total,
+          page,
+          nbPages: Math.ceil(total / limit),
+          hitsPerPage: limit,
+          fallback: true,
+        }
       }
 
       if (category === SearchCategory.TEAMS) {

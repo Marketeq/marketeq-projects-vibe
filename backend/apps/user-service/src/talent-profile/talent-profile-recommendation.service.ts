@@ -3,9 +3,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { firstValueFrom } from "rxjs";
-import { Repository } from "typeorm";
+import { In, Repository } from "typeorm";
 import { RecommendTalentDto } from "./dto/recommend-talent.dto";
 import { TalentProfile } from "./entities/talent-profile.entity";
+import { TalentDiscoveryGateService } from "../identity-gate/talent-discovery-gate.service";
 
 type TalentRecommendation = {
   id: string;
@@ -63,35 +64,61 @@ export class TalentProfileRecommendationService {
     private readonly repo: Repository<TalentProfile>,
     private readonly http: HttpService,
     private readonly config: ConfigService,
+    private readonly discoveryGate: TalentDiscoveryGateService,
   ) {}
 
   async recommend(
     dto: RecommendTalentDto,
   ): Promise<TalentRecommendationResponse> {
     const limit = dto.limit ?? 30;
-    const profiles = await this.repo.find({
-      where: { status: "active" },
-      select: [
-        "id",
-        "username",
-        "name",
-        "avatarUrl",
-        "jobTitles",
-        "availability",
-        "location",
-        "country",
-        "timezone",
-        "rate",
-        "overview",
-        "skills",
-        "rating",
-        "reviewsCount",
-        "totalProjectsCompleted",
-        "updatedAt",
-      ],
-      order: { updatedAt: "DESC" },
-      take: 80,
-    });
+    // G1: only talent whose gate is open are candidates. A light scan (id and
+    // account id only) walks the newest-first order in pages until 80 visible
+    // candidates are found or the table is exhausted, asking identity in
+    // batches. Only those visible profiles are then loaded, so a hidden
+    // talent's profile is never read, let alone sent to the ranking model.
+    // sourceId is the account id the gate is keyed on; it is never returned.
+    const visibleIds = (
+      await this.discoveryGate.collectVisible<TalentProfile>({
+        fetchChunk: (offset, size) =>
+          this.repo.find({
+            where: { status: "active" },
+            select: ["id", "sourceId"],
+            order: { updatedAt: "DESC", id: "ASC" },
+            skip: offset,
+            take: size,
+          }),
+        userIdOf: (p) => p.sourceId,
+        wanted: 80,
+        chunkSize: 200,
+      })
+    ).map((p) => p.id);
+    const loaded = visibleIds.length
+      ? await this.repo.find({
+          where: { id: In(visibleIds) },
+          select: [
+            "id",
+            "username",
+            "name",
+            "avatarUrl",
+            "jobTitles",
+            "availability",
+            "location",
+            "country",
+            "timezone",
+            "rate",
+            "overview",
+            "skills",
+            "rating",
+            "reviewsCount",
+            "totalProjectsCompleted",
+            "updatedAt",
+          ],
+        })
+      : [];
+    const byId = new Map(loaded.map((p) => [p.id, p]));
+    const profiles = visibleIds
+      .map((id) => byId.get(id))
+      .filter((p): p is TalentProfile => Boolean(p));
     const filteredProfiles = this.applyFilters(dto, profiles);
 
     if (filteredProfiles.length === 0) {
