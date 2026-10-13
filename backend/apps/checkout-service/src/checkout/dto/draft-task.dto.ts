@@ -14,7 +14,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-const EXPERIENCE_LEVELS = ['Student', 'Junior', 'Medior', 'Senior', 'Guru'];
+const EXPERIENCE_LEVELS = ['Student', 'Junior', 'Medior', 'Mediator', 'Senior', 'Guru'];
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;

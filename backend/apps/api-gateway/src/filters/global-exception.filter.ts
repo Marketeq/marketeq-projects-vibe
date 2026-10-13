@@ -4,6 +4,25 @@ import {
 } from '@nestjs/common'
 import { Request, Response } from 'express'
 
+const HANDLED_RESPONSE_KEYS = new Set([
+  'statusCode',
+  'code',
+  'message',
+  'details',
+  'error',
+  'blockingReasons',
+  'valid',
+])
+
+const extraResponseFields = (exceptionResponse: unknown): Record<string, unknown> =>
+  typeof exceptionResponse === 'object' &&
+  exceptionResponse !== null &&
+  !Array.isArray(exceptionResponse)
+    ? Object.fromEntries(
+        Object.entries(exceptionResponse).filter(([key]) => !HANDLED_RESPONSE_KEYS.has(key)),
+      )
+    : {}
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger('GlobalExceptionFilter')
@@ -40,6 +59,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     response.status(status).json({
+      ...extraResponseFields(exceptionResponse),
       statusCode: status,
       code: typeof exceptionResponse === 'object' && exceptionResponse !== null
         ? (exceptionResponse as any).code ?? 'INTERNAL_ERROR'

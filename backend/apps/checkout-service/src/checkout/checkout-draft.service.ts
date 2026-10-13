@@ -234,6 +234,22 @@ export class CheckoutDraftService {
       ),
     );
 
+    const unratedMemberIds = assignedIds.filter(
+      (id) => (teamById.get(id)?.rate ?? profiles.get(id)?.rate ?? null) == null,
+    );
+    const memberFallbackRates = await this.summaryService.estimateRoleRates(
+      unratedMemberIds.map((userId) => {
+        const group = assigned.get(userId) ?? emptyGroup();
+        return {
+          roleKey: userId,
+          roleTitle: teamById.get(userId)?.role || group.roleTitle,
+          location: group.location,
+          experience: group.experience,
+          estimatedHours: group.hours,
+        };
+      }),
+    );
+
     const members = assignedIds.map((userId) => {
       const group = assigned.get(userId) ?? emptyGroup();
       const member = teamById.get(userId);
@@ -252,7 +268,11 @@ export class CheckoutDraftService {
         phase: phaseLabel(group.phaseTitles),
         experience: member?.experienceLevel ?? group.experience ?? null,
         location: member?.location ?? profile?.location ?? null,
-        rate: member?.rate ?? profile?.rate ?? null,
+        rate:
+          member?.rate ??
+          profile?.rate ??
+          memberFallbackRates.get(userId) ??
+          null,
         status:
           member &&
           memberStatus !== 'Pending Invite' &&

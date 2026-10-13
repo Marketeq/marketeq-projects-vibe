@@ -16,8 +16,25 @@ export function useIsEmbeddedTalentProfile() {
   return isInIframe && pathname.startsWith("/talent-profile")
 }
 
+function useCheckoutProfileScrollbar(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return
+    const isCheckoutView =
+      new URLSearchParams(window.location.search).get("view") === "checkout"
+    if (!isCheckoutView) return
+
+    const root = document.documentElement
+    root.classList.add("checkout-profile-scrollbar")
+
+    return () => {
+      root.classList.remove("checkout-profile-scrollbar")
+    }
+  }, [enabled])
+}
+
 export function TopMostHeaderGate() {
   const isEmbeddedProfile = useIsEmbeddedTalentProfile()
+  useCheckoutProfileScrollbar(isEmbeddedProfile)
   return isEmbeddedProfile ? null : <TopMostHeader />
 }
 

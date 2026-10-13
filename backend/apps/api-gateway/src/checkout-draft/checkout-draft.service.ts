@@ -4,6 +4,35 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 
+const STATUS_ERROR_CODES: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHORIZED',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  422: 'VALIDATION_FAILED',
+  429: 'TOO_MANY_REQUESTS',
+  502: 'BAD_GATEWAY',
+};
+
+const withErrorCode = (data: unknown, status: number): object => {
+  const body: Record<string, unknown> =
+    typeof data === 'object' && data !== null && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : { message: typeof data === 'string' ? data : undefined };
+  if (typeof body.code === 'string') return body;
+  const blocked = Array.isArray(body.blockingReasons);
+  return {
+    ...body,
+    code: blocked
+      ? 'CHECKOUT_BLOCKED'
+      : (STATUS_ERROR_CODES[status] ?? 'REQUEST_FAILED'),
+    ...(blocked && !body.message
+      ? { message: 'Checkout cannot continue' }
+      : {}),
+  };
+};
+
 // Checkout-service owns the summary; gateway just authenticates and forwards,
 // reshaping the response into the shape the frontend already expects.
 @Injectable()
@@ -221,7 +250,10 @@ export class CheckoutDraftGatewayService {
       status === 502 ||
       (status !== undefined && status >= 400 && status < 500)
     ) {
-      throw new HttpException(axiosErr.response!.data as object, status);
+      throw new HttpException(
+        withErrorCode(axiosErr.response!.data, status),
+        status,
+      );
     }
     this.logger.warn(`Failed to ${action}: ${axiosErr.message}`);
     throw err;
@@ -242,8 +274,7 @@ export class CheckoutDraftGatewayService {
       if (axiosErr.response?.status === 404) {
         throw new NotFoundException('Listing not found');
       }
-      this.logger.warn(`Failed to fetch checkout summary for ${listingId}: ${axiosErr.message}`);
-      throw err;
+      this.rethrowDraftError(err, `fetch checkout summary for ${listingId}`);
     }
     const { listing, phases, projectCost } = summary.data;
 

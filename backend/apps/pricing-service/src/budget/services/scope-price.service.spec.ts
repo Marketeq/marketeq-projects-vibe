@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { ScopePriceService } from './scope-price.service';
 import { BudgetService } from './budget.service';
@@ -19,7 +20,7 @@ const build = (
   fail = false,
 ) => {
   const calculate = jest.fn(async (dto: { roles: Array<{ roleTitle: string; location?: string; experienceLevel: string }> }) => {
-    if (fail) throw new Error('down');
+    if (fail) throw new InternalServerErrorException('down');
     return {
       totalUsdCents: 0,
       hasStaleData: false,

@@ -313,7 +313,7 @@ export class CheckoutSummaryService {
         typeof response?.total !== 'number' ||
         !Number.isFinite(response.total)
       ) {
-        throw new Error('Invalid pricing response');
+        throw new BadGatewayException('Invalid pricing response');
       }
       return response.total;
     } catch (err) {

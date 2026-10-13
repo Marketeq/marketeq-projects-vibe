@@ -470,7 +470,6 @@ function Default() {
   }
   const searchParams = useSearchParams()
   const usernameParam = searchParams.get("username")
-  const isCheckoutProfileView = searchParams.get("view") === "checkout"
   // Re-applying the signed-out hire prompt on top of dev-main's
   // canHire-free restructure: the Hire Me button renders for everyone now
   // (no gate to re-add — that removal was deliberate), but a signed-out
@@ -991,16 +990,6 @@ function Default() {
   const tabsListRef = useRef<HTMLDivElement>(null)
   const [isCardStuck, setIsCardStuck] = useState<boolean>(false)
   const [isTabsListStuck, setIsTabsListStuck] = useState<boolean>(false)
-
-  useEffect(() => {
-    if (!isCheckoutProfileView) return
-
-    document.documentElement.classList.add("checkout-profile-scrollbar")
-
-    return () => {
-      document.documentElement.classList.remove("checkout-profile-scrollbar")
-    }
-  }, [isCheckoutProfileView])
 
   // The profile's pinned bar takes the top of the viewport, so the secondary
   // nav stays out of the way for as long as the bar is up, even when the user

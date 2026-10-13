@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { InternalServerErrorException, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
@@ -38,7 +38,9 @@ import { InternalTokenGuard } from './guards/internal-token.guard';
 const requireRabbitmqUrl = (): string => {
   const url = process.env.RABBITMQ_URL;
   if (!url) {
-    throw new Error('RABBITMQ_URL is required for checkout-service');
+    throw new InternalServerErrorException(
+      'RABBITMQ_URL is required for checkout-service',
+    );
   }
   return url;
 };
