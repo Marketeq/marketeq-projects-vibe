@@ -3806,7 +3806,7 @@ export default function TimeTrackingPage() {
     if (filtersReady) writeFiltersToUrl(appliedFilters, sort)
   }, [appliedFilters, sort, filtersReady])
 
-  // The header "All Projects" select is the single-contract view of the
+  // The header "All Contracts" select is the single-contract view of the
   // contract filter.
   const contractFilter =
     appliedFilters.contracts.length === 1 ? appliedFilters.contracts[0] : "all"
@@ -4732,17 +4732,17 @@ export default function TimeTrackingPage() {
                 }
               >
                 <SelectTrigger className="h-9 w-auto max-w-[240px] gap-x-2 border-gray-200 bg-white font-semibold text-dark-blue-400 shadow-xs [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left [&>svg]:shrink-0">
-                  <SelectValue placeholder="All Projects">
+                  <SelectValue placeholder="All Contracts">
                     {appliedFilters.contracts.length > 1
-                      ? `${appliedFilters.contracts.length} Projects`
+                      ? `${appliedFilters.contracts.length} Contracts`
                       : contractFilter === "all"
-                        ? "All Projects"
+                        ? "All Contracts"
                         : contractOptions.find((c) => c.id === contractFilter)?.name ??
-                          "All Projects"}
+                          "All Contracts"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Projects</SelectItem>
+                  <SelectItem value="all">All Contracts</SelectItem>
                   {contractOptions.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
