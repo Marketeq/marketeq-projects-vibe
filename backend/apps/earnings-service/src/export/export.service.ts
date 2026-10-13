@@ -134,7 +134,9 @@ export class ExportService {
     if (query.endDate) qb.andWhere('ec.workStartAt <= :to', { to: query.endDate + 'T23:59:59Z' });
     if (query.projectId) qb.andWhere('ec.projectId = :pid', { pid: query.projectId });
     if (query.entryType) qb.andWhere('ec.entryType = :et', { et: query.entryType === 'automated' ? 'screenshot' : 'manual' });
-    if (query.status) qb.andWhere('ec.status = :st', { st: query.status === 'paid' ? 'confirmed' : query.status === 'failed' ? 'reversed' : query.status });
+    // BTB-311: same mapping as the earnings list — paid → 'paid',
+    // unpaid → 'confirmed' (earned, not yet paid out), failed → 'reversed'.
+    if (query.status) qb.andWhere('ec.status = :st', { st: query.status === 'unpaid' ? 'confirmed' : query.status === 'failed' ? 'reversed' : query.status });
   }
 
   private async fetchLabels(rows: EarningsCache[]): Promise<Map<string, ContractLabelCache>> {
