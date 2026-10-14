@@ -10,6 +10,7 @@ import {
   TalentEventPayload,
   TalentDeletedPayload,
   GateChangedPayload,
+  ListingOwnerGateBackfillPayload,
   TalentGateBackfillPayload,
   TeamEventPayload,
   TeamDeletedPayload,
@@ -87,6 +88,12 @@ export class SyncController {
   @MessagePattern('talent.gate_backfill')
   onGateBackfill(@Payload() payload: TalentGateBackfillPayload) {
     return this.gateSync.applyBackfill(payload)
+  }
+
+  // listings-service's repeatable backfill/reconcile of the listing-owner gate (G5).
+  @MessagePattern('listing.owner_gate_backfill')
+  onOwnerGateBackfill(@Payload() payload: ListingOwnerGateBackfillPayload) {
+    return this.gateSync.applyOwnerBackfill(payload)
   }
 
   // Propagation monitoring: pending/failed index updates and event-to-index lag

@@ -5,6 +5,7 @@ import { join } from 'path';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
+import { LISTINGS_GATE_QUEUE } from './identity-gate/gate-state.consumer';
 import { AppModule } from './app.module';
 
 // Inlined from libs/owner-target-grpc to avoid cross-project rootDir issues.
@@ -48,9 +49,36 @@ async function bootstrap() {
         url: `${grpcHost}:${grpcPort}`,
       },
     });
-    await app.startAllMicroservices();
   } catch (err: any) {
     logger.warn(`gRPC server failed to start on ${grpcHost}:${grpcPort} (non-fatal): ${err.message}`);
+  }
+
+  // G5: durable queue of identity-verification-service's `identity.gate_changed`
+  // events, which keep the last known gate of every rostered account up to date.
+  // Manual ack (GateStateConsumer acknowledges after the state is written).
+  // Without a broker URL the service still starts and serves the last known state.
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: LISTINGS_GATE_QUEUE,
+        queueOptions: { durable: true },
+        noAck: false,
+        prefetchCount: 10,
+      },
+    });
+  } else {
+    logger.warn('RABBITMQ_URI/RABBITMQ_URL not set - gate-change consumer disabled; last known gate state is served');
+  }
+
+  // One start for every connected transport; a transport that cannot start
+  // (gRPC port taken, broker down) is non-fatal for the HTTP API.
+  try {
+    await app.startAllMicroservices();
+  } catch (err: any) {
+    logger.warn(`Microservice transports failed to start (non-fatal): ${err.message}`);
   }
 
   const httpPort = Number(process.env.PORT ?? 3004);

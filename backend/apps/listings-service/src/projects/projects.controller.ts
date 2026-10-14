@@ -18,6 +18,7 @@ import { ProjectsService } from './projects.service';
 import { Project } from './entities/project.entity';
 import { ReportProjectDto } from './dto/report-project.dto';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
+import { ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/projects')
 export class ProjectsController {
@@ -38,8 +39,8 @@ export class ProjectsController {
   }
 
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.service.findBySlug(slug);
+  findBySlug(@Param('slug') slug: string, @ViewerId() viewerId: string | null) {
+    return this.service.findBySlug(slug, viewerId);
   }
 
   @Get(':id/related-searches')

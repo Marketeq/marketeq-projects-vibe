@@ -15,6 +15,12 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `NOT owner_hidden:true` (see AlgoliaClient), so a listing whose owner has
+      // no known open gate is withheld while its stored record stays published.
+      // `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_hidden)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       'searchable(technologies)',
@@ -116,6 +122,12 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `NOT owner_hidden:true` (see AlgoliaClient), so a listing whose owner has
+      // no known open gate is withheld while its stored record stays published.
+      // `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_hidden)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       'category',
@@ -146,6 +158,12 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `NOT owner_hidden:true` (see AlgoliaClient), so a listing whose owner has
+      // no known open gate is withheld while its stored record stays published.
+      // `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_hidden)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       // Services counterpart of the projects index's `project_category` —

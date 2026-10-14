@@ -36,6 +36,11 @@ export interface ListingEventPayload {
   deliveryTime: string | null
   priceMin: number | null
   priceMax: number | null
+
+  // G5 listing-owner gate. `ownerGateOpen` is listings-service's last known gate
+  // for `ownerId`. A listing WITH an owner is indexed hidden (`owner_hidden`)
+  // unless that gate is known open; a listing with no owner is never hidden.
+  ownerGateOpen?: boolean
 }
 
 export interface ListingDeletedPayload {
@@ -107,12 +112,22 @@ export interface TalentGateBackfillPayload {
   checkedAt: string
 }
 
+// listings-service -> here: the repeatable backfill/reconcile of the listing-owner
+// gate (G5). One entry per listing record (`id` = objectID in `index`).
+export interface ListingOwnerGateBackfillPayload {
+  entries: Array<{ index: 'projects' | 'services' | 'teams'; id: string; ownerId: string; ownerGateOpen: boolean }>
+  checkedAt: string
+}
+
 export interface TalentDeletedPayload {
   id: string
 }
 
 export interface TeamEventPayload {
   id: string            // Algolia objectID
+  // G5: the account that owns the team and listings-service's last known gate for it.
+  ownerId?: string | null
+  ownerGateOpen?: boolean
   teamName: string
   createdAt: string | null
   username: string | null

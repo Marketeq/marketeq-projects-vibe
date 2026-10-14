@@ -13,6 +13,7 @@ import { ListingStatus } from '../shared/enums/listing.enum';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 import { IdentityVerificationGateClient, AccountGateDecision } from '../identity-gate/identity-verification-gate.client';
 import { IdentityVerificationUnavailableException } from '../identity-gate/identity-gate.exceptions';
+import { RosterGateService } from '../identity-gate/roster-gate.service';
 
 // G2: publish / republish / claim of a talent-owned (service) listing.
 // Real controllers + real ServicesService over an in-memory repository; only
@@ -113,6 +114,8 @@ describe('G2 - publish gate on service listings', () => {
         { provide: 'ALGOLIA_CLIENT', useValue: { emit: (_e: string, p: unknown) => (algoliaEmits.push(p), { subscribe: () => undefined }) } },
         { provide: UserProfileClient, useValue: { hydrateTeam: jest.fn(async () => []) } },
         { provide: IdentityVerificationGateClient, useValue: { checkGate: gate } },
+        // G5 roster filtering is not under test here (see services.g5-roster.spec.ts).
+        { provide: RosterGateService, useValue: { visibleUserIds: jest.fn(async () => new Set<string>()) } },
         { provide: ConfigService, useValue: { get: (k: string) => (k === 'INTERNAL_SERVICE_TOKEN' ? 'tok' : undefined) } },
       ],
     })

@@ -13,11 +13,14 @@ import { DeliverablesAdapterHuggingFace } from '../project-sync/deliverables/del
 import { FAQ_ADAPTER } from '../publish/faq/faq.adapter';
 import { FaqAdapterHeuristic } from '../publish/faq/faq.adapter.heuristic';
 import { FaqAdapterHuggingFace } from '../publish/faq/faq.adapter.huggingface';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Project]),
     ConfigModule,
+    // G5: public rosters omit members whose gate is closed.
+    IdentityGateModule,
     ClientsModule.registerAsync([
       {
         name: 'ALGOLIA_CLIENT',

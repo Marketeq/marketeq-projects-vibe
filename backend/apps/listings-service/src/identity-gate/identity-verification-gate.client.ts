@@ -10,6 +10,11 @@ import { IdentityVerificationUnavailableException } from './identity-gate.except
 export const IDENTITY_VERIFICATION_CLIENT = 'IDENTITY_VERIFICATION_CLIENT';
 export const IDENTITY_VERIFICATION_RPC_QUEUE = 'identity_verification_rpc_queue';
 export const ACCOUNT_GATE_CHECK_PATTERN = 'identity_verification.gate_check';
+// G5 roster filtering: the same decision for many accounts in one request,
+// answered with one entry per account. identity-verification-service accepts at
+// most MAX_GATE_CHECK_BATCH accounts per request, so larger sets are chunked.
+export const ACCOUNT_GATE_CHECK_BATCH_PATTERN = 'identity_verification.gate_check_batch';
+export const MAX_GATE_CHECK_BATCH = 100;
 
 // Short and bounded: the caller is waiting on an HTTP publish request. Sits between
 // the 2s used by messaging-service's blocks RPC and the 10s used for category
@@ -81,6 +86,84 @@ export class IdentityVerificationGateClient {
     }
     return decision;
   }
+
+  /**
+   * The gate decision for many accounts, in one request per MAX_GATE_CHECK_BATCH
+   * accounts (G5). All-or-nothing: if any chunk is unanswered, errors, times
+   * out, or returns anything that is not a well-formed, self-consistent set of
+   * decisions for exactly the accounts asked about, the whole call throws and
+   * the caller must treat every account as not visible. An account the reply
+   * does not mention is simply absent from the result - never "open".
+   */
+  async checkGateBatch(userIds: string[]): Promise<Map<string, AccountGateDecision>> {
+    const unique = Array.from(new Set(userIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (unique.length === 0) return new Map();
+
+    if (!resolveBrokerUrl(this.config)) {
+      this.logger.warn(
+        'RABBITMQ_URI/RABBITMQ_URL not set - cannot reach identity-verification-service; roster gate fails closed.',
+      );
+      throw new IdentityVerificationUnavailableException();
+    }
+
+    const chunks: string[][] = [];
+    for (let i = 0; i < unique.length; i += MAX_GATE_CHECK_BATCH) {
+      chunks.push(unique.slice(i, i + MAX_GATE_CHECK_BATCH));
+    }
+
+    const results = await Promise.all(chunks.map((chunk) => this.checkChunk(chunk)));
+    const merged = new Map<string, AccountGateDecision>();
+    for (const part of results) for (const [id, decision] of part) merged.set(id, decision);
+    return merged;
+  }
+
+  private async checkChunk(chunk: string[]): Promise<Map<string, AccountGateDecision>> {
+    let reply: unknown;
+    try {
+      const record = new RmqRecordBuilder({ userIds: chunk })
+        .setOptions({ expiration: IDENTITY_GATE_TIMEOUT_MS })
+        .build();
+      reply = await firstValueFrom(
+        this.client.send<unknown>(ACCOUNT_GATE_CHECK_BATCH_PATTERN, record).pipe(timeout(IDENTITY_GATE_TIMEOUT_MS)),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `${ACCOUNT_GATE_CHECK_BATCH_PATTERN} RPC failed for ${chunk.length} accounts: ${describeError(err)} — roster gate fails closed.`,
+      );
+      throw new IdentityVerificationUnavailableException();
+    }
+
+    const decisions = parseBatchReply(reply, chunk);
+    if (!decisions) {
+      this.logger.warn(
+        `${ACCOUNT_GATE_CHECK_BATCH_PATTERN} returned an unusable reply for ${chunk.length} accounts — roster gate fails closed.`,
+      );
+      throw new IdentityVerificationUnavailableException();
+    }
+    return decisions;
+  }
+}
+
+// A batch reply is trusted only if it is { decisions: [...] } and every entry is
+// a well-formed, self-consistent decision (same rules as a single reply) for an
+// account that was actually asked about, with no account repeated. One bad
+// entry discards the whole reply: a partly-readable answer is not an answer.
+function parseBatchReply(reply: unknown, requested: string[]): Map<string, AccountGateDecision> | null {
+  if (typeof reply !== 'object' || reply === null) return null;
+  const decisions = (reply as Record<string, unknown>).decisions;
+  if (!Array.isArray(decisions)) return null;
+
+  const asked = new Set(requested);
+  const out = new Map<string, AccountGateDecision>();
+  for (const entry of decisions) {
+    if (typeof entry !== 'object' || entry === null) return null;
+    const userId = (entry as Record<string, unknown>).userId;
+    if (typeof userId !== 'string' || !asked.has(userId) || out.has(userId)) return null;
+    const decision = parseDecision(entry);
+    if (!decision) return null;
+    out.set(userId, decision);
+  }
+  return out;
 }
 
 // Accept only a reply that is unmistakably a well-formed, self-consistent gate

@@ -10,6 +10,11 @@ import { lastValueFrom, timeout } from 'rxjs';
 export const GATE_CHANGE_PUBLISHER = 'GATE_CHANGE_PUBLISHER';
 export const ALGOLIA_GATE_CLIENT = 'ALGOLIA_GATE_CLIENT';
 export const ALGOLIA_SERVICE_QUEUE = 'algolia_service_queue';
+// G5: listings-service keeps the last known gate of every account it shows
+// (owners, members, assignees) in its own table, fed by this same event on its
+// own durable queue - so a roster never needs a live identity lookup.
+export const LISTINGS_GATE_CLIENT = 'LISTINGS_GATE_CLIENT';
+export const LISTINGS_GATE_QUEUE = 'listings_service_gate_queue';
 export const GATE_CHANGED_PATTERN = 'identity.gate_changed';
 const PUBLISH_TIMEOUT_MS = 5000;
 
@@ -32,12 +37,19 @@ export interface GateChangePublisher {
 
 @Injectable()
 export class RmqGateChangePublisher implements GateChangePublisher {
-  constructor(@Inject(ALGOLIA_GATE_CLIENT) private readonly client: ClientProxy) {}
+  constructor(
+    @Inject(ALGOLIA_GATE_CLIENT) private readonly algolia: ClientProxy,
+    @Inject(LISTINGS_GATE_CLIENT) private readonly listings: ClientProxy,
+  ) {}
 
+  // One identical event to every consumer's own durable queue. If any queue
+  // refuses it the whole publish rejects, so the sweep keeps the change and
+  // sends it again; consumers drop a repeat (same or older decision time).
   async publish(change: GateChange): Promise<void> {
-    await lastValueFrom(
-      this.client.emit(GATE_CHANGED_PATTERN, change).pipe(timeout(PUBLISH_TIMEOUT_MS)),
-      { defaultValue: undefined },
-    );
+    const emit = (client: ClientProxy) =>
+      lastValueFrom(client.emit(GATE_CHANGED_PATTERN, change).pipe(timeout(PUBLISH_TIMEOUT_MS)), {
+        defaultValue: undefined,
+      });
+    await Promise.all([emit(this.algolia), emit(this.listings)]);
   }
 }

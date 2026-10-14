@@ -11,6 +11,7 @@ import { slugify } from '../shared/utils/slugify';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
 import { VerificationRequiredException } from '../identity-gate/identity-gate.exceptions';
+import { RosterGateService } from '../identity-gate/roster-gate.service';
 
 @Injectable()
 export class ServicesService {
@@ -23,6 +24,7 @@ export class ServicesService {
     private readonly algoliaClient: ClientProxy,
     private readonly userProfileClient: UserProfileClient,
     private readonly identityGate: IdentityVerificationGateClient,
+    private readonly rosterGate: RosterGateService,
   ) {}
 
   // The listing type defines the context: a service is a talent-owned listing,
@@ -52,20 +54,51 @@ export class ServicesService {
   }
 
   async findAll(status = ListingStatus.Published) {
-    const items = await this.repo.find({ where: { status, listingType: 'service' }, order: { createdAt: 'DESC' } });
-    const teamByService = await this.resolveTeamAvatars(items);
+    const all = await this.repo.find({ where: { status, listingType: 'service' }, order: { createdAt: 'DESC' } });
+    // G5: one local lookup for every account on the page (owners and members).
+    // Display only - nothing stored changes, and a listing returns by itself when
+    // its owner's gate opens again.
+    const gateOpenIds = await this.rosterGate.visibleUserIds(all.flatMap((s) => this.rosterIdsOf(s)));
+    // A listing whose owner has no known open gate is withheld from marketplace
+    // discovery (no public owner exemption); ownerless/system listings are not.
+    const items = all.filter((s) => {
+      const owner = this.listingOwnerOf(s);
+      return !owner || gateOpenIds.has(owner);
+    });
+    const teamByService = await this.resolveTeamAvatars(items, gateOpenIds);
     return items.map((item) => {
       const team = teamByService.get(String(item.id));
       return {
         ...item,
+        teamMemberIds: (item.teamMemberIds ?? []).filter((id) => gateOpenIds.has(id)),
         teamAvatars: team?.avatars ?? [],
         teamMembers: team?.members ?? [],
       };
     });
   }
 
+  // The platform account that owns a listing, for gating purposes: userId, or a
+  // createdBy that is a real user id (system values such as 'n8n-seed' are not
+  // owners).
+  private listingOwnerOf(service: Pick<Service, 'userId' | 'createdBy'>): string | null {
+    return this.ownerOf(service);
+  }
+
+  // Who a listing's roster is made of: its member list, or its owner alone when
+  // no members are recorded (same rule resolveTeamAvatars has always used) - plus
+  // the owner, whose own gate decides whether the listing is shown at all.
+  private rosterIdsOf(service: Service): string[] {
+    const ids = new Set<string>();
+    const members = (service as any).teamMemberIds;
+    if (Array.isArray(members)) members.forEach((m: unknown) => ids.add(String(m)));
+    const owner = this.listingOwnerOf(service);
+    if (owner) ids.add(owner);
+    return Array.from(ids);
+  }
+
   private async resolveTeamAvatars(
     services: Service[],
+    gateOpenIds: Set<string>,
   ): Promise<Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>> {
     const idsByService = new Map<string, string[]>();
     const allIds = new Set<string>();
@@ -76,8 +109,9 @@ export class ServicesService {
           : (s as any).userId
             ? [String((s as any).userId)]
             : [];
-      idsByService.set(String(s.id), memberIds);
-      memberIds.forEach((id: string) => allIds.add(id));
+      const visibleMemberIds = memberIds.filter((id: string) => gateOpenIds.has(id));
+      idsByService.set(String(s.id), visibleMemberIds);
+      visibleMemberIds.forEach((id: string) => allIds.add(id));
     }
     if (allIds.size === 0) return new Map();
 
@@ -154,13 +188,26 @@ export class ServicesService {
     return this.findOne(id);
   }
 
+  // Raw read for internal callers (owner operations, the service.findById RPC).
+  // Public/client-facing reads use findOneForViewer / findBySlug.
   async findOne(id: string) {
     const item = await this.repo.findOne({ where: { id, listingType: 'service' } });
     if (!item) throw new NotFoundException(`Service with id ${id} not found`);
     return item;
   }
 
-  async findBySlug(slug: string) {
+  /**
+   * GET /v1/services/:id. The viewer is the authenticated caller (null when
+   * anonymous), derived server-side from the bearer token - never from a query
+   * or body parameter. The listing itself stays available to everyone; what
+   * changes is who is on it (see presentRoster).
+   */
+  async findOneForViewer(id: string, viewerId: string | null) {
+    const item = await this.findOne(id);
+    return this.presentRoster(item, viewerId, false);
+  }
+
+  async findBySlug(slug: string, viewerId: string | null = null) {
     const item = await this.repo.findOne({ where: { slug, listingType: 'service' } });
     if (!item) throw new NotFoundException('Service not found');
     // QA-192/PMCM-402: archiving must hide the listing outright, even
@@ -179,11 +226,52 @@ export class ServicesService {
     if (item.publishedSnapshot) {
       Object.assign(item, item.publishedSnapshot);
     }
-    const team = await this.userProfileClient.hydrateTeam(
-      item.teamMemberIds,
-      item.userId,
-    );
-    return { ...item, team };
+    return this.presentRoster(item, viewerId, true);
+  }
+
+  /**
+   * G5 - who appears on a service's detail.
+   *
+   * Public and client viewers get a roster where every member (and the owner)
+   * without a known open gate is COMPLETELY ABSENT: not in `team`, not in the raw
+   * `teamMemberIds`, not as `userId`, and not flagged as hidden. The owner sees
+   * everyone, each hidden member marked only with the neutral "Not shown to
+   * clients" - never a reason. Nothing stored is read-modified: this builds a
+   * response, it does not change the listing or any membership.
+   */
+  private async presentRoster(item: Service, viewerId: string | null, hydrate: boolean) {
+    const owner = this.listingOwnerOf(item);
+    const ownerView = !!viewerId && !!owner && owner === viewerId;
+    const allMemberIds = (item.teamMemberIds ?? []).map(String);
+
+    if (ownerView) {
+      const open = await this.rosterGate.visibleUserIds([owner, ...allMemberIds]);
+      const notShown = [...new Set([owner, ...allMemberIds])].filter((id) => !open.has(id));
+      const team = hydrate ? await this.userProfileClient.hydrateTeam(allMemberIds, item.userId) : undefined;
+      return {
+        ...item,
+        ...(hydrate ? { team } : {}),
+        // Owner-only, neutral: which of their own people clients do not see right now.
+        ...(notShown.length ? { notShownToClients: notShown.map((userId) => ({ userId, label: 'Not shown to clients' })) } : {}),
+      };
+    }
+
+    const open = await this.rosterGate.visibleUserIds([owner, ...allMemberIds]);
+    const memberIds = allMemberIds.filter((id) => open.has(id));
+    const ownerShown = !!owner && open.has(owner);
+    // Hydrated BEFORE anything is returned, only for visible members, so a hidden
+    // member's profile is never even fetched.
+    const team = hydrate
+      ? await this.userProfileClient.hydrateTeam(memberIds, ownerShown ? item.userId : null)
+      : undefined;
+    return {
+      ...item,
+      ...(hydrate ? { team } : {}),
+      teamMemberIds: memberIds,
+      // A hidden owner's identity is not disclosed through the owner fields either.
+      userId: item.userId && !open.has(String(item.userId)) ? null : item.userId,
+      createdBy: item.createdBy && owner && item.createdBy === owner && !ownerShown ? null : item.createdBy,
+    };
   }
 
   async seedFromN8n(dto: Record<string, any>) {
@@ -337,9 +425,19 @@ export class ServicesService {
     });
   }
 
+  // Fire-and-forget, as before. The owner's last known gate rides along (looked up
+  // locally, never from identity) so the index copy of the listing is hidden
+  // while the owner has no known open gate; a later gate change updates it.
   private emitAlgoliaUpsert(service: Service): void {
+    void this.emitAlgoliaUpsertWithOwnerGate(service);
+  }
+
+  private async emitAlgoliaUpsertWithOwnerGate(service: Service): Promise<void> {
+    const owner = this.listingOwnerOf(service);
+    const open = owner ? await this.rosterGate.visibleUserIds([owner]) : new Set<string>();
     const payload = {
       id: String(service.id),
+      ...(owner ? { ownerId: owner, ownerGateOpen: open.has(owner) } : {}),
       title: service.title,
       description: service.shortDescription ?? service.description?.substring(0, 500) ?? null,
       category: service.category ?? service.categories?.[0] ?? null,

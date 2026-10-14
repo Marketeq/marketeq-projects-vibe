@@ -15,33 +15,39 @@ const T0 = Date.parse('2026-10-14T12:00:00.000Z')
 const iso = (ms: number) => new Date(ms).toISOString()
 
 function fakeAlgolia() {
-  const records = new Map<string, Record<string, any>>() // objectID -> attrs (the "index")
+  const records = new Map<string, Record<string, any>>() // talent objectID -> attrs (the talent "index")
+  const listing: Record<string, Map<string, Record<string, any>>> = { projects: new Map(), services: new Map(), teams: new Map() }
+  const table = (index: string) => (index === 'talent' ? records : listing[index])
   const a = {
     records,
+    listing,
     failNext: 0,
     // Every write the service makes, so a test can prove none was a delete/replace.
     calls: [] as Array<{ op: string; args: any[] }>,
     findObjectIDs: jest.fn(async (index: string, attr: string, value: string) => {
       a.calls.push({ op: 'find', args: [index, attr, value] })
       if (a.failNext > 0) { a.failNext--; throw new Error('algolia 503') }
-      return [...records.entries()].filter(([, r]) => r[attr] === value).map(([id]) => id)
+      return [...table(index).entries()].filter(([, r]) => r[attr] === value).map(([id]) => id)
     }),
     partialUpdateBatch: jest.fn(async (index: string, objects: any[], createIfNotExists = false) => {
       a.calls.push({ op: 'partialUpdateBatch', args: [index, objects, createIfNotExists] })
       if (a.failNext > 0) { a.failNext--; throw new Error('algolia 503') }
       for (const o of objects) {
-        const cur = records.get(o.objectID)
+        const cur = table(index).get(o.objectID)
         if (!cur && !createIfNotExists) continue
-        records.set(o.objectID, { ...(cur ?? {}), ...o })
+        table(index).set(o.objectID, { ...(cur ?? {}), ...o })
       }
     }),
     partialUpdate: jest.fn(async (index: string, objectID: string, attrs: any, createIfNotExists = false) => {
       a.calls.push({ op: 'partialUpdate', args: [index, objectID, attrs, createIfNotExists] })
-      const cur = records.get(objectID)
+      const cur = table(index).get(objectID)
       if (!cur && !createIfNotExists) return
-      records.set(objectID, { ...(cur ?? {}), objectID, ...attrs })
+      table(index).set(objectID, { ...(cur ?? {}), objectID, ...attrs })
     }),
-    upsert: jest.fn(async (...args: any[]) => { a.calls.push({ op: 'upsert', args }) }),
+    upsert: jest.fn(async (index: string, record: any) => {
+      a.calls.push({ op: 'upsert', args: [index, record] })
+      table(index).set(record.objectID, { ...record }) // a full replace
+    }),
     batchUpsert: jest.fn(async (...args: any[]) => { a.calls.push({ op: 'batchUpsert', args }) }),
     delete: jest.fn(async (...args: any[]) => { a.calls.push({ op: 'delete', args }) }),
     clearIndex: jest.fn(async (...args: any[]) => { a.calls.push({ op: 'clearIndex', args }) }),
@@ -78,8 +84,9 @@ describe('G1 gate sync - verification changes are partial updates, never deletes
     await gate.applyGateChange({ userId: 'acct-1', gateOpen, occurredAt: iso(T0) }, T0)
 
     expect(algolia.records.get('cms-1')).toMatchObject({ gate_open: gateOpen, skills: ['ts'], name: 'N' }) // nothing else touched
+    // talent: find + partial update; then the listing indices are looked up by owner (none match here).
     const ops = algolia.calls.map((c) => c.op)
-    expect(ops).toEqual(['find', 'partialUpdateBatch'])
+    expect(ops).toEqual(['find', 'partialUpdateBatch', 'find', 'find', 'find'])
     expect(algolia.delete).not.toHaveBeenCalled()
     expect(algolia.upsert).not.toHaveBeenCalled()
     expect(algolia.clearIndex).not.toHaveBeenCalled()
@@ -336,5 +343,150 @@ describe('G1 gate sync - backfill / reconcile', () => {
     const out = await gate.applyBackfill({ entries: [{ id: '', accountId: 'a', gateOpen: true }, { id: 'x', accountId: 'a' } as any], checkedAt: iso(T0) })
     expect(out.updated).toBe(0)
     expect(algolia.calls).toHaveLength(0)
+  })
+})
+
+// G5 (Christopher): a listing whose OWNER has no known open gate is withheld from
+// marketplace discovery. The same identity.gate_changed event that drives talent
+// visibility also drives listing visibility, by owner_id, with partial updates.
+describe('G5 listing-owner gate (search index)', () => {
+  const OWNER = '11111111-1111-4111-8111-111111111111'
+  const seedListing = (algolia: ReturnType<typeof fakeAlgolia>, index: 'projects' | 'services' | 'teams', id: string, attrs: Record<string, any>) =>
+    algolia.listing[index].set(id, { objectID: id, title: 't', ...attrs })
+
+  it('closing an owner\'s gate hides every listing they own in every listing index - partial updates only', async () => {
+    const { algolia, gate } = setup()
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false, skills: ['ts'] })
+    seedListing(algolia, 'services', 's1', { owner_id: OWNER, owner_hidden: false })
+    seedListing(algolia, 'teams', 't1', { owner_id: OWNER, owner_hidden: false })
+    seedListing(algolia, 'projects', 'p2', { owner_id: 'someone-else', owner_hidden: false })
+    await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
+    expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_hidden: true, skills: ['ts'], title: 't' })
+    expect(algolia.listing.services.get('s1')!.owner_hidden).toBe(true)
+    expect(algolia.listing.teams.get('t1')!.owner_hidden).toBe(true)
+    expect(algolia.listing.projects.get('p2')!.owner_hidden).toBe(false) // another owner: untouched
+    expect(algolia.delete).not.toHaveBeenCalled()
+    expect(algolia.upsert).not.toHaveBeenCalled()
+  })
+
+  it('the listing is shown again as soon as the owner\'s gate opens', async () => {
+    const { algolia, gate } = setup()
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: true })
+    await gate.applyGateChange({ userId: OWNER, gateOpen: true, occurredAt: iso(T0) }, T0)
+    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+  })
+
+  it('one event updates the owner\'s talent record and their listings together', async () => {
+    const { algolia, gate } = setup()
+    seed(algolia, 'cms-1', OWNER, { gate_open: true })
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
+    await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
+    expect(algolia.records.get('cms-1')!.gate_open).toBe(false)
+    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+  })
+
+  it('a failed listing update is retried like any other and clears once it succeeds', async () => {
+    const { algolia, gate } = setup()
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
+    // The talent lookup succeeds, then the projects lookup fails: the whole change is
+    // kept and retried (the retried attempt starts again from the talent record).
+    const real = algolia.findObjectIDs.getMockImplementation()!
+    algolia.findObjectIDs.mockImplementationOnce(real).mockImplementationOnce(async () => {
+      throw new Error('algolia 503')
+    })
+    await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
+    expect(gate.getHealth(T0).pending).toBe(1)
+    await gate.retryDue(T0 + 200_000)
+    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+    expect(gate.getHealth(T0 + 200_000).pending).toBe(0)
+  })
+
+  describe('listing syncs', () => {
+    const payload = (over: Record<string, any> = {}) => ({
+      id: 'p1', type: 'project', ownerId: OWNER, createdAt: iso(T0), rating: null, title: 't', description: null, skills: [],
+      category: null, industry: null, tags: [], mediaUrls: [], subtitle: null, overview: null, technologies: [], subcategories: [],
+      projectLead: null, deliverables: null, projectType: null, budgetMin: null, budgetMax: null, projectDurationRange: null,
+      teamSizeRange: null, additionalTags: [], timeline: null, pricingModel: null, deliveryTime: null, priceMin: null, priceMax: null,
+      ...over,
+    }) as any
+
+    it('a listing with an owner is indexed HIDDEN unless the owner\'s gate is known open', async () => {
+      const { algolia, sync } = setup()
+      await sync.syncListing(payload({ ownerGateOpen: false }))
+      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+      await sync.syncListing(payload()) // no gate state supplied: unknown = hidden
+      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+      await sync.syncListing(payload({ ownerGateOpen: true }))
+      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+    })
+
+    it('a listing with no owner, or a system owner such as cms-sync, is never hidden', async () => {
+      const { algolia, sync } = setup()
+      await sync.syncListing(payload({ id: 'p2', ownerId: null }))
+      await sync.syncListing(payload({ id: 'p3', ownerId: 'cms-sync' }))
+      expect(algolia.listing.projects.get('p2')).not.toHaveProperty('owner_hidden')
+      expect(algolia.listing.projects.get('p3')).not.toHaveProperty('owner_hidden')
+    })
+
+    it('a team is indexed under the same rule', async () => {
+      const { algolia, sync } = setup()
+      await sync.syncTeam({ id: 't1', teamName: 'T', ownerId: OWNER, ownerGateOpen: false } as any)
+      expect(algolia.listing.teams.get('t1')).toMatchObject({ owner_id: OWNER, owner_hidden: true })
+      await sync.syncTeam({ id: 't2', teamName: 'T', ownerId: 'cms-seed' } as any)
+      expect(algolia.listing.teams.get('t2')).not.toHaveProperty('owner_hidden')
+    })
+
+    it('generic sync callers cannot set owner_hidden (or owner_gate_updated_at)', async () => {
+      const { algolia, sync } = setup()
+      await sync.sync({
+        index: AlgoliaIndex.PROJECTS, operation: SyncOperation.UPSERT, objectID: 'p9',
+        record: { title: 'x', owner_hidden: false, owner_gate_updated_at: 1 },
+      })
+      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_hidden')
+      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_gate_updated_at')
+    })
+
+    it('deleting a listing removes the record', async () => {
+      const { algolia, sync } = setup()
+      await sync.syncListing(payload(), SyncOperation.DELETE)
+      expect(algolia.delete).toHaveBeenCalledWith(AlgoliaIndex.PROJECTS, 'p1')
+    })
+  })
+
+  describe('owner gate backfill (listings-service)', () => {
+    const entries = [
+      { index: 'projects' as const, id: 'p1', ownerId: OWNER, ownerGateOpen: false },
+      { index: 'services' as const, id: 's1', ownerId: OWNER, ownerGateOpen: true },
+    ]
+    it('sets owner_hidden/owner_id on existing listing records with partial updates that create nothing', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'p1', {})
+      const out = await gate.applyOwnerBackfill({ entries, checkedAt: iso(T0) })
+      expect(out.updated).toBe(2)
+      expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_id: OWNER, owner_hidden: true })
+      expect(algolia.listing.services.has('s1')).toBe(false) // not indexed: not created
+      expect(algolia.calls.every((c) => c.op === 'partialUpdateBatch' && c.args[2] === false)).toBe(true)
+    })
+
+    it('does not overwrite a newer decision, and skips malformed entries', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
+      await gate.applyGateChange({ userId: OWNER, gateOpen: true, occurredAt: iso(T0 + 9000) }, T0 + 9000)
+      algolia.calls.length = 0
+      const out = await gate.applyOwnerBackfill({
+        entries: [entries[0], { index: 'nope' as any, id: 'x', ownerId: OWNER, ownerGateOpen: true }],
+        checkedAt: iso(T0),
+      })
+      expect(out.updated).toBe(0)
+      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+      expect(algolia.calls).toHaveLength(0)
+    })
+
+    it('retries a failing batch, then reports the failure', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'p1', {})
+      algolia.failNext = 99
+      await expect(gate.applyOwnerBackfill({ entries: [entries[0]], checkedAt: iso(T0) })).rejects.toThrow('algolia 503')
+    })
   })
 })

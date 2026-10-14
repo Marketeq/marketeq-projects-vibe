@@ -10,10 +10,22 @@ import {
 
 // Attributes only the gate pipeline may write. A generic sync/REST caller that
 // sends them is ignored, so `gate_open:true` cannot be set from outside.
+// Only a real platform account (a user id) is an owner whose gate applies; system
+// values such as 'cms-sync' are not.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const isAccountId = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v)
+
 const GATE_ATTRIBUTES = ['gate_open', 'gate_updated_at', 'account_id']
+// G5: the same for the listing-owner gate on projects/services/teams records.
+const OWNER_GATE_ATTRIBUTES = ['owner_hidden', 'owner_gate_updated_at']
 const withoutGate = (record: Record<string, unknown>): Record<string, unknown> => {
   const clean = { ...record }
   for (const key of GATE_ATTRIBUTES) delete clean[key]
+  return clean
+}
+const withoutOwnerGate = (record: Record<string, unknown>): Record<string, unknown> => {
+  const clean = { ...record }
+  for (const key of OWNER_GATE_ATTRIBUTES) delete clean[key]
   return clean
 }
 
@@ -37,7 +49,7 @@ export class SyncService {
         if (!record) {
           throw new BadRequestException(`Upsert called with no record for ${objectID}`)
         }
-        await this.upsertRecord(index, objectID, record)
+        await this.upsertGeneric(index, objectID, record)
         this.logger.log(`Upserted ${objectID} into ${index}`)
       }
     } catch (err) {
@@ -56,6 +68,12 @@ export class SyncService {
       return
     }
     await this.algolia.upsert(index, { objectID, ...record })
+  }
+
+  // The generic (REST / algolia.sync) entry point must not be able to set the
+  // listing-owner gate; only the listing and gate-change pipelines do.
+  private async upsertGeneric(index: AlgoliaIndex, objectID: string, record: Record<string, unknown>): Promise<void> {
+    await this.upsertRecord(index, objectID, index === AlgoliaIndex.TALENT ? record : withoutOwnerGate(record))
   }
 
   async batchSync(records: SyncRecordDto[]): Promise<void> {
@@ -82,7 +100,7 @@ export class SyncService {
             true,
           )
         } else {
-          await this.algolia.batchUpsert(indexName, objects)
+          await this.algolia.batchUpsert(indexName, objects.map(withoutOwnerGate))
         }
         this.logger.log(`Batch upserted ${objects.length} records into ${indexName}`)
       }
@@ -143,7 +161,24 @@ export class SyncService {
           timeline: listing.timeline,
         }
 
-    await this.sync({ index, operation, objectID: listing.id, record })
+    // G5: a listing with an owner is withheld (`owner_hidden`) unless the owner's
+    // last known gate is open; a listing with no owner is never hidden. Written
+    // here, not through sync(), because sync() strips the owner-gate attributes
+    // from generic callers.
+    const gated: Record<string, unknown> = isAccountId(listing.ownerId)
+      ? { owner_hidden: listing.ownerGateOpen !== true, owner_gate_updated_at: Date.now() }
+      : {}
+    if (operation === SyncOperation.DELETE) {
+      await this.sync({ index, operation, objectID: listing.id })
+      return
+    }
+    try {
+      await this.upsertRecord(index, listing.id, { ...record, ...gated })
+      this.logger.log(`Upserted ${listing.id} into ${index}`)
+    } catch (err) {
+      this.logger.error(`Failed to sync ${listing.id} to ${index}`, err)
+      throw new InternalServerErrorException(`Failed to sync ${listing.id} to index ${index}`)
+    }
   }
 
   async syncTalent(user: TalentEventPayload, operation: SyncOperation = SyncOperation.UPSERT): Promise<void> {
@@ -217,11 +252,17 @@ export class SyncService {
   }
 
   async syncTeam(team: TeamEventPayload, operation: SyncOperation = SyncOperation.UPSERT): Promise<void> {
-    await this.sync({
-      index: AlgoliaIndex.TEAMS,
-      operation,
-      objectID: team.id,
-      record: {
+    if (operation === SyncOperation.DELETE) {
+      await this.sync({ index: AlgoliaIndex.TEAMS, operation, objectID: team.id })
+      return
+    }
+    // G5: same owner-gate rule as listings.
+    const gated: Record<string, unknown> = isAccountId(team.ownerId)
+      ? { owner_id: team.ownerId, owner_hidden: team.ownerGateOpen !== true, owner_gate_updated_at: Date.now() }
+      : {}
+    await this.upsertRecord(AlgoliaIndex.TEAMS, team.id, {
+      ...gated,
+      ...{
         team_name: team.teamName,
         created_at: team.createdAt ? new Date(team.createdAt).getTime() : null,
         username: team.username,

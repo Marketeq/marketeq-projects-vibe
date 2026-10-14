@@ -9,11 +9,29 @@ export const INDICES = {
   services: 'services',
 } as const
 
-// G1 marketplace discovery gate. A talent whose gate is closed must not appear
-// in any marketplace talent hit, page, total or facet count, so the restriction
-// is applied INSIDE Algolia (it filters before it ranks, paginates and counts)
-// rather than on the page that comes back.
+// Marketplace discovery gates, enforced INSIDE Algolia (it filters before it
+// ranks, paginates and counts, so hits, pages and facet counts only ever cover
+// visible records):
+//   G1  talent    `gate_open:true`         - the talent's own gate must be open
+//   G5  listings  `NOT owner_hidden:true`  - a listing whose OWNER has no known
+//                 open gate is withheld (projects, services, teams). Records with
+//                 no owner (CMS, seeded) carry no `owner_hidden` and stay visible.
+// Both are display filters on the index copy: the stored listing/profile is never
+// changed, and it reappears by itself when the gate opens.
 export const TALENT_GATE_FILTER = 'gate_open:true'
+export const LISTING_GATE_FILTER = 'NOT owner_hidden:true'
+
+interface DiscoveryGate {
+  /** The base index name; its replicas are `${name}_*`. */
+  name: string
+  filter: string
+}
+const DISCOVERY_GATES: readonly DiscoveryGate[] = [
+  { name: INDICES.talent, filter: TALENT_GATE_FILTER },
+  { name: INDICES.projects, filter: LISTING_GATE_FILTER },
+  { name: INDICES.services, filter: LISTING_GATE_FILTER },
+  { name: INDICES.teams, filter: LISTING_GATE_FILTER },
+]
 
 // How long one secured key is valid, and how long before that it is replaced.
 // Generating a secured key is a local HMAC, not a network call, so renewal is
@@ -21,30 +39,39 @@ export const TALENT_GATE_FILTER = 'gate_open:true'
 const SECURED_KEY_TTL_SECONDS = 60 * 60
 const SECURED_KEY_RENEW_BEFORE_MS = 10 * 60 * 1000
 
+/** The gate that covers an index (the base index or one of its replicas), if any. */
+export function gateFor(indexName: string): DiscoveryGate | undefined {
+  return DISCOVERY_GATES.find((g) => indexName === g.name || indexName.startsWith(`${g.name}_`))
+}
+
 /** The talent index and every replica of it (talent_sort_*). */
 export function isTalentIndex(indexName: string): boolean {
-  return indexName === INDICES.talent || indexName.startsWith(`${INDICES.talent}_`)
+  return gateFor(indexName)?.name === INDICES.talent
 }
 
 /**
- * The caller's filters narrowed by the gate. The gate is always the outer
- * AND, so nothing in `filters` (which is built from user-controlled sidebar
- * values) can widen it back out, e.g. with an OR.
+ * The caller's filters narrowed by a gate. The gate is always the outer AND, so
+ * nothing in `filters` (which is built from user-controlled sidebar values) can
+ * widen it back out, e.g. with an OR.
  */
-export function withTalentGate(params: Record<string, any> = {}): Record<string, any> {
+export function withGate(filter: string, params: Record<string, any> = {}): Record<string, any> {
   const own = typeof params.filters === 'string' ? params.filters.trim() : ''
-  return { ...params, filters: own ? `${TALENT_GATE_FILTER} AND (${own})` : TALENT_GATE_FILTER }
+  return { ...params, filters: own ? `${filter} AND (${own})` : filter }
+}
+
+export function withTalentGate(params: Record<string, any> = {}): Record<string, any> {
+  return withGate(TALENT_GATE_FILTER, params)
 }
 
 /**
- * The talent gate could not be applied (no search-only parent key, or the
- * secured key could not be created). Talent discovery then FAILS CLOSED: the
- * query is refused. It never falls back to the unrestricted key or to an
- * unfiltered query.
+ * A discovery gate could not be applied (no search-only parent key, or the
+ * secured key could not be created). The query then FAILS CLOSED: it is
+ * refused. It never falls back to the unrestricted key or to an unfiltered
+ * query. (Kept under its G1 name; it now covers the G5 listing gate too.)
  */
 export class TalentGateUnavailableError extends Error {
   constructor(reason: string) {
-    super(`Talent discovery gate unavailable: ${reason}`)
+    super(`Discovery gate unavailable: ${reason}`)
     this.name = 'TalentGateUnavailableError'
   }
 }
@@ -57,7 +84,7 @@ export class AlgoliaClient implements OnModuleInit {
   private client: SearchClient
   private appId?: string
   private mainKey?: string
-  private talentClient?: { client: SearchClient; renewAtMs: number }
+  private gatedClients = new Map<string, { client: SearchClient; renewAtMs: number }>()
 
   constructor(private readonly config: ConfigService) {}
 
@@ -84,17 +111,18 @@ export class AlgoliaClient implements OnModuleInit {
   }
 
   /**
-   * The client every talent query goes through: authenticated with a secured
-   * API key generated here from a SEARCH-ONLY parent key, with `gate_open:true`
-   * and the talent indices embedded in the key itself. Whatever a request asks
-   * for, Algolia ANDs the embedded filter in, so the restriction survives even
-   * a bug in how a query is built.
+   * The client every gated query goes through: authenticated with a secured API
+   * key generated here from a SEARCH-ONLY parent key, with the gate filter and
+   * the gate's own indices embedded in the key itself. Whatever a request asks
+   * for, Algolia ANDs the embedded filter in, so the restriction survives even a
+   * bug in how a query is built.
    *
    * Throws TalentGateUnavailableError rather than ever returning the
    * unrestricted client.
    */
-  private talentSearchClient(now = Date.now()): SearchClient {
-    if (this.talentClient && now < this.talentClient.renewAtMs) return this.talentClient.client
+  private gatedSearchClient(gate: DiscoveryGate, now = Date.now()): SearchClient {
+    const cached = this.gatedClients.get(gate.name)
+    if (cached && now < cached.renewAtMs) return cached.client
 
     const parent = this.config.get<string>('ALGOLIA_SEARCH_API_KEY')
     if (!parent || !this.appId || !this.client) {
@@ -111,17 +139,17 @@ export class AlgoliaClient implements OnModuleInit {
       const securedKey = this.client.generateSecuredApiKey({
         parentApiKey: parent,
         restrictions: {
-          filters: TALENT_GATE_FILTER,
-          restrictIndices: [INDICES.talent, `${INDICES.talent}_*`],
+          filters: gate.filter,
+          restrictIndices: [gate.name, `${gate.name}_*`],
           validUntil,
         },
       })
       if (!securedKey) throw new Error('empty secured key')
       const client = algoliasearch(this.appId, securedKey)
-      this.talentClient = { client, renewAtMs: validUntil * 1000 - SECURED_KEY_RENEW_BEFORE_MS }
+      this.gatedClients.set(gate.name, { client, renewAtMs: validUntil * 1000 - SECURED_KEY_RENEW_BEFORE_MS })
       return client
     } catch (err) {
-      this.talentClient = undefined
+      this.gatedClients.delete(gate.name)
       throw new TalentGateUnavailableError(
         `could not create the secured key (${err instanceof Error ? err.message : String(err)})`,
       )
@@ -130,10 +158,11 @@ export class AlgoliaClient implements OnModuleInit {
 
   async search(indexName: string, query: string, params: Record<string, any> = {}) {
     if (!this.client) return { hits: [], nbHits: 0, page: 0, nbPages: 0 }
-    if (isTalentIndex(indexName)) {
-      const result = await this.talentSearchClient().searchSingleIndex({
+    const gate = gateFor(indexName)
+    if (gate) {
+      const result = await this.gatedSearchClient(gate).searchSingleIndex({
         indexName,
-        searchParams: { query, ...withTalentGate(params) },
+        searchParams: { query, ...withGate(gate.filter, params) },
       })
       return result
     }
@@ -153,25 +182,25 @@ export class AlgoliaClient implements OnModuleInit {
     // `{ query, ...params }` shape — Algolia's multi-query API has no
     // nested `params` field, so wrapping them under one silently drops
     // every filter/pagination param instead of erroring.
-    const requests = queries.map(({ indexName, query, params = {} }) => ({
-      indexName,
-      query,
-      ...(isTalentIndex(indexName) ? withTalentGate(params) : params),
-    }))
+    const requests = queries.map(({ indexName, query, params = {} }) => {
+      const gate = gateFor(indexName)
+      return { indexName, query, ...(gate ? withGate(gate.filter, params) : params) }
+    })
 
-    // Talent requests are sent with the gated secured key, everything else with
+    // Gated requests are sent with that gate's secured key, everything else with
     // the regular key, and the answers are put back in the order asked.
-    const talentAt = requests.map((r, i) => (isTalentIndex(r.indexName) ? i : -1)).filter((i) => i >= 0)
-    const otherAt = requests.map((_, i) => i).filter((i) => !talentAt.includes(i))
     const answers: any[] = new Array(requests.length)
-
-    if (talentAt.length) {
-      const { results } = await this.talentSearchClient().search({ requests: talentAt.map((i) => requests[i]) })
-      talentAt.forEach((at, n) => (answers[at] = results[n]))
-    }
-    if (otherAt.length) {
-      const { results } = await this.client.search({ requests: otherAt.map((i) => requests[i]) })
-      otherAt.forEach((at, n) => (answers[at] = results[n]))
+    const groups = new Map<string, { gate?: DiscoveryGate; at: number[] }>()
+    requests.forEach((r, i) => {
+      const gate = gateFor(r.indexName)
+      const key = gate?.name ?? ''
+      if (!groups.has(key)) groups.set(key, { gate, at: [] })
+      groups.get(key)!.at.push(i)
+    })
+    for (const { gate, at } of groups.values()) {
+      const client = gate ? this.gatedSearchClient(gate) : this.client
+      const { results } = await client.search({ requests: at.map((i) => requests[i]) })
+      at.forEach((index, n) => (answers[index] = results[n]))
     }
     return answers
   }

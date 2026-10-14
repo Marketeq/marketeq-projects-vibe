@@ -23,6 +23,7 @@ import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 import { RelatedTermsService } from './related-terms.service';
 import { taxonomyChildren } from './related-taxonomy';
 import { ReportProjectDto } from './dto/report-project.dto';
+import { RosterGateService } from '../identity-gate/roster-gate.service';
 
 @Injectable()
 export class ProjectsService {
@@ -44,6 +45,7 @@ export class ProjectsService {
     @Inject(FAQ_ADAPTER)
     private readonly faqAdapter: FaqAdapter,
     private readonly relatedTerms: RelatedTermsService,
+    private readonly rosterGate: RosterGateService,
   ) {}
 
   async getSuggestedQuestions(projectId: string): Promise<string[]> {
@@ -97,12 +99,30 @@ export class ProjectsService {
     });
   }
 
+  // G5: who a project's client-facing roster is made of - its owner and members.
+  private rosterIdsOf(p: Pick<Project, 'userId' | 'teamMemberIds'>): string[] {
+    const ids = new Set<string>();
+    (Array.isArray(p.teamMemberIds) ? p.teamMemberIds : []).forEach((m) => ids.add(String(m)));
+    if (p.userId) ids.add(String(p.userId));
+    return Array.from(ids);
+  }
+
+  // G5: a listing whose owner has no known open gate is withheld from
+  // marketplace discovery (no public owner exemption). Ownerless listings (CMS,
+  // seeded) are not subject to it. Display only: the stored listing is untouched.
+  private ownerShown(p: Pick<Project, 'userId'>, open: Set<string>): boolean {
+    return !p.userId || open.has(String(p.userId));
+  }
+
   async findAll(status = ListingStatus.Published) {
-    const items = await this.repo.find({
+    const all = await this.repo.find({
       where: { status, listingType: 'project' },
       order: { featured: 'DESC', createdAt: 'DESC' },
     });
-    const teamByProject = await this.resolveTeamAvatars(items);
+    // One local lookup for every owner and member on the page.
+    const open = await this.rosterGate.visibleUserIds(all.flatMap((p) => this.rosterIdsOf(p)));
+    const items = all.filter((p) => this.ownerShown(p, open));
+    const teamByProject = await this.resolveTeamAvatars(items, open);
     return items.map((item) => {
       const team = teamByProject.get(String(item.id));
       return {
@@ -127,7 +147,7 @@ export class ProjectsService {
     return this.shapeProject(item);
   }
 
-  async findBySlug(slug: string) {
+  async findBySlug(slug: string, viewerId: string | null = null) {
     const isUuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         slug,
@@ -141,23 +161,39 @@ export class ProjectsService {
     });
     if (!item) throw new NotFoundException('Project not found');
 
-    const [similarProjects, projectHistoryRatings, team] = await Promise.all([
+    // G5: the viewer is the authenticated caller (null when anonymous), taken
+    // from the verified token only. The project's owner sees everyone; every
+    // other viewer sees only members with a known open gate.
+    const ownerView = !!viewerId && !!item.userId && String(item.userId) === viewerId;
+
+    const [similarProjects, projectHistoryRatings, roster] = await Promise.all([
       this.getSimilarProjects(item),
       this.getProjectHistoryRatings(item),
-      this.resolveTeamMembers(item),
+      this.resolveTeamMembers(item, ownerView),
     ]);
+    const { team, notShownToClients } = roster;
+    const open = ownerView ? null : await this.rosterGate.visibleUserIds([item.userId ? String(item.userId) : null]);
+    const ownerHidden = !ownerView && !!item.userId && !open!.has(String(item.userId));
 
     return {
       ...this.shapeProject(item),
-      ownerId: item.userId ? String(item.userId) : null,
+      // A hidden owner's identity is not disclosed through the owner field either.
+      ownerId: item.userId && !ownerHidden ? String(item.userId) : null,
       similarProjects,
       team,
       isTemporarilyUnavailable: team.length === 0,
       projectHistoryRatings,
+      // Owner view only, neutral wording: never a reason.
+      ...(ownerView && notShownToClients.length
+        ? { notShownToClients: notShownToClients.map((userId) => ({ userId, label: 'Not shown to clients' })) }
+        : {}),
     };
   }
 
-  private async resolveTeamMembers(project: Project) {
+  private async resolveTeamMembers(
+    project: Project,
+    ownerView = false,
+  ): Promise<{ team: any[]; notShownToClients: string[] }> {
     const rawRows: Array<{ teamMemberIds: string[]; userId: string | null }> = await this.repo.manager.query(
       `SELECT "teamMemberIds", "userId"::text FROM listings.project WHERE id = $1`,
       [project.id],
@@ -166,7 +202,7 @@ export class ProjectsService {
     const memberIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
       ? row.teamMemberIds
       : row?.userId ? [row.userId] : [];
-    if (!memberIds.length) return [];
+    if (!memberIds.length) return { team: [], notShownToClients: [] };
 
     const statusRows: Array<{ userId: string; status: string }> = await this.repo.manager.query(
       `SELECT "userId"::text, "status" FROM listings.project_members WHERE "projectId" = $1`,
@@ -175,8 +211,15 @@ export class ProjectsService {
     const inactiveIds = new Set(
       statusRows.filter((r) => r.status === 'Inactive').map((r) => r.userId),
     );
-    const visibleIds = memberIds.filter((id) => !inactiveIds.has(id));
-    if (!visibleIds.length) return [];
+    // G5: a member whose gate is closed is omitted from the client-facing roster
+    // (one batch request for the whole roster). Unknown reads as omitted.
+    const activeIds = memberIds.filter((id) => !inactiveIds.has(id));
+    // The owner's own view lists every member (and marks the ones clients do not
+    // see); every other view lists only members with a known open gate.
+    const gateOpenIds = await this.rosterGate.visibleUserIds(activeIds);
+    const notShownToClients = ownerView ? activeIds.filter((id) => !gateOpenIds.has(id)) : [];
+    const visibleIds = ownerView ? activeIds : activeIds.filter((id) => gateOpenIds.has(id));
+    if (!visibleIds.length) return { team: [], notShownToClients };
 
     const [profileUsers, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
@@ -254,7 +297,7 @@ export class ProjectsService {
     });
 
     const ownerUserId = String(project.userId ?? '');
-    return users
+    const team = users
       .map((u) => ({
         id: u.id,
         firstName: u.firstName ?? '',
@@ -279,6 +322,7 @@ export class ProjectsService {
         if (b.id === ownerUserId) return 1;
         return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
       });
+    return { team, notShownToClients };
   }
 
   // Sum of actual work durations across a user's experience rows, bucketed
@@ -480,9 +524,19 @@ export class ProjectsService {
     }
   }
 
+  // Fire-and-forget, as before. The owner's last known gate rides along (looked up
+  // locally, never from identity) so the index copy of the listing is hidden
+  // while the owner has no known open gate; a later gate change updates it.
   private emitAlgoliaUpsert(project: Project): void {
+    void this.emitAlgoliaUpsertWithOwnerGate(project);
+  }
+
+  private async emitAlgoliaUpsertWithOwnerGate(project: Project): Promise<void> {
+    const owner = project.userId ? String(project.userId) : null;
+    const open = owner ? await this.rosterGate.visibleUserIds([owner]) : new Set<string>();
     const payload = {
       id: String(project.id),
+      ...(owner ? { ownerId: owner, ownerGateOpen: open.has(owner) } : {}),
       title: project.title,
       description: project.shortDescription ?? project.description?.substring(0, 500) ?? null,
       category: project.category ?? project.categories?.[0] ?? null,
@@ -679,8 +733,11 @@ export class ProjectsService {
     const sourceTags = new Set(project.tags ?? []);
     const sourceSubcategories = new Set(project.subcategories ?? []);
 
+    // G5: a candidate whose owner has no known open gate is not suggested.
+    const open = await this.rosterGate.visibleUserIds(published.flatMap((c) => this.rosterIdsOf(c)));
+
     const top = published
-      .filter((candidate) => candidate.id !== project.id)
+      .filter((candidate) => candidate.id !== project.id && this.ownerShown(candidate, open))
       .map((candidate) => {
         const score =
           this.overlapRatio(sourceSkills, candidate.skills) * 0.5 +
@@ -699,6 +756,7 @@ export class ProjectsService {
 
     const teamByProject = await this.resolveTeamAvatars(
       top.map((entry) => entry.candidate),
+      open,
     );
 
     return top.map(({ candidate, score }) => {
@@ -725,6 +783,7 @@ export class ProjectsService {
 
   private async resolveTeamAvatars(
     projects: Project[],
+    open?: Set<string>,
   ): Promise<Map<string, { avatars: string[]; members: Array<{ avatarUrl: string; firstName: string; username: string }> }>> {
     const idsByProject = new Map<string, string[]>();
     const allIds = new Set<string>();
@@ -739,6 +798,22 @@ export class ProjectsService {
       memberIds.forEach((id) => allIds.add(id));
     }
     if (allIds.size === 0) return new Map();
+
+    // G5: members without a known open gate drop out before the avatar cap, so
+    // the cluster still shows up to 4 visible members. One local lookup (or the
+    // caller's, when it already has one for the page).
+    const gateOpenIds = open ?? (await this.rosterGate.visibleUserIds(allIds));
+    for (const [projectId, ids] of idsByProject) {
+      idsByProject.set(projectId, ids.filter((id) => gateOpenIds.has(id)));
+    }
+    allIds.forEach((id) => {
+      if (!gateOpenIds.has(id)) allIds.delete(id);
+    });
+    if (allIds.size === 0) {
+      return new Map(
+        Array.from(idsByProject.keys()).map((projectId) => [projectId, { avatars: [], members: [] }]),
+      );
+    }
 
     const rows: Array<{ id: string; avatarUrl: string | null; firstName: string | null; username: string | null }> =
       await this.repo.manager.query(
@@ -954,17 +1029,22 @@ export class ProjectsService {
 
     let candidates: Project[];
     if (!skills.length) {
-      candidates = await this.repo.find({ where, order: { featured: 'DESC', createdAt: 'DESC' }, take: limit, select });
+      // Fetch a wider window than `limit`: owners without a known open gate are
+      // withheld below, and the rail should still fill up from the rest.
+      candidates = await this.repo.find({ where, order: { featured: 'DESC', createdAt: 'DESC' }, take: Math.max(limit, 100), select });
     } else {
       const published = await this.repo.find({ where, order: { featured: 'DESC', createdAt: 'DESC' }, take: 100, select });
       const sourceSkills = new Set(skills.map((s) => s.toLowerCase()));
       const scored = published
         .map((p) => ({ p, score: this.overlapRatio(sourceSkills, (p.skills ?? []).map((s) => s.toLowerCase())) }))
         .filter((c) => c.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
+        .sort((a, b) => b.score - a.score);
       candidates = scored.map((c) => c.p);
     }
+
+    // G5: withhold listings whose owner has no known open gate, then trim to `limit`.
+    const ownerOpen = await this.rosterGate.visibleUserIds(candidates.map((c) => (c.userId ? String(c.userId) : null)));
+    candidates = candidates.filter((c) => this.ownerShown(c, ownerOpen)).slice(0, limit);
 
     return this.attachMemberAvatars(candidates, !skills.length ? 0 : undefined);
   }
@@ -988,6 +1068,14 @@ export class ProjectsService {
       memberMap.set(row.id, ids);
       ids.forEach((id) => allUserIds.add(id));
     }
+
+    // G5: the rail's member count and avatars include only members with a known
+    // open gate.
+    const openMembers = await this.rosterGate.visibleUserIds(allUserIds);
+    for (const [projectId, ids] of memberMap) memberMap.set(projectId, ids.filter((id) => openMembers.has(id)));
+    allUserIds.forEach((id) => {
+      if (!openMembers.has(id)) allUserIds.delete(id);
+    });
 
     const avatarMap = new Map<string, string | null>();
     if (allUserIds.size) {

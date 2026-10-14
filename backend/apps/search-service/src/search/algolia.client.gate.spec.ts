@@ -30,17 +30,22 @@ const resetData = () => {
     rec(6, true, ['go'], ['Design']), rec(7, true), rec(8, false, ['ts'], ['Design']), rec(9, true, ['ts'], ['Ops'])]
 }
 
-// Evaluates `a:"x" AND (b:"y" OR b:"z") AND gate_open:true` over a record.
+// Evaluates `a:"x" AND (b:"y" OR b:"z") AND gate_open:true AND NOT owner_hidden:true`
+// over a record. A missing attribute never equals anything, so `NOT attr:true` is
+// true for a record that does not carry the attribute (as in Algolia).
 function matches(r: any, filters?: string): boolean {
   if (!filters) return true
   return filters.split(' AND ').every((clause) =>
-    clause.replace(/^\(|\)$/g, '').split(' OR ').some((term) => {
-      const m = /^(\w+):(?:"([^"]*)"|(true|false))$/.exec(term.trim())
+    clause.replace(/^\(|\)$/g, '').split(' OR ').some((raw) => {
+      let term = raw.trim()
+      const negate = term.startsWith('NOT ')
+      if (negate) term = term.slice(4).trim()
+      const m = /^(\w+):(?:"([^"]*)"|(true|false))$/.exec(term)
       if (!m) return false
       const [, attr, str, bool] = m
       const v = r[attr]
-      if (bool !== undefined) return v === (bool === 'true')
-      return Array.isArray(v) ? v.includes(str) : v === str
+      const hit = bool !== undefined ? v === (bool === 'true') : Array.isArray(v) ? v.includes(str) : v === str
+      return negate ? !hit : hit
     }),
   )
 }
@@ -51,7 +56,7 @@ const generated: any[] = []
 function fakeSearch(this: any, indexName: string, params: any) {
   const embedded: string | undefined = this.embedded
   const eff = [embedded, params.filters].filter(Boolean).join(' AND ')
-  const all = indexName.startsWith('talent') ? TALENT : []
+  const all: any[] = indexName.startsWith('talent') ? TALENT : (global as any).__LISTINGS ?? []
   const hits = all.filter((r) => matches(r, eff))
   const per = params.hitsPerPage ?? 20
   const page = params.page ?? 0
@@ -179,9 +184,9 @@ describe('G1 Algolia gate - fails closed', () => {
     await expect(client.search('talent', '')).resolves.toBeDefined()
   })
 
-  it('a missing key does not break the other indices', async () => {
+  it('a missing key does not break an index that has no gate', async () => {
     const client = make({ ALGOLIA_APP_ID: APP_ID, ALGOLIA_WRITE_API_KEY: WRITE_KEY })
-    await expect(client.search('projects', '')).resolves.toBeDefined()
+    await expect(client.search('suggestions', '')).resolves.toBeDefined()
     expect(mainCalls()).toHaveLength(1)
   })
 
@@ -225,16 +230,16 @@ describe('G1 Algolia gate - the client cannot supply an unrestricted talent quer
     }
     expect(securedCalls().map((c) => c.searchParams.filters)).toEqual(['gate_open:true', 'gate_open:true', 'gate_open:true'])
     for (const idx of ['teams', 'projects', 'services', 'projects_sort_rating_desc']) expect(isTalentIndex(idx)).toBe(false)
-    await client.search('projects', '', { filters: 'x:"y"' })
-    expect(mainCalls().find((c) => c.indexName === 'projects')!.searchParams.filters).toBe('x:"y"')
+    await client.search('suggestions', '', { filters: 'x:"y"' })
+    expect(mainCalls().find((c) => c.indexName === 'suggestions')!.searchParams.filters).toBe('x:"y"')
   })
 
-  it('multiSearch gates the talent request, leaves the others alone, and keeps the order', async () => {
+  it('multiSearch gates the talent request, leaves ungated indices alone, and keeps the order', async () => {
     const client = make()
     const out: any[] = await client.multiSearch([
-      { indexName: 'projects', query: '' },
+      { indexName: 'suggestions', query: '' },
       { indexName: 'talent', query: '', params: { hitsPerPage: 50 } },
-      { indexName: 'teams', query: '' },
+      { indexName: 'other', query: '' },
     ])
     expect(out).toHaveLength(3)
     const talentReq = securedCalls().find((c) => c.multi)!.multi[0]
@@ -242,8 +247,97 @@ describe('G1 Algolia gate - the client cannot supply an unrestricted talent quer
     expect(talentReq.filters).toBe('gate_open:true')
     expect(out[1].nbHits).toBe(5) // only the open talent
     const otherReqs = mainCalls().find((c) => c.multi)!.multi
-    expect(otherReqs.map((r: any) => r.indexName)).toEqual(['projects', 'teams'])
+    expect(otherReqs.map((r: any) => r.indexName)).toEqual(['suggestions', 'other'])
     expect(otherReqs.every((r: any) => r.filters === undefined)).toBe(true)
+  })
+})
+
+// G5 (Christopher): a listing whose OWNER has no known open gate is withheld from
+// marketplace discovery. Same mechanism as talent: a secured key with the gate
+// embedded, per index group, so hits/pages/facets only count visible listings.
+describe('G5 Algolia gate - listings are withheld while their owner\'s gate is closed', () => {
+  const LISTINGS = () => [
+    { objectID: 'p1', owner_id: 'o-open', owner_hidden: false, category: 'Dev' },
+    { objectID: 'p2', owner_id: 'o-closed', owner_hidden: true, category: 'Ops' },
+    { objectID: 'p3', category: 'Dev' }, // CMS-authored: no owner, no owner_hidden attribute
+    { objectID: 'p4', owner_id: 'o-open', owner_hidden: false, category: 'Ops' },
+  ]
+
+  it('every listing index and replica carries NOT owner_hidden:true, through its own secured key', async () => {
+    const client = make()
+    for (const idx of ['projects', 'projects_sort_rating_desc', 'services', 'teams']) await client.search(idx, '', {})
+    expect(securedCalls().map((c) => c.searchParams.filters)).toEqual(Array(4).fill('NOT owner_hidden:true'))
+    const gens = generated.map((g) => [g.restrictions.filters, g.restrictions.restrictIndices])
+    expect(gens).toEqual(
+      expect.arrayContaining([
+        ['NOT owner_hidden:true', ['projects', 'projects_*']],
+        ['NOT owner_hidden:true', ['services', 'services_*']],
+        ['NOT owner_hidden:true', ['teams', 'teams_*']],
+      ]),
+    )
+    expect(generated.every((g) => g.parentApiKey === SEARCH_KEY)).toBe(true)
+    expect(mainCalls().filter((c) => c.indexName)).toHaveLength(0) // the write key never serves a listing query
+  })
+
+  it('an owner-less (CMS) listing stays visible: it carries no owner_hidden attribute', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    const res: any = await client.search('projects', '', { hitsPerPage: 50 })
+    expect(res.hits.map((h: any) => h.objectID).sort()).toEqual(['p1', 'p3', 'p4'])
+    expect(res.nbHits).toBe(3)
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('totals, pages and facet counts cover only visible listings', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    const res: any = await client.search('projects', '', { hitsPerPage: 2, page: 1, facets: ['category'] })
+    expect(res.nbHits).toBe(3)
+    expect(res.nbPages).toBe(2)
+    expect(res.facets.category).toEqual({ Dev: 2, Ops: 1 }) // p2 (Ops) is not counted
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('a client filter cannot widen it back out', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    const res: any = await client.search('projects', '', { filters: 'category:"Ops" OR owner_hidden:true', hitsPerPage: 50 })
+    expect(securedCalls()[0].searchParams.filters).toBe('NOT owner_hidden:true AND (category:"Ops" OR owner_hidden:true)')
+    expect(res.hits.map((h: any) => h.objectID)).not.toContain('p2')
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('fails closed like talent: no search-only key means no listing query, never an unfiltered one', async () => {
+    const client = make({ ALGOLIA_APP_ID: APP_ID, ALGOLIA_WRITE_API_KEY: WRITE_KEY })
+    await expect(client.search('projects', '')).rejects.toBeInstanceOf(TalentGateUnavailableError)
+    await expect(client.search('services', '')).rejects.toBeInstanceOf(TalentGateUnavailableError)
+    await expect(client.search('teams', '')).rejects.toBeInstanceOf(TalentGateUnavailableError)
+    expect(mainCalls()).toHaveLength(0)
+  })
+
+  it('multiSearch ("all"): each gated index goes through its own gate and the order is kept', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    const out: any[] = await client.multiSearch([
+      { indexName: 'talent', query: '' },
+      { indexName: 'teams', query: '' },
+      { indexName: 'projects', query: '', params: { hitsPerPage: 50 } },
+      { indexName: 'services', query: '' },
+    ])
+    expect(out).toHaveLength(4)
+    expect(out[0].nbHits).toBe(5) // talent: open only
+    expect(out[2].nbHits).toBe(3) // projects: owner-hidden withheld
+    expect(mainCalls().filter((c) => c.multi)).toHaveLength(0)
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('SearchService "all" returns listings from the gated index', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const algolia = make()
+    const svc = new SearchService(algolia, {} as any, config({}), { search: jest.fn() } as any)
+    const result: any = await svc.search({ q: '', category: SearchCategory.ALL, limit: 50, page: 0 } as any)
+    expect(result.projects.nbHits).toBe(3)
+    ;(global as any).__LISTINGS = undefined
   })
 })
 

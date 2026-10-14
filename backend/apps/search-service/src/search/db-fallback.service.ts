@@ -37,6 +37,24 @@ interface FallbackHits {
   fallback: true
 }
 
+// G5 - a listing whose OWNER has no known open gate is withheld from marketplace
+// discovery (no public owner exemption). The gate state is listings-service's own
+// last-known table, kept current by `identity.gate_changed` events, so this is a
+// plain join, never a live identity lookup. Ownerless listings (CMS, seeded) are
+// not subject to it, and an owner whose state has never been received is hidden.
+// Display only: the stored listing and its published status are never changed;
+// it reappears by itself when the owner's gate opens.
+const PROJECT_OWNER_GATE_SQL = `AND ("userId" IS NULL OR EXISTS (
+               SELECT 1 FROM listings.account_gate_state g
+               WHERE g."userId" = listings.project."userId" AND g."gateOpen"))`
+// listings.teams.createdBy is free text (system values exist), so only a real
+// user id is an owner to gate.
+const TEAM_OWNER_GATE_SQL = `AND ("createdBy" IS NULL
+               OR "createdBy" !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+               OR EXISTS (
+                 SELECT 1 FROM listings.account_gate_state g
+                 WHERE g."userId"::text = listings.teams."createdBy" AND g."gateOpen"))`
+
 @Injectable()
 export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbFallbackService.name)
@@ -509,6 +527,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
            FROM listings.teams
            WHERE status = 'published'
              AND ${this.freeTextClause(['title', 'description'])}
+             ${TEAM_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -597,6 +616,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                // filter above.
                ['skills', 'tags', 'industries', 'programmingLanguages', 'developmentTech'],
              )}
+             ${PROJECT_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -681,6 +701,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                ['title', 'description', '"category"'],
                ['skills', 'tags'],
              )}
+             ${PROJECT_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,

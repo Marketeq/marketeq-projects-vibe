@@ -3,6 +3,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { TeamsService } from './team.service';
 import { Team } from './entities/team.entity';
+import { ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/teams')
 export class TeamsController {
@@ -12,7 +13,7 @@ export class TeamsController {
   findAll() { return this.service.findAll(); }
 
   @Get(':id')
-  findOne(@Param('id') id: string) { return this.service.findOne(id); }
+  findOne(@Param('id') id: string, @ViewerId() viewerId: string | null) { return this.service.findOneForViewer(id, viewerId); }
 
   @Post()
   @UseGuards(JwtAuthGuard)

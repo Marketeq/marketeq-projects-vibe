@@ -5,6 +5,10 @@ import { ClientProxy } from '@nestjs/microservices';
 import { Team } from './entities/team.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
+import { RosterGateService } from '../identity-gate/roster-gate.service';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isUUIDLike = (v: string) => UUID_RE.test(v);
 
 @Injectable()
 export class TeamsService {
@@ -15,10 +19,36 @@ export class TeamsService {
     private readonly repo: Repository<Team>,
     @Inject('ALGOLIA_CLIENT')
     private readonly algoliaClient: ClientProxy,
+    private readonly rosterGate: RosterGateService,
   ) {}
 
-  findAll(status = ListingStatus.Published) {
-    return this.repo.find({ where: { status }, order: { createdAt: 'DESC' } });
+  /**
+   * G5 - the PUBLIC team list (marketplace and homepage tiles). A team whose
+   * owner has no known open gate is withheld, and members without a known open
+   * gate are left out of `memberIds` (and the member count derived from it).
+   * Display only: nothing stored is changed. The user's own management view
+   * (findMine) is deliberately not filtered.
+   */
+  async findAll(status = ListingStatus.Published) {
+    const teams = await this.repo.find({ where: { status }, order: { createdAt: 'DESC' } });
+    const open = await this.rosterGate.visibleUserIds(
+      teams.flatMap((t) => [t.createdBy ?? null, ...(t.memberIds ?? [])]),
+    );
+    return teams
+      .filter((t) => !t.createdBy || !isUUIDLike(t.createdBy) || open.has(t.createdBy))
+      .map((t) => this.withVisibleMembers(t, open));
+  }
+
+  private withVisibleMembers(team: Team, open: Set<string>) {
+    return { ...team, memberIds: (team.memberIds ?? []).filter((id) => open.has(id)) };
+  }
+
+  /** GET /v1/teams/:id for a public or client viewer; the team's owner sees everyone. */
+  async findOneForViewer(id: string, viewerId: string | null) {
+    const team = await this.findOne(id);
+    if (viewerId && team.createdBy && team.createdBy === viewerId) return team;
+    const open = await this.rosterGate.visibleUserIds([team.createdBy ?? null, ...(team.memberIds ?? [])]);
+    return this.withVisibleMembers(team, open);
   }
 
   /**
@@ -86,7 +116,19 @@ export class TeamsService {
   }
 
   private emitUpsert(event: string, team: Team): void {
-    const payload = this.buildPayload(team);
+    void this.emitUpsertWithOwnerGate(event, team);
+  }
+
+  // The owner's last known gate rides along (looked up locally, never from
+  // identity) so the index copy of the team is hidden while its owner has no known
+  // open gate; a later gate change updates it. Only a real user id is an owner.
+  private async emitUpsertWithOwnerGate(event: string, team: Team): Promise<void> {
+    const owner = team.createdBy && isUUIDLike(team.createdBy) ? team.createdBy : null;
+    const open = owner ? await this.rosterGate.visibleUserIds([owner]) : new Set<string>();
+    const payload = {
+      ...this.buildPayload(team),
+      ...(owner ? { ownerId: owner, ownerGateOpen: open.has(owner) } : {}),
+    };
     this.algoliaClient.emit<void>(event, payload).subscribe({
       error: (err: Error) =>
         this.logger.warn(`Failed to emit ${event} for team ${team.id}: ${err.message}`),

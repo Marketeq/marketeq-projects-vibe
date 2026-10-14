@@ -11,10 +11,27 @@ import {
   IdentityVerificationGateClient,
   resolveBrokerUrl,
 } from './identity-verification-gate.client';
+import { RosterGateService } from './roster-gate.service';
+import { AccountGateStateService } from './account-gate-state.service';
+import { GateStateConsumer } from './gate-state.consumer';
+import { AccountGateReconciler, ALGOLIA_GATE_CLIENT } from './account-gate-reconciler';
 
 @Module({
   imports: [
     ClientsModule.registerAsync([
+      {
+        // G5: the listing-owner gate backfill to the search index (algolia-service).
+        name: ALGOLIA_GATE_CLIENT,
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => {
+          const url = resolveBrokerUrl(config);
+          return {
+            transport: Transport.RMQ,
+            options: { urls: url ? [url] : [], queue: 'algolia_service_queue', queueOptions: { durable: true } },
+          };
+        },
+      },
       {
         name: IDENTITY_VERIFICATION_CLIENT,
         imports: [ConfigModule],
@@ -33,7 +50,8 @@ import {
       },
     ]),
   ],
-  providers: [IdentityVerificationGateClient],
-  exports: [IdentityVerificationGateClient],
+  controllers: [GateStateConsumer],
+  providers: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService, AccountGateReconciler],
+  exports: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService],
 })
 export class IdentityGateModule {}

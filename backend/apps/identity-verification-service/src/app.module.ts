@@ -29,6 +29,8 @@ import {
   ALGOLIA_GATE_CLIENT,
   ALGOLIA_SERVICE_QUEUE,
   GATE_CHANGE_PUBLISHER,
+  LISTINGS_GATE_CLIENT,
+  LISTINGS_GATE_QUEUE,
   RmqGateChangePublisher,
 } from './gate-index/gate-change-publisher';
 import { HealthModule } from './health/health.module';
@@ -75,6 +77,15 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
         options: {
           urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
           queue: ALGOLIA_SERVICE_QUEUE,
+          queueOptions: { durable: true },
+        },
+      },
+      {
+        name: LISTINGS_GATE_CLIENT,
+        transport: Transport.RMQ,
+        options: {
+          urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          queue: LISTINGS_GATE_QUEUE,
           queueOptions: { durable: true },
         },
       },

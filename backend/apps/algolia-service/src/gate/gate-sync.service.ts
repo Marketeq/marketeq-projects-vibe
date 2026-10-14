@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config'
 import { AlgoliaClient } from '../sync/algolia.client'
 import { AlgoliaIndex } from '../dto/sync.dto'
-import { GateChangedPayload, TalentGateBackfillPayload } from '../types/event-payloads'
+import { GateChangedPayload, ListingOwnerGateBackfillPayload, TalentGateBackfillPayload } from '../types/event-payloads'
 
 // G1 marketplace discovery gate - the Algolia side. identity-verification-service
 // owns gate_open and tells us when it may have changed; we mirror the decision
@@ -16,6 +16,9 @@ import { GateChangedPayload, TalentGateBackfillPayload } from '../types/event-pa
 //
 // Records are only ever PARTIALLY updated - a verification change touches
 // `gate_open` and nothing else, and never deletes or recreates a record.
+
+// Indices whose records carry an `owner_id` (the listing owner's account).
+const LISTING_INDEXES = [AlgoliaIndex.PROJECTS, AlgoliaIndex.SERVICES, AlgoliaIndex.TEAMS]
 
 const DEFAULT_ALERT_THRESHOLD_MS = 5 * 60 * 1000
 const DEFAULT_RETRY_INTERVAL_MS = 15 * 1000
@@ -125,6 +128,20 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
           false,
         )
       }
+      // G5: the same decision hides or shows the LISTINGS this account owns
+      // (`owner_hidden`), found by `owner_id` in each listing index. The listing
+      // records are partially updated like talent; nothing is deleted, and the
+      // stored listing's published status is not involved.
+      for (const index of LISTING_INDEXES) {
+        const listingIDs = await this.algolia.findObjectIDs(index, 'owner_id', change.userId)
+        if (listingIDs.length > 0) {
+          await this.algolia.partialUpdateBatch(
+            index,
+            listingIDs.map((objectID) => ({ objectID, owner_hidden: !change.gateOpen, owner_gate_updated_at: change.occurredAtMs })),
+            false,
+          )
+        }
+      }
       // No record (yet) is not a failure: the profile's own sync carries the
       // gate when it is indexed, and until then there is nothing to show.
       this.applied.set(change.userId, change.occurredAtMs)
@@ -198,6 +215,49 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
     }
     // The next scheduled reconcile re-sends this batch; surface the failure now.
     throw lastError instanceof Error ? lastError : new Error(String(lastError))
+  }
+
+  /**
+   * G5: sets the listing-owner gate on listing records in bulk. Partial updates
+   * that create nothing, repeatable, and a newer decision already written for the
+   * owner wins over an older batch.
+   */
+  async applyOwnerBackfill(payload: ListingOwnerGateBackfillPayload): Promise<{ updated: number }> {
+    const valid = (payload?.entries ?? []).filter(
+      (e) =>
+        e &&
+        [AlgoliaIndex.PROJECTS, AlgoliaIndex.SERVICES, AlgoliaIndex.TEAMS].includes(e.index as AlgoliaIndex) &&
+        typeof e.id === 'string' && e.id &&
+        typeof e.ownerId === 'string' && e.ownerId &&
+        typeof e.ownerGateOpen === 'boolean',
+    )
+    const checkedAt = Date.parse(payload?.checkedAt)
+    const checkedAtMs = Number.isFinite(checkedAt) ? checkedAt : Date.now()
+    const fresh = valid.filter((e) => this.isGateCurrent(e.ownerId, checkedAtMs))
+    if (fresh.length === 0) return { updated: 0 }
+
+    const byIndex = new Map<string, Array<Record<string, unknown> & { objectID: string }>>()
+    for (const e of fresh) {
+      const list = byIndex.get(e.index) ?? []
+      list.push({ objectID: e.id, owner_id: e.ownerId, owner_hidden: !e.ownerGateOpen, owner_gate_updated_at: checkedAtMs })
+      byIndex.set(e.index, list)
+    }
+    for (const [index, objects] of byIndex) {
+      let lastError: unknown
+      let done = false
+      for (let attempt = 1; attempt <= BACKFILL_ATTEMPTS && !done; attempt++) {
+        try {
+          await this.algolia.partialUpdateBatch(index, objects, false)
+          done = true
+        } catch (err) {
+          lastError = err
+          this.logger.warn(`Listing owner gate backfill batch failed (attempt ${attempt}/${BACKFILL_ATTEMPTS})`)
+          if (attempt < BACKFILL_ATTEMPTS) await new Promise((r) => setTimeout(r, 250 * attempt))
+        }
+      }
+      if (!done) throw lastError instanceof Error ? lastError : new Error(String(lastError))
+    }
+    return { updated: fresh.length }
   }
 
   private recordLag(lagMs: number) {
