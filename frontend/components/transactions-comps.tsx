@@ -1216,6 +1216,50 @@ function createBlankEditBankForm(bankCountry = "") {
     bankCountry,
   }
 }
+// BTB-339: open Edit Bank Info with what the backend can return — country,
+// bank name (saved as the method's nickname by the add flow) and routing
+// number. The account number is never returned, so it stays blank and the
+// masked last4 is shown as its placeholder.
+function createEditBankFormFromMethod(method: any) {
+  return {
+    ...createBlankEditBankForm(method?.bankCountry ?? ""),
+    bankAccountName: method?.nickname ?? "",
+    bankRoutingNumber: method?.bankRoutingNumber ?? "",
+  }
+}
+// BTB-337/297: the Add Method dialog always starts from this — no country or
+// account type pre-selected, and nothing carried over from the last account.
+function createBlankAddForm() {
+  return {
+    methodType: "PICK",
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankRoutingNumber: "",
+    bankSortCode: "",
+    bankIfscCode: "",
+    bankBsbNumber: "",
+    bankInstitutionNumber: "",
+    bankTransitNumber: "",
+    bankIban: "",
+    bankSwiftBic: "",
+    bankCode: "",
+    bankBranchCode: "",
+    bankClabe: "",
+    bankCnapsCode: "",
+    bankBik: "",
+    bankCountry: "",
+    bankCountrySearch: "",
+    bankCountryOpen: false,
+    bankCurrency: "",
+    accountType: "",
+    nickname: "",
+    bankConsent: false,
+  }
+}
+// BTB-338: bank names are letters/digits with the punctuation real names use
+// ("U.S. Bank", "BB&T", "People's"); US account numbers are 4-17 digits (PS-06).
+const isValidBankName = (v: string) => /^[A-Za-z0-9][A-Za-z0-9 &.'-]*$/.test(v)
+const isValidUsAccountNumber = (v: string) => /^\d{4,17}$/.test(v)
 const isValidAbaRouting = (routing: string) => {
   if (!/^\d{9}$/.test(routing)) return false
   const d = routing.split("").map(Number)
@@ -2192,32 +2236,13 @@ export const OverviewTab = ({
   } | null>(null)
   const [removeAck, setRemoveAck] = React.useState(false)
   const [removeError, setRemoveError] = React.useState("")
-  const [addForm, setAddForm] = React.useState({
-    methodType: "PICK",
-    bankAccountName: "",
-    bankAccountNumber: "",
-    bankAccountNumberConfirm: "",
-    bankRoutingNumber: "",
-    bankSortCode: "",
-    bankIfscCode: "",
-    bankBsbNumber: "",
-    bankInstitutionNumber: "",
-    bankTransitNumber: "",
-    bankIban: "",
-    bankSwiftBic: "",
-    bankCode: "",
-    bankBranchCode: "",
-    bankClabe: "",
-    bankCnapsCode: "",
-    bankBik: "",
-    bankCountry: "US",
-    bankCountrySearch: "",
-    bankCountryOpen: false,
-    bankCurrency: "USD",
-    accountType: "CHECKING",
-    nickname: "",
-    bankConsent: false,
-  })
+  const [addForm, setAddForm] = React.useState(createBlankAddForm)
+  // BTB-297: every close path (X, save, Stripe finish/fail, backdrop) used to
+  // leave the last account's details — and the manual step — in addForm, so
+  // the next Add Method reopened pre-filled. Reset whenever the dialog closes.
+  React.useEffect(() => {
+    if (!showAddMethod) setAddForm(createBlankAddForm())
+  }, [showAddMethod])
   // source distinguishes the Stripe-connect flow from the manual/micro-deposit
   // flow — Figma specs different copy for each ("securely linked"/"Connection
   // Failed" for Stripe vs "has been verified"/"Verification Failed" for manual).
@@ -2973,6 +2998,13 @@ export const OverviewTab = ({
   const editingBankDetails =
     editingMethod?.methodType === "BANK_MANUAL" &&
     editingMethod?.verificationStatus !== "verified"
+  // BTB-339: the saved account's masked number, shown as the account-number
+  // placeholder until the country is switched away from the saved one.
+  const maskedEditAccount =
+    editingMethod?.bankAccountLast4 &&
+    editBankForm.bankCountry === (editingMethod?.bankCountry ?? "")
+      ? `••••${editingMethod.bankAccountLast4}`
+      : undefined
 
   const handleUpdateMethod = async () => {
     if (!editingMethod) return
@@ -3137,8 +3169,8 @@ export const OverviewTab = ({
           className="size-11"
         />
       )
-    const bankName = typeof m === "object" ? m?.nickname || "" : ""
-    if (bankName) return <BankLogo bankName={bankName} size={44} />
+    // BTB-293: every bank row uses the same generic bank icon — BankLogo
+    // only knew a few banks, so Chase/BofA got branded tiles and the rest didn't.
     return (
       <div className="size-11 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center shrink-0">
         <BankIcon className="size-5 text-gray-500" />
@@ -3985,7 +4017,7 @@ export const OverviewTab = ({
                     onClick={() => {
                       if (defaultMethod) {
                         setEditingMethod({ ...defaultMethod })
-                        setEditBankForm(createBlankEditBankForm())
+                        setEditBankForm(createEditBankFormFromMethod(defaultMethod))
                         setEditBankError("")
                         setEditBankSaveState(null)
                       }
@@ -4221,7 +4253,7 @@ export const OverviewTab = ({
                         visual="gray"
                         onClick={() => {
                           setEditingMethod({ ...m })
-                          setEditBankForm(createBlankEditBankForm())
+                          setEditBankForm(createEditBankFormFromMethod(m))
                           setEditBankError("")
                           setEditBankSaveState(null)
                         }}
@@ -4631,7 +4663,11 @@ export const OverviewTab = ({
                       methodId={verifyState.methodId}
                       lockedUntil={verifyState.lockedUntil}
                       onClose={() => {
+                        // BTB-301: "Back to Deposit Methods" returns to the
+                        // deposit-method picker, like the failed screens above.
                         setVerifyState(null)
+                        setShowAddMethod(true)
+                        setAddForm((f) => ({ ...f, methodType: "PICK" }))
                         fetchMethods()
                       }}
                       onUnlockedRetry={() =>
@@ -4802,32 +4838,7 @@ export const OverviewTab = ({
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
                 onClick={() => {
                   setShowAddMethod(false)
-                  setAddForm({
-                    methodType: "PICK",
-                    bankAccountName: "",
-                    bankAccountNumber: "",
-                    bankAccountNumberConfirm: "",
-                    bankRoutingNumber: "",
-                    bankSortCode: "",
-                    bankIfscCode: "",
-                    bankBsbNumber: "",
-                    bankInstitutionNumber: "",
-                    bankTransitNumber: "",
-                    bankIban: "",
-                    bankSwiftBic: "",
-                    bankCode: "",
-                    bankBranchCode: "",
-                    bankClabe: "",
-                    bankCnapsCode: "",
-                    bankBik: "",
-                    bankCountry: "US",
-                    bankCountrySearch: "",
-                    bankCountryOpen: false,
-                    bankCurrency: "USD",
-                    accountType: "CHECKING",
-                    nickname: "",
-                    bankConsent: false,
-                  })
+                  setAddForm(createBlankAddForm())
                   setCryptoStep("provider")
                   setCryptoForm({
                     provider: "",
@@ -5081,17 +5092,16 @@ export const OverviewTab = ({
                                   methodType: "BANK_MANUAL",
                                   bankAccountName: "",
                                   bankAccountNumber: "",
-                                  bankAccountNumberConfirm: "",
                                   bankRoutingNumber: "",
                                   bankSortCode: "",
                                   bankIfscCode: "",
                                   bankBsbNumber: "",
                                   bankInstitutionNumber: "",
                                   bankTransitNumber: "",
-                                  bankCountry: "US",
-                                  bankCurrency: "USD",
+                                  bankCountry: "",
+                                  bankCurrency: "",
                                   nickname: "",
-                                  accountType: "CHECKING",
+                                  accountType: "",
                                   bankConsent: false,
                                   _selectedBank: "",
                                   _stripeConnecting: false,
@@ -5299,17 +5309,16 @@ export const OverviewTab = ({
                                       methodType: "BANK_MANUAL",
                                       bankAccountName: "",
                                       bankAccountNumber: "",
-                                      bankAccountNumberConfirm: "",
                                       bankRoutingNumber: "",
                                       bankSortCode: "",
                                       bankIfscCode: "",
                                       bankBsbNumber: "",
                                       bankInstitutionNumber: "",
                                       bankTransitNumber: "",
-                                      bankCountry: "US",
-                                      bankCurrency: "USD",
+                                      bankCountry: "",
+                                      bankCurrency: "",
                                       nickname: "",
-                                      accountType: "CHECKING",
+                                      accountType: "",
                                       bankConsent: false,
                                       _selectedBank: "",
                                       _stripeConnecting: false,
@@ -5512,7 +5521,11 @@ export const OverviewTab = ({
                      region set (US/GB/IN/AU/JP/CA/CN/RU/MX/SEPA/GCC/BACS/SWIFT),
                      not just the 5-country subset this form used to expose. */
                     (() => {
-                      const region = detectBankRegion(addForm.bankCountry)
+                      // BTB-337: no country is pre-selected, so show the US
+                      // fields (Figma default) until one is picked.
+                      const region = addForm.bankCountry
+                        ? detectBankRegion(addForm.bankCountry)
+                        : "US"
                       const selectedCountry = ALL_COUNTRIES.find(
                         (c) => c.code === addForm.bankCountry
                       )
@@ -5546,13 +5559,14 @@ export const OverviewTab = ({
                           bankCnapsCode: "",
                           bankBik: "",
                           // Shared by US (CHECKING/SAVINGS) and JP (FUTSU/TOUZA):
-                          // keep the US "Checking" default instead of a blank
-                          // select, and make JP pick explicitly.
-                          accountType:
-                            detectBankRegion(code) === "US" ? "CHECKING" : "",
+                          // always picked explicitly (BTB-337).
+                          accountType: "",
                         }))
                       const saveDisabled =
+                        !addForm.bankCountry ||
                         !addForm.nickname.trim() ||
+                        (addForm.bankAccountName.length > 0 &&
+                          !isValidBankName(addForm.bankAccountName)) ||
                         !addForm.bankConsent ||
                         OFAC_BLOCKED_COUNTRIES.has(
                           addForm.bankCountry.toUpperCase()
@@ -5560,11 +5574,11 @@ export const OverviewTab = ({
                         (region !== "MX" &&
                           region !== "SEPA" &&
                           region !== "GCC" &&
-                          (!addForm.bankAccountNumber.trim() ||
-                            addForm.bankAccountNumberConfirm !==
-                              addForm.bankAccountNumber)) ||
+                          !addForm.bankAccountNumber.trim()) ||
                         (region === "US" &&
-                          !isValidAbaRouting(addForm.bankRoutingNumber)) ||
+                          (!addForm.accountType ||
+                            !isValidUsAccountNumber(addForm.bankAccountNumber) ||
+                            !isValidAbaRouting(addForm.bankRoutingNumber))) ||
                         (region === "GB" &&
                           !isValidSortCode(addForm.bankSortCode)) ||
                         (region === "IN" &&
@@ -5723,6 +5737,12 @@ export const OverviewTab = ({
                                   }))
                                 }
                               />
+                              {addForm.bankAccountName.length > 0 &&
+                                !isValidBankName(addForm.bankAccountName) && (
+                                  <p className="text-xs text-red-500 mt-1">
+                                    Enter a valid bank name
+                                  </p>
+                                )}
                             </div>
                             <div>
                               <Label size="xs" className="text-gray-500 mb-1 block">
@@ -5858,6 +5878,10 @@ export const OverviewTab = ({
                                     <Input
                                       className="w-full px-3 py-2 text-sm"
                                       placeholder="Up to 17 digits"
+                                      inputMode={
+                                        region === "US" ? "numeric" : undefined
+                                      }
+                                      maxLength={region === "US" ? 17 : undefined}
                                       value={addForm.bankAccountNumber}
                                       onChange={(e) =>
                                         setAddForm((f) => ({
@@ -5866,31 +5890,13 @@ export const OverviewTab = ({
                                         }))
                                       }
                                     />
-                                  </div>
-                                  <div>
-                                    {/* SCR-02: anti-typo protection — a mistyped account number sends
-                                funds nowhere recoverable, so it must be entered twice. */}
-                                    <Label size="xs" className="text-gray-500 mb-1 block">
-                                      Confirm Account Number
-                                    </Label>
-                                    <Input
-                                      className="w-full px-3 py-2 text-sm"
-                                      placeholder="Re-enter account number"
-                                      value={addForm.bankAccountNumberConfirm}
-                                      onChange={(e) =>
-                                        setAddForm((f) => ({
-                                          ...f,
-                                          bankAccountNumberConfirm:
-                                            e.target.value,
-                                        }))
-                                      }
-                                    />
-                                    {addForm.bankAccountNumberConfirm.length >
-                                      0 &&
-                                      addForm.bankAccountNumberConfirm !==
-                                        addForm.bankAccountNumber && (
+                                    {region === "US" &&
+                                      addForm.bankAccountNumber.length > 0 &&
+                                      !isValidUsAccountNumber(
+                                        addForm.bankAccountNumber
+                                      ) && (
                                         <p className="text-xs text-red-500 mt-1">
-                                          Account numbers do not match
+                                          Enter a valid account number
                                         </p>
                                       )}
                                   </div>
@@ -7172,7 +7178,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder(
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder(
                                     editBankForm.bankCountry
                                   )}
                                   value={editBankForm.bankAccountNumber}
@@ -7283,7 +7289,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number-in"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder("IN")}
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder("IN")}
                                   value={editBankForm.bankAccountNumber}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
@@ -7331,7 +7337,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number-au"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder("AU")}
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder("AU")}
                                   value={editBankForm.bankAccountNumber}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
@@ -7379,7 +7385,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number-gb"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder("GB")}
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder("GB")}
                                   value={editBankForm.bankAccountNumber}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
@@ -7511,7 +7517,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number-jp"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder("JP")}
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder("JP")}
                                   value={editBankForm.bankAccountNumber}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({
@@ -7544,7 +7550,7 @@ export const OverviewTab = ({
                                 <Input
                                   id="edit-bank-account-number-asia"
                                   type="text"
-                                  placeholder={editBankAccountPlaceholder("SG")}
+                                  placeholder={maskedEditAccount ?? editBankAccountPlaceholder("SG")}
                                   value={editBankForm.bankAccountNumber}
                                   onChange={(e) =>
                                     setEditBankForm((f) => ({

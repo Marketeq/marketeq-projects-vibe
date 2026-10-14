@@ -929,6 +929,11 @@ export class MethodsService {
       nickname: m.nickname, isDefault: m.isDefault,
       verificationStatus: m.verificationStatus, reauthRequired: m.reauthRequired,
       bankCountry: m.bankCountry, bankCurrency: m.bankCurrency,
+      // BTB-339: lets Edit Bank Info open pre-filled. The routing number is a
+      // public bank identifier and last4 is already in displayLabel; the full
+      // account number stays encrypted and is never returned.
+      bankRoutingNumber: m.methodType === MethodType.BANK_MANUAL ? m.bankRoutingNumber : null,
+      bankAccountLast4: m.methodType === MethodType.BANK_MANUAL ? m.bankAccountLast4 : null,
       createdAt: m.createdAt.toISOString(),
       lockedUntil: lockedUntil ? lockedUntil.toISOString() : null,
     };
