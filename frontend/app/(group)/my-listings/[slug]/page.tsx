@@ -18,6 +18,15 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  idsToDrop,
+  isGateUnavailable,
+  notAdded,
+  readDraftMemberResults,
+  readSaveMembersResponse,
+  TEAM_SAVE_UNAVAILABLE_MESSAGE,
+  type MemberAddResult,
+} from "@/lib/member-add-results"
 import { TeamsAPI } from "@/service/http/teams"
 import {
   PROJECT_TYPE_OPTIONS,
@@ -2192,10 +2201,13 @@ function ProjectDetailsInner() {
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
     try {
       if ((project as any)?.id) {
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+        const draftRes = await ProjectAPI.UpdateProjectDraft((project as any).id, {
           teamMemberIds: nextIds,
         } as any)
-        await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
+        const saveRes = await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
+        // Removing someone adds nobody, but anything the server did not accept is still reported.
+        reportMemberResults(readDraftMemberResults(draftRes))
+        reportMemberResults(readSaveMembersResponse(saveRes).results)
       }
     } catch {
       // non-blocking
@@ -2205,6 +2217,38 @@ function ProjectDetailsInner() {
       title: `${target.firstName} has been removed`,
       variant: "success",
     })
+  }
+
+  // G7: the roster is saved through endpoints that gate every NEW person on
+  // verification and answer with one result per entry. Someone who is not added never
+  // fails the save, so each result is read, the owner is told who was left out (neutral
+  // wording, never why), and the person is taken back out of the roster on screen.
+  const memberLabel = (userId: string | null, index: number) => {
+    const m =
+      (Array.isArray((project as any)?.team) ? (project as any).team : []).find(
+        (x: any) => String(x.id || x.userId || "") === String(userId)
+      ) ?? null
+    return (
+      m?.firstName || m?.name || m?.username || (userId ? "this person" : `entry ${index + 1}`)
+    )
+  }
+  /** Tells the owner who was not added; returns how many were. */
+  const reportMemberResults = (
+    results: MemberAddResult[],
+    announceAlreadyMember: Set<string> = new Set()
+  ): number => {
+    const problems = notAdded(results, memberLabel, announceAlreadyMember)
+    const drop = idsToDrop(problems)
+    if (drop.size > 0) {
+      setProject((prev: any) => ({
+        ...prev,
+        teamMemberIds: (Array.isArray(prev?.teamMemberIds) ? prev.teamMemberIds : []).filter(
+          (id: any) => !drop.has(String(id))
+        ),
+      }))
+    }
+    for (const p of problems) toast({ title: p.message, variant: "destructive" })
+    return problems.length
   }
 
   const addableMembers = React.useMemo(() => {
@@ -2236,15 +2280,32 @@ function ProjectDetailsInner() {
     if (ids.includes(String(userId))) return
     const nextIds = [...ids, String(userId)]
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
+    let added = true
     try {
-      if ((project as any)?.id)
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
+      if ((project as any)?.id) {
+        const res = await ProjectAPI.UpdateProjectDraft((project as any).id, {
           teamMemberIds: nextIds,
         } as any)
-    } catch {
-      // non-blocking
+        // The person was added only if the server says so: a verification block, an
+        // invalid or a duplicate entry is reported instead of "added".
+        const results = readDraftMemberResults(res)
+        const mine = results.find((r) => r.userId === String(userId))
+        const reported = reportMemberResults(results, new Set([String(userId)]))
+        added = mine ? mine.added : reported === 0
+        if (mine && mine.status === "already_member") added = false
+      }
+    } catch (err) {
+      // Nothing was added: put the roster back and say so; never claim the add.
+      setProject((prev: any) => ({ ...prev, teamMemberIds: ids }))
+      toast({
+        title: isGateUnavailable(err)
+          ? TEAM_SAVE_UNAVAILABLE_MESSAGE
+          : backendErrorMessage(err) || "Failed to add team member",
+        variant: "destructive",
+      })
+      return
     }
-    toast({ title: "Team member added to project", variant: "success" })
+    if (added) toast({ title: "Team member added to project", variant: "success" })
   }
 
   const saveTeamSettings = async () => {
@@ -2266,12 +2327,18 @@ function ProjectDetailsInner() {
       }
     })
     try {
-      if ((project as any)?.id)
-        await ProjectAPI.SaveProjectMembers((project as any).id, members)
-      toast({ title: "Team settings saved", variant: "success" })
-    } catch {
+      let notAddedCount = 0
+      if ((project as any)?.id) {
+        const res = await ProjectAPI.SaveProjectMembers((project as any).id, members)
+        // Successfully added members stay added; everyone else is reported by name.
+        notAddedCount = reportMemberResults(readSaveMembersResponse(res).results)
+      }
+      if (notAddedCount === 0) toast({ title: "Team settings saved", variant: "success" })
+    } catch (err) {
       toast({
-        title: "Failed to save team settings",
+        title: isGateUnavailable(err)
+          ? TEAM_SAVE_UNAVAILABLE_MESSAGE
+          : "Failed to save team settings",
         variant: "destructive",
       })
     }

@@ -53,10 +53,10 @@ is added - an unanswered gate is a closed gate.
 | `POST /internal/companies/:id/members` (internal; used by invitation acceptance) | user-service | company member | **yes** - `CompaniesService.addMemberInternal`, new memberships only |
 | `PATCH /companies/:id/members/:userId` | user-service | no - edits an existing member | no |
 | `DELETE /teams/.../members/:userId`, `DELETE /companies/.../members/:userId` | user-service | no | no |
-| `POST /companies` (the creator becomes the owner member) | user-service | the creator's own bootstrap membership | no - creating one's own company is not an add of another person; see open question |
+| `POST /companies` (the creator becomes the owner member) | user-service | the creator's own bootstrap membership | no - outside the direct-add decision (decided) |
 | `POST /invitations/accept`, `POST /v1/invitations/accept` | invitations-service | via the internal routes above | **yes** (existing G7, unchanged) |
 | `POST /v1/teams`, `PUT /v1/teams/:id` (`memberIds`); `POST /v1/my-teams` (creates a team with no members) | listings-service (team profiles) | team profile members | **yes** - `TeamsService.create/update`; bulk partial results (`memberResults`); the creator's own entry is bootstrap |
-| `PUT /v1/publish/project/:id/members` | listings-service (listing team roster) | project members | **yes** - bulk; response is now `{ members, results }` |
+| `PUT /v1/publish/project/:id/members` | listings-service (listing team roster) | project members | **yes** - bulk; response is now `{ members, results }` (the wizard and My listings read it - see Frontend behaviour) |
 | `PUT /v1/publish/project/:id` (`teamMemberIds`) | listings-service | listing team roster | **yes** - blocked ids left out, `memberResults` returned |
 | `POST /v1/projects`, `PUT /v1/projects/:id` (`teamMemberIds`) | listings-service | listing team roster | **yes** - same; `memberResults` returned |
 | `POST /contracts/groups/:id/members` | contracts-service | creates a **contract** for a talent (a hire), not team/company membership | not part of G7 (hiring gates are separate) |
@@ -65,14 +65,62 @@ is added - an unanswered gate is a closed gate.
 | CMS sync (`project-sync`) | listings-service | system sync of CMS content, not a user-triggered add | no |
 | Seeds / migrations / `n8n` seeders | various | system bootstrap | no |
 
-## Open questions for Christopher
-1. **Company creation** gives the creator an owner membership (their own). It is treated as bootstrap and is not gated;
-   say if company creation should itself require an open gate.
-2. **Listing rosters** (`project_members`, `teamMemberIds` on listings) were included because they are user-triggered direct adds
-   of people to a "team" in the product. If only user-service teams/companies and listings team profiles are meant, those two
-   routes can be left ungated.
-3. The wizard UI calls `PUT /v1/publish/project/:id/members` ignoring the response; no frontend change was made, so a blocked
-   person is silently not added there until a UI decision is made (no copy was invented).
+## Decided scope (no open questions)
+* **Company/team creator bootstrap** (the creator's own owner membership when they create a company, team or listing) is **outside
+  the direct-add decision**: it is not a separate member-add route and adds nobody else, so it is not gated.
+* **User-triggered listing roster routes stay gated** (`PUT /publish/project/:id/members`, `teamMemberIds` on the draft and project
+  routes, team profile `memberIds`) because they directly add people to a team/project roster.
+
+## Frontend behaviour (listing wizard and "My listings" team)
+The roster is saved by endpoints that answer with one result per entry, so the pages now read them (`frontend/lib/member-add-results.ts`,
+pure logic, shown with the pages' existing `toast`; no new UI):
+
+* **Successful additions stay.** A blocked person never fails the save, so everyone eligible is added and kept.
+* **The owner is told who was not added, by name** (the member's first name/username, otherwise "this person"), one message per person,
+  four outcomes kept distinct:
+
+  | Result | Message |
+  |---|---|
+  | `blocked_verification` | "Couldn’t add *name*. Their account is not currently eligible to join the team." |
+  | `invalid` | "Couldn’t add *name*. This isn’t a valid team member." |
+  | `duplicate` | "*name* was listed more than once, so they were only added once." |
+  | `already_member` | "*name* is already on the team." - only for someone the owner just chose to add (the autosave re-sends the whole roster, where this is routine and is not announced) |
+
+  The copy never says why, never repeats `missingRequirements` (the server does not send it), and never mentions verification.
+* **Not added means not shown as added:** the person is taken back out of the roster on screen (`teamMemberIds`), and the success toast
+  ("Team member added to project") is shown only when the server says the person was added.
+* **Gate service unavailable (503 `IDENTITY_VERIFICATION_UNAVAILABLE`):** nobody was added, so the page puts the roster back and shows
+  "We couldn’t update the team right now. Please try again shortly." (in My listings' team settings, every other save failure keeps the
+  existing "Failed to save team settings"). It never claims anyone was added, and the wizard's autosave cannot retry in a loop.
+* **Order** is the server's: results are 1:1 with the entries sent.
+
+### Frontend caller audit (responses that changed)
+| Caller | Endpoint | Change needed | Done |
+|---|---|---|---|
+| `app/edit-listing/[slug]/page.tsx` Team step autosave | `PUT /publish/project/:id/members` (now `{ members, results }`) | read results, report, drop | yes |
+| `app/edit-listing/[slug]/page.tsx` `persistTeam` (add/remove from the wizard) | `PUT /publish/project/:id` with `teamMemberIds` (adds `memberResults`) | read results, report, revert on 503 | yes |
+| `app/(group)/my-listings/[slug]/page.tsx` `saveTeamSettings` | `PUT .../members` | read results; "saved" only if nobody was left out | yes |
+| `app/(group)/my-listings/[slug]/page.tsx` `addMemberToProject` | `PUT /publish/project/:id` with `teamMemberIds` | success only if added; revert + failure otherwise | yes |
+| `app/(group)/my-listings/[slug]/page.tsx` remove-member flow | both of the above | consume results (nothing added; any refusal is still reported) | yes |
+| `GET /publish/project/:id/members` (`ProjectAPI.GetProjectMembers`, edit-listing hydration) | unchanged: still a bare array | none | n/a |
+| `ProjectAPI.UpdateProjectDraft` / `CreateProjectDraft` callers that do not send `teamMemberIds` (publish-project, job-listing, edit-listing field saves, FAQ/video) | unchanged; `memberResults` is additive and only present when `teamMemberIds` was sent | none | n/a |
+| `TeamsAPI.addTeamMember` (`POST /teams/:id/members`) | now may return 403 `VERIFICATION_REQUIRED` / 503 | no active caller (defined, never used) | n/a |
+| `project-details/[slug]` thread creation (`teamMemberIds` to `/v1/threads/project`) | unrelated messaging endpoint | none | n/a |
+
+No other caller reads the `PUT .../members` response, so changing it from a bare array to `{ members, results }` breaks nothing; the reader
+also accepts the old bare array.
+
+### Tests and manual QA
+The frontend has no unit/e2e runner (`npm run types:check`, `lint` and Storybook only), so there is no committed frontend test. The helper's
+parsing and copy were exercised with a temporary spec and `types:check` shows only the 15 pre-existing errors. Manual QA in staging:
+1. As a listing owner open the wizard's Team step and add one verified and one unverified member. Expect: the verified member stays; a toast
+   "Couldn’t add *name*. Their account is not currently eligible to join the team."; the unverified member is not left on screen; reload shows
+   only the verified member.
+2. In My listings → Team add an unverified member: expect the same neutral toast and **no** "Team member added to project" toast.
+3. In My listings → team settings save a roster that includes an unverified member: expect the toast for that member and no "Team settings saved".
+4. Stop identity-verification-service (or RabbitMQ) and add a member: expect "We couldn’t update the team right now. Please try again shortly.",
+   the roster restored, and no success toast.
+5. Confirm no toast or response shows what the person still has to verify.
 
 ## Implementation
 * user-service: `identity-gate/member-add-gate.ts` (`MemberAddGate`, `MemberVerificationRequiredException`,

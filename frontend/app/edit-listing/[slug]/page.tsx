@@ -29,6 +29,15 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  idsToDrop,
+  isGateUnavailable,
+  notAdded,
+  readDraftMemberResults,
+  readSaveMembersResponse,
+  TEAM_SAVE_UNAVAILABLE_MESSAGE,
+  type MemberAddResult,
+} from "@/lib/member-add-results"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
@@ -7666,6 +7675,53 @@ const Team = () => {
         .includes(addQuery.trim().toLowerCase())
   )
 
+  // G7: who the owner is told about. The roster is saved through endpoints that
+  // gate every NEW person on verification and answer with one result per entry; a
+  // person who is not added never fails the save, so each result is read here, the
+  // owner is told who was left out (neutral wording, never why), and the person is
+  // taken back out of the roster the page is showing. Failures are never discarded.
+  const memberLabelFor = (userId: string | null, index: number) => {
+    const m = members.find((x: any) => String(x.userId || x.id) === String(userId))
+    return m?.firstName || m?.username || m?.email || (userId ? "this person" : `entry ${index + 1}`)
+  }
+  const reportedMemberProblems = React.useRef<Map<string, number>>(new Map())
+  const reportMemberResults = (
+    results: MemberAddResult[],
+    announceAlreadyMember: Set<string> = new Set()
+  ) => {
+    const problems = notAdded(results, memberLabelFor, announceAlreadyMember)
+    if (problems.length === 0) return
+    const drop = idsToDrop(problems)
+    if (drop.size > 0) {
+      setTeamMemberIds((prev) => prev.filter((id) => !drop.has(String(id))))
+    }
+    // The same person can be reported by both saves of one change; say it once.
+    const now = Date.now()
+    for (const p of problems) {
+      const key = `${p.kind}:${p.userId ?? p.index}`
+      const last = reportedMemberProblems.current.get(key)
+      if (last && now - last < 5000) continue
+      reportedMemberProblems.current.set(key, now)
+      wizardToast({ title: p.message, variant: "destructive" })
+    }
+  }
+  const reportMemberSaveFailure = (err: unknown, revertTo?: string[]) => {
+    // Only the gate being unavailable is announced here; every other failure keeps
+    // the autosave's existing quiet behaviour.
+    if (!isGateUnavailable(err)) return
+    // Only when it actually differs, so an outage cannot make the autosave retry in a loop.
+    if (revertTo) {
+      setTeamMemberIds((prev) =>
+        [...prev].sort().join(",") === [...revertTo].sort().join(",") ? prev : revertTo
+      )
+    }
+    const now = Date.now()
+    const last = reportedMemberProblems.current.get("gate-unavailable")
+    if (last && now - last < 5000) return
+    reportedMemberProblems.current.set("gate-unavailable", now)
+    wizardToast({ title: TEAM_SAVE_UNAVAILABLE_MESSAGE, variant: "destructive" })
+  }
+
   const wizardHydratedRef = React.useRef(false)
   React.useEffect(() => {
     if (!draftProjectId || wizardHydratedRef.current) return
@@ -7715,18 +7771,33 @@ const Team = () => {
     })
     if (payload.length === 0) return
     const t = setTimeout(() => {
-      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload)
+        .then((res) => reportMemberResults(readSaveMembersResponse(res).results))
+        .catch((err) => reportMemberSaveFailure(err, lastSavedTeamIds.current))
     }, 800)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
 
+  // The roster the server last accepted, so an unavailable gate can put the page
+  // back instead of leaving people on screen who were not actually added.
+  const lastSavedTeamIds = React.useRef<string[]>(teamMemberIds)
   const persistTeam = (next: string[]) => {
+    const previous = teamMemberIds
     setTeamMemberIds(next)
     if (draftProjectId) {
+      const justChosen = new Set(next.filter((id) => !previous.includes(id)).map(String))
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         teamMemberIds: next,
-      } as any).catch(() => {})
+      } as any)
+        .then((res) => {
+          const results = readDraftMemberResults(res)
+          lastSavedTeamIds.current = next.filter(
+            (id) => !results.some((r) => r.userId === String(id) && !r.added && r.status !== "already_member")
+          )
+          reportMemberResults(results, justChosen)
+        })
+        .catch((err) => reportMemberSaveFailure(err, previous))
     }
   }
   // QA-180/PMCM-399: same persistence shape as persistTeam above, for the
