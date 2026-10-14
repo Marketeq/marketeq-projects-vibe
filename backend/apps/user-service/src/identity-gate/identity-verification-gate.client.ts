@@ -12,6 +12,9 @@ export const IDENTITY_VERIFICATION_RPC_QUEUE = 'identity_verification_rpc_queue'
 // answered with one entry per account. identity-verification-service accepts at
 // most MAX_GATE_CHECK_BATCH accounts per request, so larger sets are chunked.
 export const ACCOUNT_GATE_CHECK_BATCH_PATTERN = 'identity_verification.gate_check_batch';
+// G4 hire requests: the single-account form, identical to the one offer-service
+// uses for offers (same RPC, same strict reply parsing, same fail-closed rule).
+export const ACCOUNT_GATE_CHECK_PATTERN = 'identity_verification.gate_check';
 export const MAX_GATE_CHECK_BATCH = 100;
 // How many batch requests may be in flight at once for one call.
 export const MAX_PARALLEL_GATE_CHUNKS = 10;
@@ -65,6 +68,42 @@ export class IdentityVerificationGateClient {
     @Inject(IDENTITY_VERIFICATION_CLIENT) private readonly client: ClientProxy,
     private readonly config: ConfigService,
   ) {}
+
+  /**
+   * The gate decision for ONE account (G4 hire requests). Never computes
+   * gate_open itself, and every failure mode - no broker, RPC error, timeout,
+   * an unusable or self-contradicting reply - throws
+   * IdentityVerificationUnavailableError, so an unanswered gate is never an
+   * open gate. Mirrors offer-service's IdentityVerificationGateClient.checkGate.
+   */
+  async checkGate(userId: string): Promise<AccountGateDecision> {
+    if (!resolveBrokerUrl(this.config)) {
+      this.logger.warn(
+        'RABBITMQ_URI/RABBITMQ_URL not set - cannot reach identity-verification-service; refusing the action (gate fails closed).',
+      );
+      throw new IdentityVerificationUnavailableError();
+    }
+    let reply: unknown;
+    try {
+      const record = new RmqRecordBuilder({ userId }).setOptions({ expiration: IDENTITY_GATE_TIMEOUT_MS }).build();
+      reply = await firstValueFrom(
+        this.client.send<unknown>(ACCOUNT_GATE_CHECK_PATTERN, record).pipe(timeout(IDENTITY_GATE_TIMEOUT_MS)),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `${ACCOUNT_GATE_CHECK_PATTERN} RPC failed for ${userId}: ${describeError(err)} - refusing the action (gate fails closed).`,
+      );
+      throw new IdentityVerificationUnavailableError();
+    }
+    const decision = parseDecision(reply);
+    if (!decision) {
+      this.logger.warn(
+        `${ACCOUNT_GATE_CHECK_PATTERN} returned an unusable reply for ${userId} - refusing the action (gate fails closed).`,
+      );
+      throw new IdentityVerificationUnavailableError();
+    }
+    return decision;
+  }
 
   /**
    * The gate decision for many accounts, in one request per MAX_GATE_CHECK_BATCH
