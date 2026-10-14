@@ -21,7 +21,9 @@ export type NotificationCategory =
   | 'idleDetected'
   | 'syncError'
   | 'authNeedsLogin'
-  | 'permissionsChanged';
+  | 'permissionsChanged'
+  | 'networkOffline'
+  | 'networkRestored';
 
 export interface NotificationInput {
   category: NotificationCategory;
@@ -58,6 +60,9 @@ const RATE_LIMIT_WINDOW_MS: Partial<Record<NotificationCategory, number>> = {
   syncError: 60_000, // at most one sync-error notification per minute
   permissionsChanged: 30_000,
   idleDetected: 10_000,
+  // A flapping connection must not spam the talent.
+  networkOffline: 60_000,
+  networkRestored: 60_000,
 };
 
 export interface NotificationService {
@@ -71,6 +76,10 @@ export interface NotificationService {
   syncError(msg: string): void;
   authNeedsLogin(reason: string): void;
   permissionsChanged(key: string, status: string): void;
+  /** The connection dropped while tracking; tracking continues offline. */
+  networkOffline(): void;
+  /** The connection is back; `queued` saved items are uploading. */
+  networkRestored(queued: number): void;
 }
 
 function categoryToPrefKey(
@@ -244,6 +253,25 @@ export function createNotificationService(
         category: 'permissionsChanged',
         title: 'Permissions changed',
         body: `${key} is now ${status}.`,
+      });
+    },
+    // No preference key (categoryToPrefKey → null): the talent must always
+    // know their work is being held locally and when it uploads.
+    networkOffline() {
+      send({
+        category: 'networkOffline',
+        title: "You're offline — tracking continues",
+        body: "Your time and screenshots are saved on this computer and will upload when you're back online.",
+      });
+    },
+    networkRestored(queued) {
+      send({
+        category: 'networkRestored',
+        title: 'Back online',
+        body:
+          queued > 0
+            ? `Syncing ${queued} saved item${queued === 1 ? '' : 's'}.`
+            : 'Everything is up to date.',
       });
     },
   };
