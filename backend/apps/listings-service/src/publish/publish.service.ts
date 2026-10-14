@@ -623,7 +623,13 @@ export class PublishService {
     const unit = (rawUnit ?? 'days').toLowerCase();
     if (unit.startsWith('hour')) return value;
     if (unit.startsWith('week')) return value * 40;
-    if (unit.startsWith('month')) return value * 160;
+    // PMCM-258 follow-up: was a flat 4-week month (value * 160), disagreeing
+    // with the 30-day month used everywhere else (taskDurationDays below,
+    // frontend's listing-pricing.ts MONTH_DAYS and scope-builder's
+    // durationToHours/durationToDays) — 30/7 weeks/month * 40h/week, same
+    // full-time-week assumption this function already uses for the
+    // 'week'/else-days branches.
+    if (unit.startsWith('month')) return value * (30 / 7) * 40;
     return value * 8;
   }
 

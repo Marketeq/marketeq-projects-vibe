@@ -3691,7 +3691,9 @@ function ProjectDetailsInner() {
                                       ? "weeks"
                                       : unit.startsWith("hour")
                                         ? "hours"
-                                        : "days"
+                                        : unit.startsWith("month")
+                                          ? "months"
+                                          : "days"
                                     return { value, type }
                                   })(),
                             ...(assignedMember ? { assignedMember } : {}),

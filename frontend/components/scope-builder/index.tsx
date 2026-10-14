@@ -302,6 +302,12 @@ export function durationToHours(
 
   if (durationType === "hours") return durationValue
   if (durationType === "weeks") return durationValue * hoursPerWeek
+  // PMCM-258 follow-up: months previously fell through to the "days"
+  // branch below (durationValue * hoursPerDay), so "2 months" billed as
+  // 2 days. Same 30-day month as listing-pricing.ts's MONTH_DAYS and this
+  // file's own durationToDays — 30/7 weeks per month, scaled by the same
+  // workSchedule-derived hoursPerWeek the other branches already use.
+  if (durationType === "months") return durationValue * (30 / 7) * hoursPerWeek
   // days
   return durationValue * hoursPerDay
 }
