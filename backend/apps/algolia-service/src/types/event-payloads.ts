@@ -38,8 +38,9 @@ export interface ListingEventPayload {
   priceMax: number | null
 
   // G5 listing-owner gate. `ownerGateOpen` is listings-service's last known gate
-  // for `ownerId`. A listing WITH an owner is indexed hidden (`owner_hidden`)
-  // unless that gate is known open; a listing with no owner is never hidden.
+  // for `ownerId`. A listing WITH a platform owner is indexed visible only when that gate
+  // is known open (`owner_gate_open`); a listing with no platform owner is visible only
+  // because it is explicitly `owner_gate_exempt`.
   ownerGateOpen?: boolean
 }
 
@@ -115,7 +116,9 @@ export interface TalentGateBackfillPayload {
 // listings-service -> here: the repeatable backfill/reconcile of the listing-owner
 // gate (G5). One entry per listing record (`id` = objectID in `index`).
 export interface ListingOwnerGateBackfillPayload {
-  entries: Array<{ index: 'projects' | 'services' | 'teams'; id: string; ownerId: string; ownerGateOpen: boolean }>
+  // `ownerId: null` = no platform owner (CMS-authored, seeded, system-owned): the listing is
+  // explicitly exempt from the owner gate.
+  entries: Array<{ index: 'projects' | 'services' | 'teams'; id: string; ownerId: string | null; ownerGateOpen?: boolean }>
   checkedAt: string
 }
 

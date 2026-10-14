@@ -22,6 +22,25 @@ const NEVER_SEEN = '20000000-0000-4000-8000-000000000006';
 const INACTIVE_VERIFIED = '20000000-0000-4000-8000-000000000007';
 const OTHER = '20000000-0000-4000-8000-000000000009';
 
+// CMS projects author their members as assignee EMAILS on the scope tree.
+const ACCOUNT_BY_EMAIL: Record<string, string> = {
+  'open@x.test': VERIFIED, // linked account, gate known open
+  'closed@x.test': UNVERIFIED, // linked account, gate known closed
+  'never@x.test': NEVER_SEEN, // linked account, state never received
+  // 'emailonly@x.test': no platform account at all
+}
+const CMS_SCOPE = () => [
+  { phaseName: 'P1', tasks: [
+    { title: 'a', roleName: 'Dev', assigneeEmail: 'Open@x.test' },
+    { title: 'b', roleName: 'Dev', assigneeEmail: 'closed@x.test' },
+  ] },
+  { phaseName: 'P2', tasks: [
+    { title: 'c', roleName: 'QA', assigneeEmail: 'emailonly@x.test' },
+    { title: 'd', roleName: 'QA', assigneeEmail: 'never@x.test' },
+    { title: 'e', roleName: 'PM' }, // unassigned task
+  ] },
+]
+
 const P_MIXED = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
 const P_HIDDEN_OWNER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
 const P_OWNER_ONLY = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3';
@@ -31,6 +50,7 @@ describe('G5 - client-facing roster on project listings', () => {
   let service: ProjectsService;
   let state: InMemoryGateState;
   let profileLookups: string[][];
+  let emailLookups: string[][];
   let writes: string[];
   let projects: Record<string, any>;
 
@@ -43,11 +63,12 @@ describe('G5 - client-facing roster on project listings', () => {
     projects = {
       [P_MIXED]: mk(P_MIXED, 'mixed-1', OWNER, [OWNER, VERIFIED, GRACE, UNVERIFIED, LAPSED, NEVER_SEEN, INACTIVE_VERIFIED]),
       [P_HIDDEN_OWNER]: mk(P_HIDDEN_OWNER, 'hidden-1', UNVERIFIED, [UNVERIFIED, VERIFIED]),
-      [P_OWNER_ONLY]: mk(P_OWNER_ONLY, 'owner-1', VERIFIED, []),
-      [P_OWNERLESS]: mk(P_OWNERLESS, 'ownerless-1', null, [VERIFIED, UNVERIFIED]),
+      [P_OWNER_ONLY]: mk(P_OWNER_ONLY, 'owner-1', VERIFIED, [], { scope: CMS_SCOPE() }),
+      [P_OWNERLESS]: mk(P_OWNERLESS, 'ownerless-1', null, [VERIFIED, UNVERIFIED], { scope: CMS_SCOPE() }),
     };
     state = new InMemoryGateState().open(OWNER, VERIFIED, GRACE, INACTIVE_VERIFIED).closed(UNVERIFIED, LAPSED); // NEVER_SEEN: none
     profileLookups = [];
+    emailLookups = [];
     writes = [];
     const manager = {
       query: jest.fn(async (sql: string, params: any[]) => {
@@ -57,6 +78,10 @@ describe('G5 - client-facing roster on project listings', () => {
         }
         if (sql.includes('FROM listings.project p')) {
           return (params[0] as string[]).map((id) => ({ id, userId: projects[id].userId, teamMemberIds: projects[id].teamMemberIds }));
+        }
+        if (sql.includes('FROM public.users WHERE lower(email)')) {
+          emailLookups.push(params[0]);
+          return (params[0] as string[]).filter((e) => ACCOUNT_BY_EMAIL[e]).map((e) => ({ id: ACCOUNT_BY_EMAIL[e], email: e }));
         }
         if (sql.includes('FROM listings.project_members')) return [{ userId: INACTIVE_VERIFIED, status: 'Inactive' }];
         if (sql.includes('FROM user_service.users')) {
@@ -223,6 +248,73 @@ describe('G5 - client-facing roster on project listings', () => {
       expect(rec.map((r) => r.slug)).not.toContain('hidden-1');
     });
   });
+
+  describe('CMS project members (assignee emails on the scope) - the active, registered path', () => {
+    const emails = (res: any) =>
+      (res.scope ?? []).flatMap((p: any) => (p.tasks ?? []).map((t: any) => t.assigneeEmail)).filter(Boolean)
+    const taskTitles = (res: any) => (res.scope ?? []).flatMap((p: any) => (p.tasks ?? []).map((t: any) => t.title))
+
+    it('detail: only the assignee whose linked account has a known open gate keeps their email', async () => {
+      const res: any = await service.findBySlug('ownerless-1', null)
+      expect(emails(res)).toEqual(['Open@x.test'])
+    })
+
+    it('email-only, closed-gate and never-received assignees are removed; the tasks themselves remain', async () => {
+      const res: any = await service.findBySlug('ownerless-1', null)
+      const raw = JSON.stringify(res.scope);
+      for (const hidden of ['closed@x.test', 'emailonly@x.test', 'never@x.test']) expect(raw).not.toContain(hidden)
+      expect(taskTitles(res)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    })
+
+    it('the same rule on the list and on GET :id', async () => {
+      const list: any[] = await service.findAll()
+      expect(emails(list.find((p) => p.slug === 'ownerless-1'))).toEqual(['Open@x.test'])
+      const one: any = await service.findOnePublished(P_OWNERLESS)
+      expect(emails(one)).toEqual(['Open@x.test'])
+    })
+
+    it('a closed account\'s assignee returns when their gate opens; the stored scope is never changed', async () => {
+      const before = JSON.stringify(projects[P_OWNERLESS].scope)
+      expect(emails(await service.findBySlug('ownerless-1', null))).toEqual(['Open@x.test'])
+      await state.apply(UNVERIFIED, true, new Date(Date.now() + 1000))
+      expect(emails(await service.findBySlug('ownerless-1', null)).sort()).toEqual(['Open@x.test', 'closed@x.test'].sort())
+      await state.apply(UNVERIFIED, false, new Date(Date.now() + 2000))
+      expect(emails(await service.findBySlug('ownerless-1', null))).toEqual(['Open@x.test'])
+      expect(JSON.stringify(projects[P_OWNERLESS].scope)).toBe(before)
+      expect(writes).toEqual([])
+    })
+
+    it('the listing\'s owner (authenticated) still sees every assignee', async () => {
+      const res: any = await service.findBySlug('owner-1', VERIFIED)
+      expect(emails(res).sort()).toEqual(['Open@x.test', 'closed@x.test', 'emailonly@x.test', 'never@x.test'].sort())
+      const byId: any = await service.findOnePublished(P_OWNER_ONLY, VERIFIED)
+      expect(emails(byId)).toHaveLength(4)
+    })
+
+    it('another signed-in user gets exactly the public view', async () => {
+      const res: any = await service.findBySlug('owner-1', OTHER)
+      expect(emails(res)).toEqual(['Open@x.test'])
+    })
+
+    it('resolves emails to accounts with one local lookup per response, and a state lookup that is not per assignee', async () => {
+      emailLookups.length = 0
+      await service.findBySlug('ownerless-1', null)
+      expect(emailLookups).toHaveLength(1)
+      expect(emailLookups[0].sort()).toEqual(['closed@x.test', 'emailonly@x.test', 'never@x.test', 'open@x.test'])
+    })
+
+    it('an unreadable account lookup shows nobody (never everybody)', async () => {
+      ;(service as any).repo.manager.query.mockImplementationOnce(async () => { throw new Error('boom') })
+      const res: any = await service.findOnePublished(P_OWNERLESS)
+      expect(emails(res)).toEqual([])
+    })
+
+    it('listings with no assignees cost no account lookup', async () => {
+      emailLookups.length = 0
+      await service.findBySlug('mixed-1', null)
+      expect(emailLookups).toHaveLength(0)
+    })
+  })
 
   describe('availability: last-known state, no synchronous identity calls', () => {
     it('a response costs a bounded number of local lookups, whatever the roster size', async () => {

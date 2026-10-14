@@ -99,31 +99,44 @@ describe('AccountGateReconciler (G5 background safety net)', () => {
     });
   });
 
-  describe('search index backfill (listing-owner gate)', () => {
-    it('sends each owned published listing with its owner\'s last known gate, to algolia-service', async () => {
+  describe('search index backfill (listing-owner gate, positive visibility)', () => {
+    it("sends every published listing: an owner's last known gate (unknown = closed), or an explicit exemption when there is no platform owner", async () => {
       const { rec, state, algolia } = build({
         sources: {
           '"listingType"': [
             { id: 'p1', listingType: 'project', ownerId: A },
             { id: 's1', listingType: 'service', ownerId: B },
+            { id: 'p2', listingType: 'project', ownerId: null }, // CMS-authored / seeded
           ],
-          'FROM listings.teams\n            WHERE': [{ id: 't1', ownerId: C }],
+          'FROM listings.teams': [
+            { id: 't1', ownerId: C },
+            { id: 't2', ownerId: null }, // createdBy is a system value, not a user id
+          ],
         },
       });
       state.open(A).closed(B); // C: never received
       const sent = await rec.backfillIndexOwnerGate();
-      expect(sent).toBe(3);
+      expect(sent).toBe(5);
       const [pattern, payload] = (algolia.send.mock.calls[0] as unknown) as [string, any];
       expect(pattern).toBe('listing.owner_gate_backfill');
       expect(payload.entries).toEqual([
         { index: 'projects', id: 'p1', ownerId: A, ownerGateOpen: true },
         { index: 'services', id: 's1', ownerId: B, ownerGateOpen: false },
-        { index: 'teams', id: 't1', ownerId: C, ownerGateOpen: false }, // unknown = hidden
+        { index: 'projects', id: 'p2', ownerId: null },
+        { index: 'teams', id: 't1', ownerId: C, ownerGateOpen: false }, // unknown owner state = hidden
+        { index: 'teams', id: 't2', ownerId: null },
       ]);
       expect(typeof payload.checkedAt).toBe('string');
     });
 
-    it('is a no-op when no listing has an owner', async () => {
+    it('never marks an owner with an unknown state open', async () => {
+      const { rec, algolia } = build({ sources: { '"listingType"': [{ id: 'p1', listingType: 'project', ownerId: A }] } });
+      await rec.backfillIndexOwnerGate();
+      const [, payload] = (algolia.send.mock.calls[0] as unknown) as [string, any];
+      expect(payload.entries[0].ownerGateOpen).toBe(false);
+    });
+
+    it('is a no-op when there is nothing published', async () => {
       const { rec, algolia } = build();
       expect(await rec.backfillIndexOwnerGate()).toBe(0);
       expect(algolia.send).not.toHaveBeenCalled();

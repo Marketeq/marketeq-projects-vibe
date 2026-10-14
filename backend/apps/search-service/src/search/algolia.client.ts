@@ -11,15 +11,19 @@ export const INDICES = {
 
 // Marketplace discovery gates, enforced INSIDE Algolia (it filters before it
 // ranks, paginates and counts, so hits, pages and facet counts only ever cover
-// visible records):
-//   G1  talent    `gate_open:true`         - the talent's own gate must be open
-//   G5  listings  `NOT owner_hidden:true`  - a listing whose OWNER has no known
-//                 open gate is withheld (projects, services, teams). Records with
-//                 no owner (CMS, seeded) carry no `owner_hidden` and stay visible.
+// visible records). Both are POSITIVE filters: a record is visible only if it
+// carries the attribute that says so, so a record that has never been
+// (back)filled - a missing attribute - is hidden.
+//   G1  talent    `gate_open:true`  - the talent's own gate must be known open
+//   G5  listings  `(owner_gate_open:true OR owner_gate_exempt:true)`
+//                 - a listing owned by a platform account is visible only while that
+//                   owner's gate is known open (`owner_gate_open`); a listing with no
+//                 platform owner (CMS-authored, seeded, system-owned) is visible
+//                 only because it is explicitly marked `owner_gate_exempt`.
 // Both are display filters on the index copy: the stored listing/profile is never
 // changed, and it reappears by itself when the gate opens.
 export const TALENT_GATE_FILTER = 'gate_open:true'
-export const LISTING_GATE_FILTER = 'NOT owner_hidden:true'
+export const LISTING_GATE_FILTER = '(owner_gate_open:true OR owner_gate_exempt:true)'
 
 interface DiscoveryGate {
   /** The base index name; its replicas are `${name}_*`. */

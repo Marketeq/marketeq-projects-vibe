@@ -112,8 +112,8 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOnePublished(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @ViewerId() viewerId: string | null) {
+    return this.service.findOnePublished(id, viewerId);
   }
 
   @Post()

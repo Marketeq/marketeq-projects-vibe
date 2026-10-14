@@ -27,10 +27,11 @@ describe('G5 - DB fallback withholds listings by owner gate', () => {
   it.each([SearchCategory.PROJECTS, SearchCategory.SERVICES])('%s: requires a known-open owner, or no owner at all', async (category) => {
     const [sql] = await sqlFor(category)
     expect(sql).toContain('listings.account_gate_state')
-    expect(sql).toMatch(/"userId" IS NULL OR EXISTS/)
+    expect(sql).toMatch(/IS NULL OR EXISTS/)
     expect(sql).toContain('g."gateOpen"')
-    // The row must be matched to ITS owner's state.
-    expect(sql).toContain('g."userId" = listings.project."userId"')
+    // The row must be matched to ITS owner's state - a service's owner is userId, or a createdBy that is a real user id.
+    expect(sql).toContain('g."userId" = (CASE WHEN listings.project."listingType" = \'service\'')
+    expect(sql).toContain('listings.project."createdBy"::uuid')
   })
 
   it('teams: only a real user id in createdBy is an owner to gate; system values are not', async () => {

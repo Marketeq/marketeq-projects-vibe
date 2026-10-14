@@ -17,7 +17,7 @@ const isAccountId = (v: unknown): v is string => typeof v === 'string' && UUID_R
 
 const GATE_ATTRIBUTES = ['gate_open', 'gate_updated_at', 'account_id']
 // G5: the same for the listing-owner gate on projects/services/teams records.
-const OWNER_GATE_ATTRIBUTES = ['owner_hidden', 'owner_gate_updated_at']
+const OWNER_GATE_ATTRIBUTES = ['owner_gate_open', 'owner_gate_exempt', 'owner_gate_updated_at']
 const withoutGate = (record: Record<string, unknown>): Record<string, unknown> => {
   const clean = { ...record }
   for (const key of GATE_ATTRIBUTES) delete clean[key]
@@ -161,13 +161,15 @@ export class SyncService {
           timeline: listing.timeline,
         }
 
-    // G5: a listing with an owner is withheld (`owner_hidden`) unless the owner's
-    // last known gate is open; a listing with no owner is never hidden. Written
-    // here, not through sync(), because sync() strips the owner-gate attributes
-    // from generic callers.
+    // G5: positive visibility. A listing owned by a platform account is visible
+    // only while that owner's last known gate is open (`owner_gate_open`); an
+    // unknown state is indexed closed. A listing with no platform owner (none, or
+    // a system value such as 'cms-sync') is visible only because it is explicitly
+    // marked `owner_gate_exempt`. Written here, not through sync(), because sync()
+    // strips the owner-gate attributes from generic callers.
     const gated: Record<string, unknown> = isAccountId(listing.ownerId)
-      ? { owner_hidden: listing.ownerGateOpen !== true, owner_gate_updated_at: Date.now() }
-      : {}
+      ? { owner_gate_open: listing.ownerGateOpen === true, owner_gate_exempt: false, owner_gate_updated_at: Date.now() }
+      : { owner_gate_exempt: true, owner_gate_open: false, owner_gate_updated_at: Date.now() }
     if (operation === SyncOperation.DELETE) {
       await this.sync({ index, operation, objectID: listing.id })
       return
@@ -256,10 +258,10 @@ export class SyncService {
       await this.sync({ index: AlgoliaIndex.TEAMS, operation, objectID: team.id })
       return
     }
-    // G5: same owner-gate rule as listings.
+    // G5: same positive owner-gate rule as listings.
     const gated: Record<string, unknown> = isAccountId(team.ownerId)
-      ? { owner_id: team.ownerId, owner_hidden: team.ownerGateOpen !== true, owner_gate_updated_at: Date.now() }
-      : {}
+      ? { owner_id: team.ownerId, owner_gate_open: team.ownerGateOpen === true, owner_gate_exempt: false, owner_gate_updated_at: Date.now() }
+      : { owner_gate_exempt: true, owner_gate_open: false, owner_gate_updated_at: Date.now() }
     await this.upsertRecord(AlgoliaIndex.TEAMS, team.id, {
       ...gated,
       ...{

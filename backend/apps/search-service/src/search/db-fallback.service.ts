@@ -44,9 +44,17 @@ interface FallbackHits {
 // not subject to it, and an owner whose state has never been received is hidden.
 // Display only: the stored listing and its published status are never changed;
 // it reappears by itself when the owner's gate opens.
-const PROJECT_OWNER_GATE_SQL = `AND ("userId" IS NULL OR EXISTS (
+// The owning account of a listing row, the same one listings-service gates on: a
+// service falls back to a createdBy that is a real user id when it has no userId
+// (system values such as 'n8n-seed' are not owners); a project is owned by userId.
+const PROJECT_OWNER_SQL = `(CASE WHEN listings.project."listingType" = 'service'
+                 THEN COALESCE(listings.project."userId",
+                   CASE WHEN listings.project."createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                        THEN listings.project."createdBy"::uuid END)
+                 ELSE listings.project."userId" END)`
+const PROJECT_OWNER_GATE_SQL = `AND (${PROJECT_OWNER_SQL} IS NULL OR EXISTS (
                SELECT 1 FROM listings.account_gate_state g
-               WHERE g."userId" = listings.project."userId" AND g."gateOpen"))`
+               WHERE g."userId" = ${PROJECT_OWNER_SQL} AND g."gateOpen"))`
 // listings.teams.createdBy is free text (system values exist), so only a real
 // user id is an owner to gate.
 const TEAM_OWNER_GATE_SQL = `AND ("createdBy" IS NULL

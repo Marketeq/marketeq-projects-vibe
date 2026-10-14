@@ -346,48 +346,62 @@ describe('G1 gate sync - backfill / reconcile', () => {
   })
 })
 
-// G5 (Christopher): a listing whose OWNER has no known open gate is withheld from
-// marketplace discovery. The same identity.gate_changed event that drives talent
-// visibility also drives listing visibility, by owner_id, with partial updates.
-describe('G5 listing-owner gate (search index)', () => {
+// G5 (Christopher): a platform-owned listing is visible in search only while its
+// OWNER's gate is known open. Visibility is POSITIVE: `owner_gate_open:true`, or an
+// explicit `owner_gate_exempt:true` for listings with no platform owner. A record
+// with neither (not yet backfilled) is hidden. The same identity.gate_changed event
+// that drives talent visibility drives listing visibility, by owner_id, with partial
+// updates.
+describe('G5 listing-owner gate (search index, positive visibility)', () => {
   const OWNER = '11111111-1111-4111-8111-111111111111'
   const seedListing = (algolia: ReturnType<typeof fakeAlgolia>, index: 'projects' | 'services' | 'teams', id: string, attrs: Record<string, any>) =>
     algolia.listing[index].set(id, { objectID: id, title: 't', ...attrs })
+  // What the secured search filter `(owner_gate_open:true OR owner_gate_exempt:true)` lets through.
+  const visible = (r: Record<string, any> | undefined) => !!r && (r.owner_gate_open === true || r.owner_gate_exempt === true)
 
   it('closing an owner\'s gate hides every listing they own in every listing index - partial updates only', async () => {
     const { algolia, gate } = setup()
-    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false, skills: ['ts'] })
-    seedListing(algolia, 'services', 's1', { owner_id: OWNER, owner_hidden: false })
-    seedListing(algolia, 'teams', 't1', { owner_id: OWNER, owner_hidden: false })
-    seedListing(algolia, 'projects', 'p2', { owner_id: 'someone-else', owner_hidden: false })
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_open: true, skills: ['ts'] })
+    seedListing(algolia, 'services', 's1', { owner_id: OWNER, owner_gate_open: true })
+    seedListing(algolia, 'teams', 't1', { owner_id: OWNER, owner_gate_open: true })
+    seedListing(algolia, 'projects', 'p2', { owner_id: 'someone-else', owner_gate_open: true })
     await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
-    expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_hidden: true, skills: ['ts'], title: 't' })
-    expect(algolia.listing.services.get('s1')!.owner_hidden).toBe(true)
-    expect(algolia.listing.teams.get('t1')!.owner_hidden).toBe(true)
-    expect(algolia.listing.projects.get('p2')!.owner_hidden).toBe(false) // another owner: untouched
+    expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_gate_open: false, skills: ['ts'], title: 't' })
+    expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
+    expect(visible(algolia.listing.services.get('s1'))).toBe(false)
+    expect(visible(algolia.listing.teams.get('t1'))).toBe(false)
+    expect(visible(algolia.listing.projects.get('p2'))).toBe(true) // another owner: untouched
     expect(algolia.delete).not.toHaveBeenCalled()
     expect(algolia.upsert).not.toHaveBeenCalled()
   })
 
   it('the listing is shown again as soon as the owner\'s gate opens', async () => {
     const { algolia, gate } = setup()
-    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: true })
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_open: false })
     await gate.applyGateChange({ userId: OWNER, gateOpen: true, occurredAt: iso(T0) }, T0)
-    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+    expect(visible(algolia.listing.projects.get('p1'))).toBe(true)
+  })
+
+  it('a gate event for an owner can never leave a listing exempt: it is explicitly un-exempted', async () => {
+    const { algolia, gate } = setup()
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_exempt: true })
+    await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
+    expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_gate_open: false, owner_gate_exempt: false })
+    expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
   })
 
   it('one event updates the owner\'s talent record and their listings together', async () => {
     const { algolia, gate } = setup()
     seed(algolia, 'cms-1', OWNER, { gate_open: true })
-    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_open: true })
     await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
     expect(algolia.records.get('cms-1')!.gate_open).toBe(false)
-    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+    expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
   })
 
   it('a failed listing update is retried like any other and clears once it succeeds', async () => {
     const { algolia, gate } = setup()
-    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
+    seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_open: true })
     // The talent lookup succeeds, then the projects lookup fails: the whole change is
     // kept and retried (the retried attempt starts again from the talent record).
     const real = algolia.findObjectIDs.getMockImplementation()!
@@ -397,8 +411,22 @@ describe('G5 listing-owner gate (search index)', () => {
     await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
     expect(gate.getHealth(T0).pending).toBe(1)
     await gate.retryDue(T0 + 200_000)
-    expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+    expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
     expect(gate.getHealth(T0 + 200_000).pending).toBe(0)
+  })
+
+  describe('missing attributes and old records stay hidden', () => {
+    it('a record indexed before the gate existed (neither attribute) is not visible', () => {
+      expect(visible({ objectID: 'old', title: 'legacy', owner_id: OWNER })).toBe(false)
+      expect(visible({ objectID: 'old', title: 'legacy' })).toBe(false)
+    })
+
+    it('a gate event does not make an unrelated old record visible; only its owner\'s records are touched', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'old', { title: 'legacy' }) // no owner_id, no gate attributes
+      await gate.applyGateChange({ userId: OWNER, gateOpen: true, occurredAt: iso(T0) }, T0)
+      expect(visible(algolia.listing.projects.get('old'))).toBe(false)
+    })
   })
 
   describe('listing syncs', () => {
@@ -410,40 +438,50 @@ describe('G5 listing-owner gate (search index)', () => {
       ...over,
     }) as any
 
-    it('a listing with an owner is indexed HIDDEN unless the owner\'s gate is known open', async () => {
+    it('a platform-owned listing is visible only when the owner\'s gate is known open; unknown is indexed closed', async () => {
       const { algolia, sync } = setup()
       await sync.syncListing(payload({ ownerGateOpen: false }))
-      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
-      await sync.syncListing(payload()) // no gate state supplied: unknown = hidden
-      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(true)
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
+      await sync.syncListing(payload()) // no gate state supplied: unknown = closed
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
+      expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_gate_open: false, owner_gate_exempt: false })
       await sync.syncListing(payload({ ownerGateOpen: true }))
-      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(true)
     })
 
-    it('a listing with no owner, or a system owner such as cms-sync, is never hidden', async () => {
+    it('a listing with no platform owner, or a system owner such as cms-sync, is visible only because it is EXPLICITLY exempt', async () => {
       const { algolia, sync } = setup()
       await sync.syncListing(payload({ id: 'p2', ownerId: null }))
       await sync.syncListing(payload({ id: 'p3', ownerId: 'cms-sync' }))
-      expect(algolia.listing.projects.get('p2')).not.toHaveProperty('owner_hidden')
-      expect(algolia.listing.projects.get('p3')).not.toHaveProperty('owner_hidden')
+      for (const id of ['p2', 'p3']) {
+        expect(algolia.listing.projects.get(id)).toMatchObject({ owner_gate_exempt: true, owner_gate_open: false })
+        expect(visible(algolia.listing.projects.get(id))).toBe(true)
+      }
+    })
+
+    it('an ownerless record that lacks the exemption is hidden (nothing is visible by default)', () => {
+      expect(visible({ objectID: 'x', owner_gate_open: false })).toBe(false)
+      expect(visible({ objectID: 'x', owner_gate_exempt: false })).toBe(false)
     })
 
     it('a team is indexed under the same rule', async () => {
       const { algolia, sync } = setup()
       await sync.syncTeam({ id: 't1', teamName: 'T', ownerId: OWNER, ownerGateOpen: false } as any)
-      expect(algolia.listing.teams.get('t1')).toMatchObject({ owner_id: OWNER, owner_hidden: true })
+      expect(algolia.listing.teams.get('t1')).toMatchObject({ owner_id: OWNER, owner_gate_open: false, owner_gate_exempt: false })
       await sync.syncTeam({ id: 't2', teamName: 'T', ownerId: 'cms-seed' } as any)
-      expect(algolia.listing.teams.get('t2')).not.toHaveProperty('owner_hidden')
+      expect(algolia.listing.teams.get('t2')).toMatchObject({ owner_gate_exempt: true })
+      expect(visible(algolia.listing.teams.get('t2'))).toBe(true)
     })
 
-    it('generic sync callers cannot set owner_hidden (or owner_gate_updated_at)', async () => {
+    it('generic sync callers cannot set the owner-gate attributes, so they cannot make a record visible', async () => {
       const { algolia, sync } = setup()
       await sync.sync({
         index: AlgoliaIndex.PROJECTS, operation: SyncOperation.UPSERT, objectID: 'p9',
-        record: { title: 'x', owner_hidden: false, owner_gate_updated_at: 1 },
+        record: { title: 'x', owner_gate_open: true, owner_gate_exempt: true, owner_gate_updated_at: 1 },
       })
-      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_hidden')
-      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_gate_updated_at')
+      expect(visible(algolia.listing.projects.get('p9'))).toBe(false)
+      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_gate_open')
+      expect(algolia.listing.projects.get('p9')).not.toHaveProperty('owner_gate_exempt')
     })
 
     it('deleting a listing removes the record', async () => {
@@ -457,29 +495,62 @@ describe('G5 listing-owner gate (search index)', () => {
     const entries = [
       { index: 'projects' as const, id: 'p1', ownerId: OWNER, ownerGateOpen: false },
       { index: 'services' as const, id: 's1', ownerId: OWNER, ownerGateOpen: true },
+      { index: 'projects' as const, id: 'p5', ownerId: null }, // explicitly exempt: no platform owner
     ]
-    it('sets owner_hidden/owner_id on existing listing records with partial updates that create nothing', async () => {
+
+    it('makes old records visible only through an explicit positive attribute - open owner or exemption', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'p1', {}) // old record: hidden
+      seedListing(algolia, 'services', 's1', {})
+      seedListing(algolia, 'projects', 'p5', {})
+      seedListing(algolia, 'projects', 'p6', {}) // never in the backfill: stays hidden
+      const out = await gate.applyOwnerBackfill({ entries, checkedAt: iso(T0) })
+      expect(out.updated).toBe(3)
+      expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_id: OWNER, owner_gate_open: false })
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(false) // owner closed
+      expect(visible(algolia.listing.services.get('s1'))).toBe(true) // owner open
+      expect(visible(algolia.listing.projects.get('p5'))).toBe(true) // exempt
+      expect(visible(algolia.listing.projects.get('p6'))).toBe(false) // old and not backfilled: hidden
+    })
+
+    it('an owner whose state is unknown is sent closed, so the backfill never opens a gap', async () => {
       const { algolia, gate } = setup()
       seedListing(algolia, 'projects', 'p1', {})
-      const out = await gate.applyOwnerBackfill({ entries, checkedAt: iso(T0) })
-      expect(out.updated).toBe(2)
-      expect(algolia.listing.projects.get('p1')).toMatchObject({ owner_id: OWNER, owner_hidden: true })
-      expect(algolia.listing.services.has('s1')).toBe(false) // not indexed: not created
+      await gate.applyOwnerBackfill({ entries: [{ index: 'projects', id: 'p1', ownerId: OWNER, ownerGateOpen: false }], checkedAt: iso(T0) })
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
+    })
+
+    it('partial updates that create nothing: an unindexed listing is not created', async () => {
+      const { algolia, gate } = setup()
+      await gate.applyOwnerBackfill({ entries, checkedAt: iso(T0) })
+      expect(algolia.listing.projects.size + algolia.listing.services.size).toBe(0)
       expect(algolia.calls.every((c) => c.op === 'partialUpdateBatch' && c.args[2] === false)).toBe(true)
     })
 
-    it('does not overwrite a newer decision, and skips malformed entries', async () => {
+    it('does not overwrite a newer decision for an owner, and skips malformed entries', async () => {
       const { algolia, gate } = setup()
-      seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_hidden: false })
-      await gate.applyGateChange({ userId: OWNER, gateOpen: true, occurredAt: iso(T0 + 9000) }, T0 + 9000)
+      seedListing(algolia, 'projects', 'p1', { owner_id: OWNER, owner_gate_open: false })
+      await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0 + 9000) }, T0 + 9000)
       algolia.calls.length = 0
       const out = await gate.applyOwnerBackfill({
-        entries: [entries[0], { index: 'nope' as any, id: 'x', ownerId: OWNER, ownerGateOpen: true }],
+        entries: [
+          { index: 'projects', id: 'p1', ownerId: OWNER, ownerGateOpen: true }, // older than the event just applied
+          { index: 'nope' as any, id: 'x', ownerId: OWNER, ownerGateOpen: true },
+          { index: 'projects', id: 'y', ownerId: OWNER } as any, // owned but no gate value
+        ],
         checkedAt: iso(T0),
       })
       expect(out.updated).toBe(0)
-      expect(algolia.listing.projects.get('p1')!.owner_hidden).toBe(false)
+      expect(visible(algolia.listing.projects.get('p1'))).toBe(false)
       expect(algolia.calls).toHaveLength(0)
+    })
+
+    it('is repeatable', async () => {
+      const { algolia, gate } = setup()
+      seedListing(algolia, 'projects', 'p5', {})
+      await gate.applyOwnerBackfill({ entries: [entries[2]], checkedAt: iso(T0) })
+      await gate.applyOwnerBackfill({ entries: [entries[2]], checkedAt: iso(T0 + 1) })
+      expect(visible(algolia.listing.projects.get('p5'))).toBe(true)
     })
 
     it('retries a failing batch, then reports the failure', async () => {

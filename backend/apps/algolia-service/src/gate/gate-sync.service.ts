@@ -129,7 +129,7 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
         )
       }
       // G5: the same decision hides or shows the LISTINGS this account owns
-      // (`owner_hidden`), found by `owner_id` in each listing index. The listing
+      // (`owner_gate_open`), found by `owner_id` in each listing index. The listing
       // records are partially updated like talent; nothing is deleted, and the
       // stored listing's published status is not involved.
       for (const index of LISTING_INDEXES) {
@@ -137,7 +137,7 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
         if (listingIDs.length > 0) {
           await this.algolia.partialUpdateBatch(
             index,
-            listingIDs.map((objectID) => ({ objectID, owner_hidden: !change.gateOpen, owner_gate_updated_at: change.occurredAtMs })),
+            listingIDs.map((objectID) => ({ objectID, owner_gate_open: change.gateOpen, owner_gate_exempt: false, owner_gate_updated_at: change.occurredAtMs })),
             false,
           )
         }
@@ -218,9 +218,14 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * G5: sets the listing-owner gate on listing records in bulk. Partial updates
-   * that create nothing, repeatable, and a newer decision already written for the
-   * owner wins over an older batch.
+   * G5: sets the listing-owner gate on listing records in bulk, by objectID. An
+   * entry with an `ownerId` records that owner's gate (`owner_gate_open`); an entry
+   * with no `ownerId` marks the listing explicitly exempt (`owner_gate_exempt`: no
+   * platform owner). Partial updates that create nothing, repeatable, and a newer
+   * decision already written for an owner wins over an older batch.
+   *
+   * Because visibility is positive, a record that has not been through here (or a
+   * listing sync) carries neither attribute and stays hidden.
    */
   async applyOwnerBackfill(payload: ListingOwnerGateBackfillPayload): Promise<{ updated: number }> {
     const valid = (payload?.entries ?? []).filter(
@@ -228,18 +233,22 @@ export class GateSyncService implements OnModuleInit, OnModuleDestroy {
         e &&
         [AlgoliaIndex.PROJECTS, AlgoliaIndex.SERVICES, AlgoliaIndex.TEAMS].includes(e.index as AlgoliaIndex) &&
         typeof e.id === 'string' && e.id &&
-        typeof e.ownerId === 'string' && e.ownerId &&
-        typeof e.ownerGateOpen === 'boolean',
+        (e.ownerId === null || (typeof e.ownerId === 'string' && e.ownerId)) &&
+        (e.ownerId === null || typeof e.ownerGateOpen === 'boolean'),
     )
     const checkedAt = Date.parse(payload?.checkedAt)
     const checkedAtMs = Number.isFinite(checkedAt) ? checkedAt : Date.now()
-    const fresh = valid.filter((e) => this.isGateCurrent(e.ownerId, checkedAtMs))
+    const fresh = valid.filter((e) => e.ownerId === null || this.isGateCurrent(e.ownerId, checkedAtMs))
     if (fresh.length === 0) return { updated: 0 }
 
     const byIndex = new Map<string, Array<Record<string, unknown> & { objectID: string }>>()
     for (const e of fresh) {
       const list = byIndex.get(e.index) ?? []
-      list.push({ objectID: e.id, owner_id: e.ownerId, owner_hidden: !e.ownerGateOpen, owner_gate_updated_at: checkedAtMs })
+      list.push(
+        e.ownerId === null
+          ? { objectID: e.id, owner_gate_exempt: true, owner_gate_open: false, owner_gate_updated_at: checkedAtMs }
+          : { objectID: e.id, owner_id: e.ownerId, owner_gate_open: e.ownerGateOpen === true, owner_gate_exempt: false, owner_gate_updated_at: checkedAtMs },
+      )
       byIndex.set(e.index, list)
     }
     for (const [index, objects] of byIndex) {

@@ -30,7 +30,7 @@ const resetData = () => {
     rec(6, true, ['go'], ['Design']), rec(7, true), rec(8, false, ['ts'], ['Design']), rec(9, true, ['ts'], ['Ops'])]
 }
 
-// Evaluates `a:"x" AND (b:"y" OR b:"z") AND gate_open:true AND NOT owner_hidden:true`
+// Evaluates `a:"x" AND (b:"y" OR b:"z") AND gate_open:true AND (owner_gate_open:true OR owner_gate_exempt:true)`
 // over a record. A missing attribute never equals anything, so `NOT attr:true` is
 // true for a record that does not carry the attribute (as in Algolia).
 function matches(r: any, filters?: string): boolean {
@@ -252,39 +252,67 @@ describe('G1 Algolia gate - the client cannot supply an unrestricted talent quer
   })
 })
 
-// G5 (Christopher): a listing whose OWNER has no known open gate is withheld from
-// marketplace discovery. Same mechanism as talent: a secured key with the gate
-// embedded, per index group, so hits/pages/facets only count visible listings.
-describe('G5 Algolia gate - listings are withheld while their owner\'s gate is closed', () => {
+// G5 (Christopher): a platform-owned listing is visible only while its OWNER's gate
+// is known open; a listing with no platform owner only because it is explicitly
+// exempt. POSITIVE filter: a record missing both attributes (old / not backfilled)
+// is hidden. Same mechanism as talent: a secured key with the gate embedded, per
+// index group, so hits/pages/facets only count visible listings.
+describe('G5 Algolia gate - listings are visible only with a known open owner or an explicit exemption', () => {
+  const FILTER = '(owner_gate_open:true OR owner_gate_exempt:true)'
   const LISTINGS = () => [
-    { objectID: 'p1', owner_id: 'o-open', owner_hidden: false, category: 'Dev' },
-    { objectID: 'p2', owner_id: 'o-closed', owner_hidden: true, category: 'Ops' },
-    { objectID: 'p3', category: 'Dev' }, // CMS-authored: no owner, no owner_hidden attribute
-    { objectID: 'p4', owner_id: 'o-open', owner_hidden: false, category: 'Ops' },
+    { objectID: 'p1', owner_id: 'o-open', owner_gate_open: true, category: 'Dev' }, // owned, owner known open
+    { objectID: 'p2', owner_id: 'o-closed', owner_gate_open: false, category: 'Ops' }, // owned, owner closed
+    { objectID: 'p3', owner_gate_exempt: true, category: 'Dev' }, // CMS-authored: explicitly exempt
+    { objectID: 'p4', owner_id: 'o-open', owner_gate_open: true, category: 'Ops' },
+    { objectID: 'p5', owner_id: 'o-unknown', category: 'Dev' }, // OLD platform-owned record: no attribute -> hidden
+    { objectID: 'p6', category: 'Ops' }, // OLD ownerless record, never marked exempt -> hidden
+    { objectID: 'p7', owner_gate_exempt: false, owner_gate_open: false, category: 'Dev' }, // explicitly not exempt
   ]
 
-  it('every listing index and replica carries NOT owner_hidden:true, through its own secured key', async () => {
+  it('every listing index and replica carries the positive filter, through its own secured key', async () => {
     const client = make()
     for (const idx of ['projects', 'projects_sort_rating_desc', 'services', 'teams']) await client.search(idx, '', {})
-    expect(securedCalls().map((c) => c.searchParams.filters)).toEqual(Array(4).fill('NOT owner_hidden:true'))
+    expect(securedCalls().map((c) => c.searchParams.filters)).toEqual(Array(4).fill(FILTER))
     const gens = generated.map((g) => [g.restrictions.filters, g.restrictions.restrictIndices])
     expect(gens).toEqual(
       expect.arrayContaining([
-        ['NOT owner_hidden:true', ['projects', 'projects_*']],
-        ['NOT owner_hidden:true', ['services', 'services_*']],
-        ['NOT owner_hidden:true', ['teams', 'teams_*']],
+        [FILTER, ['projects', 'projects_*']],
+        [FILTER, ['services', 'services_*']],
+        [FILTER, ['teams', 'teams_*']],
       ]),
     )
     expect(generated.every((g) => g.parentApiKey === SEARCH_KEY)).toBe(true)
     expect(mainCalls().filter((c) => c.indexName)).toHaveLength(0) // the write key never serves a listing query
   })
 
-  it('an owner-less (CMS) listing stays visible: it carries no owner_hidden attribute', async () => {
+  it('the filter is positive: it contains no NOT, so a missing attribute cannot satisfy it', () => {
+    expect(FILTER).not.toMatch(/NOT/i)
+  })
+
+  it('shows only known-open owners and explicitly exempt records; old records without the attributes are hidden', async () => {
     ;(global as any).__LISTINGS = LISTINGS()
     const client = make()
     const res: any = await client.search('projects', '', { hitsPerPage: 50 })
     expect(res.hits.map((h: any) => h.objectID).sort()).toEqual(['p1', 'p3', 'p4'])
     expect(res.nbHits).toBe(3)
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('an old platform-owned record becomes visible only after it is backfilled with an open owner', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    expect((await client.search('projects', '', { hitsPerPage: 50 }) as any).hits.map((h: any) => h.objectID)).not.toContain('p5')
+    ;(global as any).__LISTINGS.find((r: any) => r.objectID === 'p5').owner_gate_open = true // backfilled, owner open
+    expect((await client.search('projects', '', { hitsPerPage: 50 }) as any).hits.map((h: any) => h.objectID)).toContain('p5')
+    ;(global as any).__LISTINGS = undefined
+  })
+
+  it('a system-owned / ownerless record is visible only once it carries the explicit exemption', async () => {
+    ;(global as any).__LISTINGS = LISTINGS()
+    const client = make()
+    expect((await client.search('projects', '', { hitsPerPage: 50 }) as any).hits.map((h: any) => h.objectID)).not.toContain('p6')
+    ;(global as any).__LISTINGS.find((r: any) => r.objectID === 'p6').owner_gate_exempt = true
+    expect((await client.search('projects', '', { hitsPerPage: 50 }) as any).hits.map((h: any) => h.objectID)).toContain('p6')
     ;(global as any).__LISTINGS = undefined
   })
 
@@ -294,16 +322,18 @@ describe('G5 Algolia gate - listings are withheld while their owner\'s gate is c
     const res: any = await client.search('projects', '', { hitsPerPage: 2, page: 1, facets: ['category'] })
     expect(res.nbHits).toBe(3)
     expect(res.nbPages).toBe(2)
-    expect(res.facets.category).toEqual({ Dev: 2, Ops: 1 }) // p2 (Ops) is not counted
+    expect(res.facets.category).toEqual({ Dev: 2, Ops: 1 }) // hidden records (p2, p5, p6, p7) are not counted
     ;(global as any).__LISTINGS = undefined
   })
 
   it('a client filter cannot widen it back out', async () => {
     ;(global as any).__LISTINGS = LISTINGS()
     const client = make()
-    const res: any = await client.search('projects', '', { filters: 'category:"Ops" OR owner_hidden:true', hitsPerPage: 50 })
-    expect(securedCalls()[0].searchParams.filters).toBe('NOT owner_hidden:true AND (category:"Ops" OR owner_hidden:true)')
+    const hostile = 'category:"Ops" OR owner_gate_open:false OR owner_gate_exempt:false'
+    const res: any = await client.search('projects', '', { filters: hostile, hitsPerPage: 50 })
+    expect(securedCalls()[0].searchParams.filters).toBe(`${FILTER} AND (${hostile})`)
     expect(res.hits.map((h: any) => h.objectID)).not.toContain('p2')
+    expect(res.hits.map((h: any) => h.objectID)).not.toContain('p7')
     ;(global as any).__LISTINGS = undefined
   })
 
@@ -326,7 +356,7 @@ describe('G5 Algolia gate - listings are withheld while their owner\'s gate is c
     ])
     expect(out).toHaveLength(4)
     expect(out[0].nbHits).toBe(5) // talent: open only
-    expect(out[2].nbHits).toBe(3) // projects: owner-hidden withheld
+    expect(out[2].nbHits).toBe(3) // projects: positive filter
     expect(mainCalls().filter((c) => c.multi)).toHaveLength(0)
     ;(global as any).__LISTINGS = undefined
   })

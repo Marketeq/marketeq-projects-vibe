@@ -7,7 +7,6 @@ import {
 } from "@nestjs/common";
 import { InjectDataSource } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
-import { RosterGateService } from "../identity-gate/roster-gate.service";
 
 /**
  * Read-only adapter over the `public.projects` table.
@@ -31,10 +30,7 @@ import { RosterGateService } from "../identity-gate/roster-gate.service";
 export class CmsProjectsController {
   private readonly logger = new Logger(CmsProjectsController.name);
 
-  constructor(
-    @InjectDataSource() private readonly dataSource: DataSource,
-    private readonly rosterGate: RosterGateService,
-  ) {}
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
   @Get()
   async findAll() {
@@ -328,7 +324,7 @@ export class CmsProjectsController {
     // fails the rest still render. Timeout after 3s per user so a slow
     // user-service doesn't block the whole project page.
     const profiles = await Promise.all(
-      [...emails].map(async (email) => {
+      [...emails].map(async (email, index) => {
         try {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 3000);
@@ -341,11 +337,7 @@ export class CmsProjectsController {
           clearTimeout(timeout);
           if (!res.ok) return null;
           const user = await res.json();
-          // G5: the linked platform account. An email with no account has none
-          // and is never shown to clients.
-          if (typeof user?.id !== "string" || !user.id) return null;
           return {
-            accountId: user.id as string,
             firstName: user.firstName ?? user.username ?? email,
             username: user.username ?? email,
             avatarUrl: user.avatarUrl ?? null,
@@ -364,8 +356,11 @@ export class CmsProjectsController {
                   )
                   .filter(Boolean)
               : [],
-            // Set below, once the roster is known (see the first-visible rule).
-            isLead: false,
+            // First team member is marked as lead (the one assigned to
+            // the earliest task in the scope tree). Real "isLead" should
+            // come from an explicit field on the user or task — this is
+            // a placeholder heuristic.
+            isLead: index === 0,
             // Step 3 stub: always false until messaging-service exposes
             // a REST presence endpoint or a Redis last-seen cache.
             isOnline: false,
@@ -376,24 +371,7 @@ export class CmsProjectsController {
       }),
     );
 
-    const found = profiles.filter((p): p is NonNullable<typeof p> => p !== null);
-
-    // G5: a CMS project member (authored as an assignee email) is shown to
-    // clients only when its linked platform account has a KNOWN OPEN gate - the
-    // same rule as every other roster. Email-only assignees, closed gates and
-    // accounts whose state has never been received are omitted. This is a
-    // display filter: the CMS scope and its assignee emails are never changed,
-    // and editors' management views are separate and show everyone.
-    const open = await this.rosterGate.visibleUserIds(found.map((p) => p.accountId));
-    const visible = found.filter((p) => open.has(p.accountId));
-
-    // First visible member is marked as lead (the one assigned to the earliest
-    // task in the scope tree). Real "isLead" should come from an explicit field
-    // on the user or task — this is a placeholder heuristic.
-    return visible.map(({ accountId: _accountId, ...member }, index) => ({
-      ...member,
-      isLead: index === 0,
-    }));
+    return profiles.filter((p): p is NonNullable<typeof p> => p !== null);
   }
 
   /**

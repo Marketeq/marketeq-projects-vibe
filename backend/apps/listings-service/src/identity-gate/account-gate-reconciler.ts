@@ -76,6 +76,9 @@ export class AccountGateReconciler implements OnModuleInit, OnModuleDestroy {
       // (or a column rename) skips only that source, never the whole pass.
       const sources = [
         `SELECT DISTINCT "userId"::text AS id FROM listings.project WHERE "userId" IS NOT NULL`,
+        // A service's owner can be a createdBy that is a real user id (see ownerOf in ServicesService).
+        `SELECT DISTINCT "createdBy" AS id FROM listings.project WHERE "listingType" = 'service' AND "userId" IS NULL
+           AND "createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
         `SELECT DISTINCT unnest("teamMemberIds")::text AS id FROM listings.project`,
         `SELECT DISTINCT "userId"::text AS id FROM listings.project_members`,
         `SELECT DISTINCT unnest("memberIds")::text AS id FROM listings.teams`,
@@ -101,22 +104,34 @@ export class AccountGateReconciler implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Re-sends the listing-owner gate of every owned, published listing to the
-   * search index (partial updates in algolia-service), so listings indexed before
-   * the gate existed - or whose event was missed - are hidden or shown correctly.
-   * Skipped (and retried next pass) if the index service cannot be reached.
+   * Re-sends the listing-owner gate of EVERY published listing to the search
+   * index (partial updates in algolia-service), so records indexed before the gate
+   * existed - or whose event was missed - are corrected.
+   *
+   * Search visibility is positive: a listing is visible only with
+   * `owner_gate_open:true` (platform owner, known open) or `owner_gate_exempt:true`
+   * (no platform owner). So this pass covers both kinds - an owned listing gets its
+   * owner's last known gate (unknown = closed), and an ownerless / system-owned one
+   * is sent as exempt (`ownerId: null`). A record that has not been through here
+   * stays hidden until it is. Skipped (and retried next pass) if the index service
+   * cannot be reached.
    */
   async backfillIndexOwnerGate(): Promise<number> {
     let sent = 0;
     try {
-      const listings: Array<{ id: string; listingType: string; ownerId: string }> = await this.dataSource.query(
-        `SELECT id::text AS id, "listingType", "userId"::text AS "ownerId" FROM listings.project
-          WHERE "userId" IS NOT NULL AND status = 'published'`,
+      const listings: Array<{ id: string; listingType: string; ownerId: string | null }> = await this.dataSource.query(
+        `SELECT id::text AS id, "listingType",
+                CASE WHEN "listingType" = 'service'
+                     THEN COALESCE("userId"::text, CASE WHEN "createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN "createdBy" END)
+                     ELSE "userId"::text END AS "ownerId"
+           FROM listings.project WHERE status = 'published'`,
       );
-      const teams: Array<{ id: string; ownerId: string }> = await this.dataSource
+      const teams: Array<{ id: string; ownerId: string | null }> = await this.dataSource
         .query(
-          `SELECT id::text AS id, "createdBy" AS "ownerId" FROM listings.teams
-            WHERE status = 'published' AND "createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+          `SELECT id::text AS id,
+                  CASE WHEN "createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                       THEN "createdBy" END AS "ownerId"
+             FROM listings.teams WHERE status = 'published'`,
         )
         .catch(() => []);
       const rows = [
@@ -127,7 +142,9 @@ export class AccountGateReconciler implements OnModuleInit, OnModuleDestroy {
       const open = await this.state.knownOpen(rows.map((r) => r.ownerId));
       const checkedAt = new Date().toISOString();
       for (let i = 0; i < rows.length; i += BACKFILL_BATCH) {
-        const entries = rows.slice(i, i + BACKFILL_BATCH).map((r) => ({ ...r, ownerGateOpen: open.has(r.ownerId) }));
+        const entries = rows.slice(i, i + BACKFILL_BATCH).map((r) =>
+          r.ownerId ? { ...r, ownerGateOpen: open.has(r.ownerId) } : { index: r.index, id: r.id, ownerId: null },
+        );
         await firstValueFrom(this.algolia.send('listing.owner_gate_backfill', { entries, checkedAt }).pipe(timeout(BACKFILL_TIMEOUT_MS)));
         sent += entries.length;
       }

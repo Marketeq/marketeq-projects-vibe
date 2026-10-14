@@ -123,7 +123,7 @@ export class ProjectsService {
     const open = await this.rosterGate.visibleUserIds(all.flatMap((p) => this.rosterIdsOf(p)));
     const items = all.filter((p) => this.ownerShown(p, open));
     const teamByProject = await this.resolveTeamAvatars(items, open);
-    return items.map((item) => {
+    const shaped = items.map((item) => {
       const team = teamByProject.get(String(item.id));
       return {
         ...this.shapeProject(item),
@@ -131,6 +131,8 @@ export class ProjectsService {
         teamMembers: team?.members ?? [],
       };
     });
+    // G5: CMS assignee emails in `scope` follow the same rule as every roster.
+    return this.withVisibleAssignees(shaped);
   }
 
   async findOne(id: string) {
@@ -139,12 +141,16 @@ export class ProjectsService {
     return this.shapeProject(item);
   }
 
-  async findOnePublished(id: string) {
+  async findOnePublished(id: string, viewerId: string | null = null) {
     const item = await this.repo.findOne({
       where: { id, status: ListingStatus.Published, listingType: 'project' },
     });
     if (!item) throw new NotFoundException('Project not found');
-    return this.shapeProject(item);
+    // G5: the project's owner (authenticated) sees every assignee; anyone else sees
+    // only assignees whose linked account has a known open gate.
+    const ownerView = !!viewerId && !!item.userId && String(item.userId) === viewerId;
+    const [shaped] = await this.withVisibleAssignees([this.shapeProject(item)], () => ownerView);
+    return shaped;
   }
 
   async findBySlug(slug: string, viewerId: string | null = null) {
@@ -172,11 +178,12 @@ export class ProjectsService {
       this.resolveTeamMembers(item, ownerView),
     ]);
     const { team, notShownToClients } = roster;
+    const [visibleShape] = await this.withVisibleAssignees([this.shapeProject(item)], () => ownerView);
     const open = ownerView ? null : await this.rosterGate.visibleUserIds([item.userId ? String(item.userId) : null]);
     const ownerHidden = !ownerView && !!item.userId && !open!.has(String(item.userId));
 
     return {
-      ...this.shapeProject(item),
+      ...visibleShape,
       // A hidden owner's identity is not disclosed through the owner field either.
       ownerId: item.userId && !ownerHidden ? String(item.userId) : null,
       similarProjects,
@@ -188,6 +195,69 @@ export class ProjectsService {
         ? { notShownToClients: notShownToClients.map((userId) => ({ userId, label: 'Not shown to clients' })) }
         : {}),
     };
+  }
+
+  /**
+   * G5 - CMS project members. A CMS project authors its members as assignee EMAILS
+   * on the tasks of its `scope` tree, and `scope` is returned to clients as part of
+   * every project response (this is the active path: the registered
+   * ProjectsController, via shapeProject; there is no separate CMS member endpoint
+   * in this service). Each email is resolved - from the local accounts table, not a
+   * live identity lookup - to its platform account, and kept in the response only if
+   * that account's gate is KNOWN OPEN. An email with no platform account, a closed
+   * gate, or a state never received is removed from the response. The task itself
+   * stays; only the person is not shown.
+   *
+   * Works on COPIES: the stored scope, and so the CMS, is never changed. The
+   * project's owner (and owner/management views, which do not come through here)
+   * keep every assignee.
+   */
+  private async withVisibleAssignees<T extends { scope?: any }>(
+    items: T[],
+    isOwnerView: (item: T) => boolean = () => false,
+  ): Promise<T[]> {
+    const emails = new Set<string>();
+    const collect = (scope: any) => {
+      for (const phase of Array.isArray(scope) ? scope : []) {
+        for (const task of Array.isArray(phase?.tasks) ? phase.tasks : []) {
+          const email = typeof task?.assigneeEmail === 'string' ? task.assigneeEmail.trim().toLowerCase() : '';
+          if (email) emails.add(email);
+        }
+      }
+    };
+    for (const item of items) if (!isOwnerView(item)) collect(item.scope);
+    if (emails.size === 0) return items;
+
+    let accountByEmail = new Map<string, string>();
+    try {
+      const rows: Array<{ id: string; email: string }> = await this.repo.manager.query(
+        `SELECT id::text AS id, lower(email) AS email FROM public.users WHERE lower(email) = ANY($1::text[])`,
+        [Array.from(emails)],
+      );
+      accountByEmail = new Map(rows.map((r) => [r.email, r.id]));
+    } catch {
+      // Unreadable: nobody can be shown (never "everybody").
+    }
+    const open = await this.rosterGate.visibleUserIds(accountByEmail.values());
+
+    return items.map((item) => {
+      if (isOwnerView(item) || !Array.isArray(item.scope)) return item;
+      const scope = item.scope.map((phase: any) =>
+        !phase || !Array.isArray(phase.tasks)
+          ? phase
+          : {
+              ...phase,
+              tasks: phase.tasks.map((task: any) => {
+                if (!task || typeof task.assigneeEmail !== 'string') return task;
+                const account = accountByEmail.get(task.assigneeEmail.trim().toLowerCase());
+                if (account && open.has(account)) return task;
+                const { assigneeEmail: _hidden, ...rest } = task;
+                return rest;
+              }),
+            },
+      );
+      return { ...item, scope };
+    });
   }
 
   private async resolveTeamMembers(

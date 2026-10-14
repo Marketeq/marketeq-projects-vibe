@@ -65,24 +65,46 @@ returns automatically when the gate opens and the new state arrives.
 | `GET /v1/projects/slug/:slug` (project detail roster, `team`, `ownerId`) | public / client, **viewer-aware** | hidden members absent; `ownerId` withheld if hidden; owner sees all + `notShownToClients` |
 | Recently viewed / recommended rails | client | owner-withheld; avatars filtered |
 | `GET /v1/teams`, `GET /v1/teams/:id` | public / client (detail viewer-aware) | owner-withheld; `memberIds` filtered; owner sees all. `v1/my-teams` and `team.findById` RPC are management/internal |
-| CMS project members (assignee emails resolved to accounts) | public / client | shown only with a linked account whose gate is known open; email-only, closed and never-received omitted. The CMS scope/emails are never changed; CMS admin is the management view (note: `CmsProjectsController` is not registered in any module in this branch) |
+| CMS project members (authored as assignee **emails** on each task of the project `scope`) | public / client, **viewer-aware** | The active path is the registered `ProjectsController`: `scope` is returned in every project response (`GET /v1/projects`, `/:id`, `/slug/:slug`). Each task's `assigneeEmail` is resolved to its platform account from the local accounts table (no identity lookup) and kept only when that account's gate is known open; email-only, closed and never-received assignees are removed from the response (the task stays). Copies only - the stored scope/CMS is never changed; the project's owner sees all. |
 | Job-role assignees (`GET /v1/job-listings/:id`) | owner view vs. other viewers | listing owner sees all; any other viewer sees an assignee only when known open, otherwise the role appears unassigned (copy only, stored row untouched) |
 | Marketplace search - PostgreSQL fallback (projects, services, teams) | client | listings whose owner lacks a known open gate withheld by a join on `listings.account_gate_state` |
-| Marketplace search - Algolia (`projects`, `services`, `teams` and replicas) | client | `NOT owner_hidden:true` through a per-index secured key (same mechanism as G1 talent); records are kept in step by the same event, by `owner_id`, with partial updates |
+| Marketplace search - Algolia (`projects`, `services`, `teams` and replicas) | client | **positive** filter `(owner_gate_open:true OR owner_gate_exempt:true)` through a per-index secured key (same mechanism as G1 talent); records are kept in step by the same event, by `owner_id`, with partial updates |
 | Owner/management: publish wizard (`/v1/publish/*`), `my-teams`, `projects/mine`, job-listing create/update | owner / internal (G6) | unfiltered |
 
-## Search index (listing owner)
-* `owner_hidden` and `owner_id` are `filterOnly` attributes on `projects`, `services` and `teams`. Every query on those
-  indices (and replicas) carries `NOT owner_hidden:true` inside a secured key generated from the search-only parent key
-  (`ALGOLIA_SEARCH_API_KEY`), so hits, pages and facet counts cover visible listings only. If the key cannot be created the
-  query fails closed and search is served from the (gated) PostgreSQL fallback.
-* A listing **with** a real user id as owner is indexed `owner_hidden: true` unless listings-service's last known gate is open;
-  a listing **without** an owner (CMS-authored, seeded, `cms-sync`) carries no `owner_hidden` and is never hidden.
-* `identity.gate_changed` also updates `owner_hidden` on every record with that `owner_id` in each listing index (partial
-  updates; nothing deleted or recreated). listings-service re-sends the owner gate of every published, owned listing hourly
-  (`listing.owner_gate_backfill`), so records indexed before this existed are corrected.
-* **Transitional behaviour:** a platform-owned listing indexed before this change has no `owner_hidden` until the first
-  backfill (about a minute after listings-service boots) and is visible in Algolia until then. Ownerless records are never hidden.
+**`CmsProjectsController` is dormant and out of scope.** `apps/listings-service/src/cms-projects/cms-projects.controller.ts` is not
+registered in any module, so it serves no route and returns nothing to clients; it is not claimed as G5 coverage, was left
+unchanged, and was deliberately not registered. The active serializer that returns CMS-authored assignees is the project
+response's `scope` (row above). No other endpoint hydrates CMS members from emails.
+
+## Search index (listing owner) - positive visibility
+Visibility in Algolia is **positive**: a record is shown only if it carries an attribute that says so, so a record that is
+missing the attributes (an old record, not yet backfilled) is **hidden** - there is no "unknown is visible" period.
+
+| Record | Indexed as | Visible? |
+|---|---|---|
+| owned by a platform account, owner's gate known open | `owner_gate_open: true`, `owner_gate_exempt: false`, `owner_id` | yes |
+| owned by a platform account, gate closed **or unknown** | `owner_gate_open: false` | no |
+| no platform owner (CMS-authored, seeded, `cms-sync`, other system value) | `owner_gate_exempt: true`, `owner_gate_open: false` | yes - only because it is **explicitly** exempt |
+| anything else: old record, never backfilled, attribute missing | neither attribute | **no** |
+
+* `owner_gate_open`, `owner_gate_exempt` and `owner_id` are `filterOnly` attributes on `projects`, `services` and `teams`. Every
+  query on those indices (and replicas) carries `(owner_gate_open:true OR owner_gate_exempt:true)` inside a secured key generated
+  from the search-only parent key (`ALGOLIA_SEARCH_API_KEY`), with the gate as the outer AND so a client filter cannot widen it.
+  Hits, pages and facet counts cover visible listings only. If the key cannot be created the query fails closed and search is
+  served from the (equally positive) PostgreSQL fallback.
+* `identity.gate_changed` updates `owner_gate_open` (and un-exempts) on every record with that `owner_id` in each listing index -
+  partial updates; nothing is deleted or recreated.
+* Listing syncs from listings-service carry the owner's last known gate; an unknown state is indexed **closed**. A generic sync
+  call cannot set any of these attributes.
+* **Backfill** (`listing.owner_gate_backfill`, sent by listings-service about a minute after boot and hourly, covering **every
+  published listing and team**): owned listings get the owner's last known gate (unknown = closed), ownerless/system-owned
+  ones are sent as exempt. Partial updates that create nothing; repeatable; a newer decision already written wins.
+* **The PostgreSQL fallback uses the same ownership rule** (a service's owner is `userId`, or a `createdBy` that is a real user
+  id; a project's is `userId`; a team's is a `createdBy` that is a real user id) and requires a known-open state row.
+* **Deploy order matters because old records are hidden until backfilled:** deploy listings-service and algolia-service first,
+  let the first backfill run (check `GET /algolia/gate-sync/health` and a search), and only then deploy search-service with the
+  positive filter. Records that exist in the index but not in `listings.project` / `listings.teams` are never backfilled and stay
+  hidden by design.
 
 ## Configuration / deployment
 Not added to the frozen env templates (DevOps SOP section 5 four-point confirmation applies): `LISTINGS_GATE_*` (above),
@@ -94,9 +116,9 @@ exists; the reconcile fills the rest. search-service's DB fallback requires the 
 ## Validation
 Automated tests cover every rule above (see the G5 specs under `apps/listings-service`, `apps/search-service`,
 `apps/algolia-service`, `apps/api-gateway/src/homepage`, and the publisher spec in identity-verification-service). The SQL
-(state upsert with stale-event protection, and the owner-gate joins for projects/services/teams) was also run against a real
+(state upsert with stale-event protection, and the owner-gate joins for projects, services - including a service owned through `createdBy` - and teams) was also run against a real
 PostgreSQL in a throwaway database, which was dropped afterwards.
 
 **Still needs staging QA:** real RabbitMQ delivery to `listings_service_gate_queue` end to end (verify, lose verification, grace
 expiry, reopen) and the visible effect on the service detail page, marketplace list and homepage; the first reconcile after
-deploy; and a real Algolia app for the secured-key / `owner_hidden` behaviour (no Algolia credentials were available).
+deploy; and a real Algolia app for the secured-key / `owner_gate_open` / `owner_gate_exempt` behaviour, including that an old, un-backfilled record is hidden and that the first backfill makes the expected records visible (no Algolia credentials were available).
