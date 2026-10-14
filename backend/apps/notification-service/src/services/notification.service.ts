@@ -8,6 +8,7 @@ import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
+import { NotificationIdempotency } from '../entities/notification-idempotency.entity';
 import {
   CategoryPref,
   GlobalChannelPrefs,
@@ -56,6 +57,12 @@ export interface NotificationPayload {
   delivery?: { inApp?: boolean; email?: boolean; sms?: boolean };
   recipientEmail?: string;
   origin?: string;
+  /**
+   * Optional. A publisher that can emit the same notification more than once (retry,
+   * redelivery, concurrent workers) sets a key that is stable for that one notification;
+   * it is delivered once and every repeat is dropped.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ResolvedPreferences {
@@ -86,6 +93,7 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
+    @InjectRepository(NotificationIdempotency) private readonly idempotencyRepo: Repository<NotificationIdempotency>,
     private readonly ablyService: AblyNotificationsService,
     private readonly brevoService: BrevoService,
   ) {}
@@ -95,6 +103,31 @@ export class NotificationService {
    * mean there is nothing to store.
    */
   async dispatch(payload: NotificationPayload): Promise<Notification | null> {
+    const key = payload.idempotencyKey?.trim();
+    if (!key) return this.deliver(payload);
+
+    // Claim the key first, atomically: only the delivery that inserts the row goes on.
+    const claimed = await this.idempotencyRepo
+      .createQueryBuilder()
+      .insert()
+      .values({ key })
+      .orIgnore()
+      .returning('key')
+      .execute();
+    if (!claimed.raw?.length) {
+      this.logger.log(`Duplicate notification dropped (idempotency key ${key}, event ${payload.event}).`);
+      return null;
+    }
+    try {
+      return await this.deliver(payload);
+    } catch (err) {
+      // Nothing was delivered: release the claim so a retry is not mistaken for a repeat.
+      await this.idempotencyRepo.delete({ key }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  private async deliver(payload: NotificationPayload): Promise<Notification | null> {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
     const resolved = this.resolvePreferences(prefs);
 

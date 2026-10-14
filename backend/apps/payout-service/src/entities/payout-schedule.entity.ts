@@ -93,6 +93,11 @@ export class PayoutSchedule {
   @Column({ name: 'pause_reason', type: 'varchar', length: 64, nullable: true })
   pauseReason: string | null;
 
+  // G9: set once the "scheduled payout paused" notification for the current verification
+  // pause was accepted by the broker; cleared on resume. See migration 015.
+  @Column({ name: 'pause_notified_at', type: 'timestamptz', nullable: true })
+  pauseNotifiedAt: Date | null;
+
   @Column({ name: 'consecutive_miss_count', type: 'int', default: 0 })
   consecutiveMissCount: number;
 

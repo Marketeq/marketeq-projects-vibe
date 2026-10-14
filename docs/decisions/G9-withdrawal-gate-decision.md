@@ -48,10 +48,10 @@ The gate is re-evaluated at **every** step that can move money, not only when th
 * **Closed:** the payout does not run; the schedule is **paused, never cancelled or deleted**. Only `paused_at` and
   `pause_reason = 'verification_required'` are written; frequency, method, split, threshold, reserve and cadence are untouched.
   The balance is never held.
-* **One notification:** the pause is a conditional update (`WHERE paused_at IS NULL`); only the run that actually changed the
-  row publishes it (`payout.paused`, `reason: verification_required`, message *"Your scheduled payout did not run because account
-  verification is required."*). Later ticks never select a paused schedule, and a forced repeat or a concurrent run publishes
-  nothing.
+* **One notification, delivered through the real notification infrastructure** (path below). The pause is a conditional update
+  (`WHERE paused_at IS NULL`); only the run that actually changed the row hands a notification over. Later ticks never select a
+  paused schedule, and a forced repeat or concurrent run hands over nothing. The existing `payout.paused` exchange event is still
+  published once as before (nothing consumes it; it is not the delivery path).
 * **Unanswered:** nothing runs, nothing is paused, `next_execution_at` is not advanced - the next 30-minute tick retries.
 * **Reopening:** payout-service consumes `identity.gate_changed` on its own durable queue `payout_service_gate_queue`
   (identity-verification-service now emits the same event to a third queue). On `gateOpen: true` it first confirms the decision
@@ -63,6 +63,33 @@ The gate is re-evaluated at **every** step that can move money, not only when th
   run). Manual ack after the work, requeue on failure, malformed messages dropped and acked - the repo's durable-consumer pattern.
 * **Migration:** `database/migrations/014_payout_schedule_pause_reason.sql` adds nullable `pause_reason` and a partial index.
   Existing rows stay `NULL` and are never auto-resumed. No schema synchronization.
+
+## Scheduled-payout notification: actual delivery path
+1. `ScheduleVerificationPauseService.pauseForVerification` (payout-service) wins the conditional pause, then calls
+   `PayoutNotificationPublisher.schedulePausedForVerification`.
+2. The publisher `emit`s `notification.send` on notification-service's own durable queue `notification_service_queue` - the same
+   pattern time-tracking-service and invitations-service use - with the repo's `NotificationPayload` shape:
+   `recipientId` = the `contractor_id` stored on the paused schedule, `category: 'account'` (catalog alias of General),
+   `event: 'payout.schedule_paused_verification'`, title **Scheduled payout paused**, body *"Your scheduled payout didn't run
+   because account verification is required. Your balance and payout schedule are unchanged."*, `link: '/talent-dashboard'`
+   (the existing Verify My Account entry point), `metadata: { scheduleId }`, `origin: 'payout-service'`. It carries no gate
+   decision and no `missingRequirements`.
+3. notification-service's `NotificationController.handleSend` (`@EventPattern('notification.send')`) calls
+   `NotificationService.dispatch`, which applies the recipient's own preferences, stores the in-app row, pushes it over Ably and
+   emails when the recipient enabled email - the existing channels, unchanged.
+4. **Once:** the payload has an `idempotencyKey` = `payout.schedule_paused_verification:<scheduleId>:<pausedAt>` (one pause).
+   `dispatch` first claims the key with an atomic `INSERT ... ON CONFLICT DO NOTHING` into the new `notification_idempotency`
+   table (notification-service migration `1798400000000`); a second delivery - broker redelivery, republish, concurrent worker,
+   duplicate event - finds the claim and is dropped before anything is stored or sent. A delivery that throws releases its claim
+   so a retry is not mistaken for a repeat. Payloads without a key behave exactly as before.
+5. **Failure isolation:** the pause is committed before the hand-off and the hand-off never throws. A broker failure leaves
+   `payout_schedules.pause_notified_at` NULL (migration `015`), and the scheduler's next tick re-publishes it with the same key
+   (deduplicated by step 4). The failure never runs the payout and never unpauses the schedule.
+6. **Resume:** clears `pause_notified_at` so a later, new pause notifies again. No resume notification is sent (no established
+   product pattern requires one).
+7. **Retry / dead-letter:** unchanged. notification-service's queue is consumed exactly as before (no DLX is declared on it and
+   its transport acks automatically - existing behaviour that this change does not alter). The only extra reliability is the
+   publisher-side sweep in step 5 plus the consumer-side key in step 4.
 
 ## Frontend
 Callers audited: `components/withdraw-funds-dialog.tsx` and `app/transfer-funds/page.tsx` (`POST /payouts/initiate`) and
@@ -76,8 +103,7 @@ required copy. The frontend never decides whether the gate is open.
 > UX addition only; the shipped popup keeps its existing wording.
 
 ## Operational notes
-* Delivery of the `payout.paused` notification relies on the existing event pattern: no service currently consumes `payout.*`
-  events (pre-existing gap noted in `PayoutPublisher`). The event is published exactly once per pause; wiring a consumer is
-  independent of this change.
+* notification-service must be deployed with migration `1798400000000` (and payout-service with `015`) before the keyed delivery
+  works; a key sent to an older notification-service is simply ignored by it and the notification is delivered unkeyed.
 * Identity-verification-service must be deployed with the new third gate-change target before the resume path works; until then
   paused schedules stay paused (safe) and the queue simply fills.

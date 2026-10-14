@@ -98,6 +98,11 @@ export class ScheduleExecutionCron {
 
     const startTime = Date.now();
     try {
+      // G9: a verification pause whose notification could not be handed to the broker
+      // at the moment of pausing is re-published (same idempotency key: no duplicate).
+      await this.verificationPause.retryPendingNotifications().catch((err) =>
+        this.logger.warn(`Pending pause notifications not retried: ${err.message}`));
+
       const dueRaw = await this.scheduleRepo.find({
         where: {
           isActive: true,

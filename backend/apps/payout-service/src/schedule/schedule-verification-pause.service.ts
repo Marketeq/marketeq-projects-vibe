@@ -14,6 +14,7 @@ import { PayoutSchedule } from '../entities/payout-schedule.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { PayoutNotificationPublisher } from '../publishers/payout-notification.publisher';
 import { NextExecutionService } from './next-execution.service';
 
 export const PAUSE_REASON_VERIFICATION = 'verification_required';
@@ -31,6 +32,7 @@ export class ScheduleVerificationPauseService {
     private readonly nextExecution: NextExecutionService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly notifications: PayoutNotificationPublisher,
   ) {}
 
   /**
@@ -41,9 +43,10 @@ export class ScheduleVerificationPauseService {
    * Returns whether THIS call paused it.
    */
   async pauseForVerification(schedule: Pick<PayoutSchedule, 'id' | 'contractorId'>): Promise<boolean> {
+    const pausedAt = new Date();
     const result = await this.scheduleRepo.update(
       { id: schedule.id, isActive: true, pausedAt: IsNull() },
-      { pausedAt: new Date(), pauseReason: PAUSE_REASON_VERIFICATION },
+      { pausedAt, pauseReason: PAUSE_REASON_VERIFICATION, pauseNotifiedAt: null },
     );
     if (!result.affected) return false;
 
@@ -60,7 +63,38 @@ export class ScheduleVerificationPauseService {
       message: SCHEDULED_PAYOUT_PAUSED_MESSAGE,
     });
     this.logger.warn(`Schedule ${schedule.id} paused: account verification required`);
+    await this.notifyPaused({ id: schedule.id, contractorId: schedule.contractorId, pausedAt });
     return true;
+  }
+
+  /**
+   * Hands the user-facing notification to notification-service (see
+   * PayoutNotificationPublisher) and records that the broker accepted it. Never throws
+   * and never touches the pause: a failure leaves pause_notified_at NULL for the retry
+   * sweep. The idempotency key is the pause itself, so a repeat (sweep, concurrent
+   * worker, redelivery) is dropped by notification-service.
+   */
+  private async notifyPaused(s: { id: string; contractorId: string; pausedAt: Date }): Promise<void> {
+    const accepted = await this.notifications.schedulePausedForVerification({ id: s.id, contractorId: s.contractorId }, s.pausedAt);
+    if (!accepted) return;
+    await this.scheduleRepo
+      .update({ id: s.id, pauseReason: PAUSE_REASON_VERIFICATION, pausedAt: s.pausedAt }, { pauseNotifiedAt: new Date() })
+      .catch((err) => this.logger.warn(`Could not record the notification for schedule ${s.id}: ${err instanceof Error ? err.message : err}`));
+  }
+
+  /** Re-publishes the notification of verification pauses whose first hand-off failed. */
+  async retryPendingNotifications(limit = 100): Promise<number> {
+    const pending = await this.scheduleRepo.find({
+      where: { pauseReason: PAUSE_REASON_VERIFICATION, pauseNotifiedAt: IsNull(), isActive: true },
+      take: limit,
+    });
+    let sent = 0;
+    for (const s of pending) {
+      if (!s.pausedAt) continue;
+      await this.notifyPaused({ id: s.id, contractorId: s.contractorId, pausedAt: s.pausedAt });
+      sent += 1;
+    }
+    return sent;
   }
 
   /**
@@ -98,7 +132,7 @@ export class ScheduleVerificationPauseService {
       // paused for something else, or already resumed, is not touched.
       const result = await this.scheduleRepo.update(
         { id: schedule.id, pauseReason: PAUSE_REASON_VERIFICATION },
-        { pausedAt: null, pauseReason: null, nextExecutionAt: next, nextRunAt: next },
+        { pausedAt: null, pauseReason: null, pauseNotifiedAt: null, nextExecutionAt: next, nextRunAt: next },
       );
       if (!result.affected) continue;
       resumed += 1;

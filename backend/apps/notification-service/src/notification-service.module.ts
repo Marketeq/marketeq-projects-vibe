@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { Notification } from './entities/notification.entity';
 import { UserPreference } from './entities/user-preference.entity';
+import { NotificationIdempotency } from './entities/notification-idempotency.entity';
 import { NotificationService } from './services/notification.service';
 import { NotificationController } from './controllers/notification.controller';
 import { AblyNotificationsService } from './ably/ably-notifications.service';
@@ -44,14 +45,14 @@ function resolveDatabaseSsl(config: ConfigService) {
         type: 'postgres',
         url: config.get<string>('DATABASE_URL'),
         schema: config.get<string>('DATABASE_SCHEMA') || 'public',
-        entities: [Notification, UserPreference],
+        entities: [Notification, UserPreference, NotificationIdempotency],
         synchronize: false,
         migrationsRun: true,
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         ssl: resolveDatabaseSsl(config),
       }),
     }),
-    TypeOrmModule.forFeature([Notification, UserPreference]),
+    TypeOrmModule.forFeature([Notification, UserPreference, NotificationIdempotency]),
   ],
   controllers: [NotificationController, SupportController],
   providers: [

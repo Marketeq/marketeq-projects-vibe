@@ -43,9 +43,10 @@ function pauseSvc(rows: any[]) {
   const audit = { log: jest.fn(async () => undefined) };
   const publisher = { publishPayoutsPaused: jest.fn(async () => undefined) };
   const methodRepo = { findOne: jest.fn(async () => ({ id: 'm1', methodType: MethodType.WISE, bankCountry: null })) };
+  const notifications = { schedulePausedForVerification: jest.fn(async () => true) };
   const next = new NextExecutionService({} as any, new AchInitiationCalculatorService());
-  const svc = new ScheduleVerificationPauseService(t as any, methodRepo as any, next, audit as any, publisher as any);
-  return { svc, t, audit, publisher };
+  const svc = new ScheduleVerificationPauseService(t as any, methodRepo as any, next, audit as any, publisher as any, notifications as any);
+  return { svc, t, audit, publisher, notifications };
 }
 
 describe('ScheduleVerificationPauseService (G9)', () => {
@@ -72,6 +73,39 @@ describe('ScheduleVerificationPauseService (G9)', () => {
     expect(publisher.publishPayoutsPaused).toHaveBeenCalledWith('c1', expect.objectContaining({
       reason: PAUSE_REASON_VERIFICATION, message: 'Your scheduled payout did not run because account verification is required.',
     }));
+  });
+
+  it('hands the account holder one neutral notification, keyed to this pause', async () => {
+    const row = sched();
+    const { svc, notifications } = pauseSvc([row]);
+    await svc.pauseForVerification(row as any);
+    expect(notifications.schedulePausedForVerification).toHaveBeenCalledTimes(1);
+    expect(notifications.schedulePausedForVerification).toHaveBeenCalledWith({ id: 's1', contractorId: 'c1' }, row.pausedAt);
+    expect(row.pauseNotifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('a notification failure never unpauses the schedule or throws; the sweep re-publishes it', async () => {
+    const row = sched();
+    const { svc, notifications } = pauseSvc([row]);
+    notifications.schedulePausedForVerification.mockResolvedValueOnce(false);
+    await expect(svc.pauseForVerification(row as any)).resolves.toBe(true);
+    expect(row.pausedAt).toBeInstanceOf(Date);
+    expect(row.pauseReason).toBe(PAUSE_REASON_VERIFICATION);
+    expect(row.pauseNotifiedAt ?? null).toBeNull();
+    const pausedAt = row.pausedAt;
+    expect(await svc.retryPendingNotifications()).toBe(1);
+    // same pause -> same pausedAt (so the same idempotency key)
+    expect(notifications.schedulePausedForVerification).toHaveBeenLastCalledWith({ id: 's1', contractorId: 'c1' }, pausedAt);
+    expect(row.pauseNotifiedAt).toBeInstanceOf(Date);
+    expect(await svc.retryPendingNotifications()).toBe(0);
+  });
+
+  it('resume clears the notified marker so a later pause notifies again; no resume notification is sent', async () => {
+    const row = sched({ pausedAt: new Date(), pauseReason: PAUSE_REASON_VERIFICATION, pauseNotifiedAt: new Date(), nextExecutionAt: new Date(Date.now() + 86400_000) });
+    const { svc, notifications } = pauseSvc([row]);
+    await svc.resumeForVerification('c1');
+    expect(row.pauseNotifiedAt).toBeNull();
+    expect(notifications.schedulePausedForVerification).not.toHaveBeenCalled();
   });
 
   it('resumes only verification-paused schedules; others stay paused', async () => {
@@ -176,7 +210,7 @@ describe('scheduled payout cron gate (G9)', () => {
     const row = sched({ pausedAt: new Date(), pauseReason: PAUSE_REASON_VERIFICATION });
     const { c, t, earnings } = cron([row], jest.fn(async () => OPEN));
     await c.runScheduledPayouts();
-    const where = t.find.mock.calls[0][0].where;
+    const where = t.find.mock.calls.map((c: any) => c[0].where).find((w: any) => w.nextExecutionAt);
     expect(where.isActive).toBe(true);
     expect(where.pausedAt).toEqual(IsNull());
     expect(earnings.holdBalance).not.toHaveBeenCalled();

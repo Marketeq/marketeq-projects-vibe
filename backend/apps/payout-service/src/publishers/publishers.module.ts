@@ -4,6 +4,11 @@ import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PayoutPublisher } from './payout.publisher';
+import {
+  NOTIFICATIONS_CLIENT,
+  NOTIFICATION_SERVICE_QUEUE,
+  PayoutNotificationPublisher,
+} from './payout-notification.publisher';
 
 @Module({
   imports: [
@@ -38,9 +43,28 @@ import { PayoutPublisher } from './payout.publisher';
           },
         }),
       },
+      // notification-service's own queue (its main.ts); queue options must match its
+      // declaration exactly or RabbitMQ rejects the re-declare.
+      {
+        name: NOTIFICATIONS_CLIENT,
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [
+              config.get<string>('RABBITMQ_URI') ||
+                config.get<string>('RABBITMQ_URL') ||
+                'amqp://guest:guest@localhost:5672',
+            ],
+            queue: NOTIFICATION_SERVICE_QUEUE,
+            queueOptions: { durable: true },
+          },
+        }),
+      },
     ]),
   ],
-  providers: [PayoutPublisher],
-  exports: [PayoutPublisher],
+  providers: [PayoutPublisher, PayoutNotificationPublisher],
+  exports: [PayoutPublisher, PayoutNotificationPublisher],
 })
 export class PublishersModule {}
