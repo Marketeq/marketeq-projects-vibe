@@ -46,6 +46,7 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
+import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -89,6 +90,7 @@ export class PublishService {
     @Inject(FAQ_ADAPTER)
     private readonly faqAdapter: FaqAdapter,
     private readonly userProfileClient: UserProfileClient,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   private faqContextFromProject(project: Project): FaqContext {
@@ -697,8 +699,28 @@ export class PublishService {
     }>,
   ) {
     await this.ensureProjectOwnership(projectId, userId);
-    await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
-    return this.projectRepository.getProjectMembers(projectId);
+
+    // G7: the people being ADDED must pass the verification gate, exactly like
+    // accepting an invitation. Only people not already on the roster are evaluated
+    // (the owner doing the saving is not), in ONE batch gate request. A blocked,
+    // invalid or duplicate entry is left out and reported - it never fails the
+    // request and never rolls back the others. If the gate cannot be evaluated the
+    // request fails (503) before anything is written.
+    const requested = members ?? [];
+    const current = await this.projectRepository.getProjectMembers(projectId);
+    const outcome = await this.memberGate.evaluate(
+      requested.map((m) => m?.userId),
+      current.map((m) => m.userId),
+    );
+    await this.projectRepository.upsertProjectMembers(
+      projectId,
+      requested.filter((_, i) => outcome.keep[i]),
+    );
+    return {
+      members: await this.projectRepository.getProjectMembers(projectId),
+      // One result per entry sent, in the order sent.
+      results: outcome.results,
+    };
   }
 
   async getRecentQuestions(userId: string, projectId: string) {
@@ -779,7 +801,7 @@ export class PublishService {
     projectId: string,
     dto: UpsertProjectDraftDto,
   ): Promise<Project> {
-    await this.ensureProjectOwnership(projectId, userId);
+    const existingProject = await this.ensureProjectOwnership(projectId, userId);
 
     const payload: Partial<Project> = {};
 
@@ -819,8 +841,18 @@ export class PublishService {
     if (dto.projectType !== undefined) payload.projectType = dto.projectType;
     if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
     if (dto.faqs !== undefined) payload.faqs = dto.faqs;
+    let memberResults: MemberAddResult[] | undefined;
     if (dto.teamMemberIds !== undefined) {
-      payload.teamMemberIds = dto.teamMemberIds;
+      // G7: people newly added through the wizard's team list must pass the
+      // verification gate (one batch request); the rest of the draft still saves.
+      const outcome = await this.memberGate.evaluate(
+        Array.isArray(dto.teamMemberIds) ? dto.teamMemberIds : [],
+        existingProject?.teamMemberIds ?? [],
+      );
+      memberResults = outcome.results;
+      payload.teamMemberIds = (Array.isArray(dto.teamMemberIds) ? dto.teamMemberIds : [])
+        .filter((_, i) => outcome.keep[i])
+        .map(String);
     }
     if (dto.pendingInviteEmails !== undefined) {
       payload.pendingInviteEmails = dto.pendingInviteEmails;
@@ -831,7 +863,7 @@ export class PublishService {
       throw new NotFoundException('Project not found');
     }
 
-    return updated;
+    return memberResults ? Object.assign(updated, { memberResults }) : updated;
   }
 
   async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {

@@ -8,9 +8,10 @@ import { CompanyUser } from './entities/company-user.entity';
 import { User } from '../user/entities/user.entity';
 import { R2Service } from '../storage/r2.service';
 import { AuditModule } from '../audit/audit.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Company, CompanyUser, User]), AuditModule],
+  imports: [TypeOrmModule.forFeature([Company, CompanyUser, User]), AuditModule, IdentityGateModule],
   controllers: [CompaniesController, CompaniesInternalController],
   providers: [CompaniesService, R2Service],
   exports: [CompaniesService],

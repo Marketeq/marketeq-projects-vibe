@@ -24,6 +24,7 @@ import { RelatedTermsService } from './related-terms.service';
 import { taxonomyChildren } from './related-taxonomy';
 import { ReportProjectDto } from './dto/report-project.dto';
 import { RosterGateService } from '../identity-gate/roster-gate.service';
+import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
 
 @Injectable()
 export class ProjectsService {
@@ -46,6 +47,7 @@ export class ProjectsService {
     private readonly faqAdapter: FaqAdapter,
     private readonly relatedTerms: RelatedTermsService,
     private readonly rosterGate: RosterGateService,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   async getSuggestedQuestions(projectId: string): Promise<string[]> {
@@ -483,12 +485,33 @@ export class ProjectsService {
     return { ...this.shapeProject(saved), _contentType: 'project' };
   }
 
+  /**
+   * G7: people added through `teamMemberIds` must pass the verification gate, like
+   * accepting an invitation. One batch request evaluates everyone new (the owner doing
+   * the saving is not); the eligible are added, the rest are left out and reported per
+   * entry in input order. A blocked person never fails the request. If the gate cannot
+   * be evaluated the request fails (503) before anything is written.
+   */
+  private async gateTeamMemberIds(
+    writable: Partial<Project>,
+    existing: string[],
+    exempt: string[] = [],
+  ): Promise<MemberAddResult[] | undefined> {
+    if (!Array.isArray(writable.teamMemberIds)) return undefined;
+    const requested = writable.teamMemberIds;
+    const outcome = await this.memberGate.evaluate(requested, existing, exempt);
+    writable.teamMemberIds = requested.filter((_, i) => outcome.keep[i]).map(String);
+    return outcome.results;
+  }
+
   async create(dto: Partial<Project>, userId: string) {
     if (!userId) {
       throw new ForbiddenException('You do not have permission to create a project');
     }
 
     const writable = this.filterWritableProjectFields(dto);
+    // The creator's own membership of their new project is bootstrap, not gated.
+    const memberResults = await this.gateTeamMemberIds(writable, [], [userId]);
     const title = this.normalizeRequiredText(writable.title, 'Project title is required');
     const description = this.normalizeRequiredText(
       writable.description,
@@ -507,7 +530,7 @@ export class ProjectsService {
 
     const saved = await this.repo.save(item);
     this.emitAlgoliaUpsert(saved);
-    return this.shapeProject(saved);
+    return memberResults ? { ...this.shapeProject(saved), memberResults } : this.shapeProject(saved);
   }
 
   async update(id: string, dto: Partial<Project>, userId: string) {
@@ -515,6 +538,7 @@ export class ProjectsService {
     if (!existing) throw new NotFoundException('Project not found');
     this.assertOwnership(existing, userId);
     const writable = this.filterWritableProjectFields(dto);
+    const memberResults = await this.gateTeamMemberIds(writable, (existing.teamMemberIds ?? []).map(String));
 
     if (Object.prototype.hasOwnProperty.call(writable, 'title')) {
       const title = this.normalizeRequiredText(writable.title, 'Project title cannot be empty');
@@ -536,7 +560,8 @@ export class ProjectsService {
     await this.repo.update(id, writable);
     const updated = await this.repo.findOne({ where: { id } });
     if (updated) this.emitAlgoliaUpsert(updated);
-    return this.findOne(id);
+    const shaped = await this.findOne(id);
+    return memberResults ? { ...shaped, memberResults } : shaped;
   }
 
   /**

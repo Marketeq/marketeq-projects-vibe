@@ -14,9 +14,10 @@ import { FAQ_ADAPTER } from './faq/faq.adapter';
 import { FaqAdapterHeuristic } from './faq/faq.adapter.heuristic';
 import { FaqAdapterHuggingFace } from './faq/faq.adapter.huggingface';
 import { UserProfileModule } from '../shared/user-profile/user-profile.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
-  imports: [HttpModule, RelationalProjectPersistenceModule, UserProfileModule],
+  imports: [HttpModule, RelationalProjectPersistenceModule, UserProfileModule, IdentityGateModule],
   controllers: [PublishController],
   providers: [
     PublishService,

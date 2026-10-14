@@ -12,6 +12,7 @@ import {
   resolveBrokerUrl,
 } from './identity-verification-gate.client';
 import { RosterGateService } from './roster-gate.service';
+import { MemberAddGate } from './member-add-gate';
 import { AccountGateStateService } from './account-gate-state.service';
 import { GateStateConsumer } from './gate-state.consumer';
 import { AccountGateReconciler, ALGOLIA_GATE_CLIENT } from './account-gate-reconciler';
@@ -51,7 +52,7 @@ import { AccountGateReconciler, ALGOLIA_GATE_CLIENT } from './account-gate-recon
     ]),
   ],
   controllers: [GateStateConsumer],
-  providers: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService, AccountGateReconciler],
-  exports: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService],
+  providers: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService, MemberAddGate, AccountGateReconciler],
+  exports: [IdentityVerificationGateClient, AccountGateStateService, RosterGateService, MemberAddGate],
 })
 export class IdentityGateModule {}

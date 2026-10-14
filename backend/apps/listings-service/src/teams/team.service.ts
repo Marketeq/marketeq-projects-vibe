@@ -6,6 +6,7 @@ import { Team } from './entities/team.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
 import { slugify } from '../shared/utils/slugify';
 import { RosterGateService } from '../identity-gate/roster-gate.service';
+import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUIDLike = (v: string) => UUID_RE.test(v);
@@ -20,6 +21,7 @@ export class TeamsService {
     @Inject('ALGOLIA_CLIENT')
     private readonly algoliaClient: ClientProxy,
     private readonly rosterGate: RosterGateService,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   /**
@@ -86,18 +88,52 @@ export class TeamsService {
     return item;
   }
 
+  /**
+   * G7: people added through `memberIds` must pass the verification gate, the same
+   * as accepting an invitation. One batch gate request evaluates everyone new; the
+   * eligible are added, the rest are left out and reported per entry (input order),
+   * and a blocked person never fails the request. The creator's own membership of
+   * their new team is bootstrap and is not gated. If the gate cannot be evaluated the
+   * request fails (503) before anything is written.
+   */
+  private async gateMembers(
+    requested: unknown,
+    existing: string[],
+    exempt: string[] = [],
+  ): Promise<{ memberIds?: string[]; results?: MemberAddResult[] }> {
+    if (!Array.isArray(requested)) return {};
+    const outcome = await this.memberGate.evaluate(requested, existing, exempt);
+    return {
+      memberIds: requested.filter((_, i) => outcome.keep[i]).map(String),
+      results: outcome.results,
+    };
+  }
+
   async create(dto: Partial<Team>, userId: string) {
-    const item = this.repo.create({ ...dto, createdBy: userId, slug: slugify(dto.title!) });
+    const gated = await this.gateMembers(dto.memberIds, [], [userId]);
+    const item = this.repo.create({
+      ...dto,
+      ...(gated.memberIds ? { memberIds: gated.memberIds } : {}),
+      createdBy: userId,
+      slug: slugify(dto.title!),
+    });
     const saved = await this.repo.save(item);
     this.emitUpsert('team.created', saved);
-    return saved;
+    return gated.results ? { ...saved, memberResults: gated.results } : saved;
   }
 
   async update(id: string, dto: Partial<Team>) {
-    await this.repo.update(id, dto);
+    let gated: { memberIds?: string[]; results?: MemberAddResult[] } = {};
+    let write = dto;
+    if (Array.isArray(dto.memberIds)) {
+      const current = await this.findOne(id); // 404 for an unknown team, as before
+      gated = await this.gateMembers(dto.memberIds, current.memberIds ?? []);
+      write = { ...dto, memberIds: gated.memberIds };
+    }
+    await this.repo.update(id, write);
     const updated = await this.findOne(id);
     this.emitUpsert('team.updated', updated);
-    return updated;
+    return gated.results ? { ...updated, memberResults: gated.results } : updated;
   }
 
   async publish(id: string) {

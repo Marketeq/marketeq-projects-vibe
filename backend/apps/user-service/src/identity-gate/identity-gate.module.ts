@@ -10,6 +10,7 @@ import {
   resolveBrokerUrl,
 } from './identity-verification-gate.client';
 import { TalentDiscoveryGateService } from './talent-discovery-gate.service';
+import { MemberAddGate } from './member-add-gate';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { TalentDiscoveryGateService } from './talent-discovery-gate.service';
       },
     ]),
   ],
-  providers: [IdentityVerificationGateClient, TalentDiscoveryGateService],
-  exports: [IdentityVerificationGateClient, TalentDiscoveryGateService],
+  providers: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate],
+  exports: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate],
 })
 export class IdentityGateModule {}

@@ -13,6 +13,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { AddCompanyMemberDto } from './dto/add-company-member.dto';
 import { UpdateCompanyMemberDto } from './dto/update-company-member.dto';
+import { MemberAddGate } from '../identity-gate/member-add-gate';
 
 @Injectable()
 export class CompaniesService {
@@ -27,6 +28,7 @@ export class CompaniesService {
     private readonly userRepo: Repository<User>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   /**
@@ -221,6 +223,11 @@ export class CompaniesService {
       if (dto.permissions !== undefined) existing.permissions = dto.permissions;
       return this.companyUserRepo.save(existing);
     }
+    // G7: a NEW company membership needs the person being added (dto.userId -
+    // never the caller) to have an open verification gate, exactly like accepting an
+    // invitation. Checked before the row is created; updating an existing
+    // member's role/permissions above creates no membership and is not gated.
+    await this.memberGate.assertMayJoin(dto.userId);
     return this.companyUserRepo.save(
       this.companyUserRepo.create({
         companyId,

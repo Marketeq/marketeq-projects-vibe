@@ -5,9 +5,10 @@ import { TeamsController } from './teams.controller';
 import { TeamsInternalController } from './teams-internal.controller';
 import { TeamMember } from './teams.entity';
 import { User } from '../user/entities/user.entity';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TeamMember, User])],
+  imports: [TypeOrmModule.forFeature([TeamMember, User]), IdentityGateModule],
   controllers: [TeamsController, TeamsInternalController],
   providers: [TeamsService],
   exports: [TeamsService],
