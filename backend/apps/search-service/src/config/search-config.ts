@@ -59,6 +59,16 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G1 discovery gate: every talent query carries `gate_open:true` (see
+      // AlgoliaClient), so Algolia filters BEFORE it counts hits, paginates and
+      // builds facet counts. A record without this attribute can never match
+      // and stays hidden until it is backfilled. filterOnly: never a facet the
+      // sidebar can read or count.
+      'filterOnly(gate_open)',
+      // The platform account that owns the profile (identity-verification's
+      // user id). Lets a gate change, which is keyed by account, find the
+      // record without a CMS lookup. Filter-only for the same reason.
+      'filterOnly(account_id)',
       'searchable(skills)',
       'searchable(tags)',
       'job_title',

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { identityVerificationDataSourceOptions } from './database/data-source';
@@ -23,6 +24,13 @@ import { IdentityVerificationService } from './services/identity-verification.se
 import { TwoStageVerificationService } from './services/two-stage-verification.service';
 import { TravelModeReminderJob } from './jobs/travel-mode-reminder.job';
 import { StatusAutoClearJob } from './jobs/status-auto-clear.job';
+import { GateVisibilitySweepJob } from './jobs/gate-visibility-sweep.job';
+import {
+  ALGOLIA_GATE_CLIENT,
+  ALGOLIA_SERVICE_QUEUE,
+  GATE_CHANGE_PUBLISHER,
+  RmqGateChangePublisher,
+} from './gate-index/gate-change-publisher';
 import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
 import { DiditDocumentVerificationProvider } from './providers/document-verification/didit-document-verification.provider';
@@ -57,6 +65,20 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
       HostedKycSession,
     ]),
     ScheduleModule.forRoot(),
+    // G1: the talent search index (algolia-service) is told when an account's
+    // gate_open changes. Fire-and-forget on its own durable queue; if the broker
+    // URL is absent the sweep job stays off and nothing else is affected.
+    ClientsModule.register([
+      {
+        name: ALGOLIA_GATE_CLIENT,
+        transport: Transport.RMQ,
+        options: {
+          urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          queue: ALGOLIA_SERVICE_QUEUE,
+          queueOptions: { durable: true },
+        },
+      },
+    ]),
     // TRVG2 §6.2 confirms the document-submission endpoint must be
     // rate-limited; no threshold is specified by any source. 20
     // requests/60s is this pass's own global default (per-route @Throttle
@@ -82,6 +104,8 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     VerificationSummaryService,
     TravelModeReminderJob,
     StatusAutoClearJob,
+    GateVisibilitySweepJob,
+    { provide: GATE_CHANGE_PUBLISHER, useClass: RmqGateChangePublisher },
     VpnProxyCheckGuard,
     // SUPERSEDED for the two-stage flow by STANDALONE_ID_VERIFICATION_PROVIDER
     // below — left registered, not removed, since the old

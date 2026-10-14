@@ -239,7 +239,7 @@ export class InternalOfferException extends OfferServiceException {
  */
 export class TalentNotHireableException extends OfferServiceException {
   constructor() {
-    super('TALENT_NOT_HIREABLE', 'This talent cannot be hired right now.', HttpStatus.FORBIDDEN);
+    super('TALENT_NOT_HIREABLE', 'This freelancer isn’t available to hire right now', HttpStatus.FORBIDDEN);
   }
 }
 

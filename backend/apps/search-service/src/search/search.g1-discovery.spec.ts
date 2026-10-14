@@ -15,7 +15,7 @@ import {
 } from '../identity-gate/identity-verification-gate.client'
 import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service'
 
-// G1 (Postgres-backed talent discovery only; Algolia is out of scope per Chris):
+// G1, Postgres-backed talent discovery (the Algolia path is covered by algolia.client.gate.spec.ts):
 // unverified talent are silently left out of marketplace search results.
 // Real controller + real SearchService + real DbFallbackService + real gate
 // client over a stubbed RabbitMQ transport. Algolia and Postgres are in-memory.
@@ -197,8 +197,9 @@ describe('G1 - marketplace discovery gate (search-service)', () => {
   const talentHits = (body: any) => (Array.isArray(body.hits) ? body.hits : body.talent.hits)
 
   beforeEach(async () => {
-    // Algolia is intentionally out of scope for G1 (Chris): every request here
-    // is answered by the Postgres-backed path.
+    // Algolia is switched off in this suite so every request is answered by the
+    // Postgres-backed path (also what search falls back to when the Algolia
+    // talent gate cannot be applied). The indexed filter is tested separately.
     algoliaConfigured = false
     fakeAlgolia.search.mockClear()
     fakeAlgolia.multiSearch.mockClear()

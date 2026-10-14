@@ -152,6 +152,8 @@ describe('offer-service account-verification gate (G4)', () => {
       expect(res.status).toBe(403);
       if (actor.who === 'client') {
         expect(res.body.error).toBe('TALENT_NOT_HIREABLE');
+        // Neutral wording (Chris, G1): says nothing about why the talent is unavailable.
+        expect(res.body.message).toBe('This freelancer isn’t available to hire right now');
         // Privacy: nothing about the talent's verification, reason or requirement.
         expect(Object.keys(res.body).sort()).toEqual(['error', 'message', 'path', 'requestId', 'statusCode', 'timestamp']);
         expect(JSON.stringify(res.body)).not.toMatch(/missingRequirements|identity|location|verif|expired|grace|travel/i);
