@@ -9,6 +9,8 @@ import { NotificationService } from './services/notification.service';
 import { NotificationController } from './controllers/notification.controller';
 import { AblyNotificationsService } from './ably/ably-notifications.service';
 import { BrevoService } from './brevo/brevo.service';
+import { NotificationDeliveryService } from './delivery/notification-delivery.service';
+import { NotificationDeliveryMonitor } from './delivery/notification-delivery-monitor';
 import { SupportController } from './support/support.controller';
 import { SupportService } from './support/support.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -57,6 +59,8 @@ function resolveDatabaseSsl(config: ConfigService) {
   controllers: [NotificationController, SupportController],
   providers: [
     NotificationService,
+    NotificationDeliveryService,
+    NotificationDeliveryMonitor,
     AblyNotificationsService,
     BrevoService,
     SupportService,

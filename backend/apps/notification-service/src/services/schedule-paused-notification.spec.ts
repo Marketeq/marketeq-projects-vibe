@@ -5,6 +5,8 @@
 import { of, throwError } from 'rxjs';
 import { NotificationController } from '../controllers/notification.controller';
 import { NotificationService } from './notification.service';
+import { NotificationDeliveryService } from '../delivery/notification-delivery.service';
+import { NotificationDeliveryMonitor } from '../delivery/notification-delivery-monitor';
 import {
   NOTIFICATION_SEND_PATTERN,
   NOTIFICATION_SERVICE_QUEUE,
@@ -44,7 +46,13 @@ function world() {
   const ably = { isEnabled: () => false };
   const brevo = {};
   const service = new NotificationService(notifRepo as any, prefRepo as any, idempotencyRepo as any, ably as any, brevo as any);
-  const controller = new NotificationController(service, brevo as any);
+  const monitor = new NotificationDeliveryMonitor();
+  const controller0 = new NotificationController(service, brevo as any, new NotificationDeliveryService(service, monitor), monitor);
+  const channel = { ack: jest.fn(), nack: jest.fn(), assertQueue: jest.fn(), sendToQueue: jest.fn() };
+  // Same handler the broker calls, with the acknowledgment context the transport supplies.
+  const controller = {
+    handleSend: (data: any) => controller0.handleSend(data, { getChannelRef: () => channel, getMessage: () => ({ content: Buffer.from('{}'), properties: {} }) } as any),
+  };
 
   // The broker: whatever payout-service emits is what the controller handler receives.
   const delivered: Array<{ pattern: string; data: any }> = [];
@@ -53,7 +61,7 @@ function world() {
   };
   const publisher = new PayoutNotificationPublisher(client as any);
   const deliverAll = async () => { for (const d of delivered.splice(0)) await controller.handleSend(d.data); };
-  return { stored, publisher, client, delivered, deliverAll, notifRepo, idempotencyRepo, claimed, controller };
+  return { stored, publisher, client, delivered, deliverAll, notifRepo, idempotencyRepo, claimed, controller, channel };
 }
 
 const schedule = { id: 's1', contractorId: 'acct-1' };
@@ -130,8 +138,9 @@ describe('G9 schedule-paused notification: payout-service -> notification-servic
     await w.publisher.schedulePausedForVerification(schedule, at);
     const msg = w.delivered[0].data;
     w.notifRepo.save.mockRejectedValueOnce(new Error('db down'));
-    await expect(w.controller.handleSend(msg)).rejects.toThrow('db down');
+    await w.controller.handleSend(msg); // fails -> claim released, retry scheduled, original acked
     expect(w.claimed.size).toBe(0);
+    expect(w.channel.sendToQueue).toHaveBeenCalledTimes(1);
     await w.controller.handleSend(msg);
     expect(w.stored).toHaveLength(1);
   });

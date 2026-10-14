@@ -252,12 +252,21 @@ export class NotificationService {
       this.logger.log(
         `Dispatching email: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
       );
-      await this.sendEmailViaBrevo(
-        recipientAddress,
-        payload.title,
-        payload.body,
-        payload.link,
-      );
+      try {
+        await this.sendEmailViaBrevo(
+          recipientAddress,
+          payload.title,
+          payload.body,
+          payload.link,
+        );
+      } catch (err) {
+        // A keyed notification whose in-app row is already stored must not be retried as a
+        // whole (that would store it a second time); the email is best-effort from here.
+        if (!(payload.idempotencyKey && saved)) throw err;
+        this.logger.warn(
+          `Email for stored notification ${saved.id} (key ${payload.idempotencyKey}) failed and will not be retried: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     } else {
       this.logger.log(
         `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${recipientAddress ?? 'none'} event=${payload.event}`,

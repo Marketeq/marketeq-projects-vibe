@@ -87,9 +87,32 @@ The gate is re-evaluated at **every** step that can move money, not only when th
    (deduplicated by step 4). The failure never runs the payout and never unpauses the schedule.
 6. **Resume:** clears `pause_notified_at` so a later, new pause notifies again. No resume notification is sent (no established
    product pattern requires one).
-7. **Retry / dead-letter:** unchanged. notification-service's queue is consumed exactly as before (no DLX is declared on it and
-   its transport acks automatically - existing behaviour that this change does not alter). The only extra reliability is the
-   publisher-side sweep in step 5 plus the consumer-side key in step 4.
+7. **Reliable consumption (manual acknowledgment).** notification-service now consumes `notification_service_queue` with
+   `noAck: false` (`AckingServerRMQ`, `delivery/`). For `notification.send`, `NotificationDeliveryService`:
+   - **success or already-delivered** (dispatch returned, including a duplicate key) -> `ack`;
+   - **dispatch fails** -> `NotificationService` releases the idempotency claim, the **unchanged** message (same body, so the
+     same key) is republished to a durable delay queue and only then is the original acked. The delay queues
+     (`notification_service_queue.retry.30s`, `.retry.5m`, queue-level TTL, dead-lettering back into the main queue through
+     the default exchange) give attempts at +30 s, +30 s, +5 min, +5 min;
+   - **still failing after 5 deliveries**, or **malformed** (can never succeed) -> `notification_service_queue.dlq` with the original
+     body and `x-notification-failure` / `-attempt` / `-failed-at` headers (replayable), an error log
+     (`NOTIFICATION DEAD-LETTERED event=... key=... reason=...`), a monitor counter and the health signal below;
+   - **the retry or dead-letter publish fails** (broker nack, channel closed) -> the original is **not** acked: `nack` with requeue.
+   The retry/dead-letter queues are separate and new; the main queue's declaration (durable, no arguments) is untouched, so
+   there is no `PRECONDITION_FAILED` on deploy. An email failure after the in-app row of a keyed notification was stored is logged
+   and not retried (retrying the whole dispatch would store the row twice).
+8. **Other producers** (audited: invitations-service `notification.send` x3, `notification.email.*` x3 and the
+   `invitation.*` events; listings-service and time-tracking-service `notification.send`; payout-service) publish plain
+   `{pattern, data}` JSON with no headers, so nothing about their payloads changes. Because manual acknowledgment would otherwise
+   leave unhandled or failing events unacknowledged forever (and stall the consumer's prefetch window), every non-`notification.send`
+   pattern is acked after its handler runs - whether it threw or not - and events with no handler (e.g. `invitation.accepted`,
+   `invitation.revoked`) are acked and logged. That is exactly their previous at-most-once behaviour.
+9. **Health/metric signal:** `GET /v1/notifications/health` keeps `status: 'ok'` and adds `notificationDelivery`:
+   `healthy`, `retriedSinceBoot`, `deadLetteredSinceBoot`, `deadLetterQueueDepth` (read from the broker, so it survives restarts),
+   and `lastDeadLetter` (event, key, attempts, reason). `healthy` is false while anything sits in the dead-letter queue.
+   Replay: move the message from the dlq back to `notification_service_queue`; the idempotency key keeps it from duplicating.
+10. A notification failure never reaches the payout: the pause is committed before the hand-off, the hand-off never throws, and
+    nothing in this path touches a balance, a payout or the schedule's paused state.
 
 ## Frontend
 Callers audited: `components/withdraw-funds-dialog.tsx` and `app/transfer-funds/page.tsx` (`POST /payouts/initiate`) and
