@@ -13,6 +13,8 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
+import { Transport } from '@nestjs/microservices';
+import { PAYOUT_GATE_QUEUE } from './consumers/gate-changed.consumer';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 
@@ -49,6 +51,30 @@ async function bootstrap() {
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
+
+  // G9: durable queue of identity-verification-service's `identity.gate_changed`
+  // events (resumes schedules paused for verification). Manual ack - the consumer
+  // acknowledges only after it has acted. No broker URL: the service still starts.
+  const gateBroker = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (gateBroker) {
+    app.connectMicroservice({
+      transport: Transport.RMQ,
+      options: {
+        urls: [gateBroker],
+        queue: PAYOUT_GATE_QUEUE,
+        queueOptions: { durable: true },
+        noAck: false,
+        prefetchCount: 10,
+      },
+    });
+    try {
+      await app.startAllMicroservices();
+    } catch (err: any) {
+      logger.warn(`Gate-change consumer failed to start (non-fatal): ${err.message}`);
+    }
+  } else {
+    logger.warn('RABBITMQ_URI/RABBITMQ_URL not set - gate-change consumer disabled');
+  }
 
   const port = process.env.PORT || 3022;
   await app.listen(port);

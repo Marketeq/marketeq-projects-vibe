@@ -10,6 +10,8 @@ import { ExecutionModule } from '../execution/execution.module';
 import { FeesModule } from '../fees/fees.module';
 import { OAuthModule } from '../oauth/oauth.module';
 
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([PayoutRequest, DepositMethod]),
@@ -17,6 +19,7 @@ import { OAuthModule } from '../oauth/oauth.module';
     ExecutionModule,   // WisePlatformService
     FeesModule,        // PayoutFeeService
     OAuthModule,       // OAuthService.ensureFreshToken — PS-09 v2.0 §11
+    IdentityGateModule, // G9 PayoutExecutionGate
   ],
   providers: [BankPayoutExecutorService],
   exports: [BankPayoutExecutorService],

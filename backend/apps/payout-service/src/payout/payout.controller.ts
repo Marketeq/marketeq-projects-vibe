@@ -12,6 +12,7 @@ import { ValidateAmountDto }   from './dto/validate-amount.dto';
 import { InitiatePayoutDto }   from './dto/initiate-payout.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { Public }              from '../decorators/public.decorator';
+import { PayoutWithdrawalGateGuard } from '../identity-gate/payout-withdrawal-gate.guard';
 
 @Controller('v1/payouts')
 export class PayoutController {
@@ -36,8 +37,11 @@ export class PayoutController {
     return this.payoutService.validateAmount(req.user.userId, dto);
   }
 
-  // Step 4: Initiate withdrawal — creates payout_request, sends magic link
-  @UseGuards(JwtAuthGuard)
+  // Step 4: Initiate withdrawal — creates payout_request, sends magic link.
+  // G9: gate_open (verified or 30-day grace) is required; the guard runs after
+  // JwtAuthGuard and before validation and initiate(), so a blocked
+  // withdrawal has no side effects.
+  @UseGuards(JwtAuthGuard, PayoutWithdrawalGateGuard)
   @Post('initiate')
   @HttpCode(200)
   async initiate(@Request() req: any, @Body() dto: InitiatePayoutDto) {

@@ -34,6 +34,8 @@ import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutService } from '../payout/payout.service';
 import { KycGateService } from '../kyc/kyc-gate.service';
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
+import { ScheduleVerificationPauseService } from './schedule-verification-pause.service';
 
 const CONCURRENCY_CAP = 50;
 const LOCK_TTL_MS = 25 * 60 * 1000; // 25 minutes
@@ -76,6 +78,8 @@ export class ScheduleExecutionCron {
     private readonly publisher: PayoutPublisher,
     private readonly payoutService: PayoutService,
     private readonly kycGateService: KycGateService,
+    private readonly executionGate: PayoutExecutionGate,
+    private readonly verificationPause: ScheduleVerificationPauseService,
     @InjectQueue('schedule-secondary-retry') private readonly retryQueue: Queue,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
@@ -251,6 +255,9 @@ export class ScheduleExecutionCron {
         await this.executeSplit(schedule, payoutUSD, primaryMethod);
       } else {
         const result = await this.executeSinglePayout(schedule, primaryMethod, payoutUSD, 'primary');
+        // G9: blocked by the verification gate - paused (closed) or retried on the
+        // next tick (unanswered); nothing ran, so nothing advances.
+        if (result.status === 'blocked') return;
         await this.nextExecService.advanceNextExecution(schedule, primaryMethod.methodType, primaryMethod.bankCountry);
         await this.scheduleRepo.update(schedule.id, { consecutiveMissCount: 0 });
 
@@ -294,6 +301,7 @@ export class ScheduleExecutionCron {
 
     // Step 1: Execute primary
     const primaryResult = await this.executeSinglePayout(schedule, primaryMethod, primaryUSD, 'primary');
+    if (primaryResult.status === 'blocked') return; // G9
     if (primaryResult.status === 'failed') {
       // PS-17 v2.0 §11.1: primary fails before secondary is attempted —
       // no debit occurred, retry primary on next scheduled cycle,
@@ -340,6 +348,7 @@ export class ScheduleExecutionCron {
 
     // Execute secondary — attempt 1 of PS-17 v2.0 §11.4's 3-attempt schedule.
     const secondaryResult = await this.executeSinglePayout(schedule, secondaryMethod, secondaryUSD, 'secondary');
+    if (secondaryResult.status === 'blocked') return; // G9: gate closed after the primary leg - schedule paused, balance kept
     if (secondaryResult.status === 'failed') {
       // PS-17 v2.0 §11.2: Primary is NOT reversed. Secondary retried
       // independently — queue attempt 2 for 5 minutes from now.
@@ -402,6 +411,7 @@ export class ScheduleExecutionCron {
     }
 
     const result = await this.executeSinglePayout(schedule, secondaryMethod, amountUSD, 'secondary');
+    if (result.status === 'blocked') return; // G9: gate closed - schedule paused, no further retries
     if (result.status !== 'failed') {
       this.logger.log(`Secondary retry ${overallAttempt} for schedule ${scheduleId} succeeded`);
       return;
@@ -461,6 +471,20 @@ export class ScheduleExecutionCron {
     splitRole: 'primary' | 'secondary',
   ): Promise<{ status: string; payoutRequestId?: string }> {
     const amountStr = amountUSD.toFixed(8);
+
+    // G9: the verification gate, for the contractor on the schedule record,
+    // immediately before this payout can move money (before the balance hold).
+    // Closed: the schedule is paused (once, with one notification) and nothing is
+    // held or created. Unanswered: nothing happens now and the next tick retries.
+    const gate = await this.executionGate.evaluate(schedule.contractorId);
+    if (gate.state === 'closed') {
+      await this.verificationPause.pauseForVerification(schedule);
+      return { status: 'blocked' };
+    }
+    if (gate.state === 'unavailable') {
+      this.logger.warn(`Schedule ${schedule.id} not run: verification status could not be confirmed (will retry next tick)`);
+      return { status: 'blocked' };
+    }
 
     // Instant hold — mirrors PayoutService.verifyMagicLink's manual-
     // withdrawal path: debit available_balance before the payout_requests

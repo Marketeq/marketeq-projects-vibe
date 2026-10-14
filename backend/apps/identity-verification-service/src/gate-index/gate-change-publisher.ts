@@ -15,6 +15,11 @@ export const ALGOLIA_SERVICE_QUEUE = 'algolia_service_queue';
 // own durable queue - so a roster never needs a live identity lookup.
 export const LISTINGS_GATE_CLIENT = 'LISTINGS_GATE_CLIENT';
 export const LISTINGS_GATE_QUEUE = 'listings_service_gate_queue';
+// G9: payout-service pauses scheduled payouts when an account's gate closes and
+// resumes the ones it paused for verification when it reopens - same event, its
+// own durable queue.
+export const PAYOUT_GATE_CLIENT = 'PAYOUT_GATE_CLIENT';
+export const PAYOUT_GATE_QUEUE = 'payout_service_gate_queue';
 export const GATE_CHANGED_PATTERN = 'identity.gate_changed';
 const PUBLISH_TIMEOUT_MS = 5000;
 
@@ -40,6 +45,7 @@ export class RmqGateChangePublisher implements GateChangePublisher {
   constructor(
     @Inject(ALGOLIA_GATE_CLIENT) private readonly algolia: ClientProxy,
     @Inject(LISTINGS_GATE_CLIENT) private readonly listings: ClientProxy,
+    @Inject(PAYOUT_GATE_CLIENT) private readonly payout: ClientProxy,
   ) {}
 
   // One identical event to every consumer's own durable queue. If any queue
@@ -50,6 +56,6 @@ export class RmqGateChangePublisher implements GateChangePublisher {
       lastValueFrom(client.emit(GATE_CHANGED_PATTERN, change).pipe(timeout(PUBLISH_TIMEOUT_MS)), {
         defaultValue: undefined,
       });
-    await Promise.all([emit(this.algolia), emit(this.listings)]);
+    await Promise.all([emit(this.algolia), emit(this.listings), emit(this.payout)]);
   }
 }

@@ -27,7 +27,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     // verification UI depend on these reaching the client, not just
     // errorCode/message. Explicitly allowlisted rather than spread so an
     // HttpException can't leak arbitrary response properties to the client.
-    const META_ALLOWLIST = ['attemptsLeft', 'lockedUntil'] as const;
+    const META_ALLOWLIST = ['attemptsLeft', 'lockedUntil', 'missingRequirements'] as const;
     let meta: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {

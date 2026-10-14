@@ -86,6 +86,13 @@ export class PayoutSchedule {
   @Column({ name: 'paused_at', type: 'timestamptz', nullable: true })
   pausedAt: Date | null;
 
+  // G9: why `pausedAt` is set. 'verification_required' = the contractor's
+  // verification gate closed (resumed automatically when it reopens); any other
+  // value, or null with pausedAt set, is a pause this service never resumes by
+  // itself. See database/migrations/014_payout_schedule_pause_reason.sql.
+  @Column({ name: 'pause_reason', type: 'varchar', length: 64, nullable: true })
+  pauseReason: string | null;
+
   @Column({ name: 'consecutive_miss_count', type: 'int', default: 0 })
   consecutiveMissCount: number;
 
