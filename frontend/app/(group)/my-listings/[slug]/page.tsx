@@ -2377,6 +2377,17 @@ function ProjectDetailsInner() {
     !ownerId ||
     ownerId === String((user as any).id)
 
+  // PMCM-259/N2: "View as Client" is owner-or-team-lead only. originalLeadId
+  // (not the editable teamLeadId, which can hold an unsaved pending
+  // reassignment) is the persisted project_members.isLead row, hydrated
+  // on load a few lines below.
+  const isLeadViewing = Boolean(
+    (user as any)?.id &&
+      originalLeadId &&
+      String((user as any).id) === String(originalLeadId)
+  )
+  const canViewAsClient = isOwnerViewing || isLeadViewing
+
   const { isOnline } = useOnlineUsers()
   const onlineTeam = React.useMemo(
     () =>
@@ -10812,6 +10823,7 @@ function ProjectDetailsInner() {
                       </Tooltip>
                     </TooltipProvider>
                   )}
+                  {canViewAsClient && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -10835,6 +10847,7 @@ function ProjectDetailsInner() {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  )}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>

@@ -125,7 +125,7 @@ import {
   ShowMoreLessComp,
   ShowMoreLessRoot,
 } from "@/components/show-more-less"
-import { SaveButton, SectionSearchBar } from "@/components/talent-profile-comps"
+import { SectionSearchBar } from "@/components/talent-profile-comps"
 import {
   Accordion,
   AccordionItem,
@@ -1890,6 +1890,7 @@ export default function ProjectDetails({
   const params = useParams()
   const router = useRouter()
   const { user, openAuthModal } = useAuth()
+  const { toast } = useToast()
   // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
   // expose a callback/promise for "and then do X on success". The signal
   // it does expose, without touching its internals, is `user` itself: it
@@ -1914,6 +1915,10 @@ export default function ProjectDetails({
   }, [user?.id])
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
+  // PMCM-259/E1: a real 404 (nothing matched) keeps the existing "Project
+  // not found" state below; this is only set on a network/5xx failure, so
+  // Retry (bumping refetchKey) shows a distinct full-page error instead.
+  const [loadError, setLoadError] = React.useState(false)
   const [refetchKey, setRefetchKey] = React.useState(0)
   const [claimed, setClaimed] = React.useState(false)
   const [claimStep, setClaimStep] = React.useState<"closed" | "confirm" | "done" | "blocked">("closed")
@@ -2156,6 +2161,10 @@ export default function ProjectDetails({
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
+  // PMCM-259/E2: guards against a stale response winning when the user
+  // toggles again before the first request settles — only the latest
+  // request's outcome is allowed to revert/toast.
+  const favoriteRequestIdRef = React.useRef(0)
   // PMCM-258/AC5: default is "biweekly" per spec; the stored
   // project.pricingPeriod (the seller's choice) wins when present and still
   // valid for this listing's duration. The toggle itself stays local/
@@ -2262,30 +2271,57 @@ export default function ProjectDetails({
   }, [project, sidebarPricing])
 
   React.useEffect(() => {
-    if (!project?.id) return
+    // PMCM-259/E2: anonymous visitors can never have a saved favorite —
+    // skip the call entirely instead of firing a request that always
+    // 401s (no visible noise either way, since findFavoriteByItemId
+    // already swallows a non-ok response, but there's no reason to ask).
+    if (!project?.id || !user?.id) {
+      setIsFavorited(false)
+      return
+    }
     findFavoriteByItemId(String(project.id)).then((fav) => {
       setIsFavorited(!!fav)
     })
-  }, [project?.id])
+  }, [project?.id, user?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
       promptSignIn(() => handleFavoriteToggle(pressed))
       return
     }
+    const previous = isFavorited
     setIsFavorited(pressed)
+    const requestId = ++favoriteRequestIdRef.current
     const itemId = String(project.id)
     const type = project.listingType === "service" ? "service" : "project"
-    if (pressed) {
-      await addFavorite({ type, itemId })
-    } else {
-      const fav = await findFavoriteByItemId(itemId)
-      if (fav) await removeFavorite(fav.id)
+    let succeeded = false
+    try {
+      if (pressed) {
+        succeeded = !!(await addFavorite({ type, itemId }))
+      } else {
+        const fav = await findFavoriteByItemId(itemId)
+        succeeded = fav ? await removeFavorite(fav.id) : true
+      }
+    } catch {
+      succeeded = false
+    }
+    // A later toggle has already superseded this request — its own
+    // result (not this stale one) owns the UI state, so do nothing.
+    if (favoriteRequestIdRef.current !== requestId) return
+    if (!succeeded) {
+      setIsFavorited(previous)
+      toast({
+        variant: "destructive",
+        title: "Unable to save this listing. Please try again.",
+      })
     }
   }
 
   React.useEffect(() => {
     async function fetchProject() {
+      setLoading(true)
+      setLoadError(false)
+      let sawServerError = false
       try {
         const rawSlug = params.slug as string
         // URLs are generated as `${slug}-${shortId}` but the shortId may be
@@ -2315,6 +2351,7 @@ export default function ProjectDetails({
           res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
         }
         if (!res.ok) {
+          if (res.status !== 404) sawServerError = true
           // Try as a service. Service URLs are also generated as
           // `${slug}-${shortId}`, while the API expects the plain slug.
           let svcRes: Response | null = null
@@ -2329,6 +2366,7 @@ export default function ProjectDetails({
             svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
           }
           if (!svcRes.ok) {
+            if (svcRes.status !== 404) sawServerError = true
             // If rawSlug looks like a UUID, try the publish/draft endpoint
             // so "View as Client" works for unpublished drafts
             const isUuid =
@@ -2507,9 +2545,11 @@ export default function ProjectDetails({
                 }
               } catch {
                 // draft fetch failed — fall through
+                sawServerError = true
               }
             }
             setLoading(false)
+            setLoadError(sawServerError)
             return
           }
           const svcData = await svcRes.json()
@@ -2546,6 +2586,10 @@ export default function ProjectDetails({
         })
       } catch (err) {
         console.error(err)
+        // A thrown fetch (offline, DNS failure, connection refused, etc.)
+        // never even reached a status code — always a server/network
+        // problem, never a legitimate 404.
+        setLoadError(true)
       } finally {
         setLoading(false)
       }
@@ -2678,6 +2722,35 @@ export default function ProjectDetails({
               <Shimmer className="h-10 w-full" />
               <Shimmer className="h-10 w-full" />
             </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // PMCM-259/E1: a network/5xx failure gets a distinct full-page error
+  // with Retry, separate from the "Project not found" state below (a real
+  // 404). Retry just bumps refetchKey to re-run the same fetch in place —
+  // no page reload, same pattern used by the owner-preview "View as
+  // Client" retry below and by verify-withdrawal/page.tsx's error state.
+  if (loadError) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Something went wrong
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            We couldn&apos;t load this listing. Please check your connection
+            and try again.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => setRefetchKey((k) => k + 1)}>
+              Retry
+            </Button>
           </div>
         </div>
       </div>
@@ -3245,7 +3318,38 @@ export default function ProjectDetails({
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                         <Button size="md">Star Project</Button>
-                        <SaveButton />
+                        {/* PMCM-259/AC3: talent-profile-comps' <SaveButton />
+                            is an uncontrolled, self-contained toggle with no
+                            props — it never reflected this project's real
+                            favorited state and never called add/removeFavorite.
+                            Swapped for the same FavoriteRoot/Favorite pair
+                            already wired correctly in the sidebar below. */}
+                        <FavoriteRoot
+                          value={isFavorited}
+                          onValueChange={handleFavoriteToggle}
+                        >
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
                         <IconButton
                           className="text-gray-500"
                           variant="outlined"
@@ -3439,7 +3543,7 @@ export default function ProjectDetails({
                                       (tech: string, i: number) => (
                                         <NextLink
                                           key={tech + i}
-                                          href="#"
+                                          href={`/search?industry=${encodeURIComponent(tech)}`}
                                           className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
                                         >
                                           {tech}
@@ -6865,7 +6969,28 @@ export default function ProjectDetails({
                         </Button>
                       </DialogClose>
                       <Button
-                        onClick={() => router.push(`/checkout/${params.slug}`)}
+                        onClick={() => {
+                          // PMCM-259/AC2: pass the buyer's selected Budget
+                          // Calculator period + the amount they saw for it
+                          // along to checkout (which had no existing
+                          // mechanism to receive this) — mirrors the
+                          // existing per-period cost lookup used for the
+                          // sidebar display above.
+                          const activePeriod =
+                            sidebarPricing?.periodOptions.find(
+                              (p) => p.value === selectedPeriod
+                            ) ?? sidebarPricing?.periodOptions[0]
+                          const amount =
+                            activePeriod?.cost ?? sidebarPricing?.totalCost
+                          const qs = new URLSearchParams()
+                          qs.set("period", selectedPeriod)
+                          if (amount != null && amount > 0) {
+                            qs.set("periodAmount", String(Math.round(amount)))
+                          }
+                          router.push(
+                            `/checkout/${params.slug}?${qs.toString()}`
+                          )
+                        }}
                       >
                         Continue to Checkout
                       </Button>
