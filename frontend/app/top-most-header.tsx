@@ -1809,7 +1809,7 @@ export const TopMostHeader = ({
     >
       <div className="flex items-center justify-between md:gap-x-3 lg:gap-x-[50px] md:pt-2 md:pb-1 lg:py-3">
         <NextLink className="focus-visible:outline-none" href="/">
-          <Logo3 className="h-[14.25px] w-[97px] lg:w-[128px] lg:h-[18.81px]" />
+          <Logo3 className="h-[14.253px] w-[97px] lg:w-[128px] lg:h-[18.81px]" />
         </NextLink>
 
         <div className="flex flex-auto gap-x-3 xs:max-lg:ml-3 xs:max-md:hidden">
@@ -1853,7 +1853,7 @@ export const TopMostHeader = ({
           {user ? (
             <>
               <TooltipProvider delayDuration={0}>
-              <div className="flex items-center gap-x-1">
+              <div className="flex items-start">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <InviteWindowTrigger asChild>
@@ -1863,7 +1863,7 @@ export const TopMostHeader = ({
                         variant="ghost"
                         visual="gray"
                       >
-                        <Plus className="size-[18px]" />
+                        <Plus className="size-[15px]" />
                       </IconButton>
                     </InviteWindowTrigger>
                   </TooltipTrigger>
@@ -1878,7 +1878,7 @@ export const TopMostHeader = ({
                   variant="ghost"
                   visual="gray"
                 >
-                  <ThreeHorizontalLines className="text-dark-blue-400" />
+                  <ThreeHorizontalLines className="text-dark-blue-500" />
                 </IconButton>
               </div>
               </TooltipProvider>

@@ -19,6 +19,7 @@ const apiProxyTarget = normalizeProxyTarget(
 )
 
 const nextConfig = {
+  allowedDevOrigins: ["192.168.1.142"],
   async headers() {
     return [
       {
