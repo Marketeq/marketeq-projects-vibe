@@ -332,6 +332,9 @@ export class PayoutPublisher implements OnModuleDestroy {
     // failure_code, Wise reasonCode, ERR_*). It picks the plain-language reason
     // shown to the contractor. Never forwarded downstream.
     failureCode?: string | null;
+    // PMCM-806 N-04: set by the Stripe/Wise cancellation webhooks, which
+    // restore the balance through this same event. Never forwarded downstream.
+    cancelledByProvider?: boolean;
   }): Promise<void> {
     const ok = await this.emit('payout.failed', {
       eventId: randomUUID(),
@@ -353,13 +356,18 @@ export class PayoutPublisher implements OnModuleDestroy {
       failureReason: payload.reason,
     });
 
-    // PMCM-806 N-03. Only once earnings-service has the event that restores the
-    // balance, because the notification leads with "your money is back in
-    // your balance". A DROPPED payout.failed would make that untrue until it
-    // is replayed. Cancellations also arrive here; the notifier skips any
-    // payout whose status is not FAILED.
+    // PMCM-806 N-03 / N-04. Only once earnings-service has the event that
+    // restores the balance, because both notifications lead with "your money
+    // is back in your balance". A DROPPED payout.failed would make that untrue
+    // until it is replayed. Other cancellations (contractor cancel, expired
+    // link) also arrive here without cancelledByProvider; the notifier skips
+    // them because their status is CANCELLED, not FAILED.
     if (ok) {
-      void this.withdrawalNotifier.notifyFailed(payload.payoutRequestId, payload.failureCode);
+      if (payload.cancelledByProvider) {
+        void this.withdrawalNotifier.notifyCancelled(payload.payoutRequestId);
+      } else {
+        void this.withdrawalNotifier.notifyFailed(payload.payoutRequestId, payload.failureCode);
+      }
     }
   }
 

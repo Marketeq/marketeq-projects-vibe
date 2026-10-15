@@ -222,6 +222,7 @@ export class WisePlatformWebhookService {
       reason: 'The transfer was cancelled before funding.',
       failedAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
+      cancelledByProvider: true,
     });
   }
 }
