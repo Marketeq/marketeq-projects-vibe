@@ -454,6 +454,9 @@ async function bootstrap(): Promise<void> {
 
   // --- Phase 4: sync queue + offline protocol --------------------------
   let stopSync: (() => Promise<void>) | null = null;
+  // Shared with phase 6 so the tray and notifications can follow sync state.
+  let networkMonitor: ReturnType<typeof createNetworkMonitor> | null = null;
+  let syncWorker: ReturnType<typeof createSyncWorker> | null = null;
   let detachSyncIpc: (() => void) | null = null;
   let detachEventBridge: (() => void) | null = null;
   let realtimeClient: ReturnType<typeof createRealtimeClient> | null = null;
@@ -489,6 +492,8 @@ async function bootstrap(): Promise<void> {
     realtimeClient = createRealtimeClient({ api, logger });
     network.start();
     worker.start();
+    networkMonitor = network;
+    syncWorker = worker;
 
     // Mirror the web "Screen Capture Settings" choice into local preferences,
     // where the screenshot service reads it at each capture.
@@ -647,6 +652,34 @@ async function bootstrap(): Promise<void> {
       },
     });
     // Tray start is deferred until after app.whenReady() — see below.
+
+    // Offline-first awareness. Tracking never stops for a lost connection —
+    // work queues locally and uploads on reconnect — so the talent is told
+    // instead: the tray follows sync state (red icon + "offline" tooltip
+    // while offline), and a notification fires when the connection drops
+    // during a session and again when it's back.
+    if (syncWorker && networkMonitor) {
+      const worker = syncWorker;
+      const pushTraySync = (s: { online: boolean; queueDepth: number }) =>
+        trayService?.setSyncSnapshot({ online: s.online, queueDepth: s.queueDepth });
+      pushTraySync(worker.getStatus());
+      worker.on('sync:status-changed', pushTraySync);
+      let offlineNoticeShown = false;
+      networkMonitor.on('net:online-changed', (online: boolean) => {
+        pushTraySync(worker.getStatus());
+        if (!online) {
+          const state = timerService?.getCurrentState() ?? 'Idle';
+          if (authService?.getCurrentUser() && state !== 'Idle' && state !== 'Counting') {
+            notificationService.networkOffline();
+            offlineNoticeShown = true;
+          }
+          return;
+        }
+        const { queueDepth } = worker.getStatus();
+        if (offlineNoticeShown || queueDepth > 0) notificationService.networkRestored(queueDepth);
+        offlineNoticeShown = false;
+      });
+    }
 
     // Forward timer bus events into tray + notifications.
     if (timerService) {

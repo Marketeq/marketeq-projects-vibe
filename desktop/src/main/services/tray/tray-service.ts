@@ -102,7 +102,11 @@ export function createTrayService(deps: TrayServiceDeps): TrayService {
   let currentSync: TraySyncSnapshot = { online: true, queueDepth: 0 };
 
   function resolveIconPath(state: TimerStateName): string {
-    const basename = STATE_TO_ICON_BASENAME[state] ?? 'tray-idle';
+    // Offline wins over the timer state: tracking continues offline, and the
+    // red icon is how the talent sees their work is being held locally.
+    const basename = !currentSync.online
+      ? 'tray-offline'
+      : STATE_TO_ICON_BASENAME[state] ?? 'tray-idle';
     const platform = process.platform;
     const ext = platform === 'win32' ? '.ico' : '.png';
     const candidate = path.join(iconsDir, `${basename}${ext}`);

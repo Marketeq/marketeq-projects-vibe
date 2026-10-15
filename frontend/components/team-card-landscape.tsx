@@ -242,29 +242,29 @@ export function TeamCardLandscape({
 
   return (
     <article className="flex w-full flex-col gap-px rounded-lg border border-gray-200 bg-white drop-shadow-[0px_2px_2.5px_rgba(0,0,0,0.04)]">
-      <div className="flex w-full flex-col items-center p-6">
-        <div className="flex w-full items-start gap-10">
+      <div className="flex w-full flex-col items-center p-4 md:p-6">
+        <div className="flex w-full items-start gap-3 md:gap-10">
           <TeamAvatarLoop avatars={avatars} memberCount={memberCount} />
 
           <div className="flex min-w-0 flex-1 items-start justify-between">
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
-              <div className="flex w-full flex-col items-start gap-2 whitespace-nowrap text-dark-blue-400">
+              <div className="flex w-full flex-col items-start gap-2 text-dark-blue-400">
                 <div className="flex w-full flex-col items-start gap-1">
-                  <div className="flex w-full items-center gap-2">
+                  <div className="flex w-full flex-wrap items-center gap-2">
                     <NextLink
                       href={computedHref}
-                      className="text-[22px] font-bold leading-normal hover:underline focus-visible:outline-none"
+                      className="text-lg font-bold leading-normal hover:underline focus-visible:outline-none md:text-[22px]"
                     >
                       {name}
                     </NextLink>
                     {handle && (
-                      <span className="text-xl font-light leading-normal">
+                      <span className="text-sm font-light leading-normal md:text-xl">
                         {handle}
                       </span>
                     )}
                   </div>
                   {tagline && (
-                    <h3 className="w-full overflow-hidden text-ellipsis text-lg font-medium capitalize leading-normal">
+                    <h3 className="w-full overflow-hidden text-ellipsis text-sm font-medium capitalize leading-normal md:text-lg">
                       {tagline}
                     </h3>
                   )}
@@ -399,7 +399,7 @@ export function TeamCardLandscape({
       </div>
 
       {(rate || (skills && skills.length > 0)) && (
-        <div className="flex h-[49px] w-full flex-wrap content-between items-center gap-x-[30px] overflow-clip border-t border-gray-200 bg-[rgba(18,42,75,0.02)] px-6 py-3">
+        <div className="flex min-h-[49px] w-full flex-wrap content-between items-center gap-x-[30px] overflow-clip border-t border-gray-200 bg-[rgba(18,42,75,0.02)] px-4 py-3 md:h-[49px] md:px-6">
           {rate &&
             (() => {
               const rateSuffixMatch = rate.match(/^(.*?)(\/\w+)$/)

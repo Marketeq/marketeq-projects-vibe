@@ -14,7 +14,7 @@ export const ThreeHorizontalLines = ({
     {...props}
   >
     <path
-      d="M19 7C19 7 13.8007 7 8.33333 7M19 1L1 1M19 13H4.66667"
+      d="M19 7C19 7 13.8007 7 8.33333 7M19 1L1 1M19 13H13.6667"
       stroke="currentColor"
       strokeWidth={1.5}
       strokeLinecap="round"
