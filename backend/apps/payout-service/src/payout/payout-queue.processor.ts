@@ -15,6 +15,7 @@ import { CardPayoutExecutorService } from '../card/card-payout-executor.service'
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutService } from './payout.service';
+import { WithdrawalNotifier } from '../notifications/withdrawal-notifier.service';
 
 @Processor({ name: 'payout-processing' })
 export class PayoutQueueProcessor {
@@ -28,6 +29,7 @@ export class PayoutQueueProcessor {
     private readonly bankExecutor: BankPayoutExecutorService,
     private readonly publisher: PayoutPublisher,
     private readonly payoutService: PayoutService,
+    private readonly withdrawalNotifier: WithdrawalNotifier,
   ) {}
 
   @Process('process-payout')
@@ -82,6 +84,18 @@ export class PayoutQueueProcessor {
     const kycOk = await this.payoutService.recheckKycAtExecution(payout.contractorId, payoutRequestId);
     if (!kycOk) return;
 
+    await this.execute(payout);
+
+    // PMCM-806 N-01 "withdrawal submitted". This is the one place every
+    // method's executor runs, and the executor is what moves the payout to
+    // PROCESSING. The notifier re-reads the status and only sends if it is
+    // PROCESSING now. A payout that completed in-line (card) gets N-02 from
+    // the publisher instead, and one that failed gets N-03.
+    void this.withdrawalNotifier.notifySubmitted(payoutRequestId);
+  }
+
+  private async execute(payout: PayoutRequest): Promise<void> {
+    const payoutRequestId = payout.id;
     switch (payout.depositMethod.methodType) {
       case MethodType.CRYPTO:
         return this.cryptoExecutor.executeCryptoPayout(payoutRequestId);

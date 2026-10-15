@@ -3,10 +3,15 @@
 import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { PayoutPublisher } from './payout.publisher';
+import { PayoutRequest } from '../entities/payout-request.entity';
+import { WithdrawalNotifier } from '../notifications/withdrawal-notifier.service';
 
 @Module({
   imports: [
+    // PMCM-806: WithdrawalNotifier re-reads the payout to build the message.
+    TypeOrmModule.forFeature([PayoutRequest]),
     // Targets earnings-service's own inbound queue directly — NestJS's RMQ
     // ClientProxy.emit() calls channel.sendToQueue(this.queue, ...), i.e.
     // it delivers straight into whatever queue name is configured here, not
@@ -38,9 +43,24 @@ import { PayoutPublisher } from './payout.publisher';
           },
         }),
       },
+      // PMCM-806: user-facing withdrawal notifications go to
+      // notification-service's own queue. The declaration matches its main.ts.
+      {
+        name: 'NOTIFICATIONS_CLIENT',
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [config.get<string>('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672')],
+            queue: 'notification_service_queue',
+            queueOptions: { durable: true },
+          },
+        }),
+      },
     ]),
   ],
-  providers: [PayoutPublisher],
-  exports: [PayoutPublisher],
+  providers: [PayoutPublisher, WithdrawalNotifier],
+  exports: [PayoutPublisher, WithdrawalNotifier],
 })
 export class PublishersModule {}

@@ -178,6 +178,7 @@ export class WisePlatformWebhookService {
       reason,
       failedAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
+      failureCode: reasonCode,
     });
 
     // PS-40 §3.2: additive, dedicated event — same rationale as

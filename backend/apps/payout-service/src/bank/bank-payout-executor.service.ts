@@ -446,6 +446,7 @@ export class BankPayoutExecutorService {
       methodType: 'BANK',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: errorCode,
     });
   }
 }

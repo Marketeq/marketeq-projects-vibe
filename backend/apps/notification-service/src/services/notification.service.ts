@@ -33,6 +33,12 @@ import {
   SocialLink,
 } from '../templates/team-invitation.template';
 import { buildInvitationAcceptedEmail } from '../templates/invitation-accepted.template';
+import {
+  buildWithdrawalEmail,
+  buildWithdrawalPush,
+  normalizeFailureReason,
+  WithdrawalKind,
+} from '../templates/withdrawal.template';
 
 /** Public Marketeq profiles linked from the invitation email footer. These are
  * marketing destinations, not environment config. Every environment links to
@@ -56,6 +62,25 @@ export interface NotificationPayload {
   delivery?: { inApp?: boolean; email?: boolean; sms?: boolean };
   recipientEmail?: string;
   origin?: string;
+}
+
+/** PMCM-806: emitted by payout-service (WithdrawalNotifier) on
+ * `notification.payout.withdrawal`. Amounts are 2dp USD strings. */
+export interface WithdrawalNotificationPayload {
+  kind: WithdrawalKind;
+  recipientId: string;
+  recipientEmail?: string | null;
+  firstName?: string | null;
+  payoutRequestId: string;
+  depositMethodId?: string | null;
+  amountUsd: string;
+  feeUsd: string;
+  netAmountUsd: string;
+  methodLabel: string;
+  estimatedArrivalAt?: string | null;
+  arrivalWindow?: string | null;
+  completedAt?: string | null;
+  failureReason?: string | null;
 }
 
 export interface ResolvedPreferences {
@@ -812,5 +837,121 @@ export class NotificationService {
 
     this.logger.log(`Invitation accepted email sent successfully: to=${payload.to}`);
     return { sent: true };
+  }
+
+  /**
+   * PMCM-806: withdrawal submitted / completed / failed. Each is a push (the
+   * in-app notification, delivered live over Ably) and an email.
+   *
+   * The push goes through dispatch(), so the recipient's in-app switches
+   * apply. `payouts` resolves to the General category (CATEGORY_ALIASES).
+   *
+   * The email is transactional and is sent whatever the email preferences say,
+   * like the invitation emails above. Every catalog category defaults email
+   * to off, so under dispatch()'s rules this email would almost never be
+   * delivered. A contractor told nothing about where their money went is the
+   * gap this ticket closes. It still goes to the notification address the
+   * recipient confirmed, when they set one.
+   *
+   * No quiet hours or batching exist in this service, so N-03 is delivered
+   * immediately (AC-07) without any special casing.
+   */
+  async sendWithdrawalNotification(payload: WithdrawalNotificationPayload) {
+    const kind = payload.kind;
+    if (kind !== 'submitted' && kind !== 'completed' && kind !== 'failed') {
+      this.logger.warn(`Withdrawal notification with unknown kind "${String(kind)}" ignored`);
+      return { sent: false };
+    }
+    const methodLabel = payload.methodLabel?.trim() || 'your payout method';
+    const failureReason =
+      kind === 'failed' ? normalizeFailureReason(payload.failureReason) : null;
+
+    // AC-05: there is no per-transaction detail page yet, so every push and
+    // the Track/View receipt CTAs fall back to the payout history list.
+    // Deposit methods and the Withdraw action both live on the Earnings
+    // Overview tab.
+    const historyPath = '/earnings?tab=payouts';
+    const overviewPath = '/earnings?tab=overview';
+
+    const push = buildWithdrawalPush({
+      kind,
+      amountUsd: payload.amountUsd,
+      netAmountUsd: payload.netAmountUsd,
+      methodLabel,
+      estimatedArrivalAt: payload.estimatedArrivalAt,
+    });
+
+    try {
+      await this.dispatch({
+        recipientId: payload.recipientId,
+        category: 'payouts',
+        event: `payout.withdrawal.${kind}`,
+        title: push.title,
+        body: push.body,
+        link: historyPath,
+        metadata: {
+          payoutRequestId: payload.payoutRequestId,
+          depositMethodId: payload.depositMethodId ?? null,
+          amountUsd: payload.amountUsd,
+          netAmountUsd: payload.netAmountUsd,
+          ...(failureReason ? { failureReason } : {}),
+        },
+        delivery: { inApp: true, email: false },
+        origin: 'payout-service',
+      });
+    } catch (err) {
+      // The email below must still go out if the in-app write fails.
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Withdrawal ${kind} in-app notification failed for ${payload.payoutRequestId}: ${message}`,
+      );
+    }
+
+    const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
+    const to = prefs?.channels?.email?.address || payload.recipientEmail || null;
+    if (!to) {
+      this.logger.warn(
+        `Withdrawal ${kind} email skipped for ${payload.payoutRequestId}: no address for user ${payload.recipientId}`,
+      );
+      return { sent: false };
+    }
+
+    const appBase = this.resolveAppBaseUrl();
+    const { subject, html, text } = buildWithdrawalEmail({
+      kind,
+      firstName: payload.firstName,
+      amountUsd: payload.amountUsd,
+      feeUsd: payload.feeUsd,
+      netAmountUsd: payload.netAmountUsd,
+      methodLabel,
+      estimatedArrivalAt: payload.estimatedArrivalAt,
+      arrivalWindow: payload.arrivalWindow,
+      completedAt: payload.completedAt,
+      failureReason,
+      reference: payload.payoutRequestId,
+      transactionUrl: `${appBase}${historyPath}`,
+      reviewMethodUrl: `${appBase}${overviewPath}`,
+      tryAgainUrl: `${appBase}${overviewPath}`,
+      logoUrl: this.resolveLogoUrl(),
+      supportEmail: process.env.SUPPORT_EMAIL?.trim() || 'support@marketeqdigital.com',
+      socialLinks: this.resolveSocialLinks(),
+    });
+
+    await this.sendHtmlViaBrevo(to, subject, html, text);
+    // Without BREVO_API_KEY sendHtmlViaBrevo only logs a mock email, so don't claim delivery.
+    if (!(process.env.BREVO_API_KEY ?? '').trim()) {
+      this.logger.log(`Withdrawal ${kind} email NOT delivered (no BREVO_API_KEY, mock logged) for ${payload.payoutRequestId}: to=${to}`);
+      return { sent: false };
+    }
+    this.logger.log(`Withdrawal ${kind} email sent for ${payload.payoutRequestId}: to=${to}`);
+    return { sent: true };
+  }
+
+  /** The web app's origin for email links. FRONTEND_URL can be a
+   * comma-separated list of trusted origins (see the env templates); the
+   * first one is the canonical app URL. */
+  private resolveAppBaseUrl(): string {
+    const first = (process.env.FRONTEND_URL ?? '').split(',')[0]?.trim();
+    return (first || 'http://localhost:3000').replace(/\/+$/, '');
   }
 }
