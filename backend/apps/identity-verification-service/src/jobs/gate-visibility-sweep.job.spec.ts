@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import 'reflect-metadata'
 import { Logger } from '@nestjs/common'
 import { GateVisibilitySweepJob } from './gate-visibility-sweep.job'
@@ -190,7 +191,7 @@ describe('G1 gate visibility sweep - grace expiry closes visibility at the exact
 describe('G1 gate visibility sweep - failures never lose a change', () => {
   it('a failed publish is retried on the next sweep, and accounts already sent are not re-sent', async () => {
     const t = setup([VERIFIED('a1'), VERIFIED('a2')])
-    t.publisher.publish.mockImplementationOnce(async () => { throw new Error('broker down') }) // a1 fails
+    t.publisher.publish.mockImplementationOnce(async () => { throw new InternalServerErrorException('broker down') }) // a1 fails
     const first = await t.job.sweep(NOW)
     expect(first).toEqual({ published: 1, failed: 1 })
     expect(t.published.map((p) => p.userId)).toEqual(['a2'])

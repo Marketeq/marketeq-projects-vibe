@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import 'reflect-metadata'
 import { ConfigService } from '@nestjs/config'
 import { AlgoliaClient, TALENT_GATE_FILTER, TalentGateUnavailableError, isTalentIndex, withTalentGate } from './algolia.client'
@@ -85,7 +86,7 @@ jest.mock('algoliasearch', () => ({
       }),
       generateSecuredApiKey: jest.fn((opts: any) => {
         generated.push(opts)
-        if ((global as any).__failKeyGen) throw new Error('no entropy')
+        if ((global as any).__failKeyGen) throw new InternalServerErrorException('no entropy')
         return `secured:${opts.restrictions.filters}|${opts.parentApiKey}`
       }),
       setSettings: jest.fn(),

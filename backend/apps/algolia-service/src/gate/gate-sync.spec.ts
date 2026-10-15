@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import 'reflect-metadata'
 import { Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -26,12 +27,12 @@ function fakeAlgolia() {
     calls: [] as Array<{ op: string; args: any[] }>,
     findObjectIDs: jest.fn(async (index: string, attr: string, value: string) => {
       a.calls.push({ op: 'find', args: [index, attr, value] })
-      if (a.failNext > 0) { a.failNext--; throw new Error('algolia 503') }
+      if (a.failNext > 0) { a.failNext--; throw new InternalServerErrorException('algolia 503') }
       return [...table(index).entries()].filter(([, r]) => r[attr] === value).map(([id]) => id)
     }),
     partialUpdateBatch: jest.fn(async (index: string, objects: any[], createIfNotExists = false) => {
       a.calls.push({ op: 'partialUpdateBatch', args: [index, objects, createIfNotExists] })
-      if (a.failNext > 0) { a.failNext--; throw new Error('algolia 503') }
+      if (a.failNext > 0) { a.failNext--; throw new InternalServerErrorException('algolia 503') }
       for (const o of objects) {
         const cur = table(index).get(o.objectID)
         if (!cur && !createIfNotExists) continue
@@ -406,7 +407,7 @@ describe('G5 listing-owner gate (search index, positive visibility)', () => {
     // kept and retried (the retried attempt starts again from the talent record).
     const real = algolia.findObjectIDs.getMockImplementation()!
     algolia.findObjectIDs.mockImplementationOnce(real).mockImplementationOnce(async () => {
-      throw new Error('algolia 503')
+      throw new InternalServerErrorException('algolia 503')
     })
     await gate.applyGateChange({ userId: OWNER, gateOpen: false, occurredAt: iso(T0) }, T0)
     expect(gate.getHealth(T0).pending).toBe(1)

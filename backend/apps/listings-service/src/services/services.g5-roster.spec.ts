@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -60,7 +60,7 @@ describe('G5 - client-facing roster on service listings', () => {
       [S_OWNERLESS, row(S_OWNERLESS, 'ownerless', null, [])],
     ]);
     state = new InMemoryGateState().open(OWNER, VERIFIED, GRACE, ...MORE).closed(UNVERIFIED, LAPSED); // NEVER_SEEN: none
-    gateClient = { checkGate: jest.fn(), checkGateBatch: jest.fn(async () => { throw new Error('identity must not be asked while serving a roster'); }) };
+    gateClient = { checkGate: jest.fn(), checkGateBatch: jest.fn(async () => { throw new InternalServerErrorException('identity must not be asked while serving a roster'); }) };
     writes = [];
     hydrateCalls = [];
 

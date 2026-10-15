@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { algoliasearch } from 'algoliasearch'
@@ -148,7 +149,7 @@ export class AlgoliaClient implements OnModuleInit {
           validUntil,
         },
       })
-      if (!securedKey) throw new Error('empty secured key')
+      if (!securedKey) throw new InternalServerErrorException('empty secured key')
       const client = algoliasearch(this.appId, securedKey)
       this.gatedClients.set(gate.name, { client, renewAtMs: validUntil * 1000 - SECURED_KEY_RENEW_BEFORE_MS })
       return client

@@ -3,6 +3,7 @@ jest.mock('ioredis', () => ({
   default: jest.fn().mockImplementation(() => ({ set: jest.fn(async () => 'OK'), del: jest.fn(async () => 1) })),
 }));
 
+import { InternalServerErrorException } from '@nestjs/common'
 import { IsNull } from 'typeorm';
 import { ScheduleVerificationPauseService, PAUSE_REASON_VERIFICATION } from '../schedule/schedule-verification-pause.service';
 import { ScheduleExecutionCron } from '../schedule/schedule-execution.cron';
@@ -263,7 +264,7 @@ describe('identity.gate_changed consumer (G9)', () => {
   });
 
   it('cannot confirm the gate: requeued, nothing resumed', async () => {
-    const { c, pause } = consumer(jest.fn(async () => { throw new Error('Timeout has occurred'); }));
+    const { c, pause } = consumer(jest.fn(async () => { throw new InternalServerErrorException('Timeout has occurred'); }));
     const { channel, context } = ctx();
     await c.onGateChanged(evt(), context);
     expect(pause.resumeForVerification).not.toHaveBeenCalled();

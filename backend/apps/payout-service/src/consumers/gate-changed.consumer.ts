@@ -10,7 +10,7 @@
 // succeed). Repeats are harmless (resume is idempotent). Before resuming, the
 // decision is confirmed with the owning service, so a stale "open" event arriving
 // after the gate closed again cannot resume a schedule.
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 import { ScheduleVerificationPauseService } from '../schedule/schedule-verification-pause.service';
@@ -53,7 +53,7 @@ export class GateChangedConsumer {
     try {
       if (payload.gateOpen) {
         const outcome = await this.gate.evaluate(payload.userId);
-        if (outcome.state === 'unavailable') throw new Error('gate could not be confirmed');
+        if (outcome.state === 'unavailable') throw new ServiceUnavailableException('gate could not be confirmed');
         if (outcome.state === 'open') await this.pause.resumeForVerification(payload.userId);
       }
       channel.ack(message);

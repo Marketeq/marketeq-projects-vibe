@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import 'reflect-metadata'
 import { INestApplication, ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -274,7 +275,7 @@ describe('G1 - /public/talent (user-service)', () => {
         return of({ data: { choices: [{ message: { content: JSON.stringify({ recommendations: content.candidates.map((c: any) => ({ id: c.id, matchScore: 80, matchedSkills: [], reason: 'ok' })) }) } }] } })
       })
       const res = await request(app.getHttpServer()).post('/public/talent/recommendations').send({ roleTitle: 'Engineer', limit: 30 })
-      if (!httpPost.mock.calls.length) throw new Error('ranker not called: ' + res.status + ' ' + JSON.stringify(res.body).slice(0, 300))
+      if (!httpPost.mock.calls.length) throw new InternalServerErrorException('ranker not called: ' + res.status + ' ' + JSON.stringify(res.body).slice(0, 300))
       const candidates = JSON.parse(httpPost.mock.calls[0][1].messages[1].content).candidates
       expect(candidates).toHaveLength(80)
       expect(candidates.every((c: any) => c.name.startsWith('VisiblePerson'))).toBe(true)

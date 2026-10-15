@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import { NotificationController } from '../controllers/notification.controller';
 import { NotificationService } from '../services/notification.service';
 import { NotificationDeliveryService } from './notification-delivery.service';
@@ -103,7 +104,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   it('temporary failure -> claim released, retried through the delay queue with the SAME key, then delivered', async () => {
     const stored: any[] = [];
     let calls = 0;
-    const save = jest.fn(async (v: any) => { if (++calls <= 2) throw new Error('db down'); const r = { id: 'n1', ...v }; stored.push(r); return r; });
+    const save = jest.fn(async (v: any) => { if (++calls <= 2) throw new InternalServerErrorException('db down'); const r = { id: 'n1', ...v }; stored.push(r); return r; });
     const r = rig({ save });
     r.b.publishToMain(payload());
     await r.drain();
@@ -124,7 +125,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   });
 
   it('permanent failure -> bounded retries, then dead-lettered with the original body; signalled on health', async () => {
-    const save = jest.fn(async () => { throw new Error('boom'); });
+    const save = jest.fn(async () => { throw new InternalServerErrorException('boom'); });
     const r = rig({ save });
     r.b.publishToMain(payload());
     for (let i = 0; i < MAX_DELIVERY_ATTEMPTS + 3; i++) { await r.drain(); r.b.elapseDelays(); }
@@ -141,7 +142,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   });
 
   it('later retries wait in the longer delay queue', async () => {
-    const r = rig({ save: jest.fn(async () => { throw new Error('boom'); }) });
+    const r = rig({ save: jest.fn(async () => { throw new InternalServerErrorException('boom'); }) });
     r.b.publishToMain(payload());
     const seen: string[] = [];
     for (let i = 0; i < 4; i++) {
@@ -153,7 +154,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   });
 
   it('failure while publishing the retry -> the original is not acknowledged, it is requeued', async () => {
-    const r = rig({ save: jest.fn(async () => { throw new Error('db down'); }) });
+    const r = rig({ save: jest.fn(async () => { throw new InternalServerErrorException('db down'); }) });
     r.b.failPublishTo.add(RETRY_QUEUE_SHORT);
     r.b.publishToMain(payload());
     const msg = r.b.q(NOTIFICATION_QUEUE)[0];
@@ -167,7 +168,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   });
 
   it('failure while dead-lettering -> the original stays unacknowledged (requeued)', async () => {
-    const r = rig({ save: jest.fn(async () => { throw new Error('boom'); }) });
+    const r = rig({ save: jest.fn(async () => { throw new InternalServerErrorException('boom'); }) });
     r.b.failPublishTo.add(DEAD_LETTER_QUEUE);
     r.b.publishToMain(payload(), { [ATTEMPT_HEADER]: MAX_DELIVERY_ATTEMPTS - 1 });
     const msg = r.b.q(NOTIFICATION_QUEUE).shift();
@@ -188,7 +189,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
 
   it('idempotency claims are released after a failed delivery, so a retry is not dropped as a duplicate', async () => {
     let fail = true;
-    const r = rig({ save: jest.fn(async (v: any) => { if (fail) throw new Error('x'); return { id: 'n', ...v }; }) });
+    const r = rig({ save: jest.fn(async (v: any) => { if (fail) throw new InternalServerErrorException('x'); return { id: 'n', ...v }; }) });
     await expect(r.service.dispatch(payload() as any)).rejects.toThrow('x');
     expect(r.claimed.size).toBe(0);
     fail = false;
@@ -198,7 +199,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   it('an email failure after the in-app row was stored does not re-store it on retry', async () => {
     const r = rig();
     (r.service as any).prefRepo = { findOne: async () => ({ userId: 'acct-1', channels: { inApp: { enabled: true, bell: true, popup: true, browser: false }, email: { enabled: true, address: 'a@b.c' }, sms: { enabled: false, phone: null } }, categories: {}, notifications: {} }) };
-    (r.service as any).sendEmailViaBrevo = jest.fn(async () => { throw new Error('brevo down'); });
+    (r.service as any).sendEmailViaBrevo = jest.fn(async () => { throw new InternalServerErrorException('brevo down'); });
     r.b.publishToMain(payload({ delivery: { inApp: true, email: true } }));
     await r.drain();
     expect(r.stored).toHaveLength(1);
@@ -207,7 +208,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
   });
 
   it('declares only NEW queues; the main queue is never re-declared', async () => {
-    const r = rig({ save: jest.fn(async () => { throw new Error('x'); }) });
+    const r = rig({ save: jest.fn(async () => { throw new InternalServerErrorException('x'); }) });
     r.b.publishToMain(payload());
     await r.drain();
     const names = r.b.asserted.map((a) => a.name);
@@ -234,7 +235,7 @@ describe('AckingServerRMQ: other producers keep working under manual acknowledgm
 
   it('acks a legacy event whose handler throws (previous at-most-once behaviour)', async () => {
     const s = server(); const c = chan();
-    s.addHandler('notification.email.team_invitation', (async () => { throw new Error('smtp'); }) as any, true);
+    s.addHandler('notification.email.team_invitation', (async () => { throw new InternalServerErrorException('smtp'); }) as any, true);
     const m = msg('notification.email.team_invitation');
     await s.handleMessage(m as any, c as any);
     expect(c.ack).toHaveBeenCalledWith(m);
@@ -256,7 +257,7 @@ describe('AckingServerRMQ: other producers keep working under manual acknowledgm
 
   it('a notification.send handler that throws is left unacknowledged for redelivery', async () => {
     const s = server(); const c = chan();
-    s.addHandler('notification.send', (async () => { throw new Error('x'); }) as any, true);
+    s.addHandler('notification.send', (async () => { throw new InternalServerErrorException('x'); }) as any, true);
     await s.handleMessage(msg('notification.send') as any, c as any);
     expect(c.ack).not.toHaveBeenCalled();
     expect(c.nack).not.toHaveBeenCalled();

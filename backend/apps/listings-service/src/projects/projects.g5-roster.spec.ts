@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import 'reflect-metadata';
 import { ProjectsService } from './projects.service';
 import { ProjectsController } from './projects.controller';
@@ -304,7 +305,7 @@ describe('G5 - client-facing roster on project listings', () => {
     })
 
     it('an unreadable account lookup shows nobody (never everybody)', async () => {
-      ;(service as any).repo.manager.query.mockImplementationOnce(async () => { throw new Error('boom') })
+      ;(service as any).repo.manager.query.mockImplementationOnce(async () => { throw new InternalServerErrorException('boom') })
       const res: any = await service.findOnePublished(P_OWNERLESS)
       expect(emails(res)).toEqual([])
     })

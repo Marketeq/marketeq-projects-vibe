@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import { PayoutStatus } from '../entities/payout-request.entity';
 import { PayoutExecutionGate, VERIFICATION_REQUIRED_AT_EXECUTION } from './payout-execution-gate.service';
 import { IdentityVerificationUnavailableException, VerificationRequiredException } from './identity-gate.exceptions';
@@ -105,7 +106,7 @@ describe('PayoutQueueProcessor gate at dequeue (G9)', () => {
   });
 
   it('unanswered gate: job is retried (throws) and nothing changes, until the last attempt', async () => {
-    const check = jest.fn(async () => { throw new Error('Timeout has occurred'); });
+    const check = jest.fn(async () => { throw new InternalServerErrorException('Timeout has occurred'); });
     const { proc, exec, repo, publisher } = build(check);
     await expect(proc.handleProcessPayout(job(0))).rejects.toBeInstanceOf(IdentityVerificationUnavailableException);
     await expect(proc.handleProcessPayout(job(1))).rejects.toBeInstanceOf(IdentityVerificationUnavailableException);

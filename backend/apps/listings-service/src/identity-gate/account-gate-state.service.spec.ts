@@ -1,3 +1,4 @@
+import { InternalServerErrorException } from '@nestjs/common'
 import { AccountGateStateService } from './account-gate-state.service';
 
 const A = '30000000-0000-4000-8000-000000000001';
@@ -24,7 +25,7 @@ function fakeDataSource() {
         rows.set(userId, { gateOpen, occurredAt: at });
         return [{ userId }];
       }
-      if (failReads) throw new Error('relation "listings.account_gate_state" does not exist');
+      if (failReads) throw new InternalServerErrorException('relation "listings.account_gate_state" does not exist');
       const wanted: string[] = params[0];
       return wanted.filter((id) => rows.has(id)).map((id) => ({ userId: id, gateOpen: rows.get(id)!.gateOpen }));
     }),
