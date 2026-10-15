@@ -13,7 +13,11 @@ import {
   Req,
 } from '@nestjs/common';
 import { EventPattern, Payload } from '@nestjs/microservices';
-import { NotificationService, NotificationPayload } from '../services/notification.service';
+import {
+  NotificationService,
+  NotificationPayload,
+  WithdrawalNotificationPayload,
+} from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { Public } from '../guards/jwt-auth.guard';
@@ -196,6 +200,12 @@ export class NotificationController {
     },
   ) {
     return this.service.sendInvitationAcceptedEmail(data);
+  }
+
+  // PMCM-806: withdrawal submitted / completed / failed, from payout-service.
+  @EventPattern('notification.payout.withdrawal')
+  handleWithdrawalNotification(@Payload() data: WithdrawalNotificationPayload) {
+    return this.service.sendWithdrawalNotification(data);
   }
 
   @EventPattern('invitation.created')

@@ -288,6 +288,7 @@ export class CryptoPayoutExecutorService {
       methodType: 'CRYPTO',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: errorCode,
     });
   }
 

@@ -24,6 +24,7 @@
 - suggestions-service – dynamic job title suggestions, RabbitMQ, 9 .ts files
 - earnings-service – balance tracking, RabbitMQ consumers (6 events), currency conversion (4-tier fallback), CSV/PDF export, Redis caching, service-to-service auth, 5 migrations
 - payout-service – withdrawals, deposit methods (Stripe/PayPal/Wise/Payoneer/Crypto), schedule engine, magic link, KYC gating, pause system, 22 modules, 97 .ts files
+  - PMCM-806 (2026-10-14): withdrawal notifications. payout-service `notifications/withdrawal-notifier.service.ts` emits `notification.payout.withdrawal` (N-01 submitted from the queue processor, N-02/N-03 from PayoutPublisher) → notification-service `sendWithdrawalNotification` (in-app via dispatch, category `payouts`→General; branded email always sent, `templates/withdrawal.template.ts`). Failure reasons map to 5 approved lines in `withdrawal-failure-reason.ts`; links fall back to `/earnings?tab=payouts|overview` until a transaction-detail page exists.
 - offer-service – complete offer lifecycle, counter-offers, milestones, templates, notifications, work schedules, 164 files
 
 ## In Progress

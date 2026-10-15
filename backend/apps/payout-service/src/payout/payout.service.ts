@@ -1042,7 +1042,8 @@ export class PayoutService {
     return d;
   }
 
-  private estimateArrival(r: PayoutRequest): string | null {
+  // Public for WithdrawalNotifier (PMCM-806), which quotes the same estimate.
+  estimateArrival(r: PayoutRequest): string | null {
     const TERMINAL = new Set([PayoutStatus.COMPLETED, PayoutStatus.FAILED, PayoutStatus.CANCELLED]);
     if (TERMINAL.has(r.status)) return null;
     const methodType = r.depositMethod?.methodType;
@@ -1092,7 +1093,9 @@ export class PayoutService {
   // bank name the contractor entered) plus the masked last 4 — instead of the
   // generic "Bank ••••1234" displayLabel that manual US banks get. Other
   // method types keep displayLabel.
-  private historyMethodLabel(m: DepositMethod | null | undefined): string | null {
+  // Public for WithdrawalNotifier (PMCM-806), so emails name the method the
+  // same way payout history does.
+  historyMethodLabel(m: DepositMethod | null | undefined): string | null {
     if (!m) return null;
     const isBank = m.methodType === MethodType.BANK_MANUAL || m.methodType === MethodType.BANK_STRIPE;
     if (isBank && m.nickname) {

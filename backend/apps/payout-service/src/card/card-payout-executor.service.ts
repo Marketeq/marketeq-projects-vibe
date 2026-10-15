@@ -193,6 +193,7 @@ export class CardPayoutExecutorService {
       methodType: 'MARKETEQ_DEBIT_CARD',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: errorCode,
     });
   }
 
