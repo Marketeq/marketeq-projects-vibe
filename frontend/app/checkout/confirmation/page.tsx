@@ -19,5 +19,5 @@ export default async function CheckoutConfirmationPage({
   })
 
   const query = nextSearchParams.toString()
-  redirect(`/checkout/success${query ? `?${query}` : ""}`)
+  redirect(`/checkout/thank-you${query ? `?${query}` : ""}`)
 }

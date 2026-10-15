@@ -17,7 +17,7 @@ const BLOCKED_STATUSES: Array<{ prefix: string; statuses: string[] }> = [
   { prefix: "/checkout/payment", statuses: UNUSABLE_FOR_PAYMENT },
   { prefix: "/checkout/review", statuses: UNUSABLE_FOR_PAYMENT },
   { prefix: "/checkout/confirmation", statuses: UNUSABLE_AFTER_PAYMENT },
-  { prefix: "/checkout/success", statuses: UNUSABLE_AFTER_PAYMENT },
+  { prefix: "/checkout/thank-you", statuses: UNUSABLE_AFTER_PAYMENT },
   { prefix: "/checkout/next-steps", statuses: UNUSABLE_AFTER_PAYMENT },
 ]
 

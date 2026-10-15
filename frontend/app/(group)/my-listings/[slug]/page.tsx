@@ -6103,7 +6103,6 @@ function ProjectDetailsInner() {
                                                         )
                                                       )}
                                                       <TagsInputInput
-                                                        portalDropdown
                                                         placeholder={
                                                           tagsInput.value.length
                                                             ? ""
@@ -7220,7 +7219,6 @@ function ProjectDetailsInner() {
                                                 )
                                               )}
                                               <TagsInputInput
-                                                portalDropdown
                                                 options={field.options}
                                                 placeholder={
                                                   tagsInput.value.length

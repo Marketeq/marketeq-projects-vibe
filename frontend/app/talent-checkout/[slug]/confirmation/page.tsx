@@ -25,6 +25,6 @@ export default async function TalentCheckoutConfirmationPage({
 
   const query = nextSearchParams.toString()
   redirect(
-    `/talent-checkout/${encodeURIComponent(slug)}/success${query ? `?${query}` : ""}`
+    `/talent-checkout/${encodeURIComponent(slug)}/thank-you${query ? `?${query}` : ""}`
   )
 }

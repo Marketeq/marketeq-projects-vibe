@@ -51,7 +51,8 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   const isSessionStep =
     pathname.startsWith("/checkout/") &&
     !isListingStep &&
-    !pathname.startsWith("/checkout/cancel")
+    !pathname.startsWith("/checkout/cancel") &&
+    !pathname.startsWith("/checkout/success")
   const sessionId = isSessionStep ? (searchParams.get("sessionId") ?? "") : ""
   const [loadState, setLoadState] = useState<LoadState>({
     sessionId: "",
