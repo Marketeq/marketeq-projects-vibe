@@ -10,7 +10,6 @@ import { JobListingTask } from '../entities/job-listing-task.entity';
 import { JobListing } from '../entities/job-listing.entity';
 import { TeamMemberRow } from '../entities/job-listing-role-row.entity';
 import { WorkSchedule } from '../enums/work-schedule.enum';
-import { RoleRateService } from '../../shared/pricing/role-rate.service';
 
 // ── Hours per week for each standard schedule ────────────────────────────────
 const HOURS_PER_WEEK: Record<string, number> = {
@@ -270,7 +269,8 @@ export class JobListingBudgetService {
     private readonly taskRepo: Repository<JobListingTask>,
     @InjectRepository(JobListing)
     private readonly listingRepo: Repository<JobListing>,
-    private readonly roleRateService: RoleRateService,
+    private readonly http: HttpService,
+    private readonly config: ConfigService,
   ) {}
 
   // ── getRateUsdCents ─────────────────────────────────────────────────────────
@@ -280,9 +280,6 @@ export class JobListingBudgetService {
   // platform average for the role across all regions/levels.
   // Returns 0 when pricing-service has no rate or is unavailable so the
   // listing can remain saveable/publishable while the budget is stale.
-  // Fetches the hourly median rate for a given role, region, and experience
-  // level. See RoleRateService for the pricing-service / static-fallback
-  // chain.
   async getRateUsdCents(
     roleTitle: string,
     location: string | null,
@@ -339,7 +336,6 @@ export class JobListingBudgetService {
   private signInternalToken(): string {
     const secret = this.config.get<string>('JWT_SECRET') ?? '';
     return jwt.sign({ sub: 'listings-service' }, secret, { expiresIn: '5m' });
-    return this.roleRateService.getRateUsdCents(roleTitle, location, experienceLevel);
   }
 
   // ── calculateTotalBudget ────────────────────────────────────────────────────

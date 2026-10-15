@@ -50,19 +50,6 @@ export class CheckoutDraftGatewayService {
     this.internalServiceToken = config.get<string>('INTERNAL_SERVICE_TOKEN');
   }
 
-  async getListingSummary(listingId: string, clientId: string) {
-    const project = await this.fetchProject(listingId);
-
-    const draft = await firstValueFrom(
-      this.http.post(
-        `${this.checkoutUrl}/v1/checkout/drafts/find-or-create-internal`,
-        {
-          clientId,
-          listingId,
-          phases: project.scope ?? [],
-          projectCost: project.budget ?? null,
-        },
-        {
   private headers(clientId: string) {
     return {
       'x-client-id': clientId,

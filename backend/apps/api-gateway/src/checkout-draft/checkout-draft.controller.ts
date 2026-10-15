@@ -225,11 +225,6 @@ export class CheckoutDraftController {
 
   @Get('listings/:listingId/summary')
   @UseGuards(JwtAuthGuard)
-  getListingSummary(@Param('listingId') listingId: string, @Req() req: any) {
-    return this.checkoutDraftService.getListingSummary(listingId, req.user.userId);
-  getListingSummary(@Param('listingId') listingId: string, @Req() req: Request) {
-    const clientId = (req as any).user?.userId as string;
-
   getListingSummary(@Param('listingId') listingId: string, @UserId() clientId: string) {
     return this.checkoutDraftService.getListingSummary(listingId, clientId);
   }

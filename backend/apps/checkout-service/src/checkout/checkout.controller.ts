@@ -296,14 +296,6 @@ export class CheckoutController {
     return this.checkoutSummaryService.getSummary(listingId);
   }
 
-  // Internal gateway-to-service call — the gateway already authenticated
-  // the user via JwtAuthGuard and passes clientId in the body.
-  @Post("drafts/find-or-create-internal")
-  findOrCreateDraftInternal(@Body() dto: FindOrCreateDraftDto & { clientId: string }) {
-    return this.checkoutDraftService.findOrCreate(dto.clientId, dto.listingId, {
-      phases: dto.phases,
-      projectCost: dto.projectCost,
-    });
   @Post("listings/:listingId/rate-estimate")
   @UseGuards(JwtAuthGuard)
   getListingRateEstimate(
