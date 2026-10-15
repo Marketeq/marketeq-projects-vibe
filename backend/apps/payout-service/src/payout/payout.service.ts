@@ -402,7 +402,7 @@ export class PayoutService {
           actorType: 'contractor', actorId: contractorId,
           action: 'withdrawal.initiated',
           newStatus: PayoutStatus.AWAITING_EDD,
-        });
+        }, em);
 
         return req;
       });
@@ -460,7 +460,7 @@ export class PayoutService {
         actorType: 'contractor', actorId: contractorId,
         action: 'withdrawal.initiated',
         newStatus: PayoutStatus.PENDING_VERIFICATION,
-      });
+      }, em);
 
       return req;
     });
