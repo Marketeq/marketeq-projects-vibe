@@ -284,4 +284,47 @@ describe('outbox', () => {
     const all = (store._all?.() ?? []) as OutboxRow[];
     expect(all.length).toBe(2);
   });
+
+  describe('offline-first: transient (no-response) failures', () => {
+    const enqueueOne = () =>
+      outbox.enqueue({ kind: 'screenshot.confirm', method: 'POST', path: '/screenshots/confirm', payload: {} });
+
+    it('never spends an attempt or dead-letters, however long the outage', () => {
+      const row = enqueueOne();
+      for (let i = 0; i < 50; i++) {
+        outbox.markFailed(row.id, 'connect ECONNREFUSED', { retryable: true, transient: true });
+      }
+      const after = outbox.findById(row.id)!;
+      expect(after.status).toBe('pending');
+      expect(after.attempts).toBe(0);
+      expect(outbox.stats().deadLetter).toBe(0);
+    });
+
+    it('waits before the retry so it does not hammer a dead network', () => {
+      const row = enqueueOne();
+      const after = outbox.markFailed(row.id, 'timeout', { retryable: true, transient: true })!;
+      expect(after.nextRetryAt).toBeGreaterThanOrEqual(nowRef.value + 15_000);
+    });
+
+    it('a real (non-transient) retryable failure still dead-letters at MAX_ATTEMPTS', () => {
+      const row = enqueueOne();
+      for (let i = 0; i < MAX_ATTEMPTS; i++) outbox.markFailed(row.id, 'HTTP 503', { retryable: true });
+      expect(outbox.findById(row.id)!.status).toBe('dead_letter');
+    });
+
+    it('requeueNetworkDeadLetters revives network dead letters but not HTTP rejections', () => {
+      const net = enqueueOne();
+      const legacyEmpty = enqueueOne();
+      const http = enqueueOne();
+      for (let i = 0; i < MAX_ATTEMPTS; i++) outbox.markFailed(net.id, 'connect ECONNREFUSED', { retryable: true });
+      for (let i = 0; i < MAX_ATTEMPTS; i++) outbox.markFailed(legacyEmpty.id, '', { retryable: true });
+      outbox.markFailed(http.id, 'HTTP 422', { retryable: false });
+      expect(outbox.stats().deadLetter).toBe(3);
+
+      expect(outbox.requeueNetworkDeadLetters()).toBe(2);
+      expect(outbox.findById(net.id)).toMatchObject({ status: 'pending', attempts: 0 });
+      expect(outbox.findById(legacyEmpty.id)).toMatchObject({ status: 'pending', attempts: 0 });
+      expect(outbox.findById(http.id)!.status).toBe('dead_letter');
+    });
+  });
 });

@@ -84,6 +84,9 @@ export const MAX_ATTEMPTS = 5;
 // Base delay for in-outbox retry backoff (doc 16 §4).
 export const BASE_BACKOFF_MS = 2_000;
 export const MAX_BACKOFF_MS = 5 * 60_000;
+// Retry delay (plus up to the same again as jitter) after a transient,
+// no-response failure. Attempts are not counted for these.
+export const TRANSIENT_RETRY_MS = 15_000;
 
 // -----------------------------------------------------------------------------
 // Storage interface — the outbox can be backed by SQLite (prod) or an
@@ -99,6 +102,8 @@ export interface OutboxStore {
   count(status: OutboxStatus): number;
   oldestPendingCreatedAt(): number | null;
   deleteCompletedBefore(cutoff: number): number;
+  /** All dead-lettered rows, oldest first. */
+  listDeadLetters(): OutboxRow[];
   // Test helpers
   _all?(): OutboxRow[];
 }
@@ -237,6 +242,12 @@ export function createSqliteOutboxStore(db: DbHandle): OutboxStore {
         .run(cutoff);
       return Number(res.changes ?? 0);
     },
+    listDeadLetters(): OutboxRow[] {
+      const rows = db
+        .prepare(`SELECT * FROM sync_queue WHERE status = 'dead_letter' ORDER BY created_at ASC`)
+        .all() as Record<string, unknown>[];
+      return rows.map(parseRow);
+    },
   };
 }
 
@@ -295,6 +306,12 @@ export function createInMemoryOutboxStore(): OutboxStore {
         }
       }
       return n;
+    },
+    listDeadLetters(): OutboxRow[] {
+      return Array.from(rows.values())
+        .filter((r) => r.status === 'dead_letter')
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map((r) => ({ ...r }));
     },
     _all(): OutboxRow[] {
       return Array.from(rows.values()).map((r) => ({ ...r }));
@@ -398,10 +415,26 @@ export function createOutbox(deps: OutboxDeps) {
   function markFailed(
     id: string,
     error: string,
-    options: { retryable: boolean },
+    options: { retryable: boolean; transient?: boolean },
   ): OutboxRow | null {
     const row = deps.store.findById(id);
     if (!row) return null;
+    // Transient = the request never got an HTTP response (connection refused,
+    // DNS failure, timeout): the device is offline, not the request bad. It
+    // goes back to pending without spending an attempt, so an outage of any
+    // length never dead-letters queued work — it uploads once back online.
+    if (options.transient) {
+      const next: OutboxRow = {
+        ...row,
+        status: 'pending',
+        lastError: error,
+        lastAttemptAt: now(),
+        nextRetryAt: now() + TRANSIENT_RETRY_MS + Math.floor(rnd() * TRANSIENT_RETRY_MS),
+      };
+      deps.store.update(next);
+      log?.debug({ id, kind: row.kind }, 'outbox: transient failure, will retry');
+      return next;
+    }
     const attempts = row.attempts + 1;
     // Non-retryable 4xx -> dead letter immediately.
     if (!options.retryable) {
@@ -468,6 +501,23 @@ export function createOutbox(deps: OutboxDeps) {
     return next;
   }
 
+  /**
+   * Requeues dead letters that died from network failures (anything not
+   * recorded as an `HTTP <status>` error) — work dropped by an outage before
+   * transient failures stopped counting as attempts. Real HTTP rejections
+   * (4xx, repeated 5xx) stay dead. Returns how many were requeued.
+   */
+  function requeueNetworkDeadLetters(): number {
+    let n = 0;
+    for (const row of deps.store.listDeadLetters()) {
+      if (row.lastError?.startsWith('HTTP ')) continue;
+      requeueDeadLetter(row.id);
+      n++;
+    }
+    if (n > 0) log?.info({ n }, 'outbox: requeued network dead letters');
+    return n;
+  }
+
   function stats(): OutboxStats {
     return {
       pending: deps.store.count('pending'),
@@ -495,6 +545,7 @@ export function createOutbox(deps: OutboxDeps) {
     markDone,
     markFailed,
     requeueDeadLetter,
+    requeueNetworkDeadLetters,
     stats,
     purgeDone,
     findById,
