@@ -35,6 +35,14 @@ const LISTINGS_BASE = getPublicListingsUrl()
 
 const API_BASE = getPublicApiUrl() || "http://localhost:4000"
 
+// PMCM-261/AC5: explicit per-call timeouts at this client, not a change to
+// the shared axios instance's default (that default — 30s, service/index.ts
+// — stays as-is for every other feature using it). Uploads get a longer
+// budget than plain CRUD since multi-MB files over a slow connection
+// legitimately take longer than 30s.
+const LISTING_REQUEST_TIMEOUT_MS = 30000
+const LISTING_UPLOAD_TIMEOUT_MS = 120000
+
 export const ProjectAPI = {
   CreateProjectDraft: (
     data: Partial<CreateProjectType> & {
@@ -46,10 +54,14 @@ export const ProjectAPI = {
       videoUrl?: string
     } = {}
   ) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data)
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   GetProjectDraft: (projectId: string) => {
-    return AxiosRequest.get(`${LISTINGS_BASE}/publish/project/${projectId}`)
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/project/${projectId}`, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   UpdateProjectDraft: (
     projectId: string,
@@ -64,15 +76,19 @@ export const ProjectAPI = {
   ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/project/${projectId}`,
-      data
+      data,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   GetMyProjects: () => {
-    return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`)
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/projects/mine`, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   GetProjectMembers: (projectId: string) => {
     return AxiosRequest.get(
-      `${LISTINGS_BASE}/publish/project/${projectId}/members`
+      `${LISTINGS_BASE}/publish/project/${projectId}/members`,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   SaveProjectMembers: (
@@ -87,12 +103,14 @@ export const ProjectAPI = {
   ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/project/${projectId}/members`,
-      { members }
+      { members },
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   GetProjectQuestions: (projectId: string) => {
     return AxiosRequest.get(
-      `${LISTINGS_BASE}/publish/project/${projectId}/questions`
+      `${LISTINGS_BASE}/publish/project/${projectId}/questions`,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   SaveProjectQuestions: (
@@ -113,19 +131,22 @@ export const ProjectAPI = {
   ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/project/${projectId}/questions`,
-      { questions }
+      { questions },
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   SuggestFaqs: (projectId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/faqs/suggest`,
-      {}
+      {},
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   SuggestFaqAnswer: (projectId: string, question: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/faqs/answer`,
-      { question }
+      { question },
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   SuggestSkills: (input: {
@@ -134,7 +155,11 @@ export const ProjectAPI = {
     tags?: string[]
     scopeTaskTitles?: string[]
   }) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/suggest-skills`, input)
+    return AxiosRequest.post(
+      `${LISTINGS_BASE}/publish/suggest-skills`,
+      input,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
+    )
   },
   ReplaceProjectScope: (
     projectId: string,
@@ -161,7 +186,8 @@ export const ProjectAPI = {
       `${LISTINGS_BASE}/publish/project/${projectId}/scope`,
       {
         scope,
-      }
+      },
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   CreateProject: (data: CreateProjectType | FormData) => {
@@ -170,12 +196,17 @@ export const ProjectAPI = {
         "Content-Type":
           data instanceof FormData ? "multipart/form-data" : "application/json",
       },
+      timeout:
+        data instanceof FormData
+          ? LISTING_UPLOAD_TIMEOUT_MS
+          : LISTING_REQUEST_TIMEOUT_MS,
     })
   },
   CreateModeratedSubcategory: (data: { name: string; parentUuid?: string }) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/category/subcategory`,
-      data
+      data,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   UploadMedia: (data: FormData) => {
@@ -183,6 +214,7 @@ export const ProjectAPI = {
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      timeout: LISTING_UPLOAD_TIMEOUT_MS,
     })
   },
   UpdateGalleryImages: (
@@ -192,7 +224,8 @@ export const ProjectAPI = {
   ) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/media/${projectId}/gallery`,
-      { additionalImages, hiddenImages }
+      { additionalImages, hiddenImages },
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   UploadRichTextImage: (data: FormData) => {
@@ -200,51 +233,70 @@ export const ProjectAPI = {
       headers: {
         "Content-Type": "multipart/form-data",
       },
+      timeout: LISTING_UPLOAD_TIMEOUT_MS,
     })
   },
   CreatePhase: (data: CreatePhasePayload) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/phase`, data)
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/phase`, data, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   DuplicatePhase: (phaseId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/phase/${phaseId}/duplicate`,
-      {}
+      {},
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   UpdatePhase: (phaseId: string, data: { name: string }) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/phase/update/${phaseId}`,
-      data
+      data,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   DeletePhase: (phaseId: string) => {
-    return AxiosRequest.del(`${LISTINGS_BASE}/publish/phase/delete/${phaseId}`)
+    return AxiosRequest.del(
+      `${LISTINGS_BASE}/publish/phase/delete/${phaseId}`,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
+    )
   },
   CreateTask: (data: CreateTaskPayload) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/task`, data)
+    return AxiosRequest.post(`${LISTINGS_BASE}/publish/task`, data, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   PublishProject: (projectId: string) => {
     return AxiosRequest.post(
       `${LISTINGS_BASE}/publish/project/${projectId}/publish`,
-      {}
+      {},
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   UnpublishProject: (projectId: string) => {
     return AxiosRequest.put(
       `${LISTINGS_BASE}/publish/project/${projectId}/unpublish`,
-      {}
+      {},
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
   DeleteProject: (projectId: string) => {
-    return AxiosRequest.del(`${LISTINGS_BASE}/publish/project/${projectId}`)
+    return AxiosRequest.del(`${LISTINGS_BASE}/publish/project/${projectId}`, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
   },
   UpdateTask: (id: string, data: UpdateTaskPayload) => {
-    return AxiosRequest.put(`${LISTINGS_BASE}/publish/task/update/${id}`, data)
+    return AxiosRequest.put(
+      `${LISTINGS_BASE}/publish/task/update/${id}`,
+      data,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
+    )
   },
   GetProjectBySlug: async (slug: string) => {
     try {
       const res = await AxiosRequest.get(
-        `${LISTINGS_BASE}/publish/project/slug/${slug}`
+        `${LISTINGS_BASE}/publish/project/slug/${slug}`,
+        { timeout: LISTING_REQUEST_TIMEOUT_MS }
       )
       if (res?.data) return res
     } catch (err: any) {
@@ -264,7 +316,8 @@ export const ProjectAPI = {
   },
   GetSuggestedQuestions: (projectId: string) => {
     return AxiosRequest.get(
-      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`
+      `${LISTINGS_BASE}/v1/projects/${projectId}/suggested-questions`,
+      { timeout: LISTING_REQUEST_TIMEOUT_MS }
     )
   },
 }

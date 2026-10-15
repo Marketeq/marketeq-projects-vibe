@@ -21,6 +21,10 @@ import {
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import {
+  isUnauthorizedError,
+  toUserMessage,
+} from "@/lib/listing-errors"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -9886,6 +9890,28 @@ function PublishProject({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { user, openAuthModal } = useAuth()
+  // PMCM-261/AC3: this wizard has no auth-prompt mechanism of its own
+  // (unlike project-details' promptSignIn, PMCM-402/PMCM-260) — a 401 on
+  // publish/autosave previously fell through to generic/leaky error
+  // handling with no way to resume. Open the modal in place (never
+  // router.push("/sign-in")) and queue the retry, same local
+  // ref-resume pattern as my-listings/project-details.
+  const pendingSessionActionRef = useRef<(() => void) | null>(null)
+  const promptSignInToRetry = useCallback(
+    (retry: () => void) => {
+      pendingSessionActionRef.current = retry
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  useEffect(() => {
+    if (user?.id && pendingSessionActionRef.current) {
+      const action = pendingSessionActionRef.current
+      pendingSessionActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const handledCheckoutStepRef = useRef(false)
 
   useEffect(() => {
@@ -9988,6 +10014,13 @@ function PublishProject({
       router.push("/my-listings")
     } catch (error: any) {
       console.error("Failed to publish project", error)
+      if (isUnauthorizedError(error)) {
+        // PMCM-261/AC3: queue through the ref (below), not `handlePublish`
+        // by name, to always resume with the freshest closure.
+        setIsPublishing(false)
+        promptSignInToRetry(() => handlePublishRef.current())
+        return
+      }
       const errorMessage =
         error?.response?.data?.reason ||
         error?.response?.data?.message ||
@@ -10028,21 +10061,40 @@ function PublishProject({
         setStep(0)
       }
 
+      // PMCM-261/X3: the backend only tags a message with `field`, or
+      // categorizes it as a video/image/content moderation rejection, for
+      // its own deliberate, curated copy (matching PMCM-254's client-side
+      // field copy, and the moderation-rejection exception this ticket
+      // keeps) — safe to show verbatim. Everything else (temporary_
+      // unavailable, "other" — infra errors, unexpected 4xx/5xx) goes
+      // through the shared generic/timeout copy instead of the raw
+      // backend message.
+      const isCuratedMessage =
+        Boolean(field) ||
+        errorType === "video_rejection" ||
+        errorType === "image_rejection" ||
+        errorType === "content_rejection"
+      const safeMessage = isCuratedMessage
+        ? errorMessage
+        : toUserMessage(error)
+
       toast({
         title:
           errorType === "video_rejection"
-            ? `Project rejected: video violated moderation policy. ${errorMessage}`
+            ? `Project rejected: video violated moderation policy. ${safeMessage}`
             : errorType === "image_rejection"
-              ? `Project rejected: image violated moderation policy. ${errorMessage}`
+              ? `Project rejected: image violated moderation policy. ${safeMessage}`
               : errorType === "content_rejection"
-                ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
-                : errorMessage,
+                ? `Project rejected: content did not meet community guidelines. ${safeMessage}`
+                : safeMessage,
         variant: "destructive",
       })
     } finally {
       setIsPublishing(false)
     }
   }
+  const handlePublishRef = useRef(handlePublish)
+  handlePublishRef.current = handlePublish
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
   // listing exists but this account isn't its owner or a team member on it.
@@ -10066,6 +10118,15 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("")
   const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
+  // PMCM-261/E2: each of these autosaves retries on every 2s tick until the
+  // payload changes or the save succeeds — without this, a non-401 failure
+  // would toast every 2 seconds indefinitely. Tracks the payload signature
+  // already toasted for, so each distinct failing edit gets exactly one
+  // toast, not a repeat every tick.
+  const lastDraftToastedForRef = useRef<string>("")
+  const lastScopeToastedForRef = useRef<string>("")
+  const lastFaqsToastedForRef = useRef<string>("")
+  const lastVideoToastedForRef = useRef<string>("")
   // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
   // saveMedia had no ref here and its effect's cleanup only cleared the
   // interval — a media change made within the ~2s polling window, followed
@@ -10497,6 +10558,15 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project draft", error)
+        if (isUnauthorizedError(error)) {
+          // The next 2s poll already re-sends unchanged (lastDraftPayloadRef
+          // was never advanced on failure) — this just also surfaces the
+          // modal and re-triggers it immediately after login.
+          promptSignInToRetry(() => void saveDraftRef.current())
+        } else if (lastDraftToastedForRef.current !== serializedPayload) {
+          lastDraftToastedForRef.current = serializedPayload
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
       }
     }
 
@@ -10543,6 +10613,12 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project scope draft", error)
+        if (isUnauthorizedError(error)) {
+          promptSignInToRetry(() => void saveScopeRef.current())
+        } else if (lastScopeToastedForRef.current !== serializedPayload) {
+          lastScopeToastedForRef.current = serializedPayload
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
       } finally {
         scopeSavesInFlightRef.current -= 1
       }
@@ -10588,6 +10664,12 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project FAQs draft", error)
+        if (isUnauthorizedError(error)) {
+          promptSignInToRetry(() => void saveFaqsRef.current())
+        } else if (lastFaqsToastedForRef.current !== serializedPayload) {
+          lastFaqsToastedForRef.current = serializedPayload
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
       }
     }
 
@@ -10623,6 +10705,12 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project video draft", error)
+        if (isUnauthorizedError(error)) {
+          promptSignInToRetry(() => void saveVideoRef.current())
+        } else if (lastVideoToastedForRef.current !== videoUrl) {
+          lastVideoToastedForRef.current = videoUrl
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
       }
     }
 
@@ -10780,6 +10868,16 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error: any) {
         console.error("Failed to save project media draft", error)
+        if (isUnauthorizedError(error)) {
+          // PMCM-261/AC3: this autosave has no `fields`-style argument to
+          // thread through — reverting the signature ref (like the 5xx
+          // branch below) makes the *next* 2s poll see the payload as
+          // changed again and resend it once logged back in, which is
+          // exactly the retry this needs.
+          lastMediaPayloadRef.current = prevMediaSignature
+          promptSignInToRetry(() => void saveMediaRef.current())
+          return
+        }
         const status = error?.response?.status
         if (!status || status >= 500) {
           lastMediaPayloadRef.current = prevMediaSignature
@@ -10794,15 +10892,37 @@ function PublishProject({
             statusCode: status,
             status: error?.response?.data?.status,
           })
+          // PMCM-261/X3: only the moderation-rejection categories keep
+          // their curated, backend-sourced detail (the exception this
+          // ticket carves out) — anything else uses the shared generic
+          // copy instead of the raw backend message.
+          const isCuratedMessage =
+            errorType === "video_rejection" ||
+            errorType === "image_rejection" ||
+            errorType === "content_rejection"
+          const safeMessage = isCuratedMessage
+            ? errorMessage
+            : toUserMessage(error)
+          // PMCM-261/AC2/E1: this autosave previously left the Dropzone
+          // showing the picked file at its (cosmetic, upload-unrelated)
+          // 100% progress even though the backend rejected it — only a
+          // toast said anything was wrong. Surface it inline on the Media
+          // step too, via the same RHF setError path handlePublish's own
+          // moderation-rejection branch already uses.
+          if (errorType === "video_rejection") {
+            mediaMethods.setError("featuredVideo", { message: safeMessage })
+          } else {
+            mediaMethods.setError("featuredImages", { message: safeMessage })
+          }
           toast({
             title:
               errorType === "video_rejection"
-                ? `Media rejected: video violated moderation policy. ${errorMessage}`
+                ? `Media rejected: video violated moderation policy. ${safeMessage}`
                 : errorType === "image_rejection"
-                  ? `Media rejected: image violated moderation policy. ${errorMessage}`
+                  ? `Media rejected: image violated moderation policy. ${safeMessage}`
                   : errorType === "content_rejection"
-                    ? `Media rejected: content did not meet community guidelines. ${errorMessage}`
-                    : errorMessage,
+                    ? `Media rejected: content did not meet community guidelines. ${safeMessage}`
+                    : safeMessage,
             variant: "destructive",
           })
         }

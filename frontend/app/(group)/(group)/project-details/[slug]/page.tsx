@@ -4,7 +4,12 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { claimProject, checkClaimLimit, recordClaim } from "@/src/lib/api/claim"
+import {
+  ClaimConflictError,
+  claimProject,
+  checkClaimLimit,
+  recordClaim,
+} from "@/src/lib/api/claim"
 import {
   type JoinRequestStatus,
   cancelJoinRequest,
@@ -27,6 +32,7 @@ import {
   scopeDurationDays,
   type PricingPeriod,
 } from "@/lib/listing-pricing"
+import { isUnauthorizedError, toUserMessage } from "@/lib/listing-errors"
 import {
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
@@ -1153,17 +1159,30 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 }
 
 // PMCM-402/QA-221: ApiError.body is the raw response text — pull the
-// Nest exception's own `message` out of it so a specific rejection (e.g.
-// "Project has no team members available to chat with") reaches the user
+// Nest exception's own `message` out of it so the one specific, known
+// rejection this was written for ("Project has no team members available
+// to chat with", messaging-service's threads.service.ts) reaches the user
 // instead of a generic string.
+// PMCM-261/X3: this used to pass through WHATEVER message the backend put
+// in that body, for any error on this call — only that one known, curated
+// string is safe to show verbatim; everything else now goes through the
+// shared generic/timeout copy instead of leaking a raw backend message.
+const KNOWN_CHAT_ERROR_MESSAGES = [
+  "Project has no team members available to chat with",
+]
 const extractApiErrorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof ApiError) {
     try {
       const parsed = JSON.parse(err.body)
-      if (typeof parsed?.message === "string") return parsed.message
+      if (
+        typeof parsed?.message === "string" &&
+        KNOWN_CHAT_ERROR_MESSAGES.includes(parsed.message)
+      ) {
+        return parsed.message
+      }
     } catch {}
   }
-  return fallback
+  return toUserMessage(err) || fallback
 }
 
 const Chats = ({
@@ -2009,7 +2028,16 @@ export default function ProjectDetails({
       setRefetchKey((k) => k + 1)
       setClaimStep("done")
     } catch (e: any) {
-      setClaimError(e?.message ?? "Could not claim this project right now")
+      // PMCM-261/X3: a 409 conflict's message ("already claimed by someone
+      // else") is a genuinely useful, curated-feeling detail worth keeping
+      // — everything else (a generic Error from claim.ts's catch-all
+      // `body?.message ?? fallback`, which could be anything the backend
+      // happened to say) goes through the shared generic copy instead.
+      setClaimError(
+        e instanceof ClaimConflictError
+          ? e.message
+          : toUserMessage(e)
+      )
     } finally {
       setClaimBusy(false)
     }
@@ -2383,8 +2411,14 @@ export default function ProjectDetails({
         const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
+        // PMCM-261/AC5: these plain fetch() calls bypassed the shared axios
+        // instance's 30s default entirely — a hung connection would wait
+        // forever instead of ever reaching the loadError/Retry state below.
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store' })
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(30000),
+          })
           if (r.ok) {
             res = r
             slug = candidate
@@ -2394,7 +2428,10 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, {
+            cache: 'no-store',
+            signal: AbortSignal.timeout(30000),
+          })
         }
         if (!res.ok) {
           if (res.status !== 404) sawServerError = true
@@ -2402,14 +2439,19 @@ export default function ProjectDetails({
           // `${slug}-${shortId}`, while the API expects the plain slug.
           let svcRes: Response | null = null
           for (const candidate of candidates) {
-            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`)
+            const r = await fetch(
+              `${apiBase}/v1/services/slug/${candidate}`,
+              { signal: AbortSignal.timeout(30000) }
+            )
             if (r.ok) {
               svcRes = r
               break
             }
           }
           if (!svcRes) {
-            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, {
+              signal: AbortSignal.timeout(30000),
+            })
           }
           if (!svcRes.ok) {
             if (svcRes.status !== 404) sawServerError = true

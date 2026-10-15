@@ -29,6 +29,10 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import {
+  isUnauthorizedError,
+  toUserMessage,
+} from "@/lib/listing-errors"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -1530,7 +1534,30 @@ function ProjectDetailsInner() {
   const params = useParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
+  // PMCM-261/AC3: this editor is already wrapped in AuthenticatedRoute (see
+  // the default export below), which only gates the *initial* mount — a
+  // session that goes bad mid-edit (save/upload/publish 401s after the
+  // refresh-and-retry in service/index.ts's axios interceptor also fails)
+  // previously fell through to generic/silent error handling. Mirrors
+  // project-details' promptSignIn + latest-ref resume pattern (PMCM-402/
+  // PMCM-260) locally: open the modal in place, queue the exact retry, and
+  // run it once `user` flips truthy again — never router.push("/sign-in").
+  const pendingSessionActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignInToRetry = React.useCallback(
+    (retry: () => void) => {
+      pendingSessionActionRef.current = retry
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (user?.id && pendingSessionActionRef.current) {
+      const action = pendingSessionActionRef.current
+      pendingSessionActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -2030,6 +2057,14 @@ function ProjectDetailsInner() {
             )
           } catch (err) {
             console.error("Failed to save gallery images:", err)
+            if (isUnauthorizedError(err)) {
+              // Safe to re-queue this exact closure: it only ever reads
+              // galleryUrlsRef.current (always fresh), never a stale value
+              // captured at creation time.
+              promptSignInToRetry(() => schedulePersist())
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
           }
         }, 500)
       }
@@ -2050,7 +2085,14 @@ function ProjectDetailsInner() {
             const res = await ProjectAPI.UploadMedia(formData)
             finalUrl = res?.data?.url || res?.data?.featuredImage
           } catch (err: any) {
-            if (isModerationRejection(err)) {
+            if (isUnauthorizedError(err)) {
+              // PMCM-261/AC3: queue this exact file for re-upload after
+              // login, through the ref (below) to avoid PMCM-260's
+              // stale-closure bug.
+              promptSignInToRetry(() =>
+                handleGalleryUploadRef.current([file], replaceIndex)
+              )
+            } else if (isModerationRejection(err)) {
               toast({
                 title: backendErrorMessage(err),
                 variant: "destructive",
@@ -2073,9 +2115,9 @@ function ProjectDetailsInner() {
               // PMCM-256 follow-up: inline, not a toast — this is a
               // rejected-media error (the backend's own type/size
               // validation), same category as the client-side checks above.
-              setGalleryError(
-                backendErrorMessage(err) || "Upload failed. Please try again."
-              )
+              // PMCM-261/X3: shared generic/timeout copy, not the raw
+              // backend message.
+              setGalleryError(toUserMessage(err))
             }
           }
 
@@ -2095,8 +2137,10 @@ function ProjectDetailsInner() {
         })
       )
     },
-    [project.id, toast]
+    [project.id, toast, promptSignInToRetry]
   )
+  const handleGalleryUploadRef = React.useRef(handleGalleryUpload)
+  handleGalleryUploadRef.current = handleGalleryUpload
 
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
@@ -2131,11 +2175,18 @@ function ProjectDetailsInner() {
           )
         } catch (err) {
           console.error("Failed to save gallery after delete:", err)
+          if (isUnauthorizedError(err)) {
+            promptSignInToRetry(() => handleGalleryDeleteRef.current(index))
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
       }
     },
-    [project.id, project.mediaUrls]
+    [project.id, project.mediaUrls, toast, promptSignInToRetry]
   )
+  const handleGalleryDeleteRef = React.useRef(handleGalleryDelete)
+  handleGalleryDeleteRef.current = handleGalleryDelete
 
   const handleGalleryToggleHidden = React.useCallback(
     (index: number) => {
@@ -2153,12 +2204,34 @@ function ProjectDetailsInner() {
         const hidden = Array.from(next)
           .map((i) => urls[i])
           .filter((u): u is string => Boolean(u && !u.startsWith("blob:")))
+        const projectId = project.id
+        const retryPersist = () =>
+          ProjectAPI.UpdateGalleryImages(projectId, additional, hidden).catch(
+            (retryErr: any) => {
+              console.error("Failed to save hidden images:", retryErr)
+              toast({
+                title: toUserMessage(retryErr),
+                variant: "destructive",
+              })
+            }
+          )
         ProjectAPI.UpdateGalleryImages(project.id, additional, hidden).catch(
-          (err: any) => console.error("Failed to save hidden images:", err)
+          (err: any) => {
+            console.error("Failed to save hidden images:", err)
+            if (isUnauthorizedError(err)) {
+              // Retry the already-computed persist call directly — NOT the
+              // toggle function itself, which would flip hiddenImages back
+              // again (it already applied once, above, before this API
+              // call ever ran).
+              promptSignInToRetry(retryPersist)
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
+          }
         )
       }
     },
-    [hiddenImages, project.id, project.mediaUrls]
+    [hiddenImages, project.id, project.mediaUrls, toast, promptSignInToRetry]
   )
 
   const gallerySensors = useSensors(
@@ -2205,14 +2278,28 @@ function ProjectDetailsInner() {
 
       // Persist in background
       if (prev.id && isRealBackendId(prev.id)) {
-        ProjectAPI.UpdateGalleryImages(
-          prev.id,
-          // Map, don't filter — preserve position (see handleGalleryDelete).
-          reordered.map((u: string) =>
-            u && !u.startsWith("blob:") ? u : ""
+        const reorderedUrls = reordered.map((u: string) =>
+          u && !u.startsWith("blob:") ? u : ""
+        )
+        const persistReorder = () =>
+          ProjectAPI.UpdateGalleryImages(prev.id, reorderedUrls).catch(
+            (retryErr: any) => {
+              console.error("Failed to save gallery reorder:", retryErr)
+              toast({
+                title: toUserMessage(retryErr),
+                variant: "destructive",
+              })
+            }
           )
-        ).catch((err: any) =>
-          console.error("Failed to save gallery reorder:", err)
+        ProjectAPI.UpdateGalleryImages(prev.id, reorderedUrls).catch(
+          (err: any) => {
+            console.error("Failed to save gallery reorder:", err)
+            if (isUnauthorizedError(err)) {
+              promptSignInToRetry(persistReorder)
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
+          }
         )
       }
 
@@ -2261,7 +2348,15 @@ function ProjectDetailsInner() {
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
-        if (isModerationRejection(err)) {
+        if (isUnauthorizedError(err)) {
+          // PMCM-261/AC3: session expired mid-upload — the file (and
+          // hasChanges/featuredUploading flags) are already local state,
+          // nothing to lose. Queue the exact same upload for after login
+          // through the ref (below), not `handleFeaturedImageUpload` by
+          // name — PMCM-260 found that self-reference captures a stale
+          // closure and just re-prompts instead of completing.
+          promptSignInToRetry(() => handleFeaturedImageUploadRef.current(file))
+        } else if (isModerationRejection(err)) {
           toast({ title: backendErrorMessage(err), variant: "destructive" })
         } else if (err?.response?.status === 503) {
           // Moderation service itself is down, not a rejection of the
@@ -2282,17 +2377,20 @@ function ProjectDetailsInner() {
           // PMCM-256 follow-up: inline, not a toast — this is a rejected-
           // media error (the backend's own type/size validation), same
           // category as the client-side validationError above.
-          setFeaturedImageError(
-            backendErrorMessage(err) || "Upload failed. Please try again."
-          )
+          // PMCM-261/X3: was `backendErrorMessage(err) || "Upload failed..."`
+          // — replaced with the shared generic/timeout copy so a raw
+          // backend validation string never reaches the UI.
+          setFeaturedImageError(toUserMessage(err))
         }
       } finally {
         setFeaturedUploading(false)
         setFeaturedCompleting(true)
       }
     },
-    [project.id, toast]
+    [project.id, toast, promptSignInToRetry]
   )
+  const handleFeaturedImageUploadRef = React.useRef(handleFeaturedImageUpload)
+  handleFeaturedImageUploadRef.current = handleFeaturedImageUpload
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
@@ -2308,9 +2406,24 @@ function ProjectDetailsInner() {
       toast({ title: `Your ${label} is live`, variant: "success" })
     } catch (err: any) {
       console.error("Failed to publish:", err)
-      const message =
-        backendErrorMessage(err) || "Failed to publish. Please try again."
+      if (isUnauthorizedError(err)) {
+        // PMCM-261/AC3: queue through the ref, not `handlePublish` by name
+        // (PMCM-260 stale-closure bug).
+        promptSignInToRetry(() => handlePublishRef.current())
+        setPublishDialogOpen(false)
+        return
+      }
       const field = err?.response?.data?.field
+      // PMCM-261/X3: the backend only ever tags a message with `field` for
+      // its own deliberate, curated publish-validation copy (matching
+      // PMCM-254's client-side field copy) — safe to show verbatim. A
+      // moderation rejection is the other known-safe, human-written case.
+      // Anything else (infra error, unexpected 4xx/5xx) goes through the
+      // shared generic/timeout copy instead of the raw backend message.
+      const message =
+        isModerationRejection(err) || typeof field === "string"
+          ? backendErrorMessage(err) || toUserMessage(err)
+          : toUserMessage(err)
       setPublishError(message)
       setPublishErrorField(typeof field === "string" ? field : null)
       setPublishDialogOpen(false)
@@ -2318,7 +2431,9 @@ function ProjectDetailsInner() {
     } finally {
       setIsPublishing(false)
     }
-  }, [project?.id, project?.listingType, toast])
+  }, [project?.id, project?.listingType, toast, promptSignInToRetry])
+  const handlePublishRef = React.useRef(handlePublish)
+  handlePublishRef.current = handlePublish
 
   const handleUnpublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
@@ -2331,14 +2446,17 @@ function ProjectDetailsInner() {
       toast({ title: `Your ${label} is now a draft`, variant: "success" })
     } catch (err) {
       console.error("Failed to unpublish:", err)
-      toast({
-        title: "Failed to unpublish. Please try again.",
-        variant: "destructive",
-      })
+      if (isUnauthorizedError(err)) {
+        promptSignInToRetry(() => handleUnpublishRef.current())
+        return
+      }
+      toast({ title: toUserMessage(err), variant: "destructive" })
     } finally {
       setIsPublishing(false)
     }
-  }, [project?.id, project?.listingType, toast])
+  }, [project?.id, project?.listingType, toast, promptSignInToRetry])
+  const handleUnpublishRef = React.useRef(handleUnpublish)
+  handleUnpublishRef.current = handleUnpublish
 
   const isPublished = project?.status === "published"
 
@@ -2493,21 +2611,34 @@ function ProjectDetailsInner() {
         }
       })
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
-    try {
-      if ((project as any)?.id) {
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
-          teamMemberIds: nextIds,
-        } as any)
-        await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
-      }
-    } catch {
-      // non-blocking
-    }
     setRemoveTarget(null)
-    toast({
-      title: `${target.firstName} has been removed`,
-      variant: "success",
-    })
+    const projectId = (project as any)?.id
+    const persistRemoval = async () => {
+      try {
+        if (projectId) {
+          await ProjectAPI.UpdateProjectDraft(projectId, {
+            teamMemberIds: nextIds,
+          } as any)
+          await ProjectAPI.SaveProjectMembers(projectId, memberPayload)
+        }
+        toast({
+          title: `${target.firstName} has been removed`,
+          variant: "success",
+        })
+      } catch (err) {
+        // PMCM-261/E2: this used to show the success toast unconditionally
+        // even when both persistence calls above failed — the removal
+        // never actually reached the backend but the seller was told it
+        // had. Retry via this closure (not confirmRemoveMember itself,
+        // which reads the now-cleared removeTarget state) on 401.
+        if (isUnauthorizedError(err)) {
+          promptSignInToRetry(persistRemoval)
+        } else {
+          toast({ title: toUserMessage(err), variant: "destructive" })
+        }
+      }
+    }
+    await persistRemoval()
   }
 
   const addableMembers = React.useMemo(() => {
@@ -2539,15 +2670,29 @@ function ProjectDetailsInner() {
     if (ids.includes(String(userId))) return
     const nextIds = [...ids, String(userId)]
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
-    try {
-      if ((project as any)?.id)
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
-          teamMemberIds: nextIds,
-        } as any)
-    } catch {
-      // non-blocking
+    const projectId = (project as any)?.id
+    const persistAdd = async () => {
+      try {
+        if (projectId) {
+          await ProjectAPI.UpdateProjectDraft(projectId, {
+            teamMemberIds: nextIds,
+          } as any)
+        }
+        toast({ title: "Team member added to project", variant: "success" })
+      } catch (err) {
+        // PMCM-261/E2: used to show the success toast unconditionally even
+        // when persistence failed. Retry via this closure (not
+        // addMemberToProject itself — the optimistic update above already
+        // makes `ids.includes(userId)` true, so a re-call would just
+        // return early without ever retrying) on 401.
+        if (isUnauthorizedError(err)) {
+          promptSignInToRetry(persistAdd)
+        } else {
+          toast({ title: toUserMessage(err), variant: "destructive" })
+        }
+      }
     }
-    toast({ title: "Team member added to project", variant: "success" })
+    await persistAdd()
   }
 
   const saveTeamSettings = async () => {
@@ -2572,13 +2717,19 @@ function ProjectDetailsInner() {
       if ((project as any)?.id)
         await ProjectAPI.SaveProjectMembers((project as any).id, members)
       toast({ title: "Team settings saved", variant: "success" })
-    } catch {
-      toast({
-        title: "Failed to save team settings",
-        variant: "destructive",
-      })
+      setTeamDialogOpen(false)
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        // PMCM-261/AC3: no internal auth re-check in this function (it's
+        // the server 401 that surfaces here), so a direct self-reference
+        // is safe — unlike the promptSignIn/handleAsk-style functions
+        // PMCM-260 fixed, this one can't loop back into re-prompting.
+        promptSignInToRetry(() => saveTeamSettings())
+        return
+      }
+      toast({ title: toUserMessage(err), variant: "destructive" })
+      setTeamDialogOpen(false)
     }
-    setTeamDialogOpen(false)
   }
 
   const hydratedMembersRef = React.useRef<string | null>(null)
@@ -3025,6 +3176,18 @@ function ProjectDetailsInner() {
           await ProjectAPI.UpdateProjectDraft(project.id, fields)
         } catch (err: any) {
           console.error("Failed to save project fields:", err)
+          if (isUnauthorizedError(err)) {
+            // PMCM-261/AC3: `fields` is this call's own argument, not a
+            // captured outer value, so re-invoking through the ref with
+            // the same argument is safe — no stale-closure risk on the
+            // data being retried, only on which `saveProjectFields`
+            // version runs (the ref fixes that part).
+            promptSignInToRetry(() =>
+              saveProjectFieldsRef.current(fields)
+            )
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
         return
       }
@@ -3052,6 +3215,11 @@ function ProjectDetailsInner() {
         }
       } catch (createErr) {
         console.error("Failed to create project draft:", createErr)
+        if (isUnauthorizedError(createErr)) {
+          promptSignInToRetry(() => saveProjectFieldsRef.current(fields))
+        } else {
+          toast({ title: toUserMessage(createErr), variant: "destructive" })
+        }
       }
     },
     [
@@ -3067,8 +3235,12 @@ function ProjectDetailsInner() {
       project?.skills,
       project?.listingType,
       router,
+      toast,
+      promptSignInToRetry,
     ]
   )
+  const saveProjectFieldsRef = React.useRef(saveProjectFields)
+  saveProjectFieldsRef.current = saveProjectFields
 
   // PMCM-255: explicit Save for the Project Description modal — commits
   // descDraft to project.description and persists it, instead of the
@@ -3316,11 +3488,21 @@ function ProjectDetailsInner() {
           }
         } catch (err) {
           console.error("Failed to autosave scope:", err)
+          if (isUnauthorizedError(err)) {
+            // PMCM-261/AC3: re-run the whole debounced save for this exact
+            // phases snapshot through the ref, not `handleScopeChange` by
+            // name (stale-closure risk).
+            promptSignInToRetry(() => handleScopeChangeRef.current(phases))
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
       }, 1500)
     },
-    [project?.id, saveProjectFields]
+    [project?.id, saveProjectFields, toast, promptSignInToRetry]
   )
+  const handleScopeChangeRef = React.useRef(handleScopeChange)
+  handleScopeChangeRef.current = handleScopeChange
 
   // Cleanup scope save timer on unmount
   React.useEffect(() => {
@@ -4377,9 +4559,34 @@ function ProjectDetailsInner() {
                     )}
                   </div>
                   {featuredImageError && (
-                    <ErrorMessage size="sm" className="mt-1.5">
-                      {featuredImageError}
-                    </ErrorMessage>
+                    <div className="mt-1.5 flex items-center gap-x-2">
+                      <ErrorMessage size="sm">
+                        {featuredImageError}
+                      </ErrorMessage>
+                      {/* PMCM-261/AC2: a visible retry affordance next to
+                          the error, in addition to re-hovering the (now
+                          empty) thumbnail — re-runs validation+upload from
+                          scratch via the same picker the "Add Image"
+                          control above uses. */}
+                      <Button
+                        size="sm"
+                        variant="link"
+                        onClick={() => {
+                          const input = document.createElement("input")
+                          input.type = "file"
+                          input.accept = "image/*"
+                          input.onchange = (e) => {
+                            const files = (e.target as HTMLInputElement).files
+                            if (files?.[0]) {
+                              handleFeaturedImageUpload(files[0])
+                            }
+                          }
+                          input.click()
+                        }}
+                      >
+                        Retry
+                      </Button>
+                    </div>
                   )}
                   {SHOW_PUBLISH_VALIDATION &&
                     publishAttempted &&
@@ -5627,6 +5834,25 @@ function ProjectDetailsInner() {
                                             }
                                           }}
                                         />
+                                        {infoSummary.length >
+                                          SHORT_DESCRIPTION_MAX_LENGTH && (
+                                          // PMCM-261/AC1/E1: the submit
+                                          // handler above silently no-ops
+                                          // while over the limit (an old
+                                          // value saved before the limit
+                                          // existed) — previously the only
+                                          // feedback was the red
+                                          // border/counter, with no text
+                                          // explaining why Save did
+                                          // nothing. Clears automatically
+                                          // as soon as the value is
+                                          // shortened back under the limit.
+                                          <ErrorMessage size="sm">
+                                            Shorten this to{" "}
+                                            {SHORT_DESCRIPTION_MAX_LENGTH}{" "}
+                                            characters or fewer to save.
+                                          </ErrorMessage>
+                                        )}
                                       </div>
 
                                       <div className="space-y-1.5">
