@@ -110,6 +110,9 @@ export const CATEGORY_ALIASES: Record<string, string> = {
   teams: 'contacts',
   team: 'offers',
   account: 'general',
+  // PMCM-806: withdrawal notifications from payout-service. There is no
+  // payments category in the design, so General governs their in-app switch.
+  payouts: 'general',
   // Catalog ids retired by the 2026-09 redesign.
   projects: 'listings',
   messages: 'inbox',

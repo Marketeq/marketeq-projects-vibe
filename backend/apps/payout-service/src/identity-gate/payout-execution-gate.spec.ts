@@ -86,7 +86,8 @@ describe('PayoutQueueProcessor gate at dequeue (G9)', () => {
     const payoutRepo = { findOne: jest.fn(async () => payout) };
     const exec = { executeBankPayout: jest.fn(), executeCryptoPayout: jest.fn(), executeCardPayout: jest.fn() };
     const svc = { recheckBalanceAtExecution: jest.fn(async () => true), recheckKycAtExecution: jest.fn(async () => true) };
-    const proc = new PayoutQueueProcessor(payoutRepo as any, exec as any, exec as any, exec as any, publisher as any, svc as any, gate);
+    const notifier = { notifySubmitted: jest.fn(), notifyCompleted: jest.fn(), notifyFailed: jest.fn() };
+    const proc = new PayoutQueueProcessor(payoutRepo as any, exec as any, exec as any, exec as any, publisher as any, svc as any, gate, notifier as any);
     return { proc, exec, svc, repo, publisher };
   }
   const job = (attemptsMade = 0) => ({ data: { payoutRequestId: 'p1' }, attemptsMade, opts: { attempts: 3 } }) as any;
