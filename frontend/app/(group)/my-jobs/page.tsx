@@ -287,6 +287,7 @@ const ClientMyJobsView = () => {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <h1 className="text-xl font-bold text-dark-blue-400">My Jobs</h1>
           <Button
+            className="w-auto"
             onClick={() => {
               window.sessionStorage.removeItem("marketeq-job-listing-id")
               router.push("/job-listing")
@@ -787,7 +788,7 @@ export default function MyJobsPage() {
         <div className="flex min-h-screen bg-gray-50">
           <LeftSidebar />
 
-          <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px]">
+          <div className="flex-auto overflow-hidden pt-3 px-3.5 pb-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px]">
             <ClientMyJobsView />
           </div>
         </div>
