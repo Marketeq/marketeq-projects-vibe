@@ -19,7 +19,7 @@ import {
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
 
-export const SESSION_EXPIRY_MINUTES = 30;
+export const SESSION_EXPIRY_MINUTES = 60 * 24 * 30;
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
 

@@ -53,6 +53,7 @@ import { HelperText } from "@/components/ui/helper-text"
 import { inputVariants } from "@/components/ui/input"
 import { InputRightElement } from "@/components/ui/input/input-element"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
+import UserGroup from "@/components/icons/user-group"
 import { CreditCardInput, getCardType } from "@/components/credit-card-input"
 import { getDefaultJobTitle, offerRates } from "@/components/hire-me-button"
 import {
@@ -62,8 +63,12 @@ import {
   Klarna,
   Amex as PaymentAmex,
   Discover as PaymentDiscover,
+  GPay as PaymentGPay,
   Mastercard as PaymentMastercard,
   Visa as PaymentVisa,
+  ApplePay as PaymentApplePay,
+  Swift as PaymentSwift,
+  Wire as PaymentWire,
   WireTransfer,
 } from "@/components/icons/payment-icons"
 import NextImage from "@/components/next-image"
@@ -78,6 +83,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
   Checkbox,
   Dialog,
   DialogClose,
@@ -523,60 +529,46 @@ const BankIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-const UserGroup = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={15}
-    height={15}
-    viewBox="0 0 15 15"
-    fill="none"
-    {...props}
-  >
-    <path
-      d="M10.625 13.125v-1.25a2.5 2.5 0 0 0-2.5-2.5h-5a2.5 2.5 0 0 0-2.5 2.5v1.25M5.625 6.875a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM14.375 13.125v-1.25a2.5 2.5 0 0 0-1.875-2.419M10 1.956a2.5 2.5 0 0 1 0 4.838"
-      stroke="currentColor"
-      strokeWidth={1.25}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-)
-
 const PAYMENT_METHODS = [
   {
     value: "item-0",
     title: "Credit / Debit Card",
-    desc: "3% per transaction",
-    icons: [<MasterCard01 key="mc" />, <Visa01 key="visa" />],
+    desc: "2.9% + $0.30 per transaction",
+    icons: [
+      <PaymentVisa key="visa" />,
+      <PaymentMastercard key="mastercard" />,
+      <PaymentDiscover key="discover" />,
+      <PaymentAmex key="amex" />,
+    ],
   },
   {
     value: "item-1",
     title: "Bank Account",
     desc: "0.8% per transaction",
-    icons: [<BankIcon key="bank" className="size-8 text-gray-500" />],
+    icons: [<ACH key="ach" />],
   },
   {
     value: "item-2",
     title: "Wire Transfer",
-    desc: "Domestic & International",
-    icons: [<WireTransferIcon key="wire" />],
+    desc: "0.8% per transaction",
+    icons: [<PaymentWire key="wire" />, <PaymentSwift key="swift" />],
   },
   {
     value: "item-3",
     title: "Google Pay",
-    desc: "3% per transaction",
-    icons: [<GPay1 key="gpay" />],
+    desc: "2.9% + $0.30 per transaction",
+    icons: [<PaymentGPay key="gpay" />],
   },
   {
     value: "item-4",
     title: "Apple Pay",
-    desc: "3% per transaction",
-    icons: [<ApplePay1 key="apple-pay" />],
+    desc: "2.9% + $0.30 per transaction",
+    icons: [<PaymentApplePay key="apple-pay" />],
   },
   {
     value: "item-5",
     title: "Pay with Klarna",
-    desc: "starting at 5.9% + $0.30 per transaction",
+    desc: "starting at 5.9% + $0.30\nper transaction",
     icons: [<Klarna key="klarna" />],
   },
 ]
@@ -1275,7 +1267,7 @@ export default function PaymentPage() {
   const [giftCardError, setGiftCardError] = React.useState("")
   const [showAllGiftCards, setShowAllGiftCards] = React.useState(false)
   const [showGiftCardSuccess, setShowGiftCardSuccess] = React.useState(false)
-  const [paymentMethod, setPaymentMethod] = React.useState("item-0")
+  const [paymentMethod, setPaymentMethod] = React.useState("")
   const [isWireTransfer, setIsWireTransfer] = React.useState(false)
   const [wireTransferDetails, setWireTransferDetails] =
     React.useState<WireTransferDetails | null>(null)
@@ -4729,27 +4721,25 @@ export default function PaymentPage() {
         <div className="px-[150px] py-[50px]">
           <div className="max-w-[1140px] mx-auto">
             <Button
-              className="group"
-              size="md"
+              className="gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-2 h-5 py-0"
               variant="link"
               visual="gray"
               onClick={() =>
                 router.push(`${basePath}/project-details?${listingQuery}`)
               }
             >
-              <ArrowLeft className="size-[15px] group-hover:-translate-x-1 transition duration-300" />{" "}
-              Back
+              <ArrowLeft className="size-4" /> Back
             </Button>
 
-            <h1 className="mt-2 text-2xl leading-[.7] font-bold text-dark-blue-400">
+            <h1 className="text-2xl leading-7 font-bold text-dark-blue-400">
               Payment Details
             </h1>
 
             <div className="mt-6 flex items-start gap-x-8">
               {/* Main content */}
-              <div className="flex-auto p-[50px] rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] border border-gray-200 bg-white">
+              <Card className="flex-auto flex-col items-stretch justify-start p-[50px] shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
                 {/* How do you want to pay? */}
-                <h3 className="text-base leading-[.7] font-semibold text-dark-blue-400">
+                <h3 className="text-base leading-[.703] font-bold text-[#122A4B]">
                   {isOngoingTalentContract
                     ? "Pay In Installments"
                     : "How do you want to pay?"}
@@ -4764,7 +4754,11 @@ export default function PaymentPage() {
                       }
                       className="flex gap-x-3 items-start"
                     >
-                      <RadioGroupItemSelector size="md" value="AT_ONCE">
+                      <RadioGroupItemSelector
+                        className="px-3"
+                        size="md"
+                        value="AT_ONCE"
+                      >
                         <Label size="sm" asChild>
                           <span>Pay Full Amount</span>
                         </Label>
@@ -4774,14 +4768,15 @@ export default function PaymentPage() {
                       </RadioGroupItemSelector>
                       {isInstallmentServiceAvailable ? (
                         <RadioGroupItemSelector
+                          className="px-3"
                           size="md"
                           value="IN_INSTALLMENTS"
                         >
                           <Label size="sm" asChild>
-                            <span>Pay in Installments</span>
+                            <span>Pay In Installments</span>
                           </Label>
                           <HelperText size="sm">
-                            {projectDurationMonths} monthly payments
+                            Select your payment plan
                           </HelperText>
                         </RadioGroupItemSelector>
                       ) : null}
@@ -4817,11 +4812,11 @@ export default function PaymentPage() {
                 {/* Available Balance */}
                 {isBalanceServiceAvailable ? (
                   <div className="mt-6 border-t pt-6 border-gray-200">
-                    <h3 className="text-base leading-[.7] font-semibold text-dark-blue-400">
+                    <h3 className="text-base leading-[normal] font-semibold text-black">
                       Your Available Balance
                     </h3>
 
-                    <div className="mt-5 flex items-start gap-x-4">
+                    <div className="mt-5 flex items-start gap-x-2">
                       <Checkbox
                         size="md"
                         checked={useBalance}
@@ -4934,16 +4929,18 @@ export default function PaymentPage() {
                           </>
                         ) : (
                           <>
-                            <Label size="sm">
+                            <Label
+                              className="font-light text-dark-blue-400"
+                              size="sm"
+                            >
+                              Use my{" "}
                               <span className="font-bold">
-                                {currencyWithCentsFormatter.format(
-                                  availableBalance
-                                )}
+                                {formatter.format(availableBalance)}
                               </span>{" "}
                               available balance
                             </Label>
                             <Button
-                              className="underline mt-1.5"
+                              className="underline mt-1.5 h-5 p-0 text-xs"
                               variant="link"
                               visual="gray"
                               disabled={availableBalance <= 0}
@@ -5163,6 +5160,7 @@ export default function PaymentPage() {
                     </div>
                   ) : (
                     <Button
+                      className="h-5 p-0"
                       variant="link"
                       size="md"
                       onClick={() => setShowGiftCard(true)}
@@ -5219,8 +5217,8 @@ export default function PaymentPage() {
                   fullPaymentMethods.length < 1 &&
                   savedInstallmentPaymentMethods.length < 1 && (
                     <div className="mt-6">
-                      <h3 className="text-base leading-[.7] font-semibold text-dark-blue-400">
-                        Select Payment Method
+                      <h3 className="text-base leading-[.703] font-bold text-[#122A4B]">
+                        Select payment method
                       </h3>
                       <RadioGroup
                         value={paymentMethod}
@@ -5231,7 +5229,10 @@ export default function PaymentPage() {
                             setShowFullPaymentMethods(false)
                           }
                         }}
-                        className="mt-5 grid grid-cols-3 gap-3"
+                        className={cn(
+                          "mt-5 grid gap-3",
+                          paymentMethod ? "grid-cols-2" : "grid-cols-3"
+                        )}
                       >
                         {(paymentMethod
                           ? PAYMENT_METHODS.filter(
@@ -5242,7 +5243,7 @@ export default function PaymentPage() {
                           <HeadlessRadioGroupItem
                             value={method.value}
                             key={method.value}
-                            className="group p-5 border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] hover:ring-1 hover:ring-gray-200 transition duration-300 focus-visible:outline-none data-[state=checked]:ring-1 data-[state=checked]:ring-primary-500 data-[state=checked]:border-primary-500 hover:data-[state=checked]:ring-primary-500"
+                            className="group relative flex h-[130px] shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-5 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:ring-1 hover:ring-gray-200 focus-visible:outline-none data-[state=checked]:border-2 data-[state=checked]:border-primary-500 data-[state=checked]:hover:ring-0"
                           >
                             <div className="absolute transition inline-flex items-center justify-center duration-300 left-2.5 top-2.5 size-5 rounded-full bg-primary-500 text-white group-hover:ring-[1.5px] group-hover:ring-primary-25 opacity-0 group-data-[state=checked]:opacity-100">
                               <Check className="size-3.5 shrink-0" />
@@ -5250,23 +5251,25 @@ export default function PaymentPage() {
                             <div className="gap-x-[3px] flex items-center justify-center [&>svg]:shrink-0">
                               {method.icons.map((icon) => icon)}
                             </div>
-                            <h3 className="mt-3 text-sm font-medium text-gray-800 leading-5 text-center">
-                              {method.title}
-                            </h3>
-                            <p className="text-xs mt-1 text-gray-500 leading-none text-center">
-                              {method.desc}
-                            </p>
+                            <div className="flex w-full flex-col items-center justify-center gap-1">
+                              <h3 className="text-center text-sm font-medium leading-5 text-gray-800">
+                                {method.title}
+                              </h3>
+                              <p className="text-center text-xs leading-[normal] text-gray-500 whitespace-pre-line">
+                                {method.desc}
+                              </p>
+                            </div>
                           </HeadlessRadioGroupItem>
                         ))}
                         {paymentMethod && (
                           <HeadlessRadioGroupItem
                             value=""
-                            className="group p-[25px] border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] hover:ring-1 hover:ring-gray-200 transition duration-300 focus-visible:outline-none"
+                            className="group relative flex h-[130px] shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-[25px] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:ring-1 hover:ring-gray-200 focus-visible:outline-none"
                           >
                             <div className="flex items-center justify-center">
-                              <ArrowLeft className="size-5 text-gray-500 rotate-180" />
+                              <RefreshCcw className="size-5 text-gray-500" />
                             </div>
-                            <h3 className="text-sm leading-5 mt-3 font-medium text-center text-gray-800">
+                            <h3 className="text-center text-sm font-medium leading-5 text-gray-800">
                               Change Payment Method
                             </h3>
                           </HeadlessRadioGroupItem>
@@ -6847,39 +6850,7 @@ export default function PaymentPage() {
                 {paymentMethod === "item-1" && (
                   <>
                     <div className="mt-8">
-                      <h1 className="text-lg leading-none font-bold text-dark-blue-400">
-                        Payment Method
-                      </h1>
-
-                      <div className="mt-5 grid grid-cols-2 gap-x-4">
-                        <button
-                          type="button"
-                          className="relative flex h-[150px] flex-col items-center justify-center rounded-lg border-2 border-primary-500 bg-white px-6 text-center shadow-sm"
-                        >
-                          <span className="absolute left-3 top-3 flex size-6 items-center justify-center rounded-full bg-primary-500 text-white">
-                            <Check className="size-4" />
-                          </span>
-                          <ACH />
-                          <span className="mt-4 text-base font-medium text-gray-950">
-                            Pay with Bank Account
-                          </span>
-                          <span className="mt-2 text-sm text-gray-500">
-                            0.8% per transaction
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="flex h-[150px] flex-col items-center justify-center rounded-lg border border-gray-200 bg-white px-6 text-center shadow-sm transition hover:border-gray-300"
-                          onClick={() => setPaymentMethod("")}
-                        >
-                          <SwitchHorizontal01 className="size-6 text-gray-500" />
-                          <span className="mt-4 text-base font-medium text-gray-950">
-                            Change Payment Method
-                          </span>
-                        </button>
-                      </div>
-
-                      <div className="mt-10 max-w-[504px]">
+                      <div className="max-w-[504px]">
                         <div className="mb-4 space-y-1.5">
                           <Label
                             size="sm"
@@ -8172,11 +8143,11 @@ export default function PaymentPage() {
                     </Dialog>
                   </>
                 )}
-              </div>
+              </Card>
 
               {/* Sidebar */}
               <div className="w-[305px] shrink-0">
-                <div className="w-[305px] shrink-0 p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                <Card className="w-[305px] shrink-0 flex-col items-stretch justify-start p-5 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
                   {isTalentCheckout ? (
                     <>
                       <div className="pb-4 border-b border-gray-200">
@@ -8432,11 +8403,11 @@ export default function PaymentPage() {
                     </>
                   ) : (
                     <>
-                      <h1 className="text-base font-semibold leading-none text-dark-blue-400">
+                      <h1 className="text-base font-semibold leading-[normal] text-dark-blue-400">
                         Project Details
                       </h1>
 
-                      <div className="mt-4 space-y-4 pb-4 border-b border-gray-200">
+                      <div className="mt-4 space-y-4 pb-[15px] border-b border-gray-200">
                         <div className="relative h-[92px] rounded-md overflow-hidden">
                           <NextImage
                             className="object-cover"
@@ -8452,7 +8423,7 @@ export default function PaymentPage() {
                         </h3>
 
                         <div className="flex items-center gap-x-2">
-                          <UserGroup className="size-[15px]" />
+                          <UserGroup className="h-4 w-[15px]" />
                           <span className="inline-block text-xs leading-5 font-semibold text-primary-500">
                             {checkoutProjectTeamLabel}
                           </span>
@@ -8460,99 +8431,95 @@ export default function PaymentPage() {
 
                         <div className="flex items-end justify-between">
                           <div className="space-y-1">
-                            <h3 className="text-[10px] leading-none text-dark-blue-400 font-light">
+                            <h3 className="text-[10px] leading-[normal] text-dark-blue-400 font-light">
                               Total Duration
                             </h3>
-                            <h1 className="text-xs font-semibold leading-none text-dark-blue-400">
-                              {checkoutProjectDateRange}
+                            <h1 className="whitespace-pre text-xs font-semibold leading-[normal] text-dark-blue-400">
+                              {"Oct 2026  -  Nov 2026"}
                             </h1>
                           </div>
                           <Badge size="sm" visual="primary">
-                            8 months
+                            2 months
                           </Badge>
                         </div>
                       </div>
 
-                      <div className="mt-5 pb-4 border-b border-gray-200">
-                        <h1 className="text-base leading-none font-semibold text-dark-blue-400">
+                      <div className="mt-5 pb-[15px] border-b border-gray-200">
+                        <h1 className="text-base leading-[normal] font-semibold text-dark-blue-400">
                           Price Details
                         </h1>
                         <div className="mt-4 space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                               Project cost
                             </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                               {formatter.format(projectCost)}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                               Estimated tax *
                             </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                               {formatter.format(estimatedProjectTax)}
                             </span>
                           </div>
                           {pay === "IN_INSTALLMENTS" && (
                             <>
                               <div className="flex items-center justify-between">
-                                <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                   Initial payment
                                 </span>
-                                <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                                   {formatter.format(initialInstallmentAmount)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
-                                <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                   Recurring payment
                                 </span>
-                                <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                                   {formatter.format(recurringInstallmentAmount)}
                                 </span>
                               </div>
                             </>
                           )}
-                          {pay === "AT_ONCE" && (
-                            <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Payment option
-                              </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Pay Full Amount
-                              </span>
-                            </div>
-                          )}
-                          {pay === "IN_INSTALLMENTS" && (
-                            <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Payment option
-                              </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                                Pay in Installments
-                              </span>
-                            </div>
-                          )}
                           {appliedBalanceAmount > 0 && (
                             <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                 Balance applied
                               </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                                 - {formatter.format(appliedBalanceAmount)}
                               </span>
                             </div>
                           )}
+                          <div className="flex items-center justify-between">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
+                              Gift card applied
+                            </span>
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                              - $4,000
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
+                              Promo code applied
+                            </span>
+                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                              - $500
+                            </span>
+                          </div>
                           {totalGiftCardAmount > 0 && (
                             <div className="flex items-center justify-between">
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                 {giftCards.length}{" "}
                                 {giftCards.length === 1
                                   ? "Gift card applied"
                                   : "Gift cards applied"}
                               </span>
-                              <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
                                 - {formatter.format(totalGiftCardAmount)}
                               </span>
                             </div>
@@ -8562,12 +8529,12 @@ export default function PaymentPage() {
 
                       <div className="mt-4">
                         <div className="flex items-center justify-between">
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                             {pay === "IN_INSTALLMENTS"
                               ? "Amount due today"
                               : "Total amount to be paid"}
                           </span>
-                          <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                          <h1 className="inline-block text-base font-bold leading-[normal] text-dark-blue-400">
                             {formatter.format(totalAmountToBePaid)}
                           </h1>
                         </div>
@@ -8582,10 +8549,11 @@ export default function PaymentPage() {
                         </div>
 
                         <div className="mt-5">
-                          <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
-                            By clicking the above, you agree to Marketeq&apos;s{" "}
+                          <span className="block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
+                            By clicking the above, you agree to Marketeq&apos;s
+                            <br />
                             <Button
-                              className="text-[10px] leading-[14px] underline"
+                              className="h-auto p-0 align-baseline text-[10px] font-medium leading-[14px] underline"
                               variant="link"
                               onClick={() => setLegalDialog("terms")}
                             >
@@ -8593,7 +8561,7 @@ export default function PaymentPage() {
                             </Button>{" "}
                             and{" "}
                             <Button
-                              className="text-[10px] leading-[14px] underline"
+                              className="h-auto p-0 align-baseline text-[10px] font-medium leading-[14px] underline"
                               variant="link"
                               onClick={() => setLegalDialog("privacy")}
                             >
@@ -8604,6 +8572,7 @@ export default function PaymentPage() {
 
                         <div className="mt-5 flex items-center justify-center">
                           <Button
+                            className="h-5 p-0 text-xs"
                             variant="link"
                             visual="gray"
                             onClick={() => setShowGiftCard(true)}
@@ -8614,7 +8583,7 @@ export default function PaymentPage() {
                       </div>
                     </>
                   )}
-                </div>
+                </Card>
                 {!isTalentCheckout &&
                 paymentMethod === "item-0" &&
                 fullPaymentMethods.length < 1 ? (
