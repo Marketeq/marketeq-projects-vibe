@@ -131,7 +131,7 @@ export class CheckoutService {
       contractId: dto.contractId,
       stripeSessionId: stripeSession.id,
       paymentMethod: dto.paymentMethod as any,
-      totalAmount: dto.totalAmount,
+      projectCost: dto.totalAmount,
       walletAmountUsed,
       appliedGiftCards: dto.giftCardCode
         ? [{ code: dto.giftCardCode, amountUsed: giftCardAmountUsed }]
@@ -270,7 +270,7 @@ export class CheckoutService {
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
       paymentMethod,
-      totalAmount: dto.amount,
+      projectCost: dto.amount,
       status: 'pending',
       stripeMetadata: {
         customerId,
@@ -599,7 +599,7 @@ export class CheckoutService {
         listingId: dto.projectId,
         contractId: dto.contractId,
         paymentMethod: 'card',
-        totalAmount: dto.totalAmount,
+        projectCost: dto.totalAmount,
         splitPaymentEnabled: true,
         status: 'success',
         paymentVerified: true,
@@ -705,7 +705,7 @@ export class CheckoutService {
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
       paymentMethod: 'ach',
-      totalAmount: dto.amount,
+      projectCost: dto.amount,
       status: 'pending',
     });
 
@@ -825,7 +825,7 @@ export class CheckoutService {
 
     if (session) {
       await this.sessionRepo.update(session.id, {
-        totalAmount: dto.amount,
+        projectCost: dto.amount,
         stripeMetadata: {
           ...(session.stripeMetadata || {}),
           wireTransferId: wireTransfer.id,
@@ -839,7 +839,7 @@ export class CheckoutService {
           listingId: projectId,
           contractId: contractId || undefined,
           paymentMethod: 'wire',
-          totalAmount: dto.amount,
+          projectCost: dto.amount,
           status: 'pending',
           stripeMetadata: {
             wireTransferId: wireTransfer.id,

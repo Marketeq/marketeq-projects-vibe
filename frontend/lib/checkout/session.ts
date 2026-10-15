@@ -6,9 +6,20 @@ export type CheckoutSession = {
   listingId: string
   slug: string | null
   contractId: string | null
-  totalAmount: number
+  projectCost: number
+  title: string | null
+  mediaUrl: string | null
+  teamMemberCount: number | null
+  durationDays: number | null
   appliedGiftCards: { code: string; amountUsed: number }[]
   appliedPromoCode: string | null
+  promo: {
+    code: string
+    status: string
+    discountType: "percent" | "fixed"
+    discountValue: number
+    amount: number
+  } | null
 }
 
 export const getCheckoutSession = async (

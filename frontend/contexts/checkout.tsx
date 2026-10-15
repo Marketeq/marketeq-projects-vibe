@@ -7,7 +7,12 @@ import React, {
   useMemo,
   useState,
 } from "react"
-import { notFound, usePathname, useSearchParams } from "next/navigation"
+import {
+  notFound,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
 import { AlertCircle } from "@blend-metrics/icons"
 import {
   type CheckoutSession,
@@ -22,6 +27,8 @@ import {
   AlertIcon,
   AlertTitle,
   Button,
+  Dialog,
+  DialogContent,
 } from "@/components/ui"
 
 type CheckoutContextValue = {
@@ -40,12 +47,13 @@ const CheckoutContext = createContext<CheckoutContextValue>({
 
 type LoadState = {
   sessionId: string
-  status: "loading" | "ready" | "error" | "notFound"
+  status: "loading" | "ready" | "error" | "unauthorized" | "notFound"
   session: CheckoutSession | null
 }
 
 export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const isListingStep = pathname.startsWith("/checkout/project-details")
   const isSessionStep =
@@ -75,9 +83,15 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
           session,
         })
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isActive) return
-        setLoadState({ sessionId, status: "error", session: null })
+        const status = (error as { response?: { status?: number } })?.response
+          ?.status
+        setLoadState({
+          sessionId,
+          status: status === 401 ? "unauthorized" : "error",
+          session: null,
+        })
       })
     return () => {
       isActive = false
@@ -126,6 +140,34 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
+  if (sessionId && loadState.status === "unauthorized") {
+    return (
+      <Dialog open onOpenChange={() => {}}>
+        <DialogContent className="max-w-[480px] p-6">
+          <h2 className="text-lg font-semibold text-dark-blue-400">
+            Your session has expired
+          </h2>
+          <p className="mt-3 text-sm leading-5 text-gray-500">
+            Please log in again to continue.
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button
+              onClick={() =>
+                router.push(
+                  `/sign-in?redirect=${encodeURIComponent(
+                    `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
+                  )}`
+                )
+              }
+            >
+              Log In
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   if (sessionId && loadState.status === "error") {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 py-[50px]">
@@ -137,7 +179,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
             <AlertContent>
               <AlertTitle>We were unable to load your checkout</AlertTitle>
               <AlertDescription className="mt-1">
-                Please try again or start checkout again from the project page.
+                Please try again or contact support.
               </AlertDescription>
               <Button
                 variant="filled"

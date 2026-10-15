@@ -42,10 +42,9 @@ import type {
 import CurrencyInput from "react-currency-input-field"
 import type { UserProfile } from "@/types/user"
 import {
-  type CheckoutProjectSummary,
-  getCheckoutProjectSummary,
-  titleizeCheckoutSlug,
-} from "@/lib/checkout/project-summary"
+  getDraftDateRangeLabel,
+  getDraftDurationLabel,
+} from "@/lib/checkout/draft-summary"
 import CreditDebitCardArticle1, {
   CreditDebitCardArticle3,
 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
@@ -533,7 +532,7 @@ const PAYMENT_METHODS = [
   {
     value: "item-0",
     title: "Credit / Debit Card",
-    desc: "2.9% + $0.30 per transaction",
+    desc: "2.9% + $0.30\nper transaction",
     icons: [
       <PaymentVisa key="visa" />,
       <PaymentMastercard key="mastercard" />,
@@ -544,25 +543,25 @@ const PAYMENT_METHODS = [
   {
     value: "item-1",
     title: "Bank Account",
-    desc: "0.8% per transaction",
+    desc: "0.8%\nper transaction",
     icons: [<ACH key="ach" />],
   },
   {
     value: "item-2",
     title: "Wire Transfer",
-    desc: "0.8% per transaction",
+    desc: "0.8%\nper transaction",
     icons: [<PaymentWire key="wire" />, <PaymentSwift key="swift" />],
   },
   {
     value: "item-3",
     title: "Google Pay",
-    desc: "2.9% + $0.30 per transaction",
+    desc: "2.9% + $0.30\nper transaction",
     icons: [<PaymentGPay key="gpay" />],
   },
   {
     value: "item-4",
     title: "Apple Pay",
-    desc: "2.9% + $0.30 per transaction",
+    desc: "2.9% + $0.30\nper transaction",
     icons: [<PaymentApplePay key="apple-pay" />],
   },
   {
@@ -967,14 +966,17 @@ export default function PaymentPage() {
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
   const listingQuery = `${slugParamName}=${safeSlugSegment}`
+  const projectDetailsHref = `${basePath}/project-details?${
+    isTalentCheckout
+      ? listingQuery
+      : `listingId=${encodeURIComponent(checkout.listingId ?? "")}`
+  }`
   const slugQuery = isTalentCheckout
     ? listingQuery
     : `sessionId=${encodeURIComponent(checkout.sessionId)}`
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
-  const [projectSummary, setProjectSummary] =
-    React.useState<CheckoutProjectSummary | null>(null)
 
   React.useEffect(() => {
     if (!isTalentCheckout) return
@@ -995,31 +997,6 @@ export default function PaymentPage() {
     }
 
     loadTalentProfile()
-
-    return () => {
-      isActive = false
-    }
-  }, [decodedSlug, isTalentCheckout])
-
-  React.useEffect(() => {
-    if (isTalentCheckout) return
-
-    let isActive = true
-
-    const loadProjectSummary = async () => {
-      try {
-        const summary = await getCheckoutProjectSummary(decodedSlug)
-        if (isActive) {
-          setProjectSummary(summary)
-        }
-      } catch {
-        if (isActive) {
-          setProjectSummary(null)
-        }
-      }
-    }
-
-    loadProjectSummary()
 
     return () => {
       isActive = false
@@ -1084,16 +1061,20 @@ export default function PaymentPage() {
     "Alex"
   const talentAvatarUrl = talentProfile?.avatarUrl || ""
   const talentJobTitle = getDefaultJobTitle(talentProfile)
+  const checkoutSession = checkout.session
   const checkoutProjectTitle =
-    projectSummary?.title || titleizeCheckoutSlug(decodedSlug)
-  const checkoutProjectImage = projectSummary?.mediaUrl || "/dashboard.png"
+    checkoutSession?.title || "Project Title Unavailable"
+  const checkoutProjectImage = checkoutSession?.mediaUrl || "/dashboard.png"
+  const checkoutProjectTeamCount = checkoutSession?.teamMemberCount ?? null
   const checkoutProjectTeamLabel =
-    projectSummary?.teamMemberCount !== null &&
-    projectSummary?.teamMemberCount !== undefined
-      ? `${projectSummary.teamMemberCount} team members`
-      : "Team details unavailable"
+    checkoutProjectTeamCount !== null
+      ? `${checkoutProjectTeamCount} team member${checkoutProjectTeamCount === 1 ? "" : "s"}`
+      : "Team Details Unavailable"
   const checkoutProjectDateRange =
-    projectSummary?.dateRangeLabel || "Timeline unavailable"
+    getDraftDateRangeLabel(checkoutSession?.durationDays ?? null) ||
+    "Timeline Unavailable"
+  const checkoutProjectDuration =
+    getDraftDurationLabel(checkoutSession?.durationDays ?? null) || "0 Weeks"
   const scheduleTitle =
     selectedSchedule === "part-time" ? "Part time" : "Full time"
   const scheduleDetail =
@@ -1630,9 +1611,26 @@ export default function PaymentPage() {
     wireTransferDetails,
   ])
 
-  const projectCost = 94_000
-  const estimatedProjectTax = 4_000
-  const fullAmount = projectCost + estimatedProjectTax
+  const projectCost = isTalentCheckout
+    ? 94_000
+    : (checkoutSession?.projectCost ?? 0)
+  const estimatedProjectTax = isTalentCheckout ? 4_000 : 0
+  const sessionGiftCards = checkoutSession?.appliedGiftCards ?? []
+  const sessionPromo = checkoutSession?.promo ?? null
+  const sessionPromoAmount = sessionPromo?.amount ?? 0
+  const sessionGiftCardAmount = sessionGiftCards.reduce(
+    (total, giftCard) => total + giftCard.amountUsed,
+    0
+  )
+  const priceFormatter = isTalentCheckout
+    ? formatter
+    : currencyWithCentsFormatter
+  const fullAmount = Math.max(
+    projectCost +
+      estimatedProjectTax -
+      (isTalentCheckout ? 0 : sessionPromoAmount + sessionGiftCardAmount),
+    0
+  )
   const projectDurationMonths = 8
   const installmentAmount = fullAmount / projectDurationMonths
   const initialInstallmentAmount = installmentAmount
@@ -1800,8 +1798,16 @@ export default function PaymentPage() {
     applePayAvailability === "unavailable" ||
     applePayAvailability === "error" ||
     (requiresApplePayAuthorization && !hasAcceptedApplePayAuthorization)
+  const isPaymentMethodMissing =
+    !isTalentCheckout &&
+    totalAmountToBePaid > 0 &&
+    (pay === "AT_ONCE"
+      ? paymentMethod === "" && fullPaymentMethods.length === 0
+      : firstInstallmentMethods.length === 0 ||
+        secondInstallmentMethods.length === 0)
   const isSubmitOrderDisabled =
     isProcessing ||
+    isPaymentMethodMissing ||
     isGooglePayProcessing ||
     isApplePayProcessing ||
     isKlarnaProcessing ||
@@ -4416,6 +4422,44 @@ export default function PaymentPage() {
     </HeadlessRadioGroupItem>
   )
 
+  if (!isTalentCheckout && !(projectCost > 0)) {
+    return (
+      <div className="bg-gray-50 pt-[64px]">
+        <CheckoutNavigation
+          currentStep={2}
+          logoHref=""
+          firstStepLabel="Project Details"
+        />
+        <div className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-[50px]">
+          <div className="w-full max-w-[600px]">
+            <Alert variant="error" className="items-center p-5">
+              <AlertIcon>
+                <AlertCircle className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>We were unable to load your order amount</AlertTitle>
+                <AlertDescription className="mt-1">
+                  Please try again or contact support.
+                </AlertDescription>
+                {checkout.listingId ? (
+                  <Button
+                    variant="filled"
+                    className="mt-4"
+                    onClick={() =>
+                      router.push(projectDetailsHref)
+                    }
+                  >
+                    Back to Project Details
+                  </Button>
+                ) : null}
+              </AlertContent>
+            </Alert>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="bg-gray-50 pt-[64px]">
@@ -4725,7 +4769,7 @@ export default function PaymentPage() {
               variant="link"
               visual="gray"
               onClick={() =>
-                router.push(`${basePath}/project-details?${listingQuery}`)
+                router.push(projectDetailsHref)
               }
             >
               <ArrowLeft className="size-4" /> Back
@@ -5243,9 +5287,9 @@ export default function PaymentPage() {
                           <HeadlessRadioGroupItem
                             value={method.value}
                             key={method.value}
-                            className="group relative flex h-[130px] shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-5 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:ring-1 hover:ring-gray-200 focus-visible:outline-none data-[state=checked]:border-2 data-[state=checked]:border-primary-500 data-[state=checked]:hover:ring-0"
+                            className="group relative flex shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-5 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:border-2 hover:border-gray-300 hover:p-[19px] focus-visible:outline-none data-[state=checked]:border-2 data-[state=checked]:border-primary-500 data-[state=checked]:p-[19px] data-[state=checked]:hover:border-primary-500 data-[state=checked]:hover:ring-4 data-[state=checked]:hover:ring-light-blue-700 data-[state=checked]:hover:shadow-none"
                           >
-                            <div className="absolute transition inline-flex items-center justify-center duration-300 left-2.5 top-2.5 size-5 rounded-full bg-primary-500 text-white group-hover:ring-[1.5px] group-hover:ring-primary-25 opacity-0 group-data-[state=checked]:opacity-100">
+                            <div className="absolute transition inline-flex items-center justify-center duration-300 left-2 top-2 size-5 rounded-full border-[1.5px] border-primary-500 bg-primary-500 text-white group-hover:ring-4 group-hover:ring-light-blue-700 opacity-0 group-data-[state=checked]:opacity-100">
                               <Check className="size-3.5 shrink-0" />
                             </div>
                             <div className="gap-x-[3px] flex items-center justify-center [&>svg]:shrink-0">
@@ -5255,7 +5299,7 @@ export default function PaymentPage() {
                               <h3 className="text-center text-sm font-medium leading-5 text-gray-800">
                                 {method.title}
                               </h3>
-                              <p className="text-center text-xs leading-[normal] text-gray-500 whitespace-pre-line">
+                              <p className="text-center text-sm leading-[normal] text-gray-500 whitespace-pre-line">
                                 {method.desc}
                               </p>
                             </div>
@@ -5264,7 +5308,7 @@ export default function PaymentPage() {
                         {paymentMethod && (
                           <HeadlessRadioGroupItem
                             value=""
-                            className="group relative flex h-[130px] shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-[25px] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:ring-1 hover:ring-gray-200 focus-visible:outline-none"
+                            className="group relative flex shrink-0 flex-col items-center justify-center gap-3 rounded-lg border border-gray-200 p-[25px] shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:border-2 hover:border-gray-300 hover:p-6 focus-visible:outline-none"
                           >
                             <div className="flex items-center justify-center">
                               <RefreshCcw className="size-5 text-gray-500" />
@@ -5566,9 +5610,9 @@ export default function PaymentPage() {
                             <HeadlessRadioGroupItem
                               value={method.value}
                               key={method.value}
-                              className="group p-5 border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] hover:ring-1 hover:ring-gray-200 transition duration-300 focus-visible:outline-none data-[state=checked]:ring-1 data-[state=checked]:ring-primary-500 data-[state=checked]:border-primary-500 hover:data-[state=checked]:ring-primary-500"
+                              className="group p-5 border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:border-2 hover:border-gray-300 hover:p-[19px] focus-visible:outline-none data-[state=checked]:border-2 data-[state=checked]:border-primary-500 data-[state=checked]:p-[19px] data-[state=checked]:hover:border-primary-500 data-[state=checked]:hover:ring-4 data-[state=checked]:hover:ring-light-blue-700 data-[state=checked]:hover:shadow-none"
                             >
-                              <div className="absolute transition inline-flex items-center justify-center duration-300 left-2.5 top-2.5 size-5 rounded-full bg-primary-500 text-white group-hover:ring-[1.5px] group-hover:ring-primary-25 opacity-0 group-data-[state=checked]:opacity-100">
+                              <div className="absolute transition inline-flex items-center justify-center duration-300 left-2 top-2 size-5 rounded-full border-[1.5px] border-primary-500 bg-primary-500 text-white group-hover:ring-4 group-hover:ring-light-blue-700 opacity-0 group-data-[state=checked]:opacity-100">
                                 <Check className="size-3.5 shrink-0" />
                               </div>
                               <div className="gap-x-[3px] flex items-center justify-center [&>svg]:shrink-0">
@@ -5577,7 +5621,7 @@ export default function PaymentPage() {
                               <h3 className="mt-3 text-sm font-medium text-gray-800 leading-5 text-center">
                                 {method.title}
                               </h3>
-                              <p className="text-xs mt-1 text-gray-500 leading-none text-center">
+                              <p className="text-sm mt-1 text-gray-500 leading-[normal] text-center whitespace-pre-line">
                                 {method.desc}
                               </p>
                             </HeadlessRadioGroupItem>
@@ -5585,7 +5629,7 @@ export default function PaymentPage() {
                           {paymentMethod && (
                             <HeadlessRadioGroupItem
                               value=""
-                              className="group p-[25px] border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] hover:ring-1 hover:ring-gray-200 transition duration-300 focus-visible:outline-none"
+                              className="group p-[25px] border relative shrink-0 border-gray-200 rounded-lg shadow-[0px_1px_2px_0px_rgba(0,0,0,0.03)] transition duration-300 hover:border-2 hover:border-gray-300 hover:p-6 focus-visible:outline-none"
                             >
                               <div className="flex items-center justify-center">
                                 <RefreshCcw className="size-5 text-gray-500" />
@@ -8435,11 +8479,11 @@ export default function PaymentPage() {
                               Total Duration
                             </h3>
                             <h1 className="whitespace-pre text-xs font-semibold leading-[normal] text-dark-blue-400">
-                              {"Oct 2026  -  Nov 2026"}
+                              {checkoutProjectDateRange}
                             </h1>
                           </div>
                           <Badge size="sm" visual="primary">
-                            2 months
+                            {checkoutProjectDuration}
                           </Badge>
                         </div>
                       </div>
@@ -8454,7 +8498,7 @@ export default function PaymentPage() {
                               Project cost
                             </span>
                             <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                              {formatter.format(projectCost)}
+                              {priceFormatter.format(projectCost)}
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
@@ -8462,7 +8506,7 @@ export default function PaymentPage() {
                               Estimated tax *
                             </span>
                             <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                              {formatter.format(estimatedProjectTax)}
+                              {priceFormatter.format(estimatedProjectTax)}
                             </span>
                           </div>
                           {pay === "IN_INSTALLMENTS" && (
@@ -8472,7 +8516,7 @@ export default function PaymentPage() {
                                   Initial payment
                                 </span>
                                 <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                  {formatter.format(initialInstallmentAmount)}
+                                  {priceFormatter.format(initialInstallmentAmount)}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between">
@@ -8480,7 +8524,7 @@ export default function PaymentPage() {
                                   Recurring payment
                                 </span>
                                 <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                  {formatter.format(recurringInstallmentAmount)}
+                                  {priceFormatter.format(recurringInstallmentAmount)}
                                 </span>
                               </div>
                             </>
@@ -8491,26 +8535,32 @@ export default function PaymentPage() {
                                 Balance applied
                               </span>
                               <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {formatter.format(appliedBalanceAmount)}
+                                - {priceFormatter.format(appliedBalanceAmount)}
                               </span>
                             </div>
                           )}
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
-                              Gift card applied
-                            </span>
-                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                              - $4,000
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
-                              Promo code applied
-                            </span>
-                            <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                              - $500
-                            </span>
-                          </div>
+                          {sessionPromoAmount > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
+                                Promo code applied
+                              </span>
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                - {priceFormatter.format(sessionPromoAmount)}
+                              </span>
+                            </div>
+                          )}
+                          {sessionGiftCardAmount > 0 && (
+                            <div className="flex items-center justify-between">
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
+                                {sessionGiftCards.length === 1
+                                  ? "Gift card applied"
+                                  : `${sessionGiftCards.length} Gift cards applied`}
+                              </span>
+                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                - {priceFormatter.format(sessionGiftCardAmount)}
+                              </span>
+                            </div>
+                          )}
                           {totalGiftCardAmount > 0 && (
                             <div className="flex items-center justify-between">
                               <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
@@ -8520,7 +8570,7 @@ export default function PaymentPage() {
                                   : "Gift cards applied"}
                               </span>
                               <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {formatter.format(totalGiftCardAmount)}
+                                - {priceFormatter.format(totalGiftCardAmount)}
                               </span>
                             </div>
                           )}
@@ -8535,7 +8585,7 @@ export default function PaymentPage() {
                               : "Total amount to be paid"}
                           </span>
                           <h1 className="inline-block text-base font-bold leading-[normal] text-dark-blue-400">
-                            {formatter.format(totalAmountToBePaid)}
+                            {priceFormatter.format(totalAmountToBePaid)}
                           </h1>
                         </div>
 
@@ -8646,7 +8696,17 @@ export default function PaymentPage() {
             cleared for security.
           </p>
           <div className="mt-6 flex justify-end">
-            <Button onClick={() => router.push("/sign-in")}>Log In</Button>
+            <Button
+              onClick={() =>
+                router.push(
+                  `/sign-in?redirect=${encodeURIComponent(
+                    `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
+                  )}`
+                )
+              }
+            >
+              Log In
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

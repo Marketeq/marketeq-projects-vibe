@@ -18,8 +18,11 @@ import {
 } from './entities/checkout-session.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
+import { CheckoutDraftService } from './checkout-draft.service';
+import { CheckoutDraftCodeService } from './checkout-draft-code.service';
+import { promoDiscountCents } from './pricing/promo.adjustment';
 
-export const SESSION_EXPIRY_MINUTES = 60 * 24 * 30;
+export const SESSION_EXPIRY_MINUTES = 30;
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
 
@@ -34,6 +37,8 @@ export class CheckoutDraftSessionService {
     private readonly dataSource: DataSource,
     private readonly validationService: CheckoutDraftValidationService,
     private readonly summaryService: CheckoutSummaryService,
+    private readonly draftService: CheckoutDraftService,
+    private readonly codeService: CheckoutDraftCodeService,
   ) {}
 
   async getSession(clientId: string, sessionId: string) {
@@ -46,6 +51,13 @@ export class CheckoutDraftSessionService {
     const expired =
       session.status === 'pending' &&
       (await this.isPastExpiry(this.dataSource.manager, session.id));
+    const draftSummary = await this.draftService.getSessionSummary(session.id);
+    const projectCost = Number(session.projectCost);
+    const { promo } = await this.codeService.listCodes({
+      clientId,
+      giftCardCodes: [],
+      promoCode: session.appliedPromoCode,
+    });
 
     return {
       sessionId: session.id,
@@ -53,9 +65,25 @@ export class CheckoutDraftSessionService {
       listingId: session.listingId,
       slug: (project?.slug as string | undefined) ?? null,
       contractId: session.contractId,
-      totalAmount: Number(session.totalAmount),
+      projectCost,
+      title: draftSummary?.title ?? null,
+      mediaUrl: draftSummary?.mediaUrl ?? null,
+      teamMemberCount: draftSummary?.teamMemberCount ?? null,
+      durationDays: draftSummary?.durationDays ?? null,
       appliedGiftCards: session.appliedGiftCards ?? [],
       appliedPromoCode: session.appliedPromoCode,
+      promo: promo
+        ? {
+            code: promo.code,
+            status: promo.status,
+            discountType: promo.discountType,
+            discountValue: promo.discountValue,
+            amount:
+              promo.status === 'valid'
+                ? promoDiscountCents(promo, toCents(projectCost)) / 100
+                : 0,
+          }
+        : null,
     };
   }
 
@@ -135,7 +163,7 @@ export class CheckoutDraftSessionService {
       manager.create(CheckoutSession, {
         clientId,
         listingId: draft.listingId,
-        totalAmount: pricing.total,
+        projectCost: pricing.projectCost,
         status: 'pending',
         appliedGiftCards: frozen.appliedGiftCards,
         appliedPromoCode: frozen.appliedPromoCode,
@@ -168,7 +196,7 @@ export class CheckoutDraftSessionService {
     frozen: FrozenCodes,
   ): boolean {
     return (
-      toCents(Number(session.totalAmount)) === toCents(pricing.total) &&
+      toCents(Number(session.projectCost)) === toCents(pricing.projectCost) &&
       JSON.stringify(session.appliedGiftCards ?? null) ===
         JSON.stringify(frozen.appliedGiftCards) &&
       (session.appliedPromoCode ?? null) === frozen.appliedPromoCode

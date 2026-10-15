@@ -120,6 +120,17 @@ export class CheckoutDraftService {
     return this.toResponse(draft, await this.loadDurationDays(draft.id));
   }
 
+  async getSessionSummary(sessionId: string) {
+    const draft = await this.repo.findOne({ where: { sessionId } });
+    if (!draft) return null;
+    return {
+      title: draft.title,
+      mediaUrl: draft.mediaUrl,
+      teamMemberCount: Object.keys(draft.members).length,
+      durationDays: await this.loadDurationDays(draft.id),
+    };
+  }
+
   private async touchLastOpened(draftId: string) {
     await this.repo.query(
       `UPDATE "checkout"."drafts" SET "lastOpenedAt" = now() WHERE id = $1`,

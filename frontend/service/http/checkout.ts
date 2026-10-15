@@ -83,7 +83,7 @@ export const CheckoutAPI = {
     AxiosRequest.get(`/v1/checkout/drafts/${draftId}/pricing`),
 
   GetSession: (sessionId: string) =>
-    AxiosRequest.get(`/v1/checkout/session/${sessionId}`),
+    AxiosRequest.get(`/v1/checkout/session/${sessionId}`, { timeout: 10000 }),
 
   CreateDraftSession: (
     draftId: string,

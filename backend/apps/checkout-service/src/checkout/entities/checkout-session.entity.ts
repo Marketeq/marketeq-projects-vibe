@@ -57,7 +57,7 @@ export class CheckoutSession {
   installmentPlan: InstallmentPlan;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
-  totalAmount: number;
+  projectCost: number;
 
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   walletAmountUsed: number;
