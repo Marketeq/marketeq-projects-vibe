@@ -1863,7 +1863,7 @@ export const TopMostHeader = ({
                         variant="ghost"
                         visual="gray"
                       >
-                        <Plus className="size-[18px]" />
+                        <Plus className="size-[15px]" />
                       </IconButton>
                     </InviteWindowTrigger>
                   </TooltipTrigger>

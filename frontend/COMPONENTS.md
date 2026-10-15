@@ -1236,6 +1236,12 @@ These are full page layouts and complex multi-section components defined in Stor
 - **Storybook Title**: "PublishProject"
 - **Stories**: `Sidebar`, `Header`, `BottomBar`, `ProjectInfo`, `Media`, `ProjectScopeTip`, `ProjectScope`, `PublishMarketPlaceEmptyState`, `PhaseName`, `TaskName`, `Duration`, `DeletePhase`, `SaveExit`, `Empty1`, `Empty2`, `Empty3`
 
+### Reviews
+- **File**: `stories/reviews.stories.tsx`
+- **Storybook Title**: "Reviews"
+- **Stories**: `Default` (review a client), `TalentReview` (review a contractor), `SendFeedback`, `BrowserProjects`, `Modal`
+- **Motion**: Validation messages compose `DisclosureContent` and `HelperText` for 300 ms height/fade transitions; additional image slots combine a 300 ms disclosure reveal and fade.
+
 ### Sidebar (Page-Level)
 - **File**: `stories/sidebar.stories.tsx`
 - **Storybook Title**: "Sidebar"
