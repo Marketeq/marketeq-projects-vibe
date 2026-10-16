@@ -71,18 +71,48 @@ export class PayoutQueueProcessor {
       return;
     }
 
-    // PS-19 §3.3/§3.4: execution-time re-checks. These methods already
-    // existed (recheckBalanceAtExecution/recheckKycAtExecution) and fail the
-    // payout + write failureReason themselves, but had zero callers — this
-    // is the actual dispatch point where they belong, run right before
-    // handing off to an executor that would otherwise move real money
-    // against a balance/KYC state that's gone stale since initiation.
-    const balanceOk = await this.payoutService.recheckBalanceAtExecution(
-      payout.contractorId, payoutRequestId, parseFloat(payout.amountUsd),
-    );
-    if (!balanceOk) return;
-    const kycOk = await this.payoutService.recheckKycAtExecution(payout.contractorId, payoutRequestId);
-    if (!kycOk) return;
+    // PS-19 §3.3/§3.4: execution-time re-checks, run right before handing off
+    // to an executor that would otherwise move real money against a
+    // balance/KYC state that has gone stale since initiation. A failed check
+    // fails the payout and releases its hold itself.
+    //
+    // PMCM-285: when a lookup errors (earnings or KYC unreachable), the job is
+    // retried by throwing, since the job carries attempts: 3. On the last
+    // attempt the payout is failed and its hold released. Before, the error
+    // was swallowed and the payout stayed QUEUED with its funds held forever.
+    try {
+      const balanceOk = await this.payoutService.recheckBalanceAtExecution(
+        payout.contractorId, payoutRequestId, parseFloat(payout.amountUsd),
+      );
+      if (!balanceOk) return;
+      const kycOk = await this.payoutService.recheckKycAtExecution(payout.contractorId, payoutRequestId);
+      if (!kycOk) return;
+    } catch (err: any) {
+      // ECONNREFUSED from axios arrives with an empty message.
+      const cause = err?.message || err?.code || String(err);
+      // Read through a narrow shape: bull's Job typings do not resolve its
+      // own fields in every install of this monorepo.
+      const { attemptsMade = 0, opts } = job as unknown as {
+        attemptsMade?: number;
+        opts?: { attempts?: number };
+      };
+      const attempts = opts?.attempts ?? 1;
+      if (attemptsMade + 1 < attempts) {
+        this.logger.warn(
+          `Pre-execution checks errored for payout ${payoutRequestId} (attempt ${attemptsMade + 1}/${attempts}), retrying: ${cause}`,
+        );
+        throw err;
+      }
+      this.logger.error(
+        `Pre-execution checks errored for payout ${payoutRequestId} on the last attempt, failing it and releasing the hold: ${cause}`,
+      );
+      await this.payoutService.failHeldPayoutBeforeExecution(
+        payoutRequestId,
+        'We couldn’t complete the checks needed to send this withdrawal. Your funds are back in your available balance. Please try again.',
+        'ERR_EXECUTION_PRECHECK_UNAVAILABLE',
+      );
+      return;
+    }
 
     await this.execute(payout);
 

@@ -63,12 +63,17 @@ const BY_CODE: Record<string, WithdrawalFailureReason> = {
   ERR_STRIPE_PLATFORM_INSUFFICIENT_BALANCE: R.PROVIDER_UNAVAILABLE,
   ERR_WISE_PLATFORM_FUND_FAILED: R.PROVIDER_UNAVAILABLE,
   ERR_WISE_PLATFORM_INSUFFICIENT_BALANCE: R.PROVIDER_UNAVAILABLE,
+  // PMCM-285: earnings or KYC unreachable for every retry of the pre-execution checks.
+  ERR_EXECUTION_PRECHECK_UNAVAILABLE: R.PROVIDER_UNAVAILABLE,
   // Deliberately absent, so they fall to NO_REASON:
   // - the generic catch-alls (ERR_BANK_PAYOUT_FAILED, ERR_CARD_PAYOUT_FAILED,
   //   ERR_WISE_PLATFORM_TRANSFER_FAILED) carry an arbitrary exception, and
   //   naming a cause for those would be a guess;
   // - ERR_PAYOUT_OFAC_BLOCKED and ERR_CARD_BALANCE_CAP_EXCEEDED are compliance
   //   and limit outcomes, which no allowed line describes truthfully.
+  // - the PMCM-285 pre-execution outcomes (ERR_INSUFFICIENT_BALANCE_AT_EXECUTION,
+  //   ERR_KYC_SUSPENDED_AT_EXECUTION, ERR_KYC_HOLD_AT_EXECUTION) are about the
+  //   contractor's balance or account, not the payout method or provider.
 };
 
 /** Always returns one of the five allowed lines, never a raw code or blank. */
