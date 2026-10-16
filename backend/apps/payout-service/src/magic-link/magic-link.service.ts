@@ -420,13 +420,22 @@ export class MagicLinkService {
     }
 
     for (const payout of expired) {
-      await this.dataSource.transaction(async (em) => {
-        await em.update(PayoutRequest, payout.id, {
-          status: PayoutStatus.CANCELLED,
-          cancelledAt: new Date(),
-          failureReason: 'magic_link_expired',
-        });
+      // Conditional on PENDING_VERIFICATION: a contractor who confirms the
+      // link while this job runs has had their balance held and the payout
+      // queued, and cancelling it here would strand that hold.
+      const cancelled = await this.dataSource.transaction(async (em) => {
+        const result = await em.update(
+          PayoutRequest,
+          { id: payout.id, status: PayoutStatus.PENDING_VERIFICATION },
+          {
+            status: PayoutStatus.CANCELLED,
+            cancelledAt: new Date(),
+            failureReason: 'magic_link_expired',
+          },
+        );
+        return !!result.affected;
       });
+      if (!cancelled) continue;
 
       await this.auditService.log({
         contractorId: payout.contractorId,
@@ -439,26 +448,13 @@ export class MagicLinkService {
         metadata: { reason: 'magic_link_expired' },
       });
 
-      // PS-14 §7/§10: previously the contractor was never told why their
-      // withdrawal disappeared — no email, no event, just a silent DB
-      // update. No contractor email is available here (this is a cron job,
-      // not a request — payout-service never stores it, only receives it
-      // per-request from the JWT), so this reuses publishPayoutFailed()
-      // rather than guessing at a user-service email-lookup contract that
-      // doesn't exist anywhere in this codebase. Same event/consumer
-      // earnings-service already handles for every other failed payout.
-      await this.publisher.publishPayoutFailed({
-        contractorId: payout.contractorId,
-        payoutRequestId: payout.id,
-        amount: payout.amountUsd,
-        currency: 'USD',
-        methodType: 'MAGIC_LINK',
-        reason: 'Your withdrawal request expired before it was confirmed.',
-        failedAt: new Date().toISOString(),
-      });
-
-      // PS-14 §10: the dedicated event, additive to payout.failed above —
-      // notification-service's spec'd consumer for this exact message.
+      // PMCM-285: this used to publish payout.failed as well, to reuse its
+      // notification. earnings-service's consumer for that event credits the
+      // amount back to available_balance, but an unconfirmed withdrawal never
+      // had a hold (the hold is placed when the link is confirmed), so every
+      // expired link added the withdrawal amount to the contractor's balance.
+      // payout.cancelled below is the event that tells the contractor.
+      // PS-14 §10: notification-service's spec'd consumer for this exact message.
       await this.publisher.publishPayoutCancelled({
         payoutRequestId: payout.id,
         contractorId: payout.contractorId,
