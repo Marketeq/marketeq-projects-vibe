@@ -840,7 +840,7 @@ export class NotificationService {
   }
 
   /**
-   * PMCM-806: withdrawal submitted / completed / failed. Each is a push (the
+   * PMCM-806: withdrawal submitted / completed / failed / cancelled. Each is a push (the
    * in-app notification, delivered live over Ably) and an email.
    *
    * The push goes through dispatch(), so the recipient's in-app switches
@@ -858,7 +858,7 @@ export class NotificationService {
    */
   async sendWithdrawalNotification(payload: WithdrawalNotificationPayload) {
     const kind = payload.kind;
-    if (kind !== 'submitted' && kind !== 'completed' && kind !== 'failed') {
+    if (kind !== 'submitted' && kind !== 'completed' && kind !== 'failed' && kind !== 'cancelled') {
       this.logger.warn(`Withdrawal notification with unknown kind "${String(kind)}" ignored`);
       return { sent: false };
     }
@@ -866,11 +866,11 @@ export class NotificationService {
     const failureReason =
       kind === 'failed' ? normalizeFailureReason(payload.failureReason) : null;
 
-    // AC-05: there is no per-transaction detail page yet, so every push and
-    // the Track/View receipt CTAs fall back to the payout history list.
-    // Deposit methods and the Withdraw action both live on the Earnings
-    // Overview tab.
-    const historyPath = '/earnings?tab=payouts';
+    // AC-05: every push and the Track/View receipt CTAs open this payout's
+    // detail view (PMCM-280), the Payout Details dialog on the Payouts tab,
+    // which PayoutsTab opens from `?payout=<id>`. Deposit methods and the
+    // Withdraw action both live on the Earnings Overview tab.
+    const detailPath = `/earnings?tab=payouts&payout=${encodeURIComponent(payload.payoutRequestId)}`;
     const overviewPath = '/earnings?tab=overview';
 
     const push = buildWithdrawalPush({
@@ -888,7 +888,7 @@ export class NotificationService {
         event: `payout.withdrawal.${kind}`,
         title: push.title,
         body: push.body,
-        link: historyPath,
+        link: detailPath,
         metadata: {
           payoutRequestId: payload.payoutRequestId,
           depositMethodId: payload.depositMethodId ?? null,
@@ -929,7 +929,7 @@ export class NotificationService {
       completedAt: payload.completedAt,
       failureReason,
       reference: payload.payoutRequestId,
-      transactionUrl: `${appBase}${historyPath}`,
+      transactionUrl: `${appBase}${detailPath}`,
       reviewMethodUrl: `${appBase}${overviewPath}`,
       tryAgainUrl: `${appBase}${overviewPath}`,
       logoUrl: this.resolveLogoUrl(),

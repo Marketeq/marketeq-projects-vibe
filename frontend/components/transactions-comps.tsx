@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { SVGProps, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import {
   type BalanceResponse,
@@ -11495,6 +11495,30 @@ export const PayoutsTab = ({
   const [loadError, setLoadError] = useState("")
   const [detailId, setDetailId] = useState<string | null>(null)
 
+  // PMCM-806: withdrawal notifications and emails link to
+  // /earnings?tab=payouts&payout=<id>, which opens that payout's detail view
+  // (PMCM-280) directly. Closing the dialog drops the param so a refresh
+  // doesn't reopen it.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const linkedPayoutId = searchParams.get("payout")
+  useEffect(() => {
+    if (
+      linkedPayoutId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        linkedPayoutId
+      )
+    ) {
+      setDetailId(linkedPayoutId)
+    }
+  }, [linkedPayoutId])
+  const closeDetail = () => {
+    setDetailId(null)
+    if (linkedPayoutId) {
+      router.replace("/earnings?tab=payouts", { scroll: false })
+    }
+  }
+
   // Stat cards — sourced from real data, not the Figma mock's static "$832.00 /
   // Tuesday, Aug 20th / Chase Bank ...4553" etc.
   const [monthlySummary, setMonthlySummary] = useState<{
@@ -12145,7 +12169,7 @@ export const PayoutsTab = ({
 
       <PayoutDetailDialog
         payoutId={detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
+        onOpenChange={(open) => !open && closeDetail()}
       />
     </div>
   )

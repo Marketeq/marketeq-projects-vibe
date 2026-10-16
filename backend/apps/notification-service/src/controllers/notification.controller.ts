@@ -202,7 +202,7 @@ export class NotificationController {
     return this.service.sendInvitationAcceptedEmail(data);
   }
 
-  // PMCM-806: withdrawal submitted / completed / failed, from payout-service.
+  // PMCM-806: withdrawal submitted / completed / failed / cancelled, from payout-service.
   @EventPattern('notification.payout.withdrawal')
   handleWithdrawalNotification(@Payload() data: WithdrawalNotificationPayload) {
     return this.service.sendWithdrawalNotification(data);

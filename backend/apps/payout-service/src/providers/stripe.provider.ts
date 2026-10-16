@@ -1154,6 +1154,7 @@ export class StripeProvider {
       methodType: 'BANK',
       reason: 'Payout was cancelled by Stripe before settlement.',
       failedAt: new Date().toISOString(),
+      cancelledByProvider: true,
     });
   }
 
