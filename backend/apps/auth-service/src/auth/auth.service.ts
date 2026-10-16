@@ -42,6 +42,8 @@ import { GoogleLoginDto } from './dto/google-login.dto';
 import { LinkedInLoginDto } from './dto/linkedin-login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { resolvePlatformRole } from './platform-role.source';
+import { hasSecondFactor } from './second-factor.claim';
 
 type JwtPair = { access_token: string; refresh_token: string };
 type SyncUserProfilePayload = {
@@ -1202,7 +1204,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
 
     const refreshSecret = this.getRefreshSecret();
-    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean };
+    let payload: { sub: string; email?: string; type?: string; sid?: string; rememberMe?: boolean; amr?: unknown };
 
     try {
       payload = await this.jwtService.verifyAsync(dto.refresh_token, {
@@ -1230,7 +1232,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
 
       const rememberMe = payload.rememberMe ?? false;
-      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe });
+      const newTokens = await this.issueTokens({ sub: payload.sub, email: payload.email ?? '', sessionId: payload.sid, rememberMe, strongAuth: hasSecondFactor(payload) });
 
       session.refreshTokenHash = createHash('sha256').update(newTokens.refresh_token).digest('hex');
       session.lastActiveAt = new Date();
@@ -1240,7 +1242,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       return { ...newTokens, sessionId: payload.sid };
     }
 
-    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false });
+    return this.issueTokens({ sub: payload.sub, email: payload.email ?? '', rememberMe: payload.rememberMe ?? false, strongAuth: hasSecondFactor(payload) });
   }
 
   async logout(user: { id?: string; sub?: string }, refreshToken?: string) {
@@ -1494,7 +1496,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
     const sessionId = randomUUID();
     const rememberMe = payload.rememberMe ?? false;
-    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe });
+    // The one mint in this service that follows a completed second factor.
+    const tokens = await this.issueTokens({ sub: user.id, email: user.email, sessionId, rememberMe, strongAuth: true });
 
     await this.createSession({ id: sessionId, userId: user.id, refreshToken: tokens.refresh_token, userAgent, ipAddress, rememberMe });
 
@@ -1810,8 +1813,37 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     email: string;
     sessionId?: string;
     rememberMe?: boolean;
+    /**
+     * True only when this mint follows a completed second factor. Defaults to
+     * false, so every path that does not explicitly prove a second factor —
+     * password login without 2FA, OAuth, magic link, password reset,
+     * registration — is treated as single-factor. Carried across refresh by
+     * the `amr` claim on the refresh token.
+     *
+     * This gates the platformRole claim ONLY. Ordinary tokens are unaffected.
+     */
+    strongAuth?: boolean;
   }): Promise<JwtPair> {
     const accessPayload: Record<string, any> = { sub: payload.sub, email: payload.email };
+    // Security role, when this account has one. Omitted entirely for ordinary
+    // users, so their tokens are unchanged. Resolved on every mint — including
+    // refresh, which routes through here — so a role change takes effect at the
+    // next refresh rather than needing the user to sign out.
+    // Source is PLATFORM_ROLE_ASSIGNMENTS, never a request body: see
+    // platform-role.source.ts for why it is not read from users.platform_role yet.
+    const platformRole = resolvePlatformRole(payload.sub);
+    if (platformRole) {
+      if (payload.strongAuth) {
+        accessPayload.platformRole = platformRole;
+      } else {
+        // Deliberate, and the reason this is a warning rather than silence:
+        // the holder will see every admin endpoint refuse them and needs to
+        // know why. A role is only ever carried by a second-factor session.
+        this.logger.warn(
+          `platform role withheld: userId=${payload.sub} holds role=${platformRole} but this session is not second-factor verified. Enable 2FA on this account and sign in again.`,
+        );
+      }
+    }
     if (payload.sessionId) {
       accessPayload.sid = payload.sessionId;
     }
@@ -1827,6 +1859,13 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       type: 'refresh',
       rememberMe,
     };
+    // Standard "authentication methods references" claim. Records that this
+    // session passed a second factor, so a refresh can re-mint the
+    // platformRole claim without forcing the holder to log in again. Absent
+    // on every single-factor session, which is what keeps the gate honest.
+    if (payload.strongAuth) {
+      refreshPayload.amr = ['mfa'];
+    }
     if (payload.sessionId) {
       refreshPayload.sid = payload.sessionId;
     }

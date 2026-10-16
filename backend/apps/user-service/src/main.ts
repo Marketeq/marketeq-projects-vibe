@@ -2,7 +2,9 @@ import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { json, urlencoded } from 'express';
+import { DataSource } from 'typeorm';
 import { AppModule } from './app.module';
+import { registerDatabaseAuditSink } from './guards/audit-sink.database';
 
 async function bootstrap() {
   const logger = new Logger('UserService');
@@ -66,6 +68,17 @@ async function bootstrap() {
     logger.log('RabbitMQ microservice connected (queue: user_service_queue)');
   } else {
     logger.warn('RABBITMQ_URL not set — talent-profile sync consumer disabled');
+  }
+
+  // Durable security audit. Registered after the app is built so the
+  // DataSource is live; if it cannot be resolved the audit log degrades to
+  // stdout rather than taking the service down with it.
+  try {
+    registerDatabaseAuditSink(app.get(DataSource));
+  } catch (error) {
+    logger.warn(
+      `security audit sink not registered; privileged actions will be logged to stdout only. reason=${(error as Error)?.message}`,
+    );
   }
 
   await app.startAllMicroservices();

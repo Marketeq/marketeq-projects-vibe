@@ -20,3 +20,4 @@ Auto-approves/rejects based on filters, flags for manual review, integrates with
 - Emits: listing.approved, listing.rejected, listing.flagged
 
 ## Agent Log
+- 2026-10-02: `AdminGuard` now writes a security audit line on both outcomes via the shared `src/guards/security-audit.ts` (stdout only here — the durable sink is registered in user-service alone). Role resolution reads `platformRole` and nothing else; the `role`/`roles[]` fallback was removed because `role` is user-writable.

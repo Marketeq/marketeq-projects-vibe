@@ -1,6 +1,11 @@
 // apps/payout-service/src/guards/roles.guard.ts
 // PS-00 §6: Role-based access control
-// Used by admin endpoints (PS-24) to restrict access to support/admin users
+// Used by admin endpoints (PS-24) to restrict access to support/admin users.
+//
+// The decision logic now lives in platform-role.core.ts, shared verbatim by
+// every service that checks roles. This file keeps its original exports, so
+// no call site changes. Behaviour is unchanged: a caller with no role is
+// still refused — no access token carries a role claim yet.
 import {
   Injectable,
   CanActivate,
@@ -8,6 +13,13 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import {
+  auditRoleDecision,
+  describeRequest,
+  isRoleAllowed,
+  logRoleDenial,
+  resolveCallerRole,
+} from './platform-role.core';
 
 export const ROLES_KEY = 'roles';
 
@@ -32,16 +44,15 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const callerRole = resolveCallerRole(request.user);
 
-    if (!user || !user.role) {
+    if (!isRoleAllowed(callerRole, requiredRoles)) {
+      logRoleDenial(describeRequest(request), requiredRoles, callerRole);
+      auditRoleDecision(request, requiredRoles, callerRole, 'denied');
       throw new ForbiddenException('Insufficient permissions');
     }
 
-    if (!requiredRoles.includes(user.role)) {
-      throw new ForbiddenException('Insufficient permissions');
-    }
-
+    auditRoleDecision(request, requiredRoles, callerRole, 'allowed');
     return true;
   }
 }

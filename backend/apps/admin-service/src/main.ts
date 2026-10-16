@@ -8,10 +8,14 @@ async function bootstrap() {
   const logger = new Logger('AdminService');
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  app.enableCors({
-    origin: process.env.FE_ORIGIN || 'http://localhost:3000',
-    credentials: true,
-  });
+  // Was `origin: FE_ORIGIN || 'http://localhost:3000'` with credentials, which
+  // made a page on any developer's machine a trusted credentialed origin in
+  // production — the same defect fixed at the gateway. This service is behind
+  // the gateway and has no browser-facing routes left, so it needs no CORS at
+  // all; the localhost default is gone rather than merely narrowed.
+  if (process.env.FE_ORIGIN) {
+    app.enableCors({ origin: process.env.FE_ORIGIN, credentials: true });
+  }
 
   const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
   if (rabbitmqUrl) {

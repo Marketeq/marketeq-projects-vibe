@@ -57,6 +57,28 @@ services:
       # both modes (unchanged behaviour).
       - key: CSRF_STRICT_MODE
         value: monitor
+      # user-service /users routes: monitor logs cross-user edits, attempts to
+      # set role=ADMIN, and list-all reads; enforce returns 403. Internal
+      # service calls are exempt.
+      - key: USER_ACCESS_MODE
+        value: monitor
+      # Privilege escalation is enforced regardless of the mode above: a
+      # request trying to set role=admin or platformRole on a /users route is
+      # refused. Nothing legitimate does this. Set to monitor to back it out.
+      - key: USER_ACCESS_ESCALATION_MODE
+        value: enforce
+      # "<userId>:admin,<userId>:finance" — the accounts auth-service puts a
+      # platformRole claim on. Valid role ids come from
+      # platform-roles.catalog.ts (admin, developer, qa, product-manager,
+      # finance, support); unknown ids are dropped with a warning.
+      # platformRole claim on. Empty means no platform roles exist, which is
+      # the current state. Not read from the database on purpose: no HTTP
+      # route can reach this, so no request can promote an account. A listed
+      # account must also have 2FA enabled: the claim is only minted on a
+      # second-factor session, so a password-only or OAuth sign-in carries no
+      # role and auth-service logs "platform role withheld: ...".
+      - key: PLATFORM_ROLE_ASSIGNMENTS
+        value: ""
       - fromGroup: marketeq-secrets
 
   # ── Shared key value store ──
@@ -89,6 +111,18 @@ envVarGroups:
       - key: AUTH_REFRESH_TOKEN_EXPIRES_IN
         value: "30d"
       - key: INTERNAL_SERVICE_TOKEN
+        sync: false
+      # ── E2EE key custody (user-service) ──
+      # Wraps users' RSA private keys at rest in user_service.user_keys.
+      # Generate with: openssl rand -hex 32
+      # Required by PUT /user-keys/private-key/backup and
+      # GET /user-keys/private-key/restore; without it both return 503 and
+      # key recovery is unavailable. It is NOT interchangeable with
+      # NEXT_PUBLIC_SYSTEM_SECRET, which must stay unset — see
+      # docs/md/CyberSecurity/Client-Side Seed Material — Plan.md.
+      # Rotating it makes every existing wrapped private key unreadable, so
+      # it needs a re-wrap migration, not a straight swap.
+      - key: E2EE_SERVER_SECRET
         sync: false
       # ── OAuth ──
       - key: GOOGLE_CLIENT_ID

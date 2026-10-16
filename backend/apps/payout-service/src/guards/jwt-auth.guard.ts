@@ -39,7 +39,11 @@ export class JwtAuthGuard implements CanActivate {
       request.user = {
         userId: decoded.sub || decoded.id,
         email: decoded.email,
+        // Profile label (talent/client). Carried for callers that display it;
+        // RolesGuard does NOT read it — see platform-role.core.ts.
         role: decoded.role,
+        // Security role. The only thing RolesGuard honours.
+        platformRole: decoded.platformRole,
       };
       return true;
     } catch {

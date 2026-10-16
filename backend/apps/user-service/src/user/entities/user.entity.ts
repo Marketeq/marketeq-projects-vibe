@@ -69,6 +69,20 @@ export class User {
   @Column({ nullable: true })
   role?: string;
 
+  // Security role — what this account may DO. Separate from `role` above,
+  // which is a profile label (talent/client) that signup and onboarding
+  // write and that UpdateUserDto exposes; reusing it would make the field a
+  // user legitimately sets about themselves the same field that grants
+  // administration. Absent (null) for every ordinary account.
+  //
+  // Deliberately in NO DTO. ValidationPipe runs with whitelist and
+  // forbidNonWhitelisted, so a request carrying `platformRole` is rejected
+  // with a 400 rather than being picked up by `Object.assign(user, dto)` in
+  // updateUser. Set it through a deliberate admin path or a database
+  // statement, never a profile update. Values: see PlatformRole.
+  @Column({ name: 'platform_role', type: 'varchar', length: 32, nullable: true })
+  platformRole?: string | null;
+
   // Which role the account is currently acting as. An account can hold both
   // roles (see talentOnboardedAt / clientOnboardedAt), and `role` / `userType`
   // are single-valued profile labels that can disagree, so neither can express

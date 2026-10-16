@@ -326,6 +326,20 @@ jobs:
             add "🐛 **\`@ts-ignore\` added without a \`-- justification\` comment** on the same line. See SOP §3.5."
           fi
 
+          # --- Section 11: Client-exposed cryptographic seed material ---
+          # NEXT_PUBLIC_*/VITE_* values are compiled into the public JS bundle,
+          # so a value with one of those prefixes is published, not configured.
+          # Anything a cryptographic operation relies on being unguessable must
+          # not be one. Reasoning and the allowlist rules live in the script.
+          set +e
+          CLIENT_SECRET_OUT=$(python3 .github/scripts/check-client-secrets.py 2>&1)
+          CLIENT_SECRET_RC=$?
+          set -e
+          if [ "$CLIENT_SECRET_RC" -ne 0 ]; then
+            CLIENT_SECRET_DETAIL=$(printf '%s' "$CLIENT_SECRET_OUT" | sed 's/$/<br>/' | tr -d '\n')
+            add "🔐 **Client-exposed cryptographic seed material** — a \`NEXT_PUBLIC_*\` or \`VITE_*\` variable whose name says its value is relied on to be secret is compiled into the browser bundle, where anyone can read it. Source it server-side instead. See \`docs/md/CyberSecurity/Client-Side Seed Material — Plan.md\`.<br>$CLIENT_SECRET_DETAIL"
+          fi
+
           # --- Emit results ---
           if [ ${#VIOLATIONS[@]} -eq 0 ]; then
             {

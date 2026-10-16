@@ -9,14 +9,22 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UserAccessGuard } from '../guards/user-access.guard';
 
 @ApiTags('User')
 @Controller('users')
+// Ownership and privilege checks. These routes have only the global
+// JwtAuthGuard, so any signed-in caller can currently edit, delete or re-role
+// any account and list every user. The guard ships in MONITOR mode: it logs
+// what it would reject and changes nothing until USER_ACCESS_MODE=enforce.
+// Service-to-service callers (profile sync) are exempt via the internal token.
+@UseGuards(UserAccessGuard)
 export class UserController {
   constructor(private readonly userService: UserService) {}
 

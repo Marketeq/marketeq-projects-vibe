@@ -59,7 +59,7 @@ Schema: `messaging` (synchronize: true in dev)
 - **AES conversation keys, not direct RSA**: each conversation gets a shared AES-256 key. RSA is only used to wrap/unwrap the AES key per participant. This allows both sender and recipient to decrypt message history.
 - **Server holds server-encrypted raw AES keys**: not true E2E (server can theoretically decrypt). Pragmatic for MVP — enables key recovery and new participant onboarding.
 - **Plaintext fallback**: messages can be sent as plaintext (content field) when encryption isn't available. Enables backwards compatibility.
-- **Client-side key generation**: RSA-4096 keypairs generated in browser via WebCrypto. Private key stored in localStorage. Public key pushed to messaging-service.
+- **Client-side key generation**: RSA-4096 keypairs generated in browser via WebCrypto. Private key stored in **IndexedDB** (`keys.ts` uses `idb`; only `deviceId` is in localStorage). Public key pushed to messaging-service.
 - **Cookie-based auth**: inbox reads JWT from cookies (via getAccessToken() helper) instead of localStorage, aligning with the rest of the app.
 - **Ably only carries ciphertext**: plaintext is stripped from Ably payloads when ciphertext is present.
 
@@ -72,7 +72,7 @@ Schema: `messaging` (synchronize: true in dev)
 ## Known Limitations
 
 ### ⚠️ Single-device only (no multi-device support)
-The current implementation works for **one device per user**. Each browser generates its own RSA keypair on first login and stores the private key in localStorage. The server stores the user's public key (and refuses to overwrite it once set, to protect existing wrapped keys).
+The current implementation works for **one device per user**. Each browser generates its own RSA keypair on first login and stores the private key in IndexedDB. The server stores the user's public key (and refuses to overwrite it once set, to protect existing wrapped keys).
 
 **What breaks**:
 - Logging in on a second device/browser generates new keys, but the server rejects the upload, so the new device has keys that don't match any wrapped conversation keys
@@ -80,14 +80,20 @@ The current implementation works for **one device per user**. Each browser gener
 - Private/incognito browsers count as new devices
 
 **Workarounds** (dev/testing only):
-- Manually copy `localStorage.privateKey`, `publicKey`, `deviceId` from the first browser to the second
+- Manually copy the keypair from the first browser's IndexedDB (`messaging` DB, `keys` store, per-user entries written by `keys.ts`) plus `localStorage.deviceId`
 - Use one user per browser session for testing
 
-**Proper fix** (not implemented): password-based key backup
-1. On signup, derive KEK from user password via PBKDF2
-2. Encrypt private key with KEK, upload encrypted blob to server
-3. On new device login, download blob, decrypt with password, restore private key
-4. Scaffolding exists in `frontend/src/crypto/backup.ts` but `systemSecret` is empty and flow isn't wired
+**The recovery flow is BUILT, not missing — and must not be switched on as written.**
+Corrected 2026-10-08; the previous version of this note called it unwired scaffolding, which is wrong and was the reason nobody treated it as live code.
+
+1. `keys.ts:4` imports `deriveKEK`/`encryptWithKEK`/`decryptWithKEK` from `crypto/backup.ts`; lines ~251-330 implement backup, one-time migration and restore against `PUT`/`GET /user-keys/private-key`.
+2. The backend endpoints exist and are JWT-guarded (`user-keys.controller.ts`, global `APP_GUARD`), and `user_service.user_keys.encryptedPrivateKey` ships in migration `1775000000000`.
+3. It is inert ONLY because `NEXT_PUBLIC_SYSTEM_SECRET` is unset, so `deriveKEK` throws and `keys.ts` logs "KEK derivation unavailable" and skips backup.
+4. It is **not** password-based. The KEK is derived from `userId` + `NEXT_PUBLIC_SYSTEM_SECRET` + the constant salt `"message-encryption"`. A `NEXT_PUBLIC_` value is compiled into the public JS bundle and a user id is not secret, so setting that variable makes every user's private key decryptable by anyone.
+
+**Do not set `NEXT_PUBLIC_SYSTEM_SECRET` in any environment.** It is still an active entry in `frontend/.env.local.example` (with a placeholder value), `.env.staging.example` and `.env.production.example`; removing it from those three templates is pending. A CI guard (`.github/scripts/check-client-secrets.py`, run by `sop-check.yml` Section 11) now fails any PR that introduces a new client-exposed secret variable, with the four known occurrences allowlisted and dated.
+
+The fix is to derive the KEK server-side from the `E2EE_SERVER_SECRET` that `user-keys.service.ts` already holds, rather than in the browser. See Security Tasklist item #2 and `docs/md/CyberSecurity/Client-Side Seed Material — Plan.md`.
 
 ### Other gotchas
 - Forward copies ciphertext encrypted with source thread's AES key — recipient in destination thread can't decrypt. Forward button not in UI yet. Fix: client-side re-encrypt on forward.

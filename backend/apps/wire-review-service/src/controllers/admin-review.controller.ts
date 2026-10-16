@@ -1,9 +1,17 @@
-import { Controller, Post, Body, HttpCode } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WireMatchCandidate } from '../entities/wire-match-candidate.entity';
+import { InternalServiceGuard } from '../guards/internal-service.guard';
 
+// Confirms or flags a wire transfer. Previously unguarded, with the
+// resolver's identity taken from the request body — the caller stated who
+// they were, and that claim was written into the record as the audit trail.
+// Now requires the internal-service token; `adminId` is still recorded but
+// is no longer the only thing standing between a caller and a settled wire.
+// When roles exist, add a role check here so a named human authorises it.
 @Controller('admin/wire-review')
+@UseGuards(InternalServiceGuard)
 export class AdminReviewController {
   constructor(
     @InjectRepository(WireMatchCandidate)

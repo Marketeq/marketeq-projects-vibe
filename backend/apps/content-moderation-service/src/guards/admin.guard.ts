@@ -4,26 +4,37 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+import {
+  auditRoleDecision,
+  describeRequest,
+  isRoleAllowed,
+  logRoleDenial,
+  resolveCallerRole,
+} from './platform-role.core';
 
 /**
- * AdminGuard — restricts a route to users whose JWT payload identifies them
- * as an admin. Must be used together with JwtAuthGuard (so req.user is set).
+ * AdminGuard — restricts a route to admin callers. Must be used together
+ * with JwtAuthGuard (so req.user is set).
  *
- * Accepts either `req.user.role === 'admin'` or `req.user.roles` including
- * 'admin', to be tolerant of different token shapes across services.
+ * The decision logic now lives in platform-role.core.ts, shared verbatim by
+ * every service that checks roles; it already handles the `role` vs `roles[]`
+ * difference this guard used to special-case. Behaviour is unchanged: a
+ * caller with no role is refused, which today is everyone, because no access
+ * token carries a role claim yet.
  */
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest();
-    const user = req.user as
-      | { role?: string; roles?: string[] }
-      | undefined;
-    if (!user) throw new ForbiddenException('Missing user context');
-    const isAdmin =
-      user.role === 'admin' ||
-      (Array.isArray(user.roles) && user.roles.includes('admin'));
-    if (!isAdmin) throw new ForbiddenException('Admin role required');
+    if (!req.user) throw new ForbiddenException('Missing user context');
+
+    const callerRole = resolveCallerRole(req.user);
+    if (!isRoleAllowed(callerRole, ['admin'])) {
+      logRoleDenial(describeRequest(req), ['admin'], callerRole);
+      auditRoleDecision(req, ['admin'], callerRole, 'denied');
+      throw new ForbiddenException('Admin role required');
+    }
+    auditRoleDecision(req, ['admin'], callerRole, 'allowed');
     return true;
   }
 }

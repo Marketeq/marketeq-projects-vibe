@@ -73,3 +73,13 @@ by design (per T2-0), and even outbound is currently dead (see above).
 
 ## Migration
 - `1710000000000-InitContractsSchema.ts` — creates all 3 tables, indexes, enums
+
+## Agent Log (security)
+- 2026-10-04 (AUDIT ONLY — no code changed): **contracts.controller.ts has 11 routes and zero `@UseGuards`.** The service has a global `APP_GUARD` `JwtAuthGuard`, so callers must be signed in, but there is NO ownership check on:
+  - `PUT /contracts/:id/end` — any signed-in account can end any ACTIVE contract; the handler calls `billingClient.finalizeContract`, so it has financial effect.
+  - `PUT /contracts/:id/respond` — any signed-in account can accept/reject any PENDING contract.
+  - `GET /contracts/:id` — any signed-in account can read any contract.
+  - `GET /contracts/talent/:talentId` — no check, while the sibling `GET /contracts/client/:clientId` DOES check `clientId !== req.user.sub` (added under "T2-1"). The sibling was missed.
+  Same IDOR class as the wallet-service finding under item #11. Fix ownership BEFORE layering the company permission model on top.
+- Full write-up: `docs/md/CyberSecurity/Company & Team RBAC — Audit.md` §4.
+- 2026-10-05 (AUDIT): TWO dead role-guard copies — `src/guards/roles.guard.ts` and `src/middleware/roles.guard.ts`. Both read `user.role`, the **user-writable profile label** exposed by `UpdateUserDto`, which is exactly the escalation path removed from the shared `platform-role.core.ts`. Neither is applied to any route and no token carries `role`, so both are inert today. Do not wire either up — delete them, or migrate to the shared core (which reads `platformRole` only). `req.user` here is the whole decoded JWT payload, so it already carries `platformRole` if migrated. See `Infrastructure Roles — Catalogue and Extension Guide.md` §8 item 6.
