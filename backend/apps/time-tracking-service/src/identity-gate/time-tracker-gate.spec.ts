@@ -262,6 +262,39 @@ describe('G8 - time tracker verification gate', () => {
         expect(sideEffects).toEqual([]);
       });
 
+      it('a temporary outage is retryable: it fails closed without writing, and the same request then succeeds', async () => {
+        gate
+          .mockRejectedValueOnce(new IdentityVerificationUnavailableException())
+          .mockRejectedValueOnce(new IdentityVerificationUnavailableException())
+          .mockResolvedValue(OPEN);
+
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const down = await send(route, headersFor(route, TALENT));
+          expect(down.status).toBe(503);
+          expect(down.body.error).toBe('IDENTITY_VERIFICATION_UNAVAILABLE');
+          expect(writes).toEqual([]);
+          expect(sideEffects).toEqual([]);
+        }
+
+        const retried = await send(route, headersFor(route, TALENT));
+        expect(retried.status).toBeLessThan(300);
+        expect(writes.length + sideEffects.length).toBeGreaterThan(0);
+        expect(gate).toHaveBeenCalledTimes(3);
+        expect(gate).toHaveBeenLastCalledWith(TALENT);
+      });
+
+      it('an outage then a CLOSED answer stays closed: the retry is a 403 and still writes nothing', async () => {
+        gate
+          .mockRejectedValueOnce(new IdentityVerificationUnavailableException())
+          .mockResolvedValue(CLOSED('identity'));
+        expect((await send(route, headersFor(route, TALENT))).status).toBe(503);
+        const res = await send(route, headersFor(route, TALENT));
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('VERIFICATION_REQUIRED');
+        expect(writes).toEqual([]);
+        expect(sideEffects).toEqual([]);
+      });
+
       it('unauthenticated callers are refused before any gate call', async () => {
         const res = await send(route, {});
         expect(res.status).toBe(401);

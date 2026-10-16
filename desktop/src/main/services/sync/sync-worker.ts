@@ -67,6 +67,22 @@ export interface SyncWorkerDeps {
 
 export type SyncWorker = ReturnType<typeof createSyncWorker>;
 
+/** Error code time-tracking-service answers with when the gate cannot be evaluated. */
+export const GATE_UNAVAILABLE_CODE = 'IDENTITY_VERIFICATION_UNAVAILABLE';
+
+/** True when a 503 body carries the gate-unavailable code, however the gateway wraps it. */
+export function isGateUnavailable(data: unknown): boolean {
+  const seen = new Set<unknown>();
+  const visit = (v: unknown, depth: number): boolean => {
+    if (v === GATE_UNAVAILABLE_CODE) return true;
+    if (!v || typeof v !== 'object' || depth > 3 || seen.has(v)) return false;
+    seen.add(v);
+    const o = v as Record<string, unknown>;
+    return visit(o.error, depth + 1) || visit(o.code, depth + 1) || visit(o.message, depth + 1);
+  };
+  return visit(data, 0);
+}
+
 export function createSyncWorker(deps: SyncWorkerDeps) {
   const log = deps.logger?.child({ svc: 'sync-worker' });
   const bus = new EventEmitter() as EventEmitter & SyncWorkerEvents;
@@ -152,6 +168,18 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     const s = resp.status;
     const retryable = s === 408 || s === 429 || (s >= 500 && s <= 599);
     const msg = `HTTP ${s}`;
+    // The server could not confirm the talent's verification status
+    // (identity-verification-service restarting, slow or unreachable) and
+    // refused the write WITHOUT saving anything. Like an offline device, that
+    // is an outage rather than a verdict on this row, so it waits and tries
+    // again forever instead of spending one of its attempts. Otherwise a
+    // restart lasting about a minute would dead-letter every queued session,
+    // entry, break and idle. A closed gate (403 VERIFICATION_REQUIRED) is a
+    // real answer and is NOT handled here.
+    if (s === 503 && isGateUnavailable(resp.data)) {
+      deps.outbox.markFailed(row.id, `${msg} ${GATE_UNAVAILABLE_CODE}`, { retryable: true, transient: true });
+      throw new DispatchError(row.id, msg, true);
+    }
     deps.outbox.markFailed(row.id, msg, { retryable });
     throw new DispatchError(row.id, msg, retryable);
   }
