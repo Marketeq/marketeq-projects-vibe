@@ -45,6 +45,7 @@ import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import { cn, EmojiProperties, type DataEmoji } from "@/utils/functions"
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { Conversation } from "@/types/conversation"
 import { type SearchDoc, makeSearcher } from "@/src/search/message-search"
@@ -585,6 +586,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
         const res = await fetch(`${API_BASE_URL}/messaging/upload`, {
           method: "POST",
           credentials: "include",
+          headers: csrfHeader("POST"),
           body: fd,
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)

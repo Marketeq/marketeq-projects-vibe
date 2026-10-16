@@ -118,6 +118,18 @@ export type ScreenshotUploadUrlResponse = z.infer<
   typeof ScreenshotUploadUrlResponse
 >;
 
+// Matches the real `/screenshots/presign` route (screenshots.controller.ts),
+// not the doc-13 `/screenshots/upload-url` route referenced by
+// requestScreenshotUploadUrl() below, which the backend does not implement.
+export const PresignResponse = z.object({
+  url: z.string().url(),
+  key: z.string(),
+  expiresIn: z.number(),
+  mimeType: z.string(),
+  publicUrl: z.string().url().optional(),
+});
+export type PresignResponse = z.infer<typeof PresignResponse>;
+
 export const ScreenshotConfirmResponse = z.object({
   id: z.string(),
   sessionId: z.string(),
@@ -136,6 +148,14 @@ export const ActivityBatchResponse = z.object({
   accepted: z.number().int().nonnegative(),
 });
 export type ActivityBatchResponse = z.infer<typeof ActivityBatchResponse>;
+
+/** Only the fields the desktop app acts on; the rest are web-only. */
+export const TimePreferencesResponse = z
+  .object({
+    captureMode: z.enum(['active', 'all']).optional(),
+  })
+  .passthrough();
+export type TimePreferencesResponse = z.infer<typeof TimePreferencesResponse>;
 
 export const RealtimeTokenResponse = z.object({
   token: z.string().min(1),
@@ -416,6 +436,13 @@ export function createApiClient(config: ApiClientConfig) {
       return requestJson(UserMirror, { method: 'GET', path: '/me' });
     },
 
+    async getTimePreferences(): Promise<TimePreferencesResponse> {
+      return requestJson(TimePreferencesResponse, {
+        method: 'GET',
+        path: '/time-tracking/settings/preferences',
+      });
+    },
+
     // devices ---------------------------------------------------------------
     async registerDevice(input: {
       id: string;
@@ -585,6 +612,20 @@ export function createApiClient(config: ApiClientConfig) {
     },
 
     // screenshots -----------------------------------------------------------
+    /** Real, working presign route — see PresignResponse comment above. */
+    async presignUpload(input: {
+      userId: string;
+      ext?: 'jpg' | 'jpeg' | 'png' | 'webp';
+      mimeType?: string;
+      tsIso?: string;
+    }): Promise<PresignResponse> {
+      return requestJson(PresignResponse, {
+        method: 'POST',
+        path: '/screenshots/presign',
+        body: input,
+      });
+    },
+
     async requestScreenshotUploadUrl(input: {
       sessionId: string;
       takenAt: number;
@@ -644,7 +685,7 @@ export function createApiClient(config: ApiClientConfig) {
     // activity --------------------------------------------------------------
     async postActivityBatch(input: {
       sessionId: string;
-      minutes: Array<{ id: string; minuteStartAt: number; active: boolean }>;
+      minutes: Array<{ id: string; minuteStartAt: string; active: boolean }>;
       idempotencyKey: string;
     }): Promise<ActivityBatchResponse> {
       const { sessionId, idempotencyKey, minutes } = input;

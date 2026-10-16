@@ -3,6 +3,15 @@ import { useAuth } from "@/contexts/auth"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import * as Ably from "ably"
 
+// The inbox mints synthetic conversation ids (`offer-notifications-<actorId>`)
+// for offers with no thread row yet. Those are not thread primary keys, so
+// asking for a thread-scoped token with one made messaging-service 500
+// (uuid cast failure). GET /v1/threads/ably-token without ?threadId returns a
+// user-scoped token, which is the correct grant for a conversation that has
+// no thread behind it.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export function useAblyChannel(
   threadId: string,
   onMessage: (data: any) => void,
@@ -52,7 +61,9 @@ export function useAblyChannel(
       authCallback: async (_tokenParams, callback) => {
         try {
           const tokenDetails = await apiFetch<any>(
-            `/v1/threads/ably-token?threadId=${threadId}`,
+            UUID_RE.test(threadId ?? "")
+              ? `/v1/threads/ably-token?threadId=${threadId}`
+              : `/v1/threads/ably-token`,
             { method: "GET" }
           )
           if (!tokenDetails) {

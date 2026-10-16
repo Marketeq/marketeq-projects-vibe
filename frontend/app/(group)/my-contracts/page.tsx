@@ -9,10 +9,14 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   type Contract as ApiContract,
   type ContractStatus as ApiContractStatus,
-  endContract as apiEndContract,
   getClientContracts,
   getTalentContracts,
 } from "@/src/lib/api/contracts"
+// PMCM-331: endContract moves onto the gateway-routed client — the direct-
+// to-3010 client's version sends no Authorization header and always 401s.
+// getClientContracts/getTalentContracts above are untouched: a separate,
+// pre-existing gap (see the same file), out of scope here.
+import { endContract as apiEndContract } from "@/service/http/contracts"
 import {
   ArrowLeft,
   Briefcase,
@@ -54,6 +58,7 @@ import {
   Dialog,
   DialogContent,
   DialogClose,
+  DialogDescription,
   DialogTitle,
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -72,6 +77,7 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  useToast,
 } from "@/components/ui"
 import { ToggleGroupRoot, ToggleGroupItem } from "@/components/ui/toggle-group/toggle-group"
 
@@ -697,7 +703,7 @@ export default function MyContractsPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
@@ -1511,6 +1517,7 @@ const ACTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
 function ContractActions({ contract, viewMode }: { contract: Contract; viewMode: ViewMode }) {
   const { user } = useAuth()
   const router = useRouter()
+  const { toast } = useToast()
   const isClient = user?.accountType === "CLIENT"
   const isGrouped = viewMode === "grouped"
   const { status, type } = contract
@@ -1522,9 +1529,41 @@ function ContractActions({ contract, viewMode }: { contract: Contract; viewMode:
   const isCanceled = status === "Canceled"
   const isTerminal = isCompleted || isCanceled
 
+  // PMCM-331: AC-26 confirmation modal + FR-5/FR-6 loading + duplicate-click
+  // guard + FR-11 error toast around the existing End contract action.
+  const [showEndConfirm, setShowEndConfirm] = useState(false)
+  const [isEndingContract, setIsEndingContract] = useState(false)
+
   const handleEndContract = async () => {
-    const result = await apiEndContract(contract.id, { reasonCode: "Service no longer needed", notes: "" })
-    if (result) window.location.reload()
+    // Same offline pre-flight shape as hire-me-button.tsx: checked before any
+    // loading state flips, nothing async has started yet so no cleanup is
+    // needed on this path.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast({
+        variant: "destructive",
+        description:
+          "You appear to be offline. Please check your connection and try again.",
+        duration: 5000,
+      })
+      return
+    }
+
+    setIsEndingContract(true)
+    try {
+      // service/http/contracts.ts's endContract throws on non-2xx (via
+      // AxiosRequest's interceptor) instead of returning null — the
+      // src/lib/api/contracts.ts client this replaced returned null on
+      // failure, so the success/failure split moves into try/catch here.
+      await apiEndContract(contract.id, { reasonCode: "Service no longer needed", notes: "" })
+      window.location.reload()
+    } catch {
+      setIsEndingContract(false)
+      toast({
+        variant: "destructive",
+        description: "We couldn't end this contract. Please try again.",
+        duration: 5000,
+      })
+    }
   }
 
   const viewLabel = type === "team" ? "View team" : type === "individual" ? "View job" : "View listing"
@@ -1554,7 +1593,7 @@ function ContractActions({ contract, viewMode }: { contract: Contract; viewMode:
     })
   const sep = () => items.push("sep")
   const tail = () => { sep(); add("Ask a question", "Get help", viewLabel) }
-  const endItem: ActionItem = { label: "End contract", icon: Trash01, onClick: handleEndContract, destructive: true }
+  const endItem: ActionItem = { label: "End contract", icon: Trash01, onClick: () => setShowEndConfirm(true), destructive: true }
 
   if (isGrouped) {
     if (type === "project") {
@@ -1694,28 +1733,59 @@ function ContractActions({ contract, viewMode }: { contract: Contract; viewMode:
   }
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full focus:!bg-transparent focus-visible:!bg-transparent data-[state=open]:bg-gray-100">
-          <MoreHorizontal className="size-4" />
-        </IconButton>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {items.map((item, i) =>
-          item === "sep" ? (
-            <DropdownMenuSeparator key={i} />
-          ) : (
-            <DropdownMenuItem
-              key={i}
-              className={item.destructive ? "text-red-600 focus:text-red-600 gap-2" : "gap-2"}
-              onClick={item.onClick}
+    <>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <IconButton variant="ghost" visual="gray" size="sm" className="rounded-full focus:!bg-transparent focus-visible:!bg-transparent data-[state=open]:bg-gray-100">
+            <MoreHorizontal className="size-4" />
+          </IconButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {items.map((item, i) =>
+            item === "sep" ? (
+              <DropdownMenuSeparator key={i} />
+            ) : (
+              <DropdownMenuItem
+                key={i}
+                className={item.destructive ? "text-red-600 focus:text-red-600 gap-2" : "gap-2"}
+                onClick={item.onClick}
+              >
+                <item.icon className={`size-4 shrink-0 ${item.destructive ? "text-red-500" : "text-gray-500"}`} />
+                {item.label}
+              </DropdownMenuItem>
+            )
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* PMCM-331 / AC-26: same shape as the bulk-delete confirm in
+      inbox/components/left-sidebar.tsx — Dialog/DialogContent/DialogTitle/
+      DialogDescription/DialogClose/Button from @/components/ui, no new
+      component. AC-26.4: Cancel is a bare DialogClose, so it closes with no
+      other state change. */}
+      <Dialog open={showEndConfirm} onOpenChange={setShowEndConfirm}>
+        <DialogContent className="max-w-[348px] p-7 rounded-xl">
+          <DialogTitle>End this contract?</DialogTitle>
+          <DialogDescription className="mt-2">
+            This will end the contract for {contract.talentName}. This action
+            cannot be undone.
+          </DialogDescription>
+          <div className="mt-8 grid grid-cols-2 gap-x-3">
+            <DialogClose asChild>
+              <Button visual="gray" variant="outlined">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              visual="error"
+              loading={isEndingContract}
+              onClick={handleEndContract}
             >
-              <item.icon className={`size-4 shrink-0 ${item.destructive ? "text-red-500" : "text-gray-500"}`} />
-              {item.label}
-            </DropdownMenuItem>
-          )
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+              Yes, End Contract
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

@@ -6,6 +6,7 @@ import { CryptoConnectionService }   from './crypto-connection.service';
 import { AddressValidatorService }   from './address-validator.service';
 import { ConversionService }         from './conversion.service';
 import { ProviderValidationService } from './provider-validation.service';
+import { WalletConnectClientService } from './walletconnect-client.service';
 import { CryptoController }          from './crypto.controller';
 import { RampWebhookController }     from './ramp-webhook.controller';
 import { DepositMethod }             from '../entities/deposit-method.entity';
@@ -18,6 +19,7 @@ import { DepositMethod }             from '../entities/deposit-method.entity';
     AddressValidatorService,
     ConversionService,
     ProviderValidationService,
+    WalletConnectClientService,
   ],
   exports: [
     CryptoConnectionService,

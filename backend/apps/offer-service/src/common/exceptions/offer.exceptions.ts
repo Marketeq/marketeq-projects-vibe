@@ -179,7 +179,7 @@ export class CounterOfferWithdrawnException extends OfferServiceException {
   constructor() {
     super(
       'COUNTER_OFFER_WITHDRAWN',
-      'This counter offer has been withdrawn and can no longer be accepted.',
+      'This counter offer has been withdrawn. The original offer is still active.',
       HttpStatus.CONFLICT,
     );
   }
@@ -189,7 +189,7 @@ export class CounterOfferExpiredException extends OfferServiceException {
   constructor() {
     super(
       'COUNTER_OFFER_EXPIRED',
-      'This counter offer has expired and can no longer be accepted.',
+      'This counter offer has expired. The original offer is still active.',
       HttpStatus.CONFLICT,
     );
   }

@@ -112,7 +112,11 @@ export const IPC = {
   // --- Contracts (fetched from backend API) ---
   contractsGetMine: 'contracts:get-mine',
   contractsGetTasks: 'contracts:get-tasks',
+  contractsCreateTask: 'contracts:create-task',
+  manualTimeCreate: 'manual-time:create',
 
+  // --- Local "Today" stats (computed entirely from local SQLite) ---
+  statsGetToday: 'stats:get-today',
 
   // --- Shell helpers ---
   shellOpenExternal: 'shell:open-external',
@@ -162,8 +166,15 @@ export interface ScreenshotTakenEvent {
   filePath: string;
   blurPath: string | null;
   displayId: string;
+  /** 1 for the primary display, then 2, 3… left to right. */
+  screenNumber: number;
+  /** Shared by every monitor's screenshot from the same capture. */
+  groupKey: string;
   sensitive: boolean;
-  activeAppName: string | null;
+  /** Every distinct app seen frontmost during this capture interval (not just the instant of capture). */
+  activeApps: string[];
+  /** appName -> local temp-file path to that app's extracted icon PNG, for apps where extraction succeeded. */
+  activeAppIcons: Record<string, string>;
 }
 
 // ---------- Activity monitor contracts ----------
@@ -224,6 +235,38 @@ export interface TimerSnapshotDTO {
         seconds: number;
       };
   updatedAt: number;
+}
+
+// ---------- Local "Today" stats contracts ----------
+
+export interface TodayTaskStatDTO {
+  contractId: string;
+  taskId: string;
+  /** Billable seconds today, including the live session if it's this task. */
+  trackedSeconds: number;
+  /** First session start today (unix ms). */
+  firstStartedAt: number;
+  /** Last session end today (unix ms); null while this task is running. */
+  lastEndedAt: number | null;
+  /** The live session's share of trackedSeconds (0 unless this task is running). */
+  liveSeconds: number;
+}
+
+export interface TodayStatsDTO {
+  trackedSeconds: number;
+  earnedCents: number;
+  currency: string;
+  goalSeconds: number;
+  /** Per-task totals for today — restored into the task list on relaunch. */
+  tasks: TodayTaskStatDTO[];
+  /** The task of the most recent session (any day), to pre-select on relaunch. */
+  lastTask: { contractId: string; taskId: string } | null;
+  /** The previous local day, for the Yesterday strip (DTT-AC-024.1). */
+  yesterday: {
+    trackedSeconds: number;
+    earnedCents: number;
+    tasks: TodayTaskStatDTO[];
+  };
 }
 
 export interface TimerStartArgs {
@@ -500,6 +543,8 @@ export interface BackendContract {
   groupId: string;
   clientId: string;
   clientName?: string;
+  /** Client's picture (their profile avatarUrl), added by the desktop main process. */
+  clientAvatarUrl?: string | null;
   talentId: string;
   title: string;
   rate: number;
@@ -523,3 +568,23 @@ export interface BackendTask {
   name: string;
   archived: boolean;
 }
+
+export interface CreateTaskInput {
+  contractId: string;
+  name: string;
+}
+
+/** POST /manual-time (CreateManualTimeDto). Instants are ISO-8601 UTC. */
+export interface CreateManualTimeInput {
+  contractId: string;
+  taskId?: string;
+  startTime: string;
+  endTime: string;
+  notes: string;
+  /** Resubmit after the backend's soft overlap warning. */
+  confirmOverlap?: boolean;
+}
+
+export type CreateManualTimeResult =
+  | { ok: true; id: string }
+  | { ok: false; code?: string; message: string };

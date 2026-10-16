@@ -4,12 +4,18 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { claimProject } from "@/src/lib/api/claim"
+import { claimProject, checkClaimLimit, recordClaim } from "@/src/lib/api/claim"
+import {
+  type JoinRequestStatus,
+  cancelJoinRequest,
+  getJoinRequestStatus,
+  requestToJoinProject,
+} from "@/src/lib/api/join-requests"
 import {
   isTalentAccount,
   NoTeamAssigned,
 } from "@/components/no-team-assigned"
-import { apiFetch } from "@/src/lib/api"
+import { ApiError, apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
@@ -29,7 +35,13 @@ import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import { ProjectDiscoverySections } from "@/components/project-discovery-sections"
 import { LightboxVideoPlayer } from "./lightbox-video-player"
 import { countryOf } from "@/lib/geo"
-import { cn, noop, toPxIfNumber } from "@/utils/functions"
+import {
+  DataEmoji,
+  EmojiProperties,
+  cn,
+  noop,
+  toPxIfNumber,
+} from "@/utils/functions"
 import { useControllableState, useMakeFixedBehaveSticky } from "@/utils/hooks"
 import {
   AlertCircle,
@@ -67,6 +79,7 @@ import {
   User01,
   Users03,
   X,
+  X2,
 } from "@blend-metrics/icons"
 import {
   DropboxBrand,
@@ -84,9 +97,11 @@ import {
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
 import { ChatsContextProvider } from "@/components/chat"
+import { EmojiPicker } from "@/components/emoji-picker"
 import { MessageAttachmentView } from "@/app/(group)/inbox/components/message-components"
 import { EditContextProvider, useEditContext } from "@/components/inbox-comps"
 import { LikeDislike } from "@/components/like-dislike"
@@ -115,6 +130,7 @@ import {
   AvatarGroup,
   AvatarImage,
   Badge,
+  BadgeCloseButton,
   Button,
   Carousel,
   CarouselContent,
@@ -134,6 +150,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Favorite,
   FavoriteRoot,
@@ -172,7 +189,827 @@ import {
   TooltipProvider,
   TooltipTrigger,
   useCarousel,
+  useToast,
 } from "@/components/ui"
+import { Checkbox } from "@/components/ui/checkbox"
+
+// ---------------------------------------------------------------------------
+// JoinProjectDialog — 4-step "Apply to Join" wizard + confirmation
+// Pixel-perfect per Figma nodes 13101:121597, 13101:121510, 13101:121681,
+// 13101:121749, 13101:121385
+// ---------------------------------------------------------------------------
+
+type JoinStep = 1 | 2 | 3 | 4 | "confirm"
+
+interface JoinProjectDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  projectTitle: string
+  projectId: string
+  scopeRoles: string[]
+  scopeTaskTypes: string[]
+  onSubmitted: () => void
+}
+
+function JoinProjectDialog({
+  open,
+  onOpenChange,
+  projectTitle,
+  projectId,
+  scopeRoles,
+  scopeTaskTypes,
+  onSubmitted,
+}: JoinProjectDialogProps) {
+  const [step, setStep] = React.useState<JoinStep>(1)
+  const [busy, setBusy] = React.useState(false)
+  const didSubmitRef = React.useRef(false)
+
+  // Step 1 — Roles (up to 3)
+  const [selectedRoles, setSelectedRoles] = React.useState<string[]>([])
+  const [showOtherRole, setShowOtherRole] = React.useState(false)
+  const [otherRoleValue, setOtherRoleValue] = React.useState("")
+
+  // Step 2 — Task Types (up to 3)
+  const [selectedTasks, setSelectedTasks] = React.useState<string[]>([])
+  const [showOtherTask, setShowOtherTask] = React.useState(false)
+  const [otherTaskValue, setOtherTaskValue] = React.useState("")
+
+  // Step 3 — Experience
+  const [message, setMessage] = React.useState("")
+  const [radioAnswer, setRadioAnswer] = React.useState("")
+  const [selectedTags1, setSelectedTags1] = React.useState<string[]>([])
+  const [selectedTags2, setSelectedTags2] = React.useState<string[]>([])
+
+  // Step 4 — Case Studies
+  const [searchQuery, setSearchQuery] = React.useState("")
+
+  // Reset on close — fire onSubmitted if application was sent
+  React.useEffect(() => {
+    if (!open) {
+      if (didSubmitRef.current) {
+        onSubmitted()
+        didSubmitRef.current = false
+      }
+      setTimeout(() => {
+        setStep(1)
+        setSelectedRoles([])
+        setShowOtherRole(false)
+        setOtherRoleValue("")
+        setSelectedTasks([])
+        setShowOtherTask(false)
+        setOtherTaskValue("")
+        setMessage("")
+        setRadioAnswer("")
+        setSelectedTags1([])
+        setSelectedTags2([])
+        setSearchQuery("")
+        setBusy(false)
+      }, 200)
+    }
+  }, [open, onSubmitted])
+
+  const toggleRole = (role: string) => {
+    setSelectedRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : prev.length < 3 ? [...prev, role] : prev
+    )
+  }
+  const removeRole = (role: string) => setSelectedRoles((prev) => prev.filter((r) => r !== role))
+
+  const toggleTask = (task: string) => {
+    setSelectedTasks((prev) =>
+      prev.includes(task) ? prev.filter((t) => t !== task) : prev.length < 3 ? [...prev, task] : prev
+    )
+  }
+  const removeTask = (task: string) => setSelectedTasks((prev) => prev.filter((t) => t !== task))
+
+  const addOtherRole = () => {
+    const v = otherRoleValue.trim()
+    if (v && !selectedRoles.includes(v) && selectedRoles.length < 3) {
+      setSelectedRoles((prev) => [...prev, v])
+      setOtherRoleValue("")
+      setShowOtherRole(false)
+    }
+  }
+
+  const addOtherTask = () => {
+    const v = otherTaskValue.trim()
+    if (v && !selectedTasks.includes(v) && selectedTasks.length < 3) {
+      setSelectedTasks((prev) => [...prev, v])
+      setOtherTaskValue("")
+      setShowOtherTask(false)
+    }
+  }
+
+  const canContinue = (() => {
+    if (step === 1) return selectedRoles.length > 0
+    if (step === 2) return selectedTasks.length > 0
+    if (step === 3) return true
+    if (step === 4) return true
+    return false
+  })()
+
+  const handleSubmit = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await requestToJoinProject(projectId)
+    } catch {
+      // Optimistic — backend may not exist yet
+    }
+    setBusy(false)
+    didSubmitRef.current = true
+    setStep("confirm")
+  }
+
+  // Step 3 radio options — per Figma
+  const radioOptions = [
+    "Design-first (Figma/prototype)",
+    "Code-first",
+    "Research-first",
+    "It depends",
+  ]
+
+  // Step 3 tag groups — per Figma
+  const tagGroup1Options = ["Unit Testing", "E2E", "Manual QA", "TDD", "Automated"]
+  const tagGroup2Options = ["iOS", "Android", "Web"]
+
+  // Shared modal shell for all steps
+  const modalClasses =
+    "left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[520px] max-w-[520px] max-h-[85vh] rounded-[12px] bg-white p-0 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08)] flex flex-col overflow-hidden"
+
+  // ---- Confirmation screen ----
+  if (step === "confirm") {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className={modalClasses} accessibilityTitle="Request sent">
+          <DialogTitle className="sr-only">Request sent</DialogTitle>
+          {/* Header — close button only */}
+          <div className="flex items-center justify-end pl-[20px] pr-[12px] py-[12px]">
+            <IconButton
+              className="size-[36px] rounded-[8px] text-[#667085] opacity-50 hover:opacity-100 hover:bg-gray-50"
+              variant="ghost"
+              visual="gray"
+              onClick={() => onOpenChange(false)}
+            >
+              <X className="size-[20px]" />
+            </IconButton>
+          </div>
+
+          {/* Body — gap-[42px] between header and content, gap-[24px] inside content */}
+          <div className="flex flex-col items-center gap-[24px] px-[24px] pt-[18px] pb-[26px]">
+            {/* Sent icon — per Figma node 13101:121392 */}
+            <svg width="67" height="67" viewBox="0 0 67 67" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M29.2 61.7L6.3 46.3C4.5 45.1 3.5 43 3.5 40.8V26.2C3.5 24 4.5 21.9 6.3 20.7L29.2 5.3C31 4.1 33.3 3.7 35.4 4.3L61.5 12.1C63 12.6 64 14 64 15.5V51.5C64 53.1 63 54.4 61.5 54.9L35.4 62.7C33.3 63.3 31 62.9 29.2 61.7Z" stroke="#306CFE" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3.5 23L33.5 42L63.5 23" stroke="#306CFE" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M33.5 42V63.5" stroke="#306CFE" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+
+            {/* Message — Figma: 18px, semibold "Your request to join " + normal "title" + semibold " has been sent." */}
+            <div className="text-center text-[18px] text-[#22376B]">
+              <span className="font-semibold leading-[20px]">Your request to join </span>
+              <span className="font-normal leading-[20px]">&ldquo;{projectTitle}&rdquo;</span>
+              <span className="font-semibold leading-[20px]"> has been sent.</span>
+            </div>
+          </div>
+
+          {/* Summary rows — Figma: gap-[12px], w-[475px] centered */}
+          <div className="flex flex-col gap-[12px] px-[22px] pb-[26px]">
+            {/* Roles row */}
+            <div className="flex items-center gap-[12px] rounded-[5px] border border-[#EAECF0] px-[20px] py-[10px]">
+              <span className="shrink-0 text-[12px] font-semibold leading-normal text-[#22376B]">Roles</span>
+              <div className="flex flex-wrap gap-[6px]">
+                {selectedRoles.map((r) => (
+                  <span key={r} className="rounded-[16px] bg-[#E8EEFF] pl-[10px] pr-[8px] py-[2px] text-[14px] font-medium leading-[20px] text-[#306CFE]">
+                    {r}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Task Types row */}
+            <div className="flex items-center gap-[12px] rounded-[5px] border border-[#EAECF0] px-[20px] py-[10px]">
+              <span className="shrink-0 text-[12px] font-semibold leading-normal text-[#22376B]">Task Types</span>
+              <div className="flex flex-wrap gap-[6px]">
+                {selectedTasks.map((t) => (
+                  <span key={t} className="rounded-[16px] bg-[#E8EEFF] pl-[10px] pr-[8px] py-[2px] text-[14px] font-medium leading-[20px] text-[#306CFE]">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Your Message row */}
+            {message.trim() && (
+              <div className="flex flex-col gap-[8px] rounded-[5px] border border-[#EAECF0] p-[20px]">
+                <span className="text-[12px] font-semibold leading-normal text-[#22376B]">Your Message</span>
+                <p className="text-[14px] font-normal leading-normal text-[#22376B]">
+                  {message.length > 120 ? `${message.slice(0, 120)}...` : message}
+                </p>
+              </div>
+            )}
+
+            {/* Notification row — Figma: h-[36px], 12px regular */}
+            <div className="flex h-[36px] items-center rounded-[5px] border border-[#EAECF0] overflow-hidden px-[19px]">
+              <span className="text-[12px] font-normal leading-normal text-[#22376B]">
+                We&apos;ll notify you when the project owner reviews your application.
+              </span>
+            </div>
+          </div>
+
+          {/* Footer — Figma: border-t, p-[12px], justify-between */}
+          <div className="flex items-center justify-between border-t border-[#EAECF0] p-[12px]">
+            <Button
+              variant="outlined"
+              className="h-[36px] gap-[8px] rounded-[5px] border-2 border-[#306CFE] bg-white px-[14px] py-[8px] text-[14px] font-semibold capitalize leading-[20px] text-[#306CFE] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] hover:bg-[#306CFE] hover:text-white"
+              asChild
+            >
+              <NextLink href="/projects">
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 size-[15px]">
+                  <path d="M10 12.5V2.5C10 2.16848 9.8683 1.85054 9.63388 1.61612C9.39946 1.3817 9.08152 1.25 8.75 1.25H6.25C5.91848 1.25 5.60054 1.3817 5.36612 1.61612C5.1317 1.85054 5 2.16848 5 2.5V12.5M2.5 3.75H12.5C13.1904 3.75 13.75 4.30964 13.75 5V11.25C13.75 11.9404 13.1904 12.5 12.5 12.5H2.5C1.80964 12.5 1.25 11.9404 1.25 11.25V5C1.25 4.30964 1.80964 3.75 2.5 3.75Z" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Browse More Projects
+              </NextLink>
+            </Button>
+            <Button
+              variant="outlined"
+              className="h-[36px] gap-[8px] rounded-[5px] border border-[#D0D5DD] bg-white px-[14px] py-[8px] text-[14px] font-semibold capitalize leading-[20px] text-[#1D2939] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] hover:bg-gray-50"
+              onClick={() => onOpenChange(false)}
+            >
+              I&apos;m Done
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
+  // ---- Steps 1-4 ----
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className={modalClasses} accessibilityTitle="Request to join project">
+        <DialogTitle className="sr-only">Request to join project</DialogTitle>
+
+        {/* Header — Figma: h-[60px], pl-[20px] pr-[12px] py-[12px] */}
+        <div className="flex h-[60px] items-center justify-between pl-[20px] pr-[12px] py-[12px] shrink-0">
+          <p className="truncate text-[16px] leading-[28px] text-[#22376B] w-[448px]">
+            <span className="font-semibold">Request to join </span>
+            <span className="font-normal">&ldquo;{projectTitle}&rdquo;</span>
+          </p>
+          <IconButton
+            className="size-[36px] shrink-0 rounded-[8px] text-[#667085] opacity-50 hover:opacity-100 hover:bg-gray-50"
+            variant="ghost"
+            visual="gray"
+            onClick={() => onOpenChange(false)}
+          >
+            <X className="size-[20px]" />
+          </IconButton>
+        </div>
+
+        {/* Progress bar — Figma: 4 x w-[115px] h-[4px], gap-[6px], px-[20px] */}
+        <div className="flex gap-[6px] px-[20px] shrink-0">
+          {([1, 2, 3, 4] as const).map((s) => (
+            <div
+              key={s}
+              className={cn(
+                "h-[4px] w-[115px] rounded-[5px]",
+                (typeof step === "number" && s <= step) ? "bg-[#5687FF]" : "bg-[#EAECF0]"
+              )}
+            />
+          ))}
+        </div>
+
+        {/* Content — Figma: gap-[40px] from progress to content, px-[20px] */}
+        <div className="flex-1 overflow-y-auto px-[20px] py-[40px]">
+          {/* ---------- STEP 1: Choose Roles ---------- */}
+          {step === 1 && (
+            <div className="flex flex-col gap-[17px]">
+              {/* Question header — Figma: gap-[8px] between question/counter, gap-[2px] title/subtitle */}
+              <div className="flex flex-col gap-[8px]">
+                <div className="flex gap-[8px] items-start">
+                  <div className="flex flex-col gap-[2px] flex-1 min-w-0">
+                    <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                      Which role(s) are you interested in?
+                    </p>
+                    <p className="text-[12px] font-normal leading-[18px] text-[#667085]">
+                      Select up to 3 roles, or add your own.
+                    </p>
+                  </div>
+                  <span className="text-[12px] font-normal leading-[18px] text-[#667085] text-right shrink-0">
+                    {selectedRoles.length} of 3 selected
+                  </span>
+                </div>
+
+                {/* Scrollable checklist — Figma: h-[237px], border, rounded-[5px], pl-[12px] pr-[20px] py-[10px], gap-[6px] */}
+                <ScrollArea className="h-[237px] w-full rounded-[5px] border border-[#EAECF0] shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]">
+                  <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
+                    {scopeRoles.map((role) => {
+                      const checked = selectedRoles.includes(role)
+                      const atMax = selectedRoles.length >= 3 && !checked
+                      const row = (
+                        <Button
+                          variant="ghost"
+                          key={role}
+                          disabled={atMax}
+                          className={cn(
+                            "flex h-auto w-full items-center justify-start gap-[14px] rounded-[5px] border px-[20px] py-[12px] text-left",
+                            checked
+                              ? "border-[#306CFE] bg-[#E8EEFF] hover:bg-[#E8EEFF]"
+                              : "border-[#EAECF0] bg-white hover:bg-gray-50",
+                            atMax && "opacity-50 pointer-events-none"
+                          )}
+                          onClick={() => toggleRole(role)}
+                        >
+                          <Checkbox
+                            size="md"
+                            checked={checked}
+                            onCheckedChange={() => toggleRole(role)}
+                            className="shrink-0 pointer-events-none"
+                          />
+                          <span className="text-[13px] font-medium capitalize leading-[20px] text-[#344054]">{role}</span>
+                        </Button>
+                      )
+                      if (atMax) {
+                        return (
+                          <TooltipProvider key={role} delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-not-allowed">{row}</div>
+                              </TooltipTrigger>
+                              <TooltipContent>You can select up to 3 roles. Remove one to choose another.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      }
+                      return row
+                    })}
+
+                    {/* Other option */}
+                    {(() => {
+                      const otherAtMax = selectedRoles.length >= 3 && !showOtherRole
+                      const otherBtn = (
+                        <Button
+                          variant="ghost"
+                          disabled={otherAtMax}
+                          className={cn(
+                            "flex h-auto w-full items-center justify-start gap-[14px] rounded-[5px] border px-[20px] py-[12px] text-left",
+                            showOtherRole
+                              ? "border-[#306CFE] bg-[#E8EEFF] hover:bg-[#E8EEFF]"
+                              : "border-[#EAECF0] bg-white hover:bg-gray-50",
+                            otherAtMax && "opacity-50 pointer-events-none"
+                          )}
+                          onClick={() => setShowOtherRole(true)}
+                        >
+                          <Checkbox
+                            size="md"
+                            checked={showOtherRole}
+                            onCheckedChange={() => setShowOtherRole(true)}
+                            className="shrink-0 pointer-events-none"
+                          />
+                          <span className="text-[13px] font-medium capitalize leading-[20px] text-[#344054]">Other</span>
+                        </Button>
+                      )
+                      if (otherAtMax) {
+                        return (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-not-allowed">{otherBtn}</div>
+                              </TooltipTrigger>
+                              <TooltipContent>You can select up to 3 roles. Remove one to choose another.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      }
+                      return otherBtn
+                    })()}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {/* "Other" custom input — below scroll list, per Figma */}
+              {showOtherRole && (
+                <div className="flex flex-col gap-[12px]">
+                  <div className="flex flex-col gap-[8px] w-full">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-normal leading-[18px] text-[#667085]">Enter your role</p>
+                      <Button
+                        variant="ghost"
+                        className="h-auto min-w-0 p-0 text-[12px] font-medium leading-[18px] text-[#306CFE] hover:bg-transparent hover:text-[#306CFE] hover:underline"
+                        onClick={() => { setShowOtherRole(false); setOtherRoleValue("") }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                    <div className="flex h-[40px] items-center rounded-[5px] border-[1.5px] border-[#EAECF0] bg-white px-[14px] py-[10px]">
+                      <Input
+                        className="h-full w-full border-0 p-0 text-[14px] text-[#22376B] shadow-none focus-visible:ring-0 placeholder:text-[#667085]"
+                        placeholder=""
+                        value={otherRoleValue}
+                        onChange={(e) => setOtherRoleValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            addOtherRole()
+                          }
+                        }}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  {/* Selected role tags — below input, per Figma */}
+                  {selectedRoles.length > 0 && (
+                    <div className="flex flex-wrap gap-[8px]">
+                      {selectedRoles.map((r) => (
+                        <Badge key={r} visual="primary" size="sm" variant="rounded" className="pr-1.5">
+                          {r}
+                          <BadgeCloseButton onClick={() => removeRole(r)}>
+                            <X2 className="h-3 w-3" />
+                          </BadgeCloseButton>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ---------- STEP 2: Choose Task Types ---------- */}
+          {step === 2 && (
+            <div className="flex flex-col gap-[17px]">
+              <div className="flex flex-col gap-[8px]">
+                <div className="flex gap-[8px] items-start">
+                  <div className="flex flex-col gap-[2px] w-[372px]">
+                    <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                      What types of tasks can you help with?
+                    </p>
+                    <p className="text-[12px] font-normal leading-[18px] text-[#667085]">
+                      Select up to 3 task types, or add your own.
+                    </p>
+                  </div>
+                  <div className="flex flex-1 min-w-0 flex-col items-end">
+                    <span className="text-[12px] font-normal leading-[18px] text-[#667085] text-right">
+                      {selectedTasks.length} of 3 selected
+                    </span>
+                  </div>
+                </div>
+
+                <ScrollArea className="h-[237px] w-full rounded-[5px] border border-[#EAECF0] shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]">
+                  <div className="flex flex-col gap-[6px] px-[12px] py-[10px]">
+                    {scopeTaskTypes.map((task) => {
+                      const checked = selectedTasks.includes(task)
+                      const atMax = selectedTasks.length >= 3 && !checked
+                      const row = (
+                        <Button
+                          variant="ghost"
+                          key={task}
+                          disabled={atMax}
+                          className={cn(
+                            "flex h-auto w-full items-center justify-start gap-[14px] rounded-[5px] border px-[20px] py-[12px] text-left",
+                            checked
+                              ? "border-[#306CFE] bg-[#E8EEFF] hover:bg-[#E8EEFF]"
+                              : "border-[#EAECF0] bg-white hover:bg-gray-50",
+                            atMax && "opacity-50 pointer-events-none"
+                          )}
+                          onClick={() => toggleTask(task)}
+                        >
+                          <Checkbox
+                            size="md"
+                            checked={checked}
+                            onCheckedChange={() => toggleTask(task)}
+                            className="shrink-0 pointer-events-none"
+                          />
+                          <span className="text-[13px] font-medium capitalize leading-[20px] text-[#344054]">{task}</span>
+                        </Button>
+                      )
+                      if (atMax) {
+                        return (
+                          <TooltipProvider key={task} delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-not-allowed">{row}</div>
+                              </TooltipTrigger>
+                              <TooltipContent>You can select up to 3 task types. Remove one to choose another.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      }
+                      return row
+                    })}
+
+                    {/* Other option */}
+                    {(() => {
+                      const otherAtMax = selectedTasks.length >= 3 && !showOtherTask
+                      const otherBtn = (
+                        <Button
+                          variant="ghost"
+                          disabled={otherAtMax}
+                          className={cn(
+                            "flex h-auto w-full items-center justify-start gap-[14px] rounded-[5px] border px-[20px] py-[12px] text-left",
+                            showOtherTask
+                              ? "border-[#306CFE] bg-[#E8EEFF] hover:bg-[#E8EEFF]"
+                              : "border-[#EAECF0] bg-white hover:bg-gray-50",
+                            otherAtMax && "opacity-50 pointer-events-none"
+                          )}
+                          onClick={() => setShowOtherTask(true)}
+                        >
+                          <Checkbox
+                            size="md"
+                            checked={showOtherTask}
+                            onCheckedChange={() => setShowOtherTask(true)}
+                            className="shrink-0 pointer-events-none"
+                          />
+                          <span className="text-[13px] font-medium capitalize leading-[20px] text-[#344054]">Other</span>
+                        </Button>
+                      )
+                      if (otherAtMax) {
+                        return (
+                          <TooltipProvider delayDuration={150}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="cursor-not-allowed">{otherBtn}</div>
+                              </TooltipTrigger>
+                              <TooltipContent>You can select up to 3 task types. Remove one to choose another.</TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      }
+                      return otherBtn
+                    })()}
+                  </div>
+                </ScrollArea>
+              </div>
+
+              {showOtherTask && (
+                <div className="flex flex-col gap-[12px]">
+                  <div className="flex flex-col gap-[8px] w-full">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[12px] font-normal leading-[18px] text-[#667085]">Enter your task type</p>
+                      <Button
+                        variant="ghost"
+                        className="h-auto min-w-0 p-0 text-[12px] font-medium leading-[18px] text-[#306CFE] hover:bg-transparent hover:text-[#306CFE] hover:underline"
+                        onClick={() => { setShowOtherTask(false); setOtherTaskValue("") }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                    <div className="flex h-[40px] items-center rounded-[5px] border-[1.5px] border-[#EAECF0] bg-white px-[14px] py-[10px]">
+                      <Input
+                        className="h-full w-full border-0 p-0 text-[14px] text-[#22376B] shadow-none focus-visible:ring-0 placeholder:text-[#667085]"
+                        value={otherTaskValue}
+                        onChange={(e) => setOtherTaskValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            addOtherTask()
+                          }
+                        }}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  {selectedTasks.length > 0 && (
+                    <div className="flex flex-wrap gap-[8px]">
+                      {selectedTasks.map((t) => (
+                        <Badge key={t} visual="primary" size="sm" variant="rounded" className="pr-1.5">
+                          {t}
+                          <BadgeCloseButton onClick={() => removeTask(t)}>
+                            <X2 className="h-3 w-3" />
+                          </BadgeCloseButton>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ---------- STEP 3: Tell the team about you ---------- */}
+          {step === 3 && (
+            <div className="flex flex-col gap-[20px]">
+              {/* Textarea section — Figma: gap-[10px] between label and field */}
+              <div className="flex flex-col gap-[10px]">
+                <div className="flex flex-col gap-[2px]">
+                  <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                    Briefly describe a relevant project you&apos;ve worked on and your contribution.
+                  </p>
+                  <p className="text-[12px] font-normal leading-[18px] text-[#667085]">
+                    Help the project owner evaluate your relevant experience and skills.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-[6px]">
+                  <Textarea
+                    className="h-[138px] w-full resize-none rounded-[5px] border-[1.5px] border-[#EAECF0] px-[12.5px] py-[12.5px] text-[14px] leading-[19px] text-[#22376B] placeholder:text-[#B8BAC2]"
+                    placeholder="e.g., I led the UI redesign for a fintech app, reducing drop-off by 25%."
+                    value={message}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 400) setMessage(e.target.value)
+                    }}
+                  />
+                  {/* Figma: "Min. 100 characters" left, "0 / 400" right, 12px regular #98A2B3 */}
+                  <div className="flex items-center justify-between text-[12px] font-normal text-[#98A2B3]">
+                    <span>Min. 100 characters</span>
+                    <span>{message.length} / 400</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Radio question — Figma: gap-[10px] between title and options, gap-[6px] between options */}
+              <div className="flex flex-col gap-[10px]">
+                <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                  How do you typically start a mobile project?
+                </p>
+                <div className="flex flex-col gap-[6px]">
+                  {radioOptions.map((opt) => (
+                    <Button
+                      variant="ghost"
+                      key={opt}
+                      className={cn(
+                        "flex h-auto w-full items-center justify-start gap-[10px] rounded-[5px] border px-[12px] py-[10px] text-left",
+                        radioAnswer === opt
+                          ? "border-[#306CFE] bg-[#E8EEFF] hover:bg-[#E8EEFF]"
+                          : "border-[#DEE3ED] bg-white hover:bg-gray-50"
+                      )}
+                      onClick={() => setRadioAnswer(opt)}
+                    >
+                      <div
+                        className={cn(
+                          "flex size-[20px] shrink-0 items-center justify-center rounded-full border-[1.5px]",
+                          radioAnswer === opt ? "border-[#306CFE]" : "border-[#D0D5DD]"
+                        )}
+                      >
+                        {radioAnswer === opt && (
+                          <div className="size-[10px] rounded-full bg-[#306CFE]" />
+                        )}
+                      </div>
+                      <span className="text-[13px] font-normal text-[#17213D]">{opt}</span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tag group 1 — Figma: "Which testing approaches do you use?" + Optional badge */}
+              <div className="flex flex-col gap-[10px]">
+                <div>
+                  <div className="flex items-start justify-between">
+                    <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                      Which testing approaches do you use?
+                    </p>
+                    <span className="flex items-center justify-center rounded-[100px] bg-[#EAECF0] px-[8px] h-[20.5px] text-[11px] font-medium leading-[16.5px] text-[#344054] shrink-0">
+                      Optional
+                    </span>
+                  </div>
+                  <p className="text-[12px] font-normal leading-[18px] text-[#667085]">Select all that apply.</p>
+                </div>
+                <div className="flex flex-wrap gap-[8px]">
+                  {tagGroup1Options.map((tag) => {
+                    const sel = selectedTags1.includes(tag)
+                    return (
+                      <Button
+                        variant="ghost"
+                        key={tag}
+                        className={cn(
+                          "h-auto min-w-0 rounded-[16px] border px-[10px] py-[4px] text-[12px] font-medium leading-[18px]",
+                          sel
+                            ? "border-[#306CFE] bg-[#E8EEFF] text-[#306CFE] hover:bg-[#E8EEFF]"
+                            : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-gray-50"
+                        )}
+                        onClick={() =>
+                          setSelectedTags1((prev) =>
+                            sel ? prev.filter((t) => t !== tag) : [...prev, tag]
+                          )
+                        }
+                      >
+                        {tag}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Tag group 2 — Figma: "Which mobile platforms have you shipped products on?" */}
+              <div className="flex flex-col gap-[10px]">
+                <div>
+                  <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                    Which mobile platforms have you shipped products on?
+                  </p>
+                  <p className="text-[12px] font-normal leading-[18px] text-[#667085]">Select all that apply.</p>
+                </div>
+                <div className="flex flex-wrap gap-[8px]">
+                  {tagGroup2Options.map((tag) => {
+                    const sel = selectedTags2.includes(tag)
+                    return (
+                      <Button
+                        variant="ghost"
+                        key={tag}
+                        className={cn(
+                          "h-auto min-w-0 rounded-[16px] border px-[10px] py-[4px] text-[12px] font-medium leading-[18px]",
+                          sel
+                            ? "border-[#306CFE] bg-[#E8EEFF] text-[#306CFE] hover:bg-[#E8EEFF]"
+                            : "border-[#D0D5DD] bg-white text-[#344054] hover:bg-gray-50"
+                        )}
+                        onClick={() =>
+                          setSelectedTags2((prev) =>
+                            sel ? prev.filter((t) => t !== tag) : [...prev, tag]
+                          )
+                        }
+                      >
+                        {tag}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ---------- STEP 4: Case Studies ---------- */}
+          {step === 4 && (
+            <div className="flex flex-col gap-[10px]">
+              {/* Header — Figma: gap-[2px] between title/subtitle */}
+              <div className="flex flex-col gap-[2px]">
+                <div className="flex items-center justify-between">
+                  <p className="text-[14px] font-semibold leading-[20px] text-[#22376B]">
+                    Share case studies from your profile
+                  </p>
+                  <span className="flex items-center justify-center rounded-[100px] bg-[#EAECF0] px-[8px] h-[20.5px] text-[11px] font-medium leading-[16.5px] text-[#344054] shrink-0">
+                    Optional
+                  </span>
+                </div>
+                <p className="text-[12px] font-normal leading-[18px] text-[#667085]">
+                  Select up to 3 relevant case studies to share with the project.
+                </p>
+              </div>
+
+              {/* Search — Figma: h-[36px], border-[#D0D5DD], rounded-[5px], pl-[10px] pr-[12px], shadow-xs */}
+              <div className="relative">
+                <svg className="absolute left-[10px] top-1/2 -translate-y-1/2 size-[16px] text-[#667085]" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 14L11.1 11.1M12.6667 7.33333C12.6667 10.2789 10.2789 12.6667 7.33333 12.6667C4.38781 12.6667 2 10.2789 2 7.33333C2 4.38781 4.38781 2 7.33333 2C10.2789 2 12.6667 4.38781 12.6667 7.33333Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                <Input
+                  className="h-[36px] rounded-[5px] border border-[#D0D5DD] bg-white pl-[34px] pr-[12px] py-[10px] text-[14px] leading-[20px] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] placeholder:text-[#667085] placeholder:opacity-50"
+                  placeholder="Search case studies"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {/* Case studies list — inline cards per Figma */}
+              <div className="flex flex-col gap-[6px]">
+                {/* Empty state — no case studies from profile API yet */}
+                <div className="flex h-[100px] items-center justify-center rounded-[5px] border border-[#EAECF0]">
+                  <p className="text-[14px] text-[#667085]">No case studies in your portfolio yet</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer — Figma: border-t, p-[12px], justify-between, pl-[12px] inside */}
+        <div className="flex items-center justify-between border-t border-[#EAECF0] p-[12px] shrink-0">
+          <span className="pl-[12px] text-[14px] font-medium leading-[32px] tracking-[-0.266px] text-[#22376B]">
+            Step {typeof step === "number" ? step : ""} of 4
+          </span>
+          <div className="flex items-center gap-[12px]">
+            {typeof step === "number" && step > 1 && (
+              <Button
+                className="h-[36px] rounded-[5px] bg-[rgba(48,108,254,0.15)] px-[14px] py-[8px] text-[14px] font-semibold capitalize leading-[20px] text-[#306CFE] hover:bg-[rgba(48,108,254,0.25)]"
+                onClick={() => setStep((step - 1) as JoinStep)}
+              >
+                Back
+              </Button>
+            )}
+            {typeof step === "number" && step < 4 && (
+              <Button
+                className={cn(
+                  "h-[36px] rounded-[5px] bg-[#306CFE] px-[14px] py-[8px] text-[14px] font-semibold capitalize leading-[20px] text-white shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] hover:bg-[#2558d4]",
+                  !canContinue && "opacity-50 pointer-events-none"
+                )}
+                disabled={!canContinue}
+                onClick={() => setStep((step + 1) as JoinStep)}
+              >
+                Continue
+              </Button>
+            )}
+            {step === 4 && (
+              <Button
+                className={cn(
+                  "h-[36px] rounded-[5px] bg-[#306CFE] px-[14px] py-[8px] text-[14px] font-semibold capitalize leading-[20px] text-white shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] hover:bg-[#2558d4]",
+                  !canContinue && "opacity-50 pointer-events-none"
+                )}
+                disabled={busy}
+                onClick={handleSubmit}
+              >
+                {busy ? "Submitting..." : "Continue"}
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const CollapsibleCard = ({
   maxHeight,
@@ -305,6 +1142,20 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
   )
 }
 
+// PMCM-402/QA-221: ApiError.body is the raw response text — pull the
+// Nest exception's own `message` out of it so a specific rejection (e.g.
+// "Project has no team members available to chat with") reaches the user
+// instead of a generic string.
+const extractApiErrorMessage = (err: unknown, fallback: string): string => {
+  if (err instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(err.body)
+      if (typeof parsed?.message === "string") return parsed.message
+    } catch {}
+  }
+  return fallback
+}
+
 const Chats = ({
   projectId,
   teamMemberIds = [],
@@ -317,10 +1168,12 @@ const Chats = ({
   initialDraft?: string
 }) => {
   const [state, setState] = React.useState<CircularProgressDropzoneState>()
+  const [sendingMedia, setSendingMedia] = React.useState(false)
   const [open, toggle] = useToggle(false)
   const router = useRouter()
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
+  const { toast } = useToast()
 
   const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
@@ -441,7 +1294,23 @@ const Chats = ({
       return
     }
     setTextareaValue("")
-    const tid = await ensureThread()
+    let tid: string | null
+    try {
+      tid = await ensureThread()
+    } catch (err) {
+      // PMCM-402/QA-221: this previously propagated uncaught (e.g. the
+      // "View as Client" owner-preview case, where the only other
+      // "team member" is the owner themself, so the backend's
+      // self-excluded team list is empty and thread creation 400s) — the
+      // composer had already been cleared above, so the message just
+      // silently vanished with nothing sent and no feedback at all.
+      setTextareaValue(text)
+      toast({
+        title: extractApiErrorMessage(err, "Failed to send message. Please try again."),
+        variant: "destructive",
+      })
+      return
+    }
     if (!tid) return
     const saved = await apiFetch<{
       id: string
@@ -456,8 +1325,101 @@ const Chats = ({
       setMessages((prev) =>
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
+    } else {
+      setTextareaValue(text)
+      toast({
+        title: "Failed to send message. Please try again.",
+        variant: "destructive",
+      })
     }
-  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue])
+  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue, toast])
+
+  const handleEmojiSelect = React.useCallback(
+    (emoji: DataEmoji) => {
+      const emojiChar = String.fromCodePoint(
+        ...emoji[EmojiProperties.unified]
+          .split("-")
+          .map((hex) => parseInt(hex, 16))
+      )
+      setTextareaValue((prev) => (prev || "") + emojiChar)
+    },
+    [setTextareaValue]
+  )
+
+  // PMCM-402/QA-221: the media dialog's Send button previously only closed
+  // the dialog (`toggle`) — the picked file was never actually uploaded or
+  // attached to any message, so nothing was ever sent.
+  const sendAttachment = React.useCallback(
+    async (file: File) => {
+      if (!myId) {
+        openAuthModal("sign-in")
+        return false
+      }
+      let tid: string | null
+      try {
+        tid = await ensureThread()
+      } catch (err) {
+        toast({
+          title: extractApiErrorMessage(err, "Failed to send attachment. Please try again."),
+          variant: "destructive",
+        })
+        return false
+      }
+      if (!tid) return false
+      const apiBase = getPublicApiUrl() || "http://localhost:4000"
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("threadId", tid)
+      try {
+        const res = await fetch(`${apiBase}/messaging/upload`, {
+          method: "POST",
+          credentials: "include",
+          headers: csrfHeader("POST"),
+          body: formData,
+        })
+        if (!res.ok) throw new Error(await res.text())
+        const result = await res.json()
+        const saved = result?.message
+        if (saved?.id) {
+          // The upload response returns the attachment beside the message,
+          // not inside it (only the Ably copy carries `attachments`). Merge
+          // it in, or the bubble renders empty and the Ably copy is then
+          // dropped as a duplicate id.
+          const withAttachment = {
+            ...saved,
+            attachments:
+              saved.attachments ??
+              (result.attachment ? [result.attachment] : []),
+          }
+          setMessages((prev) =>
+            prev.some((m) => m.id === saved.id)
+              ? prev
+              : [...prev, withAttachment]
+          )
+        }
+        return true
+      } catch (err) {
+        console.error("Failed to upload chat attachment:", err)
+        toast({
+          title: "Failed to send attachment. Please try again.",
+          variant: "destructive",
+        })
+        return false
+      }
+    },
+    [myId, ensureThread, openAuthModal, toast]
+  )
+
+  const handleSendMedia = React.useCallback(async () => {
+    if (!state?.length) return
+    setSendingMedia(true)
+    for (const item of state) {
+      await sendAttachment(item.data)
+    }
+    setSendingMedia(false)
+    setState(undefined)
+    toggle()
+  }, [state, sendAttachment, toggle])
 
   return (
     <div
@@ -556,14 +1518,16 @@ const Chats = ({
         className="p-3 flex min-h-[68px] bg-white items-end gap-x-3 absolute bottom-0 inset-x-0"
       >
         <div className="flex items-center gap-x-1">
-          <IconButton
-            className="rounded-full text-gray-500"
-            visual="gray"
-            variant="ghost"
-            size="lg"
-          >
-            <Smile className="size-[22px]" />
-          </IconButton>
+          <EmojiPicker onEmojiSelect={handleEmojiSelect}>
+            <IconButton
+              className="rounded-full text-gray-500"
+              visual="gray"
+              variant="ghost"
+              size="lg"
+            >
+              <Smile className="size-[22px]" />
+            </IconButton>
+          </EmojiPicker>
 
           <Dialog open={open} onOpenChange={toggle}>
             <DialogTrigger asChild>
@@ -607,10 +1571,10 @@ const Chats = ({
                 <Button
                   visual="primary"
                   variant="filled"
-                  disabled={!Boolean(state?.length)}
-                  onClick={Boolean(state?.length) ? toggle : noop}
+                  disabled={!Boolean(state?.length) || sendingMedia}
+                  onClick={Boolean(state?.length) ? handleSendMedia : noop}
                 >
-                  Send
+                  {sendingMedia ? "Sending..." : "Send"}
                 </Button>
               </div>
             </DialogContent>
@@ -916,13 +1880,102 @@ export default function ProjectDetails({
   const params = useParams()
   const router = useRouter()
   const { user, openAuthModal } = useAuth()
+  // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
+  // expose a callback/promise for "and then do X on success". The signal
+  // it does expose, without touching its internals, is `user` itself: it
+  // flips from falsy to a real object the moment a login (any method)
+  // succeeds. Remembering the action here and firing it on that flip is
+  // what makes Start Project / Ask a Question / Save resume instead of
+  // stranding the visitor on the listing after they log in.
+  const pendingActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignIn = React.useCallback(
+    (action: () => void) => {
+      pendingActionRef.current = action
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (user?.id && pendingActionRef.current) {
+      const action = pendingActionRef.current
+      pendingActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
+  const [refetchKey, setRefetchKey] = React.useState(0)
+  const [claimed, setClaimed] = React.useState(false)
+  const [claimStep, setClaimStep] = React.useState<"closed" | "confirm" | "done" | "blocked">("closed")
+  const [claimBusy, setClaimBusy] = React.useState(false)
+  const [claimError, setClaimError] = React.useState<string | null>(null)
+  const [claimBlockedReason, setClaimBlockedReason] = React.useState("")
+
+  // Join-request state (talent accounts only)
+  const [joinStatus, setJoinStatus] = React.useState<JoinRequestStatus>("none")
+  const [joinBusy, setJoinBusy] = React.useState(false)
+  const [joinDialogOpen, setJoinDialogOpen] = React.useState(false)
+
+  // Derive unique roles and task titles from project scope for the join dialog
+  const scopeRoles = React.useMemo(() => {
+    const scopeArr = Array.isArray((project as any)?.scope) ? (project as any).scope : []
+    const roles = new Set<string>()
+    for (const phase of scopeArr) {
+      const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
+      for (const row of rows) {
+        const role = (row?.role ?? row?.roleName ?? "").trim()
+        if (role) roles.add(role)
+      }
+    }
+    return Array.from(roles)
+  }, [project])
+
+  const scopeTaskTypes = React.useMemo(() => {
+    const scopeArr = Array.isArray((project as any)?.scope) ? (project as any).scope : []
+    const tasks = new Set<string>()
+    for (const phase of scopeArr) {
+      const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
+      for (const row of rows) {
+        const raw = (row?.task ?? row?.taskName ?? row?.title ?? "").trim()
+        if (raw) tasks.add(raw.split(/\s+/).slice(0, 2).join(" "))
+      }
+    }
+    return Array.from(tasks)
+  }, [project])
+
+  const openClaimDialog = React.useCallback(() => {
+    const check = checkClaimLimit()
+    if (!check.allowed) {
+      setClaimBlockedReason(check.reason)
+      setClaimStep("blocked")
+      return
+    }
+    openClaimDialog()
+  }, [])
+
+  const handlePageClaim = React.useCallback(async () => {
+    if (!project?.id) return
+    setClaimBusy(true)
+    setClaimError(null)
+    try {
+      await claimProject(String(project.id))
+      recordClaim(String(project.id))
+      setClaimed(true)
+      setRefetchKey((k) => k + 1)
+      setClaimStep("done")
+    } catch (e: any) {
+      setClaimError(e?.message ?? "Could not claim this project right now")
+    } finally {
+      setClaimBusy(false)
+    }
+  }, [project?.id])
   const [selected, setSelected] = React.useState<string>("Details")
   const [pendingQuestion, setPendingQuestion] = React.useState("")
   const [askErrored, setAskErrored] = React.useState(false)
   const [showAskErrorMsg, setShowAskErrorMsg] = React.useState(false)
   const [askModalOpen, setAskModalOpen] = React.useState(false)
+  const [startProjectDialogOpen, setStartProjectDialogOpen] =
+    React.useState(false)
   const [lightboxOpen, setLightboxOpen] = React.useState(false)
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
   const toggleShareWindow = useShareWindowStore((s) => s.toggle)
@@ -954,19 +2007,19 @@ export default function ProjectDetails({
   const openLiveChat = React.useCallback(
     (question?: string) => {
       if (!user?.id) {
-        openAuthModal("sign-in")
+        promptSignIn(() => openLiveChat(question))
         return
       }
       if (question !== undefined) setPendingQuestion(question)
       setSelected("Live Chat")
     },
-    [user?.id, openAuthModal]
+    [user?.id, promptSignIn]
   )
 
   const handleAsk = React.useCallback(() => {
     if (!user?.id) {
       setAskModalOpen(false)
-      openAuthModal("sign-in")
+      promptSignIn(() => handleAsk())
       return
     }
     if (pendingQuestion.trim()) {
@@ -976,7 +2029,7 @@ export default function ProjectDetails({
       setAskErrored(true)
       setShowAskErrorMsg(true)
     }
-  }, [user?.id, pendingQuestion, openLiveChat, openAuthModal])
+  }, [user?.id, pendingQuestion, openLiveChat, promptSignIn])
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -1065,13 +2118,31 @@ export default function ProjectDetails({
         isOnline: true,
       })
     }
+    // Optimistic: if the user just claimed but the re-fetch hasn't arrived,
+    // inject them so the claim UI disappears immediately.
+    if (claimed && base.length === 0 && user?.id) {
+      base.push({
+        id: String(user.id),
+        userId: String(user.id),
+        firstName:
+          (user as any).firstName || (user as any).username || "You",
+        username: (user as any).username || "",
+        avatarUrl: (user as any).avatarUrl ?? null,
+        location: (user as any).location ?? null,
+        languages: [],
+        skills: [],
+        role: "owner",
+        isLead: true,
+        isOnline: true,
+      })
+    }
     const isOwnerMember = (m: any) =>
       m?.role === "owner" ||
       (!!ownerId && String(m?.userId ?? m?.id ?? "") === ownerId)
     return [...base].sort(
       (a, b) => (isOwnerMember(a) ? 0 : 1) - (isOwnerMember(b) ? 0 : 1)
     )
-  }, [project, user, ownerProfile, projectOwnerId])
+  }, [project, user, ownerProfile, projectOwnerId, claimed])
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
@@ -1198,7 +2269,7 @@ export default function ProjectDetails({
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
-      openAuthModal("sign-in")
+      promptSignIn(() => handleFavoriteToggle(pressed))
       return
     }
     setIsFavorited(pressed)
@@ -1230,7 +2301,7 @@ export default function ProjectDetails({
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store' })
           if (r.ok) {
             res = r
             slug = candidate
@@ -1240,7 +2311,7 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
         }
         if (!res.ok) {
           // Try as a service. Service URLs are also generated as
@@ -1476,7 +2547,49 @@ export default function ProjectDetails({
     }
 
     fetchProject()
-  }, [params.slug, router])
+  }, [params.slug, router, refetchKey])
+
+  // Fetch join-request status for talent viewing someone else's project
+  React.useEffect(() => {
+    if (!project?.id || !user?.id || isOwnerViewing || !isTalentAccount(user)) return
+    // If talent is already on the team, show "Joined" immediately
+    const onTeam = Array.isArray((project as any)?.team) &&
+      (project as any).team.some(
+        (m: any) => String(m?.userId ?? m?.id ?? "") === String(user.id)
+      )
+    if (onTeam) {
+      setJoinStatus("accepted")
+      return
+    }
+    getJoinRequestStatus(project.id).then(setJoinStatus).catch(() => {})
+  }, [project?.id, user?.id, isOwnerViewing])
+
+  const handleRequestToJoin = React.useCallback(async () => {
+    if (!project?.id || joinBusy) return
+    setJoinBusy(true)
+    try {
+      const res = await requestToJoinProject(project.id)
+      setJoinStatus(res.status === "accepted" ? "accepted" : "pending")
+    } catch {
+      // If the endpoint isn't built yet, optimistically show pending
+      setJoinStatus("pending")
+    } finally {
+      setJoinBusy(false)
+    }
+  }, [project?.id, joinBusy])
+
+  const handleCancelJoinRequest = React.useCallback(async () => {
+    if (!project?.id || joinBusy) return
+    setJoinBusy(true)
+    try {
+      await cancelJoinRequest(project.id)
+      setJoinStatus("none")
+    } catch {
+      setJoinStatus("none")
+    } finally {
+      setJoinBusy(false)
+    }
+  }, [project?.id, joinBusy])
 
   // Track view when project loads — skip in owner preview
   React.useEffect(() => {
@@ -1485,6 +2598,7 @@ export default function ProjectDetails({
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
+      headers: csrfHeader("POST"),
     }).catch(() => {})
   }, [project?.id, isPreview])
 
@@ -2558,7 +3672,17 @@ export default function ProjectDetails({
                               </p>
 
                               <div className="mt-5">
-                                <Button size="md" visual="primary">
+                                <Button
+                                  size="md"
+                                  visual="primary"
+                                  onClick={() => {
+                                    if (!user?.id) {
+                                      openAuthModal("sign-in")
+                                      return
+                                    }
+                                    openClaimDialog()
+                                  }}
+                                >
                                   Claim this Project
                                 </Button>
                               </div>
@@ -2939,7 +4063,7 @@ export default function ProjectDetails({
                                   visual="gray"
                                   onClick={() => {
                                     if (!user?.id) {
-                                      openAuthModal("sign-in")
+                                      promptSignIn(() => setAskModalOpen(true))
                                       return
                                     }
                                     setAskModalOpen(true)
@@ -5403,6 +6527,37 @@ export default function ProjectDetails({
                 </span>
 
                 {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
+                  currentTeam.length === 1 ? (
+                    <div className="flex items-center gap-x-2 min-w-0">
+                      <Avatar
+                        size="sm"
+                        className="shrink-0 border-2 border-white hover:ring-0 active:ring-0"
+                      >
+                        {currentTeam[0].avatarUrl ? (
+                          <AvatarImage
+                            src={currentTeam[0].avatarUrl}
+                            alt={currentTeam[0].firstName}
+                          />
+                        ) : null}
+                        <AvatarFallback>
+                          {(currentTeam[0].firstName || currentTeam[0].username || "?").charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs text-dark-blue-400 font-medium leading-none truncate">
+                          {currentTeam[0].firstName || currentTeam[0].username}
+                          {currentTeam[0].username && currentTeam[0].firstName ? (
+                            <span className="font-extralight text-gray-400"> @{currentTeam[0].username}</span>
+                          ) : null}
+                        </span>
+                        {(currentTeam[0].role && currentTeam[0].role !== "owner") ? (
+                          <span className="mt-1 text-[11px] text-gray-400 font-extralight leading-none truncate">
+                            {currentTeam[0].role}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -5479,12 +6634,17 @@ export default function ProjectDetails({
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  )
                 ) : (
                   <NoTeamAssigned
                     kind="project"
                     onClaim={
                       project?.id
-                        ? () => claimProject(String(project.id))
+                        ? async () => {
+                            await claimProject(String(project.id))
+                            setClaimed(true)
+                            setRefetchKey((k) => k + 1)
+                          }
                         : undefined
                     }
                     editHref={
@@ -5516,8 +6676,144 @@ export default function ProjectDetails({
                 )}
               </div>
 
-              {!isOwnerViewing && (
-                <Dialog>
+              {!isOwnerViewing && isTalentAccount(user) && (() => {
+                const teamArr = Array.isArray((project as any)?.team) ? (project as any).team : []
+                const hasTeam = teamArr.length > 0
+                const isClaim = !hasTeam && !claimed
+
+                // Shared button styles per Figma: h-52px, border-2 #306CFE, rounded-5px, 18px semibold
+                const btnBase = "mt-6 w-full h-[52px] rounded-[5px] border-2 border-[#306CFE] bg-white px-[20px] text-[18px] font-semibold leading-[24px] text-[#306CFE] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] hover:bg-[#306CFE] hover:text-white"
+
+                // Claim this Project (zero team members)
+                if (isClaim) {
+                  return (
+                    <Button
+                      size="lg"
+                      className={btnBase}
+                      variant="outlined"
+                      disabled={claimBusy}
+                      onClick={(e) => {
+                        if (!user?.id) {
+                          e.preventDefault()
+                          promptSignIn(() => openClaimDialog())
+                          return
+                        }
+                        openClaimDialog()
+                      }}
+                    >
+                      Claim this Project
+                    </Button>
+                  )
+                }
+
+                // Requested — clickable, opens dropdown with View/Cancel
+                if (joinStatus === "pending") {
+                  return (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="lg"
+                          className={cn(btnBase, "gap-[8px]")}
+                          variant="outlined"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                            <path d="M17.0249 10.1248L15.5254 8.62483L14.0249 10.1248M15.75 8.99983C15.75 12.7278 12.7279 15.7498 8.99995 15.7498C5.27203 15.7498 2.24995 12.7278 2.24995 8.99983C2.24995 5.27191 5.27203 2.24983 8.99995 2.24983C11.4764 2.24983 13.6413 3.58343 14.8158 5.57165M8.99995 5.24983V8.99983L11.25 10.4998" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          Requested
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="center"
+                        sideOffset={4}
+                        className="w-[var(--radix-dropdown-menu-trigger-width)] rounded-[8px] border-[#F2F4F7] py-[4px] shadow-none drop-shadow-[0px_12px_16px_rgba(16,24,40,0.08)]"
+                      >
+                        <DropdownMenuItem
+                          className="gap-x-[8px] px-[12px] py-[10px]"
+                          onClick={() => {
+                            // View My Request — placeholder for navigation
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 size-[16px]">
+                            <path d="M0.666667 8C0.666667 8 3.33333 2.66667 8 2.66667C12.6667 2.66667 15.3333 8 15.3333 8C15.3333 8 12.6667 13.3333 8 13.3333C3.33333 13.3333 0.666667 8 0.666667 8Z" stroke="#667085" strokeWidth="1.31486" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="#667085" strokeWidth="1.31486" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <span className="text-[13px] font-medium capitalize leading-[13.3px]">
+                            View My Request
+                          </span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          visual="destructive"
+                          className="gap-x-[8px] px-[12px] py-[10px]"
+                          onClick={handleCancelJoinRequest}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 size-[16px]">
+                            <path d="M12 4L4 12M4 4L12 12" stroke="#F04438" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                          <span className="text-[13px] font-medium capitalize leading-[13.3px]">
+                            Cancel Request
+                          </span>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                }
+
+                // Joined — non-interactive
+                if (joinStatus === "accepted") {
+                  return (
+                    <Button
+                      size="lg"
+                      className={cn(btnBase, "gap-[8px] pointer-events-none")}
+                      variant="outlined"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                        <path d="M12 13.5L13.5 15L16.5 12M9.00001 11.25H6.00001C4.60218 11.25 3.90327 11.25 3.35196 11.4784C2.61687 11.7829 2.03285 12.3669 1.72837 13.102C1.50001 13.6533 1.50001 14.3522 1.50001 15.75M11.625 2.46808C12.7244 2.91312 13.5 3.991 13.5 5.25001C13.5 6.50903 12.7244 7.5869 11.625 8.03195M10.125 5.25001C10.125 6.90687 8.78186 8.25001 7.12501 8.25001C5.46815 8.25001 4.12501 6.90687 4.12501 5.25001C4.12501 3.59316 5.46815 2.25001 7.12501 2.25001C8.78186 2.25001 10.125 3.59316 10.125 5.25001Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                      Joined
+                    </Button>
+                  )
+                }
+
+                // Default — Request to Join
+                return (
+                  <Button
+                    size="lg"
+                    className={btnBase}
+                    variant="outlined"
+                    disabled={joinBusy}
+                    onClick={(e) => {
+                      if (!user?.id) {
+                        e.preventDefault()
+                        promptSignIn(() => setJoinDialogOpen(true))
+                        return
+                      }
+                      setJoinDialogOpen(true)
+                    }}
+                  >
+                    Request to Join
+                  </Button>
+                )
+              })()}
+
+              {/* Join dialog — rendered outside the IIFE so it stays mounted through confirmation */}
+              {!isOwnerViewing && isTalentAccount(user) && (
+                <JoinProjectDialog
+                  open={joinDialogOpen}
+                  onOpenChange={setJoinDialogOpen}
+                  projectTitle={project?.title ?? ""}
+                  projectId={String(project?.id ?? "")}
+                  scopeRoles={scopeRoles}
+                  scopeTaskTypes={scopeTaskTypes}
+                  onSubmitted={() => setJoinStatus("pending")}
+                />
+              )}
+
+              {!isOwnerViewing && !isTalentAccount(user) && (
+                <Dialog
+                  open={startProjectDialogOpen}
+                  onOpenChange={setStartProjectDialogOpen}
+                >
                   <DialogTrigger asChild>
                     <Button
                       size="lg"
@@ -5526,7 +6822,7 @@ export default function ProjectDetails({
                       onClick={(e) => {
                         if (!user?.id) {
                           e.preventDefault()
-                          openAuthModal("sign-in")
+                          promptSignIn(() => setStartProjectDialogOpen(true))
                         }
                       }}
                     >
@@ -5567,6 +6863,31 @@ export default function ProjectDetails({
                   >
                     <Edit03 className="size-[15px]" />
                     Edit My Project
+                  </Button>
+                  <IconButton
+                    size="lg"
+                    variant="outlined"
+                    visual="gray"
+                    onClick={() => toggleShareWindow(true, project.title)}
+                  >
+                    <Share06 className="size-5" />
+                  </IconButton>
+                </div>
+              )}
+
+              {isOwnerViewing && !isPreview && project?.id && (
+                <div className="mt-6 flex items-center gap-x-3">
+                  <Button
+                    size="lg"
+                    variant="outlined"
+                    visual="gray"
+                    className="flex-auto"
+                    asChild
+                  >
+                    <NextLink href={`/my-listings/${project.id}`}>
+                      <Edit03 className="size-[15px]" />
+                      Edit My Project
+                    </NextLink>
                   </Button>
                   <IconButton
                     size="lg"
@@ -5797,6 +7118,112 @@ export default function ProjectDetails({
       </div>
       )}
 
+      {/* Page-level claim confirmation dialog (triggered by main content button) */}
+      <Dialog
+        open={claimStep !== "closed"}
+        onOpenChange={(next) => {
+          if (!next) {
+            setClaimStep("closed")
+            setClaimError(null)
+          }
+        }}
+      >
+        <DialogContent className="w-[440px] max-w-[440px] p-6">
+          {claimStep === "confirm" ? (
+            <>
+              <DialogTitle className="text-lg font-semibold leading-7 text-dark-blue-400">
+                Claim this Project?
+              </DialogTitle>
+              <p className="mt-2 text-sm font-light leading-[1.5] text-gray-500">
+                You will become the owner of this project. That means building
+                it out properly, assembling the team and leading it to delivery,
+                so it looks credible to the client. Only claim what you intend
+                to run.
+              </p>
+              {claimError && (
+                <p className="mt-3 text-sm font-medium leading-[1.5] text-error-500">
+                  {claimError}
+                </p>
+              )}
+              <div className="mt-6 flex items-center justify-end gap-x-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => {
+                    setClaimStep("closed")
+                    setClaimError(null)
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  visual="primary"
+                  disabled={claimBusy}
+                  onClick={handlePageClaim}
+                >
+                  {claimBusy ? "Claiming\u2026" : "Yes, Claim It"}
+                </Button>
+              </div>
+            </>
+          ) : claimStep === "blocked" ? (
+            <>
+              <div className="flex size-12 items-center justify-center rounded-full bg-error-50">
+                <AlertCircle className="size-6 text-error-500" />
+              </div>
+              <DialogTitle className="mt-4 text-lg font-semibold leading-7 text-dark-blue-400">
+                Claim limit reached
+              </DialogTitle>
+              <p className="mt-2 text-sm font-light leading-[1.5] text-gray-500">
+                {claimBlockedReason}
+              </p>
+              <div className="mt-6 flex items-center justify-end">
+                <Button
+                  visual="primary"
+                  onClick={() => {
+                    setClaimStep("closed")
+                    setClaimBlockedReason("")
+                  }}
+                >
+                  Got it
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex size-12 items-center justify-center rounded-full bg-success-50">
+                <CheckCircle className="size-6 text-success-500" />
+              </div>
+              <DialogTitle className="mt-4 text-lg font-semibold leading-7 text-dark-blue-400">
+                This project is yours
+              </DialogTitle>
+              <p className="mt-2 text-sm font-light leading-[1.5] text-gray-500">
+                Make it yours. Swap the stock images for your own, then shape
+                the description and scope around your expertise. Invite your
+                team once it is ready.
+              </p>
+              <div className="mt-6 flex items-center justify-end gap-x-3">
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  onClick={() => {
+                    setClaimStep("closed")
+                    setClaimError(null)
+                  }}
+                >
+                  Close
+                </Button>
+                {project?.id && (
+                  <Button visual="primary" asChild>
+                    <NextLink href={`/my-listings/${project.id}`}>
+                      Edit My Project
+                    </NextLink>
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

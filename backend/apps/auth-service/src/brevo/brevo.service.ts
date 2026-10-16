@@ -4,6 +4,27 @@ import axios, { AxiosInstance } from 'axios';
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 const PASSWORD_CREATED_SUBJECT =
   'Your Account Password Has Been Successfully Created!';
+const PASSWORD_CHANGED_SUBJECT = 'Your Password Has Been Changed';
+const RECOVERY_EMAIL_SUBJECT = 'Set Up Your Account Recovery Email';
+
+/** Shared stack for the table-based templates below. */
+const EMAIL_FONT =
+  "'Inter',-apple-system,'Segoe UI',Arial,Helvetica,sans-serif";
+
+/**
+ * The Marketeq lockup, served from Brevo's own content library — the same
+ * asset the password-reset template (id 2) already uses, so it is a URL that
+ * is known to render in the clients our mail actually reaches.
+ *
+ * It has to be a hosted raster: the vector source
+ * (frontend/components/icons/marketeq-logo.tsx) cannot be inlined because
+ * Gmail strips <svg> and blocks data: image URIs.
+ *
+ * The file is 256x38, i.e. 2x the 128x19 it is displayed at, so it stays sharp
+ * on high-DPI screens.
+ */
+const MARKETEQ_LOGO_URL =
+  'https://img.mailinblue.com/10971309/images/content_library/original/6a508977bb8791bb42794f96.png';
 
 interface BrevoSender {
   email: string;
@@ -33,6 +54,8 @@ export class BrevoService {
   private readonly fromName: string;
   private readonly passwordResetTemplateId?: number;
   private readonly passwordCreatedTemplateId?: number;
+  private readonly passwordChangedTemplateId?: number;
+  private readonly recoveryEmailTemplateId?: number;
 
   constructor() {
     const apiKey = process.env.BREVO_API_KEY || '';
@@ -43,6 +66,10 @@ export class BrevoService {
     this.passwordResetTemplateId = raw ? Number(raw) : undefined;
     const passwordCreatedRaw = process.env.BREVO_PASSWORD_CREATED_TEMPLATE_ID;
     this.passwordCreatedTemplateId = passwordCreatedRaw ? Number(passwordCreatedRaw) : undefined;
+    const passwordChangedRaw = process.env.BREVO_PASSWORD_CHANGED_TEMPLATE_ID;
+    this.passwordChangedTemplateId = passwordChangedRaw ? Number(passwordChangedRaw) : undefined;
+    const recoveryEmailRaw = process.env.BREVO_RECOVERY_EMAIL_TEMPLATE_ID;
+    this.recoveryEmailTemplateId = recoveryEmailRaw ? Number(recoveryEmailRaw) : undefined;
 
     if (!apiKey) {
       this.logger.warn(
@@ -159,6 +186,112 @@ export class BrevoService {
     await this.send(request);
   }
 
+  /**
+   * Security notification sent after a password is actually changed.
+   *
+   * The when/device/where lines exist so someone who did *not* change their
+   * password can recognise that from the email alone. Each value is optional:
+   * the user-agent and the IP can legitimately be absent (a non-browser
+   * client, a proxy that strips them), and a line that would read
+   * "Device: unknown" tells the reader nothing while implying we looked. Such
+   * a line is omitted instead.
+   */
+  async sendPasswordChangedEmail(
+    to: string,
+    params: {
+      firstName?: string;
+      when?: string;
+      device?: string;
+      where?: string;
+      changePasswordUrl?: string;
+    },
+  ): Promise<void> {
+    const request: SendTransacEmailRequest = {
+      to: [{ email: to }],
+      subject: PASSWORD_CHANGED_SUBJECT,
+      params: {
+        firstName: params.firstName ?? '',
+        when: params.when ?? '',
+        device: params.device ?? '',
+        where: params.where ?? '',
+        changePasswordUrl: params.changePasswordUrl ?? '',
+      },
+      tags: ['password-changed'],
+    };
+
+    if (this.passwordChangedTemplateId) {
+      request.templateId = this.passwordChangedTemplateId;
+    } else {
+      request.htmlContent = this.buildPasswordChangedHtml(params);
+    }
+
+    await this.send(request);
+  }
+
+  /**
+   * Figma values, kept literal: 724px frame with 40px vertical padding and a
+   * 660px content column, 24px between blocks, Inter 14px/20px, body weight
+   * 500 and labels 700, text #22376B (Dark Blue/400), link #306CFE
+   * (Primary/500).
+   *
+   * Inline styles and no flexbox because email clients strip <style> blocks
+   * and do not lay out flex. Inter is named first but will not load in most
+   * clients, hence the Arial/Helvetica fallback.
+   *
+   * The logo is the full Figma lockup at its specified 128px width. Height is
+   * set to 19px rather than the Figma's 18.81px: the hosted asset's own aspect
+   * ratio puts it at 19.00px there, and forcing the fractional value would
+   * distort it by more than the 0.19px it would correct.
+   */
+  private buildPasswordChangedHtml(params: {
+    firstName?: string;
+    when?: string;
+    device?: string;
+    where?: string;
+    changePasswordUrl?: string;
+  }): string {
+    const firstName = this.escapeHtml(params.firstName?.trim() || 'there');
+    const changePasswordUrl = params.changePasswordUrl?.trim();
+
+    const linkText = 'change your password';
+    const linkHtml = changePasswordUrl
+      ? `<a href="${this.escapeAttribute(changePasswordUrl)}" style="color:#306CFE;text-decoration:underline;">${linkText}</a>`
+      : linkText;
+
+    const detail = (label: string, value?: string): string => {
+      const trimmed = value?.trim();
+      if (!trimmed) return '';
+      return `<div style="margin:0;"><span style="font-weight:700;">${this.escapeHtml(label)}:</span> ${this.escapeHtml(trimmed)}</div>`;
+    };
+
+    const details = [
+      detail('When', params.when),
+      detail('Device', params.device),
+      detail('Where', params.where),
+    ].join('');
+
+    const detailsBlock = details
+      ? `<div style="margin:24px 0 0;">${details}</div>`
+      : '';
+
+    return `<!doctype html>
+<html>
+  <body style="background:#ffffff;margin:0;padding:0;">
+    <div style="color:#22376B;font-family:'Inter',Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;line-height:20px;margin:0 auto;max-width:724px;padding:40px 24px;">
+      <img src="${MARKETEQ_LOGO_URL}" alt="Marketeq" width="128" height="19" style="border:0;display:block;height:19px;margin:0 0 32px;max-width:100%;outline:none;text-decoration:none;width:128px;" />
+      <div style="max-width:660px;">
+        <p style="margin:0 0 24px;">Hi ${firstName},</p>
+        <p style="margin:0 0 24px;">Your Marketeq password has been successfully updated.</p>
+        <p style="margin:0;">If you did not perform this action, you should ${linkHtml} right away. If this was you, you can safely ignore this email.</p>
+        ${detailsBlock}
+        <p style="margin:24px 0 0;">Thanks,</p>
+        <p style="font-weight:700;margin:0;">The Marketeq Team</p>
+      </div>
+    </div>
+  </body>
+</html>`;
+  }
+
   private buildPasswordCreatedHtml(params: {
     firstName?: string;
     signInUrl?: string;
@@ -199,5 +332,88 @@ export class BrevoService {
 
   private escapeAttribute(value: string): string {
     return this.escapeHtml(value).replace(/`/g, '&#96;');
+  }
+
+  async sendRecoveryEmailVerification(
+    to: string,
+    params: { firstName?: string; confirmUrl: string },
+  ): Promise<void> {
+    const request: SendTransacEmailRequest = {
+      to: [{ email: to }],
+      subject: RECOVERY_EMAIL_SUBJECT,
+      params: {
+        firstName: params.firstName ?? '',
+        confirmUrl: params.confirmUrl,
+      },
+      tags: ['recovery-email'],
+    };
+
+    // A Brevo-hosted template wins when one is configured, matching how
+    // password-reset and password-created behave. Without it the in-repo
+    // layout below is used, so the flow works in an environment that has an
+    // API key but no template set up.
+    if (this.recoveryEmailTemplateId) {
+      request.templateId = this.recoveryEmailTemplateId;
+    } else {
+      request.htmlContent = this.buildRecoveryEmailHtml(params);
+    }
+
+    await this.send(request);
+  }
+
+  /**
+   * Table-based rather than flex: Gmail, Outlook and most desktop clients
+   * strip or ignore modern layout CSS, so the Figma auto-layout is expressed
+   * as nested tables with explicit spacer rows. The values are the Figma ones
+   * — 724px frame, 660px content, 24px gaps, #344054 body, 260x36 button.
+   *
+   * The logo comes from MARKETEQ_LOGO_URL rather than an env-gated asset base,
+   * so it matches the other two templates in this file and renders without any
+   * extra configuration.
+   */
+  private buildRecoveryEmailHtml(params: {
+    firstName?: string;
+    confirmUrl: string;
+  }): string {
+    const firstName = this.escapeHtml(params.firstName?.trim() || 'there');
+    const href = this.escapeAttribute(params.confirmUrl);
+
+    const line = (html: string) =>
+      `<tr><td style="font-family:${EMAIL_FONT};font-size:14px;line-height:20px;font-weight:500;color:#344054;padding:0 0 24px 0;">${html}</td></tr>`;
+
+    return `<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${this.escapeHtml(RECOVERY_EMAIL_SUBJECT)}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#ffffff;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#ffffff;">
+  <tr><td align="center" style="padding:40px 16px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="724" style="width:724px;max-width:100%;">
+
+      <tr><td style="padding:0 0 55px 0;"><img src="${MARKETEQ_LOGO_URL}" alt="Marketeq" width="128" height="19" style="border:0;display:block;height:19px;max-width:100%;outline:none;text-decoration:none;width:128px;" /></td></tr>
+
+      <tr><td>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="660" style="width:660px;max-width:100%;">
+          ${line(`Hi ${firstName},`)}
+          ${line('You have requested this email be added to your Marketeq account for account recovery.')}
+          ${line('Please click the button below to enable account recovery for your account.')}
+          ${line('This link will expire after <strong style="font-weight:700;">24 hours</strong>.')}
+          ${line('If you are receiving this message in error, you can ignore this email.')}
+          <tr><td>
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr><td align="center" style="background-color:#306CFE;border-radius:5px;box-shadow:0px 1px 2px rgba(16,24,40,0.05);">
+                <a href="${href}" style="display:inline-block;width:232px;padding:8px 14px;font-family:${EMAIL_FONT};font-size:14px;line-height:20px;font-weight:600;color:#ffffff;text-align:center;text-decoration:none;">Enable Account Recovery</a>
+              </td></tr>
+            </table>
+          </td></tr>
+        </table>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body></html>`;
   }
 }

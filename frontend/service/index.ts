@@ -7,6 +7,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios"
 import { getPublicApiUrl, getPublicAuthUrl } from "@/lib/runtime-urls"
+import { getCsrfToken, setCsrfToken, waitForCsrfToken } from "@/src/lib/csrf"
 
 interface Config extends AxiosRequestConfig {}
 
@@ -21,10 +22,25 @@ const axiosInstance = axios.create({
   withCredentials: true,
 })
 
+const WRITE_METHODS = new Set(["post", "put", "patch", "delete"])
+
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     if (config.headers?.Authorization) {
       delete config.headers.Authorization
+    }
+
+    // Attach CSRF token on state-changing requests.
+    // If the token isn't available yet (page reload), wait for the
+    // GET /auth/csrf fetch to complete before sending the request.
+    if (config.method && WRITE_METHODS.has(config.method)) {
+      if (!getCsrfToken()) {
+        await Promise.race([waitForCsrfToken(), new Promise((r) => setTimeout(r, 3000))])
+      }
+      const token = getCsrfToken()
+      if (token) {
+        config.headers.set("X-CSRF-Token", token)
+      }
     }
 
     return Promise.resolve(config)
@@ -65,7 +81,10 @@ export const refreshSession = (): Promise<void> => {
     const AUTH_BASE = getPublicAuthUrl()
     refreshInFlight = axiosInstance
       .post(`${AUTH_BASE}/auth/refresh`, null)
-      .then(() => undefined)
+      .then((res) => {
+        const csrf = res?.data?.csrfToken
+        if (csrf) setCsrfToken(csrf)
+      })
       .finally(() => {
         refreshInFlight = null
       })
@@ -74,12 +93,25 @@ export const refreshSession = (): Promise<void> => {
 }
 
 axiosInstance.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Capture csrfToken from auth responses (login, register, oauth, 2fa verify)
+    const csrf = response?.data?.csrfToken
+    if (csrf && typeof csrf === "string") {
+      setCsrfToken(csrf)
+    }
+    return response
+  },
   async (error) => {
     const originalRequest = error.config
-    // Only intercept 401s, skip if already retried or if this IS the refresh call
+    const status = error?.response?.status
+    const isCsrf =
+      status === 403 &&
+      error?.response?.data?.code === "CSRF_TOKEN_INVALID"
+
+    // Only intercept 401s and 403 CSRF failures, skip if already retried or
+    // if this IS the refresh/login call
     if (
-      error?.response?.status !== 401 ||
+      (!isCsrf && status !== 401) ||
       originalRequest._retry ||
       originalRequest.url?.includes("/auth/refresh") ||
       originalRequest.url?.includes("/auth/login")

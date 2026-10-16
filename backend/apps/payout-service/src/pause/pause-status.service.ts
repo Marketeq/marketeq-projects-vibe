@@ -91,9 +91,14 @@ export class PauseStatusService {
       activeConditions.push('ACCOUNT_SUSPENDED');
     }
 
-    // PS-16 §2: OFAC_FLAG — checked via KYC tier
-    // In production, kyc-identity-service gate-status would have ofacFlagged field
-    // For dev mode, this is always false since KYC returns basic tier
+    // PS-16 §2: OFAC_FLAG. kyc-identity-service's gate-status response does
+    // not carry ofacFlagged yet (confirmed — no such field in its contract
+    // today), so kycStatus.ofacFlagged reads undefined/falsy and this never
+    // fires until that service adds it. Wired for real the moment it does —
+    // payout-service has no sanctions data of its own to check against.
+    if (kycStatus.ofacFlagged) {
+      activeConditions.push('OFAC_FLAG');
+    }
 
     // Build response with all conditions
     const allConditions = PRIORITY_ORDER.map(c => ({
@@ -173,8 +178,9 @@ export class PauseStatusService {
     if (previouslyPaused && !current.paused) {
       // Transition: paused → resumed
       this.logger.log(`Payouts resumed for ${contractorId}`);
-      // In production: publish payout.resumed event to RabbitMQ
-      this.logger.log(`[EVENT] payout.resumed for ${contractorId}`);
+      await this.publisher.publishPayoutsResumed(contractorId, {
+        occurredAt: new Date().toISOString(),
+      });
 
       await this.auditService.log({
         contractorId,
@@ -243,7 +249,6 @@ export class PauseStatusService {
   private providerLabel(methodType?: MethodType | null): string {
     const map: Record<string, string> = {
       WISE: 'Wise',
-      PAYONEER: 'Payoneer',
     };
     return map[methodType ?? ''] ?? 'payment provider';
   }

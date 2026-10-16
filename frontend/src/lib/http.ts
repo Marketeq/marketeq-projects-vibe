@@ -1,4 +1,5 @@
 import { getPublicBackendUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "./csrf"
 
 export const HL = <T>(v: T) => v
 
@@ -16,6 +17,9 @@ export function createHttp(cfg: HttpConfig = defaultConfig) {
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers)
     headers.set("Content-Type", "application/json")
+    // Attach CSRF token on write methods
+    const csrf = csrfHeader(init?.method)
+    for (const [k, v] of Object.entries(csrf)) headers.set(k, v)
 
     const url = `${baseURL}${path}`.replace(/\/$/, "")
     const res = await fetch(url, { ...init, headers, credentials: "include" })

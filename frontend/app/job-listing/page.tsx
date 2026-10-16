@@ -27,8 +27,8 @@ import {
   type CheckoutPaymentMethod,
 } from "@/service/http/checkout";
 import {
-  type ContractDTO,
-  getContractsForClient,
+  type AddableContractDTO,
+  getAddableJobContractsForClient,
 } from "@/service/http/contracts";
 import {
   JobListingAPI,
@@ -59,6 +59,12 @@ import {
 import { createContext, createStrictContext } from "@/utils/react-utils";
 import { TagsInputHiddenInput } from "@ark-ui/react";
 import {
+  MdAutorenew,
+  MdOutlineAssignment,
+  MdOutlineGroups,
+  MdOutlinePerson,
+} from "react-icons/md";
+import {
   AlertCircle,
   AlertTriangle,
   ArrowDown,
@@ -80,6 +86,8 @@ import {
   File as FileIcon,
   HelpCircle,
   Home03,
+  Info,
+  Lightbulb03,
   Lightbulb05,
   Lock01,
   MoreHorizontal,
@@ -93,7 +101,6 @@ import {
   Trash2,
   Type,
   UploadCloud,
-  UserCircle,
   Users,
   X,
   X2,
@@ -145,12 +152,11 @@ import { util, z } from "zod";
 import { Prettify } from "@/types/core";
 import { CreateProjectType } from "@/types/project";
 import { Spinner } from "@/components/ui/spinner/spinner";
+import { BadgeCloseButton } from "@/components/ui/badge/badge";
 import { GripVertical2 } from "@/components/icons/grip-vertical-2";
-import { Network } from "@/components/icons/network";
 import { Network1 } from "@/components/icons/network-1";
 import { Network2 } from "@/components/icons/network-2";
 import { Network3 } from "@/components/icons/network-3";
-import { Network4 } from "@/components/icons/network-4";
 import {
   CountriesCombobox,
   OwnCombobox,
@@ -158,6 +164,11 @@ import {
 } from "@/components/own-combobox";
 import { RichTextEditor } from "@/components/rich-text-editor";
 import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -189,15 +200,25 @@ import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
+  Avatar,
+  AvatarGroup,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
   Card,
+  Combobox,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   Dialog,
   DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogOverlay,
   DialogTitle,
   DialogTrigger,
   DisclosureContent,
@@ -218,6 +239,9 @@ import {
   RadioGroup,
   ScrollArea,
   ScrollBar,
+  SearchField,
+  SearchFieldButton,
+  SearchFieldInput,
   Select,
   SelectContent,
   SelectItem,
@@ -233,6 +257,7 @@ import {
   ToastAction,
   Toaster,
   Tooltip,
+  TooltipArrow,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
@@ -246,6 +271,7 @@ type ProgressProps = {
 
 type WorkTypeChoice = "project" | "service" | null;
 type HiringModeChoice = "team" | "individual" | null;
+type ScopeKnowledgeChoice = "known" | "unknown" | "none" | null;
 type SmartAssistantEditableField =
   | "title"
   | "overview"
@@ -262,12 +288,22 @@ const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   responsibilities: 100,
 };
 
+// Title is capped in characters; the long-form fields are capped in words.
+const SMART_ASSISTANT_WORD_LIMITED_FIELDS: SmartAssistantEditableField[] = [
+  "overview",
+  "benefits",
+  "responsibilities",
+];
+
 const clampSmartAssistantFieldValue = (
   field: SmartAssistantEditableField,
   value: string,
 ) => {
   const maxLength = SMART_ASSISTANT_FIELD_MAX_LENGTH[field];
   const normalized = value.replace(/\s+/g, " ").trim();
+  if (SMART_ASSISTANT_WORD_LIMITED_FIELDS.includes(field)) {
+    return normalized.split(" ").slice(0, maxLength).join(" ");
+  }
   if (normalized.length <= maxLength) return normalized;
 
   const truncated = normalized.slice(0, maxLength).trim();
@@ -480,8 +516,11 @@ const resolveMediaFileForUpload = async (
 };
 
 const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     const blob = await response.blob();
     const file = new File([blob], fallbackName, {
       type: blob.type || "image/jpeg",
@@ -490,6 +529,8 @@ const hydrateRemoteMediaFile = async (url: string, fallbackName: string) => {
     return file;
   } catch {
     return buildPersistedMediaFile(url, fallbackName);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 };
 
@@ -589,7 +630,11 @@ const buildScopeDraftPayload = (projectId: string, phases: Phase[] = []) =>
 const getJobListingScopeKnowledge = (
   selectedWorkType?: WorkTypeChoice,
   isNoScopeFlow = false,
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice,
 ) => {
+  if (scopeKnowledgeChoice === "known") return "has_scope" as const;
+  if (scopeKnowledgeChoice === "unknown") return "no_scope" as const;
+  if (scopeKnowledgeChoice === "none") return "no_scope_selected" as const;
   if (isNoScopeFlow) return "no_scope_selected" as const;
   return selectedWorkType ? ("has_scope" as const) : undefined;
 };
@@ -615,7 +660,7 @@ const toHiringModeChoice = (value: unknown): HiringModeChoice =>
   value === "individual" || value === "team" ? value : null;
 
 const isNoScopeKnowledge = (value: unknown) =>
-  value === "no_scope" || value === "no_scope_selected";
+  value === "no_scope_selected";
 
 const toJobListingPhaseType = (phaseName: string, phaseIndex = 0) => {
   const normalized = phaseName.trim().toLowerCase();
@@ -1779,33 +1824,35 @@ const Empty = ({
       <div className="relative flex-auto">
         {jobsPage}
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-900/40 px-6">
-          <Card className="w-full max-w-[600px] rounded-[16px] border-gray-200 bg-white p-0 shadow-lg hover:border-gray-200 hover:ring-0">
-            <div className="relative px-10 py-10 text-center">
+          <Card className="h-[334px] w-full max-w-[600px] rounded-[16px] border-none bg-white p-0 shadow-none hover:border-transparent hover:ring-0">
+            <div className="relative flex h-full flex-col items-start gap-8 px-10 pb-10 pt-16">
               <IconButton
-                className="absolute right-6 top-6"
+                className="absolute right-6 top-6 size-8 p-0 text-gray-500 opacity-50"
                 variant="ghost"
                 visual="gray"
                 size="md"
                 onClick={() => router.push("/my-jobs")}
               >
-                <X className="size-6" />
+                <X className="size-8" />
               </IconButton>
-              <div className="mx-auto inline-flex size-14 items-center justify-center rounded-full bg-success-50 text-success-500">
-                <CheckCircle className="size-7" />
+              <div className="inline-flex size-12 shrink-0 items-center justify-center rounded-full border-8 border-success-50 bg-success-100 text-success-600">
+                <CheckCircle className="size-6" />
               </div>
-              <h2 className="mt-8 text-[32px] font-bold leading-tight text-dark-blue-400">
-                {inviteStep === "sent"
-                  ? "Invites sent successfully!"
-                  : "All set! Your job post is live"}
-              </h2>
-              <p className="mt-5 text-[18px] font-light leading-normal text-dark-blue-400">
-                {inviteStep === "sent"
-                  ? "You can track applicants for each job from your My Jobs page"
-                  : "Start inviting talents to move your hiring forward"}
-              </p>
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="flex w-full flex-col items-start gap-4">
+                <h2 className="w-full text-[30px] font-bold leading-[38px] text-dark-blue-400">
+                  {inviteStep === "sent"
+                    ? "Invites sent successfully!"
+                    : "All set! Your job post is live"}
+                </h2>
+                <p className="w-full text-base font-normal leading-6 text-dark-blue-400">
+                  {inviteStep === "sent"
+                    ? "You can track applicants for each job from your My Jobs page"
+                    : "Start inviting talents to move your hiring forward"}
+                </p>
+              </div>
+              <div className="grid h-10 w-full grid-cols-2 gap-3">
                 <Button
-                  className="h-12"
+                  className="h-10 rounded-[5px] px-4 py-2.5 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
                   variant="outlined"
                   visual="gray"
                   onClick={() => router.push("/my-jobs")}
@@ -1813,7 +1860,7 @@ const Empty = ({
                   {inviteStep === "sent" ? "Close" : "Do It Later"}
                 </Button>
                 <Button
-                  className="h-12"
+                  className="h-10 rounded-[5px] px-4 py-2.5 text-sm font-semibold leading-5 shadow-xs"
                   onClick={() =>
                     inviteStep === "sent"
                       ? router.push("/my-jobs")
@@ -2014,6 +2061,75 @@ const plainTextFromRichTextHtml = (value: string) => {
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length;
 
+const escapeHtmlText = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+const replaceFirstTextInRichTextHtml = (
+  html: string,
+  selectedText: string,
+  replacementText: string
+): { html: string; replaced: boolean } => {
+  const trimmedSelectedText = selectedText.trim();
+
+  if (!trimmedSelectedText || !replacementText.trim()) {
+    return { html, replaced: false };
+  }
+
+  if (typeof window === "undefined") {
+    const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+
+    return { html: nextHtml, replaced: nextHtml !== html };
+  }
+
+  const container = window.document.createElement("div");
+  container.innerHTML = html;
+
+  const walker = window.document.createTreeWalker(
+    container,
+    window.NodeFilter.SHOW_TEXT
+  );
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const textContent = currentNode.textContent ?? "";
+    const matchIndex = textContent.indexOf(trimmedSelectedText);
+
+    if (matchIndex !== -1) {
+      currentNode.textContent =
+        textContent.slice(0, matchIndex) +
+        replacementText +
+        textContent.slice(matchIndex + trimmedSelectedText.length);
+      return { html: container.innerHTML, replaced: true };
+    }
+
+    currentNode = walker.nextNode();
+  }
+
+  const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
+
+  return { html: nextHtml, replaced: nextHtml !== html };
+};
+
+const STEP_TWO_WORD_LIMIT = 100;
+const NEGATIVE_BUDGET_ERROR = "Budget cannot be negative";
+
+const getWordCount = (value: string) => (value.match(/\S+/g) ?? []).length;
+
+const normalizeBudgetInput = (value: string) => {
+  const sanitizedValue = value.replace(/[^0-9.-]/g, "");
+  const sign = sanitizedValue.startsWith("-") ? "-" : "";
+  const unsignedValue = sanitizedValue.replace(/-/g, "");
+  const [whole = "", fraction = ""] = unsignedValue.split(".");
+
+  return sign +
+    (unsignedValue.includes(".")
+      ? `${whole}.${fraction.slice(0, 2)}`
+      : whole);
+};
+
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const;
 
 const formatDurationUnit = (
@@ -2039,14 +2155,17 @@ const durationToDays = (
   if (type === "hours") return Math.max(1, Math.ceil(value / 24));
   return value;
 };
-const EXPERIENCE_LEVELS = [
-  "Student",
-  "Junior",
-  "Medior",
-  "Senior",
-  "Guru",
-] as const;
+// Full 5-level scale — matches ps_platform_rate_averages.experience_level
+// and the shared scope-builder component's HOURLY_RATE_BY_LEVEL.
+const EXPERIENCE_LEVELS = ["Student", "Junior", "Medior", "Senior", "Guru"] as const;
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
+const formatExperienceDisplay = (experience?: string | null) => {
+  const normalizedExperience = experience?.trim();
+  if (!normalizedExperience) return "";
+  return `${normalizedExperience.charAt(0).toUpperCase()}${normalizedExperience
+    .slice(1)
+    .toLowerCase()}`;
+};
 
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter at least 1 character(s)"),
@@ -2348,34 +2467,26 @@ const Sidebar = () => {
 
 const Header = ({ onSaveExit }: { onSaveExit?: () => void }) => {
   return (
-    <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200">
-      <div>
-        <h3 className="text-sm leading-[16.94px] text-dark-blue-400 font-semibold">
+    <div className="sticky top-0 flex h-[92px] items-center gap-x-12 border-b border-gray-200 bg-white px-[50px] py-4">
+      <div className="flex h-[60px] flex-1 flex-col items-start justify-center gap-y-2">
+        <h3 className="text-[24px] font-bold leading-8 text-dark-blue-400">
           Job Creation
         </h3>
-        <p className="text-xs leading-[18px] text-dark-blue-400">
+        <p className="text-sm leading-5 text-dark-blue-400">
           We&apos;ll guide you through the steps to set up roles, add details,
           and get ready to hire.
         </p>
       </div>
 
-      <div className="flex items-center gap-x-3">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <IconButton
-                className="text-gray-500"
-                variant="ghost"
-                visual="gray"
-                onClick={onSaveExit}
-              >
-                <X className="size-4" />
-              </IconButton>
-            </TooltipTrigger>
-            <TooltipContent>Close</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <IconButton
+        aria-label="Close"
+        className="size-8 shrink-0 p-0 text-gray-400"
+        variant="ghost"
+        visual="gray"
+        onClick={onSaveExit}
+      >
+        <X className="size-8" />
+      </IconButton>
     </div>
   );
 };
@@ -2386,19 +2497,22 @@ const BottomBar = ({
   workType,
   jobListingId,
   selectedHiringMode,
+  scopeKnowledgeChoice,
   isNoScopeFlow,
   isExistingContractFlow,
   selectedExistingContractId,
 }: {
   progressValue?: number;
-  onNextClick?: () => void;
+  onNextClick?: () => boolean | Promise<boolean>;
   workType?: WorkTypeChoice;
   jobListingId?: string | null;
   selectedHiringMode?: HiringModeChoice;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
   isNoScopeFlow?: boolean;
   isExistingContractFlow?: boolean;
   selectedExistingContractId?: string | null;
 }) => {
+  const router = useRouter();
   const { nextStep, prevStep, setStep } = useStepperContext();
   const { hasNextStep, hasPreviousStep, totalSteps, currentStep, stepsState } =
     useStepRootContext();
@@ -2443,6 +2557,7 @@ const BottomBar = ({
             scopeKnowledge: getJobListingScopeKnowledge(
               workType,
               Boolean(isNoScopeFlow),
+              scopeKnowledgeChoice,
             ),
             workType: getJobListingWorkType(workType),
             hiringType: getJobListingHiringType(selectedHiringMode),
@@ -2452,6 +2567,17 @@ const BottomBar = ({
 
         if (!listingId) {
           throw new Error("Unable to create job listing draft");
+        }
+
+        if (
+          typeof jobListingDraftDetails.budgetAmount === "number" &&
+          jobListingDraftDetails.budgetAmount < 0
+        ) {
+          toast({
+            title: NEGATIVE_BUDGET_ERROR,
+            variant: "destructive",
+          });
+          return;
         }
 
         if (typeof window !== "undefined") {
@@ -2467,6 +2593,7 @@ const BottomBar = ({
           scopeKnowledge: getJobListingScopeKnowledge(
             workType,
             Boolean(isNoScopeFlow),
+            scopeKnowledgeChoice,
           ),
           workType: getJobListingWorkType(workType),
           hiringType: getJobListingHiringType(selectedHiringMode),
@@ -2487,7 +2614,7 @@ const BottomBar = ({
           tools: jobListingDraftDetails.tools ?? [],
           media: buildJobListingMediaPayload(media),
           budgetAmount: jobListingDraftDetails.budgetAmount,
-          budgetDisplayCurrency: "USD",
+          budgetDisplayCurrency: user?.currency || "USD",
           budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
           durationMonths: jobListingDraftDetails.durationMonths,
           isOngoing: jobListingDraftDetails.isOngoing,
@@ -2928,49 +3055,56 @@ const BottomBar = ({
   };
 
   return (
-    <div className="h-[78px] z-40 fixed left-0 bottom-0 right-0 bg-white border-b border-gray-200">
-      <Progress value={progressValue} bubble={false} />
-      <div className="grid h-[70px] grid-cols-3 items-center py-[15px] pr-[17px] pl-[32px]">
-        <div className="flex justify-start">
-          <Button
-            className="h-8"
-            disabled={!hasPreviousStep}
-            variant="outlined"
-            visual="gray"
-            onClick={() => {
-              if (workType === "service" && currentStep === 3) {
-                setStep(2);
-                return;
-              }
-              if (workType !== "service" && currentStep === 3) {
-                setStep(2);
-                return;
-              }
-              setStep(Math.max(0, currentStep - 1));
-            }}
-          >
-            Go Back
-          </Button>
+    <div className="fixed right-0 bottom-0 left-0 z-40 h-[84px] bg-white">
+      <div className="h-2 w-full bg-gray-200">
+        <div
+          className="h-2 rounded-[4px] bg-primary-500"
+          style={{
+            width:
+              typeof progressValue === "number"
+                ? `${Math.max(0, Math.min(100, progressValue))}%`
+                : "0%",
+          }}
+        />
+      </div>
+      <div className="flex h-[76px] items-center justify-between border-b border-gray-200 px-[50px] py-4">
+        <div className="flex w-[120px] justify-center">
+          {currentStep > 0 ? (
+            <Button
+              className="h-11 rounded-[44px] px-6 text-lg leading-7 font-semibold text-black"
+              disabled={!hasPreviousStep}
+              variant="outlined"
+              visual="gray"
+              onClick={() => {
+                if (hasPreviousStep) {
+                  prevStep();
+                }
+              }}
+            >
+              Go Back
+            </Button>
+          ) : null}
         </div>
 
-        <span className="text-center text-xs leading-[18px] font-semibold text-gray-700">
+        <span className="w-[84px] whitespace-nowrap text-center text-base leading-6 font-semibold text-gray-800">
           Step {currentStep + 1} of 5
         </span>
 
-        <div className="flex justify-end">
+        <div className="flex w-[128px] justify-center">
           {hasNextStep ? (
             <Button
-              className="h-8"
-              disabled={!isValid}
-              onClick={() => {
+              className={cn(
+                "h-11 w-32 rounded-[44px] px-6 py-2.5 text-lg leading-7 font-semibold",
+                !isValid && "opacity-50",
+              )}
+              disabled={currentStep !== 0 && !isValid}
+              onClick={async () => {
                 if (isValid) {
-                  if (currentStep === 1) {
-                    setStep(2);
-                  } else {
-                    nextStep();
-                  }
+                  const canAdvance = await onNextClick?.();
+                  if (canAdvance === false) return;
+                  nextStep();
                 } else {
-                  onNextClick?.(); // show errors on the current step
+                  await onNextClick?.(); // show errors on the current step
                 }
               }}
             >
@@ -2978,7 +3112,10 @@ const BottomBar = ({
             </Button>
           ) : (
             <Button
-              className="h-8"
+              className={cn(
+                "h-11 rounded-[44px] px-6",
+                !isValid && "opacity-50",
+              )}
               disabled={!isValid}
               onClick={() => {
                 handleSubmit();
@@ -2995,70 +3132,193 @@ const BottomBar = ({
 
 const ProjectInfoTip = ({
   closeTrigger,
-  showArrow,
   className,
   variant = "scope",
+  source = "project",
 }: {
   closeTrigger?: React.ReactNode;
   showArrow?: boolean;
   className?: string;
-  variant?: "scope" | "contract";
+  source?: "project" | "service" | "roles";
+  variant?:
+    | "scope"
+    | "contract"
+    | "describeProjectStep"
+    | "describeServiceStep"
+    | "reviewToolsTechnologiesStep";
 }) => {
   const isContractTip = variant === "contract";
+  const isDescribeProjectStepTip = variant === "describeProjectStep";
+  const isDescribeServiceStepTip = variant === "describeServiceStep";
+  const isReviewToolsTechnologiesStepTip =
+    variant === "reviewToolsTechnologiesStep";
   return (
     <div
       className={cn(
-        "p-5 rounded-lg w-[269px] bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] relative",
+        isDescribeProjectStepTip ||
+          isDescribeServiceStepTip ||
+          isReviewToolsTechnologiesStepTip
+          ? "flex w-[322px] flex-col items-start gap-4 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+          : "flex w-[322px] flex-col items-start gap-y-4 p-5 rounded-lg bg-white border border-gray-200 relative shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
+        (isDescribeServiceStepTip || isReviewToolsTechnologiesStepTip) &&
+          "shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]",
+        isContractTip
+          ? "h-[288px]"
+          : isDescribeServiceStepTip
+            ? "h-80"
+            : isDescribeProjectStepTip
+            ? "h-[260px]"
+            : isReviewToolsTechnologiesStepTip
+            ? "h-[228px]"
+            : "h-[252px]",
         className,
       )}
     >
-      {showArrow && (
-        <div className="absolute size-[25.45px] rotate-45 top-[35px] -left-[12.725px] bg-white border-l border-b border-gray-200" />
-      )}
-
       {closeTrigger}
 
-      <div className="flex items-center gap-x-2">
-        <span className="text-base leading-normal font-semibold text-gray-400">
-          Quick tip
-        </span>
-        <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
-      </div>
-      <div className="mt-1">
-        <span className="text-base leading-6 font-semibold text-dark-blue-400">
-          {isContractTip
-            ? "Not sure which option to choose?"
-            : "What does having a scope mean?"}
-        </span>
-      </div>
-
-      <div className="mt-3">
-        {(isContractTip
-          ? [
-              <>
-                If you want to start a <strong>new service or project</strong>{" "}
-                and create jobs under it, choose{" "}
-                <strong>Create new contract</strong>
-              </>,
-              <>
-                If you want to{" "}
-                <strong>add more jobs to a project or service</strong>{" "}
-                you&apos;ve already started, choose{" "}
-                <strong>Add to existing contract</strong>
-              </>,
-            ]
-          : [
-              "You know which roles you need",
-              "You can outline key tasks or responsibilities",
-              "You have clear deliverables or goals in mind",
-            ]
-        ).map((item, index) => (
-          <div className="flex items-start gap-x-3 py-1" key={index}>
-            <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-            <span className="text-sm leading-5 text-dark-blue-400">{item}</span>
+      {isReviewToolsTechnologiesStepTip ? (
+        <>
+          <div className="flex h-6 w-[282px] items-start justify-between gap-2">
+            <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
           </div>
-        ))}
-      </div>
+          <div className="flex h-[148px] w-[282px] flex-col items-start gap-2">
+            <span className="h-14 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+              Edit tools and technologies to tailor it to your{" "}
+              {source === "roles"
+                ? "job"
+                : source === "service"
+                  ? "service"
+                  : "project"}
+            </span>
+            <ul className="h-[84px] w-full space-y-1">
+              {[
+                "Remove any tools and technologies you don’t need.",
+                "Add missing frameworks, languages, or services that are essential.",
+              ].map((item, index) => (
+                <li className="flex items-start gap-x-3" key={item}>
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 font-normal text-dark-blue-400">
+                    {index === 0 ? (
+                      <>
+                        Remove any tools and technologies
+                        <br />
+                        you don’t need.
+                      </>
+                    ) : (
+                      item
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : isDescribeProjectStepTip || isDescribeServiceStepTip ? (
+        <>
+          <div className="flex h-6 w-full items-center justify-between gap-x-2">
+            <span className="flex h-6 flex-1 items-center text-base font-semibold leading-6 text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
+          </div>
+          <div className="flex w-[282px] flex-col items-start gap-2">
+            <span className="w-full text-[18px] font-semibold leading-7 text-dark-blue-400">
+              {isDescribeServiceStepTip
+                ? "Help us understand your service needs"
+                : "Give us a few details now to save time later:"}
+            </span>
+            <ul className="w-full space-y-1">
+              {(isDescribeServiceStepTip
+                ? [
+                    "What kind of work should be done regularly",
+                    "How often help is needed (e.g. weekly, monthly)",
+                    "Any tools, platforms, or skills required",
+                    "What success looks like in this service",
+                    "Any existing systems or workflows to support",
+                  ]
+                : [
+                    "What the project is about",
+                    "What needs to be done",
+                    "How it should be done",
+                    "What the end result should look like",
+                    "Any tools or skills that are important",
+                  ]
+              ).map((item) => (
+                <li key={item} className="flex items-start gap-x-3">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 text-dark-blue-400">
+                    {item}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex h-6 w-full items-start justify-between gap-x-2">
+            <span className="h-6 flex-1 rounded text-base leading-6 font-semibold text-gray-400">
+              Quick tip
+            </span>
+            <Lightbulb03 className="size-5 shrink-0 text-gray-400" />
+          </div>
+          <div
+            className={cn(
+              "flex flex-col items-start",
+              isContractTip ? "h-52 w-full gap-y-2" : "h-[172px] w-full gap-y-2",
+            )}
+          >
+            <span
+              className={cn(
+                "font-semibold text-dark-blue-400",
+                "h-14 w-full text-lg leading-7",
+              )}
+            >
+              {isContractTip
+                ? "Not sure which option to choose?"
+                : "What does having a scope mean?"}
+            </span>
+
+            <div
+              className={cn(
+                "w-full space-y-1",
+                isContractTip ? "h-36" : "h-[108px]",
+              )}
+            >
+              {(isContractTip
+                ? [
+                    <>
+                      If you want to start a{" "}
+                      <strong>new service or project</strong> and create jobs
+                      under it, choose <strong>Create new contract</strong>
+                    </>,
+                    <>
+                      If you want to{" "}
+                      <strong>add more jobs to a project or service</strong>{" "}
+                      you&apos;ve already started, choose{" "}
+                      <strong>Add to existing contract</strong>
+                    </>,
+                  ]
+                : [
+                    "You know which roles you need",
+                    "You can outline key tasks or responsibilities",
+                    "You have clear deliverables or goals in mind",
+                  ]
+              ).map((item, index) => (
+                <div className="flex items-start gap-x-3" key={index}>
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
+                  <span className="text-sm leading-5 text-dark-blue-400">
+                    {item}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -3068,11 +3328,6 @@ const projectInfoSchema = z.object({
     .string()
     .trim()
     .min(1, "Please enter a project title")
-    .regex(
-      /^[A-Za-z0-9 -]+$/,
-      "Title can only contain letters, numbers, spaces, and hyphens.",
-    )
-    .min(10, "Please enter at least 10 character(s)")
     .max(100, "Please do not enter more than 100 character(s)"),
   category: z
     .array(
@@ -3114,7 +3369,7 @@ const projectInfoSchema = z.object({
       required_error: "Please enter/select at least 1 industry(s)",
     })
     .min(1, "Please enter at least 1 industry(s)")
-    .max(5, "Please do not enter more than 5 industry(s)"),
+    .max(10, "Please do not enter more than 10 industry(s)"),
   languages: z.array(z.string()).max(10).default([]),
   shortDescription: z
     .string()
@@ -3173,8 +3428,10 @@ type JobListingDraftDetails = {
   briefFilename?: string;
   briefSizeBytes?: number;
   tools?: string[];
+  jobType?: string;
   ndaEnabled?: boolean;
   ndaDocumentId?: string | null;
+  teamRoleRows?: TeamRoleRow[];
 };
 
 const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
@@ -3309,6 +3566,38 @@ const parseHourlyEstimateCents = (value?: string) => {
   };
 };
 
+const getTeamRoleWeeklyHours = (schedule: TeamRoleRow["schedule"]) =>
+  schedule === "Part-time" ? 20 : 40;
+
+const getTeamRoleAverageHourlyRateCents = (estimate?: string) => {
+  const { low, high } = parseHourlyEstimateCents(estimate);
+  if (typeof low !== "number") return 0;
+
+  return Math.round((low + (high ?? low)) / 2);
+};
+
+const getTeamRolesEstimatedBudget = (rows: TeamRoleRow[]) =>
+  rows.reduce((totalCents, row) => {
+    const monthlyWeeks = 4.33;
+    const contractLengthMonths = parseMonthCount(row.length) ?? 0;
+    const hourlyRateCents = getTeamRoleAverageHourlyRateCents(row.estimate);
+
+    return (
+      totalCents +
+      getTeamRoleWeeklyHours(row.schedule) *
+        contractLengthMonths *
+        monthlyWeeks *
+        hourlyRateCents
+    );
+  }, 0);
+
+const formatUsdFromCents = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Math.round(value / 100));
+
 const getPublishRoleRowDetails = (phases: Phase[] | undefined) => {
   const rows = new Map<
     string,
@@ -3350,8 +3639,7 @@ const getPublishRoleRowDetails = (phases: Phase[] | undefined) => {
 };
 
 const getScopeRoleOptions = (phases: Phase[] | undefined) => {
-  const roles = getPublishRoleRows(phases);
-  return roles.length > 0 ? roles : finalReviewRoles;
+  return getPublishRoleRows(phases);
 };
 
 const buildJobListingMediaPayload = (mediaValues: Partial<MediaFormValues>) => {
@@ -3532,6 +3820,12 @@ type ProjectInfoProps = {
   onSelectedWorkTypeChange?: (value: WorkTypeChoice) => void;
   selectedHiringMode?: HiringModeChoice;
   onSelectedHiringModeChange?: (value: HiringModeChoice) => void;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
+  isNoScopeFlow?: boolean;
+  isExistingContractFlow?: boolean;
+  selectedExistingContractId?: string | null;
+  isWorkflowLocked?: boolean;
+  onScopeKnowledgeChange?: (value: ScopeKnowledgeChoice) => void;
   onNoScopeFlowChange?: (value: boolean) => void;
   onExistingContractFlowChange?: (value: boolean) => void;
   onExistingContractSelectionChange?: (value: string | null) => void;
@@ -3543,6 +3837,12 @@ const ProjectInfo = ({
   onSelectedWorkTypeChange,
   selectedHiringMode,
   onSelectedHiringModeChange,
+  scopeKnowledgeChoice,
+  isNoScopeFlow,
+  isExistingContractFlow,
+  selectedExistingContractId,
+  isWorkflowLocked = false,
+  onScopeKnowledgeChange,
   onNoScopeFlowChange,
   onExistingContractFlowChange,
   onExistingContractSelectionChange,
@@ -3587,9 +3887,9 @@ const ProjectInfo = ({
 
   const onSubmit: SubmitHandler<ProjectInfoFormValues> = (values) => {};
   const projectInfoValues = useWatch({ control: methods.control });
-  const [contractChoice, setContractChoice] = useState<"new" | "existing">(
-    "new",
-  );
+  const [contractChoice, setContractChoice] = useState<
+    "new" | "existing" | null
+  >(null);
   const [scopeChoice, setScopeChoice] = useState<
     "known" | "unknown" | "none" | null
   >(null);
@@ -3615,7 +3915,7 @@ const ProjectInfo = ({
   );
   const [selectedExistingListing, setSelectedExistingListing] = useState<
     string | null
-  >("ecommerce-react-build");
+  >(null);
   const [contractSearchValue, setContractSearchValue] = useState("");
   const [apiExistingListingOptions, setApiExistingListingOptions] = useState<
     ExistingListingOption[]
@@ -3628,6 +3928,30 @@ const ProjectInfo = ({
         : Boolean(contractChoice && scopeChoice && workTypeChoice);
   const isProjectInfoValid =
     projectInfoSchema.safeParse(projectInfoValues).success;
+
+  useEffect(() => {
+    if (!isWorkflowLocked || isExistingContractFlow === undefined) return;
+
+    setContractChoice(isExistingContractFlow ? "existing" : "new");
+    setSelectedExistingListing(selectedExistingContractId ?? null);
+
+    if (isExistingContractFlow) {
+      setScopeChoice(null);
+    } else if (isNoScopeFlow) {
+      setScopeChoice("none");
+    } else if (
+      scopeKnowledgeChoice === "known" ||
+      scopeKnowledgeChoice === "unknown"
+    ) {
+      setScopeChoice(scopeKnowledgeChoice);
+    }
+  }, [
+    isExistingContractFlow,
+    isNoScopeFlow,
+    scopeKnowledgeChoice,
+    selectedExistingContractId,
+  ]);
+
   useIsomorphicLayoutEffect(() => {
     toggleValidation(foundationIsValid);
   }, [foundationIsValid]);
@@ -3988,7 +4312,7 @@ const ProjectInfo = ({
       id: "marketeq-projects-network",
       title: "Marketeq Projects Network",
       badges: ["Design Phase"],
-      icon: <Copy className="size-5" />,
+      icon: <MdOutlineAssignment className="size-6" />,
       avatars: ["AK", "NS", "RP", "+3"],
       workType: "project" as const,
     },
@@ -4005,7 +4329,7 @@ const ProjectInfo = ({
       id: "ecommerce-react-build",
       title: "E-commerce Website Build with React JS",
       badges: ["Development Phase", "Service"],
-      icon: <RefreshCcw05 className="size-5" />,
+      icon: <MdAutorenew className="size-6" />,
       avatars: ["RK", "SB"],
       workType: "service" as const,
     },
@@ -4020,32 +4344,44 @@ const ProjectInfo = ({
 
     return undefined;
   };
-  const mapContractToExistingOption = (
-    contract: ContractDTO,
-  ): ExistingListingOption => {
-    const isServiceContract = Boolean(contract.serviceId);
-    const statusBadge = contract.status
-      ? contract.status
+  const formatContractStatusLabel = (status?: string | null) =>
+    status
+      ? status
           .split(/[_\s-]+/)
           .filter(Boolean)
           .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
           .join(" ")
-      : "Active";
+      : "";
+  const formatContractPhaseLabel = (phase?: string | null) => {
+    const formattedPhase = formatContractStatusLabel(phase);
+
+    return formattedPhase ? `${formattedPhase} Phase` : "";
+  };
+  const mapContractToExistingOption = (
+    contract: AddableContractDTO,
+  ): ExistingListingOption => {
+    const normalizedStatus = contract.status?.toLowerCase();
+    const statusBadge =
+      normalizedStatus &&
+      ["disputed", "expired", "closed", "paused"].includes(normalizedStatus)
+        ? formatContractStatusLabel(contract.status)
+        : "";
+    const avatarUrls = contract.memberAvatars.filter(Boolean).slice(0, 4);
+    const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
 
     return {
       id: contract.id,
-      title: contract.title || "Untitled contract",
+      title: contract.name || "Untitled contract",
       badges: [
-        contract.note || contract.duration || statusBadge,
-        isServiceContract ? "Service" : "Project",
+        formatContractPhaseLabel(contract.phase),
+        statusBadge,
       ].filter(Boolean),
-      icon: isServiceContract ? (
-        <RefreshCcw05 className="size-5" />
-      ) : (
-        <Copy className="size-5" />
-      ),
-      avatars: [],
-      workType: isServiceContract ? "service" : "project",
+      icon: <Copy className="size-5" />,
+      avatars:
+        overflowAvatarCount > 0
+          ? [...avatarUrls, `+${overflowAvatarCount}`]
+          : avatarUrls,
+      workType: "project",
       disabledReason: getContractDisabledReason(contract.status),
     };
   };
@@ -4069,11 +4405,13 @@ const ProjectInfo = ({
 
     const loadExistingContracts = async () => {
       try {
-        const contracts = await getContractsForClient(user.id);
+        const contracts = await getAddableJobContractsForClient(user.id);
         if (cancelled) return;
 
         setApiExistingListingOptions(
-          contracts.map(mapContractToExistingOption),
+          contracts
+            .filter((contract) => contract.status?.toLowerCase() === "active")
+            .map(mapContractToExistingOption),
         );
       } catch (error) {
         if (!cancelled) {
@@ -4096,29 +4434,8 @@ const ProjectInfo = ({
       return;
     }
 
-    const currentSelectionIsVisible = apiExistingListingOptions.some(
-      (option) =>
-        option.id === selectedExistingListing && !option.disabledReason,
-    );
-
-    if (currentSelectionIsVisible) return;
-
-    const firstSelectableOption = apiExistingListingOptions.find(
-      (option) => !option.disabledReason,
-    );
-
-    if (!firstSelectableOption) return;
-
-    setSelectedExistingListing(firstSelectableOption.id);
-    onExistingContractSelectionChange?.(firstSelectableOption.id);
-    setWorkTypeChoice(firstSelectableOption.workType);
-  }, [
-    apiExistingListingOptions,
-    contractChoice,
-    onExistingContractSelectionChange,
-    selectedExistingListing,
-    setWorkTypeChoice,
-  ]);
+    if (selectedExistingListing) return;
+  }, [apiExistingListingOptions, contractChoice, selectedExistingListing]);
 
   return (
     <form className="contents" onSubmit={methods.handleSubmit(onSubmit)}>
@@ -4127,7 +4444,7 @@ const ProjectInfo = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[100px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-8">
           <div className="p-3 pr-9 border rounded-lg border-blue-300 bg-blue-100 min-[1024px]:hidden">
             <div className="flex items-start gap-x-3">
               <Lightbulb05 className="size-[30px] text-primary-500" />
@@ -4173,19 +4490,19 @@ const ProjectInfo = ({
           <div className="flex-auto min-w-0">
             <div className="space-y-16">
               <div>
-                <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+                <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
                   Let&apos;s set the foundation
                 </h1>
 
-                <div className="mt-8 space-y-4">
-                  <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                <div className="mt-8 space-y-3">
+                  <p className="text-[18px] font-medium leading-7 text-dark-blue-400">
                     Are you adding team members to a new contract or an existing
                     one?
                   </p>
 
                   <RadioGroup
                     className="flex flex-wrap gap-2"
-                    value={contractChoice}
+                    value={contractChoice ?? undefined}
                     onValueChange={(value) => {
                       const nextChoice = value as "new" | "existing";
 
@@ -4193,12 +4510,9 @@ const ProjectInfo = ({
                       onExistingContractFlowChange?.(nextChoice === "existing");
                       if (nextChoice === "existing") {
                         setScopeChoice(null);
+                        onScopeKnowledgeChange?.(null);
                         onNoScopeFlowChange?.(false);
                         setHiringModeChoice(null);
-                        setSelectedExistingListing("ecommerce-react-build");
-                        onExistingContractSelectionChange?.(
-                          "ecommerce-react-build",
-                        );
                         setWorkTypeChoice("service");
                       } else {
                         setSelectedExistingListing(null);
@@ -4219,10 +4533,12 @@ const ProjectInfo = ({
                       <HeadlessRadioGroupItem
                         key={option.value}
                         value={option.value}
+                        disabled={isWorkflowLocked}
                         className={cn(
-                          "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 shadow-xs focus-visible:outline-none",
+                          "inline-flex h-10 items-center justify-center rounded-[52px] border border-gray-300 bg-white px-4 text-sm leading-5 font-medium text-dark-blue-400 focus-visible:outline-none",
+                          "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
                           contractChoice === option.value &&
-                            "border-primary-500 text-primary-500",
+                            "border-2 border-primary-500 bg-primary-25 text-dark-blue-400",
                         )}
                       >
                         {option.label}
@@ -4233,23 +4549,25 @@ const ProjectInfo = ({
 
                 {contractChoice === "existing" ? (
                   <div className="mt-12 space-y-5">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                    <div className="flex h-9 w-full items-start justify-between gap-3">
+                      <p className="w-[520px] text-[18px] font-medium leading-7 text-dark-blue-400">
                         Choose project, service, or team which you want to add
                         jobs
                       </p>
 
-                      <div className="md:w-[223px]">
+                      <div className="w-[223px]">
                         <InputGroup>
                           <InputLeftElement>
-                            <SearchMd className="size-4 text-gray-400" />
+                            <SearchMd className="size-4 text-gray-400/50" />
                           </InputLeftElement>
                           <Input
                             placeholder="Search"
                             value={contractSearchValue}
+                            disabled={isWorkflowLocked}
                             onChange={(event) =>
                               setContractSearchValue(event.target.value)
                             }
+                            className="h-9 border-gray-300 px-3 py-2.5 pl-9 text-sm leading-6 shadow-xs placeholder:text-gray-500/50"
                           />
                         </InputGroup>
                       </div>
@@ -4281,86 +4599,130 @@ const ProjectInfo = ({
                           <HeadlessRadioGroupItem
                             key={option.id}
                             value={option.id}
-                            disabled={disabled}
+                            disabled={disabled || isWorkflowLocked}
                             title={option.disabledReason}
                             className={cn(
-                              "flex w-full items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                              selected && "border-primary-500",
+                              "flex h-[92px] w-full items-center gap-[48px] rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                              "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
+                              selected && "border-2 border-primary-500 bg-primary-25",
                               disabled && "cursor-not-allowed opacity-60",
                             )}
                           >
-                            <span className="inline-flex size-[72px] shrink-0 items-center justify-center overflow-hidden rounded bg-primary-50 text-primary-500">
-                              {"image" in option ? (
-                                <img
-                                  alt=""
-                                  className="h-full w-full object-cover"
-                                  src={option.image}
-                                />
-                              ) : (
-                                option.icon
-                              )}
-                            </span>
-
-                            <span className="min-w-0 flex-auto">
-                              <span className="block text-base leading-6 font-semibold text-dark-blue-400">
-                                {option.title}
+                            <span className="flex h-[60px] min-w-0 flex-1 items-center gap-4">
+                              <span className="inline-flex h-[60px] w-[88px] shrink-0 items-center justify-center rounded-[4px] bg-primary-50 text-primary-500">
+                                {"image" in option ? (
+                                  <img
+                                    alt=""
+                                    className="block h-full w-full rounded-[4px] object-cover"
+                                    src={option.image}
+                                  />
+                                ) : (
+                                  React.isValidElement(option.icon)
+                                    ? React.cloneElement(option.icon as React.ReactElement<{ className?: string }>, {
+                                        className: cn(
+                                          "size-6 shrink-0 text-primary-500",
+                                          (option.icon as React.ReactElement<{ className?: string }>).props
+                                            ?.className,
+                                        ),
+                                      })
+                                    : option.icon
+                                )}
                               </span>
-                              <span className="mt-2 flex flex-wrap gap-1.5">
-                                {option.badges.map((badge) => (
-                                  <Badge
-                                    key={badge}
-                                    size="sm"
-                                    visual="gray"
-                                    className="border border-gray-200 bg-white"
-                                  >
-                                    {badge}
-                                  </Badge>
-                                ))}
-                              </span>
-                            </span>
 
-                            <span className="hidden items-center -space-x-2 md:flex">
-                              {option.avatars.map((avatar) => (
-                                <span
-                                  key={avatar}
-                                  className="inline-flex size-6 items-center justify-center rounded-full border border-white bg-primary-50 text-[10px] leading-none font-semibold text-primary-500"
-                                >
-                                  {avatar}
+                              <span className="flex h-[60px] min-w-0 flex-1 flex-col justify-center gap-1">
+                                <span className="block truncate text-[18px] font-semibold leading-7 text-dark-blue-400">
+                                  {option.title}
                                 </span>
-                              ))}
+                                <span className="flex h-[27px] items-center gap-2">
+                                  {option.badges.map((badge) => (
+                                    <Badge
+                                      key={badge}
+                                      size="sm"
+                                      visual="gray"
+                                      variant="rounded"
+                                      className="h-[27px] rounded-[5px] border border-gray-300 bg-white px-2 py-[6px] text-[12px] leading-[15px] font-semibold text-dark-blue-400 mix-blend-normal"
+                                    >
+                                      {badge === "Service" ? (
+                                        <span className="inline-flex items-center gap-x-1">
+                                          <MdAutorenew className="size-3.5 shrink-0 text-primary-500" />
+                                          <span>Service</span>
+                                        </span>
+                                      ) : (
+                                        badge
+                                      )}
+                                    </Badge>
+                                  ))}
+                                </span>
+                              </span>
+                            </span>
+
+                            <span className="hidden shrink-0 items-center md:flex">
+                              <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
+                                {option.avatars
+                                  .filter(Boolean)
+                                  .slice(0, 4)
+                                  .map((avatar, avatarIndex) => (
+                                    <Avatar
+                                      key={`${option.id}-${avatarIndex}-${avatar}`}
+                                      size="xs"
+                                      className="border-2 border-white hover:ring-0 active:ring-0"
+                                    >
+                                      <AvatarImage src={avatar} alt="" />
+                                    </Avatar>
+                                  ))}
+                                {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
+                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[10px] leading-none font-semibold text-primary-500">
+                                    {option.avatars.find((avatar) =>
+                                      avatar.startsWith("+"),
+                                    )}
+                                  </span>
+                                ) : null}
+                              </AvatarGroup>
                             </span>
 
                             <span
                               className={cn(
-                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                selected && "border-[5px] border-primary-500",
+                                "relative inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300 bg-white",
+                                selected && "border-primary-500",
                               )}
-                            />
+                            >
+                              {selected ? (
+                                <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                              ) : null}
+                            </span>
                           </HeadlessRadioGroupItem>
                         );
                       })}
                     </RadioGroup>
                   </div>
-                ) : (
+                ) : contractChoice === "new" ? (
                   <>
-                    <div className="mt-12 space-y-4">
-                      <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                    <div className="mt-12 flex h-20 w-full flex-col items-start gap-y-3">
+                      <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                         Do you already know the scope of work?
                       </p>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div
+                        className={cn(
+                          "flex h-10 w-full items-start gap-x-2",
+                          isWorkflowLocked && "cursor-not-allowed",
+                        )}
+                      >
                         {[
                           {
                             value: "known",
                             label: "Yes, I know what needs to be done",
+                            className: "w-[265px]",
                           },
                           {
                             value: "unknown",
                             label: "Not yet, I need help figuring it out",
+                            className: "w-64",
                           },
                           {
                             value: "none",
                             label: "Continue without a scope",
+                            className: "w-[204px]",
                           },
                         ].map((option) => (
                           <Button
@@ -4368,10 +4730,12 @@ const ProjectInfo = ({
                             type="button"
                             variant="outlined"
                             visual="gray"
+                            disabled={isWorkflowLocked}
                             className={cn(
-                              "rounded-full",
+                              "h-10 items-start gap-x-4 rounded-[52px] px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none",
+                              option.className,
                               scopeChoice === option.value &&
-                                "border-primary-500 text-primary-500",
+                                "border-2 border-primary-500 bg-primary-25 text-dark-blue-400",
                             )}
                             onClick={() => {
                               const nextScopeChoice = option.value as
@@ -4379,10 +4743,11 @@ const ProjectInfo = ({
                                 | "unknown"
                                 | "none";
                               setScopeChoice(nextScopeChoice);
+                              onScopeKnowledgeChange?.(nextScopeChoice);
                               onNoScopeFlowChange?.(nextScopeChoice === "none");
                               if (nextScopeChoice === "none") {
                                 setWorkTypeChoice(null);
-                                setHiringModeChoice("team");
+                                setHiringModeChoice(null);
                               } else {
                                 setHiringModeChoice(null);
                               }
@@ -4395,13 +4760,13 @@ const ProjectInfo = ({
                     </div>
 
                     {scopeChoice === "none" ? (
-                      <div className="mt-12 space-y-5">
-                        <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                      <div className="mt-12 flex flex-col gap-y-3">
+                        <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                           Are you hiring for one role or multiple?
                         </p>
 
                         <RadioGroup
-                          className="grid gap-4 md:grid-cols-2"
+                          className="flex h-20 w-full items-start gap-x-4"
                           value={hiringModeChoice ?? ""}
                           onValueChange={(value) =>
                             setHiringModeChoice(value as HiringModeChoice)
@@ -4413,55 +4778,63 @@ const ProjectInfo = ({
                               label: "Team",
                               description:
                                 "I\u2019ll need multiple people for different roles",
-                              icon: <Users className="size-5" />,
+                              icon: <MdOutlineGroups className="size-6" />,
                             },
                             {
                               value: "individual",
                               label: "Individual",
                               description:
                                 "I\u2019ll start with one person/role",
-                              icon: <UserCircle className="size-5" />,
+                              icon: <MdOutlinePerson className="size-6" />,
                             },
-                          ].map((option) => (
-                            <HeadlessRadioGroupItem
-                              key={option.value}
-                              value={option.value}
-                              className={cn(
-                                "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                                hiringModeChoice === option.value &&
-                                  "border-primary-500",
-                              )}
-                            >
-                              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                                {option.icon}
-                              </span>
-                              <span className="min-w-0 flex-auto">
-                                <span className="block text-base leading-6 font-semibold text-dark-blue-400">
-                                  {option.label}
-                                </span>
-                                <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
-                                  {option.description}
-                                </span>
-                              </span>
-                              <span
+                          ].map((option) => {
+                            const selected = hiringModeChoice === option.value;
+                            return (
+                              <HeadlessRadioGroupItem
+                                key={option.value}
+                                value={option.value}
+                                disabled={isWorkflowLocked}
                                 className={cn(
-                                  "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                  hiringModeChoice === option.value &&
-                                    "border-[5px] border-primary-500",
+                                  "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-200 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
+                                  selected &&
+                                    "border-2 border-primary-500 bg-primary-25",
                                 )}
-                              />
-                            </HeadlessRadioGroupItem>
-                          ))}
+                              >
+                                <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                  {option.icon}
+                                </span>
+                                <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
+                                  <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                  <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
+                                    {option.description}
+                                  </span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                                    selected && "border-primary-500",
+                                  )}
+                                >
+                                  {selected ? (
+                                    <span className="size-2 rounded-full bg-primary-500" />
+                                  ) : null}
+                                </span>
+                              </HeadlessRadioGroupItem>
+                            );
+                          })}
                         </RadioGroup>
                       </div>
                     ) : scopeChoice ? (
-                      <div className="mt-12 space-y-5">
-                        <p className="text-base leading-6 font-semibold text-dark-blue-400">
+                      <div className="mt-12 flex h-[120px] w-full flex-col items-start gap-y-3">
+                        <p className="h-7 w-full rounded text-lg leading-7 font-medium text-dark-blue-400">
                           What type of work is this?
                         </p>
 
                         <RadioGroup
-                          className="grid gap-4 md:grid-cols-2"
+                          className="flex h-20 w-full items-start gap-x-4"
                           value={workTypeChoice ?? ""}
                           onValueChange={(value) =>
                             setWorkTypeChoice(value as WorkTypeChoice)
@@ -4472,50 +4845,58 @@ const ProjectInfo = ({
                               value: "project",
                               label: "Project",
                               description: "One-time job with a defined scope",
-                              icon: <Copy className="size-5" />,
+                              icon: <MdOutlineAssignment className="size-6" />,
                             },
                             {
                               value: "service",
                               label: "Service",
                               description:
                                 "Recurring work with consistent needs",
-                              icon: <RefreshCcw05 className="size-5" />,
+                              icon: <MdAutorenew className="size-6" />,
                             },
-                          ].map((option) => (
-                            <HeadlessRadioGroupItem
-                              key={option.value}
-                              value={option.value}
-                              className={cn(
-                                "flex items-center gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
-                                workTypeChoice === option.value &&
-                                  "border-primary-500",
-                              )}
-                            >
-                              <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                                {option.icon}
-                              </span>
-                              <span className="min-w-0 flex-auto">
-                                <span className="block text-base leading-6 font-semibold text-dark-blue-400">
-                                  {option.label}
-                                </span>
-                                <span className="mt-0.5 block text-sm leading-5 text-dark-blue-400">
-                                  {option.description}
-                                </span>
-                              </span>
-                              <span
+                          ].map((option) => {
+                            const selected = workTypeChoice === option.value;
+                            return (
+                              <HeadlessRadioGroupItem
+                                key={option.value}
+                                value={option.value}
+                                disabled={isWorkflowLocked}
                                 className={cn(
-                                  "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                  workTypeChoice === option.value &&
-                                    "border-[5px] border-primary-500",
+                                  "flex h-20 w-[435px] flex-1 items-center gap-x-4 rounded-lg border border-gray-300 bg-white py-4 pl-4 pr-6 text-left focus-visible:outline-none",
+                                  "disabled:cursor-not-allowed disabled:border-gray-200 disabled:bg-gray-50 disabled:opacity-50 data-[state=checked]:disabled:border-primary-500 data-[state=checked]:disabled:bg-primary-25",
+                                  selected &&
+                                    "border-2 border-primary-500 bg-primary-25",
                                 )}
-                              />
-                            </HeadlessRadioGroupItem>
-                          ))}
+                              >
+                                <span className="inline-flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                                  {option.icon}
+                                </span>
+                                <span className="flex h-12 min-w-0 flex-auto flex-col items-start">
+                                  <span className="block h-7 w-full text-lg leading-7 font-semibold text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                  <span className="block h-5 w-full text-sm leading-5 text-dark-blue-400">
+                                    {option.description}
+                                  </span>
+                                </span>
+                                <span
+                                  className={cn(
+                                    "inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                                    selected && "border-primary-500",
+                                  )}
+                                >
+                                  {selected ? (
+                                    <span className="size-2 rounded-full bg-primary-500" />
+                                  ) : null}
+                                </span>
+                              </HeadlessRadioGroupItem>
+                            );
+                          })}
                         </RadioGroup>
                       </div>
                     ) : null}
                   </>
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -5219,7 +5600,7 @@ const ProjectInfo = ({
                                   </HelperText>
 
                                   <span className="text-xs leading-[14.52px] text-gray-500">
-                                    {projectInfoValues.industry?.length || 0}/5
+                                    {projectInfoValues.industry?.length || 0}/10
                                   </span>
                                 </div>
                               </div>
@@ -5753,10 +6134,10 @@ const ProjectInfo = ({
               </div>
             ) : null}
           </div>
-          <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
+          <div className="xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
             <ProjectInfoTip
               showArrow
-              variant={contractChoice === "existing" ? "contract" : "scope"}
+              variant={contractChoice === "new" ? "scope" : "contract"}
             />
           </div>
         </div>
@@ -6929,26 +7310,18 @@ const Dropdown = ({
           <DropdownMenuRadioItem
             className="gap-x-2"
             hideIndicator={false}
-            value="Student"
-          >
-            <Network />
-            Student (0 - 2 years)
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem
-            className="gap-x-2"
-            hideIndicator={false}
             value="Junior"
           >
             <Network1 />
-            Junior (2 - 3 years)
+            Junior (0 - 3 years)
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem
             className="gap-x-2"
             hideIndicator={false}
-            value="Medior"
+            value="Mid"
           >
             <Network2 />
-            Medior (3 - 5 years)
+            Mid (3 - 7 years)
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem
             className="gap-x-2"
@@ -6956,16 +7329,7 @@ const Dropdown = ({
             value="Senior"
           >
             <Network3 />
-            Senior (5 - 10 years)
-          </DropdownMenuRadioItem>
-
-          <DropdownMenuRadioItem
-            className="gap-x-2"
-            hideIndicator={false}
-            value="Guru"
-          >
-            <Network4 />
-            Guru (10+ years)
+            Senior (7+ years)
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
@@ -7150,17 +7514,40 @@ interface Phase {
 
 const getPhaseDurationInDays = (phase?: Phase) => {
   const rows = phase?.rows ?? [];
-  const durations = rows
-    .map((row) => {
-      const value = Number(row?.duration?.value);
-      const type = row?.duration?.type;
 
-      if (!Number.isFinite(value) || value <= 0 || !type) return null;
-      return durationToDays(value, type);
-    })
-    .filter((value): value is number => typeof value === "number");
+  return rows.reduce((sum, row) => {
+    const value = Number(row?.duration?.value);
+    const type = row?.duration?.type;
 
-  return durations.length ? Math.max(...durations) : 0;
+    if (!Number.isFinite(value) || value <= 0 || !type) return sum;
+
+    if (type !== "hours") {
+      return sum + durationToDays(value, type);
+    }
+
+    if (row.workSchedule === "custom") {
+      const customHours = Number(row.customHours);
+      if (!Number.isFinite(customHours) || customHours <= 0) return sum;
+
+      const frequencyDays =
+        row.customFrequency === "per_day"
+          ? 1
+          : row.customFrequency === "per_month"
+            ? 21.67
+            : row.customFrequency === "per_quarter"
+              ? 65
+              : row.customFrequency === "per_year"
+                ? 260
+                : 5;
+      const hoursPerDay = customHours / frequencyDays;
+
+      return hoursPerDay > 0 ? sum + Math.ceil(value / hoursPerDay) : sum;
+    }
+
+    const hoursPerDay = row.workSchedule === "part_time" ? 4 : 8;
+
+    return sum + Math.ceil(value / hoursPerDay);
+  }, 0);
 };
 
 const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
@@ -7182,6 +7569,16 @@ const getPhaseDayRangeLabel = (phases: Phase[], phaseIndex: number) => {
   }
 
   return `Day ${startDay} - Day ${endDay}`;
+};
+
+const getProjectTimelineDaysFromScope = (phases: Phase[]) =>
+  phases.reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0);
+
+const getProjectTimelineMonthsFromScope = (phases: Phase[]) => {
+  const totalDays = getProjectTimelineDaysFromScope(phases);
+  const totalWeeks = Math.ceil(totalDays / 5);
+
+  return totalWeeks > 0 ? Math.ceil(totalWeeks / 4.33) : 0;
 };
 
 const getPhaseSearchTargetId = (phaseIndex: number) =>
@@ -8666,15 +9063,20 @@ const DescribeProjectStep = ({
   setProgress,
   workType,
   jobListingId,
+  scopeKnowledgeChoice,
 }: ProgressProps & {
   workType?: WorkTypeChoice;
   jobListingId?: string | null;
+  scopeKnowledgeChoice?: ScopeKnowledgeChoice;
 }) => {
   const { toggleValidation } = useStepContext();
   const { toast } = useToast();
+  const { user } = useAuth();
   const { details, setDetails: setJobListingDraftDetails } =
     useJobListingDraftContext();
   const isService = workType === "service";
+  const isKnownServiceFlow =
+    isService && scopeKnowledgeChoice === "known";
   const effectiveJobListingId = useMemo(() => {
     if (jobListingId) return jobListingId;
     if (typeof window === "undefined") return null;
@@ -8699,9 +9101,7 @@ const DescribeProjectStep = ({
   const [budgetUnit, setBudgetUnit] = useState(
     details.budgetFrequency === "per_month" ? "per month" : "per week",
   );
-  const [duration, setDuration] = useState(
-    getDurationSelectionFromMonths(details.durationMonths),
-  );
+  const [duration, setDuration] = useState("");
   const [customDuration, setCustomDuration] = useState(
     typeof details.durationMonths === "number" &&
       getDurationSelectionFromMonths(details.durationMonths).startsWith(
@@ -8718,22 +9118,18 @@ const DescribeProjectStep = ({
   >("idle");
   const [scopeUploadError, setScopeUploadError] = useState("");
   const [isScopeDropActive, setIsScopeDropActive] = useState(false);
-  const scopeUploadTimerRef = useRef<number | null>(null);
+  const scopeFilePickerSelectionRef = useRef(false);
+  const scopeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const scopeFilePickerScrollTopRef = useRef(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const lastHydratedDraftDetailsSignatureRef = useRef("");
   const fetchedPersistedDescribeListingIdRef = useRef<string | null>(null);
   const skipNextDraftDetailsWriteRef = useRef(false);
   const previousIsServiceRef = useRef(isService);
   const hasUserEditedDetailsRef = useRef(false);
-  const clearScopeUploadTimer = useCallback(() => {
-    if (scopeUploadTimerRef.current) {
-      window.clearInterval(scopeUploadTimerRef.current);
-      scopeUploadTimerRef.current = null;
-    }
-  }, []);
   const getScopeFileContentType = useCallback((file: File) => {
     const fileName = file.name.toLowerCase();
-    if (file.type === "application/pdf" || fileName.endsWith(".pdf")) {
+    if (fileName.endsWith(".pdf")) {
       return "application/pdf";
     }
     if (fileName.endsWith(".docx")) {
@@ -8742,7 +9138,6 @@ const DescribeProjectStep = ({
     return "";
   }, []);
   const resetScopeFile = useCallback(() => {
-    clearScopeUploadTimer();
     setScopeFile(null);
     setScopeUploadProgress(0);
     setScopeUploadStatus("idle");
@@ -8753,21 +9148,9 @@ const DescribeProjectStep = ({
       briefFilename: undefined,
       briefSizeBytes: undefined,
     }));
-  }, [clearScopeUploadTimer, setJobListingDraftDetails]);
-  const startLocalScopeUploadProgress = useCallback(() => {
-    clearScopeUploadTimer();
-    setScopeUploadProgress(8);
-    scopeUploadTimerRef.current = window.setInterval(() => {
-      setScopeUploadProgress((currentProgress) =>
-        currentProgress >= 92
-          ? currentProgress
-          : Math.min(92, currentProgress + 14),
-      );
-    }, 180);
-  }, [clearScopeUploadTimer]);
+  }, [setJobListingDraftDetails]);
   const completeScopeUpload = useCallback(
     (file: File, briefR2Key?: string) => {
-      clearScopeUploadTimer();
       setScopeUploadProgress(100);
       setScopeUploadStatus("complete");
       setScopeUploadError("");
@@ -8778,55 +9161,89 @@ const DescribeProjectStep = ({
         briefSizeBytes: file.size,
       }));
     },
-    [clearScopeUploadTimer, setJobListingDraftDetails],
+    [setJobListingDraftDetails],
   );
   const uploadScopeFile = useCallback(
     async (file: File, contentType: string) => {
       setScopeFile(file);
       setScopeUploadStatus("uploading");
       setScopeUploadError("");
-      startLocalScopeUploadProgress();
-
-      if (!effectiveJobListingId) {
-        throw new Error(
-          "Job listing draft is still being prepared. Please try the upload again.",
-        );
-      }
+      setScopeUploadProgress(10);
 
       try {
-        const presignResponse = await JobListingAPI.PresignBriefUpload(
-          effectiveJobListingId,
-          {
-            filename: file.name,
-            contentType,
-            sizeBytes: file.size,
-          },
-        );
-        const { presignedUrl, key } = presignResponse?.data ?? {};
-
-        if (!presignedUrl || !key) {
-          throw new Error("Brief upload URL was not returned.");
+        if (!effectiveJobListingId) {
+          throw new Error(
+            "Job listing draft is still being prepared. Please try the upload again.",
+          );
         }
 
-        const uploadResponse = await fetch(presignedUrl, {
-          method: "PUT",
-          headers: { "Content-Type": contentType },
-          body: file,
-        });
+        let briefR2Key = "";
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const presignResponse = await JobListingAPI.PresignBriefUpload(
+            effectiveJobListingId,
+            {
+              filename: file.name,
+              contentType,
+              sizeBytes: file.size,
+            },
+          );
+          const { presignedUrl, key } = presignResponse?.data ?? {};
 
-        if (!uploadResponse.ok) {
-          throw new Error("Brief upload failed.");
+          if (!presignedUrl || !key) {
+            throw new Error("Brief upload URL was not returned.");
+          }
+
+          try {
+            await new Promise<void>((resolve, reject) => {
+              const xhr = new XMLHttpRequest();
+              xhr.open("PUT", presignedUrl);
+              xhr.setRequestHeader("Content-Type", contentType);
+              xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable) {
+                  setScopeUploadProgress(
+                    Math.min(
+                      99,
+                      10 + Math.round((event.loaded / event.total) * 90),
+                    ),
+                  );
+                }
+              };
+              xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  resolve();
+                  return;
+                }
+                const error = new Error("Brief upload failed.") as Error & {
+                  status?: number;
+                };
+                error.status = xhr.status;
+                reject(error);
+              };
+              xhr.onerror = () => reject(new Error("Brief upload failed."));
+              xhr.onabort = () =>
+                reject(new Error("Brief upload was canceled."));
+              xhr.send(file);
+            });
+            briefR2Key = key;
+            setScopeUploadProgress(100);
+            break;
+          } catch (error) {
+            const status =
+              error instanceof Error
+                ? (error as Error & { status?: number }).status
+                : undefined;
+            if (status !== 403 || attempt === 1) throw error;
+          }
         }
 
         await JobListingAPI.SaveBriefMetadata(effectiveJobListingId, {
-          briefR2Key: key,
+          briefR2Key,
           briefFilename: file.name,
           briefSizeBytes: file.size,
         });
 
-        completeScopeUpload(file, key);
+        completeScopeUpload(file, briefR2Key);
       } catch (error) {
-        clearScopeUploadTimer();
         setScopeUploadStatus("error");
         setScopeUploadProgress(0);
         setScopeUploadError(
@@ -8840,13 +9257,7 @@ const DescribeProjectStep = ({
         });
       }
     },
-    [
-      clearScopeUploadTimer,
-      completeScopeUpload,
-      effectiveJobListingId,
-      startLocalScopeUploadProgress,
-      toast,
-    ],
+    [completeScopeUpload, effectiveJobListingId, toast],
   );
   const acceptScopeFile = useCallback(
     (file?: File | null) => {
@@ -8854,24 +9265,24 @@ const DescribeProjectStep = ({
       const contentType = getScopeFileContentType(file);
 
       if (!contentType) {
-        toast({
-          title: "Please upload a PDF or DOCX file.",
-          variant: "destructive",
-        });
+        setScopeFile(file);
+        setScopeUploadProgress(0);
+        setScopeUploadStatus("error");
+        setScopeUploadError("Please upload a PDF or DOCX file.");
         return;
       }
 
       if (file.size > 26_214_400) {
-        toast({
-          title: "Please upload a file smaller than 25 MB.",
-          variant: "destructive",
-        });
+        setScopeFile(file);
+        setScopeUploadProgress(0);
+        setScopeUploadStatus("error");
+        setScopeUploadError("Please upload a file no larger than 25 MB.");
         return;
       }
 
       void uploadScopeFile(file, contentType);
     },
-    [getScopeFileContentType, toast, uploadScopeFile],
+    [getScopeFileContentType, uploadScopeFile],
   );
   const tipItems = isService
     ? [
@@ -8896,12 +9307,34 @@ const DescribeProjectStep = ({
   const hasValidCustomDuration =
     !isCustomDurationSelected ||
     (Number.isFinite(customDurationAmount) && customDurationAmount > 0);
+  const hasNegativeBudget = budget.trim().startsWith("-");
+  const hasValidBudget =
+    budget.trim().length > 0 &&
+    !hasNegativeBudget &&
+    Number.isFinite(Number(budget.replace(/,/g, ""))) &&
+    Number(budget.replace(/,/g, "")) >= 0;
+  const descriptionWordCount = getWordCount(description);
+  const deliverablesWordCount = getWordCount(deliverables);
+  const successCriteriaWordCount = getWordCount(successCriteria);
+  const hasWordLimitError =
+    descriptionWordCount > STEP_TWO_WORD_LIMIT ||
+    ((isService ? isKnownServiceFlow : scopeKnowledgeChoice === "known") &&
+      (deliverablesWordCount > STEP_TWO_WORD_LIMIT ||
+        successCriteriaWordCount > STEP_TWO_WORD_LIMIT));
+  const isKnownProjectFlow =
+    !isService && scopeKnowledgeChoice === "known";
   const isValid =
     description.trim().length > 0 &&
-    deliverables.trim().length > 0 &&
-    (isService || successCriteria.trim().length > 0) &&
-    Number(budget.replace(/,/g, "")) >= 0 &&
-    (isService || hasValidCustomDuration);
+    !hasWordLimitError &&
+    (isService
+      ? (isKnownServiceFlow ? deliverables.trim().length > 0 : true) &&
+        hasValidBudget
+      : (!isKnownProjectFlow ||
+          (deliverables.trim().length > 0 &&
+            successCriteria.trim().length > 0)) &&
+        hasValidBudget &&
+        Boolean(selectedDurationOption) &&
+        hasValidCustomDuration);
   const budgetAmount = Number(budget.replace(/,/g, "")) || 0;
   const budgetFrequency =
     budgetUnit === "per month" ? ("per_month" as const) : ("per_week" as const);
@@ -8986,18 +9419,19 @@ const DescribeProjectStep = ({
       details.budgetFrequency === "per_month" ? "per month" : "per week",
     );
 
-    const hydratedDuration = getDurationSelectionFromMonths(
-      details.durationMonths,
-    );
-    setDuration(hydratedDuration);
-    if (hydratedDuration.startsWith("Other--")) {
-      setCustomDuration(
-        typeof details.durationMonths === "number"
-          ? String(details.durationMonths)
-          : "",
+    if (typeof details.durationMonths === "number") {
+      const hydratedDuration = getDurationSelectionFromMonths(
+        details.durationMonths,
       );
-      setCustomDurationUnit("months");
+      setDuration(hydratedDuration);
+      if (hydratedDuration.startsWith("Other--")) {
+        setCustomDuration(String(details.durationMonths));
+        setCustomDurationUnit("months");
+      } else {
+        setCustomDuration("");
+      }
     } else {
+      setDuration("");
       setCustomDuration("");
     }
 
@@ -9093,17 +9527,18 @@ const DescribeProjectStep = ({
           listing?.budgetFrequency === "per_month" ? "per month" : "per week",
         );
 
-        const hydratedDuration =
-          getDurationSelectionFromMonths(nextDurationMonths);
-        setDuration(hydratedDuration);
-        if (hydratedDuration.startsWith("Other--")) {
-          setCustomDuration(
-            typeof nextDurationMonths === "number"
-              ? String(nextDurationMonths)
-              : "",
-          );
-          setCustomDurationUnit("months");
+        if (typeof nextDurationMonths === "number") {
+          const hydratedDuration =
+            getDurationSelectionFromMonths(nextDurationMonths);
+          setDuration(hydratedDuration);
+          if (hydratedDuration.startsWith("Other--")) {
+            setCustomDuration(String(nextDurationMonths));
+            setCustomDurationUnit("months");
+          } else {
+            setCustomDuration("");
+          }
         } else {
+          setDuration("");
           setCustomDuration("");
         }
 
@@ -9186,55 +9621,8 @@ const DescribeProjectStep = ({
   ]);
 
   useEffect(() => {
-    if (!effectiveJobListingId || !hasUserEditedDetailsRef.current) return;
-
-    const hasUserEnteredDetails =
-      Boolean(description.trim()) ||
-      Boolean(deliverables.trim()) ||
-      Boolean(successCriteria.trim()) ||
-      budgetAmount > 0 ||
-      typeof durationMonths === "number";
-
-    if (!hasUserEnteredDetails) return;
-
-    const timeout = window.setTimeout(() => {
-      const saveDescribeStep = async () => {
-        try {
-          await JobListingAPI.Update(effectiveJobListingId, {
-            description: description.trim(),
-            deliverables: deliverables.trim(),
-            successCriteria: isService ? undefined : successCriteria.trim(),
-            budgetAmount,
-            budgetDisplayCurrency: "USD",
-            budgetFrequency,
-            durationMonths: isService ? undefined : durationMonths,
-            isOngoing: isService ? true : undefined,
-          });
-        } catch (error) {
-          console.error("Failed to save job listing details", error);
-        }
-      };
-
-      void saveDescribeStep();
-    }, 500);
-
-    return () => window.clearTimeout(timeout);
-  }, [
-    budgetAmount,
-    budgetFrequency,
-    deliverables,
-    description,
-    durationMonths,
-    effectiveJobListingId,
-    isService,
-    successCriteria,
-  ]);
-
-  useEffect(() => {
     setProgress?.(20);
   }, [setProgress]);
-
-  useEffect(() => clearScopeUploadTimer, [clearScopeUploadTimer]);
 
   useEffect(() => {
     if (previousIsServiceRef.current === isService) return;
@@ -9252,6 +9640,46 @@ const DescribeProjectStep = ({
     viewport?.scrollTo({ top: 0 });
   }, [isService, resetScopeFile]);
 
+  const descriptionFieldVariant = isService ? "service" : "project";
+  const descriptionLabelClassName =
+    descriptionFieldVariant === "project"
+      ? "flex-1 text-[18px] leading-7 font-medium text-dark-blue-400"
+      : "text-sm leading-5 font-semibold text-dark-blue-400";
+  const descriptionCounterClassName =
+    descriptionFieldVariant === "project"
+      ? "text-sm leading-5 font-normal text-gray-400"
+      : "text-xs leading-[18px] text-gray-500";
+  const descriptionTextareaClassName =
+    descriptionFieldVariant === "project"
+      ? "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+      : "h-20 text-sm";
+  const firstQuestionLabelClassName = isService
+    ? "flex-1 text-lg leading-7 font-medium text-dark-blue-400"
+    : descriptionLabelClassName;
+  const firstQuestionCounterClassName = isService
+    ? "text-sm leading-5 font-normal text-gray-400"
+    : descriptionCounterClassName;
+  const firstQuestionTextareaClassName = isService
+    ? "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+    : descriptionTextareaClassName;
+  const describeProjectContentClassName =
+    descriptionFieldVariant === "project"
+      ? "mt-8 flex flex-col gap-16"
+      : "mt-8";
+  const describeProjectQuestionClassName =
+    descriptionFieldVariant === "project"
+      ? "w-[886px] space-y-3"
+      : "w-[886px] space-y-3";
+  const describeProjectGroupClassName =
+    descriptionFieldVariant === "project" ? "mt-16 space-y-4" : "space-y-2";
+  const budgetQuestionClassName = isService
+    ? "mt-16 w-[886px] flex flex-col gap-4"
+    : describeProjectGroupClassName;
+  const describeProjectLabelRowClassName =
+    descriptionFieldVariant === "project"
+      ? "flex h-7 items-baseline justify-between gap-2"
+      : "flex h-7 items-baseline justify-between gap-2";
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-148px)] overflow-x-hidden"
@@ -9260,251 +9688,637 @@ const DescribeProjectStep = ({
     >
       <div
         ref={contentRef}
-        className="px-5 pb-[100px] pt-6 md:px-10 min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-8 min-[1024px]:gap-x-[41.45px]"
+        className="flex flex-col gap-y-10 px-5 pb-[100px] pt-10 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-x-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]"
       >
-        <div className="min-w-0 flex-auto min-[1024px]:max-w-[720px]">
-          <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+        <div className="flex-auto min-w-0">
+          <h1
+            className={cn(
+              "text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400",
+              isService && "h-11 w-[886px]",
+            )}
+          >
             {isService ? "Describe your service" : "Describe your project"}
           </h1>
 
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center justify-between gap-x-4">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                {isService
-                  ? "What kind of ongoing help do you need?"
-                  : "What are you building?"}
-              </Label>
-              <span className="text-xs leading-[18px] text-gray-500">
-                {description.length}/100
-              </span>
-            </div>
-            <Textarea
-              maxLength={100}
-              value={description}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDescription(value);
-                updateDraftDetails({ description: value.trim() });
-              }}
-              placeholder={
-                isService
-                  ? "I need ongoing design and development support for my e-commerce store..."
-                  : "I need help building a new website for my e-commerce store..."
-              }
-              className="h-20 text-sm"
-            />
-          </div>
-
-          <div className="mt-5 space-y-2">
-            <div className="flex items-center justify-between gap-x-4">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                {isService
-                  ? "What are the main tasks or deliverables?"
-                  : "What are the main tasks or deliverables?"}
-              </Label>
-              <span className="text-xs leading-[18px] text-gray-500">
-                {deliverables.length}/100
-              </span>
-            </div>
-            <Textarea
-              maxLength={100}
-              value={deliverables}
-              onChange={(event) => {
-                const value = event.target.value;
-                setDeliverables(value);
-                updateDraftDetails({ deliverables: value.trim() });
-              }}
-              placeholder="UX design, front-end development, database setup"
-              className="h-20 text-sm"
-            />
-          </div>
-
-          <div className="mt-5 space-y-2">
-            <div className="space-y-1">
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Do you have documentation or a brief to share? (Optional)
-              </Label>
-              <p className="text-xs leading-[18px] text-gray-500">
-                If you&apos;ve already written a scope or have a doc with
-                details, upload it here. It&apos;ll help us better match the
-                team to your needs.
-              </p>
-            </div>
-            {scopeFile ? (
-              <div
+          <div className={describeProjectContentClassName}>
+            <div className={describeProjectQuestionClassName}>
+              <div className={describeProjectLabelRowClassName}>
+                <Label className={firstQuestionLabelClassName}>
+                  {isService
+                    ? "What kind of ongoing help do you need?"
+                    : scopeKnowledgeChoice === "known"
+                      ? "What are you building?"
+                      : "What do you want to accomplish with this project?"}
+                </Label>
+                <span className={firstQuestionCounterClassName}>
+                  {descriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                </span>
+              </div>
+              <Textarea
+                value={description}
+                isInvalid={descriptionWordCount > STEP_TWO_WORD_LIMIT}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setDescription(value);
+                  updateDraftDetails({ description: value.trim() });
+                }}
+                placeholder={
+                  isService
+                    ? "I need ongoing design and development support for my e-commerce store..."
+                    : "I need help building a new website for my e-commerce store..."
+                }
                 className={cn(
-                  "rounded-lg border border-gray-200 bg-white px-4 py-3",
-                  scopeUploadStatus === "error" &&
-                    "border-error-300 bg-error-25",
+                  firstQuestionTextareaClassName,
+                  descriptionWordCount > STEP_TWO_WORD_LIMIT &&
+                    "border-error-300 focus:border-error-300 focus:ring-error-100",
                 )}
-              >
-                <div className="flex items-start gap-x-3">
-                  <div
+              />
+            </div>
+
+            {!isService && scopeKnowledgeChoice === "known" ? (
+              <>
+                <div className="w-[886px] space-y-3">
+                  <div className="flex h-7 items-baseline justify-between gap-2">
+                    <Label className={descriptionLabelClassName}>
+                      What are the main tasks or deliverables?
+                    </Label>
+                    <span className={descriptionCounterClassName}>
+                      {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    </span>
+                  </div>
+                  <Textarea
+                    value={deliverables}
+                    isInvalid={deliverablesWordCount > STEP_TWO_WORD_LIMIT}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setDeliverables(value);
+                      updateDraftDetails({ deliverables: value.trim() });
+                    }}
+                    placeholder="UX design, front-end development, database setup"
                     className={cn(
-                      "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
-                      scopeUploadStatus === "error" &&
-                        "border-error-50 bg-error-100 text-error-500",
+                      descriptionTextareaClassName,
+                      deliverablesWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
                     )}
-                  >
-                    {scopeUploadStatus === "error" ? (
-                      <AlertCircle className="size-5" />
-                    ) : (
-                      <FileIcon className="size-5" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-auto">
-                    <p
-                      className={cn(
-                        "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
-                        scopeUploadStatus === "error" && "text-error-500",
-                      )}
-                    >
-                      {scopeFile.name}
-                    </p>
-                    <p
-                      className={cn(
-                        "text-xs leading-[18px] text-gray-500",
-                        scopeUploadStatus === "error" && "text-error-500",
-                      )}
-                    >
-                      {convertToKbOrMb(scopeFile.size)}
-                    </p>
-                  </div>
-                  <IconButton
-                    className="size-8 text-gray-500"
-                    type="button"
-                    variant="ghost"
-                    visual={scopeUploadStatus === "error" ? "error" : "gray"}
-                    onClick={resetScopeFile}
-                  >
-                    <X className="size-4" />
-                  </IconButton>
+                  />
                 </div>
 
-                {scopeUploadStatus === "uploading" ? (
-                  <div className="mt-2 flex items-center gap-x-3 pl-12">
-                    <Progress value={scopeUploadProgress} />
-                    <span className="text-xs leading-[18px] font-semibold text-gray-700">
-                      {scopeUploadProgress}%
-                    </span>
+                <div className="flex flex-col gap-6">
+                    <div className="flex h-[52px] flex-col items-center justify-center gap-1">
+                    <Label className="w-full text-[18px] leading-7 font-medium text-dark-blue-400">
+                      Do you have documentation or a brief to share?
+                      <span className="text-gray-400"> (Optional)</span>
+                    </Label>
+                    <p className="w-full text-sm leading-5 text-dark-blue-400">
+                      If you&apos;ve already written a scope or have a doc with
+                      details, upload it here. It&apos;ll help us better match the
+                      team to your needs.
+                    </p>
                   </div>
-                ) : null}
-                {scopeUploadStatus === "error" && scopeUploadError ? (
-                  <div className="mt-2 flex items-center justify-between gap-x-3 pl-12">
-                    <span className="text-xs leading-[18px] text-error-500">
-                      {scopeUploadError}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="link"
-                      visual="error"
-                      onClick={() => {
-                        const contentType = getScopeFileContentType(scopeFile);
-                        if (contentType) {
-                          void uploadScopeFile(scopeFile, contentType);
-                        }
+                  {scopeFile ? (
+                    scopeUploadStatus === "complete" ? (
+                      <div className="box-border flex h-[72px] w-[886px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4">
+                        <div className="flex h-10 min-w-0 flex-1 items-center gap-4">
+                          <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-[28px] border-4 border-primary-25 bg-primary-50">
+                            <FileIcon className="size-4 text-primary-500" />
+                          </span>
+                          <div className="flex h-10 min-w-0 flex-1 flex-col gap-1">
+                            <p className="h-5 truncate text-sm leading-5 font-medium text-gray-700">
+                              {scopeFile.name}
+                            </p>
+                            <p className="h-5 text-sm leading-5 text-gray-600">
+                              {convertToKbOrMb(
+                                details.briefSizeBytes ?? scopeFile.size,
+                              ).replace(
+                                /(\d)([A-Za-z])/, "$1 $2",
+                              )}
+                            </p>
+                          </div>
+                          <IconButton
+                            className="size-9 shrink-0 rounded-lg p-2 text-gray-400"
+                            type="button"
+                            variant="ghost"
+                            visual="gray"
+                            onClick={resetScopeFile}
+                          >
+                            <X className="size-5" />
+                          </IconButton>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        className={cn(
+                          "relative isolate box-border flex h-24 w-[886px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4",
+                          scopeUploadStatus === "error" &&
+                            "border-error-300 bg-error-25",
+                        )}
+                      >
+                        <div className="flex h-16 min-w-0 flex-1 flex-col gap-1">
+                          <p className="h-5 truncate text-sm leading-5 font-medium text-gray-700">
+                            {scopeFile.name}
+                          </p>
+                          <p className="h-5 text-sm leading-5 text-gray-600">
+                            {convertToKbOrMb(scopeFile.size).replace(
+                              /(\d)([A-Za-z])/, "$1 $2",
+                            )}
+                          </p>
+                          <div className="flex h-5 items-center gap-3">
+                            <Progress
+                              className="h-2 flex-1"
+                              value={scopeUploadProgress}
+                            />
+                            <span className="flex h-5 w-7 items-center text-sm leading-5 font-medium text-gray-700">
+                              {scopeUploadProgress}%
+                            </span>
+                          </div>
+                        </div>
+                        <IconButton
+                          className="absolute top-2 right-2 size-9 rounded-lg p-2 text-gray-500"
+                          type="button"
+                          variant="ghost"
+                          visual="gray"
+                          onClick={resetScopeFile}
+                        >
+                          <Trash2 className="size-5" />
+                        </IconButton>
+                      </div>
+                    )
+                  ) : (
+                    <label
+                    className={cn(
+                      "flex h-[341px] w-[886px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      isScopeDropActive && "border-primary-500",
+                    )}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const viewport = contentRef.current?.closest(
+                        "[data-radix-scroll-area-viewport]",
+                      ) as HTMLElement | null;
+                      scopeFilePickerScrollTopRef.current =
+                        viewport?.scrollTop ?? 0;
+                      scopeFileInputRef.current?.click();
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                      acceptScopeFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <input
+                      ref={scopeFileInputRef}
+                      className="sr-only"
+                      type="file"
+                      accept=".pdf,.docx"
+                      onFocus={(event) => {
+                        event.currentTarget.blur();
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        viewport?.scrollTo({
+                          top: scopeFilePickerScrollTopRef.current,
+                        });
                       }}
-                    >
-                      Try again
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <label
-                className={cn(
-                  "flex h-[150px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-6 text-center focus-within:ring-2 focus-within:ring-primary-500",
-                  isScopeDropActive && "border-primary-500",
-                )}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(false);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "copy";
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  setIsScopeDropActive(false);
-                  acceptScopeFile(event.dataTransfer.files?.[0]);
-                }}
-              >
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept=".pdf,.docx"
-                  onChange={(event) => {
-                    acceptScopeFile(event.target.files?.[0]);
-                    event.target.value = "";
-                  }}
-                />
-                <span className="inline-flex size-10 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100">
-                  <UploadCloud className="size-5 text-gray-500" />
-                </span>
-                <span className="mt-3 text-xs leading-5 text-gray-600">
-                  Drag and drop your {isService ? "service" : "project"} scope
-                  or{" "}
-                  <span className="font-semibold text-primary-500">
-                    Choose a file
-                  </span>
-                </span>
-                <span className="mt-1 max-w-[408px] text-xs leading-[14.52px] text-gray-500">
-                  Upload a scope document to help clients understand your
-                  {isService ? " service" : " project"} details and allow us to
-                  generate accurate suggestions.
-                </span>
-                <span className="mt-3 text-xs leading-[14.52px] text-gray-500">
-                  Recommended Format: PDF or DOCX
-                </span>
-              </label>
-            )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        scopeFilePickerSelectionRef.current = false;
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        const handleWindowFocus = () => {
+                          if (scopeFilePickerSelectionRef.current) return;
+
+                          viewport?.scrollTo({
+                            top: scopeFilePickerScrollTopRef.current,
+                          });
+                        };
+                        window.addEventListener("focus", handleWindowFocus, {
+                          once: true,
+                        });
+                      }}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          window.requestAnimationFrame(() => {
+                            const viewport = contentRef.current?.closest(
+                              "[data-radix-scroll-area-viewport]",
+                            ) as HTMLElement | null;
+                            viewport?.scrollTo({
+                              top: scopeFilePickerScrollTopRef.current,
+                            });
+                          });
+                          return;
+                        }
+                        scopeFilePickerSelectionRef.current = true;
+                        acceptScopeFile(file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="inline-flex size-10 items-center justify-center rounded-[28px] border-[6px] border-gray-100 bg-white">
+                        <UploadCloud className="size-5 text-gray-500" />
+                      </span>
+                      <div className="flex items-start justify-center gap-1 text-xs leading-5 text-gray-600">
+                        <span>Drag and drop your project scope or</span>
+                        <span className="font-semibold text-primary-500 underline">
+                          Choose a File
+                        </span>
+                      </div>
+                      <p className="max-w-[408px] text-center text-xs leading-[15px] font-light text-gray-500">
+                        Upload a scope document to help clients understand your
+                        project details and allow us to generate accurate
+                        suggestions.
+                      </p>
+                      <p className="text-xs leading-[15px] text-gray-500">
+                        Recommended Format: PDF or DOCX
+                      </p>
+                    </div>
+                    </label>
+                  )}
+                </div>
+              </>
+            ) : null}
           </div>
 
-          <div className="mt-5 space-y-2">
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
+          {isKnownServiceFlow ? (
+            <>
+              <div className="mt-16 w-[886px] space-y-3">
+                <div className="flex h-7 items-baseline justify-between gap-2">
+                  <Label className="flex-1 text-lg leading-7 font-medium text-dark-blue-400">
+                    What are the main tasks or deliverables?
+                  </Label>
+                  <span className="text-sm leading-5 font-normal text-gray-400">
+                    {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  </span>
+                </div>
+                <Textarea
+                  value={deliverables}
+                  isInvalid={deliverablesWordCount > STEP_TWO_WORD_LIMIT}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setDeliverables(value);
+                    updateDraftDetails({ deliverables: value.trim() });
+                  }}
+                  placeholder="UX design, front-end development, database setup"
+                  className={cn(
+                    "h-[160px] w-[886px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs placeholder:text-gray-400",
+                    deliverablesWordCount > STEP_TWO_WORD_LIMIT &&
+                      "border-error-300 focus:border-error-300 focus:ring-error-100",
+                  )}
+                />
+              </div>
+
+              <div className="mt-16 flex flex-col gap-6">
+                <div className="flex h-[52px] w-[886px] flex-col items-center justify-center gap-1">
+                  <Label className="w-full text-[18px] leading-7 font-medium text-dark-blue-400">
+                    Do you have documentation or a brief to share?
+                    <span className="text-gray-400"> (Optional)</span>
+                  </Label>
+                  <p className="w-full text-sm leading-5 text-dark-blue-400">
+                    If you&apos;ve already written a scope or have a doc with
+                    details, upload it here. It&apos;ll help us better match the
+                    team to your needs.
+                  </p>
+                </div>
+                {scopeFile ? (
+                  <div
+                    className={cn(
+                      "w-[886px] rounded-lg border border-gray-200 bg-white px-4 py-3",
+                      scopeUploadStatus === "complete" &&
+                        "box-border flex h-[72px] items-center gap-1 rounded-lg border-2 border-dashed border-gray-300 p-4",
+                      scopeUploadStatus === "error" &&
+                        "border-error-300 bg-error-25",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex items-start gap-x-3",
+                        scopeUploadStatus === "complete" &&
+                          "flex h-10 min-w-0 flex-1 items-center gap-4",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-[6px] border-gray-50 bg-gray-100 text-gray-500",
+                          scopeUploadStatus === "complete" &&
+                            "size-8 rounded-[28px] border-4 border-primary-25 bg-primary-50 text-primary-500",
+                          scopeUploadStatus === "error" &&
+                            "border-error-50 bg-error-100 text-error-500",
+                        )}
+                      >
+                        {scopeUploadStatus === "error" ? (
+                          <AlertCircle className="size-5" />
+                        ) : (
+                          <FileIcon className="size-5" />
+                        )}
+                      </div>
+                      <div
+                        className={cn(
+                          "min-w-0 flex-auto",
+                          scopeUploadStatus === "complete" &&
+                            "flex h-10 min-w-0 flex-1 flex-col gap-1",
+                        )}
+                      >
+                        <p
+                          className={cn(
+                            "truncate text-xs leading-[18px] font-semibold text-dark-blue-400",
+                            scopeUploadStatus === "complete" &&
+                              "h-5 text-sm leading-5 font-medium text-gray-700",
+                            scopeUploadStatus === "error" && "text-error-500",
+                          )}
+                        >
+                          {scopeFile.name}
+                        </p>
+                        <p
+                          className={cn(
+                            "text-xs leading-[18px] text-gray-500",
+                            scopeUploadStatus === "complete" &&
+                              "h-5 text-sm leading-5 text-gray-600",
+                            scopeUploadStatus === "error" && "text-error-500",
+                          )}
+                        >
+                          {convertToKbOrMb(
+                            details.briefSizeBytes ?? scopeFile.size,
+                          ).replace(/(\d)([A-Za-z])/, "$1 $2")}
+                        </p>
+                      </div>
+                      <IconButton
+                        className={cn(
+                          "size-8 text-gray-500",
+                          scopeUploadStatus === "complete" &&
+                            "size-9 shrink-0 rounded-lg p-2 text-gray-400",
+                        )}
+                        type="button"
+                        variant="ghost"
+                        visual={scopeUploadStatus === "error" ? "error" : "gray"}
+                        onClick={resetScopeFile}
+                      >
+                        <X className="size-4" />
+                      </IconButton>
+                    </div>
+
+                    {scopeUploadStatus === "uploading" ? (
+                      <div className="mt-2 flex items-center gap-x-3 pl-12">
+                        <Progress value={scopeUploadProgress} />
+                        <span className="text-xs leading-[18px] font-semibold text-gray-700">
+                          {scopeUploadProgress}%
+                        </span>
+                      </div>
+                    ) : null}
+                    {scopeUploadStatus === "error" && scopeUploadError ? (
+                      <div className="mt-2 flex items-center justify-between gap-x-3 pl-12">
+                        <span className="text-xs leading-[18px] text-error-500">
+                          {scopeUploadError}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="link"
+                          visual="error"
+                          onClick={() => {
+                            const contentType =
+                              getScopeFileContentType(scopeFile);
+                            if (contentType) {
+                              void uploadScopeFile(scopeFile, contentType);
+                            }
+                          }}
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <label
+                    className={cn(
+                      "flex h-[341px] w-[886px] cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 bg-white px-6 py-[100px] text-center focus-within:ring-2 focus-within:ring-primary-500",
+                      isScopeDropActive && "border-primary-500",
+                    )}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const viewport = contentRef.current?.closest(
+                        "[data-radix-scroll-area-viewport]",
+                      ) as HTMLElement | null;
+                      scopeFilePickerScrollTopRef.current =
+                        viewport?.scrollTop ?? 0;
+                      scopeFileInputRef.current?.click();
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(true);
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "copy";
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      setIsScopeDropActive(false);
+                      acceptScopeFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
+                    <input
+                      ref={scopeFileInputRef}
+                      className="sr-only"
+                      type="file"
+                      accept=".pdf,.docx"
+                      onFocus={(event) => {
+                        event.currentTarget.blur();
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        viewport?.scrollTo({
+                          top: scopeFilePickerScrollTopRef.current,
+                        });
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        scopeFilePickerSelectionRef.current = false;
+                        const viewport = contentRef.current?.closest(
+                          "[data-radix-scroll-area-viewport]",
+                        ) as HTMLElement | null;
+                        const handleWindowFocus = () => {
+                          if (scopeFilePickerSelectionRef.current) return;
+
+                          viewport?.scrollTo({
+                            top: scopeFilePickerScrollTopRef.current,
+                          });
+                        };
+                        window.addEventListener("focus", handleWindowFocus, {
+                          once: true,
+                        });
+                      }}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (!file) {
+                          window.requestAnimationFrame(() => {
+                            const viewport = contentRef.current?.closest(
+                              "[data-radix-scroll-area-viewport]",
+                            ) as HTMLElement | null;
+                            viewport?.scrollTo({
+                              top: scopeFilePickerScrollTopRef.current,
+                            });
+                          });
+                          return;
+                        }
+                        scopeFilePickerSelectionRef.current = true;
+                        acceptScopeFile(file);
+                        event.target.value = "";
+                      }}
+                    />
+                    <span className="inline-flex size-10 items-center justify-center rounded-[28px] border-[6px] border-gray-100 bg-white">
+                      <UploadCloud className="size-5 text-gray-500" />
+                    </span>
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex items-start justify-center gap-1 text-xs leading-5 text-gray-600">
+                        Drag and drop your service scope or{" "}
+                        <span className="font-semibold text-primary-500 underline">
+                          Choose a file
+                        </span>
+                      </div>
+                      <p className="max-w-[408px] text-center text-xs leading-[15px] font-light text-gray-500">
+                        Upload a scope document to help clients understand your
+                        service details and allow us to generate accurate
+                        suggestions.
+                      </p>
+                      <p className="text-xs leading-[15px] text-gray-500">
+                        Recommended Format: PDF or DOCX
+                      </p>
+                    </div>
+                  </label>
+                )}
+              </div>
+            </>
+          ) : null}
+
+          <div className={budgetQuestionClassName}>
+            <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
               What&apos;s your estimated budget for this{" "}
               {isService ? "service" : "project"}?
             </Label>
-            <div className="space-y-1.5">
-              <Label className="text-xs leading-[18px] text-gray-500">
-                Amount
-              </Label>
-              <div className="flex items-center gap-x-2">
-                <InputGroup fieldHeight="2rem" className="w-[132px]">
-                  <InputLeftElement className="text-xs text-gray-500">
+            <div className="flex w-[320px] items-end gap-2">
+              <div className="flex w-[176px] flex-col gap-1.5">
+                <Label className="text-sm leading-5 font-medium text-gray-500">
+                  Amount
+                </Label>
+                <InputGroup fieldHeight="2.75rem" className="w-[176px]">
+                  <InputLeftElement
+                    className={cn(
+                      "text-[16px] leading-6 text-gray-400",
+                      budget !== "" && budget !== "0.00" &&
+                        "text-dark-blue-400",
+                    )}
+                  >
                     $
                   </InputLeftElement>
                   <Input
-                    className="h-8 text-xs"
+                    className={cn(
+                      "h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                      budget !== "" && budget !== "0.00" &&
+                        "text-dark-blue-400",
+                      hasNegativeBudget &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
                     inputMode="decimal"
+                    pattern="^\d*(\.\d{0,2})?$"
                     value={budget}
+                    isInvalid={hasNegativeBudget}
+                    onFocus={() => {
+                      if (budget === "0.00") {
+                        setBudget("");
+                        updateDraftDetails({ budgetAmount: 0 });
+                      }
+                    }}
                     onChange={(event) => {
-                      const value = event.target.value;
-                      setBudget(value);
+                      const nextValue = normalizeBudgetInput(
+                        event.target.value,
+                      );
+                      setBudget(nextValue);
                       updateDraftDetails({
-                        budgetAmount: Number(value.replace(/,/g, "")) || 0,
+                        budgetAmount: Number(nextValue.replace(/,/g, "")) || 0,
+                      });
+                    }}
+                    onKeyDown={(event) => {
+                      const allowedKeys = [
+                        "Backspace",
+                        "Delete",
+                        "ArrowLeft",
+                        "ArrowRight",
+                        "Tab",
+                        "Home",
+                        "End",
+                      ];
+                      if (
+                        allowedKeys.includes(event.key) ||
+                        (event.metaKey || event.ctrlKey)
+                      ) {
+                        return;
+                      }
+                      if (!/^[0-9.-]$/.test(event.key)) {
+                        event.preventDefault();
+                        return;
+                      }
+                      if (
+                        event.key === "." &&
+                        typeof budget === "string" &&
+                        budget.includes(".")
+                      ) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onBlur={() => {
+                      const numericValue = Number(budget);
+                      if (!Number.isFinite(numericValue)) return;
+
+                      const hasDecimals = budget.includes(".");
+                      const nextValue = hasDecimals
+                        ? numericValue.toFixed(2)
+                        : numericValue.toFixed(2);
+
+                      setBudget(nextValue);
+                      updateDraftDetails({
+                        budgetAmount: numericValue || 0,
                       });
                     }}
                   />
                 </InputGroup>
+              </div>
+              <div className="flex w-[136px] flex-col gap-1.5">
+                <Label className="invisible text-sm leading-5 font-medium text-gray-500">
+                  Amount
+                </Label>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
                       variant="outlined"
                       visual="gray"
-                      className="h-8 min-w-[100px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
+                      className="h-11 w-full justify-between rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400"
                     >
                       {budgetUnit}
-                      <ChevronDown className="size-4 text-gray-500" />
+                      <ChevronDown
+                        className={cn(
+                          "size-4 text-gray-400",
+                          isService && "size-5",
+                        )}
+                      />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[100px]">
+                  <DropdownMenuContent align="start" className="min-w-[136px]">
                     {["per week", "per month"].map((unit) => (
                       <DropdownMenuItem
                         key={unit}
@@ -9527,8 +10341,8 @@ const DescribeProjectStep = ({
 
           {!isService ? (
             <>
-              <div className="mt-5 space-y-3">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+              <div className="mt-16 space-y-3">
+                <Label className="text-[18px] leading-7 font-medium text-dark-blue-400">
                   How long do you expect this job to last?
                 </Label>
                 <RadioGroup
@@ -9541,7 +10355,7 @@ const DescribeProjectStep = ({
                         : getDraftDurationMonths(value),
                     });
                   }}
-                  className="grid gap-3 md:grid-cols-2"
+                  className="grid w-[886px] grid-cols-2 gap-4"
                 >
                   {durationOptions.map((option, index) => {
                     const id = `${option.value}-${option.unit}-${index}`;
@@ -9551,93 +10365,132 @@ const DescribeProjectStep = ({
                       <HeadlessRadioGroupItem key={id} value={id} asChild>
                         <div
                           className={cn(
-                            "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                            "box-border flex w-[435px] cursor-pointer items-center gap-4 rounded-lg border border-gray-200 bg-white py-4 pr-6 pl-4 text-left focus-visible:outline-none",
+                            isOther && selected
+                              ? "h-[116px] flex-col items-start justify-center gap-3"
+                              : "h-[84px] flex-row",
                             selected && "border-primary-500",
                           )}
                         >
-                          <span className="flex items-center justify-between gap-x-4">
-                            <span className="text-base leading-6 font-semibold text-dark-blue-400">
-                              {option.value}
-                              {option.unit ? (
-                                <span className="ml-1 text-sm leading-5 font-normal text-gray-500">
-                                  {" "}
-                                  {option.unit}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span
-                              className={cn(
-                                "inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
-                                selected && "border-[5px] border-primary-500",
-                              )}
-                            />
-                          </span>
-                          {option.label ? (
-                            <span className="mt-2 block text-sm leading-5 text-gray-500">
-                              {option.label}
-                            </span>
-                          ) : null}
                           {isOther && selected ? (
-                            <div className="mt-3 flex items-center gap-x-2">
-                              <Input
-                                className="h-8 text-xs"
-                                placeholder="Enter duration"
-                                value={customDuration}
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={(event) => {
-                                  const value = event.target.value;
-                                  setCustomDuration(value);
-                                  updateDraftDetails({
-                                    durationMonths: isService
-                                      ? undefined
-                                      : getDraftDurationMonths(
-                                          duration,
-                                          value,
-                                          customDurationUnit,
-                                        ),
-                                  });
-                                }}
-                              />
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="outlined"
-                                    visual="gray"
-                                    className="h-8 min-w-[92px] justify-between px-3 text-xs leading-[18px] font-normal text-dark-blue-400"
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    {customDurationUnit}
-                                    <ChevronDown className="size-4 text-gray-500" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="start"
-                                  className="min-w-[92px]"
-                                >
-                                  {projectDurationUnits.map((unit) => (
-                                    <DropdownMenuItem
-                                      key={unit}
-                                      onSelect={() => {
-                                        setCustomDurationUnit(unit);
-                                        updateDraftDetails({
-                                          durationMonths: isService
-                                            ? undefined
-                                            : getDraftDurationMonths(
-                                                duration,
-                                                customDuration,
-                                                unit,
-                                              ),
-                                        });
-                                      }}
+                            <>
+                              <div className="flex h-7 w-full items-center justify-between gap-2">
+                                <span className="block h-7 w-[369px] text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                  {option.value}
+                                </span>
+                                <span className="relative inline-flex size-5 shrink-0 rounded-full border-[1.5px] border-primary-500 box-border">
+                                  <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                                </span>
+                              </div>
+                              <div className="flex h-11 w-[395px] items-start gap-2">
+                                <Input
+                                  className={cn(
+                                    "h-11 w-[251px] rounded-[5px] px-3.5 text-[16px] leading-6 text-gray-400 placeholder:text-gray-400",
+                                    customDuration !== "" &&
+                                      "text-dark-blue-400",
+                                  )}
+                                  inputMode="numeric"
+                                  pattern="[0-9]*"
+                                  placeholder="Enter duration"
+                                  value={customDuration}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onChange={(event) => {
+                                    const value = event.target.value.replace(
+                                      /\D/g,
+                                      "",
+                                    );
+                                    setCustomDuration(value);
+                                    updateDraftDetails({
+                                      durationMonths: isService
+                                        ? undefined
+                                        : getDraftDurationMonths(
+                                            duration,
+                                            value,
+                                            customDurationUnit,
+                                          ),
+                                    });
+                                  }}
+                                />
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outlined"
+                                      visual="gray"
+                                      className="h-11 w-[136px] justify-between rounded-[5px] px-3.5 text-[16px] leading-6 font-normal text-dark-blue-400"
+                                      onClick={(event) => event.stopPropagation()}
                                     >
-                                      {unit}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          ) : null}
+                                      {customDurationUnit}
+                                      <ChevronDown className="size-4 text-gray-500" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="start"
+                                    className="h-[118px] w-[136px] min-w-0 overflow-y-scroll rounded-[5px] border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+                                  >
+                                    {projectDurationUnits.map((unit) => (
+                                      <DropdownMenuItem
+                                        key={unit}
+                                        className={cn(
+                                          "h-[34px] w-full shrink-0 px-3 py-2.5 text-[13px] leading-[13px] text-gray-500 hover:bg-gray-50 hover:text-gray-black focus:bg-gray-50 focus:text-gray-black",
+                                          unit === customDurationUnit &&
+                                            "bg-gray-50 text-gray-black",
+                                        )}
+                                        onSelect={() => {
+                                          setCustomDurationUnit(unit);
+                                          updateDraftDetails({
+                                            durationMonths: isService
+                                              ? undefined
+                                              : getDraftDurationMonths(
+                                                  duration,
+                                                  customDuration,
+                                                  unit,
+                                                ),
+                                          });
+                                        }}
+                                      >
+                                        {unit}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <span
+                                className={cn(
+                                  "flex h-[52px] w-[361px] flex-col items-start gap-1",
+                                  !option.label && "justify-center",
+                                )}
+                              >
+                                <span className="block h-7 self-stretch text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                  {option.value}
+                                  {option.unit ? (
+                                    <span className="ml-1 text-[18px] leading-7 font-semibold text-dark-blue-400">
+                                      {" "}
+                                      {option.unit}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                {option.label ? (
+                                  <span className="block h-5 self-stretch text-[14px] leading-5 font-normal text-dark-blue-400">
+                                    {option.label}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span
+                                className={cn(
+                                  "box-border relative inline-flex size-[18px] shrink-0 rounded-full border-[1.5px] border-gray-300",
+                                  selected && "border-primary-500",
+                                )}
+                              >
+                                {selected ? (
+                                  <span className="absolute left-1/2 top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-500" />
+                                ) : null}
+                              </span>
+                            </>
+                          )}
                         </div>
                       </HeadlessRadioGroupItem>
                     );
@@ -9645,57 +10498,73 @@ const DescribeProjectStep = ({
                 </RadioGroup>
               </div>
 
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center justify-between gap-x-4">
-                  <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                    How will you know this project is successful?
-                  </Label>
-                  <span className="text-xs leading-[18px] text-gray-500">
-                    {successCriteria.length}/100
-                  </span>
+              {scopeKnowledgeChoice === "known" ? (
+                <div className="mt-16 w-[886px] space-y-3">
+                  <div className="flex h-7 items-baseline justify-between gap-2">
+                    <Label className={descriptionLabelClassName}>
+                      How will you know this project is successful?
+                    </Label>
+                    <span className={descriptionCounterClassName}>
+                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    </span>
+                  </div>
+                  <Textarea
+                    value={successCriteria}
+                    isInvalid={successCriteriaWordCount > STEP_TWO_WORD_LIMIT}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSuccessCriteria(value);
+                      updateDraftDetails({
+                        successCriteria: value.trim(),
+                      });
+                    }}
+                    placeholder="Launch MVP by October, increase signups by 20%, working prototype demo"
+                    className={cn(
+                      descriptionTextareaClassName,
+                      successCriteriaWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
+                  />
                 </div>
-                <Textarea
-                  maxLength={100}
-                  value={successCriteria}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSuccessCriteria(value);
-                    updateDraftDetails({
-                      successCriteria: isService ? undefined : value.trim(),
-                    });
-                  }}
-                  placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
-                  className="h-20 text-sm"
-                />
-              </div>
+              ) : null}
+
+              {isService ? (
+                <div className="mt-5 space-y-2">
+                  <div className="flex items-center justify-between gap-x-4">
+                    <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+                      How will you know this project is successful?
+                    </Label>
+                    <span className="text-xs leading-[18px] text-gray-500">
+                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    </span>
+                  </div>
+                  <Textarea
+                    value={successCriteria}
+                    isInvalid={successCriteriaWordCount > STEP_TWO_WORD_LIMIT}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSuccessCriteria(value);
+                      updateDraftDetails({
+                        successCriteria: isService ? undefined : value.trim(),
+                      });
+                    }}
+                    placeholder="Launch MVP by October, increase signups by 20, working prototype demo"
+                    className={cn(
+                      "h-20 text-sm",
+                      successCriteriaWordCount > STEP_TWO_WORD_LIMIT &&
+                        "border-error-300 focus:border-error-300 focus:ring-error-100",
+                    )}
+                  />
+                </div>
+              ) : null}
             </>
           ) : null}
         </div>
 
-        <div className="pl-[17.45px] xs:max-[1024px]:hidden shrink-0 self-start sticky top-6">
-          <div className="w-[269px] rounded-lg border border-gray-200 bg-white p-4 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
-                Quick tip
-              </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
-            </div>
-            <p className="mt-3 text-sm leading-5 font-semibold text-dark-blue-400">
-              {isService
-                ? "Help us understand your service needs"
-                : "Give us a few details now to save time later"}
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {tipItems.map((item) => (
-                <div className="flex items-start gap-x-3" key={item}>
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-xs leading-[18px] text-dark-blue-400">
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="xs:max-[1024px]:hidden shrink-0 self-start">
+          <ProjectInfoTip
+            variant={isService ? "describeServiceStep" : "describeProjectStep"}
+          />
         </div>
       </div>
     </ScrollArea>
@@ -9715,7 +10584,15 @@ const ReviewToolsTechnologiesStep = ({
   const [tools, setTools] = useState(() =>
     details.tools?.length ? details.tools : serviceToolTags,
   );
+  const [isGeneratingTools, setIsGeneratingTools] = useState(false);
+  const [toolAutocompleteOptions, setToolAutocompleteOptions] = useState<
+    string[]
+  >([]);
   const didRequestGeneratedToolsRef = useRef(false);
+  const toolAutocompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const toolAutocompleteRequestIdRef = useRef(0);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(true);
@@ -9727,6 +10604,7 @@ const ReviewToolsTechnologiesStep = ({
 
   useEffect(() => {
     if (details.tools?.length) {
+      didRequestGeneratedToolsRef.current = true;
       setTools(details.tools);
     }
   }, [details.tools]);
@@ -9739,11 +10617,63 @@ const ReviewToolsTechnologiesStep = ({
     [setDetails],
   );
 
+  const handleToolInputValueChange = useCallback((value: string) => {
+    const query = value.trim();
+
+    if (toolAutocompleteTimerRef.current) {
+      clearTimeout(toolAutocompleteTimerRef.current);
+    }
+
+    if (!query) {
+      setToolAutocompleteOptions([]);
+      return;
+    }
+
+    toolAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++toolAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType("tool", query, 10);
+        if (currentRequestId !== toolAutocompleteRequestIdRef.current) return;
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        setToolAutocompleteOptions(
+          getUniqueOptions(
+            apiValues.map((item) => normalizeAutocompleteLabel(item)),
+          ),
+        );
+      } catch {
+        if (currentRequestId !== toolAutocompleteRequestIdRef.current) return;
+        setToolAutocompleteOptions([]);
+      }
+    }, 250);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toolAutocompleteTimerRef.current) {
+        clearTimeout(toolAutocompleteTimerRef.current);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (!jobListingId || didRequestGeneratedToolsRef.current) return;
+    if (
+      !jobListingId ||
+      didRequestGeneratedToolsRef.current ||
+      details.tools?.length
+    ) {
+      return;
+    }
     didRequestGeneratedToolsRef.current = true;
 
     const generateTools = async () => {
+      setIsGeneratingTools(true);
       try {
         const response = await JobListingAPI.GenerateTools(jobListingId, {
           workType: source === "service" ? "service" : "project",
@@ -9756,6 +10686,8 @@ const ReviewToolsTechnologiesStep = ({
         }
       } catch (error) {
         console.error("Failed to generate tools and technologies", error);
+      } finally {
+        setIsGeneratingTools(false);
       }
     };
 
@@ -9775,53 +10707,69 @@ const ReviewToolsTechnologiesStep = ({
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
       <div className="flex min-h-full flex-col gap-8 bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px] min-[1180px]:flex-row min-[1180px]:items-start">
-        <div className="min-w-0 flex-auto min-[1180px]:w-[887px]">
-          <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-            Review tools and technologies
-          </h1>
-          <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-            We&apos;ve generated a list based on your{" "}
-            {source === "roles"
-              ? "roles' description"
-              : source === "service"
-                ? "service details"
-                : "project details"}
-            . Feel free to add or remove anything so it better fits your needs.
-          </p>
+        <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
+          <div className="flex h-20 w-[886px] flex-col items-center justify-center gap-4">
+            <h1 className="h-11 w-[886px] text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+              Review tools and technologies
+            </h1>
+            <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
+              We&apos;ve generated a list based on your{" "}
+              {source === "roles"
+                ? "roles' description"
+                : source === "service"
+                  ? "service details"
+                  : "project details"}
+              . Feel free to add or remove anything so it better fits your needs.
+            </p>
+          </div>
 
           <TagsInputRoot
             value={tools}
             onValueChange={(details) => updateTools(details.value)}
-            className="mt-5"
+            className="mt-8"
           >
             <TagsInputContext>
               {(tagsInput) => (
-                <TagsInputControl className="flex w-full flex-col items-start gap-3 border-0 p-0 shadow-none [&>div:first-child>div]:w-full">
+                <TagsInputControl className="flex w-full flex-col items-start gap-4 border-0 bg-transparent p-0 shadow-none focus-within:border-transparent focus-within:ring-0 min-[1180px]:w-[886px] [&>div:first-child>div]:w-full">
                   <div className="relative w-full">
-                    <SearchMd className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <SearchMd className="pointer-events-none absolute left-3 top-1/2 z-10 size-5 -translate-y-1/2 text-gray-400" />
                     <TagsInputInput
                       placeholder="Search tools and technologies"
                       allowCreateOption
-                      className="h-11 w-full rounded-[5px] border border-gray-300 bg-white pl-12 pr-4 text-sm leading-5 text-dark-blue-400 shadow-xs placeholder:text-gray-400 focus-visible:outline-none"
+                      options={toolAutocompleteOptions}
+                      onInputValueChange={handleToolInputValueChange}
+                      className="h-11 w-full rounded-[5px] border border-gray-300 bg-white px-[14px] py-2.5 pl-[42px] text-[16px] leading-6 text-gray-500/50 shadow-xs placeholder:text-gray-500/50 focus-visible:outline-none"
                     />
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    {tagsInput.value.map((value, index) => (
-                      <TagsInputItem key={value} index={index} value={value}>
-                        <TagsInputItemPreview
-                          size="md"
-                          visual="gray"
-                          className="h-10 rounded-[5px] border border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
+                    {isGeneratingTools ? (
+                      [152, 176, 128, 164, 144].map((width) => (
+                        <span
+                          key={width}
+                          className="relative h-10 overflow-hidden rounded-lg border border-gray-300 bg-gray-100 shadow-xs"
+                          style={{ width }}
                         >
-                          <TagsInputItemText>{value}</TagsInputItemText>
-                          <TagsInputItemDeleteTrigger className="ml-2 text-gray-500 opacity-100 hover:text-gray-700">
-                            <X2 className="size-3" />
-                          </TagsInputItemDeleteTrigger>
-                        </TagsInputItemPreview>
-                        <TagsInputItemInput />
-                      </TagsInputItem>
-                    ))}
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      ))
+                    ) : (
+                      tagsInput.value.map((value, index) => (
+                        <TagsInputItem key={value} index={index} value={value}>
+                          <TagsInputItemPreview
+                            size="md"
+                            visual="gray"
+                            className="h-10 gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 pl-4 text-sm leading-5 text-dark-blue-400 shadow-xs"
+                          >
+                            <TagsInputItemText>{value}</TagsInputItemText>
+                            <TagsInputItemDeleteTrigger className="size-4 text-gray-400 opacity-100 hover:text-gray-700">
+                              <X2 className="size-4" />
+                            </TagsInputItemDeleteTrigger>
+                          </TagsInputItemPreview>
+                          <TagsInputItemInput />
+                        </TagsInputItem>
+                      ))
+                    )}
                   </div>
                 </TagsInputControl>
               )}
@@ -9830,36 +10778,11 @@ const ReviewToolsTechnologiesStep = ({
           </TagsInputRoot>
         </div>
 
-        <div className="xs:max-[1180px]:hidden shrink-0 self-start sticky top-6">
-          <div className="w-[321px] rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
-                Quick tip
-              </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
-            </div>
-            <p className="mt-5 text-lg leading-7 font-semibold text-dark-blue-400">
-              Edit tools and technologies to tailor it to your{" "}
-              {source === "roles"
-                ? "job"
-                : source === "service"
-                  ? "service"
-                  : "project"}
-            </p>
-            <div className="mt-2 space-y-1.5">
-              {[
-                "Remove any tools and technologies you don't need.",
-                "Add missing frameworks, languages, or services that are essential.",
-              ].map((item) => (
-                <div className="flex items-start gap-x-3" key={item}>
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-xs leading-[18px] text-dark-blue-400">
-                    {item}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+        <div className="xs:max-[1180px]:hidden shrink-0 self-start">
+          <ProjectInfoTip
+            variant="reviewToolsTechnologiesStep"
+            source={source}
+          />
         </div>
       </div>
     </ScrollArea>
@@ -9869,6 +10792,11 @@ const ReviewToolsTechnologiesStep = ({
 type TeamRoleRow = {
   role: string;
   assignee: string;
+  // Real Marketeq user id for the assignee, or null when the role is open.
+  // `assignee` stays the display label (kept for existing readers of it);
+  // this is the field that actually round-trips to assignedUserId.
+  assigneeUserId: string | null;
+  assigneeHourlyRateUsdCents: number | null;
   location: string;
   experience: ExperienceLevel;
   schedule: "Full-time" | "Part-time";
@@ -9881,8 +10809,10 @@ const teamRoleRows: TeamRoleRow[] = [
   {
     role: "UX Designer",
     assignee: "Unassigned Member",
+    assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "India",
-    experience: "Guru",
+    experience: "Senior",
     schedule: "Full-time",
     length: "6 months",
     estimate: "$40 - $80",
@@ -9891,6 +10821,8 @@ const teamRoleRows: TeamRoleRow[] = [
   {
     role: "Full Stack Developer",
     assignee: "Unassigned Member",
+    assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "Pakistan",
     experience: "Junior",
     schedule: "Part-time",
@@ -9901,8 +10833,10 @@ const teamRoleRows: TeamRoleRow[] = [
   {
     role: "Business Analyst",
     assignee: "Nana @nana_ba03",
+    assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "USA",
-    experience: "Guru",
+    experience: "Senior",
     schedule: "Part-time",
     length: "2 months",
     estimate: "$25 - $40",
@@ -9911,6 +10845,8 @@ const teamRoleRows: TeamRoleRow[] = [
   {
     role: "Software Developer",
     assignee: "Abu @software_dev2038",
+    assigneeUserId: null,
+    assigneeHourlyRateUsdCents: null,
     location: "Pakistan",
     experience: "Senior",
     schedule: "Full-time",
@@ -9920,9 +10856,19 @@ const teamRoleRows: TeamRoleRow[] = [
   },
 ];
 
-const teamRoleLocationOptions = ["USA", "India", "Pakistan", "Canada", "UK"];
+const teamRoleLocationOptions = [
+  "United States",
+  "India",
+  "Pakistan",
+  "Canada",
+  "United Kingdom",
+];
 const teamRolePillClassName =
-  "h-7 w-max rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-sm font-normal leading-5 text-dark-blue-400";
+  "h-7 max-w-full gap-x-1.5 whitespace-nowrap rounded-[5px] border border-dashed border-gray-300 bg-gray-100 py-[5px] pl-[5px] pr-2 text-xs font-medium leading-[18px] text-gray-700 [&>span:first-child]:size-[18px] [&>span:first-child]:rounded-full [&>span:not(:first-child)]:min-w-0 [&>span:not(:first-child)]:truncate [&>span:not(:first-child)]:whitespace-nowrap [&>svg]:inline-block [&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:text-gray-500";
+const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
+const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
+const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
+const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -9933,7 +10879,7 @@ const renderLocationOptionLabel = (location?: string) => {
         <img
           alt=""
           src={flagUrl}
-          className="h-[14px] w-[18px] rounded-[2px] object-cover"
+          className="size-[18px] rounded-full object-cover"
         />
       ) : null}
       <span>{location}</span>
@@ -9946,20 +10892,160 @@ const teamRoleScheduleOptions: TeamRoleRow["schedule"][] = [
 ];
 const teamRoleLengthOptions = ["1 month", "2 months", "3 months", "6 months"];
 
+const formatTeamBudgetDuration = (durationMonths?: number) => {
+  if (typeof durationMonths !== "number" || durationMonths <= 0) {
+    return "Ongoing";
+  }
+
+  return `${durationMonths} ${durationMonths === 1 ? "month" : "months"}`;
+};
+
+const formatTeamBudgetWorkDuration = (durationMonths?: number) => {
+  if (typeof durationMonths !== "number" || durationMonths <= 0) {
+    return "Ongoing work";
+  }
+
+  return `${durationMonths} month work`;
+};
+
 const createTeamRoleRow = (
   index: number,
   overrides: Partial<TeamRoleRow> = {},
 ): TeamRoleRow => ({
   role: `New Team Member ${index + 1}`,
   assignee: "Unassigned Member",
-  location: "USA",
+  assigneeUserId: null,
+  assigneeHourlyRateUsdCents: null,
+  location: "United States",
   experience: "Junior",
   schedule: "Full-time",
   length: "3 months",
-  estimate: "$25 - $40",
+  estimate: "$0 - $0",
   editable: true,
   ...overrides,
 });
+
+const toTeamRoleSchedule = (
+  schedule?: JobListingWorkSchedule | string,
+): TeamRoleRow["schedule"] =>
+  schedule === "part_time" || schedule === "Part-time"
+    ? "Part-time"
+    : "Full-time";
+
+const toTeamRoleExperience = (experience?: string): ExperienceLevel => {
+  const normalized = experience?.trim().toLowerCase();
+  const match = EXPERIENCE_LEVELS.find(
+    (level) => level.toLowerCase() === normalized,
+  );
+
+  return match ?? "Junior";
+};
+
+const formatHourlyEstimate = (low?: unknown, high?: unknown) => {
+  const lowCents = toFiniteNumber(low);
+  const highCents = toFiniteNumber(high);
+
+  if (typeof lowCents !== "number") {
+    return "$0 - $0";
+  }
+
+  const lowUsd = Math.round(lowCents / 100);
+  const highUsd =
+    typeof highCents === "number" ? Math.round(highCents / 100) : lowUsd;
+
+  return lowUsd === highUsd ? `$${lowUsd}` : `$${lowUsd} - $${highUsd}`;
+};
+
+const getAssignedRateEstimateRange = (hourlyRateUsdCents?: number | null) => {
+  if (typeof hourlyRateUsdCents !== "number" || hourlyRateUsdCents <= 0) {
+    return { low: undefined, high: undefined };
+  }
+
+  return {
+    low: Math.round(hourlyRateUsdCents * 0.85),
+    high: Math.round(hourlyRateUsdCents * 1.15),
+  };
+};
+
+const formatAssignedRateEstimate = (hourlyRateUsdCents?: number | null) => {
+  const range = getAssignedRateEstimateRange(hourlyRateUsdCents);
+  return formatHourlyEstimate(range.low, range.high);
+};
+
+const toJobListingWorkSchedule = (
+  schedule: TeamRoleRow["schedule"],
+): JobListingWorkSchedule =>
+  schedule === "Part-time" ? "part_time" : "full_time";
+
+const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
+  Array.isArray(rows)
+    ? rows
+        .map((row: any, index) => {
+          const role = String(
+            row?.role ?? row?.roleTitle ?? row?.title ?? "",
+          ).trim();
+
+          if (!role) return null;
+
+          const assignedMember = row?.assignedMember;
+          const assignedHourlyRateUsdCents = getCandidateHourlyRateUsdCents(
+            assignedMember?.hourlyRate,
+          );
+          const assigneeName = assignedMember
+            ? [assignedMember.firstName, assignedMember.username && `@${assignedMember.username}`]
+                .filter(Boolean)
+                .join(" ") || "Assigned Member"
+            : null;
+
+          return createTeamRoleRow(index, {
+            role,
+            assignee: assigneeName ?? (row?.assignedUserId ? "Assigned Member" : "Unassigned Member"),
+            assigneeUserId: row?.assignedUserId ?? null,
+            assigneeHourlyRateUsdCents: assignedHourlyRateUsdCents,
+            location: String(row?.location ?? "USA"),
+            experience: toTeamRoleExperience(
+              row?.experienceLevel ?? row?.experience,
+            ),
+            schedule: toTeamRoleSchedule(row?.workSchedule),
+            length:
+              typeof row?.contractLengthMonths === "number" &&
+              row.contractLengthMonths > 0
+                ? `${row.contractLengthMonths} ${
+                    row.contractLengthMonths === 1 ? "month" : "months"
+                  }`
+                : "3 months",
+            estimate:
+              typeof assignedHourlyRateUsdCents === "number"
+                ? formatAssignedRateEstimate(assignedHourlyRateUsdCents)
+                : formatHourlyEstimate(
+                    row?.hourlyRateLowUsdCents,
+                    row?.hourlyRateHighUsdCents,
+                  ),
+            editable: true,
+          });
+        })
+        .filter((row): row is TeamRoleRow => Boolean(row))
+    : [];
+
+const createTeamRoleRowsPayload = (rows: TeamRoleRow[]) =>
+  rows.map((row, positionOrder) => {
+    const estimate = parseHourlyEstimateCents(row.estimate);
+    const assignedRateRange = getAssignedRateEstimateRange(
+      row.assigneeHourlyRateUsdCents,
+    );
+
+    return {
+      role: row.role,
+      positionOrder,
+      assignedUserId: row.assigneeUserId ?? undefined,
+      location: row.location,
+      experienceLevel: row.experience,
+      workSchedule: toJobListingWorkSchedule(row.schedule),
+      contractLengthMonths: parseMonthCount(row.length),
+      hourlyRateLowUsdCents: assignedRateRange.low ?? estimate.low,
+      hourlyRateHighUsdCents: assignedRateRange.high ?? estimate.high,
+    };
+  });
 
 const serviceScopePhases = [
   {
@@ -9974,7 +11060,7 @@ const serviceScopePhases = [
         task: "Account Setup",
         role: "UX Designer",
         location: "USA",
-        experience: "Guru",
+        experience: "Senior",
         duration: "40 hours",
       },
       {
@@ -10000,14 +11086,14 @@ const serviceScopePhases = [
         task: "Content Writing",
         role: "Copywriter",
         location: "India",
-        experience: "Guru",
+        experience: "Senior",
         duration: "40 hours",
       },
       {
         task: "Visual Assets",
         role: "Designer",
         location: "Pakistan",
-        experience: "Medior",
+        experience: "Mid",
         duration: "30 hours",
       },
     ],
@@ -10042,7 +11128,94 @@ type ServiceScopeRow = (typeof serviceScopePhases)[number]["rows"][number] & {
 };
 
 type ServiceScopePhase = Omit<(typeof serviceScopePhases)[number], "rows"> & {
+  id: string;
   rows: ServiceScopeRow[];
+};
+
+const getServicePhaseOrder = (phaseType: ServiceScopePhase["phaseType"]) => {
+  if (phaseType === "setup") return 0;
+  if (phaseType === "ongoing") return 2;
+  return 1;
+};
+
+const reorderServicePhases = (phases: ServiceScopePhase[]) =>
+  phases
+    .map((phase, index) => ({ phase, index }))
+    .sort((first, second) => {
+      const orderDelta =
+        getServicePhaseOrder(first.phase.phaseType) -
+        getServicePhaseOrder(second.phase.phaseType);
+
+      return orderDelta || first.index - second.index;
+    })
+    .map(({ phase }) => phase);
+
+const reorderServiceRecurringPhases = (
+  phases: ServiceScopePhase[],
+  activeId: UniqueIdentifier,
+  overId: UniqueIdentifier,
+) => {
+  const setupPhases = phases.filter((phase) => phase.phaseType === "setup");
+  const recurringPhases = phases.filter(
+    (phase) => phase.phaseType === "recurring",
+  );
+  const ongoingPhases = phases.filter((phase) => phase.phaseType === "ongoing");
+  const oldIndex = recurringPhases.findIndex((phase) => phase.id === activeId);
+  const newIndex = recurringPhases.findIndex((phase) => phase.id === overId);
+
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+    return phases;
+  }
+
+  return [
+    ...setupPhases,
+    ...arrayMove(recurringPhases, oldIndex, newIndex),
+    ...ongoingPhases,
+  ];
+};
+
+const ServicePhaseSortableCard = ({
+  children,
+  phase,
+}: {
+  children: React.ReactNode;
+  phase: ServiceScopePhase;
+}) => {
+  const {
+    attributes,
+    listeners,
+    transform,
+    transition,
+    setNodeRef,
+    isDragging,
+    isOver,
+  } = useSortable({
+    id: phase.id,
+    disabled: phase.phaseType !== "recurring",
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    zIndex: isDragging ? 1 : 0,
+    position: "relative",
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        isOver &&
+          phase.phaseType === "recurring" &&
+          "after:absolute after:inset-x-0 after:top-0 after:h-[3px] after:bg-primary-500 after:content-['']",
+      )}
+      {...(phase.phaseType === "recurring" ? attributes : {})}
+      {...(phase.phaseType === "recurring" ? listeners : {})}
+    >
+      {children}
+    </div>
+  );
 };
 
 const serviceScopePhaseTypeOptions = [
@@ -10063,65 +11236,85 @@ const serviceScopePhaseTypeOptions = [
   },
 ];
 
+const serviceRecurringScheduleOptions = [
+  { label: "Weekly", value: "weekly" as const },
+  { label: "Monthly", value: "monthly" as const },
+  { label: "Quarterly", value: "quarterly" as const },
+];
+
+const getServiceRecurringScheduleLabel = (schedule?: string) =>
+  serviceRecurringScheduleOptions.find((option) => option.value === schedule)
+    ?.label ?? "Monthly";
+
 const createServicePhasesFromGeneratedScope = (
   scope: any,
 ): ServiceScopePhase[] => {
   const generatedPhases = Array.isArray(scope?.phases) ? scope.phases : [];
 
-  return generatedPhases
-    .map((phase: any, phaseIndex: number) => {
-      const phaseType =
-        phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
-          ? phase.phaseType
-          : "setup";
-      const phaseOption = serviceScopePhaseTypeOptions.find(
-        (option) => option.value === phaseType,
-      );
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
-      const status =
-        phaseType === "ongoing"
-          ? "Ongoing"
-          : phaseType === "recurring"
-            ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
-            : "2 weeks";
-
-      return {
-        name: String(
-          phase?.phaseName ?? phaseOption?.label ?? `Phase ${phaseIndex + 1}`,
-        ),
-        customName: "",
-        status,
-        statusKind: phaseType === "setup" ? "one-time" : phaseType,
-        phaseType,
-        recurrenceSchedule:
-          phaseType === "recurring" ? recurrenceSchedule : undefined,
-        recurrenceCount:
-          phaseType === "recurring" ? recurrenceCount : undefined,
-        note:
+  return reorderServicePhases(
+    generatedPhases
+      .map((phase: any, phaseIndex: number) => {
+        const phaseType =
+          phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
+            ? phase.phaseType
+            : "setup";
+        const phaseOption = serviceScopePhaseTypeOptions.find(
+          (option) => option.value === phaseType,
+        );
+        const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+        const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
+        const status =
           phaseType === "ongoing"
-            ? "Continuous work starting on Day X with no set end date."
+            ? "Ongoing"
             : phaseType === "recurring"
-              ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
-              : "One-time starting work that begins on Day X and will not repeat again.",
-        rows: Array.isArray(phase?.tasks)
-          ? phase.tasks.map((task: any) => ({
-              task: String(task?.taskName ?? "New Task"),
-              role: String(task?.roleTitle ?? "Specialist"),
-              location: String(task?.location ?? "USA"),
-              experience: String(task?.experienceLevel ?? "Junior"),
-              duration: `${Number(task?.estimatedHours ?? 10) || 10} hours`,
-              workSchedule:
-                task?.workSchedule === "part_time"
-                  ? "part_time"
-                  : task?.workSchedule === "custom"
-                    ? "custom"
-                    : "full_time",
-            }))
-          : [],
-      };
-    })
-    .filter((phase: ServiceScopePhase) => phase.name && phase.rows.length > 0);
+              ? `Recurs: ${getServiceRecurringScheduleLabel(recurrenceSchedule)}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
+              : "2 weeks";
+
+        return {
+          id: String(
+            phase?.id ?? `service-generated-phase-${phaseIndex}-${getId()}`,
+          ),
+          name: phaseOption?.label ?? `Phase ${phaseIndex + 1}`,
+          customName:
+            phaseType === "recurring"
+              ? String(phase?.phaseName ?? "")
+                  .replace(/^Recurring(?:\s+\d+)?\s*/i, "")
+                  .trim()
+              : "",
+          status,
+          statusKind: phaseType === "setup" ? "one-time" : phaseType,
+          phaseType,
+          recurrenceSchedule:
+            phaseType === "recurring" ? recurrenceSchedule : undefined,
+          recurrenceCount:
+            phaseType === "recurring" ? recurrenceCount : undefined,
+          note:
+            phaseType === "ongoing"
+              ? "Continuous work starting on Day X with no set end date."
+              : phaseType === "recurring"
+                ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
+                : "One-time starting work that begins on Day X and will not repeat again.",
+          rows: Array.isArray(phase?.tasks)
+            ? phase.tasks.map((task: any) => ({
+                task: String(task?.taskName ?? "New Task"),
+                role: String(task?.roleTitle ?? "Specialist"),
+                location: String(task?.location ?? "USA"),
+                experience: String(task?.experienceLevel ?? "Junior"),
+                duration: `${Number(task?.estimatedHours ?? 10) || 10} hours`,
+                workSchedule:
+                  task?.workSchedule === "part_time"
+                    ? "part_time"
+                    : task?.workSchedule === "custom"
+                      ? "custom"
+                      : "full_time",
+              }))
+            : [],
+        };
+      })
+      .filter(
+        (phase: ServiceScopePhase) => phase.name && phase.rows.length > 0,
+      ),
+  );
 };
 
 const getServicePhaseDisplayParts = (
@@ -10137,12 +11330,9 @@ const getServicePhaseDisplayParts = (
   }
 
   if (phaseType === "recurring") {
-    const recurringNameMatch = phaseName.match(/^Recurring(?:\s+\d+)?/i);
-    const name = recurringNameMatch?.[0] ?? `Recurring ${phaseIndex + 1}`;
-
     return {
-      name,
-      customName: phaseName.replace(name, "").trim(),
+      name: "Recurring",
+      customName: phaseName.replace(/^Recurring(?:\s+\d+)?\s*/i, "").trim(),
     };
   }
 
@@ -10157,142 +11347,117 @@ const createServicePhasesFromPersistedJobListing = (
 ): ServiceScopePhase[] => {
   const persistedPhases = Array.isArray(phases) ? phases : [];
 
-  return persistedPhases
-    .map((phase: any, phaseIndex: number) => {
-      const phaseType: ServiceScopePhase["phaseType"] =
-        phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
-          ? phase.phaseType
-          : "setup";
-      const phaseName = String(
-        phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`,
-      );
-      const { name, customName } = getServicePhaseDisplayParts(
-        phaseType,
-        phaseName,
-        phaseIndex,
-      );
-      const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
-      const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
-      const sourceRows = Array.isArray(phase?.rows)
-        ? phase.rows
-        : Array.isArray(phase?.tasks)
-          ? phase.tasks
-          : [];
-      const rows = sourceRows.map((row: any) => {
-        const durationValue =
-          typeof row?.duration === "object"
-            ? toFiniteNumber(row.duration?.value)
-            : toFiniteNumber(row?.estimatedHours ?? row?.durationHours);
-        const durationType =
-          typeof row?.duration === "object" && row.duration?.type
-            ? String(row.duration.type)
-            : "hours";
+  return reorderServicePhases(
+    persistedPhases
+      .map((phase: any, phaseIndex: number) => {
+        const phaseType: ServiceScopePhase["phaseType"] =
+          phase?.phaseType === "recurring" || phase?.phaseType === "ongoing"
+            ? phase.phaseType
+            : "setup";
+        const phaseName = String(
+          phase?.phaseName ?? phase?.name ?? `Phase ${phaseIndex + 1}`,
+        );
+        const { name, customName } = getServicePhaseDisplayParts(
+          phaseType,
+          phaseName,
+          phaseIndex,
+        );
+        const recurrenceSchedule = phase?.recurrenceSchedule ?? "monthly";
+        const recurrenceCount = Number(phase?.recurrenceCount ?? 3) || 3;
+        const sourceRows = Array.isArray(phase?.rows)
+          ? phase.rows
+          : Array.isArray(phase?.tasks)
+            ? phase.tasks
+            : [];
+        const rows = sourceRows.map((row: any) => {
+          const durationValue =
+            typeof row?.duration === "object"
+              ? toFiniteNumber(row.duration?.value)
+              : toFiniteNumber(row?.estimatedHours ?? row?.durationHours);
+          const durationType =
+            typeof row?.duration === "object" && row.duration?.type
+              ? String(row.duration.type)
+              : "hours";
+
+          return {
+            id: toNullableString(row?.id),
+            task: String(row?.task ?? row?.taskName ?? "New Task"),
+            role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
+            location: String(row?.location ?? "USA"),
+            experience: String(
+              row?.experience ?? row?.experienceLevel ?? "Junior",
+            ),
+            duration: `${durationValue || 10} ${durationType}`,
+            workSchedule:
+              row?.workSchedule === "part_time"
+                ? "part_time"
+                : row?.workSchedule === "custom"
+                  ? "custom"
+                  : "full_time",
+            customHours:
+              row?.workSchedule === "custom"
+                ? Number(row?.customHours) || undefined
+                : undefined,
+            customFrequency:
+              row?.workSchedule === "custom"
+                ? (row?.customFrequency ?? undefined)
+                : undefined,
+            contractLengthMonths: toFiniteNumber(row?.contractLengthMonths),
+            hourlyRateLowUsdCents: toFiniteNumber(row?.hourlyRateLowUsdCents),
+            hourlyRateHighUsdCents: toFiniteNumber(row?.hourlyRateHighUsdCents),
+          };
+        });
 
         return {
-          id: toNullableString(row?.id),
-          task: String(row?.task ?? row?.taskName ?? "New Task"),
-          role: String(row?.role ?? row?.roleTitle ?? "Specialist"),
-          location: String(row?.location ?? "USA"),
-          experience: String(
-            row?.experience ?? row?.experienceLevel ?? "Junior",
+          id: String(
+            phase?.id ?? `service-persisted-phase-${phaseIndex}-${getId()}`,
           ),
-          duration: `${durationValue || 10} ${durationType}`,
-          workSchedule:
-            row?.workSchedule === "part_time"
-              ? "part_time"
-              : row?.workSchedule === "custom"
-                ? "custom"
-                : "full_time",
-          customHours:
-            row?.workSchedule === "custom"
-              ? Number(row?.customHours) || undefined
-              : undefined,
-          customFrequency:
-            row?.workSchedule === "custom"
-              ? (row?.customFrequency ?? undefined)
-              : undefined,
-          contractLengthMonths: toFiniteNumber(row?.contractLengthMonths),
-          hourlyRateLowUsdCents: toFiniteNumber(row?.hourlyRateLowUsdCents),
-          hourlyRateHighUsdCents: toFiniteNumber(row?.hourlyRateHighUsdCents),
+          name,
+          customName,
+          status:
+            phaseType === "ongoing"
+              ? "Ongoing"
+              : phaseType === "recurring"
+                ? `Recurs: ${getServiceRecurringScheduleLabel(recurrenceSchedule)}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
+                : "2 weeks",
+          statusKind:
+            phaseType === "setup"
+              ? "one-time"
+              : phaseType === "ongoing"
+                ? "ongoing"
+                : "recurring",
+          phaseType,
+          recurrenceSchedule:
+            phaseType === "recurring" ? recurrenceSchedule : undefined,
+          recurrenceCount:
+            phaseType === "recurring" ? recurrenceCount : undefined,
+          note:
+            phaseType === "ongoing"
+              ? "Continuous work starting on Day X with no set end date."
+              : phaseType === "recurring"
+                ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
+                : "One-time starting work that begins on Day X and will not repeat again.",
+          rows,
         };
-      });
-
-      return {
-        name,
-        customName,
-        status:
-          phaseType === "ongoing"
-            ? "Ongoing"
-            : phaseType === "recurring"
-              ? `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`
-              : "2 weeks",
-        statusKind:
-          phaseType === "setup"
-            ? "one-time"
-            : phaseType === "ongoing"
-              ? "ongoing"
-              : "recurring",
-        phaseType,
-        recurrenceSchedule:
-          phaseType === "recurring" ? recurrenceSchedule : undefined,
-        recurrenceCount:
-          phaseType === "recurring" ? recurrenceCount : undefined,
-        note:
-          phaseType === "ongoing"
-            ? "Continuous work starting on Day X with no set end date."
-            : phaseType === "recurring"
-              ? "Work that repeats in cycles. Starts on Day X and runs for the number of cycles you set."
-              : "One-time starting work that begins on Day X and will not repeat again.",
-        rows,
-      };
-    })
-    .filter(
-      (phase: ServiceScopePhase) =>
-        phase.name && phase.customName !== undefined && phase.rows.length > 0,
-    );
+      })
+      .filter(
+        (phase: ServiceScopePhase) =>
+          phase.name && phase.customName !== undefined && phase.rows.length > 0,
+      ),
+  );
 };
 
-const projectScopeEditPhases = [
-  "Phase One Research",
-  "Phase Two Research",
-  "Phase Three Research",
-  "Phase Four Research",
-  "Phase Five Research",
-];
-
-const projectScopeEditRows = [
-  {
-    task: "Affinity Mapping",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "USA",
-    experience: "Guru",
-    duration: "40 hours",
-  },
-  {
-    task: "Competitive Analysis",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "USA",
-    experience: "Junior",
-    duration: "40 hours",
-  },
-  {
-    task: "UX Auditing",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "India",
-    experience: "Junior",
-    duration: "40 hours",
-  },
-  {
-    task: "Card Sorting",
-    role: "UX Designer",
-    schedule: "Full-time",
-    location: "Pakistan",
-    experience: "Medior",
-    duration: "40 hours",
-  },
+const projectScopePhaseLabels = [
+  "One",
+  "Two",
+  "Three",
+  "Four",
+  "Five",
+  "Six",
+  "Seven",
+  "Eight",
+  "Nine",
+  "Ten",
 ];
 
 const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
@@ -10301,7 +11466,10 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
   const { projectScopeMethods } = useProjectScopeContext();
   const [, setProjectScopeState] = projectScopeMethods;
   const [roleDescription, setRoleDescription] = useState("");
-  const [headcount, setHeadcount] = useState("2");
+  const [headcount, setHeadcount] = useState("1");
+  const roleDescriptionWordCount = roleDescription.trim()
+    ? roleDescription.trim().split(/\s+/).length
+    : 0;
   const seededRowIdRef = useRef(String(getId()));
 
   useIsomorphicLayoutEffect(() => {
@@ -10350,68 +11518,73 @@ const ExistingContractRoleInfoStep = ({ setProgress }: ProgressProps) => {
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="px-5 py-10 md:px-10 min-[1024px]:px-[70px] min-[1024px]:py-[50px]">
-        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
-          <div className="min-w-0 flex-auto max-w-[885px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+      <div className="px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:py-[50px]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1240px]:flex-row min-[1240px]:items-start">
+          <div className="flex w-full min-w-0 flex-col gap-8 min-[1240px]:w-[886px] min-[1240px]:shrink-0">
+            <h1 className="text-[36px] font-bold leading-[44px] text-dark-blue-400">
               Describe roles
             </h1>
-            <div className="mt-8">
-              <div className="flex items-center justify-between gap-x-4">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                  What do you want new team members to do?
-                </Label>
-                <span className="text-sm leading-5 text-gray-400">
-                  67 / 100
-                </span>
+            <div className="flex flex-col gap-16">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label className="text-lg font-medium leading-7 text-dark-blue-400">
+                    What do you want new team members to do?
+                  </Label>
+                  <span className="text-sm leading-5 text-gray-400">
+                    {roleDescriptionWordCount} / 100
+                  </span>
+                </div>
+                <Textarea
+                  className="h-40 resize-none px-4 py-3 text-base leading-6 text-dark-blue-400 shadow-xs placeholder:text-gray-400"
+                  placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                  value={roleDescription}
+                  onChange={(event) => setRoleDescription(event.target.value)}
+                />
               </div>
-              <Textarea
-                className="mt-3 h-40 text-base"
-                placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
-                value={roleDescription}
-                onChange={(event) => setRoleDescription(event.target.value)}
-              />
-            </div>
-            <div className="mt-16 max-w-[320px]">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                How many people do you want to add to your team?
-              </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <Input
-                className="mt-2"
-                inputMode="numeric"
-                value={headcount}
-                onChange={(event) => setHeadcount(event.target.value)}
-              />
+              <div className="flex h-[114px] w-full flex-col items-start gap-4">
+                <Label className="text-lg font-medium leading-7 text-dark-blue-400">
+                  How many people do you want to add to your team?
+                </Label>
+                <div className="flex h-[70px] w-[320px] items-end gap-2">
+                  <div className="flex h-[70px] w-[320px] flex-col items-start gap-1.5">
+                    <Label className="text-sm font-medium leading-5 text-gray-500">
+                      Amount
+                    </Label>
+                    <Input
+                      className="h-11 rounded-[5px] px-[14px] py-2.5 text-base font-normal leading-6 text-dark-blue-400 shadow-xs"
+                      inputMode="numeric"
+                      value={headcount}
+                      onChange={(event) => setHeadcount(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center gap-x-2">
-              <span className="text-base leading-normal font-semibold text-gray-400">
+          <div className="box-border flex h-[300px] w-full shrink-0 flex-col items-start gap-4 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1240px]:w-[322px]">
+            <div className="flex h-6 w-full items-start justify-between gap-2">
+              <span className="h-6 flex-1 rounded-[4.84px] text-base font-semibold leading-6 text-gray-400">
                 Quick tip
               </span>
               <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
             </div>
-            <p className="mt-4 text-base leading-6 font-semibold text-dark-blue-400">
-              Give us a few details now to save time later:
-            </p>
-            <div className="mt-3 space-y-2">
-              {[
-                "What the role or job is about",
-                "Key responsibilities and tasks to be done",
-                "Specific skills, tools or technologies required",
-                "Desired outcomes or deliverables",
-                "Any deadlines or timing constraints",
-              ].map((item) => (
-                <div key={item} className="flex items-start gap-x-3">
-                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-dark-blue-400" />
-                  <span className="text-sm leading-5 text-dark-blue-400">
+            <div className="flex h-[220px] flex-col gap-2">
+              <p className="mt-0 h-14 text-lg font-semibold leading-7 text-dark-blue-400">
+                Give us a few details now to save time later:
+              </p>
+              <ul className="mt-0 h-[156px] list-disc space-y-1 pl-5 text-sm font-normal leading-5 text-dark-blue-400">
+                {[
+                  "What the role or job is about",
+                  "Key responsibilities and tasks to be done",
+                  "Specific skills, tools or technologies required",
+                  "Desired outcomes or deliverables",
+                  "Any deadlines or timing constraints",
+                ].map((item) => (
+                  <li key={item} className="pl-1">
                     {item}
-                  </span>
-                </div>
-              ))}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
@@ -10425,27 +11598,110 @@ const NoScopeRoleInfoStep = ({
   hiringMode,
 }: ProgressProps & { hiringMode?: HiringModeChoice }) => {
   const { toggleValidation } = useStepContext();
-  const { setDetails } = useJobListingDraftContext();
+  const { details, setDetails } = useJobListingDraftContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [, setProjectScopeState] = projectScopeMethods;
   const isTeamMode = hiringMode !== "individual";
+  const useNoScopeLayout = true;
   const [roleDescription, setRoleDescription] = useState("");
-  const [headcount, setHeadcount] = useState(isTeamMode ? "2" : "1");
-  const [budget, setBudget] = useState("500.00");
+  const [headcount, setHeadcount] = useState("");
+  const [budget, setBudget] = useState(
+    typeof details.budgetAmount === "number"
+      ? String(details.budgetAmount)
+      : "0.00",
+  );
   const [budgetFrequency, setBudgetFrequency] = useState<
     "per_week" | "per_month"
   >("per_week");
-  const [durationChoice, setDurationChoice] = useState("Other");
+  const [durationChoice, setDurationChoice] = useState("");
   const [customDuration, setCustomDuration] = useState("");
   const [customDurationUnit, setCustomDurationUnit] = useState("months");
+  const didHydrateDetailsRef = useRef(false);
+  const hasValidDuration =
+    !useNoScopeLayout ||
+    (durationChoice !== "Other" && durationChoice !== ""
+      ? true
+      : Number(customDuration) > 0);
+  const roleDescriptionWordCount = getWordCount(roleDescription);
+  const hasWordLimitError = roleDescriptionWordCount > STEP_TWO_WORD_LIMIT;
+  const parsedHeadcount = Number(headcount);
+  const hasHeadcountError =
+    isTeamMode &&
+    headcount.trim().length > 0 &&
+    (!Number.isFinite(parsedHeadcount) || parsedHeadcount <= 0);
+  const hasValidHeadcount =
+    !isTeamMode ||
+    (headcount.trim().length > 0 &&
+      Number.isFinite(parsedHeadcount) &&
+      parsedHeadcount > 0);
+  const hasNegativeBudget = budget.trim().startsWith("-");
+  const hasValidBudget =
+    budget.trim().length > 0 &&
+    !hasNegativeBudget &&
+    Number.isFinite(Number(budget.replace(/,/g, ""))) &&
+    Number(budget.replace(/,/g, "")) >= 0;
+
+  useEffect(() => {
+    if (didHydrateDetailsRef.current) return;
+
+    const hasPersistedDetails =
+      typeof details.description === "string" ||
+      typeof details.deliverables === "string" ||
+      typeof details.headcount === "number" ||
+      typeof details.budgetAmount === "number" ||
+      typeof details.durationMonths === "number";
+
+    if (!hasPersistedDetails) return;
+
+    didHydrateDetailsRef.current = true;
+    setRoleDescription(details.description ?? details.deliverables ?? "");
+    setHeadcount(
+      typeof details.headcount === "number" ? String(details.headcount) : "",
+    );
+    if (typeof details.budgetAmount === "number") {
+      setBudget(String(details.budgetAmount));
+    }
+    if (
+      details.budgetFrequency === "per_week" ||
+      details.budgetFrequency === "per_month"
+    ) {
+      setBudgetFrequency(details.budgetFrequency);
+    }
+
+    if (typeof details.durationMonths === "number") {
+      const standardDuration = [3, 6, 12, 24].find(
+        (months) => months === details.durationMonths,
+      );
+      if (standardDuration) {
+        setDurationChoice(`${standardDuration} months`);
+      } else {
+        setDurationChoice("Other");
+        setCustomDuration(String(details.durationMonths));
+        setCustomDurationUnit("months");
+      }
+    }
+  }, [details]);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(
       Boolean(roleDescription.trim()) &&
-        Boolean(headcount.trim()) &&
-        Boolean(budget.trim()),
+        !hasWordLimitError &&
+        hasValidHeadcount &&
+        hasValidBudget &&
+        hasValidDuration,
     );
-  }, [roleDescription, headcount, budget]);
+  }, [
+    budget,
+    customDuration,
+    durationChoice,
+    hasHeadcountError,
+    hasValidHeadcount,
+    hasWordLimitError,
+    headcount,
+    hasValidDuration,
+    hasValidBudget,
+    roleDescription,
+  ]);
 
   useEffect(() => {
     setProgress?.(12);
@@ -10455,11 +11711,18 @@ const NoScopeRoleInfoStep = ({
     const trimmedDescription = roleDescription.trim();
     const parsedHeadcount = Math.max(1, Number.parseInt(headcount, 10) || 1);
     const parsedBudget = Number.parseFloat(budget);
+    const customDurationAmount = Number(customDuration) || 0;
     const durationMonths =
       durationChoice === "Other"
-        ? customDurationUnit === "weeks"
-          ? Math.max(1, Math.ceil((Number(customDuration) || 0) / 4))
-          : Number(customDuration) || undefined
+        ? customDurationUnit === "days"
+          ? Math.max(1, Math.ceil(customDurationAmount / 30))
+          : customDurationUnit === "weeks"
+            ? Math.max(1, Math.ceil(customDurationAmount / 4))
+            : customDurationUnit === "quarters"
+              ? customDurationAmount * 3 || undefined
+              : customDurationUnit === "years"
+                ? customDurationAmount * 12 || undefined
+                : customDurationAmount || undefined
         : Number.parseInt(durationChoice, 10) || undefined;
 
     setDetails((previous) => ({
@@ -10505,24 +11768,43 @@ const NoScopeRoleInfoStep = ({
     setProjectScopeState,
   ]);
 
-  const durationOptions = [
-    {
-      label: "3 months",
-      description: "Short-term support, pilot run, or trial period",
-    },
-    {
-      label: "6 months",
-      description: "Feature rollouts, seasonal needs, or limited contracts",
-    },
-    {
-      label: "12 months",
-      description: "Long-term engagement or steady workload",
-    },
-    {
-      label: "24 months",
-      description: "Ongoing responsibilities or evolving team needs",
-    },
-  ];
+  const durationOptions = isTeamMode
+    ? [
+        {
+          label: "3 months",
+          description: "Short-term support, pilot run, or trial period",
+        },
+        {
+          label: "6 months",
+          description: "Feature rollouts, seasonal needs, or limited contracts",
+        },
+        {
+          label: "12 months",
+          description: "Long-term engagement or steady workload",
+        },
+        {
+          label: "24 months",
+          description: "Ongoing responsibilities or evolving team needs",
+        },
+      ]
+    : [
+        {
+          label: "3 months",
+          description: "Short-term contract, pilot work, or temp coverage",
+        },
+        {
+          label: "6 months",
+          description: "Seasonal support, rollout projects",
+        },
+        {
+          label: "12 months",
+          description: "Long-term hire or retainer",
+        },
+        {
+          label: "24 months",
+          description: "Ongoing support or continuous responsibilities",
+        },
+      ];
 
   return (
     <ScrollArea
@@ -10530,100 +11812,288 @@ const NoScopeRoleInfoStep = ({
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[890px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
+      <div className="flex flex-col gap-y-10 px-5 pb-[100px] pt-10 md:px-10 min-[1024px]:flex-row min-[1024px]:gap-x-8 min-[1024px]:px-[100px] min-[1024px]:py-[50px]">
+        <div className="contents">
+          <div className="flex-auto min-w-0">
+            <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
                 : "Describe role you need"}
             </h1>
 
-            <div className="mt-8">
-              <div className="flex items-center justify-between gap-x-4">
-                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div
+              className={cn(
+                "mt-8",
+                useNoScopeLayout && "flex w-[886px] flex-col gap-3",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex justify-between gap-x-4",
+                  useNoScopeLayout
+                    ? "h-7 items-baseline gap-2"
+                    : "items-center",
+                )}
+              >
+                <Label
+                  className={cn(
+                    "text-base leading-6 font-semibold text-dark-blue-400",
+                    useNoScopeLayout &&
+                      "flex-1 text-lg leading-7 font-medium text-dark-blue-400",
+                  )}
+                >
                   {isTeamMode
                     ? "What do you want your team to work on?"
                     : "What do you want this person to work on?"}
                 </Label>
-                <span className="text-sm leading-5 text-gray-400">
-                  67 / 100
+                <span
+                  className={cn(
+                    "text-sm leading-5 text-gray-400",
+                    useNoScopeLayout && "font-normal",
+                  )}
+                >
+                  {roleDescriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
                 </span>
               </div>
               <Textarea
-                className="mt-3 h-40 text-base"
+                className={cn(
+                  "mt-3 h-40 text-base",
+                  useNoScopeLayout &&
+                    "mt-0 h-[160px] rounded-lg border-gray-300 px-4 py-3 text-[16px] leading-6 font-normal text-gray-400 shadow-xs placeholder:text-gray-400",
+                  useNoScopeLayout &&
+                    roleDescription !== "" && "text-dark-blue-400",
+                  hasWordLimitError &&
+                    "border-error-300 focus:border-error-300 focus:ring-error-100",
+                )}
                 placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
                 value={roleDescription}
+                isInvalid={hasWordLimitError}
                 onChange={(event) => setRoleDescription(event.target.value)}
               />
             </div>
 
-            <div className="mt-16 max-w-[320px]">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            {isTeamMode ? (
+              <div
+                className={cn(
+                  "mt-16 max-w-[320px]",
+                  useNoScopeLayout &&
+                    "flex w-[886px] max-w-none flex-col gap-4",
+                )}
+              >
+              <Label
+                className={cn(
+                  "text-base leading-6 font-semibold text-dark-blue-400",
+                  useNoScopeLayout &&
+                    "text-lg leading-7 font-medium text-dark-blue-400",
+                )}
+              >
                 {isTeamMode
                   ? "How many people do you want to add to your team?"
                   : "How many people do you want to add?"}
               </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <Input
-                className="mt-2"
-                inputMode="numeric"
-                value={headcount}
-                onChange={(event) => setHeadcount(event.target.value)}
-              />
-            </div>
-
-            <div className="mt-16">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
-                {isTeamMode
-                  ? "What's your estimated budget for this team?"
-                  : "What's your estimated budget for this role?"}
-              </Label>
-              <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
-                Amount
-              </Label>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <InputGroup className="w-[200px]">
-                  <InputLeftAddon>$</InputLeftAddon>
-                  <Input
-                    inputMode="decimal"
-                    value={budget}
-                    onChange={(event) => setBudget(event.target.value)}
-                  />
-                </InputGroup>
-                <Select
-                  value={budgetFrequency}
-                  onValueChange={(value) =>
-                    setBudgetFrequency(value as "per_week" | "per_month")
-                  }
+              <div
+                className={cn(
+                  useNoScopeLayout && "flex w-[320px] flex-col gap-1.5",
+                )}
+              >
+                <Label
+                  className={cn(
+                    "mt-6 block text-sm leading-5 font-semibold text-gray-500",
+                    useNoScopeLayout &&
+                      "mt-0 font-medium text-gray-500",
+                  )}
                 >
-                  <SelectTrigger className="h-12 w-[154px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[
-                      { label: "per week", value: "per_week" },
-                      { label: "per month", value: "per_month" },
-                    ].map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  Amount
+                </Label>
+                <Input
+                  className={cn(
+                    "mt-2",
+                    useNoScopeLayout &&
+                      "mt-0 h-11 w-[320px] rounded-[5px] border-gray-300 px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400 shadow-xs",
+                    hasHeadcountError &&
+                      "border-error-300 focus:border-error-300 focus:ring-error-100",
+                  )}
+                  inputMode="numeric"
+                  pattern={useNoScopeLayout ? "[0-9]*" : undefined}
+                  value={headcount}
+                  isInvalid={hasHeadcountError}
+                  onChange={(event) =>
+                    setHeadcount(
+                      useNoScopeLayout
+                        ? event.target.value.replace(/[^0-9]/g, "")
+                        : event.target.value,
+                    )
+                  }
+                />
               </div>
-            </div>
+              </div>
+            ) : null}
 
-            <div className="mt-16">
-              <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+            {useNoScopeLayout ? (
+              <div className="mt-16 flex w-[886px] flex-col gap-4">
+                <Label className="text-lg leading-7 font-medium text-dark-blue-400">
+                  What&apos;s your estimated budget for this {isTeamMode ? "team" : "role"}?
+                </Label>
+                <div className="flex w-[320px] items-end gap-2">
+                  <div className="flex w-[176px] flex-col gap-1.5">
+                    <Label className="text-sm leading-5 font-medium text-gray-500">
+                      Amount
+                    </Label>
+                    <InputGroup fieldHeight="2.75rem" className="w-[176px]">
+                      <InputLeftElement
+                        className={cn(
+                          "text-[16px] leading-6 text-gray-400",
+                          budget !== "" && budget !== "0.00" &&
+                            "text-dark-blue-400",
+                        )}
+                      >
+                        $
+                      </InputLeftElement>
+                      <Input
+                        className={cn(
+                          "h-11 w-[176px] rounded-[5px] border-gray-300 px-[14px] py-2.5 pl-8 text-[16px] leading-6 font-normal text-gray-400 shadow-xs",
+                          budget !== "" && budget !== "0.00" &&
+                            "text-dark-blue-400",
+                          hasNegativeBudget &&
+                            "border-error-300 focus:border-error-300 focus:ring-error-100",
+                        )}
+                        inputMode="decimal"
+                        pattern="^\d*(\.\d{0,2})?$"
+                        value={budget}
+                        isInvalid={hasNegativeBudget}
+                        onFocus={() => {
+                          if (budget === "0.00") {
+                            setBudget("");
+                            setDetails((previous) => ({
+                              ...previous,
+                              budgetAmount: 0,
+                            }));
+                          }
+                        }}
+                        onChange={(event) => {
+                          const value = normalizeBudgetInput(
+                            event.target.value,
+                          );
+                          setBudget(value);
+                        }}
+                        onKeyDown={(event) => {
+                          const allowedKeys = [
+                            "Backspace",
+                            "Delete",
+                            "ArrowLeft",
+                            "ArrowRight",
+                            "Tab",
+                            "Home",
+                            "End",
+                          ];
+                          if (
+                            allowedKeys.includes(event.key) ||
+                            event.metaKey ||
+                            event.ctrlKey
+                          ) {
+                            return;
+                          }
+                          if (!/^[0-9.-]$/.test(event.key)) {
+                            event.preventDefault();
+                            return;
+                          }
+                          if (event.key === "." && budget.includes(".")) {
+                            event.preventDefault();
+                          }
+                        }}
+                        onBlur={() => {
+                          const numericValue = Number(budget);
+                          if (!Number.isFinite(numericValue)) return;
+                          setBudget(numericValue.toFixed(2));
+                        }}
+                      />
+                    </InputGroup>
+                  </div>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={(value) =>
+                      setBudgetFrequency(value as "per_week" | "per_month")
+                    }
+                  >
+                    <SelectTrigger className="h-11 w-[136px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal text-dark-blue-400">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[
+                        { label: "per week", value: "per_week" },
+                        { label: "per month", value: "per_month" },
+                      ].map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-16">
+                <Label className="text-base leading-6 font-semibold text-dark-blue-400">
+                  What&apos;s your estimated budget for this role?
+                </Label>
+                <Label className="mt-6 block text-sm leading-5 font-semibold text-gray-500">
+                  Amount
+                </Label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <InputGroup className="w-[200px]">
+                    <InputLeftAddon>$</InputLeftAddon>
+                    <Input
+                      inputMode="decimal"
+                      value={budget}
+                      onChange={(event) => setBudget(event.target.value)}
+                    />
+                  </InputGroup>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={(value) =>
+                      setBudgetFrequency(value as "per_week" | "per_month")
+                    }
+                  >
+                    <SelectTrigger className="h-12 w-[154px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[
+                        { label: "per week", value: "per_week" },
+                        { label: "per month", value: "per_month" },
+                      ].map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={cn(
+                "mt-16",
+                useNoScopeLayout && "flex w-[886px] flex-col gap-4",
+              )}
+            >
+              <Label
+                className={cn(
+                  "text-base leading-6 font-semibold text-dark-blue-400",
+                  useNoScopeLayout &&
+                    "text-lg leading-7 font-medium text-dark-blue-400",
+                )}
+              >
                 {isTeamMode
                   ? "How long do you expect to work with this team?"
                   : "How long do you expect to work with this person?"}
               </Label>
               <RadioGroup
-                className="mt-6 grid gap-4 md:grid-cols-2"
+                className={cn(
+                  "mt-6 grid gap-4 md:grid-cols-2",
+                  useNoScopeLayout && "mt-0 w-[886px] gap-4",
+                )}
                 value={durationChoice}
                 onValueChange={setDurationChoice}
               >
@@ -10633,6 +12103,8 @@ const NoScopeRoleInfoStep = ({
                     value={option.label}
                     className={cn(
                       "flex min-h-[84px] items-start gap-x-4 rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                      useNoScopeLayout &&
+                        "h-[84px] w-[435px] min-h-0 items-center gap-x-4 py-4 pr-6 pl-4",
                       durationChoice === option.label && "border-primary-500",
                     )}
                   >
@@ -10640,17 +12112,27 @@ const NoScopeRoleInfoStep = ({
                       <span className="block text-lg leading-7 font-semibold text-dark-blue-400">
                         {option.label}
                       </span>
-                      <span className="mt-1 block text-sm leading-5 text-gray-500">
+                      <span
+                        className={cn(
+                          "mt-1 block text-sm leading-5 text-gray-500",
+                          useNoScopeLayout && "text-dark-blue-400",
+                        )}
+                      >
                         {option.description}
                       </span>
                     </span>
                     <span
                       className={cn(
-                        "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                        "mt-1 inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                        useNoScopeLayout && "mt-0",
                         durationChoice === option.label &&
-                          "border-[5px] border-primary-500",
+                          "border-primary-500",
                       )}
-                    />
+                    >
+                      {durationChoice === option.label ? (
+                        <span className="size-2 rounded-full bg-primary-500" />
+                      ) : null}
+                    </span>
                   </HeadlessRadioGroupItem>
                 ))}
 
@@ -10659,6 +12141,11 @@ const NoScopeRoleInfoStep = ({
                   tabIndex={0}
                   className={cn(
                     "rounded-lg border border-gray-200 bg-white p-4 text-left shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] focus-visible:outline-none",
+                    useNoScopeLayout && durationChoice === "Other"
+                      ? "flex h-[116px] w-[435px] flex-col justify-center gap-3 py-4 pr-6 pl-4"
+                      : useNoScopeLayout
+                        ? "flex h-[84px] w-[435px] items-center gap-4 py-4 pr-6 pl-4"
+                        : undefined,
                     durationChoice === "Other" && "border-primary-500",
                   )}
                   onClick={() => setDurationChoice("Other")}
@@ -10669,7 +12156,16 @@ const NoScopeRoleInfoStep = ({
                     }
                   }}
                 >
-                  <div className="flex items-start gap-x-4">
+                  <div
+                    className={cn(
+                      "flex items-start gap-x-4",
+                      useNoScopeLayout && durationChoice === "Other"
+                        ? "flex h-7 w-[395px] items-center justify-between gap-2"
+                        : useNoScopeLayout
+                          ? "flex h-[52px] w-[395px] items-center gap-4"
+                          : undefined,
+                    )}
+                  >
                     <span className="min-w-0 flex-auto">
                       <span className="block text-lg leading-7 font-semibold text-dark-blue-400">
                         Other
@@ -10677,48 +12173,108 @@ const NoScopeRoleInfoStep = ({
                     </span>
                     <span
                       className={cn(
-                        "mt-1 inline-flex size-[18px] shrink-0 rounded-full border border-gray-300",
+                        "mt-1 inline-flex size-[18px] shrink-0 items-center justify-center rounded-full border-[1.5px] border-gray-300",
+                        useNoScopeLayout && "mt-0",
                         durationChoice === "Other" &&
-                          "border-[5px] border-primary-500",
+                          "border-primary-500",
                       )}
-                    />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Input
-                      className="w-[180px]"
-                      placeholder="Enter duration"
-                      value={customDuration}
-                      onChange={(event) =>
-                        setCustomDuration(event.target.value)
-                      }
-                    />
-                    <Select
-                      value={customDurationUnit}
-                      onValueChange={setCustomDurationUnit}
                     >
-                      <SelectTrigger className="h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {["months", "weeks"].map((unit) => (
-                          <SelectItem key={unit} value={unit}>
-                            {unit === "weeks" ? "Weeks" : "Months"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      {durationChoice === "Other" ? (
+                        <span className="size-2 rounded-full bg-primary-500" />
+                      ) : null}
+                    </span>
                   </div>
+                  {(!useNoScopeLayout || durationChoice === "Other") && (
+                    <div
+                      className={cn(
+                        "mt-4 flex flex-wrap gap-2",
+                        useNoScopeLayout && "mt-0 h-11 w-[395px] flex-nowrap",
+                      )}
+                    >
+                      <Input
+                        className={cn(
+                          "w-[180px] text-gray-400 placeholder:text-gray-400",
+                          useNoScopeLayout &&
+                            "h-11 w-[251px] rounded-[5px] px-[14px] py-2.5 text-[16px] leading-6 font-normal shadow-xs",
+                          useNoScopeLayout &&
+                            customDuration !== "" &&
+                            "text-dark-blue-400",
+                        )}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="Enter duration"
+                        value={customDuration}
+                        onChange={(event) =>
+                          setCustomDuration(
+                            event.target.value.replace(/\D/g, ""),
+                          )
+                        }
+                      />
+                      {useNoScopeLayout ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-11 w-[136px] justify-between rounded-[5px] px-3.5 text-[16px] leading-6 font-normal text-dark-blue-400"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {customDurationUnit.charAt(0).toUpperCase() +
+                                customDurationUnit.slice(1)}
+                              <ChevronDown className="size-4 text-gray-500" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent
+                            align="start"
+                            className="h-[118px] w-[136px] min-w-0 overflow-y-scroll rounded-[5px] border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+                          >
+                            {projectDurationUnits.map((unit) => (
+                              <DropdownMenuItem
+                                key={unit}
+                                className={cn(
+                                  "h-[34px] w-full shrink-0 px-3 py-2.5 text-[13px] leading-[13px] text-gray-500 hover:bg-gray-50 hover:text-gray-black focus:bg-gray-50 focus:text-gray-black",
+                                  unit === customDurationUnit &&
+                                    "bg-gray-50 text-gray-black",
+                                )}
+                                onSelect={() => setCustomDurationUnit(unit)}
+                              >
+                                {unit}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <Select
+                          value={customDurationUnit}
+                          onValueChange={setCustomDurationUnit}
+                        >
+                          <SelectTrigger className="h-12 w-[150px] px-3 text-sm leading-5 font-semibold text-dark-blue-400">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {["months", "weeks"].map((unit) => (
+                              <SelectItem key={unit} value={unit}>
+                                {unit === "weeks" ? "Weeks" : "Months"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  )}
                 </div>
               </RadioGroup>
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+          <div className="xs:max-[1024px]:hidden shrink-0 self-start">
+            <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
             <div className="flex items-center gap-x-2">
               <span className="text-base leading-normal font-semibold text-gray-400">
                 Quick tip
               </span>
-              <Lightbulb05 className="ml-auto size-5 shrink-0 text-gray-400" />
+              <Lightbulb03 className="ml-auto size-5 shrink-0 text-gray-400" />
             </div>
             <p className="mt-4 text-base leading-6 font-semibold text-dark-blue-400">
               Give us a few details now to save time later:
@@ -10739,31 +12295,12 @@ const NoScopeRoleInfoStep = ({
                 </div>
               ))}
             </div>
+            </div>
           </div>
         </div>
       </div>
     </ScrollArea>
   );
-};
-
-const createProjectScopeRow = (
-  row: (typeof projectScopeEditRows)[number],
-  idSuffix: string,
-): PhaseRow => {
-  const [durationValue, durationType = "hours"] = row.duration.split(/\s+/);
-
-  return {
-    id: `project-scope-${idSuffix}-${getId()}`,
-    task: row.task,
-    role: row.role,
-    location: row.location,
-    experience: row.experience as ExperienceLevel,
-    duration: {
-      value: Number(durationValue) || 1,
-      type: durationType as (typeof DURATION_TYPE)[number],
-    },
-    workSchedule: "full_time",
-  };
 };
 
 const formatProjectRowDuration = (row: PhaseRow) =>
@@ -10859,48 +12396,88 @@ const createPhasesFromPersistedJobListing = (phases: any): Phase[] => {
 
 const createProjectScopePhase = (
   phaseName: string,
-  phaseIndex: number,
 ): Phase => ({
   phaseName,
   phaseType: "setup",
-  rows: projectScopeEditRows.map((row, rowIndex) =>
-    createProjectScopeRow(row, `${phaseIndex}-${rowIndex}`),
-  ),
+  rows: [],
 });
+
+type ProjectAssistantHistoryItem = {
+  id: string
+  prompt: string
+  result?: string
+  status: "pending" | "success" | "error"
+  listingBefore?: ProjectAssistantListingSnapshot
+  listingAfter?: ProjectAssistantListingSnapshot
+}
+
+type ProjectAssistantListingSnapshot = {
+  phases: Phase[]
+  budgetAmount: number
+  isBudgetStale: boolean
+  timelineMonths: number
+}
+
+type ServiceAssistantHistoryItem = {
+  id: string;
+  prompt: string;
+  result?: string;
+  status: "pending" | "success" | "error";
+  listingBefore?: ServiceAssistantListingSnapshot;
+  listingAfter?: ServiceAssistantListingSnapshot;
+};
+
+type ServiceAssistantListingSnapshot = {
+  phases: ServiceScopePhase[];
+  budgetAmount: number;
+  isBudgetStale: boolean;
+};
 
 const ProjectScopeEditStep = ({
   setProgress,
   jobListingId,
 }: ProgressProps & { jobListingId?: string | null }) => {
-  const { toggleValidation } = useStepContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState, setProjectScopeState] = projectScopeMethods;
-  const [phases, setPhases] = useState<Phase[]>(() =>
-    projectScopeEditPhases.map((phase, phaseIndex) =>
-      createProjectScopePhase(phase, phaseIndex),
-    ),
-  );
-  const [expandedPhaseNames, setExpandedPhaseNames] = useState(() => [
-    ...projectScopeEditPhases,
-  ]);
-  const [searchValue, setSearchValue] = useState("");
-  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null);
-  const [draftRole, setDraftRole] = useState("");
+  const { toggleValidation } = useStepContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState, setProjectScopeState] = projectScopeMethods
+  const { details: jobListingDraftDetails } = useJobListingDraftContext()
+  const [phases, setPhases] = useState<Phase[]>([])
+  const [expandedPhaseNames, setExpandedPhaseNames] = useState<string[]>([])
+  const [searchValue, setSearchValue] = useState("")
+  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null)
+  const [draftRole, setDraftRole] = useState("")
+  const [roleAutocompleteOptions, setRoleAutocompleteOptions] = useState<
+    string[]
+  >([])
+  const [isRoleAutocompleteOpen, setRoleAutocompleteOpen] = useState(false)
+  const roleAutocompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  )
+  const roleAutocompleteRequestIdRef = useRef(0)
   const [draftSchedule, setDraftSchedule] =
-    useState<JobListingWorkSchedule>("full_time");
-  const [draftCustomHours, setDraftCustomHours] = useState("15");
-  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week");
-  const [assistantMessage, setAssistantMessage] = useState("");
-  const [assistantResult, setAssistantResult] = useState("");
-  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
-  const didGenerateInitialScopeRef = useRef(false);
-  const didApplyPersistedScopeRef = useRef(false);
-  const skipNextProjectScopeSaveRef = useRef(false);
-  const lastSavedProjectScopeSignatureRef = useRef("");
-  const [budgetAmount, setBudgetAmount] = useState(5000);
-  const [projectTimelineMonths, setProjectTimelineMonths] = useState(3);
-  const [budgetFrequency, setBudgetFrequency] = useState("week");
-  const normalizedSearchValue = normalizeSearchText(searchValue);
+    useState<JobListingWorkSchedule>("full_time")
+  const [draftCustomHours, setDraftCustomHours] = useState("15")
+  const [draftCustomFrequency, setDraftCustomFrequency] = useState("per_week")
+  const [assistantMessage, setAssistantMessage] = useState("")
+  const [assistantResult, setAssistantResult] = useState("")
+  const [assistantLastPrompt, setAssistantLastPrompt] = useState("")
+  const [assistantHistory, setAssistantHistory] = useState<
+    ProjectAssistantHistoryItem[]
+  >([])
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false)
+  const assistantChatScrollRef = useRef<HTMLDivElement | null>(null)
+  const didGenerateInitialScopeRef = useRef(false)
+  const didApplyPersistedScopeRef = useRef(false)
+  const skipNextProjectScopeSaveRef = useRef(false)
+  const lastSavedProjectScopeSignatureRef = useRef("")
+  const assistantUndoSnapshotRef =
+    useRef<ProjectAssistantListingSnapshot | null>(null)
+  const [budgetAmount, setBudgetAmount] = useState(5000)
+  const [isBudgetLoading, setIsBudgetLoading] = useState(false)
+  const [isBudgetStale, setIsBudgetStale] = useState(false)
+  const [budgetFrequency, setBudgetFrequency] = useState("week")
+  const [budgetTooltipOpen, setBudgetTooltipOpen] = useState(false)
+  const normalizedSearchValue = normalizeSearchText(searchValue)
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
         const phaseText = normalizeSearchText(
@@ -10914,80 +12491,157 @@ const ProjectScopeEditStep = ({
               formatProjectRowDuration(row),
               formatProjectRowSchedule(row),
             ]) ?? []),
-          ].join(" "),
-        );
+          ].join(" ")
+        )
 
-        return phaseText.includes(normalizedSearchValue);
+        return phaseText.includes(normalizedSearchValue)
       })
-    : phases;
+    : phases
 
   const isScopeValid = phases.some(
-    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0,
-  );
+    (phase) => phase.phaseName?.trim() && (phase.rows ?? []).length > 0
+  )
+  const projectTimelineMonths = useMemo(
+    () => getProjectTimelineMonthsFromScope(phases),
+    [phases]
+  )
 
   useEffect(() => {
-    if (didApplyPersistedScopeRef.current) return;
+    const query = draftRole.trim()
+
+    if (roleAutocompleteTimerRef.current) {
+      clearTimeout(roleAutocompleteTimerRef.current)
+    }
+
+    if (!activeRoleKey || !query) {
+      setRoleAutocompleteOptions([])
+      setRoleAutocompleteOpen(false)
+      return
+    }
+
+    roleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++roleAutocompleteRequestIdRef.current
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10
+        )
+        if (currentRequestId !== roleAutocompleteRequestIdRef.current) return
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data
+        )
+          ? response.data
+          : []
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item))
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase()
+        )
+
+        setRoleAutocompleteOptions(options)
+        setRoleAutocompleteOpen(options.length > 0)
+      } catch {
+        if (currentRequestId !== roleAutocompleteRequestIdRef.current) return
+        setRoleAutocompleteOptions([])
+        setRoleAutocompleteOpen(false)
+      }
+    }, 250)
+
+    return () => {
+      if (roleAutocompleteTimerRef.current) {
+        clearTimeout(roleAutocompleteTimerRef.current)
+      }
+    }
+  }, [activeRoleKey, draftRole])
+
+  useEffect(() => {
+    if (didApplyPersistedScopeRef.current) return
 
     const persistedPhases = Array.isArray(projectScopeState)
       ? projectScopeState.filter(
-          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0,
+          (phase) => phase?.phaseName?.trim() && (phase.rows ?? []).length > 0
         )
-      : [];
+      : []
 
-    if (persistedPhases.length === 0) return;
+    if (persistedPhases.length === 0) return
 
-    didApplyPersistedScopeRef.current = true;
-    didGenerateInitialScopeRef.current = true;
-    skipNextProjectScopeSaveRef.current = true;
-    setPhases(persistedPhases);
+    didApplyPersistedScopeRef.current = true
+    didGenerateInitialScopeRef.current = true
+    setPhases(persistedPhases)
     setExpandedPhaseNames(
       persistedPhases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name)),
-    );
-  }, [projectScopeState]);
+        .filter((name): name is string => Boolean(name))
+    )
+  }, [projectScopeState])
 
   useEffect(() => {
-    if (!jobListingId || didGenerateInitialScopeRef.current) return;
-    didGenerateInitialScopeRef.current = true;
+    if (!jobListingId || didGenerateInitialScopeRef.current) return
+    didGenerateInitialScopeRef.current = true
 
     const generateScope = async () => {
+      setIsBudgetLoading(true)
       try {
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "project",
-          durationMonths: projectTimelineMonths,
+          description: jobListingDraftDetails.description,
+          deliverables: jobListingDraftDetails.deliverables,
+          successCriteria: jobListingDraftDetails.successCriteria,
+          tools: jobListingDraftDetails.tools,
+          durationMonths: projectTimelineMonths || 1,
           budgetUsdCents: budgetAmount * 100,
-        });
+          apply: true,
+        })
         const generatedPhases = createPhasesFromGeneratedScope(
-          response?.data?.scope,
-        );
+          response?.data?.scope
+        )
 
         if (generatedPhases.length > 0) {
-          setPhases(generatedPhases);
+          skipNextProjectScopeSaveRef.current = true
+          setPhases(generatedPhases)
           setExpandedPhaseNames(
-            generatedPhases.map((phase) => phase.phaseName ?? ""),
-          );
+            generatedPhases.map((phase) => phase.phaseName ?? "")
+          )
+        }
+        const totalBudgetUsdCents = toFiniteNumber(
+          response?.data?.totalBudgetUsdCents
+        )
+        if (typeof totalBudgetUsdCents === "number") {
+          setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
+          setIsBudgetStale(Boolean(response?.data?.isBudgetStale))
         }
       } catch (error) {
-        console.error("Failed to generate project scope", error);
+        console.error("Failed to generate project scope", error)
+      } finally {
+        setIsBudgetLoading(false)
       }
-    };
+    }
 
-    void generateScope();
-  }, [budgetAmount, jobListingId, projectTimelineMonths]);
+    void generateScope()
+  }, [
+    jobListingId,
+    projectTimelineMonths,
+    jobListingDraftDetails.description,
+    jobListingDraftDetails.deliverables,
+    jobListingDraftDetails.successCriteria,
+    jobListingDraftDetails.tools,
+  ])
 
   const updatePhase = (phaseName: string, nextValues: Partial<Phase>) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues },
-      ),
-    );
-  };
+        phase.phaseName !== phaseName ? phase : { ...phase, ...nextValues }
+      )
+    )
+  }
 
   const updateRow = (
     phaseName: string,
     rowId: string,
-    nextValues: Partial<PhaseRow>,
+    nextValues: Partial<PhaseRow>
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
@@ -10996,21 +12650,21 @@ const ProjectScopeEditStep = ({
           : {
               ...phase,
               rows: (phase.rows ?? []).map((row) =>
-                row.id === rowId ? { ...row, ...nextValues } : row,
+                row.id === rowId ? { ...row, ...nextValues } : row
               ),
-            },
-      ),
-    );
-  };
+            }
+      )
+    )
+  }
 
   const addPhase = () => {
-    const nextPhaseName = `Phase ${phases.length + 1} Research`;
+    const nextPhaseName = `Phase ${phases.length + 1} Research`
     setPhases((currentPhases) => [
       ...currentPhases,
-      createProjectScopePhase(nextPhaseName, currentPhases.length),
-    ]);
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName]);
-  };
+      createProjectScopePhase(nextPhaseName),
+    ])
+    setExpandedPhaseNames((currentNames) => [...currentNames, nextPhaseName])
+  }
 
   const addTask = (phaseName: string) => {
     setPhases((currentPhases) =>
@@ -11031,107 +12685,26 @@ const ProjectScopeEditStep = ({
                   workSchedule: "full_time",
                 },
               ],
-            },
-      ),
-    );
+            }
+      )
+    )
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames
-        : [...currentNames, phaseName],
-    );
-  };
+        : [...currentNames, phaseName]
+    )
+  }
 
-  const addProjectQualityTask = () => {
-    const targetPhaseName = phases[0]?.phaseName;
-
-    if (!targetPhaseName) return false;
-
-    setPhases((currentPhases) =>
-      currentPhases.map((phase) =>
-        phase.phaseName !== targetPhaseName
-          ? phase
-          : {
-              ...phase,
-              rows: (phase.rows ?? []).some(
-                (row) => row.task === "Quality Review",
-              )
-                ? phase.rows
-                : [
-                    ...(phase.rows ?? []),
-                    {
-                      id: `project-scope-quality-task-${getId()}`,
-                      task: "Quality Review",
-                      role: "QA Engineer",
-                      location: "USA",
-                      experience: "Junior",
-                      duration: { value: 10, type: "hours" },
-                      workSchedule: "full_time",
-                    },
-                  ],
-            },
-      ),
-    );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(targetPhaseName)
-        ? currentNames
-        : [...currentNames, targetPhaseName],
-    );
-
-    return true;
-  };
-
-  const applyProjectAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message);
-
-    if (!normalizedMessage) return false;
-
-    if (normalizedMessage.includes("budget")) {
-      setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
-        setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
-        );
-        return nextAmount;
-      });
-      return true;
-    } else if (
-      normalizedMessage.includes("timeline") ||
-      normalizedMessage.includes("shorten")
-    ) {
-      setProjectTimelineMonths((currentMonths) => {
-        const nextMonths = Math.max(1, currentMonths - 1);
-        setAssistantResult(
-          `Applied: project timeline shortened to ${nextMonths} ${nextMonths === 1 ? "month" : "months"}.`,
-        );
-        return nextMonths;
-      });
-      return true;
-    } else if (
-      normalizedMessage.includes("quality") ||
-      normalizedMessage.includes("scope") ||
-      normalizedMessage.includes("improve")
-    ) {
-      const didAddTask = addProjectQualityTask();
-      setAssistantResult(
-        didAddTask
-          ? "Applied: added a Quality Review task to the first phase."
-          : "No available phase found to update.",
-      );
-      return true;
-    } else {
-      setAssistantResult(
-        "Try one of the suggested actions: reduce the budget, shorten the timeline, or improve scope quality.",
-      );
-    }
-
-    return false;
-  };
-
-  const buildProjectAssistantScope = () => ({
-    phases: phases.map((phase, phaseIndex) => {
-      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
+  const buildProjectAssistantScopeFromPhases = (sourcePhases: Phase[]) => ({
+    phases: sourcePhases.map((phase, phaseIndex) => {
+      const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
       const { phaseType, durationDays, recurrenceSchedule, recurrenceCount } =
-        getJobListingPhaseFields(phase, phaseName, phases, phaseIndex);
+        getJobListingPhaseFields(
+          phase,
+          phaseName,
+          sourcePhases,
+          phaseIndex
+        )
 
       return {
         phaseName,
@@ -11149,127 +12722,374 @@ const ProjectScopeEditStep = ({
           customFrequency: row.customFrequency,
           estimatedHours: toEstimatedHours(row),
         })),
-      };
+      }
     }),
-  });
+  })
 
-  const applyGeneratedProjectScope = (generatedScope: any) => {
-    const generatedPhases = Array.isArray(generatedScope?.phases)
-      ? generatedScope.phases
-      : [];
+  const buildProjectAssistantScope = () =>
+    buildProjectAssistantScopeFromPhases(phases)
 
-    if (!generatedPhases.length) return false;
+  const getProjectAssistantListingSnapshot = (
+    sourcePhases: Phase[] = phases,
+    sourceBudgetAmount: number = budgetAmount,
+    sourceIsBudgetStale: boolean = isBudgetStale
+  ): ProjectAssistantListingSnapshot => ({
+    phases: sourcePhases,
+    budgetAmount: sourceBudgetAmount,
+    isBudgetStale: sourceIsBudgetStale,
+    timelineMonths: getProjectTimelineMonthsFromScope(sourcePhases),
+  })
 
-    const nextPhases: Phase[] = generatedPhases.map(
-      (phase: any, phaseIndex: number) => ({
-        phaseName: String(phase?.phaseName ?? `Phase ${phaseIndex + 1}`),
-        phaseType: phase?.phaseType ?? "setup",
-        recurrenceSchedule: phase?.recurrenceSchedule ?? undefined,
-        recurrenceCount: phase?.recurrenceCount ?? undefined,
-        rows: (Array.isArray(phase?.tasks) ? phase.tasks : []).map(
-          (task: any, taskIndex: number) => ({
-            id: `project-ai-task-${phaseIndex}-${taskIndex}-${getId()}`,
-            task: String(task?.taskName ?? "New Task"),
-            role: String(task?.roleTitle ?? "Specialist"),
-            location: task?.location ?? "USA",
-            experience: (task?.experienceLevel ?? "Junior") as ExperienceLevel,
-            duration: {
-              value: Number(task?.estimatedHours) || 1,
-              type: "hours",
-            },
-            workSchedule: task?.workSchedule ?? "full_time",
-            customHours: task?.customHours ?? undefined,
-            customFrequency: task?.customFrequency ?? undefined,
-          }),
-        ),
-      }),
-    );
-
-    setPhases(nextPhases);
+  const restoreProjectAssistantListingSnapshot = (
+    snapshot: ProjectAssistantListingSnapshot
+  ) => {
+    skipNextProjectScopeSaveRef.current = true
+    setPhases(snapshot.phases)
     setExpandedPhaseNames(
-      nextPhases
+      snapshot.phases
         .map((phase) => phase.phaseName)
-        .filter((name): name is string => Boolean(name)),
-    );
-    return true;
-  };
+        .filter((name): name is string => Boolean(name))
+    )
+    setBudgetAmount(snapshot.budgetAmount)
+    setIsBudgetStale(snapshot.isBudgetStale)
+  }
 
-  const runProjectAssistant = async (message: string) => {
-    if (!message.trim()) return;
+  const persistProjectAssistantListingSnapshot = async (
+    snapshot: ProjectAssistantListingSnapshot
+  ) => {
+    if (!jobListingId) return
 
-    if (!jobListingId) {
-      applyProjectAssistantFallback(message);
-      setAssistantMessage("");
-      return;
+    const payload = buildProjectAssistantScopeFromPhases(snapshot.phases)
+
+    await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+      hasScope: true,
+      phases: payload.phases,
+    })
+  }
+
+  const applyPersistedProjectScopeFromAssistant = (data: any) => {
+    const persistedPhases =
+      data?.listing?.phases ?? data?.jobListing?.phases ?? data?.phases
+    const nextPhases = createPhasesFromPersistedJobListing(persistedPhases)
+
+    if (nextPhases.length > 0) {
+      skipNextProjectScopeSaveRef.current = true
+      setPhases(nextPhases)
+      setExpandedPhaseNames(
+        nextPhases
+          .map((phase) => phase.phaseName)
+          .filter((name): name is string => Boolean(name))
+      )
     }
 
-    setIsAssistantLoading(true);
+    const budgetUsdCents =
+      toFiniteNumber(data?.listing?.budgetAmountUsdCents) ??
+      toFiniteNumber(data?.jobListing?.budgetAmountUsdCents) ??
+      toFiniteNumber(data?.totalBudgetUsdCents)
+
+    const nextBudgetAmount =
+      typeof budgetUsdCents === "number"
+        ? Math.round(budgetUsdCents / 100)
+        : budgetAmount
+
+    if (typeof budgetUsdCents === "number") {
+      setBudgetAmount(nextBudgetAmount)
+      setIsBudgetStale(Boolean(data?.isBudgetStale))
+    }
+
+    return nextPhases.length > 0
+      ? getProjectAssistantListingSnapshot(
+          nextPhases,
+          nextBudgetAmount,
+          typeof budgetUsdCents === "number"
+            ? Boolean(data?.isBudgetStale)
+            : isBudgetStale
+        )
+      : null
+  }
+
+  const getProjectAssistantResultText = (
+    value: unknown,
+    fallback: string
+  ) => {
+    if (typeof value === "string") return value
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) =>
+          typeof item === "string" ? item : JSON.stringify(item)
+        )
+        .filter(Boolean)
+        .join("\n")
+    }
+
+    if (value && typeof value === "object") {
+      const objectValue = value as {
+        summary?: unknown
+        message?: unknown
+        suggestions?: unknown
+      }
+
+      if (typeof objectValue.summary === "string") return objectValue.summary
+      if (typeof objectValue.message === "string") return objectValue.message
+
+      if (Array.isArray(objectValue.suggestions)) {
+        return objectValue.suggestions
+          .map((item) =>
+            typeof item === "string" ? item : JSON.stringify(item)
+          )
+          .filter(Boolean)
+          .join("\n")
+      }
+    }
+
+    return fallback
+  }
+
+  const startProjectAssistantHistoryItem = (
+    prompt: string,
+    listingBefore: ProjectAssistantListingSnapshot
+  ) => {
+    const historyId = `project-assistant-history-${getId()}`
+
+    setAssistantHistory((currentHistory) =>
+      [
+        ...currentHistory,
+        {
+          id: historyId,
+          prompt,
+          status: "pending" as const,
+          listingBefore,
+        },
+      ].slice(-20)
+    )
+
+    return historyId
+  }
+
+  const completeProjectAssistantHistoryItem = (
+    id: string,
+    prompt: string,
+    result: string,
+    status: Exclude<ProjectAssistantHistoryItem["status"], "pending"> =
+      "success",
+    listingAfter?: ProjectAssistantListingSnapshot
+  ) => {
+    setAssistantResult(result)
+    setAssistantLastPrompt(prompt)
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id ? { ...item, result, status, listingAfter } : item
+      )
+    )
+  }
+
+  const markProjectAssistantHistoryItemPending = (
+    id: string,
+    listingBefore: ProjectAssistantListingSnapshot
+  ) => {
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              result: undefined,
+              status: "pending",
+              listingBefore,
+              listingAfter: undefined,
+            }
+          : item
+      )
+    )
+  }
+
+  useEffect(() => {
+    if (assistantHistory.length === 0) return
+
+    window.requestAnimationFrame(() => {
+      const scrollContainer = assistantChatScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [assistantHistory])
+
+  const runProjectAssistantRequest = async (
+    historyId: string,
+    prompt: string
+  ) => {
+    if (!jobListingId) {
+      completeProjectAssistantHistoryItem(
+        historyId,
+        prompt,
+        "Smart Assistant needs a saved job draft first. Please try again in a moment.",
+        "error"
+      )
+      return
+    }
+
+    setIsAssistantLoading(true)
     try {
-      const response = await JobListingAPI.SmartAssistant(jobListingId, {
-        mode: "scope",
-        command: message,
+      const response = await JobListingAPI.SmartAssistantScope(jobListingId, {
+        command: prompt,
         currentScope: buildProjectAssistantScope(),
         workType: "project",
-      });
-      const data = response?.data ?? {};
+        currentTotalBudgetUsdCents: Math.round(budgetAmount * 100),
+        currentTotalTimelineDays: getProjectTimelineDaysFromScope(phases),
+      })
+      const data = response?.data ?? {}
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyProjectAssistantFallback(message);
-        setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable.",
-        );
-        return;
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
+          getProjectAssistantResultText(
+            data.message,
+            "Smart Assistant is temporarily unavailable."
+          ),
+          "error"
+        )
+        return
       }
 
-      if (applyGeneratedProjectScope(data.updatedScope)) {
-        setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the project scope.",
-        );
+      const listingAfter = applyPersistedProjectScopeFromAssistant(data)
+
+      if (listingAfter) {
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
+          getProjectAssistantResultText(
+            data.summary,
+            "Applied: Smart Assistant updated the project scope."
+          ),
+          "success",
+          listingAfter
+        )
       } else {
-        setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope.",
-        );
+        completeProjectAssistantHistoryItem(
+          historyId,
+          prompt,
+          getProjectAssistantResultText(
+            data.summary,
+            "Smart Assistant did not return an updated scope."
+          ),
+          "error"
+        )
       }
     } catch (error: any) {
-      applyProjectAssistantFallback(message);
-      setAssistantResult(
+      completeProjectAssistantHistoryItem(
+        historyId,
+        prompt,
         error?.response?.data?.message ||
           error?.message ||
           "Smart Assistant is temporarily unavailable.",
-      );
+        "error"
+      )
     } finally {
-      setAssistantMessage("");
-      setIsAssistantLoading(false);
+      setIsAssistantLoading(false)
     }
-  };
+  }
+
+  const runProjectAssistant = async (message: string) => {
+    const prompt = message.trim()
+    if (!prompt) return
+
+    const listingBefore = getProjectAssistantListingSnapshot()
+    assistantUndoSnapshotRef.current = listingBefore
+    setAssistantLastPrompt(prompt)
+    const historyId = startProjectAssistantHistoryItem(prompt, listingBefore)
+    setAssistantMessage("")
+
+    await runProjectAssistantRequest(historyId, prompt)
+  }
+
+  const retryProjectAssistantHistoryItem = async (
+    item: ProjectAssistantHistoryItem
+  ) => {
+    const prompt = item.prompt.trim()
+    if (!prompt || isAssistantLoading) return
+
+    const listingBefore = getProjectAssistantListingSnapshot()
+    assistantUndoSnapshotRef.current = listingBefore
+    setAssistantLastPrompt(prompt)
+    markProjectAssistantHistoryItemPending(item.id, listingBefore)
+    await runProjectAssistantRequest(item.id, prompt)
+  }
+
+  const undoProjectAssistant = async () => {
+    if (!assistantUndoSnapshotRef.current) return
+
+    const snapshot = assistantUndoSnapshotRef.current
+    setIsAssistantLoading(true)
+
+    try {
+      restoreProjectAssistantListingSnapshot(snapshot)
+      await persistProjectAssistantListingSnapshot(snapshot)
+      assistantUndoSnapshotRef.current = null
+      setAssistantResult("")
+      setAssistantLastPrompt("")
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope."
+      )
+    } finally {
+      setIsAssistantLoading(false)
+    }
+  }
+
+  const restoreProjectAssistantHistoryItem = async (
+    item: ProjectAssistantHistoryItem
+  ) => {
+    if (!item.listingAfter) return
+
+    setIsAssistantLoading(true)
+
+    try {
+      restoreProjectAssistantListingSnapshot(item.listingAfter)
+      await persistProjectAssistantListingSnapshot(item.listingAfter)
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope."
+      )
+    } finally {
+      setIsAssistantLoading(false)
+    }
+  }
 
   const removePhase = (phaseName: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.phaseName !== phaseName),
-    );
+        : currentPhases.filter((phase) => phase.phaseName !== phaseName)
+    )
     setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName),
-    );
-  };
+      currentNames.filter((name) => name !== phaseName)
+    )
+  }
 
   const togglePhase = (phaseName: string) => {
     setExpandedPhaseNames((currentNames) =>
       currentNames.includes(phaseName)
         ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName],
-    );
-  };
+        : [...currentNames, phaseName]
+    )
+  }
 
   const openRoleEditor = (phaseName: string, row: PhaseRow) => {
-    const key = `${phaseName}-${row.id}`;
-    setActiveRoleKey(key);
-    setDraftRole(row.role ?? "");
-    setDraftSchedule(row.workSchedule ?? "full_time");
-    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15));
-    setDraftCustomFrequency(row.customFrequency ?? "per_week");
-  };
+    const key = `${phaseName}-${row.id}`
+    setActiveRoleKey(key)
+    setDraftRole(row.role ?? "")
+    setRoleAutocompleteOptions([])
+    setRoleAutocompleteOpen(false)
+    setDraftSchedule(row.workSchedule ?? "full_time")
+    setDraftCustomHours(String(row.customHours ?? row.duration?.value ?? 15))
+    setDraftCustomFrequency(row.customFrequency ?? "per_week")
+  }
 
   const saveRoleEditor = (phaseName: string, rowId: string) => {
     updateRow(phaseName, rowId, {
@@ -11281,54 +13101,65 @@ const ProjectScopeEditStep = ({
           : undefined,
       customFrequency:
         draftSchedule === "custom" ? draftCustomFrequency : undefined,
-    });
-    setActiveRoleKey(null);
-  };
+    })
+    setActiveRoleKey(null)
+    setRoleAutocompleteOpen(false)
+  }
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(isScopeValid);
-  }, [isScopeValid]);
+    toggleValidation(isScopeValid)
+  }, [isScopeValid])
 
   useEffect(() => {
-    setProgress?.(22.5);
-  }, [setProgress]);
+    setProgress?.(22.5)
+  }, [setProgress])
 
   useEffect(() => {
-    setProjectScopeState(phases);
-  }, [phases, setProjectScopeState]);
+    setProjectScopeState(phases)
+  }, [phases, setProjectScopeState])
 
   useEffect(() => {
-    if (!jobListingId || !isScopeValid) return;
+    if (!jobListingId || !isScopeValid) return
 
-    const payload = buildProjectAssistantScope();
-    const signature = JSON.stringify(payload);
+    const payload = buildProjectAssistantScope()
+    const signature = JSON.stringify(payload)
 
     if (skipNextProjectScopeSaveRef.current) {
-      skipNextProjectScopeSaveRef.current = false;
-      lastSavedProjectScopeSignatureRef.current = signature;
-      return;
+      skipNextProjectScopeSaveRef.current = false
+      lastSavedProjectScopeSignatureRef.current = signature
+      return
     }
 
-    if (signature === lastSavedProjectScopeSignatureRef.current) return;
+    if (signature === lastSavedProjectScopeSignatureRef.current) return
 
+    setIsBudgetLoading(true)
     const timeout = window.setTimeout(() => {
       const saveScope = async () => {
         try {
-          await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+          const response = await JobListingAPI.ApplyGeneratedScope(jobListingId, {
             hasScope: true,
             phases: payload.phases,
-          });
-          lastSavedProjectScopeSignatureRef.current = signature;
+          })
+          const totalBudgetUsdCents = toFiniteNumber(
+            response?.data?.totalBudgetUsdCents
+          )
+          if (typeof totalBudgetUsdCents === "number") {
+            setBudgetAmount(Math.round(totalBudgetUsdCents / 100))
+            setIsBudgetStale(Boolean(response?.data?.isBudgetStale))
+          }
+          lastSavedProjectScopeSignatureRef.current = signature
         } catch (error) {
-          console.error("Failed to save project job listing scope", error);
+          console.error("Failed to save project job listing scope", error)
+        } finally {
+          setIsBudgetLoading(false)
         }
-      };
+      }
 
-      void saveScope();
-    }, 700);
+      void saveScope()
+    }, 700)
 
-    return () => window.clearTimeout(timeout);
-  }, [phases, isScopeValid, jobListingId]);
+    return () => window.clearTimeout(timeout)
+  }, [phases, isScopeValid, jobListingId])
 
   return (
     <ScrollArea
@@ -11338,74 +13169,137 @@ const ProjectScopeEditStep = ({
     >
       <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
         <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
-          <div className="min-w-0 flex-auto min-[1180px]:w-[887px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              Edit your scope
-            </h1>
-            <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-              Modify the table as needed manually or with the help of Smart
-              Assistant, your project plan will adjust accordingly.
-            </p>
+          <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
+            <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+              <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                Edit your scope
+              </h1>
+              <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                Modify the table as needed manually or with the help of Smart
+                Assistant, your project plan will adjust accordingly.
+              </p>
+            </div>
 
             <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Budget Calculator
+              <div className="flex h-[106px] flex-1 items-center gap-6 border-b border-gray-200 p-6 md:border-b-0 md:border-r">
+                <div className="flex h-[58px] flex-1 flex-col items-start gap-2 p-0">
+                  <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                    <span className="h-5 w-[121px] shrink-0">
+                      Budget Calculator
+                    </span>
                     <TooltipProvider>
-                      <Tooltip>
+                      <Tooltip
+                        open={budgetTooltipOpen}
+                        onOpenChange={setBudgetTooltipOpen}
+                      >
                         <TooltipTrigger asChild>
                           <Button
                             variant="link"
                             type="button"
                             aria-label="Show budget calculator details"
-                            className="text-inherit"
+                            className="size-4 p-0 text-inherit"
+                            onClick={() =>
+                              setBudgetTooltipOpen((isOpen) => !isOpen)
+                            }
                           >
-                            <HelpCircle className="size-4" />
+                            <Info className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          Estimated budget updates from scope, schedule, and
-                          role details.
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={12}
+                          visual="white"
+                          className="flex h-[226px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                        >
+                          <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                          <div className="flex h-[186px] w-[182.55px] shrink-0 items-center">
+                            <div>
+                              <p>Your budget updates automatically based on:</p>
+                              <ul className="my-4 list-disc pl-5">
+                                <li>Tasks</li>
+                                <li>Roles</li>
+                                <li>Location</li>
+                                <li>Experience level</li>
+                                <li>Task duration</li>
+                              </ul>
+                              <p>
+                                Any change here updates the budget shown in the
+                                sidebar.
+                              </p>
+                            </div>
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
-                    <span className="text-2xl leading-8 font-semibold">
-                      ${budgetAmount.toLocaleString()}
+                  {isAssistantLoading || isBudgetLoading ? (
+                    <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
+                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
                     </span>
-                    <span className="text-sm leading-5">per</span>
-                    <Select
-                      value={budgetFrequency}
-                      onValueChange={setBudgetFrequency}
-                    >
-                      <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="w-32">
-                        {["week", "month"].map((frequency) => (
-                          <SelectItem key={frequency} value={frequency}>
-                            {frequency}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  ) : (
+                    <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        ${budgetAmount.toLocaleString()}
+                      </span>
+                      <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
+                        per
+                      </span>
+                      <Select
+                        value={budgetFrequency}
+                        onValueChange={setBudgetFrequency}
+                      >
+                        <SelectTrigger
+                          indicator={false}
+                          className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                        >
+                          <SelectValue />
+                          <ChevronDown className="size-3 shrink-0 text-gray-400" />
+                        </SelectTrigger>
+                        <SelectContent className="w-32">
+                          {["week", "month"].map((frequency) => (
+                            <SelectItem key={frequency} value={frequency}>
+                              {frequency}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {isBudgetStale ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                aria-label="Budget rates unavailable"
+                                className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-warning-600"
+                              >
+                                <AlertTriangle className="size-4" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent visual="white" size="md">
+                              Some pricing rates are unavailable. The budget may
+                              be incomplete.
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                   <img
                     src="/job-listing/money-bag.png"
                     alt=""
                     aria-hidden="true"
-                    className="size-6"
+                    className="size-8"
                   />
                 </div>
               </div>
-              <div className="flex items-center justify-between px-5 py-[22px]">
-                <div>
-                  <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                    Project Timeline Calculator
+              <div className="flex h-[105px] flex-1 items-start gap-6 p-6">
+                <div className="flex h-[57px] flex-1 flex-col items-start gap-2 p-0">
+                  <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                    <span className="h-5 w-[180px] shrink-0">
+                      Project Timeline Calculator
+                    </span>
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -11413,21 +13307,51 @@ const ProjectScopeEditStep = ({
                             variant="link"
                             type="button"
                             aria-label="Show timeline calculator details"
-                            className="text-inherit"
+                            className="size-4 p-0 text-inherit"
                           >
-                            <HelpCircle className="size-4" />
+                            <Info className="size-4" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                          Timeline updates from phase and task durations.
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={12}
+                          visual="white"
+                          className="flex h-[190px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                        >
+                          <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                          <div className="flex h-[150px] w-[182.55px] shrink-0 items-center">
+                            <div>
+                              <p>The project timeline adjusts based on:</p>
+                              <ul className="my-4 list-disc pl-5">
+                                <li>Task durations</li>
+                                <li>Assigned work schedules</li>
+                                <li>Number of team members</li>
+                              </ul>
+                              <p>
+                                Any change here will update the project's total
+                                length.
+                              </p>
+                            </div>
+                          </div>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
                   </div>
-                  <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
-                    {projectTimelineMonths}{" "}
-                    {projectTimelineMonths === 1 ? "month" : "months"}
-                  </p>
+                  {isAssistantLoading ? (
+                    <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
+                      <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                    </span>
+                  ) : (
+                    <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] w-4 shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        {projectTimelineMonths}
+                      </span>
+                      <span className="h-[17px] w-[51px] shrink-0 text-sm font-medium leading-[17px]">
+                        {projectTimelineMonths === 1 ? "month" : "months"}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                   <img
@@ -11439,100 +13363,244 @@ const ProjectScopeEditStep = ({
                 </div>
               </div>
             </div>
-
             <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
+              <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
                 <Button
-                  className="h-10 rounded-r-none border-0"
+                  className="h-9 w-[123px] rounded-l-[5px] rounded-r-none border-y border-l border-r-0 border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 capitalize text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={() =>
                     setExpandedPhaseNames(
                       phases
                         .map((phase) => phase.phaseName)
-                        .filter((name): name is string => Boolean(name)),
+                        .filter((name): name is string => Boolean(name))
                     )
                   }
                 >
-                  <ChevronDown className="size-4" />
-                  Expand all
+                  <ChevronsDown className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-[72px] shrink-0 text-center">
+                    Expand All
+                  </span>
                 </Button>
                 <Button
-                  className="h-10 rounded-l-none border-y-0 border-r-0"
+                  className="h-9 w-[131px] rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={() => setExpandedPhaseNames([])}
                 >
-                  <ChevronDown className="size-4 rotate-180" />
-                  Collapse All
+                  <ChevronsUp className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-20 shrink-0 text-center">
+                    Collapse All
+                  </span>
                 </Button>
               </div>
               <div className="flex flex-col gap-3 md:flex-row">
-                <div className="relative w-full md:w-[250px]">
-                  <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    className="h-10 pl-9"
+                <SearchField className="h-9 w-full shrink-0 md:w-[223px]">
+                  <SearchFieldButton className="left-2.5 size-4 text-gray-400">
+                    <SearchMd className="size-4" />
+                  </SearchFieldButton>
+                  <SearchFieldInput
+                    className="h-9 w-[223px] rounded-[5px] py-2.5 pl-[34px] pr-3 text-sm leading-5 text-gray-500 placeholder:text-gray-500 placeholder:opacity-50"
                     placeholder="Find a phase or task"
                     value={searchValue}
                     onChange={(event) => setSearchValue(event.target.value)}
                   />
-                </div>
+                </SearchField>
                 <Button
-                  className="h-10"
+                  className="h-9 w-[124px] shrink-0 rounded-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                   variant="outlined"
                   visual="gray"
                   onClick={addPhase}
                 >
-                  <Plus className="size-4" />
-                  Add Phase
+                  <Plus className="size-[15px] shrink-0 text-gray-500" />
+                  <span className="h-5 w-[73px] shrink-0 text-center">
+                    Add Phase
+                  </span>
                 </Button>
               </div>
             </div>
 
-            <div className="mt-6 space-y-3">
-              {visiblePhases.map((phase, phaseIndex) => {
-                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`;
-                const isExpanded = expandedPhaseNames.includes(phaseName);
+            <div className="mt-6 space-y-3 pb-8">
+              {isAssistantLoading || isBudgetLoading ? (
+                <div
+                  className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                  aria-busy="true"
+                  aria-label="Scope budget is updating"
+                >
+                  <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                    <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                      <div className="flex h-8 min-w-0 items-center gap-2 p-0">
+                        <Button
+                          variant="link"
+                          type="button"
+                          aria-label="Scope update in progress"
+                          className="size-8 rounded-[5px] p-1.5 text-inherit"
+                          disabled
+                        >
+                          <ChevronDown className="size-5 text-gray-500" />
+                        </Button>
+                        <span className="relative h-7 w-[179px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 self-stretch">
+                      <span className="relative hidden h-7 w-[120px] shrink-0 overflow-hidden rounded bg-gray-100 md:inline-flex">
+                        <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                      </span>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        aria-label="Scope actions loading"
+                        className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
+                        disabled
+                      >
+                        <MoreHorizontal className="size-[15px] text-gray-500" />
+                      </IconButton>
+                      <IconButton
+                        variant="outlined"
+                        visual="gray"
+                        aria-label="Add task disabled while Smart Assistant updates"
+                        className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
+                        disabled
+                      >
+                        <Plus className="size-3 text-gray-500" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                    {[
+                      "Task Name",
+                      "Role",
+                      "Location",
+                      "Experience",
+                      "Duration",
+                    ].map((header) => (
+                      <span
+                        key={header}
+                        className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                      >
+                        <span className="h-[18px] shrink-0">{header}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {Array.from({ length: 4 }).map((_, rowIndex) => (
+                    <div
+                      key={rowIndex}
+                      className="grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
+                    >
+                      <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span
+                          className={cn(
+                            "relative h-5 shrink-0 overflow-hidden rounded bg-gray-100",
+                            rowIndex === 0 && "w-[120px]",
+                            rowIndex === 1 && "w-[180px]",
+                            rowIndex === 2 && "w-40",
+                            rowIndex === 3 && "w-[86px]"
+                          )}
+                        >
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
+                        <span className="relative h-4 w-[180px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                        <span className="relative h-4 w-[104px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
+                        <span className="relative h-7 w-[112px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span className="relative h-7 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                        <span className="relative h-5 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                visiblePhases.map((phase, phaseIndex) => {
+                const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
+                const isExpanded = expandedPhaseNames.includes(phaseName)
+                const phaseNameParts = phaseName.split(" ")
+                const phasePrimaryName = `Phase ${
+                  projectScopePhaseLabels[phaseIndex] ?? phaseIndex + 1
+                }`
+                const phaseSecondaryName =
+                  phaseNameParts[0] === "Phase"
+                    ? phaseNameParts.slice(2).join(" ")
+                    : phaseName
+                const { startDay, endDay } = getPhaseDayRange(
+                  phases,
+                  phaseIndex
+                )
 
                 return (
                   <div
                     key={phaseName}
-                    className="rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                    className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
                   >
-                    <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                      <div className="flex min-w-0 items-center gap-x-4">
-                        <Button
-                          variant="link"
-                          type="button"
-                          aria-label={
-                            isExpanded
-                              ? `Collapse ${phaseName}`
-                              : `Expand ${phaseName}`
-                          }
-                          className="text-inherit"
-                          onClick={() => togglePhase(phaseName)}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              "size-5 text-gray-500",
-                              isExpanded && "rotate-180",
-                            )}
-                          />
-                        </Button>
-                        <Input
-                          className="h-9 border-0 bg-transparent px-0 text-lg leading-7 font-semibold text-gray-black shadow-none"
-                          value={phaseName}
-                          onChange={(event) =>
-                            updatePhase(phaseName, {
-                              phaseName: event.target.value,
-                            })
-                          }
-                        />
+                    <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                      <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                        <div className="flex h-8 min-w-0 items-center gap-2 p-0">
+                          <Button
+                            variant="link"
+                            type="button"
+                            aria-label={
+                              isExpanded
+                                ? `Collapse ${phaseName}`
+                                : `Expand ${phaseName}`
+                            }
+                            className="size-8 rounded-[5px] p-1.5 text-inherit"
+                            onClick={() => togglePhase(phaseName)}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "size-5 text-gray-500",
+                                !isExpanded && "rotate-180"
+                              )}
+                            />
+                          </Button>
+                          <div className="flex h-7 min-w-0 items-center gap-1.5 p-0">
+                            <span className="inline-flex h-7 shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
+                              {phasePrimaryName}
+                            </span>
+                            {phaseSecondaryName ? (
+                              <span className="inline-flex h-5 min-w-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
+                                {phaseSecondaryName}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-x-3">
-                        <span className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
-                          <Clock className="size-4 text-success-500" />
-                          {getPhaseDayRangeLabel(phases, phaseIndex)}
+                      <div className="flex items-center gap-3 self-stretch">
+                        <span className="hidden h-4 min-w-[93px] shrink-0 items-center gap-2 whitespace-nowrap text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                          <span className="flex h-4 shrink-0 items-center whitespace-nowrap">
+                            Day {startDay}
+                          </span>
+                          {typeof endDay === "number" &&
+                          endDay !== startDay ? (
+                            <>
+                              <span className="flex h-4 w-[7px] shrink-0 items-center justify-center text-center">
+                                -
+                              </span>
+                              <span className="flex h-4 shrink-0 items-center whitespace-nowrap">
+                                Day {endDay}
+                              </span>
+                            </>
+                          ) : null}
                         </span>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -11540,8 +13608,9 @@ const ProjectScopeEditStep = ({
                               variant="ghost"
                               visual="gray"
                               aria-label={`Open actions for ${phaseName}`}
+                              className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
                             >
-                              <MoreHorizontal className="size-4" />
+                              <MoreHorizontal className="size-[15px] text-gray-500" />
                             </IconButton>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
@@ -11568,251 +13637,434 @@ const ProjectScopeEditStep = ({
                           variant="outlined"
                           visual="gray"
                           aria-label={`Add task to ${phaseName}`}
+                          className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
                           onClick={() => addTask(phaseName)}
                         >
-                          <Plus className="size-4" />
+                          <Plus className="size-3 text-gray-500" />
                         </IconButton>
                       </div>
                     </div>
 
                     {isExpanded ? (
                       <>
-                        <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
-                          <span>Task Name</span>
-                          <span>Role</span>
-                          <span>Location</span>
-                          <span>Experience</span>
-                          <span>Duration</span>
+                        <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                          {[
+                            "Task Name",
+                            "Role",
+                            "Location",
+                            "Experience",
+                            "Duration",
+                          ].map((header) => (
+                            <span
+                              key={header}
+                              className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                            >
+                              {header === "Role" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex w-[222px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Defines the type of specialist needed for
+                                      this task. Used to match talent and
+                                      generate the job description.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Location" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Influences team coordination and affects
+                                      how the budget is estimated.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Experience" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-28 w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Helps determine the level of skill needed.
+                                      Impacts estimated delivery time and team
+                                      composition.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : header === "Duration" ? (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="h-[18px] shrink-0 cursor-default">
+                                        {header}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="left"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      Estimated hours to complete the task.
+                                      Directly affects the project&apos;s timeline
+                                      and budget.
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              ) : (
+                                <span className="h-[18px] shrink-0">
+                                  {header}
+                                </span>
+                              )}
+                            </span>
+                          ))}
                         </div>
                         {(phase.rows ?? []).map((row) => {
-                          const roleKey = `${phaseName}-${row.id}`;
-                          const isRoleOpen = activeRoleKey === roleKey;
+                          const roleKey = `${phaseName}-${row.id}`
+                          const isRoleOpen = activeRoleKey === roleKey
 
                           return (
                             <div
                               key={row.id}
-                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
+                              className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
                             >
-                              <Input
-                                className="h-8 border-0 bg-transparent px-0 text-sm leading-5 font-semibold text-gray-black shadow-none"
-                                value={row.task}
-                                onChange={(event) =>
-                                  updateRow(phaseName, row.id, {
-                                    task: event.target.value,
-                                  })
-                                }
-                              />
-                              <div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <Input
+                                  className="h-5 min-w-0 flex-1 truncate rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
+                                  value={row.task}
+                                  onChange={(event) =>
+                                    updateRow(phaseName, row.id, {
+                                      task: event.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
                                 <Button
                                   variant="link"
                                   type="button"
-                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
+                                  className="h-[17px] w-[83px] justify-start p-0 text-left text-sm font-normal leading-[17px] text-gray-600 hover:no-underline"
                                   onClick={() => openRoleEditor(phaseName, row)}
                                 >
                                   {row.role}
                                 </Button>
-                                <p className="text-xs leading-[18px] text-gray-400">
+                                <p className="h-[18px] shrink-0 whitespace-nowrap text-xs font-normal leading-[18px] text-gray-400">
                                   {formatProjectRowSchedule(row)}
                                 </p>
                               </div>
-                              <CountriesCombobox
-                                value={row.location}
-                                onValueChange={(location) =>
-                                  updateRow(phaseName, row.id, { location })
-                                }
-                                placeholder="Location"
-                                triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
-                              />
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="outlined"
-                                    visual="gray"
-                                    type="button"
-                                    className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
-                                    rightIcon={<ChevronDown className="size-3" />}
-                                  >
-                                    {row.experience}
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start">
-                                  {EXPERIENCE_LEVELS.map((experience) => (
-                                    <DropdownMenuItem
-                                      key={experience}
-                                      onSelect={() =>
-                                        updateRow(phaseName, row.id, {
-                                          experience,
-                                        })
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
+                                <CountriesCombobox
+                                  value={row.location}
+                                  onValueChange={(location) =>
+                                    updateRow(phaseName, row.id, { location })
+                                  }
+                                  placeholder="Location"
+                                  triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-[5px] pr-2 text-xs leading-[18px] text-gray-700"
+                                />
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="outlined"
+                                      visual="gray"
+                                      type="button"
+                                      className="h-7 w-max gap-x-1.5 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 shadow-none"
+                                      rightIcon={
+                                        <ChevronDown className="size-[15px]" />
                                       }
                                     >
-                                      {experience}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                              <Input
-                                className="h-8 w-[92px] border-0 bg-transparent px-0 text-sm leading-5 text-gray-500 shadow-none"
-                                value={formatProjectRowDuration(row)}
-                                onChange={(event) => {
-                                  const [value, type = "hours"] =
-                                    event.target.value.split(/\s+/);
-                                  updateRow(phaseName, row.id, {
-                                    duration: {
-                                      value: Number(value) || 1,
-                                      type: DURATION_TYPE.includes(
-                                        type as (typeof DURATION_TYPE)[number],
-                                      )
-                                        ? (type as (typeof DURATION_TYPE)[number])
-                                        : "hours",
-                                    },
-                                  });
-                                }}
-                              />
+                                      {formatExperienceDisplay(row.experience)}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start">
+                                    {EXPERIENCE_LEVELS.map((experience) => (
+                                      <DropdownMenuItem
+                                        key={experience}
+                                        onSelect={() =>
+                                          updateRow(phaseName, row.id, {
+                                            experience,
+                                          })
+                                        }
+                                      >
+                                        {experience}
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                                <Input
+                                  className="h-5 w-[59px] rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-gray-600 opacity-65 shadow-none focus:border-transparent focus:ring-0"
+                                  value={formatProjectRowDuration(row)}
+                                  onChange={(event) => {
+                                    const [value, type = "hours"] =
+                                      event.target.value.split(/\s+/)
+                                    updateRow(phaseName, row.id, {
+                                      duration: {
+                                        value: Number(value) || 1,
+                                        type: DURATION_TYPE.includes(
+                                          type as (typeof DURATION_TYPE)[number]
+                                        )
+                                          ? (type as (typeof DURATION_TYPE)[number])
+                                          : "hours",
+                                      },
+                                    })
+                                  }}
+                                />
+                              </div>
 
                               {isRoleOpen ? (
-                                <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
-                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                    Role
-                                  </Label>
-                                  <Input
-                                    className="mt-1.5 h-9 text-sm leading-5"
-                                    value={draftRole}
-                                    onChange={(event) =>
-                                      setDraftRole(event.target.value)
+                                <Dialog
+                                  open={isRoleOpen}
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setActiveRoleKey(null)
                                     }
-                                  />
-                                  <div className="mt-4">
-                                    <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                      Work Schedule
-                                    </Label>
-                                    <Select
-                                      value={draftSchedule}
-                                      onValueChange={(value) =>
-                                        setDraftSchedule(
-                                          value as JobListingWorkSchedule,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="w-[248px]">
-                                        {[
-                                          {
-                                            value: "full_time" as const,
-                                            label: "Full-time",
-                                          },
-                                          {
-                                            value: "part_time" as const,
-                                            label: "Part-time",
-                                          },
-                                          {
-                                            value: "custom" as const,
-                                            label: "Custom",
-                                          },
-                                        ].map((schedule) => (
-                                          <SelectItem
-                                            key={schedule.value}
-                                            value={schedule.value}
-                                          >
-                                            {schedule.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {draftSchedule === "custom" ? (
-                                    <div className="mt-4">
-                                      <div className="flex items-center justify-between gap-x-3">
-                                        <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                          Estimated hours
+                                  }}
+                                >
+                                  <DialogContent
+                                    variant="unanimated"
+                                    accessibilityTitle="Edit role"
+                                    dialogOverlay={
+                                      <DialogOverlay className="bg-[#101828]/20" />
+                                    }
+                                    className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                                  >
+                                    <div className="flex w-[323px] flex-col items-start gap-3">
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Role
                                         </Label>
-                                        <IconButton
-                                          className="size-7 text-gray-500"
-                                          type="button"
-                                          variant="ghost"
-                                          visual="gray"
-                                          aria-label="Clear custom schedule"
-                                          onClick={() => {
-                                            setDraftCustomHours("");
-                                            setDraftCustomFrequency("per_week");
-                                            setDraftSchedule("full_time");
+                                        <Combobox
+                                          className="w-[323px]"
+                                          value={draftRole}
+                                          onChange={(value) => {
+                                            setDraftRole(String(value ?? ""))
+                                            setRoleAutocompleteOpen(false)
                                           }}
+                                          nullable
                                         >
-                                          <X className="size-4" />
-                                        </IconButton>
+                                          <ComboboxTrigger>
+                                            <ComboboxInput
+                                              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                                              value={draftRole}
+                                              onChange={(event) =>
+                                                setDraftRole(
+                                                  event.target.value
+                                                )
+                                              }
+                                              onClick={() =>
+                                                setRoleAutocompleteOpen(
+                                                  roleAutocompleteOptions.length >
+                                                    0
+                                                )
+                                              }
+                                              onFocus={() =>
+                                                setRoleAutocompleteOpen(
+                                                  roleAutocompleteOptions.length >
+                                                    0
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                setTimeout(
+                                                  () =>
+                                                    setRoleAutocompleteOpen(
+                                                      false
+                                                    ),
+                                                  150
+                                                )
+                                              }
+                                            />
+                                          </ComboboxTrigger>
+
+                                          {isRoleAutocompleteOpen ? (
+                                            <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                                              <ScrollArea viewportClassName="h-[120px]">
+                                                {roleAutocompleteOptions.map(
+                                                  (option) => (
+                                                    <ComboboxOption
+                                                      key={option}
+                                                      value={option}
+                                                    >
+                                                      {option}
+                                                    </ComboboxOption>
+                                                  )
+                                                )}
+                                              </ScrollArea>
+                                            </ComboboxOptions>
+                                          ) : null}
+                                        </Combobox>
                                       </div>
-                                      <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
-                                        <Input
-                                          className="h-9 rounded-r-none text-sm leading-5"
-                                          value={draftCustomHours}
-                                          onChange={(event) =>
-                                            setDraftCustomHours(
-                                              event.target.value,
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Work Schedule
+                                        </Label>
+                                        <Select
+                                          value={draftSchedule}
+                                          onValueChange={(value) =>
+                                            setDraftSchedule(
+                                              value as JobListingWorkSchedule
                                             )
                                           }
-                                        />
-                                        <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
-                                          hours
-                                        </span>
-                                        <Select
-                                          value={draftCustomFrequency}
-                                          onValueChange={
-                                            setDraftCustomFrequency
-                                          }
                                         >
-                                          <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                          <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
                                             <SelectValue />
                                           </SelectTrigger>
-                                          <SelectContent className="min-w-[112px]">
+                                          <SelectContent className="w-[323px]">
                                             {[
-                                              "per_day",
-                                              "per_week",
-                                              "per_month",
-                                              "per_quarter",
-                                              "per_year",
-                                            ].map((frequency) => (
+                                              {
+                                                value: "full_time" as const,
+                                                label: "Full-time",
+                                              },
+                                              {
+                                                value: "part_time" as const,
+                                                label: "Part-time",
+                                              },
+                                              {
+                                                value: "custom" as const,
+                                                label: "Custom",
+                                              },
+                                            ].map((schedule) => (
                                               <SelectItem
-                                                key={frequency}
-                                                value={frequency}
+                                                key={schedule.value}
+                                                value={schedule.value}
                                               >
-                                                {frequency.replace("_", " ")}
+                                                {schedule.label}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
                                         </Select>
                                       </div>
+                                      {draftSchedule === "custom" ? (
+                                        <div className="flex h-[70px] w-[323px] shrink-0 items-start gap-3">
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5">
+                                            <Label className="h-5 w-[109px] whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                              Estimated hours
+                                            </Label>
+                                            <div className="flex h-11 w-[155.5px] items-start bg-white p-0 shadow-xs">
+                                              <input
+                                                className="h-11 w-[84.5px] flex-1 rounded-l-[5px] rounded-r-none border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-black shadow-none outline-none focus:border-gray-300 focus:outline-none"
+                                                value={draftCustomHours}
+                                                onChange={(event) =>
+                                                  setDraftCustomHours(
+                                                    event.target.value
+                                                  )
+                                                }
+                                              />
+                                              <span className="-ml-px inline-flex h-11 w-[71px] shrink-0 items-center rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-500">
+                                                <span className="h-6 w-[43px] shrink-0">
+                                                  hours
+                                                </span>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5 pt-[26px]">
+                                            <Select
+                                              value={draftCustomFrequency}
+                                              onValueChange={
+                                                setDraftCustomFrequency
+                                              }
+                                            >
+                                              <SelectTrigger className="h-11 w-[155.5px] rounded-[5px] border-gray-300 bg-white py-2.5 pl-3.5 pr-3 text-base font-normal leading-6 text-gray-black shadow-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className="h-[118px] w-[156px] rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] [&>div]:h-[118px] [&>div]:overflow-y-scroll [&>div]:py-0 [&>div]:scrollbar-thin [&>div]:scrollbar-thumb-gray-200 [&>div]:scrollbar-track-transparent [&>div]:[scrollbar-gutter:stable]">
+                                                {[
+                                                  "per_day",
+                                                  "per_week",
+                                                  "per_month",
+                                                  "per_quarter",
+                                                  "per_year",
+                                                ].map((frequency) => (
+                                                  <SelectItem
+                                                    key={frequency}
+                                                    value={frequency}
+                                                    className="h-[34px] w-[156px] rounded-none px-3 py-2.5 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-gray-black data-[state=checked]:bg-gray-50 data-[state=checked]:text-gray-black [&>span:first-child]:hidden"
+                                                  >
+                                                    {frequency.replace(
+                                                      "_",
+                                                      " "
+                                                    )}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
-                                  ) : null}
-                                  <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outlined"
-                                      visual="gray"
-                                      onClick={() => setActiveRoleKey(null)}
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      onClick={() =>
-                                        saveRoleEditor(phaseName, row.id)
-                                      }
-                                    >
-                                      Done
-                                    </Button>
-                                  </div>
-                                </div>
+                                    <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
+                                      <Button
+                                        type="button"
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+                                        onClick={() => setActiveRoleKey(null)}
+                                      >
+                                        <span className="h-5 w-12 text-center">
+                                          Cancel
+                                        </span>
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+                                        onClick={() =>
+                                          saveRoleEditor(phaseName, row.id)
+                                        }
+                                      >
+                                        <span className="h-5 w-9 text-center">
+                                          Done
+                                        </span>
+                                      </Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               ) : null}
                             </div>
-                          );
+                          )
                         })}
                       </>
                     ) : null}
                   </div>
-                );
-              })}
-              {visiblePhases.length === 0 ? (
+                )
+              }))}
+              {!isAssistantLoading && !isBudgetLoading && visiblePhases.length === 0 ? (
                 <div className="rounded-lg border border-gray-200 bg-white px-6 py-8 text-center text-sm leading-5 text-gray-500 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
                   No phase or task found.
                 </div>
@@ -11820,21 +14072,33 @@ const ProjectScopeEditStep = ({
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
+            <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+              <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
+            <div
+              ref={assistantChatScrollRef}
+              className="flex min-h-0 max-w-full shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                 {[
                   "Reduce the budget",
                   "Shorten the project timeline",
@@ -11842,32 +14106,185 @@ const ProjectScopeEditStep = ({
                 ].map((item) => (
                   <Button
                     key={item}
-                    className="h-10 rounded-full"
+                    className={cn(
+                      "h-10 rounded-full py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      item === "Reduce the budget" &&
+                        "w-full max-w-[195px] justify-start bg-white",
+                      item === "Shorten the project timeline" &&
+                        "w-[253px] justify-start bg-white",
+                      item === "Improve scope quality" &&
+                        "w-[214px] justify-start bg-white"
+                    )}
                     variant="outlined"
                     visual="gray"
                     onClick={() => runProjectAssistant(item)}
                   >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
+                    {item === "Reduce the budget" ? (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-money-bag.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[127px] shrink-0">{item}</span>
+                      </>
+                    ) : item === "Shorten the project timeline" ? (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-timeline.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[185px] shrink-0">{item}</span>
+                      </>
+                    ) : (
+                      <>
+                        <img
+                          src="/job-listing/smart-assistant-target.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={20}
+                          height={20}
+                          className="size-5 shrink-0"
+                        />
+                        <span className="h-5 w-[146px] shrink-0">{item}</span>
+                      </>
+                    )}
                   </Button>
                 ))}
               </div>
-              {assistantResult ? (
-                <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
-                  {assistantResult}
-                </p>
+              {assistantHistory.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {assistantHistory.map((item, itemIndex) => {
+                    const isLatest = itemIndex === assistantHistory.length - 1
+                    const canRestore =
+                      !isLatest &&
+                      item.status === "success" &&
+                      Boolean(item.listingAfter)
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                            {item.prompt}
+                          </p>
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="text-base font-normal leading-6 text-dark-blue-400">
+                            {item.status === "error" ? (
+                              <p>{item.result}</p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p>{resultLines[0] ?? item.result}</p>
+                                ) : (
+                                  <ul className="list-disc pl-5">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {canRestore ? (
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            visual="gray"
+                            className="h-7 w-[136px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                            disabled={isAssistantLoading}
+                            onClick={() =>
+                              void restoreProjectAssistantHistoryItem(item)
+                            }
+                          >
+                            <ArrowUpLeft className="size-3 shrink-0" />
+                            Restore This Version
+                          </Button>
+                        ) : null}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex h-10 items-start gap-2">
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={isAssistantLoading || !item.prompt}
+                              onClick={() =>
+                                void retryProjectAssistantHistoryItem(item)
+                              }
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                            {item.status === "success" ? (
+                              <Button
+                                type="button"
+                                variant="outlined"
+                                visual="gray"
+                                className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                                disabled={!assistantUndoSnapshotRef.current}
+                                onClick={() => void undoProjectAssistant()}
+                              >
+                                <ArrowUpLeft className="size-3 shrink-0" />
+                                Undo
+                              </Button>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : null}
-              <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
+              <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                  className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0"
                   placeholder="I want to change..."
                   value={assistantMessage}
                   onChange={(event) => setAssistantMessage(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "Enter" &&
+                      !event.shiftKey &&
+                      assistantMessage.trim() &&
+                      !isAssistantLoading
+                    ) {
+                      event.preventDefault()
+                      void runProjectAssistant(assistantMessage)
+                    }
+                  }}
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
+                    aria-label="Send message to Smart Assistant"
                     disabled={!assistantMessage.trim() || isAssistantLoading}
                     onClick={() => runProjectAssistant(assistantMessage)}
                   >
@@ -11880,8 +14297,8 @@ const ProjectScopeEditStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const finalReviewRoles = [
   "Front-End Developer",
@@ -11889,15 +14306,74 @@ const finalReviewRoles = [
   "UX Designer",
   "Q/A Engineer",
   "Project Manager",
-];
+]
 
-const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"];
+const finalReviewSkills = ["HTML5", "CSS3", "Bootstrap", "JavaScript", "WCAG"]
 
 const finalReviewRichTextEditorClassName =
-  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500";
+  "mt-3 rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
 
 const finalReviewRichTextEditorContentClassName =
-  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7";
+  "min-h-[330px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-dark-blue-400 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[302px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+
+const finalReviewCompactRichTextEditorClassName =
+  "h-[174px] w-full self-stretch rounded-lg border border-gray-300 bg-white px-4 py-3 shadow-[0px_1px_2px_rgba(16,24,40,.05)] transition-colors focus-within:border-primary-500"
+
+const finalReviewExpandedRichTextEditorClassName =
+  "h-[494px] w-full self-stretch rounded-lg border border-gray-300 bg-white px-4 py-3 shadow-[0px_1px_2px_rgba(16,24,40,.05)] transition-colors focus-within:border-primary-500"
+
+const finalReviewCompactRichTextEditorContentClassName =
+  "h-[150px] max-h-[150px] min-h-[150px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden pr-3 text-base leading-6 text-dark-blue-400 break-words [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-wrap:anywhere] [word-break:break-word] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300 [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+
+const finalReviewExpandedRichTextEditorContentClassName =
+  "h-[470px] max-h-[470px] min-h-[470px] w-full max-w-full min-w-0 overflow-y-auto overflow-x-hidden pr-3 text-base leading-6 text-dark-blue-400 break-words [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [overflow-wrap:anywhere] [word-break:break-word] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300 [&.ProseMirror]:p-0 [&_.ProseMirror]:min-h-[470px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-6 [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+
+const FinalReviewShimmerBlock = ({ className }: { className: string }) => (
+  <span
+    aria-hidden="true"
+    className={cn("relative overflow-hidden rounded bg-gray-100", className)}
+  >
+    <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+  </span>
+)
+
+const ArticleTextIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    fill="none"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M4.167 2.5h11.666c.92 0 1.667.746 1.667 1.667v11.666c0 .92-.746 1.667-1.667 1.667H4.167c-.92 0-1.667-.746-1.667-1.667V4.167c0-.92.746-1.667 1.667-1.667Zm0 1.667v11.666h11.666V4.167H4.167Zm2.5 2.5h6.666v1.666H6.667V6.667Zm0 3.333h6.666v1.667H6.667V10Zm0 3.333H10V15H6.667v-1.667Z"
+      fill="currentColor"
+    />
+  </svg>
+)
+
+const VariableInsertIcon = ({ className }: { className?: string }) => (
+  <svg
+    className={className}
+    width="12"
+    height="12"
+    viewBox="0 0 12 12"
+    fill="none"
+    aria-hidden="true"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path
+      d="M1.5 3.25c0-.414.336-.75.75-.75h5.5c.414 0 .75.336.75.75V5H7.25V3.75h-4.5v4.5h4.5V7H8.5v1.75c0 .414-.336.75-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z"
+      fill="currentColor"
+    />
+    <path
+      d="M7 4.75 10.75 6.5 7 8.25v-1.2H4.75v-1.1H7v-1.2Z"
+      fill="currentColor"
+    />
+  </svg>
+)
 
 const ndaPreviewSections = [
   {
@@ -11920,76 +14396,157 @@ const ndaPreviewSections = [
     title: "Duration",
     body: "Confidentiality obligations continue after the job ends unless the information becomes public through no fault of the receiving party.",
   },
-];
+]
 
 const NDA_OFF_WARNING =
-  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq.";
+  "Without an NDA, your scope and team details will be publicly visible to all talent on Marketeq."
 
 const INHERITED_NDA_MESSAGE =
-  "NDA settings are inherited from the parent contract.";
+  "NDA settings are inherited from the parent contract."
+
+type FinalReviewAssistantHistoryItem = {
+  id: string
+  prompt: string
+  field: SmartAssistantEditableField
+  selectedText?: string
+  insertText?: (text: string, targetText?: string) => void
+  insertedText?: string
+  inserted?: boolean
+  result?: string
+  suggestions?: string[]
+  status: "pending" | "success" | "error"
+}
+
+type FinalReviewSmartAssistantSelection = {
+  selectedText: string
+  insertText: (text: string, targetText?: string) => void
+}
+
+const getFinalReviewAssistantResultText = (
+  value: unknown,
+  fallback: string
+) => {
+  if (typeof value === "string" && value.trim()) return value
+
+  if (Array.isArray(value)) {
+    const text = value
+      .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+      .filter(Boolean)
+      .join("\n")
+
+    return text || fallback
+  }
+
+  if (value && typeof value === "object") {
+    const objectValue = value as {
+      summary?: unknown
+      message?: unknown
+      suggestions?: unknown
+      updatedValue?: unknown
+    }
+
+    if (typeof objectValue.summary === "string" && objectValue.summary.trim()) {
+      return objectValue.summary
+    }
+
+    if (typeof objectValue.message === "string" && objectValue.message.trim()) {
+      return objectValue.message
+    }
+
+    if (Array.isArray(objectValue.suggestions)) {
+      const suggestionsText = objectValue.suggestions
+        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
+        .filter(Boolean)
+        .join("\n")
+
+      if (suggestionsText) return suggestionsText
+    }
+
+    if (
+      typeof objectValue.updatedValue === "string" &&
+      objectValue.updatedValue.trim()
+    ) {
+      return objectValue.updatedValue
+    }
+  }
+
+  return fallback
+}
 
 const NdaPreviewDialog = ({
   trigger,
   ndaDocumentId,
 }: {
-  trigger: React.ReactNode;
-  ndaDocumentId?: string | null;
+  trigger: React.ReactNode
+  ndaDocumentId?: string | null
 }) => {
-  const [open, setOpen] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [open, setOpen] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !ndaDocumentId) {
-      return;
+      return
     }
 
-    let cancelled = false;
+    let cancelled = false
 
     const loadPreview = async () => {
-      setIsLoading(true);
-      setErrorMessage(null);
+      setIsLoading(true)
+      setErrorMessage(null)
 
       try {
-        const response = await LegalAPI.GetNdaPreview(ndaDocumentId);
-        const nextPdfUrl = response?.data?.pdfUrl;
+        const response = await LegalAPI.GetNdaPreview(ndaDocumentId)
+        const nextPdfUrl = response?.data?.pdfUrl
 
         if (!cancelled) {
-          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null);
+          setPdfUrl(typeof nextPdfUrl === "string" ? nextPdfUrl : null)
           if (!nextPdfUrl) {
-            setErrorMessage("The NDA preview file is not available yet.");
+            setErrorMessage("The NDA preview file is not available yet.")
           }
         }
       } catch (error: any) {
         if (!cancelled) {
-          setPdfUrl(null);
+          setPdfUrl(null)
           setErrorMessage(
             error?.response?.data?.message ||
               error?.message ||
-              "Unable to load the NDA preview.",
-          );
+              "Unable to load the NDA preview."
+          )
         }
       } finally {
         if (!cancelled) {
-          setIsLoading(false);
+          setIsLoading(false)
         }
       }
-    };
+    }
 
-    void loadPreview();
+    void loadPreview()
 
     return () => {
-      cancelled = true;
-    };
-  }, [open, ndaDocumentId]);
+      cancelled = true
+    }
+  }, [open, ndaDocumentId])
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="max-w-[640px] overflow-hidden p-0">
-        <DialogHeader className="border-b border-gray-200 px-6 py-4">
-          <DialogTitle>NDA Sample</DialogTitle>
+      <DialogContent className="max-w-[600px] overflow-hidden p-0 [&>button]:hidden">
+        <DialogHeader className="flex h-[60px] flex-row items-center justify-between gap-2 border-b border-gray-200 px-8 py-4">
+          <DialogTitle className="flex-1 text-lg font-semibold leading-7 text-dark-blue-400">
+            NDA Sample
+          </DialogTitle>
+          <DialogClose asChild>
+            <IconButton
+              variant="ghost"
+              visual="gray"
+              className="size-6 text-gray-400 hover:text-gray-500"
+              aria-label="Close NDA preview"
+            >
+              <X2 className="size-6" />
+            </IconButton>
+          </DialogClose>
         </DialogHeader>
         <div className="max-h-[640px] overflow-y-auto bg-gray-100 px-8 py-6">
           {isLoading ? (
@@ -12042,97 +14599,144 @@ const NdaPreviewDialog = ({
             </p>
           ) : null}
         </div>
-        <DialogFooter className="border-t border-gray-200 px-6 py-4">
-          <DialogClose asChild>
-            <Button type="button" variant="outlined" visual="gray">
-              Close
-            </Button>
-          </DialogClose>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-};
+  )
+}
 
 const renderNdaPreviewDialog = (
   trigger: React.ReactNode,
-  ndaDocumentId?: string | null,
-) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />;
+  ndaDocumentId?: string | null
+) => <NdaPreviewDialog trigger={trigger} ndaDocumentId={ndaDocumentId} />
 
 const useDynamicFinalReviewSkills = () => {
-  const [skills, setSkills] = useState(finalReviewSkills);
-  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false);
-  const [draftSkill, setDraftSkill] = useState("");
+  const [skills, setSkills] = useState(finalReviewSkills)
+  const [isAddSkillDialogOpen, setAddSkillDialogOpen] = useState(false)
+  const [isSkillAutocompleteOpen, setSkillAutocompleteOpen] = useState(false)
+  const [skillOptions, setSkillOptions] = useState<string[]>(
+    FALLBACK_SKILL_OPTIONS
+  )
+  const [draftSkill, setDraftSkill] = useState("")
+  const skillRequestRef = useRef(0)
 
   const addSkill = () => {
-    setDraftSkill("");
-    setAddSkillDialogOpen(true);
-  };
+    setDraftSkill("")
+    setAddSkillDialogOpen(true)
+  }
 
   const closeAddSkillDialog = () => {
-    setAddSkillDialogOpen(false);
-    setDraftSkill("");
-  };
+    setAddSkillDialogOpen(false)
+    setSkillAutocompleteOpen(false)
+    setDraftSkill("")
+  }
+
+  const loadSkillOptions = useCallback(async (query: string) => {
+    const requestId = skillRequestRef.current + 1
+    skillRequestRef.current = requestId
+
+    try {
+      const response = await AutocompleteAPI.getByType("skills", query, 500)
+      if (skillRequestRef.current !== requestId) return
+
+      const nextOptions = Array.isArray(response?.data)
+        ? getUniqueOptions(
+            response.data
+              .map((item: AutocompleteTypeSuggestion) =>
+                normalizeAutocompleteLabel(item)
+              )
+              .filter(Boolean)
+          )
+        : []
+
+      setSkillOptions(nextOptions.length ? nextOptions : FALLBACK_SKILL_OPTIONS)
+    } catch {
+      if (skillRequestRef.current === requestId) {
+        setSkillOptions(FALLBACK_SKILL_OPTIONS)
+      }
+    }
+  }, [])
 
   const saveSkill = () => {
-    const nextSkill = draftSkill.trim();
+    const nextSkill = draftSkill.trim()
 
-    if (!nextSkill) return;
+    if (!nextSkill) return
 
     setSkills((currentSkills) =>
       currentSkills.some(
-        (skill) => skill.toLowerCase() === nextSkill.toLowerCase(),
+        (skill) => skill.toLowerCase() === nextSkill.toLowerCase()
       )
         ? currentSkills
-        : [...currentSkills, nextSkill],
-    );
-    closeAddSkillDialog();
-  };
+        : [...currentSkills, nextSkill]
+    )
+    closeAddSkillDialog()
+  }
 
   const removeSkill = (skillToRemove: string) => {
     setSkills((currentSkills) =>
-      currentSkills.filter((skill) => skill !== skillToRemove),
-    );
-  };
+      currentSkills.filter((skill) => skill !== skillToRemove)
+    )
+  }
 
   const addSkillDialog = (
     <Dialog
       open={isAddSkillDialogOpen}
       onOpenChange={(isOpen) => {
         if (isOpen) {
-          setAddSkillDialogOpen(true);
-          return;
+          setAddSkillDialogOpen(true)
+          return
         }
 
-        closeAddSkillDialog();
+        closeAddSkillDialog()
       }}
     >
       <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-        <DialogHeader>
-          <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-            Add Skill
-          </DialogTitle>
-          <DialogDescription className="text-sm leading-5 text-gray-500">
-            Enter a skill to add to this role.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-2">
-          <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-            Skill
-          </Label>
-          <Input
-            className="mt-2 h-11"
-            placeholder="e.g. React"
-            value={draftSkill}
-            onChange={(event) => setDraftSkill(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                saveSkill();
+        <Combobox
+          className="w-full"
+          value={draftSkill}
+          onChange={(value) => {
+            setDraftSkill(String(value ?? ""))
+            setSkillAutocompleteOpen(false)
+          }}
+          nullable
+        >
+          <ComboboxTrigger>
+            <ComboboxInput
+              className="h-11 w-full"
+              placeholder="Search skill"
+              value={draftSkill}
+              onChange={(event) => {
+                const nextValue = event.target.value
+                setDraftSkill(nextValue)
+                setSkillAutocompleteOpen(true)
+                void loadSkillOptions(nextValue)
+              }}
+              onFocus={() => {
+                setSkillAutocompleteOpen(true)
+                void loadSkillOptions("")
+              }}
+              onBlur={() =>
+                setTimeout(() => setSkillAutocompleteOpen(false), 150)
               }
-            }}
-          />
-        </div>
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault()
+                  saveSkill()
+                }
+              }}
+            />
+          </ComboboxTrigger>
+          {isSkillAutocompleteOpen && skillOptions.length > 0 ? (
+            <ComboboxOptions className="max-h-[180px] w-full overflow-hidden">
+              <ScrollArea viewportClassName="max-h-[180px]">
+                {skillOptions.map((option) => (
+                  <ComboboxOption key={option} value={option}>
+                    {option}
+                  </ComboboxOption>
+                ))}
+              </ScrollArea>
+            </ComboboxOptions>
+          ) : null}
+        </Combobox>
         <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
           <Button
             type="button"
@@ -12152,60 +14756,182 @@ const useDynamicFinalReviewSkills = () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 
-  return { skills, setSkills, addSkill, removeSkill, addSkillDialog };
-};
+  return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
+}
 
 const FinalReviewRichTextField = ({
   title,
   initialValue = "",
   placeholder,
   counterLabel,
+  compact = false,
+  isLoading = false,
   onChange,
+  onActivate,
+  onSmartAssistant,
 }: {
-  title: string;
-  initialValue?: string;
-  placeholder: string;
-  counterLabel?: string;
-  onChange?: (value: string) => void;
+  title: string
+  initialValue?: string
+  placeholder: string
+  counterLabel?: string
+  compact?: boolean
+  isLoading?: boolean
+  onChange?: (value: string) => void
+  onActivate?: () => void
+  onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => {
-  const [value, setValue] = useState(initialValue);
+  const [value, setValue] = useState(initialValue)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const fieldRef = useRef<HTMLDivElement | null>(null)
+  const valueRef = useRef(initialValue)
 
   useEffect(() => {
-    setValue(initialValue);
-  }, [initialValue]);
+    valueRef.current = initialValue
+    setValue(initialValue)
+  }, [initialValue])
 
-  const characterCount = getRichTextCharacterCount(value);
+  useEffect(() => {
+    if (!compact || !isExpanded) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (target && fieldRef.current?.contains(target)) return
+
+      setIsExpanded(false)
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+    }
+  }, [compact, isExpanded])
+
+  const plainTextValue = plainTextFromRichTextHtml(value)
+  const count = compact
+    ? getWordCount(plainTextValue)
+    : getRichTextCharacterCount(value)
 
   const handleChange = (html: string) => {
-    setValue(html);
-    onChange?.(html);
-  };
+    valueRef.current = html
+    setValue(html)
+    onChange?.(html)
+  }
+
+  const handleSmartAssistant = (
+    selection: FinalReviewSmartAssistantSelection
+  ) => {
+    onSmartAssistant?.({
+      ...selection,
+      insertText: (replacementText: string, targetText?: string) => {
+        const replacement = replaceFirstTextInRichTextHtml(
+          valueRef.current,
+          targetText ?? selection.selectedText,
+          replacementText
+        )
+
+        const nextValue = replacement.html
+        valueRef.current = nextValue
+        setValue(nextValue)
+        onChange?.(nextValue)
+        if (!replacement.replaced) {
+          selection.insertText(replacementText)
+        }
+      },
+    })
+  }
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-x-4">
-        <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
+    <div
+      ref={fieldRef}
+      className={cn(
+        compact &&
+          "flex w-full flex-col items-start gap-1.5 self-stretch p-0 transition-[height] duration-200",
+        compact && (isExpanded ? "h-[520px]" : "h-[200px]")
+      )}
+      onFocusCapture={() => {
+        if (compact) setIsExpanded(true)
+        onActivate?.()
+      }}
+      onBlurCapture={(event) => {
+        if (!compact) return
+        const nextFocusedElement = event.relatedTarget as Node | null
+        if (!nextFocusedElement || !event.currentTarget.contains(nextFocusedElement)) {
+          setIsExpanded(false)
+        }
+      }}
+      onClick={() => {
+        if (compact) setIsExpanded(true)
+        onActivate?.()
+      }}
+    >
+      <div
+        className={
+          compact
+            ? "flex h-5 w-full items-center justify-between gap-2 self-stretch p-0"
+            : "flex items-center justify-between gap-x-4"
+        }
+      >
+        <h3
+          className={
+            compact
+              ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+              : "text-base leading-6 font-semibold text-dark-blue-400"
+          }
+        >
           {title}
         </h3>
-        <span className="text-xs leading-[18px] text-gray-500">
+        <span
+          className={
+            compact
+              ? "h-5 text-sm leading-5 font-normal text-gray-400"
+              : "text-xs leading-[18px] text-gray-500"
+          }
+        >
           {counterLabel ? `${counterLabel}: ` : ""}
-          {characterCount} / 100
+          {count} / {STEP_TWO_WORD_LIMIT}
         </span>
       </div>
-      <RichTextEditor
-        defaultValue={value}
-        placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
-        className={finalReviewRichTextEditorClassName}
-        toolbarClassName="left-4"
-        editorClassName={finalReviewRichTextEditorContentClassName}
-        onUpdate={handleChange}
-        onBlur={handleChange}
-      />
-    </>
-  );
-};
+      {isLoading ? (
+        <FinalReviewShimmerBlock
+          className={
+            compact
+              ? "h-[174px] w-full self-stretch rounded-lg"
+              : "mt-3 h-[250px] w-full rounded-lg"
+          }
+        />
+      ) : (
+        <RichTextEditor
+          defaultValue={value}
+          placeholder={`<p class='text-gray-400'>${placeholder}</p>`}
+          className={
+            compact
+              ? isExpanded
+                ? finalReviewExpandedRichTextEditorClassName
+                : finalReviewCompactRichTextEditorClassName
+              : finalReviewRichTextEditorClassName
+          }
+          toolbarClassName="left-4"
+          editorClassName={
+            compact
+              ? isExpanded
+                ? finalReviewExpandedRichTextEditorContentClassName
+                : finalReviewCompactRichTextEditorContentClassName
+              : finalReviewRichTextEditorContentClassName
+          }
+          onUpdate={handleChange}
+          onBlur={handleChange}
+          hideImageButton={compact}
+          showToolbarOnFocus={compact}
+          toolbarVariant={compact ? "final-review" : "full"}
+          onSmartAssistant={handleSmartAssistant}
+        />
+      )}
+    </div>
+  )
+}
 
 const FinalReviewTextSection = ({
   title,
@@ -12213,58 +14939,265 @@ const FinalReviewTextSection = ({
   placeholder,
   onChange,
   children,
+  compact = false,
+  isLoading = false,
+  onActivate,
+  onSmartAssistant,
 }: {
-  title: string;
-  initialValue?: string;
-  placeholder: string;
-  onChange?: (value: string) => void;
-  children?: React.ReactNode;
+  title: string
+  initialValue?: string
+  placeholder: string
+  onChange?: (value: string) => void
+  children?: React.ReactNode
+  compact?: boolean
+  isLoading?: boolean
+  onActivate?: () => void
+  onSmartAssistant?: (payload: FinalReviewSmartAssistantSelection) => void
 }) => (
-  <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+  <div
+    className={
+      compact
+        ? "w-full"
+        : "rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+    }
+  >
     <FinalReviewRichTextField
       title={title}
       initialValue={initialValue}
       placeholder={placeholder}
       onChange={onChange}
+      compact={compact}
+      isLoading={isLoading}
+      onActivate={onActivate}
+      onSmartAssistant={onSmartAssistant}
     />
     {children}
   </div>
-);
+)
 
 const useFinalReviewSmartAssistant = ({
   jobListingId,
   ensureJobListingDraft,
   getValue,
   onApply,
+  roleTitle,
 }: {
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
-  getValue: (field: SmartAssistantEditableField) => string;
-  onApply: (field: SmartAssistantEditableField, value: string) => void;
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
+  getValue: (field: SmartAssistantEditableField) => string
+  onApply: (field: SmartAssistantEditableField, value: string) => void
+  roleTitle?: string
 }) => {
-  const [message, setMessage] = useState("");
-  const [result, setResult] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("")
+  const [result, setResult] = useState("")
+  const [history, setHistory] = useState<FinalReviewAssistantHistoryItem[]>([])
+  const [selectedText, setSelectedText] = useState("")
+  const selectedTextInsertRef = useRef<((text: string) => void) | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const populateSelectedText = useCallback(
+    (payload: FinalReviewSmartAssistantSelection) => {
+      const trimmedText = payload.selectedText.trim()
+
+      if (!trimmedText) return
+
+      selectedTextInsertRef.current = payload.insertText
+      setSelectedText(trimmedText)
+      setMessage("")
+    },
+    []
+  )
+
+  const clearSelectedText = useCallback(() => {
+    selectedTextInsertRef.current = null
+    setSelectedText("")
+  }, [])
+
+  const completeHistoryItem = useCallback(
+    (
+      historyId: string,
+      nextResult: string,
+      status: FinalReviewAssistantHistoryItem["status"],
+      suggestions: string[] = []
+    ) => {
+      setResult(nextResult)
+      setHistory((currentHistory) =>
+        currentHistory.map((item) =>
+          item.id === historyId
+            ? { ...item, result: nextResult, suggestions, status }
+            : item
+        )
+      )
+    },
+    []
+  )
+
+  const markHistoryItemInserted = useCallback((historyId: string, insertedText: string) => {
+    setHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === historyId ? { ...item, inserted: true, insertedText } : item
+      )
+    )
+  }, [])
+
+  const markHistoryItemPending = useCallback((historyId: string) => {
+    setHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === historyId
+          ? {
+              ...item,
+              inserted: false,
+              result: undefined,
+              suggestions: [],
+              status: "pending",
+            }
+          : item
+      )
+    )
+  }, [])
+
+  const startHistoryItem = useCallback(
+    (
+      prompt: string,
+      field: SmartAssistantEditableField,
+      selectedTextSnapshot?: string,
+      insertText?: (text: string, targetText?: string) => void
+    ) => {
+      const historyId = `final-review-assistant-${getId()}`
+      setHistory((currentHistory) =>
+        [
+          ...currentHistory,
+          {
+            id: historyId,
+            prompt,
+            field,
+            selectedText: selectedTextSnapshot,
+            insertText,
+            status: "pending" as const,
+          },
+        ].slice(-20)
+      )
+
+      return historyId
+    },
+    []
+  )
+
+  const editSelectedText = useCallback(
+    async (command: string, field: SmartAssistantEditableField) => {
+      const trimmedCommand = command.trim()
+      const selectedTextSnapshot = selectedText.trim()
+
+      if (!trimmedCommand || !selectedTextSnapshot) {
+        return
+      }
+
+      const historyId = startHistoryItem(
+        trimmedCommand,
+        field,
+        selectedTextSnapshot,
+        selectedTextInsertRef.current ?? undefined
+      )
+      setIsLoading(true)
+      setResult("")
+      setMessage("")
+
+      try {
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+
+        if (!listingId) {
+          completeHistoryItem(
+            historyId,
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+            "error"
+          )
+          return
+        }
+
+        const response = await JobListingAPI.EditSmartAssistantSelectedText(
+          listingId,
+          {
+            command: trimmedCommand,
+            selectedText: selectedTextSnapshot,
+            fieldContext: field,
+            fullFieldValue: getValue(field),
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          updatedText?: string
+          result?: string
+          message?: string
+        }
+
+        if (data.aiStatus === "AI_UNAVAILABLE") {
+          completeHistoryItem(
+            historyId,
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+            "error"
+          )
+          return
+        }
+
+        const updatedText = data.updatedText ?? data.result ?? data.message
+
+        if (updatedText) {
+          completeHistoryItem(historyId, updatedText, "success")
+          clearSelectedText()
+          return
+        }
+
+        completeHistoryItem(
+          historyId,
+          "Smart Assistant did not return updated text.",
+          "error"
+        )
+      } catch (error) {
+        console.error("Smart Assistant selected text edit failed", error)
+        completeHistoryItem(historyId, "Smart Assistant is temporarily unavailable.", "error")
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [
+      completeHistoryItem,
+      clearSelectedText,
+      ensureJobListingDraft,
+      getValue,
+      jobListingId,
+      selectedText,
+      startHistoryItem,
+    ]
+  )
 
   const run = useCallback(
     async (command: string, field: SmartAssistantEditableField) => {
-      const trimmedCommand = command.trim();
+      const trimmedCommand = command.trim()
 
       if (!trimmedCommand) {
-        return;
+        return
       }
 
-      setIsLoading(true);
-      setResult("");
+      if (selectedText.trim()) {
+        await editSelectedText(trimmedCommand, field)
+        return
+      }
+
+      const historyId = startHistoryItem(trimmedCommand, field)
+      setIsLoading(true)
+      setResult("")
+      setMessage("")
 
       try {
-        const listingId = jobListingId ?? (await ensureJobListingDraft?.());
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
 
         if (!listingId) {
-          setResult(
+          completeHistoryItem(
+            historyId,
             "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
-          );
-          return;
+            "error"
+          )
+          return
         }
 
         const response = await JobListingAPI.SmartAssistant(listingId, {
@@ -12272,79 +15205,244 @@ const useFinalReviewSmartAssistant = ({
           command: trimmedCommand,
           field,
           currentValue: getValue(field),
-        });
+          roleTitle,
+        })
         const data = response.data as {
-          aiStatus?: "OK" | "AI_UNAVAILABLE";
-          updatedValue?: string;
-          suggestions?: string[];
-          message?: string;
-        };
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          updatedValue?: string
+          summary?: string
+          suggestions?: string[]
+          message?: string
+        }
 
         if (data.aiStatus === "AI_UNAVAILABLE") {
-          setResult(
+          completeHistoryItem(
+            historyId,
             data.message ?? "Smart Assistant is temporarily unavailable.",
-          );
-          return;
+            "error"
+          )
+          return
         }
 
         if (data.updatedValue) {
           const updatedValue = clampSmartAssistantFieldValue(
             field,
-            data.updatedValue,
-          );
-          onApply(field, updatedValue);
-          setResult(
-            field === "title"
-              ? `Suggested title: ${updatedValue}`
-              : "Smart Assistant updated this section.",
-          );
-          setMessage("");
-          return;
+            data.updatedValue
+          )
+          onApply(field, updatedValue)
+          completeHistoryItem(
+            historyId,
+            getFinalReviewAssistantResultText(
+              data,
+              "Smart Assistant updated this section."
+            ),
+            "success",
+            Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []
+          )
+          return
         }
 
-        setResult("Smart Assistant did not return an update for this section.");
+        completeHistoryItem(
+          historyId,
+          "Smart Assistant did not return an update for this section.",
+          "error"
+        )
       } catch (error) {
-        console.error("Smart Assistant field edit failed", error);
-        setResult("Smart Assistant is temporarily unavailable.");
+        console.error("Smart Assistant field edit failed", error)
+        completeHistoryItem(historyId, "Smart Assistant is temporarily unavailable.", "error")
       } finally {
-        setIsLoading(false);
+        setIsLoading(false)
       }
     },
-    [ensureJobListingDraft, getValue, jobListingId, onApply],
-  );
+    [
+      completeHistoryItem,
+      ensureJobListingDraft,
+      getValue,
+      jobListingId,
+      onApply,
+      roleTitle,
+      selectedText,
+      editSelectedText,
+      startHistoryItem,
+    ]
+  )
+
+  const retry = useCallback(
+    async (item: FinalReviewAssistantHistoryItem) => {
+      const trimmedCommand = item.prompt.trim()
+
+      if (!trimmedCommand || isLoading) {
+        return
+      }
+
+      markHistoryItemPending(item.id)
+      setIsLoading(true)
+      setResult("")
+
+      try {
+        const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+
+        if (!listingId) {
+          completeHistoryItem(
+            item.id,
+            "Smart Assistant needs a saved job draft first. The draft service is currently unavailable; please try again in a moment.",
+            "error"
+          )
+          return
+        }
+
+        if (item.selectedText) {
+          const response = await JobListingAPI.EditSmartAssistantSelectedText(
+            listingId,
+            {
+              command: trimmedCommand,
+              selectedText: item.selectedText,
+              fieldContext: item.field,
+              fullFieldValue: getValue(item.field),
+            }
+          )
+          const data = response.data as {
+            aiStatus?: "OK" | "AI_UNAVAILABLE"
+            updatedText?: string
+            result?: string
+            message?: string
+          }
+
+          if (data.aiStatus === "AI_UNAVAILABLE") {
+            completeHistoryItem(
+              item.id,
+              data.message ?? "Smart Assistant is temporarily unavailable.",
+              "error"
+            )
+            return
+          }
+
+          const updatedText = data.updatedText ?? data.result ?? data.message
+
+          completeHistoryItem(
+            item.id,
+            updatedText ?? "Smart Assistant did not return updated text.",
+            updatedText ? "success" : "error"
+          )
+          return
+        }
+
+        const response = await JobListingAPI.SmartAssistant(listingId, {
+          mode: "field",
+          command: trimmedCommand,
+          field: item.field,
+          currentValue: getValue(item.field),
+          roleTitle,
+        })
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          updatedValue?: string
+          summary?: string
+          suggestions?: string[]
+          message?: string
+        }
+
+        if (data.aiStatus === "AI_UNAVAILABLE") {
+          completeHistoryItem(
+            item.id,
+            data.message ?? "Smart Assistant is temporarily unavailable.",
+            "error"
+          )
+          return
+        }
+
+        if (data.updatedValue) {
+          const updatedValue = clampSmartAssistantFieldValue(
+            item.field,
+            data.updatedValue
+          )
+          onApply(item.field, updatedValue)
+          completeHistoryItem(
+            item.id,
+            getFinalReviewAssistantResultText(
+              data,
+              "Smart Assistant updated this section."
+            ),
+            "success",
+            Array.isArray(data.suggestions) ? data.suggestions.slice(0, 3) : []
+          )
+          return
+        }
+
+        completeHistoryItem(
+          item.id,
+          "Smart Assistant did not return an update for this section.",
+          "error"
+        )
+      } catch (error) {
+        console.error("Smart Assistant retry failed", error)
+        completeHistoryItem(
+          item.id,
+          "Smart Assistant is temporarily unavailable.",
+          "error"
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [
+      completeHistoryItem,
+      ensureJobListingDraft,
+      getValue,
+      isLoading,
+      jobListingId,
+      markHistoryItemPending,
+      onApply,
+      roleTitle,
+    ]
+  )
 
   return {
     message,
     setMessage,
     result,
+    history,
+    selectedText,
+    populateSelectedText,
+    clearSelectedText,
     isLoading,
     run,
-  };
-};
+    retry,
+    markHistoryItemInserted,
+  }
+}
 
 const resolveFinalReviewAssistantField = (
-  command: string,
+  command: string
 ): SmartAssistantEditableField => {
-  const normalized = command.toLowerCase();
+  const normalized = command.toLowerCase()
 
   if (
     /\b(title|project title|service title|headline|name)\b/.test(normalized)
   ) {
-    return "title";
+    return "title"
   }
 
   if (
     /\b(overview|summary|description|intro|introduction)\b/.test(normalized)
   ) {
-    return "overview";
+    return "overview"
   }
 
   if (/\b(benefit|benefits|why join|value proposition)\b/.test(normalized)) {
-    return "benefits";
+    return "benefits"
   }
 
-  return "responsibilities";
-};
+  return "responsibilities"
+}
+
+type RoleDescriptionDraft = {
+  roleTitle?: string
+  overview?: string
+  benefits?: string
+  responsibilities?: string
+  skills?: string[]
+}
 
 const useRoleDescriptionPersistence = ({
   jobListingId,
@@ -12354,125 +15452,195 @@ const useRoleDescriptionPersistence = ({
   benefits,
   responsibilities,
   skills,
+  roleDescriptionsSeed,
   onLoad,
 }: {
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
-  roleTitle: string;
-  overview?: string;
-  benefits?: string;
-  responsibilities?: string;
-  skills?: string[];
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
+  roleTitle: string
+  overview?: string
+  benefits?: string
+  responsibilities?: string
+  skills?: string[]
+  roleDescriptionsSeed?: RoleDescriptionDraft[]
   onLoad?: (draft: {
-    overview?: string;
-    benefits?: string;
-    responsibilities?: string;
-    skills?: string[];
-  }) => void;
+    overview?: string
+    benefits?: string
+    responsibilities?: string
+    skills?: string[]
+  }) => void
 }) => {
-  const loadedKeyRef = useRef("");
-  const lastSavedPayloadRef = useRef("");
-  const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("");
+  const loadedKeyRef = useRef("")
+  const loadedListingIdRef = useRef("")
+  const roleDescriptionsCacheRef = useRef<any[]>([])
+  const lastSavedPayloadRef = useRef("")
+  const [loadedPersistenceKey, setLoadedPersistenceKey] = useState("")
 
   useEffect(() => {
-    const listingId = jobListingId;
-    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : "";
-    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return;
-    loadedKeyRef.current = loadKey;
-    setLoadedPersistenceKey("");
+    const listingId = jobListingId
+    if (!listingId || !roleDescriptionsSeed?.length) return
+
+    loadedListingIdRef.current = listingId
+    roleDescriptionsCacheRef.current = roleDescriptionsSeed.reduce(
+      (currentDescriptions, nextDescription) => {
+        if (!nextDescription.roleTitle) return currentDescriptions
+
+        const existingIndex = currentDescriptions.findIndex(
+          (item: any) => item?.roleTitle === nextDescription.roleTitle
+        )
+
+        if (existingIndex >= 0) {
+          return currentDescriptions.map((item, index) =>
+            index === existingIndex ? nextDescription : item
+          )
+        }
+
+        return [...currentDescriptions, nextDescription]
+      },
+      roleDescriptionsCacheRef.current
+    )
+  }, [jobListingId, roleDescriptionsSeed])
+
+  useEffect(() => {
+    const listingId = jobListingId
+    const loadKey = listingId && roleTitle ? `${listingId}:${roleTitle}` : ""
+    if (!listingId || !roleTitle || loadedKeyRef.current === loadKey) return
+    loadedKeyRef.current = loadKey
+
+    const applyCachedRoleDescription = (descriptions: any[]) => {
+      const description = descriptions.find(
+        (item: any) => item?.roleTitle === roleTitle
+      )
+
+      if (!description) {
+        const emptyPayload = {
+          overview: "",
+          benefits: "",
+          responsibilities: "",
+          skills: [],
+        }
+        lastSavedPayloadRef.current = JSON.stringify({
+          roleTitle,
+          payload: emptyPayload,
+        })
+        onLoad?.(emptyPayload)
+        setLoadedPersistenceKey(loadKey)
+        return
+      }
+
+      const loadedPayload = {
+        overview: description.overview ?? undefined,
+        benefits: description.benefits ?? undefined,
+        responsibilities: description.responsibilities ?? undefined,
+        skills: Array.isArray(description.skills)
+          ? description.skills
+          : undefined,
+      }
+      lastSavedPayloadRef.current = JSON.stringify({
+        roleTitle,
+        payload: loadedPayload,
+      })
+      onLoad?.(loadedPayload)
+      setLoadedPersistenceKey(loadKey)
+    }
+
+    if (loadedListingIdRef.current === listingId) {
+      applyCachedRoleDescription(roleDescriptionsCacheRef.current)
+      return
+    }
+
+    setLoadedPersistenceKey("")
 
     const loadRoleDescription = async () => {
       try {
-        const response = await JobListingAPI.GetRoleDescriptions(listingId);
-        const descriptions = Array.isArray(response?.data) ? response.data : [];
-        const description = descriptions.find(
-          (item: any) => item?.roleTitle === roleTitle,
-        );
-        if (!description) return;
-
-        const loadedPayload = {
-          overview: description.overview ?? undefined,
-          benefits: description.benefits ?? undefined,
-          responsibilities: description.responsibilities ?? undefined,
-          skills: Array.isArray(description.skills)
-            ? description.skills
-            : undefined,
-        };
-        lastSavedPayloadRef.current = JSON.stringify({
-          roleTitle,
-          payload: loadedPayload,
-        });
-        onLoad?.(loadedPayload);
+        const response = await JobListingAPI.GetRoleDescriptions(listingId)
+        const descriptions = Array.isArray(response?.data) ? response.data : []
+        loadedListingIdRef.current = listingId
+        roleDescriptionsCacheRef.current = descriptions
+        applyCachedRoleDescription(descriptions)
       } catch (error) {
-        console.error("Failed to load role description", error);
-      } finally {
-        setLoadedPersistenceKey(loadKey);
+        console.error("Failed to load role description", error)
+        setLoadedPersistenceKey(loadKey)
       }
-    };
+    }
 
-    void loadRoleDescription();
-  }, [jobListingId, onLoad, roleTitle]);
+    void loadRoleDescription()
+  }, [jobListingId, onLoad, roleTitle])
 
   useEffect(() => {
-    if (!roleTitle) return;
+    if (!roleTitle) return
 
     const payload = {
       overview,
       benefits,
       responsibilities,
       skills,
-    };
+    }
     const serializedPayload = JSON.stringify({
       roleTitle,
       payload,
-    });
+    })
     const loadKey =
-      jobListingId && roleTitle ? `${jobListingId}:${roleTitle}` : "";
+      jobListingId && roleTitle ? `${jobListingId}:${roleTitle}` : ""
 
-    if (loadKey && loadedPersistenceKey !== loadKey) return;
+    if (loadKey && loadedPersistenceKey !== loadKey) return
 
-    if (serializedPayload === lastSavedPayloadRef.current) return;
+    if (serializedPayload === lastSavedPayloadRef.current) return
 
     const previousPayload = lastSavedPayloadRef.current
       ? JSON.parse(lastSavedPayloadRef.current)
-      : null;
+      : null
     const textSignature = JSON.stringify({
       overview,
       benefits,
       responsibilities,
-    });
+    })
     const previousTextSignature = JSON.stringify({
       overview: previousPayload?.payload?.overview,
       benefits: previousPayload?.payload?.benefits,
       responsibilities: previousPayload?.payload?.responsibilities,
-    });
+    })
     const skillsChanged =
       JSON.stringify(skills ?? []) !==
-      JSON.stringify(previousPayload?.payload?.skills ?? []);
-    const textChanged = textSignature !== previousTextSignature;
-    const saveDelay = textChanged && !skillsChanged ? 500 : 0;
+      JSON.stringify(previousPayload?.payload?.skills ?? [])
+    const textChanged = textSignature !== previousTextSignature
+    const saveDelay = textChanged && !skillsChanged ? 500 : 0
 
     const timeout = window.setTimeout(() => {
       const saveRoleDescription = async () => {
         try {
-          const listingId = jobListingId ?? (await ensureJobListingDraft?.());
-          if (!listingId) return;
+          const listingId = jobListingId ?? (await ensureJobListingDraft?.())
+          if (!listingId) return
 
-          await JobListingAPI.SaveRoleDescription(
-            listingId,
-            roleTitle,
-            payload,
-          );
-          lastSavedPayloadRef.current = serializedPayload;
+          await JobListingAPI.SaveRoleDescription(listingId, roleTitle, payload)
+          if (loadedListingIdRef.current === listingId) {
+            const nextDescription = { roleTitle, ...payload }
+            const existingIndex = roleDescriptionsCacheRef.current.findIndex(
+              (item: any) => item?.roleTitle === roleTitle
+            )
+
+            if (existingIndex >= 0) {
+              roleDescriptionsCacheRef.current =
+                roleDescriptionsCacheRef.current.map((item, index) =>
+                  index === existingIndex ? nextDescription : item
+                )
+            } else {
+              roleDescriptionsCacheRef.current = [
+                ...roleDescriptionsCacheRef.current,
+                nextDescription,
+              ]
+            }
+          }
+          lastSavedPayloadRef.current = serializedPayload
         } catch (error) {
-          console.error("Failed to save role description", error);
+          console.error("Failed to save role description", error)
         }
-      };
+      }
 
-      void saveRoleDescription();
-    }, saveDelay);
+      void saveRoleDescription()
+    }, saveDelay)
 
-    return () => window.clearTimeout(timeout);
+    return () => window.clearTimeout(timeout)
   }, [
     benefits,
     ensureJobListingDraft,
@@ -12482,8 +15650,12 @@ const useRoleDescriptionPersistence = ({
     responsibilities,
     roleTitle,
     skills,
-  ]);
-};
+  ])
+
+  if (!jobListingId || !roleTitle) return true
+
+  return loadedPersistenceKey === `${jobListingId}:${roleTitle}`
+}
 
 const ReviewEditableTags = ({
   fieldName,
@@ -12492,19 +15664,29 @@ const ReviewEditableTags = ({
   autocompleteType,
   fallbackOptions,
   max,
+  isLoading = false,
 }: {
-  fieldName: "industry" | "languages";
-  label: string;
-  addLabel: string;
-  autocompleteType: string;
-  fallbackOptions: string[];
-  max: number;
+  fieldName: "industry" | "languages"
+  label: string
+  addLabel: string
+  autocompleteType: string
+  fallbackOptions: string[]
+  max: number
+  isLoading?: boolean
 }) => {
-  const methods = useProjectInfoContext();
-  const values = useWatch({ control: methods.control, name: fieldName }) ?? [];
-  const [isEditing, setIsEditing] = useState(false);
-  const [options, setOptions] = useState<string[]>(fallbackOptions);
-  const requestRef = useRef(0);
+  const methods = useProjectInfoContext()
+  const values = useWatch({ control: methods.control, name: fieldName }) ?? []
+  const [isEditing, setIsEditing] = useState(false)
+  const [options, setOptions] = useState<string[]>(fallbackOptions)
+  const [isAddDialogOpen, setAddDialogOpen] = useState(false)
+  const [isAddAutocompleteOpen, setAddAutocompleteOpen] = useState(false)
+  const [draftValue, setDraftValue] = useState("")
+  const requestRef = useRef(0)
+  const usesReviewChipStyle =
+    fieldName === "industry" || fieldName === "languages"
+  const usesAddDialog = fieldName === "industry" || fieldName === "languages"
+  const searchPlaceholder =
+    fieldName === "industry" ? "Search industry" : "Search language"
 
   const updateValues = useCallback(
     (nextValues: string[]) => {
@@ -12512,91 +15694,232 @@ const ReviewEditableTags = ({
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: true,
-      });
-      methods.clearErrors(fieldName);
-      void methods.trigger(fieldName);
+      })
+      methods.clearErrors(fieldName)
+      void methods.trigger(fieldName)
     },
-    [fieldName, max, methods],
-  );
+    [fieldName, max, methods]
+  )
 
   const removeValue = useCallback(
     (value: string) => {
-      updateValues(values.filter((item) => item !== value));
+      updateValues(values.filter((item) => item !== value))
     },
-    [updateValues, values],
-  );
+    [updateValues, values]
+  )
+
+  const openAddDialog = useCallback(() => {
+    setDraftValue("")
+    setAddDialogOpen(true)
+  }, [])
+
+  const closeAddDialog = useCallback(() => {
+    setAddDialogOpen(false)
+    setAddAutocompleteOpen(false)
+    setDraftValue("")
+  }, [])
+
+  const saveDraftValue = useCallback(() => {
+    const nextValue = draftValue.trim()
+
+    if (!nextValue) return
+
+    updateValues([...values, nextValue])
+    closeAddDialog()
+  }, [closeAddDialog, draftValue, updateValues, values])
 
   const loadOptions = useCallback(
     async (query: string) => {
-      const requestId = requestRef.current + 1;
-      requestRef.current = requestId;
+      const requestId = requestRef.current + 1
+      requestRef.current = requestId
 
       try {
         const response = await AutocompleteAPI.getByType(
           autocompleteType,
           query,
-        );
-        if (requestRef.current !== requestId) return;
+          usesAddDialog ? 500 : undefined
+        )
+        if (requestRef.current !== requestId) return
 
         const nextOptions = Array.isArray(response?.data)
           ? getUniqueOptions(
               response.data
                 .map((item: AutocompleteTypeSuggestion) =>
-                  normalizeAutocompleteLabel(item),
+                  normalizeAutocompleteLabel(item)
                 )
-                .filter(Boolean),
+                .filter(Boolean)
             )
-          : [];
+          : []
 
-        setOptions(nextOptions.length ? nextOptions : fallbackOptions);
+        setOptions(nextOptions.length ? nextOptions : fallbackOptions)
       } catch {
         if (requestRef.current === requestId) {
-          setOptions(fallbackOptions);
+          setOptions(fallbackOptions)
         }
       }
     },
-    [autocompleteType, fallbackOptions],
-  );
+    [autocompleteType, fallbackOptions, usesAddDialog]
+  )
 
   return (
-    <div>
-      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {values.length ? (
-          values.map((item) => (
-            <Badge
-              key={item}
-              size="md"
-              visual="gray"
-              className="gap-1 border border-gray-200 bg-white pr-1"
-            >
-              {item}
-              <Button
-                variant="link"
-                visual="gray"
-                type="button"
-                className="size-4 rounded-full text-gray-400 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
-                aria-label={`Remove ${item}`}
-                onClick={() => removeValue(item)}
-              >
-                <X2 className="size-3" />
-              </Button>
-            </Badge>
-          ))
-        ) : (
-          <span className="text-sm leading-5 text-gray-400">None added</span>
-        )}
-        <Button
-          className="h-7"
-          variant="outlined"
-          visual="gray"
-          type="button"
-          onClick={() => setIsEditing((current) => !current)}
+    <div
+      className={
+        usesReviewChipStyle
+          ? "flex min-h-[66px] w-full flex-col items-start gap-1.5 self-stretch p-0"
+          : undefined
+      }
+    >
+      <Label
+        className={
+          usesReviewChipStyle
+            ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+            : "text-sm leading-5 text-gray-500"
+        }
+      >
+        {label}
+      </Label>
+      {isLoading ? (
+        <div className="flex min-h-10 w-full items-start gap-2 self-stretch">
+          <FinalReviewShimmerBlock className="h-10 w-[184px] rounded-lg" />
+          <FinalReviewShimmerBlock className="h-10 w-[132px] rounded-lg" />
+          <FinalReviewShimmerBlock className="h-10 w-[156px] rounded-lg" />
+        </div>
+      ) : (
+        <div
+          className={
+            usesReviewChipStyle
+              ? "flex min-h-10 w-full flex-wrap items-start content-start gap-2 self-stretch p-0"
+              : "mt-2 flex flex-wrap items-center gap-2"
+          }
         >
-          {addLabel}
-        </Button>
-      </div>
-      {isEditing && (
+          {values.length > 0 &&
+            values.map((item) => (
+              <Badge
+                key={item}
+                size="md"
+                visual="gray"
+                className={
+                  usesReviewChipStyle
+                    ? "h-10 gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-dark-blue-400 mix-blend-normal"
+                    : "gap-1 border border-gray-200 bg-white pr-1"
+                }
+              >
+                {item}
+                <BadgeCloseButton
+                  className={
+                    usesReviewChipStyle
+                      ? "size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                      : "size-4 rounded-full text-gray-400 opacity-100 hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500"
+                  }
+                  aria-label={`Remove ${item}`}
+                  onClick={() => removeValue(item)}
+                >
+                  <X2 className={usesReviewChipStyle ? "size-4" : "size-3"} />
+                </BadgeCloseButton>
+              </Badge>
+            ))}
+          <Button
+            className={
+              usesReviewChipStyle
+                ? "h-10 rounded-lg border-2 border-primary-500 py-2.5 pl-4 pr-3 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white"
+                : "h-7"
+            }
+            variant="outlined"
+            visual={usesReviewChipStyle ? "primary" : "gray"}
+            type="button"
+            rightIcon={
+              usesReviewChipStyle ? <Plus className="size-4" /> : undefined
+            }
+            onClick={
+              usesAddDialog
+                ? openAddDialog
+                : () => setIsEditing((current) => !current)
+            }
+          >
+            {addLabel}
+          </Button>
+        </div>
+      )}
+      {usesAddDialog ? (
+        <Dialog
+          open={isAddDialogOpen}
+          onOpenChange={(isOpen) => {
+            if (isOpen) {
+              setAddDialogOpen(true)
+              return
+            }
+
+            closeAddDialog()
+          }}
+        >
+          <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
+            <Combobox
+              className="w-full"
+              value={draftValue}
+              onChange={(value) => {
+                setDraftValue(String(value ?? ""))
+                setAddAutocompleteOpen(false)
+              }}
+              nullable
+            >
+              <ComboboxTrigger>
+                <ComboboxInput
+                  className="h-11 w-full"
+                  placeholder={searchPlaceholder}
+                  value={draftValue}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    setDraftValue(nextValue)
+                    setAddAutocompleteOpen(true)
+                    void loadOptions(nextValue)
+                  }}
+                  onFocus={() => {
+                    setAddAutocompleteOpen(true)
+                    void loadOptions("")
+                  }}
+                  onBlur={() =>
+                    setTimeout(() => setAddAutocompleteOpen(false), 150)
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      saveDraftValue()
+                    }
+                  }}
+                />
+              </ComboboxTrigger>
+              {isAddAutocompleteOpen && options.length > 0 ? (
+                <ComboboxOptions className="max-h-[180px] w-full overflow-hidden">
+                  <ScrollArea viewportClassName="max-h-[180px]">
+                    {options.map((option) => (
+                      <ComboboxOption key={option} value={option}>
+                        {option}
+                      </ComboboxOption>
+                    ))}
+                  </ScrollArea>
+                </ComboboxOptions>
+              ) : null}
+            </Combobox>
+            <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+              <Button
+                type="button"
+                variant="outlined"
+                visual="gray"
+                onClick={closeAddDialog}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={!draftValue.trim() || values.length >= max}
+                onClick={saveDraftValue}
+              >
+                Add
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : isEditing ? (
         <TagsInputRoot
           className="mt-2 space-y-1.5"
           value={values}
@@ -12636,15 +15959,25 @@ const ReviewEditableTags = ({
           </TagsInputContext>
           <TagsInputHiddenInput />
         </TagsInputRoot>
-      )}
+      ) : null}
     </div>
-  );
-};
+  )
+}
 
-const ReviewEditableTitle = ({ label }: { label: string }) => {
-  const methods = useProjectInfoContext();
-  const value = useWatch({ control: methods.control, name: "title" }) ?? "";
-  const titleHasError = methods.getFieldState("title").invalid;
+const ReviewEditableTitle = ({
+  label,
+  isLoading = false,
+  onActivate,
+}: {
+  label: string
+  isLoading?: boolean
+  onActivate?: () => void
+}) => {
+  const methods = useProjectInfoContext()
+  const value = useWatch({ control: methods.control, name: "title" }) ?? ""
+  const titleHasError = methods.getFieldState("title").invalid
+  const usesReviewTitleStyle =
+    label === "Project Title" || label === "Service Title"
 
   const updateTitle = useCallback(
     (nextTitle: string) => {
@@ -12652,25 +15985,51 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         shouldDirty: true,
         shouldTouch: true,
         shouldValidate: false,
-      });
+      })
       if (methods.getFieldState("title").error?.type === "manual") {
-        methods.clearErrors("title");
+        methods.clearErrors("title")
       }
     },
-    [methods],
-  );
+    [methods]
+  )
 
   return (
-    <div>
-      <Label className="text-sm leading-5 text-gray-500">{label}</Label>
-      <Input
-        className="mt-1.5"
-        value={value}
-        maxLength={100}
-        onChange={(event) => updateTitle(event.target.value)}
-        onBlur={() => void methods.trigger("title")}
-        isInvalid={titleHasError}
-      />
+    <div
+      className={
+        usesReviewTitleStyle
+          ? "flex h-[70px] w-full flex-col items-start gap-1.5 self-stretch p-0"
+          : undefined
+      }
+    >
+      <Label
+        className={
+          usesReviewTitleStyle
+            ? "h-5 text-sm leading-5 font-medium text-dark-blue-400"
+            : "text-sm leading-5 text-gray-500"
+        }
+      >
+        {label}
+      </Label>
+      {isLoading ? (
+        <FinalReviewShimmerBlock
+          className={usesReviewTitleStyle ? "h-11 w-full rounded-[5px]" : "mt-1.5 h-11 w-full rounded-[5px]"}
+        />
+      ) : (
+        <Input
+          className={
+            usesReviewTitleStyle
+              ? "h-11 w-full rounded-[5px] px-[14px] py-2.5 text-base leading-6 font-normal text-dark-blue-400 shadow-[0px_1px_2px_rgba(16,24,40,.05)]"
+              : "mt-1.5"
+          }
+          value={value}
+          maxLength={100}
+          onFocus={onActivate}
+          onClick={onActivate}
+          onChange={(event) => updateTitle(event.target.value)}
+          onBlur={() => void methods.trigger("title")}
+          isInvalid={titleHasError}
+        />
+      )}
       <HookFormErrorMessage
         errors={methods.formState.errors}
         name="title"
@@ -12681,8 +16040,87 @@ const ReviewEditableTitle = ({ label }: { label: string }) => {
         )}
       />
     </div>
-  );
-};
+  )
+}
+
+const ReviewJobTypeSelect = ({ isLoading = false }: { isLoading?: boolean }) => {
+  const { details, setDetails } = useJobListingDraftContext()
+  const value = details.jobType ?? ""
+  const setValue = useCallback(
+    (nextValue: string) =>
+      setDetails((current) => ({ ...current, jobType: nextValue })),
+    [setDetails]
+  )
+  const [options, setOptions] = useState<string[]>([])
+  const requestRef = useRef(0)
+
+  const loadOptions = useCallback(async () => {
+    const requestId = requestRef.current + 1
+    requestRef.current = requestId
+
+    try {
+      const response = await AutocompleteAPI.getByType("project_types", "", 500)
+      if (requestRef.current !== requestId) return
+
+      const nextOptions = Array.isArray(response?.data)
+        ? getUniqueOptions(
+            response.data
+              .map((item: AutocompleteTypeSuggestion) =>
+                normalizeAutocompleteLabel(item)
+              )
+              .filter(Boolean)
+          )
+        : []
+
+      setOptions(getUniqueOptions([value, ...nextOptions].filter(Boolean)))
+    } catch {
+      if (requestRef.current === requestId) {
+        setOptions(value ? [value] : [])
+      }
+    }
+  }, [value])
+
+  useEffect(() => {
+    if (value) setOptions((current) => getUniqueOptions([value, ...current]))
+  }, [value])
+
+  return (
+    <div className="flex h-[66px] w-full flex-col items-start gap-1.5 self-stretch p-0">
+      <Label className="h-5 self-stretch text-sm leading-5 font-medium text-dark-blue-400">
+        Job Type
+      </Label>
+      {isLoading ? (
+        <FinalReviewShimmerBlock className="h-10 w-[240px] rounded-lg" />
+      ) : (
+        <Select
+          value={value}
+          onValueChange={setValue}
+          onOpenChange={(open) => {
+            if (open) void loadOptions()
+          }}
+        >
+          <SelectTrigger
+            indicator={false}
+            className="h-10 w-[240px] gap-2 rounded-lg px-4 py-2.5 text-left text-sm leading-5 font-medium text-dark-blue-400"
+          >
+            <SelectValue
+              className="min-w-0 flex-1 truncate text-left"
+              placeholder="Select job type"
+            />
+            <ChevronDown className="size-4 shrink-0 text-gray-400" />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </div>
+  )
+}
 
 const FinalServiceReviewStep = ({
   setProgress,
@@ -12690,42 +16128,60 @@ const FinalServiceReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null;
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
+  ndaDocumentId?: string | null
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
 }) => {
-  const { toggleValidation } = useStepContext();
-  const { details, setDetails } = useJobListingDraftContext();
-  const projectInfoMethods = useProjectInfoContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState] = projectScopeMethods;
+  const { toggleValidation } = useStepContext()
+  const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState] = projectScopeMethods
   const roleOptions = useMemo(
     () => getScopeRoleOptions(projectScopeState),
-    [projectScopeState],
-  );
+    [projectScopeState]
+  )
+  const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
+  const visibleRoleOptions = showAllRoleOptions
+    ? roleOptions
+    : roleOptions.slice(0, 4)
+  const remainingRoleCount = Math.max(
+    0,
+    roleOptions.length - visibleRoleOptions.length
+  )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no",
-  );
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
-  const [responsibilities, setResponsibilities] = useState("");
-  const didGenerateRoleDescriptionsRef = useRef(false);
+    details.ndaEnabled === true ? "yes" : "no"
+  )
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
+  const [overview, setOverview] = useState("")
+  const [benefits, setBenefits] = useState("")
+  const [responsibilities, setResponsibilities] = useState("")
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([])
+  const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
+    useState(false)
+  const [activeAssistantField, setActiveAssistantField] =
+    useState<SmartAssistantEditableField>("title")
+  const didGenerateBasicInformationRef = useRef(false)
+  const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills();
+    useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
-      if (field === "overview") return details.description ?? "";
-      if (field === "benefits") return details.successCriteria ?? "";
-      if (field === "responsibilities") return responsibilities;
-      return "";
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
+      if (field === "overview") return overview
+      if (field === "benefits") return benefits
+      if (field === "responsibilities") return responsibilities
+      return ""
     },
     [
-      details.description,
-      details.successCriteria,
+      benefits,
+      overview,
       projectInfoMethods,
       responsibilities,
-    ],
-  );
+    ]
+  )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -12733,68 +16189,223 @@ const FinalServiceReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        });
+        })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }));
+        setOverview(value)
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }));
+        setBenefits(value)
       } else if (field === "responsibilities") {
-        setResponsibilities(value);
+        setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails],
-  );
+    [projectInfoMethods]
+  )
   const serviceAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  });
+    roleTitle: selectedRole,
+  })
+  const serviceAssistantScrollRef = useRef<HTMLDivElement | null>(null)
+  const [showServiceAssistantFollowUps, setShowServiceAssistantFollowUps] =
+    useState(false)
+  const latestServiceAssistantItem =
+    serviceAssistant.history[serviceAssistant.history.length - 1]
+  const serviceAssistantFollowUpSuggestions =
+    latestServiceAssistantItem?.status === "success"
+      ? (latestServiceAssistantItem.suggestions ?? [])
+      : []
+  const serviceAssistantQuickActions: Record<
+    SmartAssistantEditableField,
+    string[]
+  > = {
+    title: [
+      "Make it more descriptive",
+      "Simplify the wording",
+      "Reword for clarity",
+    ],
+    overview: [
+      "Add service goals",
+      "Highlight key deliverables",
+      "Reword for better flow",
+    ],
+    benefits: [
+      "Add bullet points",
+      "Focus on team impact",
+      "Highlight learning opportunities",
+    ],
+    responsibilities: [
+      "Add more specifics",
+      "Simplify the task list",
+      "Group similar tasks",
+    ],
+  }
+  const getServiceAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Make it more descriptive" && "w-[211px]",
+      suggestion === "Simplify the wording" && "w-[194px]",
+      suggestion === "Reword for clarity" && "w-[163px]",
+      suggestion === "Add service goals" && "w-[151px]",
+      suggestion === "Highlight key deliverables" && "w-[218px]",
+      suggestion === "Reword for better flow" && "w-[191px]",
+      suggestion === "Add bullet points" && "w-[154px]",
+      suggestion === "Focus on team impact" && "w-[196px]",
+      suggestion === "Highlight learning opportunities" && "w-[248px]",
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]"
+    )
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = serviceAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [serviceAssistant.history])
+
+  useEffect(() => {
+    setShowServiceAssistantFollowUps(false)
+  }, [latestServiceAssistantItem?.id])
+
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0]);
+      setSelectedRole(roleOptions[0] ?? "")
     }
-  }, [roleOptions, selectedRole]);
+  }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
     (draft: {
-      overview?: string;
-      benefits?: string;
-      responsibilities?: string;
-      skills?: string[];
+      overview?: string
+      benefits?: string
+      responsibilities?: string
+      skills?: string[]
     }) => {
+      if (
+        draft.overview ||
+          draft.benefits ||
+          draft.responsibilities ||
+          draft.skills?.length
+      ) {
+        didGenerateRoleDescriptionsRef.current = true
+      }
       if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }));
+        setOverview((current) => (current.trim() ? current : draft.overview ?? ""))
       }
       if (draft.benefits !== undefined) {
-        setDetails((current) => ({
-          ...current,
-          successCriteria: draft.benefits,
-        }));
+        setBenefits((current) =>
+          current.trim() ? current : draft.benefits ?? ""
+        )
       }
       if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities);
+        setResponsibilities(draft.responsibilities)
       }
       if (draft.skills) {
-        setSkills(draft.skills);
+        setSkills(draft.skills)
       }
     },
-    [setDetails, setSkills],
-  );
-  useRoleDescriptionPersistence({
+    [setSkills]
+  )
+  const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
     ensureJobListingDraft,
     roleTitle: selectedRole,
-    overview: details.description ?? "",
-    benefits: details.successCriteria ?? "",
+    overview,
+    benefits,
     responsibilities,
     skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
     onLoad: loadSavedRoleDescription,
-  });
+  })
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
-    if (responsibilities) return;
-    didGenerateRoleDescriptionsRef.current = true;
+    if (!jobListingId || didGenerateBasicInformationRef.current) return
+    const current = projectInfoMethods.getValues()
+    if (
+      current.title?.trim() ||
+      current.industry?.length ||
+      current.languages?.length
+    ) {
+      didGenerateBasicInformationRef.current = true
+      return
+    }
+    didGenerateBasicInformationRef.current = true
+
+    void (async () => {
+      setIsGeneratingBasicInformation(true)
+      try {
+        const response = await JobListingAPI.GenerateBasicInformation(
+          jobListingId,
+          {
+            workType: "service",
+            description: details.description || undefined,
+            deliverables: details.deliverables || undefined,
+            tools: details.tools ?? [],
+            roles: roleOptions.length ? roleOptions : undefined,
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          basicInformation?: {
+            title?: string
+            jobType?: string
+            industries?: string[]
+            languages?: string[]
+          } | null
+        }
+        const generated = data.basicInformation
+        if (data.aiStatus !== "OK" || !generated) return
+
+        const latest = projectInfoMethods.getValues()
+        const fill = (
+          name: "title" | "industry" | "languages",
+          value: string | string[]
+        ) =>
+          projectInfoMethods.setValue(name, value as never, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: true,
+          })
+
+        if (!latest.title?.trim() && generated.title?.trim()) {
+          fill("title", generated.title.slice(0, 100))
+        }
+        if (!latest.industry?.length && generated.industries?.length) {
+          fill("industry", getUniqueOptions(generated.industries).slice(0, 10))
+        }
+        if (!latest.languages?.length && generated.languages?.length) {
+          fill("languages", getUniqueOptions(generated.languages).slice(0, 10))
+        }
+        if (generated.jobType?.trim()) {
+          setDetails((existing) =>
+            existing.jobType
+              ? existing
+              : { ...existing, jobType: generated.jobType?.trim() }
+          )
+        }
+      } catch (error) {
+        console.error("Generate service basic information failed", error)
+      } finally {
+        setIsGeneratingBasicInformation(false)
+      }
+    })()
+  }, [
+    details.deliverables,
+    details.description,
+    details.tools,
+    jobListingId,
+    projectInfoMethods,
+    roleOptions,
+    setDetails,
+  ])
+
+  useEffect(() => {
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!isRoleDescriptionLoaded) return
+    if (!selectedRole || roleOptions.length === 0) return
+    if (responsibilities) return
+    didGenerateRoleDescriptionsRef.current = true
 
     const generateRoleDescriptions = async () => {
       try {
@@ -12804,59 +16415,79 @@ const FinalServiceReviewStep = ({
             workType: "service",
             description: details.description ?? "",
             roles: roleOptions.map((roleTitle) => ({ roleTitle })),
-          },
-        );
-        const descriptions = response?.data?.roleDescriptions;
+          }
+        )
+        const descriptions = response?.data?.roleDescriptions
+        const generatedDescriptions = Array.isArray(descriptions)
+          ? descriptions
+          : []
+        if (generatedDescriptions.length) {
+          setGeneratedRoleDescriptions(generatedDescriptions)
+          void Promise.all(
+            generatedDescriptions
+              .filter((item: any) => item?.roleTitle)
+              .map((item: any) =>
+                JobListingAPI.SaveRoleDescription(
+                  jobListingId,
+                  item.roleTitle,
+                  {
+                    overview: item.overview,
+                    benefits: item.benefits,
+                    responsibilities: item.responsibilities,
+                    skills: Array.isArray(item.skills) ? item.skills : [],
+                  }
+                )
+              )
+          ).catch((error) => {
+            console.error("Failed to save generated role descriptions", error)
+          })
+        }
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null;
+          : null
 
         if (description?.overview) {
-          setDetails((current) => ({
-            ...current,
-            description: description.overview,
-          }));
+          setOverview(description.overview)
         }
         if (description?.benefits) {
-          setDetails((current) => ({
-            ...current,
-            successCriteria: description.benefits,
-          }));
+          setBenefits(description.benefits)
         }
         if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities);
+          setResponsibilities(description.responsibilities)
         }
         if (Array.isArray(description?.skills)) {
-          setSkills(description.skills);
+          setSkills(description.skills)
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error);
+        console.error("Failed to generate role descriptions", error)
       }
-    };
+    }
 
-    void generateRoleDescriptions();
+    void generateRoleDescriptions()
   }, [
     details.description,
+    isRoleDescriptionLoaded,
     jobListingId,
     roleOptions,
     responsibilities,
     selectedRole,
-    setDetails,
     setSkills,
-  ]);
+  ])
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true);
-  }, []);
+    toggleValidation(true)
+  }, [])
 
   useEffect(() => {
-    setProgress?.(17.5);
-  }, [setProgress]);
+    setProgress?.(17.5)
+  }, [setProgress])
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }));
+      setDetails((current) => ({ ...current, ndaEnabled: false }))
     }
-  }, [details.ndaEnabled, setDetails]);
+  }, [details.ndaEnabled, setDetails])
+  const isRoleDescriptionLoading =
+    serviceAssistant.isLoading && !responsibilities
 
   return (
     <ScrollArea
@@ -12876,27 +16507,27 @@ const FinalServiceReviewStep = ({
               ahead and publish, or make quick edits if needed.
             </p>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Basic Information
-              </h2>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <ReviewEditableTitle label="Service Title" />
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Job Type
-                  </Label>
-                  <Input className="mt-1.5" value="Website" readOnly />
-                </div>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex w-full flex-col items-start gap-6 p-6 min-[1180px]:h-[440px]">
+                <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  Basic Information
+                </h2>
+                <ReviewEditableTitle
+                  label="Service Title"
+                  isLoading={isGeneratingBasicInformation}
+                  onActivate={() => setActiveAssistantField("title")}
+                />
+                <ReviewJobTypeSelect
+                  isLoading={isGeneratingBasicInformation}
+                />
                 <ReviewEditableTags
                   fieldName="industry"
                   label="Industries"
                   addLabel="Add Industry"
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                  max={5}
+                  max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -12905,224 +16536,507 @@ const FinalServiceReviewStep = ({
                   autocompleteType="languages"
                   fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
               </div>
-            </div>
 
-            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Include a Non-Disclosure Agreement (NDA)?
-              </h2>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                We&apos;ll generate one with your company name. Each team member
-                will receive and sign it before starting the project.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {[
-                  { value: "yes" as const, label: "Yes, Include NDA" },
-                  { value: "no" as const, label: "No NDA" },
-                ].map((option) => (
-                  <Button
-                    key={option.value}
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className={cn(
-                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
-                      ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
-                    )}
-                    onClick={() => {
-                      setNdaChoice(option.value);
-                      setDetails((current) => ({
-                        ...current,
-                        ndaEnabled: option.value === "yes",
-                      }));
-                    }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-              {ndaChoice === "yes" ? (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  Your Non-Disclosure Agreement (NDA) has been created. Feel
-                  free to review it.{" "}
-                  {renderNdaPreviewDialog(
-                    <Button
-                      type="button"
-                      className="h-7 px-2"
-                      variant="link"
-                      visual="primary"
-                    >
-                      View NDA
-                    </Button>,
-                    ndaDocumentId,
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-warning-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  {NDA_OFF_WARNING}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Description
-              </h2>
-              <FinalReviewTextSection
-                title="Overview"
-                initialValue={details.description ?? ""}
-                placeholder="Add the service overview"
-                onChange={(value) =>
-                  setDetails((current) => ({ ...current, description: value }))
-                }
-              />
-              <FinalReviewTextSection
-                title="Benefits"
-                initialValue={details.successCriteria ?? ""}
-                placeholder="Add benefits for joining this service"
-                onChange={(value) =>
-                  setDetails((current) => ({
-                    ...current,
-                    successCriteria: value,
-                  }))
-                }
-              />
-
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                <div className="flex flex-wrap gap-2">
-                  {roleOptions.map((role) => (
-                    <Button
-                      key={role}
-                      variant="outlined"
-                      visual="gray"
-                      type="button"
-                      className={cn(
-                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
-                        selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
-                      )}
-                      onClick={() => setSelectedRole(role)}
-                    >
-                      {role}
-                    </Button>
-                  ))}
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
-                  >
-                    + 5 More
-                  </Button>
-                </div>
-
-                <div className="mt-5">
-                  <FinalReviewRichTextField
-                    title="Responsibilities"
-                    initialValue={responsibilities}
-                    placeholder={`Add responsibilities for ${selectedRole}`}
-                    onChange={setResponsibilities}
-                  />
-                </div>
-
-                <div className="mt-5">
-                  <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
-                    Skills
-                  </h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {skills.map((skill) => (
-                      <Badge
-                        key={skill}
-                        size="md"
+              <div className="flex w-full flex-col items-start gap-4 border-t border-gray-200 bg-white p-6 min-[1180px]:h-[224px]">
+                <div className="flex h-24 w-full flex-col items-start gap-3 self-stretch p-0">
+                  <div className="flex h-11 w-full flex-col items-start gap-1 self-stretch p-0">
+                    <div className="flex h-5 items-center justify-center gap-2 p-0">
+                      <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
+                        Include a Non-Disclosure Agreement (NDA)?
+                      </h2>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              aria-label="Show NDA details"
+                              className="size-4 cursor-default p-0 text-gray-400"
+                            >
+                              <AlertCircle className="size-4 shrink-0" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            Non-Disclosure Agreement protects your confidential
+                            info by requiring each team member to sign before
+                            starting work.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                      We&apos;ll generate one with your company name. Each team
+                      member will receive and sign it before starting the
+                      project.
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-full items-start gap-2 self-stretch p-0">
+                    {[
+                      { value: "yes" as const, label: "Yes, Include NDA" },
+                      { value: "no" as const, label: "No NDA" },
+                    ].map((option) => (
+                      <Button
+                        key={option.value}
+                        variant="outlined"
                         visual="gray"
-                        className="border border-gray-200 bg-white"
+                        type="button"
+                        className={cn(
+                          "h-10 rounded-[52px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white",
+                          ndaChoice === option.value &&
+                            "border-2 border-primary-500 bg-primary-25 hover:bg-primary-25"
+                        )}
+                        onClick={() => {
+                          setNdaChoice(option.value)
+                          setDetails((current) => ({
+                            ...current,
+                            ndaEnabled: option.value === "yes",
+                          }))
+                        }}
                       >
-                        {skill}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          type="button"
-                          className="ml-2 text-gray-400"
-                          onClick={() => removeSkill(skill)}
-                          aria-label={`Remove ${skill}`}
-                        >
-                          <X className="size-3" />
-                        </Button>
-                      </Badge>
+                        {option.label}
+                      </Button>
                     ))}
-                    <Button
-                      className="h-7"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={addSkill}
-                    >
-                      Add Skill
-                    </Button>
+                  </div>
+                </div>
+                {ndaChoice === "yes" ? (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                    <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                    <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
+                      Your Non-Disclosure Agreement (NDA) has been created. Feel
+                      free to review it.
+                    </p>
+                    {renderNdaPreviewDialog(
+                      <Button
+                        type="button"
+                        className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
+                        variant="outlined"
+                        visual="primary"
+                      >
+                        View NDA
+                      </Button>,
+                      ndaDocumentId
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-warning-50 p-4 text-xs leading-[18px] font-normal text-dark-blue-400">
+                    {NDA_OFF_WARNING}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6 min-[1180px]:min-h-[976px]">
+              <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
+                <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
+                  Description
+                </h2>
+              </div>
+              <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                <FinalReviewTextSection
+                  compact
+                  title="Overview"
+                  initialValue={overview}
+                  placeholder="Add the service overview"
+                  isLoading={isRoleDescriptionLoading}
+                  onActivate={() => setActiveAssistantField("overview")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("overview")
+                    serviceAssistant.populateSelectedText(selection)
+                  }}
+                  onChange={setOverview}
+                />
+                <FinalReviewTextSection
+                  compact
+                  title="Benefits"
+                  initialValue={benefits}
+                  placeholder="Add benefits for joining this service"
+                  isLoading={isRoleDescriptionLoading}
+                  onActivate={() => setActiveAssistantField("benefits")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("benefits")
+                    serviceAssistant.populateSelectedText(selection)
+                  }}
+                  onChange={setBenefits}
+                />
+
+                <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
+                  <div
+                    className={cn(
+                      "flex w-full items-start gap-2 self-stretch p-0",
+                      showAllRoleOptions
+                        ? "flex-wrap"
+                        : "h-10 flex-nowrap overflow-hidden"
+                    )}
+                  >
+                    {visibleRoleOptions.map((role) => (
+                      <Button
+                        key={role}
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className={cn(
+                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                          selectedRole === role &&
+                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500"
+                        )}
+                        onClick={() => setSelectedRole(role)}
+                      >
+                        {role}
+                      </Button>
+                    ))}
+                    {remainingRoleCount > 0 ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                        onClick={() => setShowAllRoleOptions(true)}
+                      >
+                        + {remainingRoleCount} More
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                    <FinalReviewRichTextField
+                      compact
+                      title="Responsibilities"
+                      initialValue={responsibilities}
+                      placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isRoleDescriptionLoading}
+                      onActivate={() =>
+                        setActiveAssistantField("responsibilities")
+                      }
+                      onSmartAssistant={(selection) => {
+                        setActiveAssistantField("responsibilities")
+                        serviceAssistant.populateSelectedText(selection)
+                      }}
+                      onChange={setResponsibilities}
+                    />
+
+                    <div className="flex w-full flex-col items-start gap-1.5 self-stretch pb-6">
+                      <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
+                        Skills
+                      </h3>
+                      {isRoleDescriptionLoading ? (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          <FinalReviewShimmerBlock className="h-10 w-[178px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[136px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[152px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[120px] rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          {skills.map((skill) => (
+                            <Badge
+                              key={skill}
+                              size="md"
+                              visual="gray"
+                              className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
+                            >
+                              {skill}
+                              <BadgeCloseButton
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                aria-label={`Remove ${skill}`}
+                                className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                              >
+                                <X2 className="size-4" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          ))}
+                          <Button
+                            className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                            variant="outlined"
+                            visual="primary"
+                            onClick={addSkill}
+                          >
+                            Add Skill
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
               <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
-                {[
-                  ["Change a Service Title", "title"],
-                  ["Rewrite Overview", "overview"],
-                  ["Rewrite Benefits", "benefits"],
-                ].map(([item, field]) => (
+            <div
+              ref={serviceAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm font-normal leading-5 text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
+                {serviceAssistantQuickActions[activeAssistantField].map((item) => (
                   <Button
-                    key={item}
-                    className="h-10 rounded-full"
+                    key={`${activeAssistantField}-${item}`}
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getServiceAssistantSuggestionWidthClass(item)
+                    )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
-                      serviceAssistant.run(
-                        item,
-                        field as SmartAssistantEditableField,
-                      )
+                      serviceAssistant.run(item, activeAssistantField)
                     }
                   >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
+                    <span className="h-5 shrink-0">{item}</span>
                   </Button>
                 ))}
               </div>
-              {serviceAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
-                  {serviceAssistant.result}
-                </p>
+              {serviceAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {serviceAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === serviceAssistant.history.length - 1
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24)
+                    )
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs font-normal leading-[18px] text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm font-normal leading-5 text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return
+
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText
+                                  )
+                                  serviceAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result
+                                  )
+                                }}
+                              >
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={serviceAssistant.isLoading}
+                              onClick={() => serviceAssistant.retry(item)}
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
+              {serviceAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    onClick={() =>
+                      setShowServiceAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showServiceAssistantFollowUps
+                        ? "Use these suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showServiceAssistantFollowUps && "rotate-180"
+                      )}
+                    />
+                  </Button>
+                  {showServiceAssistantFollowUps ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
+                      {serviceAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getServiceAssistantSuggestionWidthClass(
+                              suggestion
+                            ) || "w-fit"
+                          )}
+                          disabled={serviceAssistant.isLoading}
+                          onClick={() =>
+                            serviceAssistant.run(
+                              suggestion,
+                              latestServiceAssistantItem?.field ??
+                                activeAssistantField
+                            )
+                          }
+                        >
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  serviceAssistant.selectedText ? "h-[148px]" : "h-[100px]"
+                )}
+              >
+                {serviceAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
+                      “{serviceAssistant.selectedText}
+                    </p>
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={serviceAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </IconButton>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
-                  placeholder="I want to change..."
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    serviceAssistant.selectedText ? "h-5" : "h-10"
+                  )}
+                  placeholder={
+                    serviceAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={serviceAssistant.message}
                   onChange={(event) =>
                     serviceAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
                     type="button"
                     disabled={
                       serviceAssistant.isLoading ||
@@ -13131,9 +17045,7 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        resolveFinalReviewAssistantField(
-                          serviceAssistant.message,
-                        ),
+                        activeAssistantField
                       )
                     }
                   >
@@ -13146,8 +17058,8 @@ const FinalServiceReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const FinalProjectReviewStep = ({
   setProgress,
@@ -13155,42 +17067,64 @@ const FinalProjectReviewStep = ({
   jobListingId,
   ensureJobListingDraft,
 }: ProgressProps & {
-  ndaDocumentId?: string | null;
-  jobListingId?: string | null;
-  ensureJobListingDraft?: EnsureJobListingDraft;
+  ndaDocumentId?: string | null
+  jobListingId?: string | null
+  ensureJobListingDraft?: EnsureJobListingDraft
 }) => {
-  const { toggleValidation } = useStepContext();
-  const { details, setDetails } = useJobListingDraftContext();
-  const projectInfoMethods = useProjectInfoContext();
-  const { projectScopeMethods } = useProjectScopeContext();
-  const [projectScopeState] = projectScopeMethods;
+  const { toggleValidation } = useStepContext()
+  const { details, setDetails } = useJobListingDraftContext()
+  const projectInfoMethods = useProjectInfoContext()
+  const { projectScopeMethods } = useProjectScopeContext()
+  const [projectScopeState] = projectScopeMethods
   const roleOptions = useMemo(
     () => getScopeRoleOptions(projectScopeState),
-    [projectScopeState],
-  );
+    [projectScopeState]
+  )
+  const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
+  const visibleRoleOptions = showAllRoleOptions
+    ? roleOptions
+    : roleOptions.slice(0, 4)
+  const remainingRoleCount = Math.max(
+    0,
+    roleOptions.length - visibleRoleOptions.length
+  )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
-    details.ndaEnabled === true ? "yes" : "no",
-  );
-  const [selectedRole, setSelectedRole] = useState(roleOptions[0]);
-  const [responsibilities, setResponsibilities] = useState("");
-  const didGenerateRoleDescriptionsRef = useRef(false);
+    details.ndaEnabled === true ? "yes" : "no"
+  )
+  const [selectedRole, setSelectedRole] = useState(roleOptions[0] ?? "")
+  const [overview, setOverview] = useState("")
+  const [benefits, setBenefits] = useState("")
+  const [responsibilities, setResponsibilities] = useState("")
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([])
+  const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
+    useState(false)
+  const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
+    useState(false)
+  const [activeAssistantField, setActiveAssistantField] =
+    useState<SmartAssistantEditableField>("title")
+  const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
+    useState(false)
+  const projectAssistantScrollRef = useRef<HTMLDivElement | null>(null)
+  const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
-    useDynamicFinalReviewSkills();
+    useDynamicFinalReviewSkills()
   const getAssistantValue = useCallback(
     (field: SmartAssistantEditableField) => {
-      if (field === "title") return projectInfoMethods.getValues("title") ?? "";
-      if (field === "overview") return details.description ?? "";
-      if (field === "benefits") return details.successCriteria ?? "";
-      if (field === "responsibilities") return responsibilities;
-      return "";
+      if (field === "title") return projectInfoMethods.getValues("title") ?? ""
+      if (field === "overview") return overview
+      if (field === "benefits") return benefits
+      if (field === "responsibilities") return responsibilities
+      return ""
     },
     [
-      details.description,
-      details.successCriteria,
+      benefits,
+      overview,
       projectInfoMethods,
       responsibilities,
-    ],
-  );
+    ]
+  )
   const applyAssistantValue = useCallback(
     (field: SmartAssistantEditableField, value: string) => {
       if (field === "title") {
@@ -13198,130 +17132,307 @@ const FinalProjectReviewStep = ({
           shouldDirty: true,
           shouldTouch: true,
           shouldValidate: true,
-        });
+        })
       } else if (field === "overview") {
-        setDetails((current) => ({ ...current, description: value }));
+        setOverview(value)
       } else if (field === "benefits") {
-        setDetails((current) => ({ ...current, successCriteria: value }));
+        setBenefits(value)
       } else if (field === "responsibilities") {
-        setResponsibilities(value);
+        setResponsibilities(value)
       }
     },
-    [projectInfoMethods, setDetails],
-  );
+    [projectInfoMethods]
+  )
   const projectAssistant = useFinalReviewSmartAssistant({
     jobListingId,
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
-  });
-  useEffect(() => {
-    if (!roleOptions.includes(selectedRole)) {
-      setSelectedRole(roleOptions[0]);
-    }
-  }, [roleOptions, selectedRole]);
-  const loadSavedRoleDescription = useCallback(
-    (draft: {
-      overview?: string;
-      benefits?: string;
-      responsibilities?: string;
-      skills?: string[];
-    }) => {
-      if (draft.overview !== undefined) {
-        setDetails((current) => ({ ...current, description: draft.overview }));
-      }
-      if (draft.benefits !== undefined) {
-        setDetails((current) => ({
-          ...current,
-          successCriteria: draft.benefits,
-        }));
-      }
-      if (draft.responsibilities !== undefined) {
-        setResponsibilities(draft.responsibilities);
-      }
-      if (draft.skills) {
-        setSkills(draft.skills);
-      }
-    },
-    [setDetails, setSkills],
-  );
-  useRoleDescriptionPersistence({
-    jobListingId,
-    ensureJobListingDraft,
     roleTitle: selectedRole,
-    overview: details.description ?? "",
-    benefits: details.successCriteria ?? "",
-    responsibilities,
-    skills,
-    onLoad: loadSavedRoleDescription,
-  });
+  })
 
   useEffect(() => {
-    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
-    if (responsibilities) return;
-    didGenerateRoleDescriptionsRef.current = true;
+    window.requestAnimationFrame(() => {
+      const scrollContainer = projectAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [projectAssistant.history])
 
-    const generateRoleDescriptions = async () => {
+  const latestProjectAssistantItem =
+    projectAssistant.history[projectAssistant.history.length - 1]
+  const projectAssistantFollowUpSuggestions =
+    latestProjectAssistantItem?.status === "success"
+      ? (latestProjectAssistantItem.suggestions ?? [])
+      : []
+
+  useEffect(() => {
+    setShowProjectAssistantFollowUps(false)
+  }, [latestProjectAssistantItem?.id])
+
+  const projectAssistantQuickActions: Record<
+    SmartAssistantEditableField,
+    string[]
+  > = {
+    title: [
+      "Make it more descriptive",
+      "Simplify the wording",
+      "Reword for clarity",
+    ],
+    overview: [
+      "Add project goals",
+      "Highlight key deliverables",
+      "Reword for better flow",
+    ],
+    benefits: [
+      "Add bullet points",
+      "Focus on team impact",
+      "Highlight learning opportunities",
+    ],
+    responsibilities: [
+      "Add more specifics",
+      "Simplify the task list",
+      "Group similar tasks",
+    ],
+  }
+  const getProjectAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Make it more descriptive" && "w-[211px]",
+      suggestion === "Simplify the wording" && "w-[194px]",
+      suggestion === "Reword for clarity" && "w-[163px]",
+      suggestion === "Add project goals" && "w-[151px]",
+      suggestion === "Highlight key deliverables" && "w-[218px]",
+      suggestion === "Reword for better flow" && "w-[191px]",
+      suggestion === "Add bullet points" && "w-[154px]",
+      suggestion === "Focus on team impact" && "w-[196px]",
+      suggestion === "Highlight learning opportunities" && "w-[248px]",
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]"
+    )
+  const didGenerateBasicInformationRef = useRef(false)
+  useEffect(() => {
+    if (!jobListingId || didGenerateBasicInformationRef.current) return
+    // Generate only the first time: once a title, industries or languages are
+    // persisted, the user's own edits are the source of truth.
+    const current = projectInfoMethods.getValues()
+    if (
+      current.title?.trim() ||
+      current.industry?.length ||
+      current.languages?.length
+    ) {
+      didGenerateBasicInformationRef.current = true
+      return
+    }
+    didGenerateBasicInformationRef.current = true
+
+    void (async () => {
+      setIsGeneratingBasicInformation(true)
       try {
-        const response = await JobListingAPI.GenerateRoleDescriptions(
+        const response = await JobListingAPI.GenerateBasicInformation(
           jobListingId,
           {
             workType: "project",
-            description: details.description ?? "",
-            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
-          },
-        );
-        const descriptions = response?.data?.roleDescriptions;
-        const description = Array.isArray(descriptions)
-          ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
-          : null;
+            description: details.description || undefined,
+            deliverables: details.deliverables || undefined,
+            tools: details.tools ?? [],
+            roles: roleOptions.length ? roleOptions : undefined,
+          }
+        )
+        const data = response.data as {
+          aiStatus?: "OK" | "AI_UNAVAILABLE"
+          basicInformation?: {
+            title?: string
+            jobType?: string
+            industries?: string[]
+            languages?: string[]
+          } | null
+        }
+        const generated = data.basicInformation
+        if (data.aiStatus !== "OK" || !generated) return
 
-        if (description?.overview) {
-          setDetails((current) => ({
-            ...current,
-            description: description.overview,
-          }));
+        // Only fill what is still empty so anything the user typed while the
+        // request was in flight is never overwritten.
+        const latest = projectInfoMethods.getValues()
+        const fill = (
+          name: "title" | "industry" | "languages",
+          value: string | string[]
+        ) =>
+          projectInfoMethods.setValue(name, value as never, {
+            shouldDirty: true,
+            shouldTouch: true,
+            shouldValidate: true,
+          })
+
+        if (!latest.title?.trim() && generated.title?.trim()) {
+          fill("title", generated.title.slice(0, 100))
         }
-        if (description?.benefits) {
-          setDetails((current) => ({
-            ...current,
-            successCriteria: description.benefits,
-          }));
+        if (!latest.industry?.length && generated.industries?.length) {
+          fill("industry", getUniqueOptions(generated.industries).slice(0, 10))
         }
-        if (description?.responsibilities) {
-          setResponsibilities(description.responsibilities);
+        if (!latest.languages?.length && generated.languages?.length) {
+          fill("languages", getUniqueOptions(generated.languages).slice(0, 10))
         }
-        if (Array.isArray(description?.skills)) {
-          setSkills(description.skills);
+        if (generated.jobType?.trim()) {
+          setDetails((existing) =>
+            existing.jobType
+              ? existing
+              : { ...existing, jobType: generated.jobType?.trim() }
+          )
         }
       } catch (error) {
-        console.error("Failed to generate role descriptions", error);
+        console.error("Generate basic information failed", error)
+      } finally {
+        setIsGeneratingBasicInformation(false)
       }
-    };
+    })()
+    // Runs once, when the saved draft id is available.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobListingId])
+  useEffect(() => {
+    if (!roleOptions.includes(selectedRole)) {
+      setSelectedRole(roleOptions[0] ?? "")
+    }
+  }, [roleOptions, selectedRole])
+  const loadSavedRoleDescription = useCallback(
+    (draft: {
+      overview?: string
+      benefits?: string
+      responsibilities?: string
+      skills?: string[]
+    }) => {
+      if (
+        draft.overview ||
+          draft.benefits ||
+          draft.responsibilities ||
+          draft.skills?.length
+      ) {
+        didGenerateRoleDescriptionsRef.current = true
+      }
+      if (draft.overview !== undefined) {
+        setOverview((current) => (current.trim() ? current : draft.overview ?? ""))
+      }
+      if (draft.benefits !== undefined) {
+        setBenefits((current) =>
+          current.trim() ? current : draft.benefits ?? ""
+        )
+      }
+      if (draft.responsibilities !== undefined) {
+        setResponsibilities(draft.responsibilities)
+      }
+      if (draft.skills) {
+        setSkills(draft.skills)
+      }
+    },
+    [setSkills]
+  )
+  const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
+    jobListingId,
+    ensureJobListingDraft,
+    roleTitle: selectedRole,
+    overview,
+    benefits,
+    responsibilities,
+    skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
+    onLoad: loadSavedRoleDescription,
+  })
+  const isRoleDescriptionLoading =
+    !isRoleDescriptionLoaded || isGeneratingRoleDescriptions
+  const regenerateProjectRoleDescription = useCallback(async () => {
+    if (!jobListingId || !selectedRole || roleOptions.length === 0) return
 
-    void generateRoleDescriptions();
+    setIsGeneratingRoleDescriptions(true)
+    try {
+      const response = await JobListingAPI.GenerateRoleDescriptions(
+        jobListingId,
+        {
+          workType: "project",
+          description: details.description ?? "",
+          roles: roleOptions.map((roleTitle) => ({ roleTitle })),
+        }
+      )
+      const descriptions = response?.data?.roleDescriptions
+      const generatedDescriptions = Array.isArray(descriptions)
+        ? descriptions
+        : []
+      if (generatedDescriptions.length) {
+        setGeneratedRoleDescriptions(generatedDescriptions)
+        void Promise.all(
+          generatedDescriptions
+            .filter((item: any) => item?.roleTitle)
+            .map((item: any) =>
+              JobListingAPI.SaveRoleDescription(jobListingId, item.roleTitle, {
+                overview: item.overview,
+                benefits: item.benefits,
+                responsibilities: item.responsibilities,
+                skills: Array.isArray(item.skills) ? item.skills : [],
+              })
+            )
+        ).catch((error) => {
+          console.error("Failed to save generated role descriptions", error)
+        })
+      }
+      const description = Array.isArray(descriptions)
+        ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
+        : null
+
+      if (description?.overview) {
+        setOverview(description.overview)
+      }
+      if (description?.benefits) {
+        setBenefits(description.benefits)
+      }
+      if (description?.responsibilities) {
+        setResponsibilities(description.responsibilities)
+      }
+      if (Array.isArray(description?.skills)) {
+        setSkills(description.skills)
+      }
+    } catch (error) {
+      console.error("Failed to regenerate role descriptions", error)
+    } finally {
+      setIsGeneratingRoleDescriptions(false)
+    }
   }, [
     details.description,
     jobListingId,
     roleOptions,
-    responsibilities,
     selectedRole,
-    setDetails,
     setSkills,
-  ]);
+  ])
+
+  useEffect(() => {
+    if (!jobListingId || didGenerateRoleDescriptionsRef.current) return
+    if (!isRoleDescriptionLoaded) return
+    if (!selectedRole || roleOptions.length === 0) return
+    if (responsibilities) return
+    didGenerateRoleDescriptionsRef.current = true
+
+    void regenerateProjectRoleDescription()
+  }, [
+    isRoleDescriptionLoaded,
+    jobListingId,
+    roleOptions,
+    responsibilities,
+    regenerateProjectRoleDescription,
+    selectedRole,
+  ])
 
   useIsomorphicLayoutEffect(() => {
-    toggleValidation(true);
-  }, []);
+    toggleValidation(true)
+  }, [])
 
   useEffect(() => {
-    setProgress?.(17.5);
-  }, [setProgress]);
+    setProgress?.(17.5)
+  }, [setProgress])
   useEffect(() => {
     if (details.ndaEnabled === undefined) {
-      setDetails((current) => ({ ...current, ndaEnabled: false }));
+      setDetails((current) => ({ ...current, ndaEnabled: false }))
     }
-  }, [details.ndaEnabled, setDetails]);
+  }, [details.ndaEnabled, setDetails])
 
   return (
     <ScrollArea
@@ -13330,38 +17441,40 @@ const FinalProjectReviewStep = ({
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
       {addSkillDialog}
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[790px]">
-            <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-              One Last Check
-            </h1>
-            <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-              Take a moment to review your setup. If everything looks good, go
-              ahead and publish, or make quick edits if needed.
-            </p>
+      <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
+          <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
+            <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+              <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                One Last Check
+              </h1>
+              <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                Take a moment to review your setup. If everything looks good, go
+                ahead and publish, or make quick edits if needed.
+              </p>
+            </div>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Basic Information
-              </h2>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <ReviewEditableTitle label="Project Title" />
-                <div>
-                  <Label className="text-sm leading-5 text-gray-500">
-                    Job Type
-                  </Label>
-                  <Input className="mt-1.5" value="Website" readOnly />
-                </div>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-8 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex w-full flex-col items-start gap-6 p-6 min-[1180px]:h-[440px]">
+                <h2 className="h-7 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  Basic Information
+                </h2>
+                <ReviewEditableTitle
+                  label="Project Title"
+                  isLoading={isGeneratingBasicInformation}
+                  onActivate={() => setActiveAssistantField("title")}
+                />
+                <ReviewJobTypeSelect
+                  isLoading={isGeneratingBasicInformation}
+                />
                 <ReviewEditableTags
                   fieldName="industry"
                   label="Industries"
                   addLabel="Add Industry"
                   autocompleteType="industries"
                   fallbackOptions={FALLBACK_INDUSTRY_OPTIONS}
-                  max={5}
+                  max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
                 <ReviewEditableTags
                   fieldName="languages"
@@ -13370,224 +17483,526 @@ const FinalProjectReviewStep = ({
                   autocompleteType="languages"
                   fallbackOptions={FALLBACK_LANGUAGE_OPTIONS}
                   max={10}
+                  isLoading={isGeneratingBasicInformation}
                 />
               </div>
-            </div>
 
-            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Include a Non-Disclosure Agreement (NDA)?
-              </h2>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                We&apos;ll generate one with your company name. Each team member
-                will receive and sign it before starting the project.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                {[
-                  { value: "yes" as const, label: "Yes, Include NDA" },
-                  { value: "no" as const, label: "No NDA" },
-                ].map((option) => (
-                  <Button
-                    key={option.value}
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className={cn(
-                      "h-9 rounded-full border-gray-300 bg-white px-4 text-sm leading-5 text-dark-blue-400 shadow-none",
-                      ndaChoice === option.value &&
-                        "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
-                    )}
-                    onClick={() => {
-                      setNdaChoice(option.value);
-                      setDetails((current) => ({
-                        ...current,
-                        ndaEnabled: option.value === "yes",
-                      }));
-                    }}
-                  >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-              {ndaChoice === "yes" ? (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  Your Non-Disclosure Agreement (NDA) has been created. Feel
-                  free to review it.{" "}
-                  {renderNdaPreviewDialog(
-                    <Button
-                      type="button"
-                      className="h-7 px-2"
-                      variant="link"
-                      visual="primary"
-                    >
-                      View NDA
-                    </Button>,
-                    ndaDocumentId,
-                  )}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-lg border border-primary-100 bg-warning-50 p-4 text-sm leading-5 text-dark-blue-400">
-                  {NDA_OFF_WARNING}
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Description
-              </h2>
-              <FinalReviewTextSection
-                title="Overview"
-                initialValue={details.description ?? ""}
-                placeholder="Add the project overview"
-                onChange={(value) =>
-                  setDetails((current) => ({ ...current, description: value }))
-                }
-              />
-              <FinalReviewTextSection
-                title="Benefits"
-                initialValue={details.successCriteria ?? ""}
-                placeholder="Add benefits for joining this project"
-                onChange={(value) =>
-                  setDetails((current) => ({
-                    ...current,
-                    successCriteria: value,
-                  }))
-                }
-              />
-
-              <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-                <div className="flex flex-wrap gap-2">
-                  {roleOptions.map((role) => (
-                    <Button
-                      key={role}
-                      variant="outlined"
-                      visual="gray"
-                      type="button"
-                      className={cn(
-                        "h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none",
-                        selectedRole === role &&
-                          "border-primary-500 bg-primary-50 text-primary-700 hover:bg-primary-50",
-                      )}
-                      onClick={() => setSelectedRole(role)}
-                    >
-                      {role}
-                    </Button>
-                  ))}
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    type="button"
-                    className="h-8 rounded-full border-gray-300 bg-white px-3 text-xs leading-[18px] text-dark-blue-400 shadow-none"
-                  >
-                    + 5 More
-                  </Button>
-                </div>
-
-                <div className="mt-5">
-                  <FinalReviewRichTextField
-                    title="Responsibilities"
-                    initialValue={responsibilities}
-                    placeholder={`Add responsibilities for ${selectedRole}`}
-                    onChange={setResponsibilities}
-                  />
-                </div>
-
-                <div className="mt-5">
-                  <h3 className="text-base leading-6 font-semibold text-dark-blue-400">
-                    Skills
-                  </h3>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {skills.map((skill) => (
-                      <Badge
-                        key={skill}
-                        size="md"
+              <div className="flex w-full flex-col items-start gap-4 border-t border-gray-200 bg-white p-6 min-[1180px]:h-[224px]">
+                <div className="flex h-24 w-full flex-col items-start gap-3 self-stretch p-0">
+                  <div className="flex h-11 w-full flex-col items-start gap-1 self-stretch p-0">
+                    <div className="flex h-5 items-center justify-center gap-2 p-0">
+                      <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
+                        Include a Non-Disclosure Agreement (NDA)?
+                      </h2>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              aria-label="Show NDA details"
+                              className="size-4 cursor-default p-0 text-gray-400"
+                            >
+                              <AlertCircle className="size-4 shrink-0" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            Non-Disclosure Agreement protects your confidential
+                            info by requiring each team member to sign before
+                            starting work.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                      We&apos;ll generate one with your company name. Each team
+                      member will receive and sign it before starting the
+                      project.
+                    </p>
+                  </div>
+                  <div className="flex h-10 w-full items-start gap-2 self-stretch p-0">
+                    {[
+                      { value: "yes" as const, label: "Yes, Include NDA" },
+                      { value: "no" as const, label: "No NDA" },
+                    ].map((option) => (
+                      <Button
+                        key={option.value}
+                        variant="outlined"
                         visual="gray"
-                        className="border border-gray-200 bg-white"
+                        type="button"
+                        className={cn(
+                          "h-10 rounded-[52px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white",
+                          ndaChoice === option.value &&
+                            "border-2 border-primary-500 bg-primary-25 hover:bg-primary-25"
+                        )}
+                        onClick={() => {
+                          setNdaChoice(option.value)
+                          setDetails((current) => ({
+                            ...current,
+                            ndaEnabled: option.value === "yes",
+                          }))
+                        }}
                       >
-                        {skill}
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          type="button"
-                          className="ml-2 text-gray-400"
-                          onClick={() => removeSkill(skill)}
-                          aria-label={`Remove ${skill}`}
-                        >
-                          <X className="size-3" />
-                        </Button>
-                      </Badge>
+                        {option.label}
+                      </Button>
                     ))}
-                    <Button
-                      className="h-7"
-                      variant="outlined"
-                      visual="gray"
-                      onClick={addSkill}
-                    >
-                      Add Skill
-                    </Button>
+                  </div>
+                </div>
+                {ndaChoice === "yes" ? (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                    <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                    <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
+                      Your Non-Disclosure Agreement (NDA) has been created. Feel
+                      free to review it.
+                    </p>
+                    {renderNdaPreviewDialog(
+                      <Button
+                        type="button"
+                        className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
+                        variant="outlined"
+                        visual="primary"
+                      >
+                        View NDA
+                      </Button>,
+                      ndaDocumentId
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-warning-50 p-4 text-xs leading-[18px] font-normal text-dark-blue-400">
+                    {NDA_OFF_WARNING}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6 min-[1180px]:min-h-[976px]">
+              <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
+                <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
+                  Description
+                </h2>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  visual="gray"
+                  className="h-8 rounded-[5px] border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold leading-[18px] text-dark-blue-400 shadow-xs"
+                  disabled={
+                    isRoleDescriptionLoading ||
+                    !jobListingId ||
+                    !selectedRole ||
+                    roleOptions.length === 0
+                  }
+                  onClick={() => void regenerateProjectRoleDescription()}
+                >
+                  Regenerate role description
+                </Button>
+              </div>
+              <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                <FinalReviewTextSection
+                  compact
+                  title="Overview"
+                  initialValue={overview}
+                  placeholder="Add the project overview"
+                  isLoading={isRoleDescriptionLoading}
+                  onActivate={() => setActiveAssistantField("overview")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("overview")
+                    projectAssistant.populateSelectedText(selection)
+                  }}
+                  onChange={setOverview}
+                />
+                <FinalReviewTextSection
+                  compact
+                  title="Benefits"
+                  initialValue={benefits}
+                  placeholder="Add benefits for joining this project"
+                  isLoading={isRoleDescriptionLoading}
+                  onActivate={() => setActiveAssistantField("benefits")}
+                  onSmartAssistant={(selection) => {
+                    setActiveAssistantField("benefits")
+                    projectAssistant.populateSelectedText(selection)
+                  }}
+                  onChange={setBenefits}
+                />
+
+                <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
+                  <div
+                    className={cn(
+                      "flex w-full items-start gap-2 self-stretch p-0",
+                      showAllRoleOptions
+                        ? "flex-wrap"
+                        : "h-10 flex-nowrap overflow-hidden"
+                    )}
+                  >
+                    {visibleRoleOptions.map((role) => (
+                      <Button
+                        key={role}
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className={cn(
+                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                          selectedRole === role &&
+                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500"
+                        )}
+                        onClick={() => setSelectedRole(role)}
+                      >
+                        {role}
+                      </Button>
+                    ))}
+                    {remainingRoleCount > 0 ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                        onClick={() => setShowAllRoleOptions(true)}
+                      >
+                        + {remainingRoleCount} More
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                    <FinalReviewRichTextField
+                      compact
+                      title="Responsibilities"
+                      initialValue={responsibilities}
+                      placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isRoleDescriptionLoading}
+                      onActivate={() =>
+                        setActiveAssistantField("responsibilities")
+                      }
+                      onSmartAssistant={(selection) => {
+                        setActiveAssistantField("responsibilities")
+                        projectAssistant.populateSelectedText(selection)
+                      }}
+                      onChange={setResponsibilities}
+                    />
+
+                    <div className="flex w-full flex-col items-start gap-1.5 self-stretch pb-6">
+                      <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
+                        Skills
+                      </h3>
+                      {isRoleDescriptionLoading ? (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          <FinalReviewShimmerBlock className="h-10 w-[178px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[136px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[152px] rounded-lg" />
+                          <FinalReviewShimmerBlock className="h-10 w-[120px] rounded-lg" />
+                        </div>
+                      ) : (
+                        <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                          {skills.map((skill) => (
+                            <Badge
+                              key={skill}
+                              size="md"
+                              visual="gray"
+                              className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
+                            >
+                              {skill}
+                              <BadgeCloseButton
+                                type="button"
+                                onClick={() => removeSkill(skill)}
+                                aria-label={`Remove ${skill}`}
+                                className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                              >
+                                <X2 className="size-4" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          ))}
+                          <Button
+                            className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                            variant="outlined"
+                            visual="primary"
+                            onClick={addSkill}
+                          >
+                            Add Skill
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
+            <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+              <h2 className="h-6 flex-1 text-base font-semibold leading-6 text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                What do you want to do?
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
-                {[
-                  ["Change a Project Title", "title"],
-                  ["Rewrite Overview", "overview"],
-                  ["Rewrite Benefits", "benefits"],
-                ].map(([item, field]) => (
+            <div
+              ref={projectAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg font-semibold leading-7 text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm font-normal leading-5 text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
+                {projectAssistantQuickActions[activeAssistantField].map(
+                  (item) => (
+                    <Button
+                      key={`${activeAssistantField}-${item}`}
+                      className={cn(
+                        "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                        getProjectAssistantSuggestionWidthClass(item)
+                      )}
+                      variant="outlined"
+                      visual="gray"
+                      disabled={projectAssistant.isLoading}
+                      onClick={() =>
+                        projectAssistant.run(item, activeAssistantField)
+                      }
+                    >
+                      <span className="h-5 shrink-0">{item}</span>
+                    </Button>
+                  )
+                )}
+              </div>
+              {projectAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {projectAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === projectAssistant.history.length - 1
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean)
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24)
+                    )
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs font-normal leading-[18px] text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm font-normal leading-5 text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs font-normal leading-[18px] text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base font-normal leading-6 text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>{line}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return
+
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText
+                                  )
+                                  projectAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result
+                                  )
+                                }}
+                              >
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={projectAssistant.isLoading}
+                              onClick={() =>
+                                projectAssistant.retry(item)
+                              }
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
+              {projectAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
                   <Button
-                    key={item}
-                    className="h-10 rounded-full"
-                    variant="outlined"
+                    variant="ghost"
                     visual="gray"
-                    disabled={projectAssistant.isLoading}
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
                     onClick={() =>
-                      projectAssistant.run(
-                        item,
-                        field as SmartAssistantEditableField,
-                      )
+                      setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <Copy className="size-4 text-gray-400" />
-                    {item}
+                    <span className="flex-1">
+                      {showProjectAssistantFollowUps
+                        ? "Use these suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showProjectAssistantFollowUps && "rotate-180"
+                      )}
+                    />
                   </Button>
-                ))}
-              </div>
-              {projectAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
-                  {projectAssistant.result}
-                </p>
+                  {showProjectAssistantFollowUps ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
+                      {projectAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getProjectAssistantSuggestionWidthClass(
+                              suggestion
+                            ) || "w-fit"
+                          )}
+                          disabled={projectAssistant.isLoading}
+                          onClick={() =>
+                            projectAssistant.run(
+                              suggestion,
+                              latestProjectAssistantItem?.field ??
+                                activeAssistantField
+                            )
+                          }
+                        >
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+              <div
+                className={cn(
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  projectAssistant.selectedText ? "h-[148px]" : "h-[100px]"
+                )}
+              >
+                {projectAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm font-normal leading-5 text-dark-blue-400">
+                      “{projectAssistant.selectedText}
+                    </p>
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={projectAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </IconButton>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-0 focus:ring-0 focus-visible:outline-none"
-                  placeholder="I want to change..."
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm font-normal leading-5 text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    projectAssistant.selectedText ? "h-5" : "h-10"
+                  )}
+                  placeholder={
+                    projectAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={projectAssistant.message}
                   onChange={(event) =>
                     projectAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
                     type="button"
                     disabled={
                       projectAssistant.isLoading ||
@@ -13596,9 +18011,7 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        resolveFinalReviewAssistantField(
-                          projectAssistant.message,
-                        ),
+                        activeAssistantField
                       )
                     }
                   >
@@ -13611,8 +18024,8 @@ const FinalProjectReviewStep = ({
         </div>
       </div>
     </ScrollArea>
-  );
-};
+  )
+}
 
 const ServiceScopeEditStep = ({
   setProgress,
@@ -13621,14 +18034,20 @@ const ServiceScopeEditStep = ({
   const { toggleValidation } = useStepContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
-  const [phases, setPhases] = useState<ServiceScopePhase[]>(() =>
-    serviceScopePhases.map((phase) => ({
-      ...phase,
-      rows: phase.rows.map((row) => ({ ...row, workSchedule: "full_time" })),
-    })),
+  const { details: jobListingDraftDetails } = useJobListingDraftContext();
+  const createDefaultServicePhases = () =>
+    reorderServicePhases(
+      serviceScopePhases.map((phase, phaseIndex) => ({
+        ...phase,
+        id: `service-default-phase-${phaseIndex}`,
+        rows: phase.rows.map((row) => ({ ...row, workSchedule: "full_time" })),
+      })),
+    );
+  const [phases, setPhases] = useState<ServiceScopePhase[]>(
+    createDefaultServicePhases,
   );
-  const [expandedPhaseNames, setExpandedPhaseNames] = useState(() =>
-    serviceScopePhases.map((phase) => phase.name),
+  const [expandedPhaseIds, setExpandedPhaseIds] = useState(() =>
+    createDefaultServicePhases().map((phase) => phase.id),
   );
   const [searchValue, setSearchValue] = useState("");
   const [isAddPhaseDialogOpen, setAddPhaseDialogOpen] = useState(false);
@@ -13638,17 +18057,41 @@ const ServiceScopeEditStep = ({
   >("");
   const [assistantMessage, setAssistantMessage] = useState("");
   const [assistantResult, setAssistantResult] = useState("");
+  const [assistantLastPrompt, setAssistantLastPrompt] = useState("");
+  const [assistantHistory, setAssistantHistory] = useState<
+    ServiceAssistantHistoryItem[]
+  >([]);
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const assistantChatScrollRef = useRef<HTMLDivElement | null>(null);
+  const assistantUndoSnapshotRef =
+    useRef<ServiceAssistantListingSnapshot | null>(null);
   const didGenerateInitialScopeRef = useRef(false);
   const [budgetAmount, setBudgetAmount] = useState(5000);
+  const [isBudgetLoading, setIsBudgetLoading] = useState(false);
+  const [isBudgetStale, setIsBudgetStale] = useState(false);
   const [budgetFrequency, setBudgetFrequency] = useState("week");
-  const [activeServicePhaseNote, setActiveServicePhaseNote] = useState<
+  const [activeServicePhaseNoteId, setActiveServicePhaseNoteId] = useState<
     string | null
   >(null);
+  const [activeRecurringPhaseId, setActiveRecurringPhaseId] = useState<
+    string | null
+  >(null);
+  const [draftRecurringSchedule, setDraftRecurringSchedule] = useState<
+    (typeof serviceRecurringScheduleOptions)[number]["value"]
+  >("monthly");
+  const [draftRecurringCount, setDraftRecurringCount] = useState(1);
   const [activeServiceRoleKey, setActiveServiceRoleKey] = useState<
     string | null
   >(null);
   const [draftServiceRole, setDraftServiceRole] = useState("");
+  const [serviceRoleAutocompleteOptions, setServiceRoleAutocompleteOptions] =
+    useState<string[]>([]);
+  const [isServiceRoleAutocompleteOpen, setServiceRoleAutocompleteOpen] =
+    useState(false);
+  const serviceRoleAutocompleteTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const serviceRoleAutocompleteRequestIdRef = useRef(0);
   const [draftServiceSchedule, setDraftServiceSchedule] =
     useState<JobListingWorkSchedule>("full_time");
   const [draftServiceCustomHours, setDraftServiceCustomHours] = useState("15");
@@ -13657,6 +18100,11 @@ const ServiceScopeEditStep = ({
   const didApplyPersistedScopeRef = useRef(false);
   const skipNextServiceScopeSaveRef = useRef(false);
   const lastSavedServiceScopeSignatureRef = useRef("");
+  const servicePhaseDndSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, {}),
+  );
   const normalizedSearchValue = normalizeSearchText(searchValue);
   const visiblePhases = normalizedSearchValue
     ? phases.filter((phase) => {
@@ -13680,6 +18128,61 @@ const ServiceScopeEditStep = ({
     : phases;
 
   useEffect(() => {
+    const query = draftServiceRole.trim();
+
+    if (serviceRoleAutocompleteTimerRef.current) {
+      clearTimeout(serviceRoleAutocompleteTimerRef.current);
+    }
+
+    if (!activeServiceRoleKey || !query) {
+      setServiceRoleAutocompleteOptions([]);
+      setServiceRoleAutocompleteOpen(false);
+      return;
+    }
+
+    serviceRoleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++serviceRoleAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10,
+        );
+        if (currentRequestId !== serviceRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item)),
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase(),
+        );
+
+        setServiceRoleAutocompleteOptions(options);
+        setServiceRoleAutocompleteOpen(options.length > 0);
+      } catch {
+        if (currentRequestId !== serviceRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+        setServiceRoleAutocompleteOptions([]);
+        setServiceRoleAutocompleteOpen(false);
+      }
+    }, 250);
+
+    return () => {
+      if (serviceRoleAutocompleteTimerRef.current) {
+        clearTimeout(serviceRoleAutocompleteTimerRef.current);
+      }
+    };
+  }, [activeServiceRoleKey, draftServiceRole]);
+
+  useEffect(() => {
     if (didApplyPersistedScopeRef.current) return;
 
     const persistedPhases =
@@ -13691,7 +18194,7 @@ const ServiceScopeEditStep = ({
     didGenerateInitialScopeRef.current = true;
     skipNextServiceScopeSaveRef.current = true;
     setPhases(persistedPhases);
-    setExpandedPhaseNames(persistedPhases.map((phase) => phase.name));
+    setExpandedPhaseIds(persistedPhases.map((phase) => phase.id));
   }, [projectScopeState]);
 
   useEffect(() => {
@@ -13699,40 +18202,79 @@ const ServiceScopeEditStep = ({
     didGenerateInitialScopeRef.current = true;
 
     const generateScope = async () => {
+      setIsBudgetLoading(true);
       try {
         const response = await JobListingAPI.GenerateScope(jobListingId, {
           workType: "service",
+          description: jobListingDraftDetails.description,
+          deliverables: jobListingDraftDetails.deliverables,
+          tools: jobListingDraftDetails.tools,
           budgetUsdCents: budgetAmount * 100,
+          apply: true,
         });
         const generatedPhases = createServicePhasesFromGeneratedScope(
           response?.data?.scope,
         );
 
         if (generatedPhases.length > 0) {
+          skipNextServiceScopeSaveRef.current = true;
           setPhases(generatedPhases);
-          setExpandedPhaseNames(generatedPhases.map((phase) => phase.name));
+          setExpandedPhaseIds(generatedPhases.map((phase) => phase.id));
+        }
+        const totalBudgetUsdCents = toFiniteNumber(
+          response?.data?.totalBudgetUsdCents,
+        );
+        if (typeof totalBudgetUsdCents === "number") {
+          setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
+          setIsBudgetStale(Boolean(response?.data?.isBudgetStale));
         }
       } catch (error) {
         console.error("Failed to generate service scope", error);
+      } finally {
+        setIsBudgetLoading(false);
       }
     };
 
     void generateScope();
-  }, [budgetAmount, jobListingId]);
+  }, [
+    jobListingId,
+    jobListingDraftDetails.description,
+    jobListingDraftDetails.deliverables,
+    jobListingDraftDetails.tools,
+  ]);
 
   const updateRow = (
-    phaseName: string,
+    phaseId: string,
     taskName: string,
     nextValues: Partial<ServiceScopeRow>,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.name !== phaseName
+        phase.id !== phaseId
           ? phase
           : {
               ...phase,
               rows: phase.rows.map((row) =>
                 row.task === taskName ? { ...row, ...nextValues } : row,
+              ),
+            },
+      ),
+    );
+  };
+
+  const updateRowAtIndex = (
+    phaseId: string,
+    rowIndex: number,
+    nextValues: Partial<ServiceScopeRow>,
+  ) => {
+    setPhases((currentPhases) =>
+      currentPhases.map((phase) =>
+        phase.id !== phaseId
+          ? phase
+          : {
+              ...phase,
+              rows: phase.rows.map((row, currentRowIndex) =>
+                currentRowIndex === rowIndex ? { ...row, ...nextValues } : row,
               ),
             },
       ),
@@ -13750,12 +18292,14 @@ const ServiceScopeEditStep = ({
     return "Full-time";
   };
 
-  const openServiceRoleEditor = (phaseName: string, row: ServiceScopeRow) => {
-    const key = `${phaseName}-${row.task}`;
+  const openServiceRoleEditor = (phaseId: string, row: ServiceScopeRow) => {
+    const key = `${phaseId}-${row.task}`;
     const [durationValue] = row.duration.split(/\s+/);
 
     setActiveServiceRoleKey(key);
     setDraftServiceRole(row.role ?? "");
+    setServiceRoleAutocompleteOptions([]);
+    setServiceRoleAutocompleteOpen(false);
     setDraftServiceSchedule(row.workSchedule ?? "full_time");
     setDraftServiceCustomHours(
       String(row.customHours ?? (Number(durationValue) || 15)),
@@ -13763,10 +18307,10 @@ const ServiceScopeEditStep = ({
     setDraftServiceCustomFrequency(row.customFrequency ?? "per_week");
   };
 
-  const saveServiceRoleEditor = (phaseName: string, taskName: string) => {
+  const saveServiceRoleEditor = (phaseId: string, taskName: string) => {
     const nextHours = Number(draftServiceCustomHours) || 15;
 
-    updateRow(phaseName, taskName, {
+    updateRow(phaseId, taskName, {
       role: draftServiceRole.trim() || "Specialist",
       workSchedule: draftServiceSchedule,
       customHours: draftServiceSchedule === "custom" ? nextHours : undefined,
@@ -13779,16 +18323,17 @@ const ServiceScopeEditStep = ({
         : {}),
     });
     setActiveServiceRoleKey(null);
+    setServiceRoleAutocompleteOpen(false);
   };
 
   const updatePhaseRecurrence = (
-    phaseName: string,
-    recurrenceSchedule: "monthly" | "weekly",
+    phaseId: string,
+    recurrenceSchedule: (typeof serviceRecurringScheduleOptions)[number]["value"],
     recurrenceCount: number,
   ) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) => {
-        if (phase.name !== phaseName || phase.phaseType !== "recurring") {
+        if (phase.id !== phaseId || phase.phaseType !== "recurring") {
           return phase;
         }
 
@@ -13796,7 +18341,9 @@ const ServiceScopeEditStep = ({
           ...phase,
           recurrenceSchedule,
           recurrenceCount,
-          status: `Recurs: ${recurrenceSchedule === "weekly" ? "Weekly" : "Monthly"}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`,
+          status: `Recurs: ${getServiceRecurringScheduleLabel(
+            recurrenceSchedule,
+          )}, ${recurrenceCount} ${recurrenceCount === 1 ? "time" : "times"}`,
         };
       }),
     );
@@ -13806,11 +18353,184 @@ const ServiceScopeEditStep = ({
     recurrenceSchedule?: string;
     recurrenceCount?: number;
   }) => {
-    const scheduleLabel =
-      phase.recurrenceSchedule === "weekly" ? "Weekly" : "Monthly";
+    const scheduleLabel = getServiceRecurringScheduleLabel(
+      phase.recurrenceSchedule,
+    );
     const count = phase.recurrenceCount ?? 3;
 
     return `${scheduleLabel}, ${count} ${count === 1 ? "time" : "times"}`;
+  };
+
+  const cloneServicePhases = (sourcePhases: ServiceScopePhase[]) =>
+    sourcePhases.map((phase) => ({
+      ...phase,
+      rows: phase.rows.map((row) => ({ ...row })),
+    }));
+
+  const getServiceAssistantListingSnapshot = (
+    sourcePhases: ServiceScopePhase[] = phases,
+    sourceBudgetAmount: number = budgetAmount,
+    sourceIsBudgetStale: boolean = isBudgetStale,
+  ): ServiceAssistantListingSnapshot => ({
+    phases: cloneServicePhases(sourcePhases),
+    budgetAmount: sourceBudgetAmount,
+    isBudgetStale: sourceIsBudgetStale,
+  });
+
+  const restoreServiceAssistantListingSnapshot = (
+    snapshot: ServiceAssistantListingSnapshot,
+  ) => {
+    const nextPhases = cloneServicePhases(snapshot.phases);
+    skipNextServiceScopeSaveRef.current = true;
+    setPhases(nextPhases);
+    setExpandedPhaseIds(nextPhases.map((phase) => phase.id));
+    setBudgetAmount(snapshot.budgetAmount);
+    setIsBudgetStale(snapshot.isBudgetStale);
+  };
+
+  const persistServiceAssistantListingSnapshot = async (
+    snapshot: ServiceAssistantListingSnapshot,
+  ) => {
+    if (!jobListingId) return;
+
+    await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+      hasScope: true,
+      phases: snapshot.phases.map((phase) => ({
+        phaseName: `${phase.name} ${phase.customName ?? ""}`.trim(),
+        phaseType: phase.phaseType,
+        recurrenceSchedule: phase.recurrenceSchedule,
+        recurrenceCount: phase.recurrenceCount,
+        tasks: phase.rows.map((row) => {
+          const [durationValue] = row.duration.split(/\s+/);
+
+          return {
+            taskName: row.task,
+            roleTitle: row.role,
+            location: row.location,
+            experienceLevel: row.experience,
+            workSchedule: row.workSchedule ?? "full_time",
+            customHours: row.customHours,
+            customFrequency: row.customFrequency,
+            estimatedHours:
+              row.workSchedule === "custom"
+                ? Number(row.customHours) || 1
+                : Number(durationValue) || 1,
+          };
+        }),
+      })),
+    });
+  };
+
+  const startServiceAssistantHistoryItem = (
+    prompt: string,
+    listingBefore: ServiceAssistantListingSnapshot,
+  ) => {
+    const historyId = `service-assistant-history-${getId()}`;
+
+    setAssistantHistory((currentHistory) =>
+      [
+        ...currentHistory,
+        {
+          id: historyId,
+          prompt,
+          status: "pending" as const,
+          listingBefore,
+        },
+      ].slice(-20),
+    );
+
+    return historyId;
+  };
+
+  const completeServiceAssistantHistoryItem = (
+    id: string,
+    prompt: string,
+    result: string,
+    status: Exclude<ServiceAssistantHistoryItem["status"], "pending"> =
+      "success",
+    listingAfter?: ServiceAssistantListingSnapshot,
+  ) => {
+    setAssistantResult(result);
+    setAssistantLastPrompt(prompt);
+    setAssistantHistory((currentHistory) =>
+      currentHistory.map((item) =>
+        item.id === id ? { ...item, result, status, listingAfter } : item,
+      ),
+    );
+  };
+
+  const getServiceAssistantResultText = (value: unknown, fallback: string) => {
+    if (typeof value === "string") return value;
+
+    if (Array.isArray(value)) {
+      return value
+        .map((item) =>
+          typeof item === "string" ? item : JSON.stringify(item),
+        )
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (value && typeof value === "object") {
+      const objectValue = value as {
+        summary?: unknown;
+        message?: unknown;
+        suggestions?: unknown;
+      };
+
+      if (typeof objectValue.summary === "string") return objectValue.summary;
+      if (typeof objectValue.message === "string") return objectValue.message;
+
+      if (Array.isArray(objectValue.suggestions)) {
+        return objectValue.suggestions
+          .map((item) =>
+            typeof item === "string" ? item : JSON.stringify(item),
+          )
+          .filter(Boolean)
+          .join("\n");
+      }
+    }
+
+    return fallback;
+  };
+
+  useEffect(() => {
+    const latestHistoryItem = assistantHistory[assistantHistory.length - 1];
+    if (!latestHistoryItem || latestHistoryItem.status === "pending") return;
+
+    window.requestAnimationFrame(() => {
+      const scrollContainer = assistantChatScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [assistantHistory]);
+
+  const openRecurringScheduleDialog = (phase: ServiceScopePhase) => {
+    setActiveRecurringPhaseId(phase.id);
+    setDraftRecurringSchedule(
+      phase.recurrenceSchedule === "weekly" ||
+        phase.recurrenceSchedule === "quarterly"
+        ? phase.recurrenceSchedule
+        : "monthly",
+    );
+    setDraftRecurringCount(phase.recurrenceCount ?? 1);
+  };
+
+  const closeRecurringScheduleDialog = () => {
+    setActiveRecurringPhaseId(null);
+  };
+
+  const saveRecurringScheduleDialog = () => {
+    if (!activeRecurringPhaseId) return;
+
+    updatePhaseRecurrence(
+      activeRecurringPhaseId,
+      draftRecurringSchedule,
+      draftRecurringCount,
+    );
+    closeRecurringScheduleDialog();
   };
 
   const isPhaseTypeUnavailable = (
@@ -13818,11 +18538,6 @@ const ServiceScopeEditStep = ({
   ) =>
     phaseType !== "recurring" &&
     phases.some((phase) => phase.phaseType === phaseType);
-
-  const getFirstAvailablePhaseType = () =>
-    serviceScopePhaseTypeOptions.find(
-      (option) => !isPhaseTypeUnavailable(option.value),
-    )?.value ?? "recurring";
 
   const selectedPhaseTypeLabel =
     serviceScopePhaseTypeOptions.find((option) => option.value === newPhaseType)
@@ -13835,8 +18550,35 @@ const ServiceScopeEditStep = ({
 
   const openAddPhaseDialog = () => {
     setNewPhaseName("");
-    setNewPhaseType(getFirstAvailablePhaseType());
+    setNewPhaseType("");
     setAddPhaseDialogOpen(true);
+  };
+
+  const insertServicePhase = (
+    currentPhases: ServiceScopePhase[],
+    nextPhase: ServiceScopePhase,
+  ) => {
+    if (nextPhase.phaseType === "setup") {
+      return [nextPhase, ...currentPhases];
+    }
+
+    if (nextPhase.phaseType === "ongoing") {
+      return [...currentPhases, nextPhase];
+    }
+
+    const ongoingPhaseIndex = currentPhases.findIndex(
+      (phase) => phase.phaseType === "ongoing",
+    );
+
+    if (ongoingPhaseIndex === -1) {
+      return [...currentPhases, nextPhase];
+    }
+
+    return [
+      ...currentPhases.slice(0, ongoingPhaseIndex),
+      nextPhase,
+      ...currentPhases.slice(ongoingPhaseIndex),
+    ];
   };
 
   const addPhase = () => {
@@ -13848,17 +18590,12 @@ const ServiceScopeEditStep = ({
       (option) => option.value === newPhaseType,
     );
     const phaseTypeLabel = selectedOption?.label ?? "Recurring";
-    const recurringCount = phases.filter(
-      (phase) => phase.phaseType === "recurring",
-    ).length;
-    const nextName =
-      newPhaseType === "recurring" && recurringCount > 0
-        ? `Recurring ${recurringCount + 1}`
-        : phaseTypeLabel;
+    const nextName = phaseTypeLabel;
     const trimmedPhaseName = newPhaseName.trim();
     const nextPhase =
       newPhaseType === "setup"
         ? {
+            id: `service-phase-${getId()}`,
             name: nextName,
             customName: trimmedPhaseName,
             status: "2 weeks",
@@ -13877,6 +18614,7 @@ const ServiceScopeEditStep = ({
           }
         : newPhaseType === "ongoing"
           ? {
+              id: `service-phase-${getId()}`,
               name: nextName,
               customName: trimmedPhaseName,
               status: "Ongoing",
@@ -13894,6 +18632,7 @@ const ServiceScopeEditStep = ({
               ],
             }
           : {
+              id: `service-phase-${getId()}`,
               name: nextName,
               customName: trimmedPhaseName,
               status: "Recurs: Monthly, 1 time",
@@ -13913,17 +18652,19 @@ const ServiceScopeEditStep = ({
               ],
             };
 
-    setPhases((currentPhases) => [...currentPhases, nextPhase]);
-    setExpandedPhaseNames((currentNames) => [...currentNames, nextName]);
+    setPhases((currentPhases) =>
+      reorderServicePhases(insertServicePhase(currentPhases, nextPhase)),
+    );
+    setExpandedPhaseIds((currentIds) => [...currentIds, nextPhase.id]);
     setAddPhaseDialogOpen(false);
     setNewPhaseName("");
     setNewPhaseType("");
   };
 
-  const addTask = (phaseName: string) => {
+  const addTask = (phaseId: string) => {
     setPhases((currentPhases) =>
       currentPhases.map((phase) =>
-        phase.name !== phaseName
+        phase.id !== phaseId
           ? phase
           : {
               ...phase,
@@ -13940,81 +18681,9 @@ const ServiceScopeEditStep = ({
             },
       ),
     );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(phaseName)
-        ? currentNames
-        : [...currentNames, phaseName],
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.includes(phaseId) ? currentIds : [...currentIds, phaseId],
     );
-  };
-
-  const addServiceQualityTask = () => {
-    const targetPhaseName = phases[0]?.name;
-
-    if (!targetPhaseName) return false;
-
-    setPhases((currentPhases) =>
-      currentPhases.map((phase) =>
-        phase.name !== targetPhaseName
-          ? phase
-          : {
-              ...phase,
-              rows: phase.rows.some((row) => row.task === "Quality Review")
-                ? phase.rows
-                : [
-                    ...phase.rows,
-                    {
-                      task: "Quality Review",
-                      role: "QA Specialist",
-                      location: "USA",
-                      experience: "Junior",
-                      duration: "10 hours",
-                    },
-                  ],
-            },
-      ),
-    );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(targetPhaseName)
-        ? currentNames
-        : [...currentNames, targetPhaseName],
-    );
-
-    return true;
-  };
-
-  const applyServiceAssistantFallback = (message: string) => {
-    const normalizedMessage = normalizeSearchText(message);
-
-    if (!normalizedMessage) return false;
-
-    if (normalizedMessage.includes("budget")) {
-      setBudgetAmount((currentAmount) => {
-        const nextAmount = Math.max(1000, Math.round(currentAmount * 0.8));
-        setAssistantResult(
-          `Applied: budget reduced to $${nextAmount.toLocaleString()} per ${budgetFrequency}.`,
-        );
-        return nextAmount;
-      });
-      return true;
-    } else if (
-      normalizedMessage.includes("quality") ||
-      normalizedMessage.includes("scope") ||
-      normalizedMessage.includes("improve")
-    ) {
-      const didAddTask = addServiceQualityTask();
-      setAssistantResult(
-        didAddTask
-          ? "Applied: added a Quality Review task to the setup phase."
-          : "No available phase found to update.",
-      );
-      return true;
-    } else {
-      setAssistantResult(
-        "Try one of the suggested actions: reduce the budget or improve scope quality.",
-      );
-    }
-
-    return false;
   };
 
   const buildServiceAssistantScope = () => ({
@@ -14048,7 +18717,7 @@ const ServiceScopeEditStep = ({
       ? generatedScope.phases
       : [];
 
-    if (!generatedPhases.length) return false;
+    if (!generatedPhases.length) return null;
 
     const nextPhases: ServiceScopePhase[] = generatedPhases.map(
       (phase: any, index: number) => {
@@ -14063,14 +18732,13 @@ const ServiceScopeEditStep = ({
         );
 
         return {
+          id: String(phase?.id ?? `service-assistant-phase-${index}-${getId()}`),
           name:
             phaseType === "setup"
               ? "Setup"
               : phaseType === "ongoing"
                 ? "Ongoing"
-                : phaseName.startsWith("Recurring")
-                  ? phaseName
-                  : `Recurring ${index + 1}`,
+                : "Recurring",
           customName:
             phaseType === "setup" || phaseType === "ongoing"
               ? phaseName.replace(/^(Setup|Ongoing)\s*/i, "").trim()
@@ -14121,82 +18789,195 @@ const ServiceScopeEditStep = ({
       },
     );
 
-    setPhases(nextPhases);
-    setExpandedPhaseNames(nextPhases.map((phase) => phase.name));
-    return true;
+    const orderedPhases = reorderServicePhases(nextPhases);
+
+    setPhases(orderedPhases);
+    setExpandedPhaseIds(orderedPhases.map((phase) => phase.id));
+    return orderedPhases;
   };
 
   const runServiceAssistant = async (message: string) => {
-    if (!message.trim()) return;
+    const prompt = message.trim();
+    if (!prompt) return;
+
+    const listingBefore = getServiceAssistantListingSnapshot();
+    assistantUndoSnapshotRef.current = listingBefore;
+    setAssistantLastPrompt(prompt);
+    const historyId = startServiceAssistantHistoryItem(prompt, listingBefore);
+    setAssistantMessage("");
 
     if (!jobListingId) {
-      applyServiceAssistantFallback(message);
-      setAssistantMessage("");
+      completeServiceAssistantHistoryItem(
+        historyId,
+        prompt,
+        "Smart Assistant needs a saved job draft first. Please try again in a moment.",
+        "error",
+      );
       return;
     }
 
     setIsAssistantLoading(true);
+    setIsBudgetLoading(true);
     try {
       const response = await JobListingAPI.SmartAssistant(jobListingId, {
         mode: "scope",
-        command: message,
+        command: prompt,
         currentScope: buildServiceAssistantScope(),
         workType: "service",
+        currentTotalBudgetUsdCents: Math.round(budgetAmount * 100),
       });
       const data = response?.data ?? {};
 
       if (data.aiStatus === "AI_UNAVAILABLE") {
-        applyServiceAssistantFallback(message);
-        setAssistantResult(
-          data.message ?? "Smart Assistant is temporarily unavailable.",
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          getServiceAssistantResultText(
+            data.message,
+            "Smart Assistant is temporarily unavailable.",
+          ),
+          "error",
         );
         return;
       }
 
-      if (applyGeneratedServiceScope(data.updatedScope)) {
-        setAssistantResult(
-          data.summary ?? "Applied: Smart Assistant updated the service scope.",
+      // The smart-assistant/scope endpoint returns the server-persisted
+      // phases (real DB ids, budget/timeline already recalculated) rather
+      // than a raw LLM-echoed scope — applyGeneratedServiceScope already
+      // tolerates a phase carrying a real `id` (falls back to a generated
+      // one only when absent), so this is a drop-in, and now gets stable
+      // ids from the server instead of a fresh placeholder on every edit.
+      const nextPhases = applyGeneratedServiceScope({ phases: data.phases });
+
+      if (nextPhases) {
+        const totalBudgetUsdCents = toFiniteNumber(data.totalBudgetUsdCents);
+        let nextBudgetAmount = budgetAmount;
+        const nextIsBudgetStale = Boolean(data.isBudgetStale);
+
+        if (typeof totalBudgetUsdCents === "number") {
+          nextBudgetAmount = Math.round(totalBudgetUsdCents / 100);
+          setBudgetAmount(nextBudgetAmount);
+          setIsBudgetStale(nextIsBudgetStale);
+        }
+
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          getServiceAssistantResultText(
+            data.summary,
+            "Applied: Smart Assistant updated the service scope.",
+          ),
+          "success",
+          getServiceAssistantListingSnapshot(
+            nextPhases,
+            nextBudgetAmount,
+            typeof totalBudgetUsdCents === "number"
+              ? nextIsBudgetStale
+              : isBudgetStale,
+          ),
         );
       } else {
-        setAssistantResult(
-          data.summary ?? "Smart Assistant did not return an updated scope.",
+        completeServiceAssistantHistoryItem(
+          historyId,
+          prompt,
+          getServiceAssistantResultText(
+            data.summary,
+            "Smart Assistant did not return an updated scope.",
+          ),
+          "error",
         );
       }
     } catch (error: any) {
-      applyServiceAssistantFallback(message);
-      setAssistantResult(
+      completeServiceAssistantHistoryItem(
+        historyId,
+        prompt,
         error?.response?.data?.message ||
           error?.message ||
           "Smart Assistant is temporarily unavailable.",
+        "error",
       );
     } finally {
-      setAssistantMessage("");
+      setIsAssistantLoading(false);
+      setIsBudgetLoading(false);
+    }
+  };
+
+  const undoServiceAssistant = async () => {
+    if (!assistantUndoSnapshotRef.current) return;
+
+    const snapshot = assistantUndoSnapshotRef.current;
+    setIsAssistantLoading(true);
+
+    try {
+      restoreServiceAssistantListingSnapshot(snapshot);
+      await persistServiceAssistantListingSnapshot(snapshot);
+      assistantUndoSnapshotRef.current = null;
+      setAssistantResult("");
+      setAssistantLastPrompt("");
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope.",
+      );
+    } finally {
       setIsAssistantLoading(false);
     }
   };
 
-  const removePhase = (phaseName: string) => {
+  const restoreServiceAssistantHistoryItem = async (
+    item: ServiceAssistantHistoryItem,
+  ) => {
+    if (!item.listingAfter) return;
+
+    setIsAssistantLoading(true);
+
+    try {
+      restoreServiceAssistantListingSnapshot(item.listingAfter);
+      await persistServiceAssistantListingSnapshot(item.listingAfter);
+    } catch (error: any) {
+      setAssistantResult(
+        error?.response?.data?.message ||
+          error?.message ||
+          "Unable to save the restored scope.",
+      );
+    } finally {
+      setIsAssistantLoading(false);
+    }
+  };
+
+  const removePhase = (phaseId: string) => {
     setPhases((currentPhases) =>
       currentPhases.length <= 1
         ? currentPhases
-        : currentPhases.filter((phase) => phase.name !== phaseName),
+        : currentPhases.filter((phase) => phase.id !== phaseId),
     );
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.filter((name) => name !== phaseName),
-    );
-  };
-
-  const togglePhase = (phaseName: string) => {
-    setExpandedPhaseNames((currentNames) =>
-      currentNames.includes(phaseName)
-        ? currentNames.filter((name) => name !== phaseName)
-        : [...currentNames, phaseName],
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.filter((id) => id !== phaseId),
     );
   };
 
-  const toggleServicePhaseNote = (phaseName: string) => {
-    setActiveServicePhaseNote((currentName) =>
-      currentName === phaseName ? null : phaseName,
+  const togglePhase = (phaseId: string) => {
+    setExpandedPhaseIds((currentIds) =>
+      currentIds.includes(phaseId)
+        ? currentIds.filter((id) => id !== phaseId)
+        : [...currentIds, phaseId],
+    );
+  };
+
+  const toggleServicePhaseNote = (phaseId: string) => {
+    setActiveServicePhaseNoteId((currentId) =>
+      currentId === phaseId ? null : phaseId,
+    );
+  };
+
+  const handleServicePhaseDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    setPhases((currentPhases) =>
+      reorderServiceRecurringPhases(currentPhases, active.id, over.id),
     );
   };
 
@@ -14252,16 +19033,26 @@ const ServiceScopeEditStep = ({
 
     if (signature === lastSavedServiceScopeSignatureRef.current) return;
 
+    setIsBudgetLoading(true);
     const timeout = window.setTimeout(() => {
       const saveScope = async () => {
         try {
-          await JobListingAPI.ApplyGeneratedScope(jobListingId, {
+          const response = await JobListingAPI.ApplyGeneratedScope(jobListingId, {
             hasScope: true,
             phases: payload.phases,
           });
+          const totalBudgetUsdCents = toFiniteNumber(
+            response?.data?.totalBudgetUsdCents,
+          );
+          if (typeof totalBudgetUsdCents === "number") {
+            setBudgetAmount(Math.round(totalBudgetUsdCents / 100));
+            setIsBudgetStale(Boolean(response?.data?.isBudgetStale));
+          }
           lastSavedServiceScopeSignatureRef.current = signature;
         } catch (error) {
           console.error("Failed to save service job listing scope", error);
+        } finally {
+          setIsBudgetLoading(false);
         }
       };
 
@@ -14278,64 +19069,176 @@ const ServiceScopeEditStep = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-          <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-            <div className="min-w-0 flex-auto max-w-[790px]">
-              <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-                Edit your scope
-              </h1>
-              <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-                Modify the table as needed manually or with the help of Smart
-                Assistant, your project plan will adjust accordingly.
-              </p>
+        <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
+            <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
+              <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+                <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+                  Edit your scope
+                </h1>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Modify the table as needed manually or with the help of Smart
+                  Assistant, your project plan will adjust accordingly.
+                </p>
+              </div>
 
               <div className="mt-8 grid overflow-hidden rounded-[5px] border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] md:grid-cols-2">
-                <div className="flex items-center justify-between border-b border-gray-200 px-5 py-[22px] md:border-b-0 md:border-r">
-                  <div>
-                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                      Budget Calculator
-                      <HelpCircle className="size-4" />
-                    </div>
-                    <div className="mt-3 flex items-center gap-x-1 text-dark-blue-400">
-                      <span className="text-2xl leading-8 font-semibold">
-                        ${budgetAmount.toLocaleString()}
+                <div className="flex h-[106px] flex-1 items-center gap-6 border-b border-gray-200 p-6 md:border-b-0 md:border-r">
+                  <div className="flex h-[58px] flex-1 flex-col items-start gap-2 p-0">
+                    <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                      <span className="h-5 w-[121px] shrink-0">
+                        Budget Calculator
                       </span>
-                      <span className="text-sm leading-5">per</span>
-                      <Select
-                        value={budgetFrequency}
-                        onValueChange={setBudgetFrequency}
-                      >
-                        <SelectTrigger className="h-8 gap-x-1 border-gray-200 px-3 text-sm leading-5 font-medium text-dark-blue-400">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="w-32">
-                          {["week", "month"].map((frequency) => (
-                            <SelectItem key={frequency} value={frequency}>
-                              {frequency}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="link"
+                              type="button"
+                              aria-label="Show budget calculator details"
+                              className="size-4 p-0 text-inherit"
+                            >
+                              <Info className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            visual="white"
+                            className="flex h-[226px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            <div className="flex h-[186px] w-[182.55px] shrink-0 items-center">
+                              <div>
+                                <p>Your budget updates automatically based on:</p>
+                                <ul className="my-4 list-disc pl-5">
+                                  <li>Tasks</li>
+                                  <li>Roles</li>
+                                  <li>Location</li>
+                                  <li>Experience level</li>
+                                  <li>Task duration</li>
+                                </ul>
+                                <p>
+                                  Any change here updates the budget shown in the
+                                  sidebar.
+                                </p>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
+                    {isBudgetLoading ? (
+                      <span className="relative h-10 w-full overflow-hidden rounded bg-gray-100">
+                        <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                      </span>
+                    ) : (
+                      <div className="flex h-[30px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                        <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                          ${budgetAmount.toLocaleString()}
+                        </span>
+                        <span className="h-[17px] w-[23px] shrink-0 text-sm font-medium leading-[17px]">
+                          per
+                        </span>
+                        <Select
+                          value={budgetFrequency}
+                          onValueChange={setBudgetFrequency}
+                        >
+                          <SelectTrigger
+                            indicator={false}
+                            className="h-[25px] w-[66px] shrink-0 gap-1 rounded border-gray-300 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs"
+                          >
+                            <SelectValue />
+                            <ChevronDown className="size-3 shrink-0 text-gray-400" />
+                          </SelectTrigger>
+                          <SelectContent className="w-32">
+                            {["week", "month"].map((frequency) => (
+                              <SelectItem key={frequency} value={frequency}>
+                                {frequency}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isBudgetStale ? (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  aria-label="Budget rates unavailable"
+                                  className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-warning-600"
+                                >
+                                  <AlertTriangle className="size-4" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent visual="white" size="md">
+                                Some pricing rates are unavailable. The budget
+                                may be incomplete.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                   <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                     <img
                       src="/job-listing/money-bag.png"
                       alt=""
                       aria-hidden="true"
-                      className="size-6"
+                      className="size-8"
                     />
                   </div>
                 </div>
-                <div className="flex items-center justify-between px-5 py-[22px]">
-                  <div>
-                    <div className="flex items-center gap-x-2 text-sm leading-5 font-semibold text-gray-400">
-                      Duration
-                      <HelpCircle className="size-4" />
+                <div className="flex h-[105px] flex-1 items-start gap-6 p-6">
+                  <div className="flex h-[57px] flex-1 flex-col items-start gap-2 p-0">
+                    <div className="flex h-5 shrink-0 items-center gap-2 self-stretch p-0 text-sm leading-5 font-medium text-gray-400">
+                      <span className="h-5 w-[53px] shrink-0">
+                        Duration
+                      </span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="link"
+                              type="button"
+                              aria-label="Show timeline calculator details"
+                              className="size-4 p-0 text-inherit"
+                            >
+                              <Info className="size-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent
+                            side="right"
+                            align="center"
+                            sideOffset={12}
+                            visual="white"
+                            className="flex h-[190px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                          >
+                            <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                            <div className="flex h-[150px] w-[182.55px] shrink-0 items-center">
+                              <div>
+                                <p>The project timeline adjusts based on:</p>
+                                <ul className="my-4 list-disc pl-5">
+                                  <li>Task durations</li>
+                                  <li>Assigned work schedules</li>
+                                  <li>Number of team members</li>
+                                </ul>
+                                <p>
+                                  Any change here will update the project's total
+                                  length.
+                                </p>
+                              </div>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
-                    <p className="mt-3 text-2xl leading-8 font-semibold text-dark-blue-400">
-                      Ongoing
-                    </p>
+                    <div className="flex h-[29px] shrink-0 items-baseline gap-1 self-stretch p-0 text-dark-blue-400">
+                      <span className="h-[29px] shrink-0 text-center text-2xl font-bold leading-[29px] capitalize">
+                        Ongoing
+                      </span>
+                    </div>
                   </div>
                   <div className="flex h-14 w-14 items-center justify-center gap-2 rounded-[6px] bg-primary-50">
                     <img
@@ -14349,60 +19252,188 @@ const ServiceScopeEditStep = ({
               </div>
 
               <div className="mt-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="inline-flex rounded-[5px] border border-gray-300 bg-white shadow-xs">
+                <div className="mx-auto flex h-9 w-[254px] shrink-0 items-center p-0 shadow-xs md:mx-0">
                   <Button
-                    className="h-10 rounded-r-none border-0"
+                    className="h-9 w-[123px] rounded-l-[5px] rounded-r-none border-y border-l border-r-0 border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 capitalize text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
                     onClick={() =>
-                      setExpandedPhaseNames(phases.map((phase) => phase.name))
+                      setExpandedPhaseIds(phases.map((phase) => phase.id))
                     }
                   >
-                    <ChevronDown className="size-4" />
-                    Expand All
+                    <ChevronsDown className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-[72px] shrink-0 text-center">
+                      Expand All
+                    </span>
                   </Button>
                   <Button
-                    className="h-10 rounded-l-none border-y-0 border-r-0"
+                    className="h-9 w-[131px] rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
-                    onClick={() => setExpandedPhaseNames([])}
+                    onClick={() => setExpandedPhaseIds([])}
                   >
-                    <ChevronDown className="size-4 rotate-180" />
-                    Collapse All
+                    <ChevronsUp className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-20 shrink-0 text-center">
+                      Collapse All
+                    </span>
                   </Button>
                 </div>
                 <div className="flex flex-col gap-3 md:flex-row">
-                  <div className="relative w-full md:w-[250px]">
-                    <SearchMd className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                    <Input
-                      className="h-10 pl-9"
+                  <SearchField className="h-9 w-full shrink-0 md:w-[223px]">
+                    <SearchFieldButton className="left-2.5 size-4 text-gray-400">
+                      <SearchMd className="size-4" />
+                    </SearchFieldButton>
+                    <SearchFieldInput
+                      className="h-9 w-[223px] rounded-[5px] py-2.5 pl-[34px] pr-3 text-sm leading-5 text-gray-500 placeholder:text-gray-500 placeholder:opacity-50"
                       placeholder="Find a phase or task"
                       value={searchValue}
                       onChange={(event) => setSearchValue(event.target.value)}
                     />
-                  </div>
+                  </SearchField>
                   <Button
-                    className="h-10"
+                    className="h-9 w-[124px] shrink-0 rounded-[5px] border border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-none"
                     variant="outlined"
                     visual="gray"
                     type="button"
                     onClick={openAddPhaseDialog}
                   >
-                    <Plus className="size-4" />
-                    Add Phase
+                    <Plus className="size-[15px] shrink-0 text-gray-500" />
+                    <span className="h-5 w-[73px] shrink-0 text-center">
+                      Add Phase
+                    </span>
                   </Button>
                 </div>
               </div>
 
-              <div className="mt-6 space-y-3">
-                {visiblePhases.map((phase) => {
-                  const isExpanded = expandedPhaseNames.includes(phase.name);
+              {isBudgetLoading ? (
+                <div
+                  className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
+                  aria-busy="true"
+                  aria-label="Smart Assistant is updating the scope"
+                >
+                  <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                    <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                      <div className="flex h-8 min-w-0 items-center gap-2 p-0">
+                        <Button
+                          variant="link"
+                          type="button"
+                          aria-label="Scope update in progress"
+                          className="size-8 rounded-[5px] p-1.5 text-inherit"
+                          disabled
+                        >
+                          <ChevronDown className="size-5 text-gray-500" />
+                        </Button>
+                        <span className="relative h-7 w-[179px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 self-stretch">
+                      <span className="relative hidden h-7 w-[120px] shrink-0 overflow-hidden rounded bg-gray-100 md:inline-flex">
+                        <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                      </span>
+                      <IconButton
+                        variant="ghost"
+                        visual="gray"
+                        aria-label="Scope actions loading"
+                        className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
+                        disabled
+                      >
+                        <MoreHorizontal className="size-[15px] text-gray-500" />
+                      </IconButton>
+                      <IconButton
+                        variant="outlined"
+                        visual="gray"
+                        aria-label="Add task disabled while Smart Assistant updates"
+                        className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
+                        disabled
+                      >
+                        <Plus className="size-3 text-gray-500" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                    {[
+                      "Task Name",
+                      "Role",
+                      "Location",
+                      "Experience",
+                      "Duration",
+                    ].map((header) => (
+                      <span
+                        key={header}
+                        className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                      >
+                        <span className="h-[18px] shrink-0">{header}</span>
+                      </span>
+                    ))}
+                  </div>
+
+                  {Array.from({ length: 4 }).map((_, rowIndex) => (
+                    <div
+                      key={rowIndex}
+                      className="grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
+                    >
+                      <div className="flex h-[72px] w-[240px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span
+                          className={cn(
+                            "relative h-5 shrink-0 overflow-hidden rounded bg-gray-100",
+                            rowIndex === 0 && "w-[120px]",
+                            rowIndex === 1 && "w-[180px]",
+                            rowIndex === 2 && "w-40",
+                            rowIndex === 3 && "w-[86px]",
+                          )}
+                        >
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
+                        <span className="relative h-4 w-[180px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                        <span className="relative h-4 w-[104px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
+                        <span className="relative h-7 w-[112px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                        <span className="relative h-7 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                      <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                        <span className="relative h-5 w-[88px] shrink-0 overflow-hidden rounded bg-gray-100">
+                          <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <DndContext
+                  collisionDetection={closestCenter}
+                  modifiers={[restrictToVerticalAxis]}
+                  onDragEnd={handleServicePhaseDragEnd}
+                  sensors={servicePhaseDndSensors}
+                >
+                  <SortableContext
+                    items={visiblePhases
+                      .filter((phase) => phase.phaseType === "recurring")
+                      .map((phase) => phase.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="mt-6 space-y-3">
+                      {visiblePhases.map((phase) => {
+                  const isExpanded = expandedPhaseIds.includes(phase.id);
                   const phaseIndex = phases.findIndex(
-                    (candidate) =>
-                      candidate.name === phase.name &&
-                      candidate.customName === phase.customName,
+                    (candidate) => candidate.id === phase.id,
                   );
                   const shouldShowPhaseNote =
                     phaseIndex > -1 &&
@@ -14411,130 +19442,192 @@ const ServiceScopeEditStep = ({
                     ) === phaseIndex;
 
                   return (
-                    <div
-                      key={phase.name}
-                      className="relative rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]"
-                    >
-                      <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                        <div className="flex min-w-0 items-center gap-x-4">
+                    <ServicePhaseSortableCard key={phase.id} phase={phase}>
+                      <div className="relative overflow-hidden rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+                      <div className="flex h-14 items-center justify-center gap-4 border-b border-gray-200 p-3">
+                        <div className="flex h-8 min-w-0 flex-1 flex-col items-start justify-end gap-1 self-stretch p-0">
+                          <div className="flex h-8 min-w-0 items-center gap-2 p-0">
                           <Button
                             variant="link"
                             type="button"
-                            className="text-inherit"
-                            onClick={() => togglePhase(phase.name)}
+                            aria-label={
+                              isExpanded
+                                ? `Collapse ${phase.name}`
+                                : `Expand ${phase.name}`
+                            }
+                            className="size-8 rounded-[5px] p-1.5 text-inherit"
+                            onClick={() => togglePhase(phase.id)}
                           >
                             <ChevronDown
                               className={cn(
                                 "size-5 text-gray-500",
-                                isExpanded && "rotate-180",
+                                !isExpanded && "rotate-180",
                               )}
                             />
                           </Button>
-                          <h2 className="text-lg leading-7 font-semibold text-gray-black">
-                            {phase.name}{" "}
-                            <span className="font-normal text-gray-500">
-                              {phase.customName}
+                          <div className="flex h-7 min-w-0 items-center gap-1.5 p-0">
+                            <span className="inline-flex h-7 shrink-0 items-center whitespace-nowrap text-lg font-semibold leading-7 text-gray-black">
+                              {phase.name}
                             </span>
-                          </h2>
+                            {phase.customName ? (
+                              <span className="inline-flex h-5 min-w-0 items-center whitespace-nowrap text-lg font-light leading-5 text-gray-600">
+                                {phase.customName}
+                              </span>
+                            ) : null}
+                          </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-x-3">
+                        <div className="flex items-center gap-3 self-stretch">
                           {phase.statusKind === "recurring" ? (
-                            <div className="hidden items-center gap-x-2 text-sm leading-5 font-semibold text-dark-blue-400 md:inline-flex">
-                              <RefreshCcw05 className="size-4 text-success-500" />
-                              <span>Recurs:</span>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    className="h-8 rounded-[5px] border border-gray-200 bg-primary-50 px-3 text-sm font-semibold text-dark-blue-400 hover:bg-primary-50"
-                                    onClick={() =>
-                                      toggleServicePhaseNote(phase.name)
-                                    }
-                                  >
-                                    {formatServiceRecurringStatus(phase)}
-                                    <ChevronDown className="ml-2 size-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="w-48"
-                                >
-                                  {[
-                                    {
-                                      label: "Monthly, 1 time",
-                                      recurrenceSchedule: "monthly" as const,
-                                      recurrenceCount: 1,
-                                    },
-                                    {
-                                      label: "Monthly, 3 times",
-                                      recurrenceSchedule: "monthly" as const,
-                                      recurrenceCount: 3,
-                                    },
-                                    {
-                                      label: "Weekly, 4 times",
-                                      recurrenceSchedule: "weekly" as const,
-                                      recurrenceCount: 4,
-                                    },
-                                    {
-                                      label: "Weekly, 8 times",
-                                      recurrenceSchedule: "weekly" as const,
-                                      recurrenceCount: 8,
-                                    },
-                                  ].map((option) => (
-                                    <DropdownMenuItem
-                                      key={option.label}
-                                      onSelect={() =>
-                                        updatePhaseRecurrence(
-                                          phase.name,
-                                          option.recurrenceSchedule,
-                                          option.recurrenceCount,
-                                        )
+                            <div className="hidden h-[25px] items-center justify-center gap-2 text-[13px] font-semibold leading-4 text-[#122A4B] md:inline-flex">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      className="inline-flex h-[25px] shrink-0 cursor-pointer items-center gap-2"
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() =>
+                                        openRecurringScheduleDialog(phase)
                                       }
+                                      onKeyDown={(event) => {
+                                        if (
+                                          event.key === "Enter" ||
+                                          event.key === " "
+                                        ) {
+                                          event.preventDefault();
+                                          openRecurringScheduleDialog(phase);
+                                        }
+                                      }}
                                     >
-                                      {option.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                      <span className="inline-flex size-4 shrink-0 items-center justify-center text-success-600">
+                                        <svg
+                                          aria-hidden="true"
+                                          viewBox="0 -960 960 960"
+                                          className="size-4 shrink-0"
+                                          fill="currentColor"
+                                        >
+                                          <path d="m360-120-57-56 64-64h-7q-117 0-198.5-81.5T80-520q0-117 81.5-198.5T360-800h240q117 0 198.5 81.5T880-520q0 117-81.5 198.5T600-240v-80q83 0 141.5-58.5T800-520q0-83-58.5-141.5T600-720H360q-83 0-141.5 58.5T160-520q0 83 58.5 142.5T360-312h16l-72-72 56-56 160 160-160 160Z" />
+                                        </svg>
+                                      </span>
+                                      <span className="flex h-4 w-12 shrink-0 items-center">
+                                        Recurs:
+                                      </span>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    Work that repeats in cycles. Starts on Day X
+                                    and runs for the number of cycles you set.
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                visual="gray"
+                                className="h-[25px] min-w-[126px] rounded border border-dashed border-gray-300 bg-gray-100 px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs hover:bg-gray-100 focus:bg-gray-100"
+                                onClick={() =>
+                                  openRecurringScheduleDialog(phase)
+                                }
+                              >
+                                <span className="h-[17px] shrink-0 whitespace-nowrap text-left text-dark-blue-400">
+                                  {formatServiceRecurringStatus(phase)}
+                                </span>
+                              </Button>
                             </div>
                           ) : (
-                            <Button
-                              variant="link"
-                              visual="gray"
-                              type="button"
-                              className="hidden gap-x-2 text-sm leading-5 text-dark-blue-400 hover:no-underline md:inline-flex"
-                              onClick={() => toggleServicePhaseNote(phase.name)}
-                            >
-                              {phase.statusKind === "ongoing" ? (
-                                <RefreshCcw05 className="size-4 text-success-500" />
-                              ) : (
-                                <Clock className="size-4 text-success-500" />
-                              )}
-                              {phase.status}
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="link"
+                                    visual="gray"
+                                    type="button"
+                                    className="hidden cursor-default gap-x-2 text-[13px] font-semibold leading-4 text-[#122A4B] hover:no-underline md:inline-flex"
+                                  >
+                                    {phase.statusKind === "ongoing" ? (
+                                      <svg
+                                        aria-hidden="true"
+                                        viewBox="0 -960 960 960"
+                                        className="size-4 shrink-0 text-success-600"
+                                        fill="currentColor"
+                                      >
+                                        <path d="M220-260q-92 0-156-64T0-480q0-92 64-156t156-64q37 0 71 11.5t61 32.5l128 104 128-104q27-21 61-32.5t71-11.5q92 0 156 64t64 156q0 92-64 156t-156 64q-37 0-71-11.5T608-304L480-408 352-304q-27 21-61 32.5T220-260Zm0-80q20 0 38.5-6t33.5-18l124-100-124-100q-15-12-33.5-18t-38.5-6q-59 0-99.5 40.5T80-480q0 59 40.5 99.5T220-340Zm520 0q59 0 99.5-40.5T880-480q0-59-40.5-99.5T740-620q-20 0-38.5 6T668-596L544-496l124 100q15 12 33.5 18t38.5 6Z" />
+                                      </svg>
+                                    ) : (
+                                      <svg
+                                        aria-hidden="true"
+                                        viewBox="0 0 16 16"
+                                        className="size-4 shrink-0 text-success-600"
+                                        fill="currentColor"
+                                      >
+                                        <path d="M4.66667 1.33333C5.03333 1.33333 5.33333 1.63333 5.33333 2V2.66667H10.6667V2C10.6667 1.63333 10.9667 1.33333 11.3333 1.33333C11.7 1.33333 12 1.63333 12 2V2.66667H12.6667C13.4 2.66667 14 3.26667 14 4V12.6667C14 13.4 13.4 14 12.6667 14H3.33333C2.6 14 2 13.4 2 12.6667V4C2 3.26667 2.6 2.66667 3.33333 2.66667H4V2C4 1.63333 4.3 1.33333 4.66667 1.33333ZM3.33333 6V12.6667H12.6667V6H3.33333ZM3.33333 4V4.66667H12.6667V4H3.33333Z" />
+                                      </svg>
+                                    )}
+                                    {phase.status}
+                                  </Button>
+                                </TooltipTrigger>
+                                {phase.statusKind === "ongoing" ? (
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[76px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    Continuous work starting on Day X with no
+                                    set end date.
+                                  </TooltipContent>
+                                ) : (
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    sideOffset={12}
+                                    visual="white"
+                                    className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  >
+                                    <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                    One-time starting work that begins on Day X
+                                    and will not repeat again.
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <IconButton variant="ghost" visual="gray">
-                                <MoreHorizontal className="size-4" />
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                aria-label={`Open actions for ${phase.name}`}
+                                className="h-[23px] w-[27px] rounded-[5px] px-1.5 py-1"
+                              >
+                                <MoreHorizontal className="size-[15px] text-gray-500" />
                               </IconButton>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                onSelect={() => togglePhase(phase.name)}
+                                onSelect={() => togglePhase(phase.id)}
                               >
                                 {isExpanded ? "Collapse Phase" : "Expand Phase"}
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onSelect={() => addTask(phase.name)}
+                                onSelect={() => addTask(phase.id)}
                               >
                                 Add Task
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 visual="destructive"
-                                onSelect={() => removePhase(phase.name)}
+                                onSelect={() => removePhase(phase.id)}
                               >
                                 Remove Phase
                               </DropdownMenuItem>
@@ -14544,37 +19637,147 @@ const ServiceScopeEditStep = ({
                             variant="outlined"
                             visual="gray"
                             type="button"
-                            onClick={() => addTask(phase.name)}
+                            aria-label={`Add task to ${phase.name}`}
+                            className="size-8 rounded-[5px] border-gray-300 bg-white p-2 shadow-[0px_1px_4px_rgba(0,0,0,0.03)]"
+                            onClick={() => addTask(phase.id)}
                           >
-                            <Plus className="size-4" />
+                            <Plus className="size-3 text-gray-500" />
                           </IconButton>
                         </div>
                       </div>
 
                       {isExpanded ? (
                         <>
-                          <div className="grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] gap-x-6 border-b border-gray-200 bg-gray-50 px-6 py-3 text-xs leading-[18px] font-semibold text-gray-600">
-                            <span>Task Name</span>
-                            <span>Role</span>
-                            <span>Location</span>
-                            <span>Experience</span>
-                            <span>Duration</span>
-                          </div>
-                          {phase.rows.map((row) => (
-                            <div
-                              key={`${phase.name}-${row.task}`}
-                              className="relative grid grid-cols-[1.3fr_1.3fr_1fr_1fr_1fr] items-center gap-x-6 border-b border-gray-200 px-6 py-4 last:border-b-0"
-                            >
-                              <span className="text-sm leading-5 font-semibold text-gray-black">
-                                {row.task}
+                          <div className="grid h-11 w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] border-b border-gray-200 bg-gray-50 text-xs font-medium leading-[18px] text-gray-600">
+                            {[
+                              "Task Name",
+                              "Role",
+                              "Location",
+                              "Experience",
+                              "Duration",
+                            ].map((header) => (
+                              <span
+                                key={header}
+                                className="flex h-11 items-center gap-3 self-stretch border-b border-gray-200 bg-gray-50 px-6 py-3"
+                              >
+                                {header === "Role" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="right"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex w-[222px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Defines the type of specialist needed for
+                                        this task. Used to match talent and
+                                        generate the job description.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Location" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="right"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Influences team coordination and affects
+                                        how the budget is estimated.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Experience" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="left"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-28 w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Helps determine the level of skill needed.
+                                        Impacts estimated delivery time and team
+                                        composition.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : header === "Duration" ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="h-[18px] shrink-0 cursor-default">
+                                          {header}
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent
+                                        side="left"
+                                        align="center"
+                                        sideOffset={12}
+                                        visual="white"
+                                        className="flex h-[94px] w-[222.55px] max-w-none items-center rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      >
+                                        <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                        Estimated hours to complete the task.
+                                        Directly affects the project&apos;s
+                                        timeline and budget.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="h-[18px] shrink-0">
+                                    {header}
+                                  </span>
+                                )}
                               </span>
-                              <div>
+                            ))}
+                          </div>
+                          {phase.rows.map((row, rowIndex) => (
+                            <div
+                              key={`${phase.id}-${rowIndex}`}
+                              className="relative grid h-[72px] w-full min-w-[886px] grid-cols-[240px_240px_135.33px_135.33px_1fr] items-center border-b border-gray-200 last:border-b-0"
+                            >
+                              <div className="flex h-[72px] w-[240px] min-w-0 shrink-0 items-start gap-3 self-stretch px-6 py-4">
+                                <Input
+                                  className="h-5 min-w-0 flex-1 truncate rounded-none border-0 bg-transparent p-0 text-sm font-semibold leading-5 text-gray-black shadow-none focus:border-transparent focus:ring-0"
+                                  value={row.task}
+                                  onChange={(event) =>
+                                    updateRowAtIndex(phase.id, rowIndex, {
+                                      task: event.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div className="flex h-[72px] w-[240px] shrink-0 flex-col items-start gap-1 self-stretch px-6 py-4">
                                 <Button
                                   variant="link"
                                   type="button"
-                                  className="justify-start text-left text-sm font-normal leading-5 text-gray-600 hover:no-underline"
+                                  className="h-[17px] justify-start p-0 text-left text-sm font-normal leading-[17px] text-gray-600 hover:no-underline"
                                   onClick={() =>
-                                    openServiceRoleEditor(phase.name, row)
+                                    openServiceRoleEditor(phase.id, row)
                                   }
                                 >
                                   {row.role}
@@ -14583,14 +19786,17 @@ const ServiceScopeEditStep = ({
                                   {formatServiceRowSchedule(row)}
                                 </p>
                               </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-3 py-4">
                               <CountriesCombobox
                                 value={row.location}
                                 onValueChange={(location) =>
-                                  updateRow(phase.name, row.task, { location })
+                                  updateRow(phase.id, row.task, { location })
                                 }
                                 placeholder="Location"
                                 triggerClassName="h-7 rounded-[5px] border-dashed border-gray-300 bg-gray-50 px-2 text-xs leading-[18px] text-gray-700"
                               />
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start gap-3 self-stretch px-6 py-4">
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button
@@ -14600,7 +19806,7 @@ const ServiceScopeEditStep = ({
                                     className="h-7 w-max gap-x-1 border-dashed border-gray-300 bg-gray-50 px-2 text-xs font-normal leading-[18px] text-gray-700 shadow-none"
                                     rightIcon={<ChevronDown className="size-3" />}
                                   >
-                                    {row.experience}
+                                    {formatExperienceDisplay(row.experience)}
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start">
@@ -14608,7 +19814,7 @@ const ServiceScopeEditStep = ({
                                     <DropdownMenuItem
                                       key={experience}
                                       onSelect={() =>
-                                        updateRow(phase.name, row.task, {
+                                        updateRow(phase.id, row.task, {
                                           experience,
                                         })
                                       }
@@ -14618,134 +19824,230 @@ const ServiceScopeEditStep = ({
                                   ))}
                                 </DropdownMenuContent>
                               </DropdownMenu>
-                              <span className="text-sm leading-5 text-gray-500">
-                                {row.duration}
-                              </span>
+                              </div>
+                              <div className="flex h-[72px] w-[135.33px] shrink-0 items-start self-stretch px-6 py-4">
+                                <span className="h-5 shrink-0 whitespace-nowrap text-sm leading-5 text-gray-500">
+                                  {row.duration}
+                                </span>
+                              </div>
 
                               {activeServiceRoleKey ===
-                              `${phase.name}-${row.task}` ? (
-                                <div className="absolute left-[185px] top-[-22px] z-10 w-[280px] rounded-[5px] border border-gray-200 bg-white p-4 shadow-lg">
-                                  <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                    Role
-                                  </Label>
-                                  <Input
-                                    className="mt-1.5 h-9 text-sm leading-5"
-                                    value={draftServiceRole}
-                                    onChange={(event) =>
-                                      setDraftServiceRole(event.target.value)
+                              `${phase.id}-${row.task}` ? (
+                                <Dialog
+                                  open={
+                                    activeServiceRoleKey ===
+                                    `${phase.id}-${row.task}`
+                                  }
+                                  onOpenChange={(open) => {
+                                    if (!open) {
+                                      setActiveServiceRoleKey(null);
                                     }
-                                  />
-                                  <div className="mt-4">
-                                    <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                      Work Schedule
-                                    </Label>
-                                    <Select
-                                      value={draftServiceSchedule}
-                                      onValueChange={(value) =>
-                                        setDraftServiceSchedule(
-                                          value as JobListingWorkSchedule,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="mt-1.5 h-9 w-full px-3 text-sm leading-5 text-gray-700">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="w-[248px]">
-                                        {[
-                                          {
-                                            value: "full_time" as const,
-                                            label: "Full-time",
-                                          },
-                                          {
-                                            value: "part_time" as const,
-                                            label: "Part-time",
-                                          },
-                                          {
-                                            value: "custom" as const,
-                                            label: "Custom",
-                                          },
-                                        ].map((schedule) => (
-                                          <SelectItem
-                                            key={schedule.value}
-                                            value={schedule.value}
-                                          >
-                                            {schedule.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                  {draftServiceSchedule === "custom" ? (
-                                    <div className="mt-4">
-                                      <Label className="text-xs leading-[18px] text-dark-blue-400">
-                                        Estimated hours
-                                      </Label>
-                                      <div className="mt-1.5 grid grid-cols-[1fr_64px_1fr]">
-                                        <Input
-                                          className="h-9 rounded-r-none text-sm leading-5"
-                                          value={draftServiceCustomHours}
-                                          onChange={(event) =>
-                                            setDraftServiceCustomHours(
-                                              event.target.value,
+                                  }}
+                                >
+                                  <DialogContent
+                                    variant="unanimated"
+                                    accessibilityTitle="Edit role"
+                                    dialogOverlay={
+                                      <DialogOverlay className="bg-[#101828]/20" />
+                                    }
+                                    className="left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+                                  >
+                                    <div className="flex w-[323px] flex-col items-start gap-3">
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Role
+                                        </Label>
+                                        <Combobox
+                                          className="w-[323px]"
+                                          value={draftServiceRole}
+                                          onChange={(value) => {
+                                            setDraftServiceRole(
+                                              String(value ?? ""),
+                                            );
+                                            setServiceRoleAutocompleteOpen(false);
+                                          }}
+                                          nullable
+                                        >
+                                          <ComboboxTrigger>
+                                            <ComboboxInput
+                                              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                                              value={draftServiceRole}
+                                              onChange={(event) =>
+                                                setDraftServiceRole(
+                                                  event.target.value,
+                                                )
+                                              }
+                                              onClick={() =>
+                                                setServiceRoleAutocompleteOpen(
+                                                  serviceRoleAutocompleteOptions.length >
+                                                    0,
+                                                )
+                                              }
+                                              onFocus={() =>
+                                                setServiceRoleAutocompleteOpen(
+                                                  serviceRoleAutocompleteOptions.length >
+                                                    0,
+                                                )
+                                              }
+                                              onBlur={() =>
+                                                setTimeout(
+                                                  () =>
+                                                    setServiceRoleAutocompleteOpen(
+                                                      false,
+                                                    ),
+                                                  150,
+                                                )
+                                              }
+                                            />
+                                          </ComboboxTrigger>
+
+                                          {isServiceRoleAutocompleteOpen ? (
+                                            <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                                              <ScrollArea viewportClassName="h-[120px]">
+                                                {serviceRoleAutocompleteOptions.map(
+                                                  (option) => (
+                                                    <ComboboxOption
+                                                      key={option}
+                                                      value={option}
+                                                    >
+                                                      {option}
+                                                    </ComboboxOption>
+                                                  ),
+                                                )}
+                                              </ScrollArea>
+                                            </ComboboxOptions>
+                                          ) : null}
+                                        </Combobox>
+                                      </div>
+                                      <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                                        <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                          Work Schedule
+                                        </Label>
+                                        <Select
+                                          value={draftServiceSchedule}
+                                          onValueChange={(value) =>
+                                            setDraftServiceSchedule(
+                                              value as JobListingWorkSchedule,
                                             )
                                           }
-                                        />
-                                        <span className="inline-flex h-9 items-center justify-center border-y border-gray-300 bg-white text-sm leading-5 text-gray-500">
-                                          hours
-                                        </span>
-                                        <Select
-                                          value={draftServiceCustomFrequency}
-                                          onValueChange={
-                                            setDraftServiceCustomFrequency
-                                          }
                                         >
-                                          <SelectTrigger className="h-9 min-w-[112px] rounded-l-none px-3 text-sm leading-5 text-dark-blue-400">
+                                          <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
                                             <SelectValue />
                                           </SelectTrigger>
-                                          <SelectContent className="min-w-[112px]">
+                                          <SelectContent className="w-[323px]">
                                             {[
-                                              "per_day",
-                                              "per_week",
-                                              "per_month",
-                                              "per_quarter",
-                                              "per_year",
-                                            ].map((frequency) => (
+                                              {
+                                                value: "full_time" as const,
+                                                label: "Full-time",
+                                              },
+                                              {
+                                                value: "part_time" as const,
+                                                label: "Part-time",
+                                              },
+                                              {
+                                                value: "custom" as const,
+                                                label: "Custom",
+                                              },
+                                            ].map((schedule) => (
                                               <SelectItem
-                                                key={frequency}
-                                                value={frequency}
+                                                key={schedule.value}
+                                                value={schedule.value}
                                               >
-                                                {frequency.replace("_", " ")}
+                                                {schedule.label}
                                               </SelectItem>
                                             ))}
                                           </SelectContent>
                                         </Select>
                                       </div>
+                                      {draftServiceSchedule === "custom" ? (
+                                        <div className="flex h-[70px] w-[323px] shrink-0 items-start gap-3">
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5">
+                                            <Label className="h-5 w-[109px] whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                                              Estimated hours
+                                            </Label>
+                                            <div className="flex h-11 w-[155.5px] items-start bg-white p-0 shadow-xs">
+                                              <input
+                                                className="h-11 w-[84.5px] flex-1 rounded-l-[5px] rounded-r-none border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-black shadow-none outline-none focus:border-gray-300 focus:outline-none"
+                                                value={draftServiceCustomHours}
+                                                onChange={(event) =>
+                                                  setDraftServiceCustomHours(
+                                                    event.target.value,
+                                                  )
+                                                }
+                                              />
+                                              <span className="-ml-px inline-flex h-11 w-[71px] shrink-0 items-center rounded-l-none rounded-r-[5px] border border-gray-300 bg-white px-3.5 py-2.5 text-base font-normal leading-6 text-gray-500">
+                                                <span className="h-6 w-[43px] shrink-0">
+                                                  hours
+                                                </span>
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <div className="flex h-[70px] w-[155.5px] flex-col items-start gap-1.5 pt-[26px]">
+                                            <Select
+                                              value={draftServiceCustomFrequency}
+                                              onValueChange={
+                                                setDraftServiceCustomFrequency
+                                              }
+                                            >
+                                              <SelectTrigger className="h-11 w-[155.5px] rounded-[5px] border-gray-300 bg-white py-2.5 pl-3.5 pr-3 text-base font-normal leading-6 text-gray-black shadow-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent className="h-[118px] w-[156px] rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_4px_19px_rgba(0,0,0,0.04)] [&>div]:h-[118px] [&>div]:overflow-y-scroll [&>div]:py-0 [&>div]:scrollbar-thin [&>div]:scrollbar-thumb-gray-200 [&>div]:scrollbar-track-transparent [&>div]:[scrollbar-gutter:stable]">
+                                                {[
+                                                  "per_day",
+                                                  "per_week",
+                                                  "per_month",
+                                                  "per_quarter",
+                                                  "per_year",
+                                                ].map((frequency) => (
+                                                  <SelectItem
+                                                    key={frequency}
+                                                    value={frequency}
+                                                    className="h-[34px] w-[156px] rounded-none px-3 py-2.5 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-gray-black data-[state=checked]:bg-gray-50 data-[state=checked]:text-gray-black [&>span:first-child]:hidden"
+                                                  >
+                                                    {frequency.replace(
+                                                      "_",
+                                                      " ",
+                                                    )}
+                                                  </SelectItem>
+                                                ))}
+                                              </SelectContent>
+                                            </Select>
+                                          </div>
+                                        </div>
+                                      ) : null}
                                     </div>
-                                  ) : null}
-                                  <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outlined"
-                                      visual="gray"
-                                      onClick={() =>
-                                        setActiveServiceRoleKey(null)
-                                      }
-                                    >
-                                      Cancel
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      onClick={() =>
-                                        saveServiceRoleEditor(
-                                          phase.name,
-                                          row.task,
-                                        )
-                                      }
-                                    >
-                                      Done
-                                    </Button>
-                                  </div>
-                                </div>
+                                    <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
+                                      <Button
+                                        type="button"
+                                        variant="outlined"
+                                        visual="gray"
+                                        className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+                                        onClick={() =>
+                                          setActiveServiceRoleKey(null)
+                                        }
+                                      >
+                                        <span className="h-5 w-12 text-center">
+                                          Cancel
+                                        </span>
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+                                        onClick={() =>
+                                          saveServiceRoleEditor(
+                                            phase.id,
+                                            row.task,
+                                          )
+                                        }
+                                      >
+                                        <span className="h-5 w-9 text-center">
+                                          Done
+                                        </span>
+                                      </Button>
+                                    </div>
+                                  </DialogContent>
+                                </Dialog>
                               ) : null}
                             </div>
                           ))}
@@ -14754,7 +20056,8 @@ const ServiceScopeEditStep = ({
 
                       {phase.note &&
                       shouldShowPhaseNote &&
-                      activeServicePhaseNote === phase.name ? (
+                      phase.phaseType !== "setup" &&
+                      activeServicePhaseNoteId === phase.id ? (
                         <div
                           className={cn(
                             "pointer-events-none absolute hidden w-[230px] rounded-[5px] bg-primary-50 p-4 text-sm leading-5 text-dark-blue-400 shadow-xs min-[1180px]:block",
@@ -14767,60 +20070,232 @@ const ServiceScopeEditStep = ({
                           <span className="absolute right-[-12px] top-1/2 size-6 -translate-y-1/2 rotate-45 bg-primary-50" />
                         </div>
                       ) : null}
-                    </div>
+                      </div>
+                    </ServicePhaseSortableCard>
                   );
-                })}
-              </div>
+                    })}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
             </div>
 
-            <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
+            <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
+              <div className="flex h-12 shrink-0 self-stretch items-start justify-between gap-2 border-b border-gray-200 px-5 py-3">
+                <h2 className="h-6 flex-1 text-base leading-6 font-semibold text-dark-blue-400">
                   Smart Assistant
                 </h2>
-                <Copy className="size-5 text-gray-400" />
+                <img
+                  src="/job-listing/smart-assistant-robot.png"
+                  alt=""
+                  aria-hidden="true"
+                  width={20}
+                  height={20}
+                  className="size-5 shrink-0"
+                />
               </div>
-              <div className="p-5">
-                <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                  What do you want to do?
-                </h3>
-                <p className="text-sm leading-5 text-dark-blue-400">
-                  Here are some suggestions:
-                </p>
-                <div className="mt-4 space-y-3">
-                  {["Reduce the budget", "Improve scope quality"].map(
-                    (item) => (
-                      <Button
-                        key={item}
-                        className="h-10 rounded-full"
-                        variant="outlined"
-                        visual="gray"
-                        onClick={() => runServiceAssistant(item)}
-                      >
-                        <Copy className="size-4 text-gray-400" />
-                        {item}
-                      </Button>
-                    ),
-                  )}
-                </div>
-                {assistantResult ? (
-                  <p className="mt-4 rounded-[5px] bg-primary-50 p-3 text-sm leading-5 text-dark-blue-400">
-                    {assistantResult}
+              <div
+                ref={assistantChatScrollRef}
+                className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 scrollbar-thin scrollbar-thumb-gray-200 scrollbar-thumb-rounded-lg"
+              >
+                <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                  <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                    What do you want to do?
+                  </h3>
+                  <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                    Here are some suggestions:
                   </p>
+                </div>
+                <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
+                  {[
+                    "Reduce the budget",
+                    "Improve scope quality",
+                  ].map((item) => (
+                    <Button
+                      key={item}
+                      className={cn(
+                        "h-10 rounded-full py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                        item === "Reduce the budget" &&
+                          "w-full max-w-[195px] justify-start bg-white",
+                        item === "Shorten the project timeline" &&
+                          "w-[253px] justify-start bg-white",
+                        item === "Improve scope quality" &&
+                          "w-[214px] justify-start bg-white"
+                      )}
+                      variant="outlined"
+                      visual="gray"
+                      onClick={() => runServiceAssistant(item)}
+                    >
+                      {item === "Reduce the budget" ? (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-money-bag.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[127px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      ) : item === "Shorten the project timeline" ? (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-timeline.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[185px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <img
+                            src="/job-listing/smart-assistant-target.png"
+                            alt=""
+                            aria-hidden="true"
+                            width={20}
+                            height={20}
+                            className="size-5 shrink-0"
+                          />
+                          <span className="h-5 w-[146px] shrink-0">
+                            {item}
+                          </span>
+                        </>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+                {assistantHistory.length > 0 ? (
+                  <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                    {assistantHistory.map((item, itemIndex) => {
+                      const isLatest = itemIndex === assistantHistory.length - 1;
+                      const canRestore =
+                        !isLatest &&
+                        item.status === "success" &&
+                        Boolean(item.listingAfter);
+                      const resultLines = (item.result ?? "")
+                        .split(/\n+/)
+                        .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                        .filter(Boolean);
+
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex w-[282px] flex-col items-start gap-6 self-stretch"
+                        >
+                          <div className="flex w-[282px] justify-end">
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base font-normal leading-6 text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          </div>
+                          {item.status !== "pending" ? (
+                            <div className="text-base font-normal leading-6 text-dark-blue-400">
+                              {item.status === "error" ? (
+                                <p>{item.result}</p>
+                              ) : (
+                                <>
+                                  {resultLines.length <= 1 ? (
+                                    <p>{resultLines[0] ?? item.result}</p>
+                                  ) : (
+                                    <ul className="list-disc pl-5">
+                                      {resultLines.map((line) => (
+                                        <li key={`${item.id}-${line}`}>
+                                          {line}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          ) : null}
+                          {canRestore ? (
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[136px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                              disabled={isAssistantLoading}
+                              onClick={() =>
+                                void restoreServiceAssistantHistoryItem(item)
+                              }
+                            >
+                              <ArrowUpLeft className="size-3 shrink-0" />
+                              Restore This Version
+                            </Button>
+                          ) : null}
+                          {isLatest && item.status !== "pending" ? (
+                            <div className="flex h-10 items-start gap-2">
+                              <Button
+                                type="button"
+                                className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none"
+                                disabled={isAssistantLoading || !item.prompt}
+                                onClick={() => runServiceAssistant(item.prompt)}
+                              >
+                                <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                                Retry
+                              </Button>
+                              {item.status === "success" ? (
+                                <Button
+                                  type="button"
+                                  variant="outlined"
+                                  visual="gray"
+                                  className="h-7 w-[62px] rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs"
+                                  disabled={!assistantUndoSnapshotRef.current}
+                                  onClick={() => void undoServiceAssistant()}
+                                >
+                                  <ArrowUpLeft className="size-3 shrink-0" />
+                                  Undo
+                                </Button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : null}
-                <div className="mt-[310px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+              </div>
+              <div className="flex h-[140px] w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden p-5">
+                <div className="flex h-[100px] w-full max-w-[282px] shrink-0 flex-col items-start justify-center gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500">
                   <Textarea
-                    className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
+                    className="h-10 w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-gray-500 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-gray-400 focus:ring-0"
                     placeholder="I want to change..."
                     value={assistantMessage}
                     onChange={(event) =>
                       setAssistantMessage(event.target.value)
                     }
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.shiftKey &&
+                        assistantMessage.trim() &&
+                        !isAssistantLoading
+                      ) {
+                        event.preventDefault()
+                        void runServiceAssistant(assistantMessage)
+                      }
+                    }}
                   />
-                  <div className="flex items-center justify-between">
-                    <RefreshCcw05 className="size-4 text-gray-400" />
+                  <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                    <img
+                      src="/job-listing/smart-assistant-wand.png"
+                      alt=""
+                      aria-hidden="true"
+                      width={20}
+                      height={20}
+                      className="size-5 shrink-0"
+                    />
                     <Button
-                      className="size-8 rounded-full p-0"
+                      className="size-6 rounded-full p-1 shadow-none"
+                      aria-label="Send message to Smart Assistant"
                       disabled={!assistantMessage.trim() || isAssistantLoading}
                       onClick={() => runServiceAssistant(assistantMessage)}
                     >
@@ -14834,28 +20309,26 @@ const ServiceScopeEditStep = ({
         </div>
       </ScrollArea>
       <Dialog open={isAddPhaseDialogOpen} onOpenChange={setAddPhaseDialogOpen}>
-        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-          <DialogHeader>
-            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-              Add Phase
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-2 space-y-5">
-            <div>
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Phase Name
-              </Label>
-              <Input
-                className="mt-2 h-11"
-                placeholder="Enter phase name"
-                value={newPhaseName}
-                onChange={(event) => setNewPhaseName(event.target.value)}
-              />
-            </div>
-            <div>
-              <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-                Phase Type
-              </Label>
+        <DialogContent
+          accessibilityTitle="Add Phase"
+          className="flex h-[314px] w-[371px] max-w-[calc(100vw-32px)] flex-col items-center gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        >
+          <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5 self-stretch">
+            <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+              Phase Name
+            </Label>
+            <Input
+              className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-500 shadow-xs placeholder:text-gray-500"
+              placeholder="Enter phase name"
+              value={newPhaseName}
+              onChange={(event) => setNewPhaseName(event.target.value)}
+            />
+          </div>
+          <div className="flex h-24 w-[323px] flex-col items-start gap-1.5 self-stretch">
+            <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+              Phase Type
+            </Label>
+            <div className="flex h-11 w-[323px] flex-col items-start gap-1.5 self-stretch">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -14863,15 +20336,17 @@ const ServiceScopeEditStep = ({
                     visual="gray"
                     type="button"
                     className={cn(
-                      "mt-2 h-11 w-full justify-between border-gray-300 bg-white px-3 text-left text-sm font-normal leading-5",
-                      newPhaseType ? "text-dark-blue-400" : "text-gray-400",
+                      "h-11 w-[323px] justify-between rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-left text-base font-normal leading-6 shadow-xs",
+                      newPhaseType ? "text-dark-blue-400" : "text-gray-500",
                     )}
-                    rightIcon={<ChevronDown className="size-4 text-gray-500" />}
+                    rightIcon={
+                      <ChevronDown className="size-5 rotate-180 text-gray-400" />
+                    }
                   >
                     {selectedPhaseTypeLabel}
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-[360px]">
+                <DropdownMenuContent align="start" className="w-[323px]">
                   {serviceScopePhaseTypeOptions.map((option) => {
                     const isUnavailable = isPhaseTypeUnavailable(option.value);
 
@@ -14907,21 +20382,138 @@ const ServiceScopeEditStep = ({
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>
-              <p className="mt-2 text-sm leading-5 text-gray-500">
-                Helps organize tasks by timing and frequency
-              </p>
             </div>
+            <p className="h-5 w-[323px] text-sm font-normal leading-5 text-gray-500">
+              Helps organize tasks by timing and frequency
+            </p>
           </div>
-          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+          <DialogFooter className="grid h-9 w-[323px] grid-cols-2 gap-3 self-stretch">
             <Button
               type="button"
               variant="outlined"
               visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
               onClick={() => setAddPhaseDialogOpen(false)}
             >
               Cancel
             </Button>
-            <Button type="button" disabled={!canCreatePhase} onClick={addPhase}>
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              disabled={!canCreatePhase}
+              onClick={addPhase}
+            >
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(activeRecurringPhaseId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeRecurringScheduleDialog();
+          }
+        }}
+      >
+        <DialogContent
+          accessibilityTitle="Recurring schedule"
+          className="flex h-[268px] w-[371px] max-w-[calc(100vw-32px)] flex-col items-center gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]"
+        >
+          <div className="flex h-[152px] w-[323px] flex-col items-start gap-3 self-stretch">
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5 self-stretch">
+              <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+                Recurring schedule
+              </Label>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    type="button"
+                    className="h-11 w-[323px] justify-between rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-left text-base font-normal leading-6 text-dark-blue-400 shadow-xs"
+                    rightIcon={
+                      <ChevronDown className="size-5 text-gray-500" />
+                    }
+                  >
+                    {serviceRecurringScheduleOptions.find(
+                      (option) => option.value === draftRecurringSchedule,
+                    )?.label ?? "Monthly"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="h-36 w-[155px] overflow-y-scroll rounded-[5px] border border-gray-100 bg-white p-0 shadow-[0px_0px_4px_rgba(0,0,0,0.04),0px_4px_8px_rgba(0,0,0,0.06)]"
+                >
+                  {serviceRecurringScheduleOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      className={cn(
+                        "h-12 w-[155px] rounded-none px-3 py-2 text-[13px] font-medium leading-[13px] text-gray-500 focus:bg-gray-50 focus:text-dark-blue-400",
+                        draftRecurringSchedule === option.value &&
+                          "bg-gray-50 text-dark-blue-400",
+                      )}
+                      onSelect={() => setDraftRecurringSchedule(option.value)}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+              <Label className="h-5 text-sm font-medium leading-5 text-dark-blue-400">
+                Repeats
+              </Label>
+              <div className="flex h-11 w-[323px] items-start overflow-hidden rounded-[5px] border border-gray-300 bg-white shadow-xs">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  visual="gray"
+                  className="h-11 w-12 rounded-none border-0 border-r border-gray-300 bg-white px-[14px] py-2.5 text-gray-500 shadow-none hover:bg-white"
+                  onClick={() =>
+                    setDraftRecurringCount((count) => Math.max(1, count - 1))
+                  }
+                >
+                  <span className="h-5 w-5 text-xl font-normal leading-5">
+                    -
+                  </span>
+                </Button>
+                <div className="flex h-11 w-[227px] flex-1 items-center justify-center px-3.5 py-2.5 text-center text-base font-normal leading-6 text-gray-900">
+                  <span>{draftRecurringCount}</span>
+                  <span className="ml-1 text-gray-400">
+                    {draftRecurringCount === 1 ? "time" : "times"}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  visual="gray"
+                  className="h-11 w-12 rounded-none border-0 border-l border-gray-300 bg-white px-[14px] py-2.5 text-gray-500 shadow-none hover:bg-white"
+                  onClick={() =>
+                    setDraftRecurringCount((count) => Math.min(99, count + 1))
+                  }
+                >
+                  <Plus className="size-5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="grid h-9 w-[323px] grid-cols-2 gap-3 self-stretch">
+            <Button
+              type="button"
+              variant="outlined"
+              visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
+              onClick={closeRecurringScheduleDialog}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              onClick={saveRecurringScheduleDialog}
+            >
               Done
             </Button>
           </DialogFooter>
@@ -14944,10 +20536,34 @@ const ExistingContractFinalReviewStep = ({
   ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
   const { toggleValidation } = useStepContext();
-  const { setDetails } = useJobListingDraftContext();
-  const [selectedRole, setSelectedRole] = useState("Front-End Developer");
+  const { details, setDetails } = useJobListingDraftContext();
+  const roleOptions = useMemo(() => {
+    const stepFourRoles = getUniqueOptions(
+      (details.teamRoleRows ?? [])
+        .map((row) => row.role?.trim())
+        .filter((role): role is string => Boolean(role)),
+    );
+
+    return stepFourRoles.length > 0 ? stepFourRoles : finalReviewRoles;
+  }, [details.teamRoleRows]);
+  const [selectedRole, setSelectedRole] = useState(
+    roleOptions[0] ?? finalReviewRoles[0],
+  );
+  const [showAllRoleOptions, setShowAllRoleOptions] = useState(false);
+  const visibleRoleOptions = showAllRoleOptions
+    ? roleOptions
+    : roleOptions.slice(0, 5);
+  const remainingRoleCount = Math.max(
+    0,
+    roleOptions.length - visibleRoleOptions.length,
+  );
   const [includeNda, setIncludeNda] = useState(false);
   const [responsibilities, setResponsibilities] = useState("");
+  const [generatedRoleDescriptions, setGeneratedRoleDescriptions] = useState<
+    RoleDescriptionDraft[]
+  >([]);
+  const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
+    useState(false);
   const didGenerateRoleDescriptionsRef = useRef(false);
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
     useDynamicFinalReviewSkills();
@@ -14969,7 +20585,23 @@ const ExistingContractFinalReviewStep = ({
     ensureJobListingDraft,
     getValue: getAssistantValue,
     onApply: applyAssistantValue,
+    roleTitle: selectedRole,
   });
+  const roleAssistantScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showRoleAssistantFollowUps, setShowRoleAssistantFollowUps] =
+    useState(false);
+  const latestRoleAssistantItem =
+    roleAssistant.history[roleAssistant.history.length - 1];
+  const roleAssistantFollowUpSuggestions =
+    latestRoleAssistantItem?.status === "success"
+      ? (latestRoleAssistantItem.suggestions ?? [])
+      : [];
+  const getRoleAssistantSuggestionWidthClass = (suggestion: string) =>
+    cn(
+      suggestion === "Add more specifics" && "w-[169px]",
+      suggestion === "Simplify the task list" && "w-[184px]",
+      suggestion === "Group similar tasks" && "w-[181px]",
+    );
   const loadSavedRoleDescription = useCallback(
     (draft: { responsibilities?: string; skills?: string[] }) => {
       if (draft.responsibilities !== undefined) {
@@ -14987,24 +20619,71 @@ const ExistingContractFinalReviewStep = ({
     roleTitle: selectedRole,
     responsibilities,
     skills,
+    roleDescriptionsSeed: generatedRoleDescriptions,
     onLoad: loadSavedRoleDescription,
   });
 
   useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = roleAssistantScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [roleAssistant.history]);
+
+  useEffect(() => {
+    setShowRoleAssistantFollowUps(false);
+  }, [latestRoleAssistantItem?.id]);
+
+  useEffect(() => {
+    if (roleOptions.length === 0 || roleOptions.includes(selectedRole)) {
+      return;
+    }
+
+    setSelectedRole(roleOptions[0]);
+  }, [roleOptions, selectedRole]);
+
+  useEffect(() => {
     if (!jobListingId || didGenerateRoleDescriptionsRef.current) return;
     if (responsibilities) return;
+    if (!selectedRole || roleOptions.length === 0) return;
     didGenerateRoleDescriptionsRef.current = true;
 
     const generateRoleDescriptions = async () => {
+      setIsGeneratingRoleDescriptions(true);
       try {
         const response = await JobListingAPI.GenerateRoleDescriptions(
           jobListingId,
           {
             workType: "project",
-            roles: [selectedRole].map((roleTitle) => ({ roleTitle })),
+            roles: roleOptions.map((roleTitle) => ({ roleTitle })),
           },
         );
         const descriptions = response?.data?.roleDescriptions;
+        const generatedDescriptions = Array.isArray(descriptions)
+          ? descriptions
+          : [];
+        if (generatedDescriptions.length) {
+          setGeneratedRoleDescriptions(generatedDescriptions);
+          void Promise.all(
+            generatedDescriptions
+              .filter((item: any) => item?.roleTitle)
+              .map((item: any) =>
+                JobListingAPI.SaveRoleDescription(
+                  jobListingId,
+                  item.roleTitle,
+                  {
+                    responsibilities: item.responsibilities,
+                    skills: Array.isArray(item.skills) ? item.skills : [],
+                  },
+                ),
+              ),
+          ).catch((error) => {
+            console.error("Failed to save generated role descriptions", error);
+          });
+        }
         const description = Array.isArray(descriptions)
           ? descriptions.find((item: any) => item?.roleTitle === selectedRole)
           : null;
@@ -15017,11 +20696,13 @@ const ExistingContractFinalReviewStep = ({
         }
       } catch (error) {
         console.error("Failed to generate role descriptions", error);
+      } finally {
+        setIsGeneratingRoleDescriptions(false);
       }
     };
 
     void generateRoleDescriptions();
-  }, [jobListingId, responsibilities, selectedRole, setSkills]);
+  }, [jobListingId, responsibilities, roleOptions, selectedRole, setSkills]);
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(true);
@@ -15038,9 +20719,9 @@ const ExistingContractFinalReviewStep = ({
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
       {addSkillDialog}
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-        <div className="flex flex-col gap-8 min-[1180px]:flex-row">
-          <div className="min-w-0 flex-auto max-w-[790px]">
+      <div className="bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px]">
+        <div className="mx-auto flex max-w-[1240px] flex-col gap-8 min-[1180px]:flex-row min-[1180px]:items-start">
+          <div className="min-w-0 flex-auto min-[1180px]:w-[887px]">
             <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
               One Last Check
             </h1>
@@ -15049,17 +20730,83 @@ const ExistingContractFinalReviewStep = ({
               ahead and publish, or make quick edits if needed.
             </p>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex items-center gap-x-2">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                  Include a Non-Disclosure Agreement (NDA)?
-                </h2>
-                <HelpCircle className="size-4 text-gray-400" />
-              </div>
+            <div className="mt-8 flex h-[226px] w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex h-44 w-full flex-col items-start gap-4 self-stretch p-0">
+                <div className="flex h-24 w-full flex-col items-start gap-3 self-stretch p-0">
+                  <div className="flex h-11 w-full flex-col items-start gap-1 self-stretch p-0">
+                  <div className="flex h-5 items-center justify-center gap-2 p-0">
+                    <h2 className="h-5 text-sm leading-5 font-semibold text-dark-blue-400">
+                      Include a Non-Disclosure Agreement (NDA)?
+                    </h2>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="link"
+                            visual="gray"
+                            aria-label="Show NDA details"
+                            className="size-4 cursor-default p-0 text-gray-400"
+                          >
+                            <AlertCircle className="size-4 shrink-0" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="right"
+                          align="center"
+                          sideOffset={12}
+                          className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs leading-[18px] font-normal text-dark-blue-400 shadow-[0px_4px_8px_-2px_rgba(16,24,40,0.1)]"
+                        >
+                          <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                          Non-Disclosure Agreement protects your confidential
+                          info by requiring each team member to sign before
+                          starting work.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <p className="h-5 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                    We&apos;ll generate one with your company name. Each team
+                    member will receive and sign it before starting the project.
+                  </p>
+                  </div>
+                  {!inheritedNda ? (
+                    <div className="flex h-10 w-full items-start gap-2 self-stretch p-0">
+                      {[
+                        { value: "yes" as const, label: "Yes, Include NDA" },
+                        { value: "no" as const, label: "No NDA" },
+                      ].map((option) => (
+                        <Button
+                          key={option.value}
+                          variant="outlined"
+                          visual="gray"
+                          type="button"
+                          className={cn(
+                            "h-10 rounded-[52px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white",
+                            option.value === "yes" ? "w-[147px]" : "w-[85px]",
+                            (includeNda ? "yes" : "no") === option.value &&
+                              "border-2 border-primary-500 bg-primary-25 hover:bg-primary-25",
+                          )}
+                          onClick={() => {
+                            const nextIncludeNda = option.value === "yes";
+
+                            setIncludeNda(nextIncludeNda);
+                            setDetails((current) => ({
+                              ...current,
+                              ndaEnabled: nextIncludeNda,
+                            }));
+                          }}
+                        >
+                          {option.label}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               {inheritedNda ? (
-                <div className="mt-5 flex flex-col gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 md:flex-row md:items-center">
-                  <AlertCircle className="size-5 shrink-0 text-primary-500" />
-                  <p className="min-w-0 flex-auto text-sm leading-5">
+                <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                  <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                  <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
                     {INHERITED_NDA_MESSAGE}
                   </p>
                   {ndaDocumentId
@@ -15068,7 +20815,7 @@ const ExistingContractFinalReviewStep = ({
                           type="button"
                           variant="outlined"
                           visual="primary"
-                          className="h-10 shrink-0"
+                          className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
                         >
                           View NDA
                         </Button>,
@@ -15078,44 +20825,10 @@ const ExistingContractFinalReviewStep = ({
                 </div>
               ) : (
                 <>
-                  <p className="mt-2 text-sm leading-5 text-dark-blue-400">
-                    We&apos;ll generate one with your company name. Each team
-                    member will receive and sign it before starting the project.
-                  </p>
-                  <RadioGroup
-                    className="mt-5 flex flex-wrap gap-2"
-                    value={includeNda ? "yes" : "no"}
-                    onValueChange={(value) => {
-                      const nextIncludeNda = value === "yes";
-
-                      setIncludeNda(nextIncludeNda);
-                      setDetails((current) => ({
-                        ...current,
-                        ndaEnabled: nextIncludeNda,
-                      }));
-                    }}
-                  >
-                    {[
-                      { value: "yes", label: "Yes, Include NDA" },
-                      { value: "no", label: "No NDA" },
-                    ].map((option) => (
-                      <HeadlessRadioGroupItem
-                        key={option.label}
-                        value={option.value}
-                        className={cn(
-                          "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 shadow-xs focus-visible:outline-none",
-                          (includeNda ? "yes" : "no") === option.value &&
-                            "border-primary-500 text-primary-500",
-                        )}
-                      >
-                        {option.label}
-                      </HeadlessRadioGroupItem>
-                    ))}
-                  </RadioGroup>
                   {includeNda ? (
-                    <div className="mt-6 flex flex-col gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 md:flex-row md:items-center">
-                      <AlertCircle className="size-5 shrink-0 text-primary-500" />
-                      <p className="min-w-0 flex-auto text-sm leading-5">
+                    <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-primary-50 p-4">
+                      <AlertCircle className="size-4 shrink-0 text-primary-500" />
+                      <p className="h-[18px] flex-1 text-xs leading-[18px] font-normal text-dark-blue-400">
                         Your Non-Disclosure Agreement (NDA) has been created.
                         Feel free to review it.
                       </p>
@@ -15124,7 +20837,7 @@ const ExistingContractFinalReviewStep = ({
                           type="button"
                           variant="outlined"
                           visual="primary"
-                          className="h-10 shrink-0"
+                          className="h-8 w-[73px] rounded-[5px] border border-primary-500 bg-primary-50 px-3 py-1.5 text-center text-[10px] leading-5 font-semibold text-primary-500 shadow-none hover:bg-primary-50"
                         >
                           View NDA
                         </Button>,
@@ -15132,102 +20845,140 @@ const ExistingContractFinalReviewStep = ({
                       )}
                     </div>
                   ) : (
-                    <div className="mt-6 rounded-lg border border-primary-100 bg-warning-50 p-5 text-sm leading-5 text-dark-blue-400">
+                    <div className="flex h-16 w-full items-center gap-4 self-stretch rounded-lg bg-warning-50 p-4 text-xs leading-[18px] font-normal text-dark-blue-400">
                       {NDA_OFF_WARNING}
                     </div>
                   )}
                 </>
               )}
+              </div>
             </div>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                Role Description
-              </h2>
-
-              <RadioGroup
-                className="mt-6 flex flex-wrap gap-2"
-                value={selectedRole}
-                onValueChange={setSelectedRole}
-              >
-                {[...finalReviewRoles, "+ 5 More"].map((role) => (
-                  <HeadlessRadioGroupItem
-                    key={role}
-                    value={role}
+            <div className="mt-8 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6">
+              <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
+                <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
+                  Role Description
+                </h2>
+              </div>
+              <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
+                  <div
                     className={cn(
-                      "inline-flex h-10 items-center justify-center rounded-full border border-gray-300 bg-white px-4 text-sm leading-5 font-semibold text-dark-blue-400 focus-visible:outline-none",
-                      selectedRole === role &&
-                        "border-primary-500 text-primary-500",
+                      "flex w-full items-start gap-2 self-stretch p-0",
+                      showAllRoleOptions
+                        ? "flex-wrap"
+                        : "h-10 flex-nowrap overflow-hidden",
                     )}
                   >
-                    {role}
-                  </HeadlessRadioGroupItem>
-                ))}
-              </RadioGroup>
-
-              <div className="mt-6">
-                <FinalReviewRichTextField
-                  title="Responsibilities"
-                  initialValue={responsibilities}
-                  placeholder={`Add responsibilities for ${selectedRole}`}
-                  counterLabel="Words"
-                  onChange={setResponsibilities}
-                />
-              </div>
-
-              <div className="mt-8">
-                <h3 className="text-sm leading-5 font-semibold text-dark-blue-400">
-                  Skills
-                </h3>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {skills.map((skill) => (
-                    <Badge
-                      key={skill}
-                      size="md"
-                      visual="gray"
-                      className="border border-gray-200 bg-white"
-                    >
-                      {skill}
+                    {visibleRoleOptions.map((role) => (
                       <Button
-                        variant="link"
+                        key={role}
+                        variant="outlined"
                         visual="gray"
                         type="button"
-                        className="ml-2 text-gray-400"
-                        onClick={() => removeSkill(skill)}
-                        aria-label={`Remove ${skill}`}
+                        className={cn(
+                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                          selectedRole === role &&
+                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500",
+                        )}
+                        onClick={() => setSelectedRole(role)}
                       >
-                        <X className="size-3" />
+                        {role}
                       </Button>
-                    </Badge>
-                  ))}
-                  <Button
-                    className="h-10"
-                    variant="outlined"
-                    visual="primary"
-                    onClick={addSkill}
-                  >
-                    Add Skill <Plus className="size-4" />
-                  </Button>
+                    ))}
+                    {remainingRoleCount > 0 ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        type="button"
+                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                        onClick={() => setShowAllRoleOptions(true)}
+                      >
+                        + {remainingRoleCount} More
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
+                    <FinalReviewRichTextField
+                      compact
+                      title="Responsibilities"
+                      initialValue={responsibilities}
+                      placeholder={`Add responsibilities for ${selectedRole}`}
+                      isLoading={isGeneratingRoleDescriptions}
+                      onSmartAssistant={(selection) => {
+                        roleAssistant.populateSelectedText(selection);
+                      }}
+                      onChange={setResponsibilities}
+                    />
+
+                    <div className="flex w-full flex-col items-start gap-1.5 self-stretch pb-6">
+                      <h3 className="h-5 text-sm leading-5 font-medium text-dark-blue-400">
+                        Skills
+                      </h3>
+                      <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                        {skills.map((skill) => (
+                          <Badge
+                            key={skill}
+                            size="md"
+                            visual="gray"
+                            className="box-border flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-dark-blue-400 shadow-none"
+                          >
+                            {skill}
+                            <BadgeCloseButton
+                              type="button"
+                              onClick={() => removeSkill(skill)}
+                              aria-label={`Remove ${skill}`}
+                              className="size-4 text-gray-400 opacity-100 hover:text-gray-700"
+                            >
+                              <X2 className="size-4" />
+                            </BadgeCloseButton>
+                          </Badge>
+                        ))}
+                        <Button
+                          className="box-border h-10 shrink-0 justify-center gap-2 rounded-lg border-2 border-primary-500 bg-white py-2.5 pr-3 pl-4 text-sm leading-5 font-medium text-primary-500 shadow-none hover:bg-white hover:text-primary-500"
+                          variant="outlined"
+                          visual="primary"
+                          onClick={addSkill}
+                        >
+                          Add Skill
+                          <Plus className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="w-full shrink-0 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1180px]:w-[321px] self-start">
+          <div className="flex h-[calc(100vh-248px)] min-h-0 w-full shrink-0 flex-col self-stretch rounded-lg border border-gray-200 bg-white shadow-[0px_2px_5px_rgba(0,0,0,0.04)] min-[1180px]:sticky min-[1180px]:top-[50px] min-[1180px]:w-[322px] min-[1180px]:self-start">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
               <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
                 Smart Assistant
               </h2>
-              <Copy className="size-5 text-gray-400" />
+              <img
+                src="/job-listing/smart-assistant-robot.png"
+                alt=""
+                aria-hidden="true"
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+              />
             </div>
-            <div className="p-5">
-              <h3 className="text-lg leading-7 font-semibold text-dark-blue-400">
-                Carify what this role involves
-              </h3>
-              <p className="text-sm leading-5 text-dark-blue-400">
-                Here are some suggestions:
-              </p>
-              <div className="mt-4 space-y-3">
+            <div
+              ref={roleAssistantScrollRef}
+              className="flex min-h-0 shrink grow flex-col items-start gap-4 self-stretch overflow-x-hidden overflow-y-auto px-5 pt-5 [scrollbar-color:#D0D5DD_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-lg [&::-webkit-scrollbar-thumb]:bg-gray-300"
+            >
+              <div className="flex h-[52px] w-[282px] shrink-0 flex-col items-center justify-center gap-1 self-stretch p-0">
+                <h3 className="h-7 shrink-0 self-stretch text-lg leading-7 font-semibold text-dark-blue-400">
+                  What do you want to do?
+                </h3>
+                <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+                  Here are some suggestions:
+                </p>
+              </div>
+              <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
                 {[
                   "Add more specifics",
                   "Simplify the task list",
@@ -15235,34 +20986,237 @@ const ExistingContractFinalReviewStep = ({
                 ].map((item) => (
                   <Button
                     key={item}
-                    className="h-10 rounded-full"
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white py-2.5 pl-4 pr-6 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getRoleAssistantSuggestionWidthClass(item),
+                    )}
                     variant="outlined"
                     visual="gray"
                     disabled={roleAssistant.isLoading}
                     onClick={() => roleAssistant.run(item, "responsibilities")}
                   >
-                    {item}
+                    <span className="h-5 shrink-0">{item}</span>
                   </Button>
                 ))}
               </div>
-              {roleAssistant.result ? (
-                <p className="mt-4 text-xs leading-[18px] text-primary-600">
-                  {roleAssistant.result}
-                </p>
+              {roleAssistant.history.length > 0 ? (
+                <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
+                  {roleAssistant.history.map((item, itemIndex) => {
+                    const isLatest =
+                      itemIndex === roleAssistant.history.length - 1;
+                    const resultLines = (item.result ?? "")
+                      .split(/\n+/)
+                      .map((line) => line.replace(/^[-•]\s*/, "").trim())
+                      .filter(Boolean);
+                    const selectedTextCommandWidth = Math.min(
+                      236,
+                      Math.max(89, item.prompt.length * 8 + 24),
+                    );
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex w-[282px] flex-col items-start gap-4 self-stretch"
+                      >
+                        <div className="flex w-[282px] justify-end">
+                          {item.selectedText ? (
+                            <div
+                              className="flex flex-col items-start gap-2"
+                              style={{ width: selectedTextCommandWidth }}
+                            >
+                              <div className="flex h-5 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md px-1.5">
+                                <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                                <p className="min-w-0 flex-1 truncate text-xs leading-[18px] font-normal text-gray-400">
+                                  “{item.selectedText}
+                                </p>
+                              </div>
+                              <p className="w-full rounded-2xl bg-gray-100 px-3 py-3 text-right text-sm leading-5 font-normal text-dark-blue-400">
+                                {item.prompt}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="max-w-[236px] rounded-[20px] bg-gray-100 px-5 py-3 text-center text-base leading-6 font-normal text-dark-blue-400">
+                              {item.prompt}
+                            </p>
+                          )}
+                        </div>
+                        {item.status === "pending" ? (
+                          <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs leading-[18px] font-normal text-gray-400">
+                            In progress...
+                          </p>
+                        ) : (
+                          <div className="flex w-[282px] flex-col items-start gap-2 self-stretch">
+                            <p className="flex h-[18px] w-[282px] items-center self-stretch text-xs leading-[18px] font-normal text-gray-400">
+                              Here is the result!
+                            </p>
+                            {item.status === "error" ? (
+                              <p className="flex w-[282px] items-center self-stretch text-base leading-6 font-normal text-dark-blue-400">
+                                {item.result}
+                              </p>
+                            ) : (
+                              <>
+                                {resultLines.length <= 1 ? (
+                                  <p className="flex w-[282px] items-center self-stretch text-base leading-6 font-normal text-dark-blue-400">
+                                    {resultLines[0] ?? item.result}
+                                  </p>
+                                ) : (
+                                  <ul className="w-[282px] list-disc pl-5 text-base leading-6 font-normal text-dark-blue-400">
+                                    {resultLines.map((line) => (
+                                      <li key={`${item.id}-${line}`}>
+                                        {line}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {isLatest && item.status !== "pending" ? (
+                          <div className="flex items-start gap-2">
+                            {item.status === "success" &&
+                            item.selectedText &&
+                            item.insertText &&
+                            item.result ? (
+                              <Button
+                                type="button"
+                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                disabled={item.inserted}
+                                onClick={() => {
+                                  if (item.inserted || !item.result) return;
+
+                                  item.insertText?.(
+                                    item.result,
+                                    item.insertedText ?? item.selectedText,
+                                  );
+                                  roleAssistant.markHistoryItemInserted(
+                                    item.id,
+                                    item.result,
+                                  );
+                                }}
+                              >
+                                <VariableInsertIcon className="size-3 shrink-0 text-primary-500" />
+                                Insert
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={roleAssistant.isLoading}
+                              onClick={() => roleAssistant.retry(item)}
+                            >
+                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              Retry
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
               ) : null}
-              <div className="mt-[280px] rounded-[5px] border border-gray-300 bg-white p-3 shadow-xs">
+            </div>
+            <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
+              {roleAssistantFollowUpSuggestions.length > 0 ? (
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                  <Button
+                    variant="ghost"
+                    visual="gray"
+                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs leading-[18px] font-normal text-gray-400 hover:bg-transparent"
+                    onClick={() =>
+                      setShowRoleAssistantFollowUps((isVisible) => !isVisible)
+                    }
+                  >
+                    <span className="flex-1">
+                      {showRoleAssistantFollowUps
+                        ? "Use these suggestions"
+                        : "Follow-up suggestions"}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        showRoleAssistantFollowUps && "rotate-180",
+                      )}
+                    />
+                  </Button>
+                  {showRoleAssistantFollowUps ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch">
+                      {roleAssistantFollowUpSuggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          type="button"
+                          variant="outlined"
+                          visual="gray"
+                          className={cn(
+                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                            getRoleAssistantSuggestionWidthClass(suggestion) ||
+                              "w-fit",
+                          )}
+                          disabled={roleAssistant.isLoading}
+                          onClick={() =>
+                            roleAssistant.run(suggestion, "responsibilities")
+                          }
+                        >
+                          <span className="h-5 min-w-0 truncate">
+                            {suggestion}
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "flex w-full max-w-[282px] shrink-0 flex-col items-start gap-3 self-stretch rounded-lg border border-gray-300 bg-gray-50 py-3 pl-2.5 pr-3 focus-within:border-primary-500",
+                  roleAssistant.selectedText ? "h-[148px]" : "h-[100px]",
+                )}
+              >
+                {roleAssistant.selectedText ? (
+                  <div className="flex h-11 w-[260px] shrink-0 items-center gap-3 self-stretch rounded-[5px] bg-primary-50 px-3 py-2">
+                    <ArticleTextIcon className="size-5 shrink-0 text-gray-400" />
+                    <p className="min-w-0 flex-1 truncate text-sm leading-5 font-normal text-dark-blue-400">
+                      “{roleAssistant.selectedText}
+                    </p>
+                    <IconButton
+                      variant="ghost"
+                      visual="gray"
+                      className="size-5 text-gray-400 hover:text-gray-500"
+                      aria-label="Clear selected text"
+                      onClick={roleAssistant.clearSelectedText}
+                    >
+                      <X2 className="size-5" />
+                    </IconButton>
+                  </div>
+                ) : null}
                 <Textarea
-                  className="h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-gray-500 shadow-none focus:border-transparent focus:ring-0"
-                  placeholder="I want to change..."
+                  className={cn(
+                    "w-[260px] shrink-0 self-stretch resize-none rounded-none border-0 bg-transparent p-0 text-sm leading-5 font-normal text-dark-blue-400 shadow-none placeholder:text-gray-400 focus:border-transparent focus:text-dark-blue-400 focus:ring-0",
+                    roleAssistant.selectedText ? "h-5" : "h-10",
+                  )}
+                  placeholder={
+                    roleAssistant.selectedText
+                      ? "Tell Smart Assistant what to do..."
+                      : "I want to change..."
+                  }
                   value={roleAssistant.message}
                   onChange={(event) =>
                     roleAssistant.setMessage(event.target.value)
                   }
                 />
-                <div className="flex items-center justify-between">
-                  <RefreshCcw05 className="size-4 text-gray-400" />
+                <div className="flex h-6 w-[260px] shrink-0 self-stretch items-center justify-between gap-2 p-0">
+                  <img
+                    src="/job-listing/smart-assistant-wand.png"
+                    alt=""
+                    aria-hidden="true"
+                    width={20}
+                    height={20}
+                    className="size-5 shrink-0"
+                  />
                   <Button
-                    className="size-8 rounded-full p-0"
+                    className="size-6 rounded-full p-1 shadow-none"
+                    type="button"
+                    aria-label="Send message to Smart Assistant"
                     disabled={
                       roleAssistant.isLoading || !roleAssistant.message.trim()
                     }
@@ -15285,29 +21239,82 @@ const ExistingContractFinalReviewStep = ({
   );
 };
 
+// Normalize hourly rate values coming from hydrated team role rows.
+const getCandidateHourlyRateUsdCents = (...values: unknown[]) => {
+  for (const value of values) {
+    const normalizedValue =
+      typeof value === "string" ? value.replace(/[$,\s]/g, "") : value;
+    const numberValue = toFiniteNumber(normalizedValue);
+    if (typeof numberValue === "number" && numberValue > 0) {
+      return Math.round(numberValue * 100);
+    }
+  }
+
+  return null;
+};
+
 const TeamRoles = ({
   setProgress,
   initialValid = false,
   existingContractId,
   hiringMode,
+  jobListingId,
+  ensureJobListingDraft,
 }: ProgressProps & {
   initialValid?: boolean;
   existingContractId?: string | null;
   hiringMode?: HiringModeChoice;
+  jobListingId?: string | null;
+  ensureJobListingDraft?: EnsureJobListingDraft;
 }) => {
   const { toggleValidation } = useStepContext();
-  const { setDetails } = useJobListingDraftContext();
+  const { toast } = useToast();
+  const { details, setDetails } = useJobListingDraftContext();
   const { projectScopeMethods } = useProjectScopeContext();
   const [projectScopeState, setProjectScopeState] = projectScopeMethods;
   const isExistingProject = existingContractId === "marketeq-projects-network";
   const isIndividualMode = hiringMode === "individual";
-  const [budgetFrequency, setBudgetFrequency] = useState("week");
+  // AI generates the role table for new listings. Individual mode uses the
+  // same flow as team mode, capped to one generated role.
+  const shouldAutoGenerateTeam =
+    (hiringMode === "team" || hiringMode === "individual") &&
+    !existingContractId;
+  // The step-2 budget is the client's target, so a new team must not overwrite
+  // it with the rows' estimate.
+  const keepStepTwoBudget = shouldAutoGenerateTeam;
+  const [isGeneratingTeamRows, setIsGeneratingTeamRows] = useState(false);
+  const [teamRowsGenerationFailed, setTeamRowsGenerationFailed] =
+    useState(false);
+  const didAttemptTeamGenerationRef = useRef(false);
+  const [budgetFrequency, setBudgetFrequency] = useState(
+    shouldAutoGenerateTeam && details.budgetFrequency === "per_month"
+      ? "month"
+      : "week",
+  );
   const [roleDialogMode, setRoleDialogMode] = useState<"add" | "rename" | null>(
     null,
   );
   const [activeRoleIndex, setActiveRoleIndex] = useState<number | null>(null);
   const [draftRoleTitle, setDraftRoleTitle] = useState("");
+  const [draftRoleSchedule, setDraftRoleSchedule] =
+    useState<TeamRoleRow["schedule"]>("Full-time");
+  const [teamRoleAutocompleteOptions, setTeamRoleAutocompleteOptions] =
+    useState<string[]>([]);
+  const [isTeamRoleAutocompleteOpen, setTeamRoleAutocompleteOpen] =
+    useState(false);
+  const teamRoleAutocompleteTimerRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
+  const teamRoleAutocompleteRequestIdRef = useRef(0);
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
+    if (details.teamRoleRows?.length) {
+      return details.teamRoleRows;
+    }
+
+    if (!existingContractId) {
+      return [];
+    }
+
     const scopedRows = projectScopeState?.[0]?.rows ?? [];
 
     if (scopedRows.length > 0 && !existingContractId) {
@@ -15322,77 +21329,275 @@ const TeamRoles = ({
       );
     }
 
-    if (isIndividualMode) {
-      return [createTeamRoleRow(0, { role: "Individual Role" })];
-    }
-
     return teamRoleRows;
   });
+  const persistTeamRoleRows = useCallback(
+    async (nextRows: TeamRoleRow[]) => {
+      setDetails((previous) => ({
+        ...previous,
+        teamRoleRows: nextRows,
+      }));
+
+      const listingId = jobListingId ?? (await ensureJobListingDraft?.());
+      if (!listingId) {
+        toast({
+          title: "Unable to save team members. Please try again.",
+          variant: "destructive",
+        });
+        return false;
+      }
+
+      try {
+        const response = await JobListingAPI.ReplaceRoleRows(
+          listingId,
+          createTeamRoleRowsPayload(nextRows),
+        );
+        const savedRows = createTeamRoleRowsFromApi(
+          getResponsePayload(response)?.teamMemberRows ??
+            getResponsePayload(response)?.roles ??
+            getResponsePayload(response),
+        );
+        if (savedRows.length > 0) {
+          setRows(savedRows);
+          setDetails((previous) => ({
+            ...previous,
+            teamRoleRows: savedRows,
+          }));
+        }
+        return true;
+      } catch (error) {
+        console.error("Failed to save team member rows", error);
+        toast({
+          title: "Unable to save team members. Please try again.",
+          variant: "destructive",
+        });
+        return false;
+      }
+    },
+    [ensureJobListingDraft, jobListingId, setDetails, toast],
+  );
   const updateRow = (rowIndex: number, nextValues: Partial<TeamRoleRow>) => {
-    setRows((currentRows) =>
-      currentRows.map((row, index) =>
-        index === rowIndex ? { ...row, ...nextValues } : row,
-      ),
+    const nextRows = rows.map((row, index) =>
+      index === rowIndex ? { ...row, ...nextValues } : row,
     );
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
+  useEffect(() => {
+    if (
+      !shouldAutoGenerateTeam ||
+      !jobListingId ||
+      rows.length > 0 ||
+      didAttemptTeamGenerationRef.current
+    ) {
+      return;
+    }
+    didAttemptTeamGenerationRef.current = true;
+
+    const generateTeamRows = async () => {
+      setIsGeneratingTeamRows(true);
+      try {
+        // Saved rows can arrive after this step mounts (draft hydration on
+        // re-entry); never replace a team that already exists server-side.
+        const listingResponse = await JobListingAPI.Get(jobListingId);
+        const savedRows = createTeamRoleRowsFromApi(
+          getResponsePayload(listingResponse)?.teamMemberRows,
+        );
+        if (savedRows.length > 0) {
+          setRows(savedRows);
+          setDetails((previous) => ({
+            ...previous,
+            teamRoleRows: savedRows,
+          }));
+          return;
+        }
+
+        const response = await JobListingAPI.GenerateTeamRows(jobListingId, {
+          ...(isIndividualMode ? { headcount: 1 } : {}),
+        });
+        const payload = getResponsePayload(response);
+        const generated: any[] = (
+          Array.isArray(payload?.rows) ? payload.rows : []
+        ).slice(0, isIndividualMode ? 1 : undefined);
+        const durationMonths = toFiniteNumber(payload?.durationMonths);
+
+        if (payload?.aiStatus !== "OK" || generated.length === 0) {
+          setTeamRowsGenerationFailed(true);
+          return;
+        }
+
+        const nextRows = generated.map((row, index) =>
+          createTeamRoleRow(index, {
+            role: String(row?.roleTitle ?? "").trim(),
+            location: String(row?.location ?? "United States"),
+            experience: toTeamRoleExperience(row?.experienceLevel),
+            schedule: toTeamRoleSchedule(row?.workSchedule),
+            length:
+              typeof durationMonths === "number" && durationMonths > 0
+                ? `${durationMonths} ${
+                    durationMonths === 1 ? "month" : "months"
+                  }`
+                : "3 months",
+          }),
+        );
+        setRows(nextRows);
+        const didPersist = await persistTeamRoleRows(nextRows);
+        if (!didPersist) {
+          setTeamRowsGenerationFailed(true);
+        }
+      } catch (error) {
+        console.error("Failed to generate team rows", error);
+        setTeamRowsGenerationFailed(true);
+      } finally {
+        setIsGeneratingTeamRows(false);
+      }
+    };
+
+    void generateTeamRows();
+  }, [
+    jobListingId,
+    persistTeamRoleRows,
+    isIndividualMode,
+    rows.length,
+    setDetails,
+    shouldAutoGenerateTeam,
+  ]);
+  useEffect(() => {
+    const query = draftRoleTitle.trim();
+
+    if (teamRoleAutocompleteTimerRef.current) {
+      clearTimeout(teamRoleAutocompleteTimerRef.current);
+    }
+
+    if (!roleDialogMode || !query) {
+      setTeamRoleAutocompleteOptions([]);
+      setTeamRoleAutocompleteOpen(false);
+      return;
+    }
+
+    teamRoleAutocompleteTimerRef.current = setTimeout(async () => {
+      const currentRequestId = ++teamRoleAutocompleteRequestIdRef.current;
+
+      try {
+        const response = await AutocompleteAPI.getByType(
+          "job_titles",
+          query,
+          10,
+        );
+        if (currentRequestId !== teamRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+
+        const apiValues: AutocompleteTypeSuggestion[] = Array.isArray(
+          response?.data,
+        )
+          ? response.data
+          : [];
+        const options = getUniqueOptions(
+          apiValues.map((item) => normalizeAutocompleteLabel(item)),
+        ).filter(
+          (option) => option.toLowerCase() !== query.toLowerCase(),
+        );
+
+        setTeamRoleAutocompleteOptions(options);
+        setTeamRoleAutocompleteOpen(options.length > 0);
+      } catch {
+        if (currentRequestId !== teamRoleAutocompleteRequestIdRef.current) {
+          return;
+        }
+        setTeamRoleAutocompleteOptions([]);
+        setTeamRoleAutocompleteOpen(false);
+      }
+    }, 250);
+
+    return () => {
+      if (teamRoleAutocompleteTimerRef.current) {
+        clearTimeout(teamRoleAutocompleteTimerRef.current);
+      }
+    };
+  }, [draftRoleTitle, roleDialogMode]);
+
   const closeRoleDialog = () => {
     setRoleDialogMode(null);
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setDraftRoleSchedule("Full-time");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const openAddRoleDialog = () => {
     setRoleDialogMode("add");
     setActiveRoleIndex(null);
     setDraftRoleTitle("");
+    setDraftRoleSchedule("Full-time");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const openRenameRoleDialog = (rowIndex: number) => {
     setRoleDialogMode("rename");
     setActiveRoleIndex(rowIndex);
     setDraftRoleTitle(rows[rowIndex]?.role ?? "");
+    setDraftRoleSchedule(rows[rowIndex]?.schedule ?? "Full-time");
+    setTeamRoleAutocompleteOptions([]);
+    setTeamRoleAutocompleteOpen(false);
   };
   const saveRoleDialog = () => {
     const role = draftRoleTitle.trim();
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
       if (role) {
-        updateRow(activeRoleIndex, { role });
+        const nextRows = rows.map((row, index) =>
+          index === activeRoleIndex
+            ? {
+                ...row,
+                role,
+              }
+            : row,
+        );
+        setRows(nextRows);
+        void persistTeamRoleRows(nextRows);
       }
       closeRoleDialog();
       return;
     }
 
-    setRows((currentRows) => [
-      ...currentRows,
-      createTeamRoleRow(currentRows.length, {
-        role: role || `New Team Member ${currentRows.length + 1}`,
+    const nextRows = [
+      ...rows,
+      createTeamRoleRow(rows.length, {
+        role: role || `New Team Member ${rows.length + 1}`,
+        schedule: draftRoleSchedule,
         length: isExistingProject ? "3 months" : "1 month",
       }),
-    ]);
+    ];
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
     closeRoleDialog();
   };
   const duplicateRow = (rowIndex: number) => {
-    setRows((currentRows) => {
-      const rowToCopy = currentRows[rowIndex];
-      if (!rowToCopy) return currentRows;
+    const rowToCopy = rows[rowIndex];
+    if (!rowToCopy) return;
 
-      return [
-        ...currentRows.slice(0, rowIndex + 1),
-        {
-          ...rowToCopy,
-          role: `${rowToCopy.role} Copy`,
-          assignee: "Unassigned Member",
-          editable: true,
-        },
-        ...currentRows.slice(rowIndex + 1),
-      ];
-    });
+    const nextRows = [
+      ...rows.slice(0, rowIndex + 1),
+      {
+        ...rowToCopy,
+        assignee: "Unassigned Member",
+        assigneeUserId: null,
+        assigneeHourlyRateUsdCents: null,
+        estimate: "$0 - $0",
+        editable: true,
+      },
+      ...rows.slice(rowIndex + 1),
+    ];
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
   const removeRow = (rowIndex: number) => {
-    setRows((currentRows) =>
-      currentRows.length > 1
-        ? currentRows.filter((_, index) => index !== rowIndex)
-        : currentRows,
-    );
+    if (rows.length <= 1) return;
+
+    const nextRows = rows.filter((_, index) => index !== rowIndex);
+    setRows(nextRows);
+    void persistTeamRoleRows(nextRows);
   };
   const rowsAreValid =
     rows.length > 0 &&
@@ -15404,20 +21609,47 @@ const TeamRoles = ({
         Boolean(row.schedule.trim()) &&
         Boolean(row.length.trim()),
     );
+  const estimatedBudgetCents = useMemo(
+    () => getTeamRolesEstimatedBudget(rows),
+    [rows],
+  );
+  // estimatedBudgetCents is the whole-contract total. For a new team the card
+  // shows it per week or per month (whichever is selected), so it reads in the
+  // same unit as the budget entered in step 2. Weeks use the same 4.33
+  // weeks/month as the estimate itself.
+  const contractMonths =
+    details.durationMonths ??
+    Math.max(0, ...rows.map((row) => parseMonthCount(row.length) ?? 0));
+  const displayedBudgetCents =
+    keepStepTwoBudget && contractMonths > 0
+      ? estimatedBudgetCents /
+        (budgetFrequency === "month" ? contractMonths : contractMonths * 4.33)
+      : estimatedBudgetCents;
+  const estimatedBudgetDisplay =
+    displayedBudgetCents > 0 ? formatUsdFromCents(displayedBudgetCents) : "$0";
 
   useIsomorphicLayoutEffect(() => {
     toggleValidation(initialValid || rowsAreValid);
   }, [initialValid, rowsAreValid]);
 
   useEffect(() => {
-    setDetails((previous) => ({
-      ...previous,
-      headcount: rows.length,
-      budgetAmount: previous.budgetAmount ?? 5000,
-      budgetFrequency: budgetFrequency === "month" ? "per_month" : "per_week",
-      durationMonths: isExistingProject ? 6 : previous.durationMonths,
-      isOngoing: isExistingProject ? previous.isOngoing : true,
-    }));
+    if (rows.length > 0 || existingContractId || isIndividualMode) {
+      setDetails((previous) => ({
+        ...previous,
+        teamRoleRows: rows,
+        budgetAmount:
+          !keepStepTwoBudget && estimatedBudgetCents > 0
+            ? Math.round(estimatedBudgetCents / 100)
+            : previous.budgetAmount,
+        budgetFrequency: keepStepTwoBudget
+          ? previous.budgetFrequency
+          : budgetFrequency === "month"
+            ? "per_month"
+            : "per_week",
+        durationMonths: isExistingProject ? 6 : previous.durationMonths,
+        isOngoing: isExistingProject ? previous.isOngoing : true,
+      }));
+    }
 
     setProjectScopeState([
       {
@@ -15448,7 +21680,11 @@ const TeamRoles = ({
     ]);
   }, [
     budgetFrequency,
+    estimatedBudgetCents,
     isExistingProject,
+    isIndividualMode,
+    existingContractId,
+    keepStepTwoBudget,
     rows,
     setDetails,
     setProjectScopeState,
@@ -15465,217 +21701,517 @@ const TeamRoles = ({
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
-          <h1 className="text-[32px] leading-[40px] font-semibold text-dark-blue-400">
-            {isIndividualMode ? "Customize your role" : "Customize your team"}
-          </h1>
-          <p className="mt-4 text-sm leading-5 text-dark-blue-400">
-            {isIndividualMode
-              ? "Add the role, location, and experience level you're looking for—we'll estimate pay rates and help you get ready to hire."
-              : "Add the roles, locations, and experience levels you're looking for—we'll estimate pay rates and help you build the right team faster."}
-          </p>
+        <div className="mx-auto max-w-[1240px] py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-0">
+          <div className="flex h-20 w-full shrink-0 flex-col items-center justify-center gap-4 self-stretch p-0">
+            <h1 className="h-11 shrink-0 self-stretch text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+              Customize your team
+            </h1>
+            <p className="h-5 shrink-0 self-stretch text-sm leading-5 font-normal text-dark-blue-400">
+              Add the roles, locations, and experience levels you&apos;re
+              looking for, we&apos;ll estimate pay rates and help you build the
+              right team faster.
+            </p>
+          </div>
 
           <div className="mt-8 flex flex-col gap-8 min-[1024px]:flex-row">
-            <div className="min-w-0 flex-auto rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex items-center justify-between border-b border-gray-200 px-6 py-3">
-                <h2 className="text-base leading-6 font-semibold text-dark-blue-400">
-                  {isIndividualMode ? "Role" : "Team Members"}
+            <div className="min-w-0 flex-auto overflow-hidden rounded-lg border border-gray-200 bg-white min-[1024px]:w-[886px] min-[1024px]:flex-none">
+              <div className="flex h-[60px] items-center justify-between gap-4 self-stretch border-b border-gray-200 bg-white px-6 py-3">
+                <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                  Team Members
                 </h2>
                 <Button
-                  className="h-8"
+                  size="sm"
                   variant="outlined"
                   visual="gray"
                   onClick={openAddRoleDialog}
                 >
-                  <Plus className="size-4" />
-                  {isIndividualMode ? "Add Role" : "Add Team Member"}
+                  <Plus className="size-[15px]" />
+                  Add Team Member
                 </Button>
               </div>
 
-              <div className="overflow-x-auto">
-                <Table className="min-w-[920px] table-fixed">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[220px]">Role</TableHead>
-                      <TableHead className="w-[190px]">Location</TableHead>
-                      <TableHead className="w-[150px]">Experience</TableHead>
-                      <TableHead className="w-[170px]">Schedule</TableHead>
-                      <TableHead className="w-[190px]">
-                        Contract Length
+              {teamRowsGenerationFailed && rows.length === 0 ? (
+                <Alert variant="error" className="self-stretch">
+                  <AlertIcon>
+                    <AlertCircle className="h-5 w-5 flex-none" />
+                  </AlertIcon>
+                  <AlertContent>
+                    <AlertTitle>We couldn&apos;t generate your team</AlertTitle>
+                    <AlertDescription>
+                      Add your team members manually using the button above.
+                    </AlertDescription>
+                  </AlertContent>
+                </Alert>
+              ) : null}
+
+              <div className="self-stretch overflow-x-hidden bg-white">
+                <Table className="w-full table-fixed bg-white">
+                  <colgroup>
+                    <col className="w-[239px]" />
+                    <col className="w-[140px]" />
+                    <col className="w-[105px]" />
+                    <col className="w-[124px]" />
+                    <col className="w-[126px]" />
+                    <col className="w-[100px]" />
+                    <col className="w-[50px]" />
+                  </colgroup>
+                  <TableHeader className="bg-gray-50 [&_tr]:border-y-0">
+                    <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
+                      <TableHead className="h-11 w-[239px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] min-w-0 flex-1">Role</span>
+                        </div>
                       </TableHead>
-                      <TableHead className="w-[120px]">Hourly est.</TableHead>
-                      <TableHead className="w-[56px]" />
+                      <TableHead className="h-11 w-[140px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[50px] cursor-default">
+                                  Location
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Affects cost, availability, and potential time
+                                  zone alignment with your team.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[105px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <span className="h-[18px] w-16">Experience</span>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[124px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[94px] cursor-default">
+                                  Work Schedule
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Defines how much time the freelancer will
+                                  commit. Impacts total cost.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[126px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="h-[18px] w-[94px] cursor-default whitespace-nowrap">
+                                  Contract Length
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Sets how long the freelancer will be engaged.
+                                  Affects overall budget planning.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[100px] px-0 py-0">
+                        <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-default whitespace-nowrap">
+                                  Hourly est.
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span className="flex h-[54px] w-[182.55px] items-center">
+                                  Estimated hourly rate based on the selected
+                                  location, experience, and schedule
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
+                      </TableHead>
+                      <TableHead className="h-11 w-[50px] px-0 py-0">
+                        <div className="h-11 px-3 py-3" />
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
+                    {isGeneratingTeamRows && rows.length === 0
+                      ? Array.from(
+                          { length: isIndividualMode ? 1 : 3 },
+                          (_, index) => (
+                            <TableRow
+                              key={`team-row-skeleton-${index}`}
+                              className="h-[72px] border-b border-gray-200 hover:bg-transparent"
+                            >
+                              <TableCell
+                                colSpan={7}
+                                className="h-[72px] px-6 py-4"
+                              >
+                                <span className="relative block h-10 w-full overflow-hidden rounded bg-gray-100">
+                                  <span className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100" />
+                                </span>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        )
+                      : null}
                     {rows.map((row, index) => (
-                      <TableRow key={`${row.role}-${index}`}>
-                        <TableCell className="w-[220px]">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                              {row.role}
-                            </p>
-                            <p className="truncate text-sm leading-5 text-gray-500">
-                              {row.assignee}
-                            </p>
+                      <TableRow
+                        key={`${row.role}-${index}`}
+                        className="h-[72px] border-b border-gray-200 hover:bg-transparent"
+                      >
+                        <TableCell className="h-[72px] w-[239px] px-0 py-0">
+                          <div className="flex h-[72px] items-center gap-3 py-4 pl-6 pr-3">
+                            {row.editable ? (
+                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start justify-start gap-0">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  visual="gray"
+                                  className="h-5 w-full justify-start p-0 text-left hover:bg-transparent"
+                                  onClick={() => openRenameRoleDialog(index)}
+                                >
+                                  <span className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                    {row.role}
+                                  </span>
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start">
+                                <p className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                  {row.role}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <CountriesCombobox
-                              value={row.location}
-                              onValueChange={(location) =>
-                                updateRow(index, { location })
-                              }
-                              placeholder="Select country"
-                              triggerClassName={teamRolePillClassName}
-                            />
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {renderLocationOptionLabel(row.location)}
-                            </Badge>
-                          )}
+                        <TableCell className="h-[72px] w-[140px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <CountriesCombobox
+                                value={row.location}
+                                onValueChange={(location) =>
+                                  updateRow(index, { location })
+                                }
+                                placeholder="Select country"
+                                triggerClassName={teamRoleLocationPillClassName}
+                              />
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleLocationPillClassName}
+                              >
+                                {renderLocationOptionLabel(row.location)}
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.experience}
-                              onValueChange={(experience) =>
-                                updateRow(index, {
-                                  experience: experience as ExperienceLevel,
-                                })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {EXPERIENCE_LEVELS.map((experience) => (
-                                  <SelectItem
-                                    key={experience}
-                                    value={experience}
+                        <TableCell className="h-[72px] w-[105px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.experience}
+                                onValueChange={(experience) =>
+                                  updateRow(index, {
+                                    experience: experience as ExperienceLevel,
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleExperiencePillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {EXPERIENCE_LEVELS.map((experience) => (
+                                    <SelectItem
+                                      key={experience}
+                                      value={experience}
+                                    >
+                                      {experience}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleExperiencePillClassName}
+                              >
+                                {row.experience}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[124px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.schedule}
+                                onValueChange={(schedule) =>
+                                  updateRow(index, {
+                                    schedule:
+                                      schedule as TeamRoleRow["schedule"],
+                                  })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleSchedulePillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamRoleScheduleOptions.map((schedule) => (
+                                    <SelectItem key={schedule} value={schedule}>
+                                      {schedule}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleSchedulePillClassName}
+                              >
+                                {row.schedule}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[126px] px-0 py-0">
+                          <div className="flex h-[72px] min-w-0 items-center gap-3 px-4 py-4">
+                            {row.editable ? (
+                              <Select
+                                value={row.length}
+                                onValueChange={(length) =>
+                                  updateRow(index, { length })
+                                }
+                              >
+                                <SelectTrigger
+                                  className={teamRoleLengthPillClassName}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamRoleLengthOptions.map((length) => (
+                                    <SelectItem key={length} value={length}>
+                                      {length}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge
+                                size="lg"
+                                visual="gray"
+                                className={teamRoleLengthPillClassName}
+                              >
+                                {row.length}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[100px] px-0 py-0">
+                          <div className="flex h-[72px] items-center px-3 py-4">
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="cursor-default whitespace-nowrap text-sm leading-5 text-gray-600">
+                                    {row.estimate}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent
+                                  side="left"
+                                  align="center"
+                                  sideOffset={12}
+                                  visual="white"
+                                  className="flex h-[246px] w-[252px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                >
+                                  <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                  <span className="h-6 w-[90px] text-base font-semibold leading-6 text-gray-800">
+                                    Price Guide
+                                  </span>
+                                  <div className="relative h-[166px] w-[212px]">
+                                    <div className="absolute bottom-0 left-0 flex h-[120px] w-[212px] items-end gap-1">
+                                      {[
+                                        ["h-6", "bg-primary-100"],
+                                        ["h-[39px]", "bg-primary-100"],
+                                        ["h-[78px]", "bg-primary-100"],
+                                        ["h-[104px]", "bg-primary-500"],
+                                        ["h-[120px]", "bg-primary-500"],
+                                        ["h-24", "bg-primary-500"],
+                                        ["h-[68px]", "bg-primary-100"],
+                                        ["h-12", "bg-primary-100"],
+                                        ["h-[13px]", "bg-primary-100"],
+                                      ].map(([heightClassName, colorClassName], barIndex) => (
+                                        <div
+                                          key={barIndex}
+                                          className={cn(
+                                            "w-5 rounded",
+                                            heightClassName,
+                                            colorClassName,
+                                          )}
+                                        />
+                                      ))}
+                                    </div>
+                                    {(() => {
+                                      const estimate =
+                                        parseHourlyEstimateCents(row.estimate);
+                                      const low =
+                                        typeof estimate.low === "number"
+                                          ? Math.round(estimate.low / 100)
+                                          : null;
+                                      const high =
+                                        typeof estimate.high === "number"
+                                          ? Math.round(estimate.high / 100)
+                                          : null;
+                                      const median =
+                                        typeof low === "number" &&
+                                        typeof high === "number"
+                                          ? Math.round((low + high) / 2)
+                                          : null;
+                                      const guideValues = [
+                                        {
+                                          label: "Low",
+                                          value: low,
+                                          className:
+                                            "left-[49.54px] top-4 w-[30px]",
+                                        },
+                                        {
+                                          label: "Median",
+                                          value: median,
+                                          className:
+                                            "left-[86.54px] top-0 w-[39px]",
+                                        },
+                                        {
+                                          label: "High",
+                                          value: high,
+                                          className:
+                                            "left-[131.54px] top-6 w-[30px]",
+                                        },
+                                      ];
+
+                                      return guideValues.map(
+                                        ({ label, value, className }) => (
+                                          <div
+                                            key={label}
+                                            className={cn(
+                                              "absolute flex h-[34px] flex-col items-center gap-1 p-0",
+                                              className,
+                                            )}
+                                          >
+                                            <span className="h-[13px] text-[11px] font-normal leading-[13px] tracking-[0.06px] text-dark-blue-400">
+                                              {label}
+                                            </span>
+                                            <span className="flex h-[17px] items-center justify-center rounded bg-black px-1 py-0.5 text-[11px] font-normal leading-[13px] tracking-[0.06px] text-white">
+                                              {typeof value === "number"
+                                                ? `$${value}`
+                                                : "--"}
+                                            </span>
+                                          </div>
+                                        ),
+                                      );
+                                    })()}
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </TableCell>
+                        <TableCell className="h-[72px] w-[50px] px-0 py-0">
+                          <div className="flex h-[72px] items-center justify-center px-3 py-4">
+                            {row.editable ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <IconButton
+                                    variant="ghost"
+                                    visual="gray"
+                                    className="size-[27px] p-0 text-gray-500"
                                   >
-                                    {experience}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.experience}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.schedule}
-                              onValueChange={(schedule) =>
-                                updateRow(index, {
-                                  schedule: schedule as TeamRoleRow["schedule"],
-                                })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {teamRoleScheduleOptions.map((schedule) => (
-                                  <SelectItem key={schedule} value={schedule}>
-                                    {schedule}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.schedule}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {row.editable ? (
-                            <Select
-                              value={row.length}
-                              onValueChange={(length) =>
-                                updateRow(index, { length })
-                              }
-                            >
-                              <SelectTrigger className={teamRolePillClassName}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {teamRoleLengthOptions.map((length) => (
-                                  <SelectItem key={length} value={length}>
-                                    {length}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Badge
-                              size="lg"
-                              visual="gray"
-                              className={teamRolePillClassName}
-                            >
-                              {row.length}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="text-sm leading-5 text-gray-600">
-                            {row.estimate}
-                          </span>
-                        </TableCell>
-                        <TableCell className="w-[56px]">
-                          {row.editable ? (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <IconButton variant="ghost" visual="gray">
-                                  <MoreHorizontal className="size-4" />
-                                </IconButton>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onSelect={() => openRenameRoleDialog(index)}
+                                    <MoreHorizontal className="size-[15px]" />
+                                  </IconButton>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="flex h-[88px] w-[153px] flex-col items-start rounded-lg border border-gray-100 bg-white p-0 shadow-lg"
                                 >
-                                  Rename role
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={() => duplicateRow(index)}
-                                >
-                                  Duplicate role
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onSelect={() => removeRow(index)}
-                                >
-                                  Remove role
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          ) : (
-                            <IconButton
-                              aria-hidden="true"
-                              tabIndex={-1}
-                              variant="ghost"
-                              visual="gray"
-                              className="invisible"
-                            >
-                              <MoreHorizontal className="size-4" />
-                            </IconButton>
-                          )}
+                                  <DropdownMenuItem
+                                    onSelect={() => duplicateRow(index)}
+                                    className="flex h-11 w-[153px] items-center justify-start gap-2 rounded-none border-b border-gray-200 px-4 py-3 text-sm font-normal leading-5 text-black focus:bg-gray-50"
+                                  >
+                                    <Copy className="size-[18px] shrink-0 text-gray-400" />
+                                    <span className="h-5 w-[95px] shrink-0 whitespace-nowrap rounded text-sm font-normal leading-5 text-black">
+                                      Duplicate Role
+                                    </span>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onSelect={() => removeRow(index)}
+                                    className="flex h-11 w-[153px] items-center justify-start gap-2 rounded-none px-4 py-3 text-sm font-normal leading-5 text-black focus:bg-gray-50"
+                                  >
+                                    <Trash01 className="size-[18px] shrink-0 text-gray-400" />
+                                    <span className="h-5 w-[95px] shrink-0 whitespace-nowrap rounded text-sm font-normal leading-5 text-black">
+                                      Delete
+                                    </span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <IconButton
+                                aria-hidden="true"
+                                tabIndex={-1}
+                                variant="ghost"
+                                visual="gray"
+                                className="invisible size-[27px] p-0"
+                              >
+                                <MoreHorizontal className="size-[15px]" />
+                              </IconButton>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -15684,41 +22220,45 @@ const TeamRoles = ({
               </div>
             </div>
 
-            <div className="w-full rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[321px] self-start">
-              <p className="text-sm leading-5 font-semibold text-gray-400">
-                Estimated Budget
-              </p>
-              <div className="mt-2 flex items-center gap-x-1 text-dark-blue-400">
-                <span className="text-2xl leading-8 font-semibold">$5,000</span>
-                <span className="text-sm leading-5">per</span>
-                <Select
-                  value={budgetFrequency}
-                  onValueChange={setBudgetFrequency}
-                >
-                  <SelectTrigger className="h-7 w-max rounded-full border-gray-200 bg-white px-2 py-1 text-sm leading-5 text-dark-blue-400">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["week", "month"].map((frequency) => (
-                      <SelectItem key={frequency} value={frequency}>
-                        {frequency}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                  <Clock className="size-4 text-primary-500" />
-                  {isExistingProject
-                    ? "6 month project"
-                    : isIndividualMode
-                      ? (rows[0]?.length ?? "3 months")
-                      : "Ongoing"}
+            <div className="flex h-[174px] w-full flex-col items-start justify-center gap-5 self-start rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)] min-[1024px]:w-[322px]">
+              <div className="flex h-[58px] w-full flex-col items-start gap-2 self-stretch">
+                <div className="flex h-5 w-full items-center gap-2">
+                  <p className="h-5 w-[120px] rounded-[4.83879px] text-sm font-medium leading-5 text-gray-400">
+                    Estimated Budget
+                  </p>
                 </div>
-                <div className="flex items-center gap-x-2 text-sm leading-5 text-dark-blue-400">
-                  <Copy className="size-4 text-primary-500" />
-                  {rows.length} {isIndividualMode ? "role" : "team members"}
+                <div className="flex h-[30px] w-full items-baseline gap-1 text-dark-blue-400">
+                  <span className="text-2xl font-bold leading-[29px] capitalize">
+                    {estimatedBudgetDisplay}
+                  </span>
+                  <span className="text-sm font-medium leading-[17px]">per</span>
+                  <Select
+                    value={budgetFrequency}
+                    onValueChange={setBudgetFrequency}
+                  >
+                    <SelectTrigger className="h-[25px] w-[66px] gap-1 rounded border-gray-300 bg-white px-[7px] py-[5px] text-sm font-medium leading-[17px] text-dark-blue-400 shadow-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["week", "month"].map((frequency) => (
+                        <SelectItem key={frequency} value={frequency}>
+                          {frequency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex h-12 w-full flex-col items-start gap-3 self-stretch">
+                <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
+                  <Clock className="size-[18px] text-primary-500" />
+                  {isExistingProject
+                    ? "6 month work"
+                    : formatTeamBudgetWorkDuration(contractMonths)}
+                </div>
+                <div className="flex h-[18px] items-center gap-2 self-stretch text-sm font-medium leading-[17px] text-dark-blue-400">
+                  <Users className="size-[18px] text-primary-500" />
+                  {rows.length} {rows.length === 1 ? "team member" : "team members"}
                 </div>
               </div>
             </div>
@@ -15733,49 +22273,115 @@ const TeamRoles = ({
           }
         }}
       >
-        <DialogContent className="w-[410px] max-w-[calc(100vw-32px)]">
-          <DialogHeader>
-            <DialogTitle className="text-xl leading-7 font-semibold text-dark-blue-400">
-              {roleDialogMode === "rename"
-                ? "Rename Role"
-                : isIndividualMode
-                  ? "Add Role"
-                  : "Add Team Member"}
-            </DialogTitle>
-            <DialogDescription className="text-sm leading-5 text-gray-500">
-              Enter the role title to show in this job setup.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-2">
-            <Label className="text-sm leading-5 font-semibold text-dark-blue-400">
-              Role title
-            </Label>
-            <Input
-              className="mt-2 h-11"
-              placeholder="e.g. Front-End Developer"
-              value={draftRoleTitle}
-              onChange={(event) => setDraftRoleTitle(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  saveRoleDialog();
-                }
-              }}
-            />
+        <DialogContent
+          variant="unanimated"
+          accessibilityTitle={
+            roleDialogMode === "rename"
+              ? "Rename role"
+              : "Add team member"
+          }
+          dialogOverlay={<DialogOverlay className="bg-[#101828]/20" />}
+          className={cn(
+            "left-1/2 top-1/2 flex w-[371px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-8 rounded-xl bg-white p-6 shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]",
+          )}
+        >
+          <div className="flex w-[323px] flex-col items-start gap-3">
+            <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+              <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                Role
+              </Label>
+              <Combobox
+                className="w-[323px]"
+                value={draftRoleTitle}
+                onChange={(value) => {
+                  setDraftRoleTitle(String(value ?? ""));
+                  setTeamRoleAutocompleteOpen(false);
+                }}
+                nullable
+              >
+                <ComboboxTrigger>
+                  <ComboboxInput
+                    className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs focus:ring-0 ui-open:pl-[14px]"
+                    value={draftRoleTitle}
+                    onChange={(event) => setDraftRoleTitle(event.target.value)}
+                    onClick={() =>
+                      setTeamRoleAutocompleteOpen(
+                        teamRoleAutocompleteOptions.length > 0,
+                      )
+                    }
+                    onFocus={() =>
+                      setTeamRoleAutocompleteOpen(
+                        teamRoleAutocompleteOptions.length > 0,
+                      )
+                    }
+                    onBlur={() =>
+                      setTimeout(() => setTeamRoleAutocompleteOpen(false), 150)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        saveRoleDialog();
+                      }
+                    }}
+                  />
+                </ComboboxTrigger>
+
+                {isTeamRoleAutocompleteOpen ? (
+                  <ComboboxOptions className="h-[120px] w-[323px] overflow-hidden">
+                    <ScrollArea viewportClassName="h-[120px]">
+                      {teamRoleAutocompleteOptions.map((option) => (
+                        <ComboboxOption key={option} value={option}>
+                          {option}
+                        </ComboboxOption>
+                      ))}
+                    </ScrollArea>
+                  </ComboboxOptions>
+                ) : null}
+              </Combobox>
+            </div>
+            {roleDialogMode === "add" ? (
+              <div className="flex h-[70px] w-[323px] flex-col items-start gap-1.5">
+                <Label className="h-5 whitespace-nowrap text-sm font-medium leading-5 text-[#344054]">
+                  Work Schedule
+                </Label>
+                <Select
+                  value={draftRoleSchedule}
+                  onValueChange={(value) =>
+                    setDraftRoleSchedule(value as TeamRoleRow["schedule"])
+                  }
+                >
+                  <SelectTrigger className="h-11 w-[323px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2.5 text-base font-normal leading-6 text-gray-black shadow-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="w-[323px]">
+                    {teamRoleScheduleOptions.map((schedule) => (
+                      <SelectItem key={schedule} value={schedule}>
+                        {schedule}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
-          <DialogFooter className="mt-8 grid grid-cols-2 gap-3">
+          <div className="flex h-9 w-[323px] shrink-0 items-start gap-3">
             <Button
               type="button"
               variant="outlined"
               visual="gray"
+              className="h-9 w-[155.5px] rounded-[5px] border-gray-300 bg-white px-[14px] py-2 text-sm font-semibold leading-5 text-gray-800 shadow-xs"
               onClick={closeRoleDialog}
             >
-              Cancel
+              <span className="h-5 w-12 text-center">Cancel</span>
             </Button>
-            <Button type="button" onClick={saveRoleDialog}>
-              {roleDialogMode === "rename" ? "Save" : "Add"}
+            <Button
+              type="button"
+              className="h-9 w-[155.5px] rounded-[5px] bg-primary-500 px-[14px] py-2 text-sm font-semibold leading-5 text-white shadow-xs"
+              onClick={saveRoleDialog}
+            >
+              <span className="h-5 w-9 text-center">Done</span>
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>
@@ -15837,7 +22443,11 @@ function PublishProject({
 }: {
   projectInfo?: React.ReactElement<ProjectInfoProps>;
   media?: React.ReactElement<
-    ProgressProps & { workType?: WorkTypeChoice; jobListingId?: string | null }
+    ProgressProps & {
+      workType?: WorkTypeChoice;
+      jobListingId?: string | null;
+      scopeKnowledgeChoice?: ScopeKnowledgeChoice;
+    }
   >;
   projectScope?: React.ReactElement<ProgressProps>;
   teamRoles?: React.ReactElement<ProgressProps>;
@@ -15847,8 +22457,12 @@ function PublishProject({
 
     const urlParams = new URLSearchParams(window.location.search);
     const urlJobListingId = urlParams.get("jobListingId");
-    return urlParams.get("edit") === "1" ||
-      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId))
+    const isJobListingRoute = window.location.pathname.startsWith(
+      "/job-listing",
+    );
+    return !isJobListingRoute &&
+      (urlParams.get("edit") === "1" ||
+        Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId)))
       ? 1
       : undefined;
   }, []);
@@ -15863,6 +22477,8 @@ function PublishProject({
     steps,
     currentStep: initialStep,
   });
+  const { toast } = useToast();
+  const { user } = useAuth();
 
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
@@ -15889,8 +22505,8 @@ function PublishProject({
         { category: "Development", subCategories: ["Web Development"] },
         { category: "Marketing", subCategories: ["E-commerce"] },
       ],
-      industry: ["E-commerce"],
-      languages: ["English", "Spanish", "Japanese"],
+      industry: [],
+      languages: [],
       shortDescription:
         "This project needs support defining the scope, expected deliverables, and team requirements for a successful launch.",
       fullDescription:
@@ -15916,11 +22532,14 @@ function PublishProject({
     useState<WorkTypeChoice>(null);
   const [selectedHiringMode, setSelectedHiringMode] =
     useState<HiringModeChoice>(null);
+  const [scopeKnowledgeChoice, setScopeKnowledgeChoice] =
+    useState<ScopeKnowledgeChoice>(null);
   const [isExistingContractFlow, setIsExistingContractFlow] = useState(false);
   const [isNoScopeFlow, setIsNoScopeFlow] = useState(false);
   const [selectedExistingContractId, setSelectedExistingContractId] = useState<
     string | null
   >(null);
+  const lastCompletedStepRef = useRef(1);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [jobListingId, setJobListingId] = useState<string | null>(null);
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true);
@@ -15933,8 +22552,12 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("");
   const lastMediaPayloadRef = useRef<string>("");
   const skipNextJobListingDraftSaveRef = useRef(false);
-  const didInitializeLocalJobListingRef = useRef(false);
-  const didApplyEditResumeFallbackRef = useRef(false);
+  const jobListingSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingJobListingSavesRef = useRef<Set<() => Promise<void>>>(
+    new Set(),
+  );
+  const lastJobListingTextSignatureRef = useRef<string>("");
+  const lastJobListingNonTextSignatureRef = useRef<string>("");
   const ensureJobListingDraftPromiseRef = useRef<Promise<string | null> | null>(
     null,
   );
@@ -15943,31 +22566,48 @@ function PublishProject({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (didInitializeLocalJobListingRef.current) return;
-    didInitializeLocalJobListingRef.current = true;
 
     let cancelled = false;
 
     const hydrateDraft = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const existingDraftId = urlParams.get("draftId");
+      const urlJobListingId = urlParams.get("jobListingId");
       const storedJobListingId = window.sessionStorage.getItem(
         "marketeq-job-listing-id",
       );
-      const existingJobListingId =
-        urlParams.get("jobListingId") ??
-        existingDraftId ??
-        (storedJobListingId && UUID_PATTERN.test(storedJobListingId)
-          ? storedJobListingId
-          : null);
       const type = urlParams.get("type") ?? "project";
-      const shouldResumeExistingListing = urlParams.get("edit") === "1";
       const isJobListingFlow =
         window.location.pathname.startsWith("/job-listing");
+      const hasValidStoredJobListingId = Boolean(
+        storedJobListingId && UUID_PATTERN.test(storedJobListingId),
+      );
+      const redirectToMyJobs = () => {
+        if (cancelled) return;
+        window.sessionStorage.removeItem("marketeq-job-listing-id");
+        setIsDraftBootstrapping(false);
+        router.replace("/my-jobs");
+      };
 
       if (
         isJobListingFlow &&
-        shouldResumeExistingListing &&
+        ((storedJobListingId && !hasValidStoredJobListingId) ||
+          (urlJobListingId !== null &&
+            (!hasValidStoredJobListingId ||
+              urlJobListingId !== storedJobListingId)))
+      ) {
+        redirectToMyJobs();
+        return;
+      }
+
+      const existingJobListingId = isJobListingFlow
+        ? hasValidStoredJobListingId
+          ? storedJobListingId
+          : null
+        : (existingDraftId ?? null);
+
+      if (
+        isJobListingFlow &&
         existingJobListingId &&
         UUID_PATTERN.test(existingJobListingId)
       ) {
@@ -15979,19 +22619,20 @@ function PublishProject({
       }
 
       try {
-        if (isJobListingFlow) {
-          const response =
-            existingJobListingId && UUID_PATTERN.test(existingJobListingId)
-              ? await JobListingAPI.Get(existingJobListingId)
-              : await JobListingAPI.Create({
-                  contractType: "new",
-                  scopeKnowledge: "has_scope",
-                  workType: "project",
-                });
+        if (
+          isJobListingFlow &&
+          existingJobListingId &&
+          UUID_PATTERN.test(existingJobListingId)
+        ) {
+          const response = await JobListingAPI.Get(existingJobListingId);
 
           if (cancelled) return;
 
           const listing = getResponsePayload(response);
+          if (listing?.status !== "draft") {
+            redirectToMyJobs();
+            return;
+          }
           const nextJobListingId = String(
             listing?.id ?? existingJobListingId ?? "",
           );
@@ -15999,13 +22640,27 @@ function PublishProject({
             listing?.workType ?? listing?.listingType,
           );
           const hydratedHiringMode = toHiringModeChoice(listing?.hiringType);
+          const hydratedScopeKnowledge =
+            listing?.scopeKnowledge === "no_scope_selected"
+              ? ("none" as const)
+              : listing?.scopeKnowledge === "no_scope"
+                ? ("unknown" as const)
+                : listing?.scopeKnowledge === "has_scope"
+                  ? ("known" as const)
+                  : null;
 
           setJobListingId(nextJobListingId || null);
           setDraftProjectId(null);
           setSelectedWorkType(hydratedWorkType);
           setSelectedHiringMode(hydratedHiringMode);
+          setScopeKnowledgeChoice(hydratedScopeKnowledge);
           setIsNoScopeFlow(isNoScopeKnowledge(listing?.scopeKnowledge));
           setIsExistingContractFlow(listing?.contractType === "existing");
+          setSelectedExistingContractId(
+            typeof listing?.contractId === "string"
+              ? listing.contractId
+              : null,
+          );
 
           if (nextJobListingId) {
             window.sessionStorage.setItem(
@@ -16132,6 +22787,9 @@ function PublishProject({
             listing.teamMemberRows.length > 0
               ? listing.teamMemberRows.length
               : undefined);
+          const nextTeamRoleRows = createTeamRoleRowsFromApi(
+            listing?.teamMemberRows,
+          );
           const nextDurationMonths = toFiniteNumber(listing?.durationMonths);
           const nextBriefSizeBytes = toFiniteNumber(listing?.briefSizeBytes);
           setJobListingDraftDetails({
@@ -16156,6 +22814,14 @@ function PublishProject({
             briefFilename: toNullableString(listing?.briefFilename),
             briefSizeBytes: nextBriefSizeBytes,
             tools: Array.isArray(listing?.tools) ? listing.tools : undefined,
+            jobType:
+              typeof basicInformation?.jobType === "string" &&
+              basicInformation.jobType.trim() &&
+              !["project", "service"].includes(
+                basicInformation.jobType.trim().toLowerCase(),
+              )
+                ? basicInformation.jobType.trim()
+                : undefined,
             ndaEnabled:
               typeof listing?.ndaEnabled === "boolean"
                 ? listing.ndaEnabled
@@ -16164,6 +22830,8 @@ function PublishProject({
               typeof listing?.ndaDocumentId === "string"
                 ? listing.ndaDocumentId
                 : null,
+            teamRoleRows:
+              nextTeamRoleRows.length > 0 ? nextTeamRoleRows : undefined,
           });
           const persistedJobListingScope =
             listing?.workType === "service"
@@ -16186,20 +22854,30 @@ function PublishProject({
                 ? listingMedia.featuredVideo
                 : "",
           });
+          const rawLastCompletedStep = listing?.lastCompletedStep;
           const lastCompletedStep =
-            typeof listing?.lastCompletedStep === "number"
-              ? listing.lastCompletedStep
-              : null;
-          if (lastCompletedStep && lastCompletedStep > 0) {
-            setStep(Math.min(lastCompletedStep, totalSteps - 1));
-          } else if (shouldResumeExistingListing) {
-            setStep(Math.min(1, totalSteps - 1));
-          } else if (
-            existingJobListingId &&
-            (listing?.description || Array.isArray(listing?.phases))
-          ) {
-            setStep(Math.min(1, totalSteps - 1));
+            typeof rawLastCompletedStep === "number" &&
+            Number.isInteger(rawLastCompletedStep) &&
+            rawLastCompletedStep >= 1
+              ? rawLastCompletedStep
+              : 1;
+          const boundedLastCompletedStep = Math.min(
+            lastCompletedStep,
+            totalSteps,
+          );
+          if (lastCompletedStep > totalSteps) {
+            console.error(
+              "Draft lastCompletedStep exceeds the available workflow steps.",
+              { lastCompletedStep, totalSteps },
+            );
           }
+          lastCompletedStepRef.current = boundedLastCompletedStep;
+          setStep(boundedLastCompletedStep - 1);
+          setIsDraftBootstrapping(false);
+          return;
+        }
+
+        if (isJobListingFlow) {
           setIsDraftBootstrapping(false);
           return;
         }
@@ -16367,6 +23045,9 @@ function PublishProject({
         );
       } catch (error) {
         console.error("Failed to hydrate project draft", error);
+        if (isJobListingFlow && existingJobListingId) {
+          redirectToMyJobs();
+        }
       } finally {
         if (!cancelled) {
           setIsDraftBootstrapping(false);
@@ -16379,34 +23060,7 @@ function PublishProject({
     return () => {
       cancelled = true;
     };
-  }, [
-    mediaMethods,
-    projectInfoMethods,
-    projectScopeMethods,
-    setStep,
-    totalSteps,
-  ]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (isDraftBootstrapping) return;
-    if (didApplyEditResumeFallbackRef.current) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlJobListingId = urlParams.get("jobListingId");
-    const shouldResumeListing =
-      urlParams.get("edit") === "1" ||
-      Boolean(urlJobListingId && UUID_PATTERN.test(urlJobListingId));
-
-    if (!shouldResumeListing) return;
-
-    didApplyEditResumeFallbackRef.current = true;
-    if (currentStep === 0) {
-      window.setTimeout(() => {
-        setStep(Math.min(1, totalSteps - 1));
-      }, 0);
-    }
-  }, [currentStep, isDraftBootstrapping, setStep, totalSteps]);
+  }, []);
 
   const ensureJobListingDraft = useCallback(async () => {
     if (jobListingId) return jobListingId;
@@ -16425,6 +23079,7 @@ function PublishProject({
       scopeKnowledge: getJobListingScopeKnowledge(
         selectedWorkType,
         isNoScopeFlow,
+        scopeKnowledgeChoice,
       ),
       workType: getJobListingWorkType(selectedWorkType),
       hiringType: getJobListingHiringType(selectedHiringMode),
@@ -16461,6 +23116,7 @@ function PublishProject({
     isExistingContractFlow,
     isNoScopeFlow,
     jobListingId,
+    scopeKnowledgeChoice,
     selectedExistingContractId,
     selectedHiringMode,
     selectedWorkType,
@@ -16484,6 +23140,7 @@ function PublishProject({
         scopeKnowledge: getJobListingScopeKnowledge(
           selectedWorkType,
           isNoScopeFlow,
+          scopeKnowledgeChoice,
         ),
         workType: getJobListingWorkType(selectedWorkType),
         hiringType: getJobListingHiringType(selectedHiringMode),
@@ -16499,7 +23156,7 @@ function PublishProject({
         tools: jobListingDraftDetails.tools ?? [],
         media: mediaPayload,
         budgetAmount: jobListingDraftDetails.budgetAmount,
-        budgetDisplayCurrency: "USD",
+        budgetDisplayCurrency: user?.currency || "USD",
         budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
         durationMonths: jobListingDraftDetails.durationMonths,
         isOngoing: jobListingDraftDetails.isOngoing,
@@ -16507,11 +23164,20 @@ function PublishProject({
         briefFilename: jobListingDraftDetails.briefFilename,
         briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
         ndaEnabled: jobListingDraftDetails.ndaEnabled,
-        lastCompletedStep: currentStep,
       };
+      if (
+        (typeof payload.budgetAmount === "number" &&
+          payload.budgetAmount < 0) ||
+        getWordCount(payload.description ?? "") > STEP_TWO_WORD_LIMIT ||
+        getWordCount(payload.deliverables ?? "") > STEP_TWO_WORD_LIMIT ||
+        getWordCount(payload.successCriteria ?? "") > STEP_TWO_WORD_LIMIT
+      ) {
+        return;
+      }
       const basicInfoPayload = {
         title: info.title ?? "",
-        jobType: selectedWorkType ?? undefined,
+        jobType:
+          jobListingDraftDetails.jobType || (selectedWorkType ?? undefined),
         industries: info.industry ?? [],
         languages: info.languages ?? [],
       };
@@ -16554,43 +23220,135 @@ function PublishProject({
       if (skipNextJobListingDraftSaveRef.current) {
         skipNextJobListingDraftSaveRef.current = false;
         lastDraftPayloadRef.current = serializedPayload;
+        lastJobListingTextSignatureRef.current = textSignature;
+        lastJobListingNonTextSignatureRef.current = nonTextSignature;
         return;
       }
 
-      if (serializedPayload === lastDraftPayloadRef.current) return;
-
-      const previousPayload = lastDraftPayloadRef.current
-        ? JSON.parse(lastDraftPayloadRef.current)
-        : null;
-      const textChanged = previousPayload?.textSignature !== textSignature;
+      const textChanged =
+        lastJobListingTextSignatureRef.current !== textSignature;
       const nonTextChanged =
-        previousPayload?.nonTextSignature !== nonTextSignature;
-      const saveDelay = textChanged && !nonTextChanged ? 500 : 0;
+        lastJobListingNonTextSignatureRef.current !== nonTextSignature;
+      if (!textChanged && !nonTextChanged) return;
 
-      const timeout = window.setTimeout(() => {
-        const saveJobListingDraft = async () => {
+      const textPayload = {
+        description: payload.description,
+        deliverables: payload.deliverables,
+        successCriteria: payload.successCriteria,
+      };
+      const textBasicInfoPayload = {
+        title: basicInfoPayload.title,
+      };
+      const nonTextPayload = {
+        scopeKnowledge: payload.scopeKnowledge,
+        workType: payload.workType,
+        hiringType: payload.hiringType,
+        headcount: payload.headcount,
+        categorySelections: payload.categorySelections,
+        tags: payload.tags,
+        skills: payload.skills,
+        tools: payload.tools,
+        media: payload.media,
+        budgetAmount: payload.budgetAmount,
+        budgetDisplayCurrency: payload.budgetDisplayCurrency,
+        budgetFrequency: payload.budgetFrequency,
+        durationMonths: payload.durationMonths,
+        isOngoing: payload.isOngoing,
+        briefR2Key: payload.briefR2Key,
+        briefFilename: payload.briefFilename,
+        briefSizeBytes: payload.briefSizeBytes,
+        ndaEnabled: payload.ndaEnabled,
+      };
+      const nonTextBasicInfoPayload = {
+        jobType: basicInfoPayload.jobType,
+        industries: basicInfoPayload.industries,
+        languages: basicInfoPayload.languages,
+      };
+
+      const enqueueSave = (
+        save: () => Promise<void>,
+        delay: number,
+      ) => {
+        let timeout: number | undefined;
+        const runSave = async (throwOnError: boolean) => {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+          pendingJobListingSavesRef.current.delete(flushSave);
+
+          const savePromise = jobListingSaveQueueRef.current.then(
+            save,
+            save,
+          );
+          jobListingSaveQueueRef.current = savePromise.catch(() => undefined);
+
           try {
-            await JobListingAPI.Update(jobListingId, payload);
-            await JobListingAPI.UpdateBasicInformation(
-              jobListingId,
-              basicInfoPayload,
-            );
-            lastDraftPayloadRef.current = serializedPayload;
+            await savePromise;
           } catch (error) {
             console.error("Failed to save job listing draft", error);
+            if (throwOnError) throw error;
           }
         };
+        const flushSave = () => runSave(true);
 
-        void saveJobListingDraft();
-      }, saveDelay);
+        pendingJobListingSavesRef.current.add(flushSave);
+        timeout = window.setTimeout(() => {
+          void runSave(false);
+        }, delay);
 
-      return () => window.clearTimeout(timeout);
+        return () => {
+          if (timeout !== undefined) window.clearTimeout(timeout);
+          pendingJobListingSavesRef.current.delete(flushSave);
+        };
+      };
+
+      const cleanups: Array<() => void> = [];
+      if (nonTextChanged) {
+        cleanups.push(
+          enqueueSave(async () => {
+            const updateResponse = await JobListingAPI.Update(
+              jobListingId,
+              nonTextPayload,
+            );
+            const updatedListing = updateResponse?.data;
+            if (typeof updatedListing?.ndaDocumentId === "string") {
+              setJobListingDraftDetails((current) =>
+                current.ndaDocumentId === updatedListing.ndaDocumentId
+                  ? current
+                  : { ...current, ndaDocumentId: updatedListing.ndaDocumentId },
+              );
+            }
+            if (updatedListing?.ndaStatus === "FAILED") {
+              toast({
+                title:
+                  updatedListing.ndaMessage ||
+                  "We could not generate the NDA. Please try again.",
+                variant: "destructive",
+              });
+            }
+            await JobListingAPI.UpdateBasicInformation(
+              jobListingId,
+              nonTextBasicInfoPayload,
+            );
+            lastJobListingNonTextSignatureRef.current = nonTextSignature;
+          }, 0),
+        );
+      }
+      if (textChanged) {
+        cleanups.push(
+          enqueueSave(async () => {
+            await JobListingAPI.Update(jobListingId, textPayload);
+            await JobListingAPI.UpdateBasicInformation(
+              jobListingId,
+              textBasicInfoPayload,
+            );
+            lastJobListingTextSignatureRef.current = textSignature;
+          }, 500),
+        );
+      }
+
+      return () => cleanups.forEach((cleanup) => cleanup());
     }
 
-    if (isJobListingFlow) {
-      void ensureJobListingDraft();
-      return;
-    }
+    if (isJobListingFlow) return;
 
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return;
 
@@ -16627,15 +23385,16 @@ function PublishProject({
     draftProjectId,
     ensureJobListingDraft,
     jobListingId,
-    currentStep,
     isDraftBootstrapping,
     isNoScopeFlow,
+    scopeKnowledgeChoice,
     jobListingDraftDetails,
     mediaMethods,
     projectInfoMethods,
     isProjectSubmitted,
     selectedHiringMode,
     selectedWorkType,
+    user?.currency,
     watchedProjectInfo,
   ]);
 
@@ -16817,12 +23576,97 @@ function PublishProject({
     }),
     [jobListingDraftDetails],
   );
+  const isJobListingRoute =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/job-listing");
+
+  const saveJobListingStepProgress = React.useCallback(
+    async (completedStep: number) => {
+      if (!jobListingId) return;
+
+      const info = {
+        ...projectInfoMethods.getValues(),
+        ...watchedProjectInfo,
+      };
+      const mediaPayload = buildJobListingMediaPayload(
+        mediaMethods.getValues(),
+      );
+      const nextLastCompletedStep = Math.max(
+        lastCompletedStepRef.current,
+        completedStep,
+      );
+      const payload = {
+        scopeKnowledge: getJobListingScopeKnowledge(
+          selectedWorkType,
+          isNoScopeFlow,
+          scopeKnowledgeChoice,
+        ),
+        workType: getJobListingWorkType(selectedWorkType),
+        hiringType: getJobListingHiringType(selectedHiringMode),
+        description:
+          jobListingDraftDetails.description ?? info.shortDescription ?? "",
+        deliverables:
+          jobListingDraftDetails.deliverables ?? info.fullDescription ?? "",
+        successCriteria: jobListingDraftDetails.successCriteria,
+        headcount: jobListingDraftDetails.headcount,
+        categorySelections: info.category ?? [],
+        tags: info.tags ?? [],
+        skills: info.skills ?? [],
+        tools: jobListingDraftDetails.tools ?? [],
+        media: mediaPayload,
+        budgetAmount: jobListingDraftDetails.budgetAmount,
+        budgetDisplayCurrency: user?.currency || "USD",
+        budgetFrequency: jobListingDraftDetails.budgetFrequency ?? "per_week",
+        durationMonths: jobListingDraftDetails.durationMonths,
+        isOngoing: jobListingDraftDetails.isOngoing,
+        briefR2Key: jobListingDraftDetails.briefR2Key,
+        briefFilename: jobListingDraftDetails.briefFilename,
+        briefSizeBytes: jobListingDraftDetails.briefSizeBytes,
+        ndaEnabled: jobListingDraftDetails.ndaEnabled,
+        lastCompletedStep: nextLastCompletedStep,
+      };
+      const basicInfoPayload = {
+        title: info.title ?? "",
+        jobType:
+          jobListingDraftDetails.jobType || (selectedWorkType ?? undefined),
+        industries: info.industry ?? [],
+        languages: info.languages ?? [],
+      };
+      const save = async () => {
+        await JobListingAPI.Update(jobListingId, payload);
+        await JobListingAPI.UpdateBasicInformation(
+          jobListingId,
+          basicInfoPayload,
+        );
+        lastCompletedStepRef.current = nextLastCompletedStep;
+      };
+      const savePromise = jobListingSaveQueueRef.current.then(save, save);
+      jobListingSaveQueueRef.current = savePromise.catch(() => undefined);
+      await savePromise;
+    },
+    [
+      isNoScopeFlow,
+      scopeKnowledgeChoice,
+      jobListingDraftDetails,
+      jobListingId,
+      jobListingSaveQueueRef,
+      mediaMethods,
+      projectInfoMethods,
+      selectedHiringMode,
+      selectedWorkType,
+      user?.currency,
+      watchedProjectInfo,
+    ],
+  );
+
   //  Validate the current step when Next is clicked
   const validateCurrentStep = React.useCallback(async () => {
     if (currentStep === 0) {
-      const isStepValid = await projectInfoMethods.trigger(undefined, {
-        shouldFocus: true,
-      });
+      const isStepValid = isJobListingRoute
+        ? Boolean(stepsState[currentStep]?.isValid)
+        : await projectInfoMethods.trigger(undefined, {
+            shouldFocus: true,
+          });
 
       if (!isStepValid) {
         const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
@@ -16831,16 +23675,113 @@ function PublishProject({
         if (firstInvalidTarget) {
           scrollToPublishField(firstInvalidTarget.targetId);
         }
+
+        return false;
+      }
+
+      let createdJobListing = false;
+      if (isJobListingRoute && !jobListingId) {
+        try {
+          const response = await JobListingAPI.Create({
+            contractType: isExistingContractFlow ? "existing" : "new",
+            contractId: isExistingContractFlow
+              ? resolveExistingContractApiId(selectedExistingContractId)
+              : undefined,
+            scopeKnowledge: getJobListingScopeKnowledge(
+              selectedWorkType,
+              isNoScopeFlow,
+              scopeKnowledgeChoice,
+            ),
+            workType: getJobListingWorkType(selectedWorkType),
+            hiringType: getJobListingHiringType(selectedHiringMode),
+            lastCompletedStep: 1,
+          });
+
+          if (response.status !== 201) {
+            throw new Error("Unable to create job listing draft");
+          }
+
+          const listing = getResponsePayload(response);
+          const nextJobListingId = String(listing?.id ?? "");
+          if (!nextJobListingId) {
+            throw new Error("Unable to create job listing draft");
+          }
+
+          skipNextJobListingDraftSaveRef.current = true;
+          setJobListingId(nextJobListingId);
+          lastCompletedStepRef.current = 1;
+          createdJobListing = true;
+          window.sessionStorage.setItem(
+            "marketeq-job-listing-id",
+            nextJobListingId,
+          );
+          window.history.replaceState(
+            window.history.state,
+            "",
+            `/job-listing?jobListingId=${encodeURIComponent(nextJobListingId)}`,
+          );
+        } catch (error) {
+          console.error("Failed to create job listing draft", error);
+          toast({
+            title: "Unable to start the job listing. Please try again.",
+            variant: "destructive",
+          });
+          return false;
+        }
+      }
+
+      if (isJobListingRoute && !createdJobListing) {
+        try {
+          await saveJobListingStepProgress(1);
+        } catch (error) {
+          console.error("Failed to save job listing step progress", error);
+          return false;
+        }
       }
 
       return isStepValid;
     }
     if (currentStep === 1) {
-      return Boolean(stepsState[currentStep]?.isValid);
+      const isStepValid = Boolean(stepsState[currentStep]?.isValid);
+      if (!isStepValid) return false;
+
+      if (isJobListingRoute) {
+        try {
+          await saveJobListingStepProgress(2);
+        } catch (error) {
+          console.error("Failed to save job listing step progress", error);
+          return false;
+        }
+      }
+
+      return true;
     }
-    // Step 3 uses its own schema checks
+
+    if (isJobListingRoute) {
+      try {
+        await saveJobListingStepProgress(currentStep + 1);
+      } catch (error) {
+        console.error("Failed to save job listing step progress", error);
+        return false;
+      }
+    }
+
+    // Later steps use their own schema checks.
     return true;
-  }, [currentStep, projectInfoMethods, stepsState]);
+  }, [
+    currentStep,
+    isExistingContractFlow,
+    isJobListingRoute,
+    isNoScopeFlow,
+    jobListingId,
+    projectInfoMethods,
+    scopeKnowledgeChoice,
+    selectedHiringMode,
+    selectedWorkType,
+    saveJobListingStepProgress,
+    stepsState,
+    toast,
+  ]);
 
   //  NEW: Track cumulative progress for all steps
   const [projectInfoProgress, setProjectInfoProgress] = useState(0);
@@ -16866,15 +23807,28 @@ function PublishProject({
     finalReviewProgress,
   ]);
 
-  const handleSaveExit = React.useCallback(() => {
+  const handleSaveExit = React.useCallback(async () => {
     toggleIsSaveExitDialogOpen(false);
+    const pendingSaves = Array.from(pendingJobListingSavesRef.current);
+    pendingJobListingSavesRef.current.clear();
+    try {
+      await Promise.all(pendingSaves.map((pendingSave) => pendingSave()));
+      await jobListingSaveQueueRef.current;
+    } catch {
+      return;
+    }
     // Jobs live on My Jobs; /my-listings is a leftover from the project flow
     // this screen was built from.
     router.push("/my-jobs");
-  }, [toggleIsSaveExitDialogOpen, router]);
-  const isJobListingRoute =
-    typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/job-listing");
+  }, [router, toggleIsSaveExitDialogOpen]);
+
+  if (isJobListingRoute && isDraftBootstrapping) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <Spinner size={32} strokeWidth={4} />
+      </div>
+    );
+  }
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -16908,6 +23862,12 @@ function PublishProject({
                               onSelectedWorkTypeChange: setSelectedWorkType,
                               selectedHiringMode,
                               onSelectedHiringModeChange: setSelectedHiringMode,
+                              scopeKnowledgeChoice,
+                              isNoScopeFlow,
+                              isExistingContractFlow,
+                              selectedExistingContractId,
+                              isWorkflowLocked: Boolean(jobListingId),
+                              onScopeKnowledgeChange: setScopeKnowledgeChoice,
                               onNoScopeFlowChange: setIsNoScopeFlow,
                               onExistingContractFlowChange:
                                 setIsExistingContractFlow,
@@ -16931,6 +23891,7 @@ function PublishProject({
                             setProgress: setMediaProgress,
                             workType: selectedWorkType,
                             jobListingId,
+                            scopeKnowledgeChoice,
                           })
                         ) : null}
                       </Step>
@@ -16954,12 +23915,16 @@ function PublishProject({
                             initialValid
                             existingContractId={selectedExistingContractId}
                             hiringMode={selectedHiringMode}
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
                           />
                         ) : isNoScopeFlow ? (
                           <TeamRoles
                             setProgress={setTeamRolesProgress}
                             initialValid
                             hiringMode={selectedHiringMode}
+                            jobListingId={jobListingId}
+                            ensureJobListingDraft={ensureJobListingDraft}
                           />
                         ) : selectedWorkType === "service" ? (
                           <ServiceScopeEditStep
@@ -17033,6 +23998,7 @@ function PublishProject({
                       workType={selectedWorkType}
                       jobListingId={jobListingId}
                       selectedHiringMode={selectedHiringMode}
+                      scopeKnowledgeChoice={scopeKnowledgeChoice}
                       isNoScopeFlow={isNoScopeFlow}
                       isExistingContractFlow={isExistingContractFlow}
                       selectedExistingContractId={selectedExistingContractId}

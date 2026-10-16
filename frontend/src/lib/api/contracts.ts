@@ -1,10 +1,16 @@
 // frontend/src/lib/api/contracts.ts
+import { getCsrfToken } from "../csrf"
+
 const CONTRACTS_API_URL =
   process.env.NEXT_PUBLIC_CONTRACTS_API_URL || "http://localhost:3010"
 
-function authHeaders(): HeadersInit {
+function authHeaders(method?: string): HeadersInit {
+  const token = getCsrfToken()
   return {
     "Content-Type": "application/json",
+    ...(token && method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)
+      ? { "X-CSRF-Token": token }
+      : {}),
   }
 }
 
@@ -154,7 +160,7 @@ export async function createContractGroup(
   try {
     const res = await fetch(`${CONTRACTS_API_URL}/contract-groups`, {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders("POST"),
       credentials: "include",
       body: JSON.stringify(dto),
     })
@@ -198,7 +204,7 @@ export async function endContract(
       `${CONTRACTS_API_URL}/contracts/${contractId}/end`,
       {
         method: "PUT",
-        headers: authHeaders(),
+        headers: authHeaders("PUT"),
         credentials: "include",
         body: JSON.stringify(dto),
       }
@@ -225,7 +231,7 @@ export async function respondToContract(
       `${CONTRACTS_API_URL}/contracts/${contractId}/respond`,
       {
         method: "PUT",
-        headers: authHeaders(),
+        headers: authHeaders("PUT"),
         credentials: "include",
         body: JSON.stringify(dto),
       }
@@ -252,7 +258,7 @@ export async function disputeContract(
       `${CONTRACTS_API_URL}/contracts/${contractId}/dispute`,
       {
         method: "PUT",
-        headers: authHeaders(),
+        headers: authHeaders("PUT"),
         credentials: "include",
         body: JSON.stringify(dto),
       }

@@ -20,6 +20,7 @@ import {
   useSearchParams,
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
+import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -29,7 +30,7 @@ import {
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
+import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -56,6 +57,7 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowUpLeft,
+  ArrowUpRight,
   ChartBreakoutCircle,
   Check,
   XCircle,
@@ -199,6 +201,7 @@ import {
   AvatarFallback,
   AvatarImage,
   Badge,
+  BadgeCloseButton,
   Button,
   Dialog,
   DialogClose,
@@ -702,7 +705,13 @@ const meta = {
     { label: "Experience", name: "experience" },
     { label: "Duration", name: "duration" },
   ],
-  Team: [] as { label: string; name: string }[],
+  Team: [
+    { label: "Open Roles", name: "openRoles" },
+    { label: "Application Questions", name: "applicationQuestions" },
+    { label: "Members", name: "members" },
+    { label: "Requests", name: "requests" },
+    { label: "Invites", name: "invites" },
+  ] as { label: string; name: string }[],
   Questions: [
     { label: "FAQ's", name: "faqs" },
     { label: "Recent Questions", name: "recentQuestions" },
@@ -732,20 +741,6 @@ const plainTextFromRichTextHtml = (value: string) => {
 
 const getRichTextCharacterCount = (value: string) =>
   plainTextFromRichTextHtml(value).length
-
-const PROJECT_TYPE_OPTIONS = [
-  "Website",
-  "Web App",
-  "Mobile App",
-  "Desktop App",
-  "SaaS Platform",
-  "API / Backend",
-  "E-commerce Store",
-  "Landing Page",
-  "Chrome Extension",
-  "CLI Tool",
-  "Game",
-] as const
 
 const DURATION_TYPE = ["hours", "days", "weeks", "months"] as const
 
@@ -855,7 +850,7 @@ const Sidebar = ({
   const projectInfoMethods: UseFormReturn<ProjectInfoFormValues> =
     useProjectInfoContext()
   const mediaMethods = useMediaContext()
-  const { projectScopeMethods, setTaskSearchDialogOpen } =
+  const { projectScopeMethods, setTaskSearchDialogOpen, teamSubTab, setTeamSubTab } =
     useProjectScopeContext()
   const [phases] = projectScopeMethods
   // Show status icons only after the user has started filling Project Scope
@@ -1033,7 +1028,13 @@ const Sidebar = ({
               )}
             </button>
 
-            {isActive && (
+            <div
+              className={cn(
+                "grid transition-[grid-template-rows] duration-300 ease-in-out",
+                isActive ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+              )}
+            >
+              <div className="overflow-hidden">
               <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
@@ -1154,6 +1155,28 @@ const Sidebar = ({
                         ) : null}
                       </div>
                     ))}
+                  {label === "Team" &&
+                    meta.Team.map((field, i) => {
+                      const isSubActive = teamSubTab === field.name
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3 cursor-pointer"
+                          key={i}
+                          onClick={() => setTeamSubTab(field.name)}
+                        >
+                          <span
+                            className={cn(
+                              "text-sm leading-6 transition duration-300",
+                              isSubActive
+                                ? "text-primary-500"
+                                : "text-gray-500 hover:text-dark-blue-400"
+                            )}
+                          >
+                            {field.label}
+                          </span>
+                        </div>
+                      )
+                    })}
                   {label === "Questions" &&
                     meta[label].map((field, i) => {
                       const hasValue =
@@ -1185,7 +1208,8 @@ const Sidebar = ({
                       )
                     })}
               </div>
-            )}
+              </div>
+            </div>
           </div>
         )
       })}
@@ -4716,7 +4740,17 @@ const TaskDialog = ({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
+    // QA-199/PMCM-397: modal (the default) makes Radix wrap this dialog's
+    // content in a scroll lock (react-remove-scroll) that only recognizes
+    // scrollable elements that are DOM descendants of the dialog's own
+    // portal. The Location/Role comboboxes below are cmdk popovers that
+    // portal to document.body as a *separate* tree, so the lock intercepts
+    // their wheel events and blocks scrolling entirely — reproduced and
+    // confirmed fixed by this prop alone (before: scrollTop stuck at 0 on
+    // every wheel tick; after: scrolls normally). Non-modal still closes on
+    // outside click/Escape; it only drops the focus trap and body scroll
+    // lock, which this single-field-at-a-time add-task form doesn't rely on.
+    <Dialog open={isOpen} onOpenChange={toggleIsOpen} modal={false}>
       <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
         <form
           className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]"
@@ -5945,12 +5979,36 @@ const ProjectScope = ({
       const taskDays = (((phase as any)?.rows ?? []) as any[])
         .map((row: any) => {
           const dur = row?.duration
-          if (!dur) return 0
-          const val = Number(dur.value) || 0
-          if (val <= 0) return 0
-          if (dur.type === "weeks") return val * 7
-          if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-          return val
+          // QA-200/PMCM-397: this only handled "weeks" and "hours",
+          // silently treating a "months" duration as raw days (e.g. "2
+          // months" counted as 2 days) and giving up entirely (0) on any
+          // row whose duration didn't arrive as the {value, type} object —
+          // never falling back to estimatedHours the way
+          // estimateScopeBudgetCents (this same memo's budget calculation,
+          // a few lines below) already does. Matched here to that
+          // reference implementation.
+          if (dur && typeof dur === "object") {
+            const val = Number(dur.value) || 0
+            if (val > 0) {
+              if (dur.type === "weeks") return val * 7
+              if (dur.type === "months") return val * 30
+              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
+              return val
+            }
+          }
+          if (typeof dur === "string" && dur.trim()) {
+            const [rv, ru] = dur.trim().split(/\s+/)
+            const v = Number(rv) || 0
+            const u = (ru || "days").toLowerCase()
+            if (v > 0) {
+              if (u.startsWith("week")) return v * 7
+              if (u.startsWith("month")) return v * 30
+              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
+              return v
+            }
+          }
+          const hrs = Number(row?.estimatedHours) || 0
+          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
         })
         .filter((d: number) => d > 0)
       if (taskDays.length > 0) totalDays += Math.max(...taskDays)
@@ -5968,13 +6026,25 @@ const ProjectScope = ({
       }
     }
     const computedCents = estimateScopeBudgetCents(scopePhases)
+    // QA-178/PMCM-397: always prefer the freshly-computed total.
+    // pricingBudgetCents only updates ~1.5-2s after a change, via the
+    // debounced ReplaceProjectScope round-trip (see the ReplaceProjectScope
+    // callers below) — so any edit made before that round-trip lands, or
+    // any edit made again in that window, was masked by a stale number.
+    // This is what made phase deletion look broken while task deletion
+    // looked fine: both mutate `phases` through the same setPhases path
+    // and land in this same memo, but by the time a *later* edit (e.g. a
+    // phase delete) ran, an *earlier* edit's round-trip had already primed
+    // a stale positive pricingBudgetCents that outranked anything computed
+    // live afterward — including the AC's "reset to zero when every phase
+    // is deleted" case, since a stale positive number would win over a
+    // correctly-computed 0.
     return {
-      budgetTotalCents:
-        pricingBudgetCents > 0 ? pricingBudgetCents : computedCents,
+      budgetTotalCents: computedCents,
       durationLabel: label,
       durationDays: totalDays,
     }
-  }, [phases, pricingBudgetCents])
+  }, [phases])
 
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
@@ -7121,14 +7191,400 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setTaskSearchDialogOpen: React.Dispatch<React.SetStateAction<boolean>>
   teamMemberIds: string[]
   setTeamMemberIds: React.Dispatch<React.SetStateAction<string[]>>
+  // QA-180/PMCM-399: emails invited (search or email) via the shared
+  // InviteWindow while this listing's dialog context was active — shown
+  // as "Pending Invite" rows below teamMemberIds' real members. Locally
+  // tracked: invitations-service has no per-listing correlation, so this
+  // can't be re-derived from a server-side "pending invites for this
+  // project" query, only from what this session actually sent.
+  pendingInviteEmails: string[]
+  setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
   pricingBudgetCents: number
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
+  teamSubTab: string
+  setTeamSubTab: React.Dispatch<React.SetStateAction<string>>
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
 })
+
+type TeamSubTab = "openRoles" | "applicationQuestions" | "members" | "requests" | "invites"
+
+const TEAM_SUB_TAB_LABELS: Record<TeamSubTab, string> = {
+  openRoles: "Open Roles",
+  applicationQuestions: "Application Questions",
+  members: "Members",
+  requests: "Requests",
+  invites: "Invites",
+}
+
+// ---------------------------------------------------------------------------
+// Open Roles sub-tab content (pixel-perfect from Figma node 13101:118765)
+// ---------------------------------------------------------------------------
+const SAMPLE_SELECTED_ROLES = [
+  "Product Designer",
+  "UX Researcher",
+  "Frontend Developer",
+  "iOS Developer",
+  "Android Developer",
+  "Backend Engineer",
+  "UX Writer",
+  "DevOps Engineer",
+  "QA Engineer",
+  "React Native Dev",
+  "Full Stack Developer",
+  "Product Manager",
+]
+
+const SAMPLE_SUGGESTED_ROLES = [
+  "UX Researcher",
+  "Project Manager",
+  "QA Engineer",
+]
+
+const SAMPLE_ROLE_OPTIONS = [
+  "Product Designer",
+  "UX Researcher",
+  "Frontend Developer",
+  "iOS Developer",
+]
+
+const SAMPLE_ROLE_QUESTIONS = [
+  "What is your experience with mobile design systems?",
+  "Describe a challenging task you solved.",
+]
+
+const OpenRolesContent = () => {
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(SAMPLE_SELECTED_ROLES)
+  const MAX_ROLES = 15
+
+  const removeRole = (role: string) => {
+    setSelectedRoles((prev) => prev.filter((r) => r !== role))
+  }
+
+  const addRole = (role: string) => {
+    if (selectedRoles.length < MAX_ROLES && !selectedRoles.includes(role)) {
+      setSelectedRoles((prev) => [...prev, role])
+    }
+  }
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]">
+        {/* Left column */}
+        <div className="flex-auto min-w-0 flex flex-col">
+          <div className="flex flex-col gap-[18px]">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Open Roles
+            </h1>
+
+            <div className="flex flex-col gap-6">
+              {/* Roles input section */}
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-3 items-end">
+                    <p className="flex-1 min-w-0 text-sm leading-5 font-normal text-gray-500">
+                      Specify the roles needed for this project, select a minimum of 3 and a maximum of 15. Roles are derived from your project categories.
+                    </p>
+                    <span className={cn(
+                      "shrink-0 text-xs font-normal text-right whitespace-nowrap",
+                      selectedRoles.length >= MAX_ROLES ? "text-warning-500" : "text-gray-500"
+                    )}>
+                      {selectedRoles.length}/{MAX_ROLES}
+                    </span>
+                  </div>
+
+                  {/* Roles input box */}
+                  <div className={cn(
+                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-start",
+                    selectedRoles.length >= MAX_ROLES ? "border-warning-300" : "border-gray-300"
+                  )}>
+                    {selectedRoles.map((role) => (
+                      <Badge
+                        key={role}
+                        visual="primary"
+                        size="sm"
+                        className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                      >
+                        {role}
+                        <BadgeCloseButton onClick={() => removeRole(role)}>
+                          <X className="size-3" />
+                        </BadgeCloseButton>
+                      </Badge>
+                    ))}
+                    {selectedRoles.length < MAX_ROLES && (
+                      <Badge
+                        visual="gray"
+                        size="sm"
+                        className="pl-1.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200"
+                      >
+                        <Plus className="size-3" />
+                        Add Role
+                      </Badge>
+                    )}
+                  </div>
+                  {selectedRoles.length >= MAX_ROLES && (
+                    <p className="text-sm leading-5 font-normal text-warning-500">
+                      You've reached the maximum of {MAX_ROLES} roles.
+                    </p>
+                  )}
+                </div>
+
+                {/* Suggested Roles */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                    Suggested Roles
+                  </span>
+                  <div className="flex flex-wrap content-start gap-3">
+                    {SAMPLE_SUGGESTED_ROLES.map((role) => (
+                      <Badge
+                        key={role}
+                        visual="gray"
+                        size="md"
+                        className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                        onClick={() => addRole(role)}
+                      >
+                        {role}
+                        <Plus className="size-3.5 text-gray-500" />
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Empty state — shown when all roles are removed */}
+              {selectedRoles.length === 0 && (
+                <div className="flex flex-col gap-3 items-center justify-center p-4 rounded-[5px]">
+                  <div className="flex flex-col gap-2 items-center text-center">
+                    <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                      No Open Roles yet
+                    </h2>
+                    <p className="text-sm leading-5 font-light text-dark-blue-400">
+                      Start by adding open roles to define who you're looking for.
+                    </p>
+                  </div>
+                  <Button
+                    visual="gray"
+                    variant="outlined"
+                    className="bg-white"
+                    onClick={() => {
+                      /* TODO: open role picker */
+                    }}
+                  >
+                    <Plus className="size-[15px]" />
+                    Add Open Roles
+                  </Button>
+                </div>
+              )}
+
+              {/* Question preview card — hidden when no roles selected */}
+              {selectedRoles.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    This question appears when talent requests to join the project.
+                  </p>
+
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                    <div className="flex gap-2.5 items-start">
+                      <div className="shrink-0 w-[15px] pt-[3px]">
+                        <Lock01 className="size-[15px] text-gray-500" />
+                      </div>
+
+                      <div className="flex-1 min-w-0 flex flex-col gap-3">
+                        {/* Question title + tags */}
+                        <div className="flex items-center">
+                          <div className="flex gap-6 items-center">
+                            <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
+                              Which role are you interested in?
+                            </span>
+                            <div className="flex gap-2 items-center">
+                              <Badge
+                                visual="gray"
+                                size="sm"
+                                className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                              >
+                                Default
+                              </Badge>
+                              <Badge
+                                visual="gray"
+                                size="sm"
+                                className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
+                              >
+                                Multi-Select
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="w-full h-px bg-gray-200" />
+
+                        {/* Available Options */}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex gap-3 items-center">
+                            <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
+                              Available Options
+                            </span>
+                            <Button
+                              variant="link"
+                              visual="primary"
+                              className="gap-1 text-xs font-bold leading-5 underline"
+                            >
+                              Edit Roles
+                              <ArrowUpRight className="size-[15px]" />
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-wrap content-center gap-2.5 items-center">
+                            {SAMPLE_ROLE_OPTIONS.map((role) => (
+                              <Badge
+                                key={role}
+                                visual="gray"
+                                size="sm"
+                                className="h-[26px] pl-2 pr-1.5 py-0.5"
+                              >
+                                {role}
+                              </Badge>
+                            ))}
+                            <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                              + 8 more
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Role-Specific Questions — hidden when no roles selected */}
+              {selectedRoles.length > 0 && (
+                <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                      <span className="text-base font-semibold text-dark-blue-400">
+                        Role-Specific Questions
+                      </span>
+                      <p className="text-sm font-normal leading-5 text-gray-600">
+                        Here are your current Role-Specific questions. Click Edit to update them.
+                      </p>
+                    </div>
+                    <Button
+                      visual="gray"
+                      variant="outlined"
+                      className="shrink-0 bg-white"
+                    >
+                      <Edit03 className="size-[15px]" />
+                      Edit Role Questions
+                    </Button>
+                  </div>
+
+                  <div className="flex flex-wrap content-start gap-3">
+                    {SAMPLE_ROLE_QUESTIONS.map((q) => (
+                      <div
+                        key={q}
+                        className="bg-white border-[1.5px] border-gray-300 rounded-full px-3 py-1 flex items-center justify-center cursor-pointer transition duration-300 hover:bg-gray-50 hover:border-gray-400"
+                      >
+                        <span className="text-sm font-medium leading-5 text-gray-700">
+                          {q}
+                        </span>
+                      </div>
+                    ))}
+                    <span className="opacity-50 pl-2.5 pr-2 py-0.5 text-sm font-semibold leading-5 text-gray-800 cursor-pointer transition duration-300 hover:opacity-100">
+                      + 26 more
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right column — Arrow + Tip sidebar */}
+        <div className="shrink-0 self-start sticky top-6 xs:max-[1024px]:hidden flex items-start pt-6">
+          {/* Connector arrow (Figma 13101:176334) */}
+          <div className="flex items-center justify-center mr-[-8px] shrink-0 w-[25.455px] h-[71px]">
+            <svg className="rotate-90" width="71" height="20" viewBox="0 0 182.364 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 19V20V20V19ZM167 19V18V18V19ZM1 1.00001H0V11H1H2V1.00001H1ZM9 19V20L167 20V19V18L9 18V19ZM175 11H176V1H175H174V11H175ZM167 19V20C171.971 20 176 15.9705 176 11H175H174C174 14.866 170.866 18 167 18V19ZM1 11H0C0 15.9706 4.02944 20 9 20V19V18C5.13401 18 2 14.866 2 11H1ZM175.707 0.292893C175.317 -0.0976311 174.683 -0.0976311 174.293 0.292893L167.929 6.65685C167.538 7.04738 167.538 7.68054 167.929 8.07107C168.319 8.46159 168.953 8.46159 169.343 8.07107L175 2.41421L180.657 8.07107C181.047 8.46159 181.681 8.46159 182.071 8.07107C182.462 7.68054 182.462 7.04738 182.071 6.65685L175.707 0.292893Z" fill="#D0D5DD"/>
+            </svg>
+          </div>
+
+          <div className="p-5 rounded-lg w-[269px] bg-primary-50 flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-x-2">
+                <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
+                <span className="text-base leading-[30px] font-semibold capitalize text-gray-800">
+                  Tip
+                </span>
+              </div>
+              <p className="text-xs leading-normal text-black/60 tracking-[0.12px]">
+                A great title gives your audience a reason to open your project
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {/* Video player (Figma I13101:120092;112:190717) */}
+              <div className="w-full h-[141px] rounded-lg relative overflow-hidden cursor-pointer group/video">
+                <div className="absolute inset-0 bg-black/56 rounded-lg z-[1]" />
+                <div className="absolute inset-0 bg-black/10 rounded-lg z-[2]" />
+                {/* Play button */}
+                <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[58px] z-10 transition duration-300 group-hover/video:scale-110" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="24" fill="white" fillOpacity="0.3" />
+                  <circle cx="24" cy="24" r="18" fill="white" fillOpacity="0.4" />
+                  <path d="M20 16L32 24L20 32V16Z" fill="white" />
+                </svg>
+                {/* Duration badge */}
+                <div className="absolute bottom-[9.2px] right-[9.5px] bg-gray-500 rounded-[3.22px] px-[4.6px] py-[4.6px] z-10">
+                  <span className="text-xs font-normal leading-[24.7px] text-white text-center">01:20</span>
+                </div>
+                {/* Text overlay */}
+                <div className="absolute left-[12.4px] top-[47.6px] flex flex-col gap-1 z-10">
+                  <span className="text-xs font-medium leading-[27.6px] text-white/80">Part 1</span>
+                  <span className="text-[15.3px] font-medium leading-[36.8px] text-white">How to get started</span>
+                </div>
+              </div>
+
+              {/* Tip card 1 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Focus on purpose
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Use impactful keywords that communicate value and make it easy to identify in a list of projects.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tip card 2 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Keep it short and sweet
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Try to trim your project title to be less than 6 words
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
 
 const Team = () => {
   const [members, setMembers] = React.useState<any[]>([])
@@ -7155,8 +7611,15 @@ const Team = () => {
   const mapRole = (role?: string) =>
     role === "owner" ? "Owner" : role === "lead" ? "Manager" : "Contributor"
 
-  const { teamMemberIds, setTeamMemberIds, draftProjectId, projectScopeMethods } =
-    useProjectScopeContext()
+  const {
+    teamMemberIds,
+    setTeamMemberIds,
+    pendingInviteEmails,
+    setPendingInviteEmails,
+    draftProjectId,
+    projectScopeMethods,
+    teamSubTab,
+  } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
   const [wizardRoles, setWizardRoles] = React.useState<Record<string, string>>(
@@ -7266,6 +7729,30 @@ const Team = () => {
       } as any).catch(() => {})
     }
   }
+  // QA-180/PMCM-399: same persistence shape as persistTeam above, for the
+  // emails invited via the shared InviteWindow (search or email method)
+  // while this listing's dialog context was active. Passed as
+  // context.onInvited to inviteWindow.toggle below. Uses the functional
+  // setState form (unlike persistTeam) because this fires from a callback
+  // captured at dialog-open time, so teamMemberIds's simpler
+  // read-then-persistTeam(next) shape could dedupe against a stale prev.
+  const handleInvited = React.useCallback(
+    (emails: string[]) => {
+      if (!emails.length) return
+      setPendingInviteEmails((prev) => {
+        const next = Array.from(
+          new Set([...prev, ...emails.map((email) => email.toLowerCase())])
+        )
+        if (draftProjectId) {
+          ProjectAPI.UpdateProjectDraft(draftProjectId, {
+            pendingInviteEmails: next,
+          } as any).catch(() => {})
+        }
+        return next
+      })
+    },
+    [draftProjectId, setPendingInviteEmails]
+  )
   const addToProject = (userId: string) => {
     persistTeam(Array.from(new Set([...teamMemberIds, String(userId)])))
     setAddQuery("")
@@ -7287,6 +7774,45 @@ const Team = () => {
     )
   }
 
+  if (teamSubTab === "openRoles") {
+    return <OpenRolesContent />
+  }
+
+  if (teamSubTab !== "members") {
+    const subLabel = TEAM_SUB_TAB_LABELS[teamSubTab as TeamSubTab] ?? teamSubTab
+    return (
+      <ScrollArea
+        className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+        viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+        scrollBar={<ScrollBar className="w-4 p-1" />}
+      >
+        <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+          <div className="flex-auto min-w-0">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              {subLabel}
+            </h1>
+            <p className="mt-2 text-sm text-gray-500">
+              {teamSubTab === "applicationQuestions" &&
+                "Add screening questions that applicants must answer when requesting to join your project."}
+              {teamSubTab === "requests" &&
+                "Review and manage incoming join requests from talent who want to work on your project."}
+              {teamSubTab === "invites" &&
+                "Track invitations you have sent to talent for this project."}
+            </p>
+            <div className="mt-10 flex flex-col items-center justify-center py-16 text-center">
+              <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                <Info className="size-5 text-gray-400" />
+              </div>
+              <p className="text-sm text-gray-500">
+                {subLabel} will be available here once the project is published.
+              </p>
+            </div>
+          </div>
+        </div>
+      </ScrollArea>
+    )
+  }
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
@@ -7296,7 +7822,7 @@ const Team = () => {
       <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
         <div className="flex-auto min-w-0">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
-            Team
+            Members
           </h1>
           <p className="mt-2 text-sm text-gray-500">
             Select a team member to transfer lead status and all related
@@ -7531,7 +8057,21 @@ const Team = () => {
               <Button
                 variant="outlined"
                 visual="gray"
-                onClick={() => inviteWindow.toggle(true, "Invite Team Members")}
+                onClick={() =>
+                  inviteWindow.toggle(true, "Invite Team Members", {
+                    // QA-180/PMCM-399: without this the shared dialog
+                    // treats any custom-titled caller as share-flavored
+                    // and skips company assignment, which is why contact
+                    // search always came back empty here — company never
+                    // got picked, so useCompanyMembers had nothing to
+                    // search. teamInvite: true keeps the custom title but
+                    // still shows the company step, same as the default
+                    // "Invite Your Team" flow.
+                    teamInvite: true,
+                    listingId: draftProjectId,
+                    onInvited: handleInvited,
+                  })
+                }
               >
                 <Plus className="size-[15px]" />
                 Add Team Member
@@ -7784,6 +8324,55 @@ const Team = () => {
                     </TableRow>
                     )
                   })}
+                  {/* QA-180/PMCM-399 AC: invited-but-not-yet-accepted addresses
+                  show as "Pending Invite" here, same table/columns as real
+                  members — no role yet (nothing to assign until they accept),
+                  no dropdown (nothing to manage besides canceling). */}
+                  {pendingInviteEmails.map((email) => (
+                    <TableRow key={`pending-invite-${email}`}>
+                      <TableCell className="py-4">
+                        <div className="flex items-center gap-x-3">
+                          <Avatar size="sm">
+                            <AvatarFallback>
+                              {email.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-semibold text-dark-blue-400">
+                            {email}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm text-gray-400">—</span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <span className="text-sm font-semibold text-gray-500">
+                          Pending Invite
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-4">
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
+                          className="text-error-600"
+                          onClick={() => {
+                            const next = pendingInviteEmails.filter(
+                              (e) => e !== email
+                            )
+                            setPendingInviteEmails(next)
+                            if (draftProjectId) {
+                              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                                pendingInviteEmails: next,
+                              } as any).catch(() => {})
+                            }
+                          }}
+                        >
+                          Cancel Invite
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -8861,6 +9450,8 @@ function PublishProject({
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
+  const [teamSubTab, setTeamSubTab] = useState<string>("members")
+  const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
@@ -8944,6 +9535,9 @@ function PublishProject({
     }
   }
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
+  // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
+  // listing exists but this account isn't its owner or a team member on it.
+  const [isAccessDenied, setIsAccessDenied] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null)
   const [faqs, setFaqs] = useState<WizardFaq[]>([])
   const [faqModerationError, setFaqModerationError] = useState<string | null>(
@@ -8961,7 +9555,17 @@ function PublishProject({
   } | null>(null)
   const lastDraftPayloadRef = useRef<string>("")
   const lastScopePayloadRef = useRef<string>("")
+  const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
+  // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
+  // saveMedia had no ref here and its effect's cleanup only cleared the
+  // interval — a media change made within the ~2s polling window, followed
+  // by navigating to the other editor (or a hard reload before the next
+  // tick), was silently dropped: never reaches the backend, so whichever
+  // editor loads next hydrates the pre-change media. Reusing the same
+  // flush-on-unmount/flush-on-unload pattern every sibling autosave here
+  // already has.
+  const saveMediaRef = useRef<() => Promise<void>>(async () => {})
   const lastFaqsPayloadRef = useRef<string>("")
   const faqsRef = useRef<WizardFaq[]>([])
   const saveFaqsRef = useRef<() => Promise<void>>(async () => {})
@@ -9019,7 +9623,19 @@ function PublishProject({
     setStepValid(2, projectScopeSchema.safeParse(scopePhases))
   }, [scopePhases, setStepValid])
   useEffect(() => {
-    setStepValid(3, teamMemberIds.length > 0)
+    // QA-198/PMCM-395: teamMemberIds never contains the project owner's own
+    // id — inProject() (in the Team step) treats role "owner" as always
+    // in-project without ever writing to teamMemberIds, and addable()
+    // excludes anyone already inProject, so the owner can never be
+    // programmatically added to this array. A solo owner is therefore
+    // permanently "0 members" by this check alone, even though the Team
+    // table already shows them (You / Owner) with nothing left to fill
+    // in. The account owner always counts as the team's one required
+    // member, matching what the UI already displays.
+    setStepValid(
+      3,
+      teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)
+    )
   }, [teamMemberIds, setStepValid])
   useEffect(() => {
     setStepValid(4, completedFaqCount >= 3)
@@ -9030,7 +9646,10 @@ function PublishProject({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
       1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
       2: projectScopeSchema.safeParse(scopePhases),
-      3: teamMemberIds.length > 0,
+      // QA-198/PMCM-395: same owner-always-counts fix as setStepValid(3, ...)
+      // above — this is the Publish button's own separate validity check
+      // (PMCM-401), and it was blocked by the identical stale condition.
+      3: teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id),
       4: completedFaqCount >= 3,
     }
     return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
@@ -9057,7 +9676,15 @@ function PublishProject({
         if (slug) {
           try {
             response = await ProjectAPI.GetProjectBySlug(slug)
-          } catch {
+          } catch (err: any) {
+            // QA-196/PMCM-402: a 403 means this listing exists but the
+            // signed-in account isn't its owner or a team member on it —
+            // that must stop here, not fall through to auto-creating an
+            // unrelated blank draft under this URL.
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             response = null
           }
         }
@@ -9067,7 +9694,15 @@ function PublishProject({
           const urlParams = new URLSearchParams(window.location.search)
           const existingDraftId = urlParams.get("draftId")
           if (existingDraftId && UUID_PATTERN.test(existingDraftId)) {
-            response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            try {
+              response = await ProjectAPI.GetProjectDraft(existingDraftId)
+            } catch (err: any) {
+              if (err?.response?.status === 403) {
+                setIsAccessDenied(true)
+                return
+              }
+              throw err
+            }
           }
         }
 
@@ -9075,7 +9710,11 @@ function PublishProject({
         if (!response?.data && slug && UUID_PATTERN.test(slug)) {
           try {
             response = await ProjectAPI.GetProjectDraft(slug)
-          } catch {
+          } catch (err: any) {
+            if (err?.response?.status === 403) {
+              setIsAccessDenied(true)
+              return
+            }
             // fall through to create a fresh draft below
           }
         }
@@ -9103,6 +9742,11 @@ function PublishProject({
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
+            : []
+        )
+        setPendingInviteEmails(
+          Array.isArray(draft?.pendingInviteEmails)
+            ? draft.pendingInviteEmails.map(String)
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
@@ -9358,6 +10002,7 @@ function PublishProject({
 
       if (serializedPayload === lastScopePayloadRef.current) return
 
+      scopeSavesInFlightRef.current += 1
       try {
         const scopeRes = await ProjectAPI.ReplaceProjectScope(
           draftProjectId,
@@ -9371,6 +10016,8 @@ function PublishProject({
         setLastSavedAt(new Date())
       } catch (error) {
         console.error("Failed to save project scope draft", error)
+      } finally {
+        scopeSavesInFlightRef.current -= 1
       }
     }
 
@@ -9378,6 +10025,11 @@ function PublishProject({
 
     void saveScope()
     const interval = setInterval(() => {
+      // Never stack ticks: until a save resolves, the payload still differs
+      // from lastScopePayloadRef, so a slow save got re-sent every 2s — the
+      // pile-up that took listings-service down on 2026-10-03. The flushes
+      // on cleanup and beforeunload still go out regardless.
+      if (scopeSavesInFlightRef.current > 0) return
       void saveScope()
     }, 2000)
 
@@ -9458,6 +10110,7 @@ function PublishProject({
     const handleBeforeUnload = () => {
       void saveDraftRef.current()
       void saveScopeRef.current()
+      void saveMediaRef.current()
       void saveFaqsRef.current()
       void saveVideoRef.current()
     }
@@ -9613,11 +10266,16 @@ function PublishProject({
       }
     }
 
+    saveMediaRef.current = saveMedia
+
     const interval = setInterval(() => {
       void saveMedia()
     }, 2000)
 
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      void saveMedia()
+    }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
   const projectScopeValue = useMemo(
@@ -9631,10 +10289,14 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
       setScopeType,
+      teamSubTab,
+      setTeamSubTab,
     }),
     [
       projectScopeMethods,
@@ -9646,10 +10308,14 @@ function PublishProject({
       setTaskSearchDialogOpen,
       teamMemberIds,
       setTeamMemberIds,
+      pendingInviteEmails,
+      setPendingInviteEmails,
       draftProjectId,
       pricingBudgetCents,
       scopeType,
       setScopeType,
+      teamSubTab,
+      setTeamSubTab,
     ]
   )
   //  Validate the current step when Next is clicked
@@ -9704,6 +10370,35 @@ function PublishProject({
     toggleIsSaveExitDialogOpen(false)
     router.push("/my-listings")
   }, [toggleIsSaveExitDialogOpen, router])
+
+  // QA-196/PMCM-402: reusing the same "not found" empty-state pattern
+  // already used on the public listing page and the my-listings editor
+  // (centered AlertCircle + heading + description + button) rather than
+  // inventing a new one, per the design-system reuse rule.
+  if (isAccessDenied) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Unauthorized access
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            You don&apos;t have access to this project&apos;s editor. Ask the
+            listing owner to add you to the team if you should be able to
+            edit it.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => router.push("/my-listings")}>
+              Go to My Listings
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return isProjectSubmitted ? (
     <div className="min-h-screen flex flex-col">
@@ -9820,19 +10515,10 @@ function PublishProject({
 
 export default function PublishRootProject() {
   const params = useParams<{ slug: string }>()
-  const router = useRouter()
-  const pathname = usePathname()
-  const { user, isLoading: isAuthLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
     setMounted(true)
   }, [])
-
-  useEffect(() => {
-    if (!isAuthLoading && !user) {
-      router.replace(`/sign-in?redirect=${encodeURIComponent(pathname)}`)
-    }
-  }, [isAuthLoading, user, router, pathname])
 
   useEffect(() => {
     if (typeof document !== "undefined") {
@@ -9844,12 +10530,13 @@ export default function PublishRootProject() {
     return null
   }
 
-  if (!isAuthLoading && !user) {
-    return null
-  }
-
+  // PMCM-402/QA-190: this used to redirect an unauthenticated visitor to the
+  // full /sign-in page, which bypasses the on-page auth modal SOP §1.4.1
+  // requires everywhere on listing pages. AuthenticatedRoute gives the same
+  // "protected route" behavior (spinner, then the modal, then the page)
+  // every other gated route already uses, with no full-page redirect.
   return (
-    <>
+    <AuthenticatedRoute>
       <PublishProject
         slug={params.slug}
         projectInfo={<ProjectInfo />}
@@ -9857,6 +10544,6 @@ export default function PublishRootProject() {
         projectScope={<ProjectScope />}
       />
       <Toaster />
-    </>
+    </AuthenticatedRoute>
   )
 }

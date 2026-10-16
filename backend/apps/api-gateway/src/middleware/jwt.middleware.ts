@@ -19,6 +19,19 @@ const PUBLIC_EXACT_ROUTES = new Set([
   '/auth/forgot-password',
   '/auth/reset-password',
   '/auth/2fa/verify',
+  // Reached by someone locked out of their account, who therefore has no token
+  // to present — the same reasoning as /auth/forgot-password above. The
+  // catalogue is the same six prompts for everyone and names no account; the
+  // two verify routes are rate limited per account and per IP in auth-service
+  // and answer every failure identically, so neither reveals whether an email
+  // is registered.
+  '/auth/security-questions/catalog',
+  '/auth/recovery/security-questions/verify',
+  '/auth/recovery/authenticator/verify',
+  // Confirming a recovery email is done from a mail client, often on a
+  // different device from the one that asked. Holding the single-use token is
+  // the proof; requiring a session here would make the link unusable.
+  '/auth/recovery-email/verify',
   '/auth/2fa/resend',
   '/homepage',
   '/homepage/health',
@@ -46,6 +59,13 @@ const PUBLIC_EXACT_ROUTES = new Set([
   // credential; verify-email hashes and validates it server-side.
   '/v1/payouts/verify-email',
   '/v1/payouts/verify',
+  // Contact Support in the account recovery flow. Whoever needs it is locked
+  // out by definition and has no token to present, so the same reasoning as
+  // /auth/forgot-password applies. Both endpoints are per-IP rate limited in
+  // notification-service's SupportService, since a public endpoint that sends
+  // mail is a relay otherwise.
+  '/support/messages',
+  '/support/call-requests',
 ])
 
 // Only explicitly allowed dynamic routes are public.
@@ -81,11 +101,11 @@ const PUBLIC_PATTERNS = [
   // Enumerated rather than a /v1/webhooks/* wildcard so that adding a new
   // route under this namespace does not silently make it unauthenticated.
   /^\/v1\/webhooks\/(?:stripe|ramp)$/,
-  // Wise/Payoneer redirect the browser here straight from the
+  // Wise redirects the browser here straight from the
   // provider's own login page — there's no Marketeq session cookie to send,
   // same reasoning as the webhooks entry above. payout-service's own
   // @Public() on this route is powerless against this upstream gateway check.
-  /^\/v1\/oauth\/(?:wise|payoneer)\/callback$/,
+  /^\/v1\/oauth\/wise\/callback$/,
   // Renders the invite banner / accept-invite flow before the visitor is
   // signed in. The route is already @Public() in invitations-service, but
   // that decorator is powerless against this upstream gateway check, same as
@@ -101,8 +121,19 @@ const PUBLIC_PATTERNS = [
   /^(?:\/api)?\/v1\/notifications\/preferences\/email\/verify$/,
 ]
 
-function isPublic(path: string): boolean {
+// Method-scoped public routes. Didit calls this directly — no Marketeq
+// session exists to send. Authenticity is verified downstream by
+// identity-verification-service (X-Signature-V2 HMAC, timestamp window,
+// replay/idempotency), not by gateway JWT auth. Matched on method AND exact
+// path so GET/PUT/PATCH/DELETE, trailing slashes, extra segments and sibling
+// routes under /v1/identity-verification all stay JWT-protected.
+const PUBLIC_METHOD_ROUTES: ReadonlyArray<{ method: string; path: string }> = [
+  { method: 'POST', path: '/v1/identity-verification/webhooks/didit-kyc' },
+]
+
+function isPublic(path: string, method: string): boolean {
   if (PUBLIC_EXACT_ROUTES.has(path)) return true
+  if (PUBLIC_METHOD_ROUTES.some((r) => r.method === method && r.path === path)) return true
   return PUBLIC_PATTERNS.some((re) => re.test(path))
 }
 
@@ -117,7 +148,7 @@ export class JwtMiddleware implements NestMiddleware {
     // (no /api) or NEXT_PUBLIC_API_BASE_URL (with /api) hit the same routes.
     const rawPath = req.originalUrl.split('?')[0]
     const reqPath = rawPath.replace(/^\/api(?=\/|$)/, '') || '/'
-    const pub = isPublic(reqPath)
+    const pub = isPublic(reqPath, req.method)
 
     const authHeader = req.headers.authorization
     const cookieToken = (req as any).cookies?.access_token
@@ -145,12 +176,15 @@ export class JwtMiddleware implements NestMiddleware {
         role?: string
         /** Security role, minted from PLATFORM_ROLE_ASSIGNMENTS. Privilege. */
         platformRole?: string
+        /** Session id. CsrfTokenMiddleware matches it against the session row. */
+        sid?: string
       }>(token)
       ;(req as any).user = {
         userId: payload.sub,
         email: payload.email,
         role: payload.role,
         platformRole: payload.platformRole,
+        sid: payload.sid,
       }
       next()
     } catch (err: any) {

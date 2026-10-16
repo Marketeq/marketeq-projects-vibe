@@ -14,6 +14,8 @@ import { CryptoPayoutExecutorService } from '../execution/crypto-payout-executor
 import { CardPayoutExecutorService } from '../card/card-payout-executor.service';
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { PayoutService } from './payout.service';
+import { WithdrawalNotifier } from '../notifications/withdrawal-notifier.service';
 
 @Processor({ name: 'payout-processing' })
 export class PayoutQueueProcessor {
@@ -26,6 +28,8 @@ export class PayoutQueueProcessor {
     private readonly cardExecutor: CardPayoutExecutorService,
     private readonly bankExecutor: BankPayoutExecutorService,
     private readonly publisher: PayoutPublisher,
+    private readonly payoutService: PayoutService,
+    private readonly withdrawalNotifier: WithdrawalNotifier,
   ) {}
 
   @Process('process-payout')
@@ -67,6 +71,31 @@ export class PayoutQueueProcessor {
       return;
     }
 
+    // PS-19 §3.3/§3.4: execution-time re-checks. These methods already
+    // existed (recheckBalanceAtExecution/recheckKycAtExecution) and fail the
+    // payout + write failureReason themselves, but had zero callers — this
+    // is the actual dispatch point where they belong, run right before
+    // handing off to an executor that would otherwise move real money
+    // against a balance/KYC state that's gone stale since initiation.
+    const balanceOk = await this.payoutService.recheckBalanceAtExecution(
+      payout.contractorId, payoutRequestId, parseFloat(payout.amountUsd),
+    );
+    if (!balanceOk) return;
+    const kycOk = await this.payoutService.recheckKycAtExecution(payout.contractorId, payoutRequestId);
+    if (!kycOk) return;
+
+    await this.execute(payout);
+
+    // PMCM-806 N-01 "withdrawal submitted". This is the one place every
+    // method's executor runs, and the executor is what moves the payout to
+    // PROCESSING. The notifier re-reads the status and only sends if it is
+    // PROCESSING now. A payout that completed in-line (card) gets N-02 from
+    // the publisher instead, and one that failed gets N-03.
+    void this.withdrawalNotifier.notifySubmitted(payoutRequestId);
+  }
+
+  private async execute(payout: PayoutRequest): Promise<void> {
+    const payoutRequestId = payout.id;
     switch (payout.depositMethod.methodType) {
       case MethodType.CRYPTO:
         return this.cryptoExecutor.executeCryptoPayout(payoutRequestId);
@@ -74,20 +103,19 @@ export class PayoutQueueProcessor {
         return this.cardExecutor.executeCardPayout(payoutRequestId);
       case MethodType.BANK_STRIPE:
       case MethodType.BANK_MANUAL:
-      // PS-09 v2.0 §2: WISE/PAYONEER execute through the same Stripe ACH
+      // PS-09 v2.0 §2: WISE executes through the same Stripe ACH
       // path as a regular bank payout — the OAuth-retrieved routing +
       // account number was already registered as a Stripe external_account
       // at connection time (oauth.service.ts's handleCallback).
       case MethodType.WISE:
-      case MethodType.PAYONEER:
         return this.bankExecutor.executeBankPayout(payoutRequestId);
       default:
-        // WISE/PAYONEER/TEQ_COIN execution isn't built yet. Leaving the
+        // WISE/TEQ_COIN execution isn't built yet. Leaving the
         // request QUEUED kept it visible instead of vanishing, which was the
         // right call while nothing had been debited yet — but the balance is
         // now taken up-front at magic-link confirmation
         // (BalanceService.holdForPayout), and these methods are reachable:
-        // AddMethodDto accepts them and addMethod() routes WISE/PAYONEER
+        // AddMethodDto accepts them and addMethod() routes WISE
         // through the real OAuth verification flow. A payout parked here
         // would hold the contractor's funds indefinitely with no executor
         // that will ever release them. Fail it explicitly instead —

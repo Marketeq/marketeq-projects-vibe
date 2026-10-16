@@ -26,7 +26,7 @@
   },
   "renderSharedBackend": {
     "serviceId": "srv-d76r48nafjfc73e1djf0",
-    "minimumVarCount": 41,
+    "minimumVarCount": 55,
     "requiredOriginList": [
       "http://localhost:3000",
       "https://dev-marketeq-projects.vercel.app",

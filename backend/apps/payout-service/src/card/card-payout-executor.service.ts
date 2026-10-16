@@ -59,8 +59,12 @@ export class CardPayoutExecutorService {
     }
 
     // Pre-flight checks
+    // PS-24 §11: this is "not yet activated," not "not found" — the row
+    // exists, method.methodType/existence were already confirmed above.
+    // ERR_CARD_NOT_FOUND is for a depositMethodId that doesn't resolve to a
+    // DEBIT_CARD method at all, a different failure than this one.
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
-      await this.failPayout(payout, 'Card has not been activated.', 'ERR_CARD_NOT_FOUND');
+      await this.failPayout(payout, 'Card has not been activated.', 'ERR_CARD_NOT_ACTIVATED');
       return;
     }
 
@@ -189,6 +193,38 @@ export class CardPayoutExecutorService {
       methodType: 'MARKETEQ_DEBIT_CARD',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: errorCode,
+    });
+  }
+
+  // PS-13 §4 step 5: Stripe webhook confirming a card transaction (the
+  // contractor actually spending funded balance at a merchant — distinct
+  // from the fundCard() call above, which loads the card and settles
+  // synchronously). No handler existed for this event at all. This records
+  // an audit trail entry per transaction; it does not affect payout status
+  // (funding already completed independently of contractor spend).
+  async handleIssuingTransactionCreated(transaction: any): Promise<void> {
+    const cardId = transaction.card;
+    if (!cardId) return;
+
+    const method = await this.methodRepo.findOne({ where: { stripeCardId: cardId } as any });
+    if (!method) {
+      this.logger.warn(`issuing_transaction.created for unknown card ${cardId}`);
+      return;
+    }
+
+    await this.auditService.log({
+      contractorId: method.contractorId,
+      actorType: 'service',
+      actorId: 'stripe-webhook',
+      action: 'card.transaction.created',
+      metadata: {
+        methodId: method.id,
+        stripeCardId: cardId,
+        stripeTransactionId: transaction.id,
+        amountCents: transaction.amount,
+        merchantData: transaction.merchant_data ?? null,
+      },
     });
   }
 }

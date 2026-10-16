@@ -14,7 +14,7 @@ const fetchHomepage = cache(async (): Promise<HomepagePayload | null> => {
 
     const res = await fetch(`${HOMEPAGE_BASE}/homepage`, {
       headers: variant ? { Cookie: `mktq_hp_variant=${variant}` } : {},
-      next: { revalidate: 60 },
+      cache: "no-store",
     })
 
     if (!res.ok) return null

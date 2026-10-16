@@ -89,8 +89,8 @@ export default function TalentDashboard() {
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
           <LeftSidebar />
-          <div className="flex-auto p-3.5 gap-x-6 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
-            <div className="flex-auto space-y-3 md:space-y-5 min-w-0">
+          <div className="flex-auto p-3.5 gap-x-8 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
+            <div className="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">
               <Welcome onToggle={() => setIsOpen(true)} />
 
               <RecentListings />

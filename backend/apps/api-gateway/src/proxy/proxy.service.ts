@@ -22,6 +22,10 @@ export class ProxyService {
       checkout: config.get('CHECKOUT_SERVICE_URL') || 'http://localhost:3009',
       messages: config.get('MESSAGING_SERVICE_URL') || 'http://localhost:3005',
       notifications: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',
+      // Contact Support (account recovery) is served by notification-service's
+      // @Controller('support'); it owns Brevo, so the mail goes out from the
+      // service that already sends mail rather than a second Brevo client.
+      support: config.get('NOTIFICATION_SERVICE_URL') || 'http://localhost:3006',
       search: config.get('SEARCH_SERVICE_URL') || 'http://localhost:3007',
       algolia: config.get('ALGOLIA_SERVICE_URL') || 'http://localhost:3008',
       favorites: config.get('FAVORITES_SERVICE_URL') || 'http://localhost:3012',
@@ -49,6 +53,9 @@ export class ProxyService {
       wireReview: config.get('WIRE_REVIEW_SERVICE_URL') || 'http://localhost:3031',
       offers: config.get('OFFER_SERVICE_URL') || 'http://localhost:3011',
       legal: config.get('LEGAL_SERVICE_URL') || 'http://localhost:3032',
+      identityVerification:
+        config.get('IDENTITY_VERIFICATION_SERVICE_URL') || 'http://localhost:3019',
+      location: config.get('LOCATION_SERVICE_URL') || 'http://localhost:3036',
     }
   }
 
@@ -70,6 +77,13 @@ export class ProxyService {
     const headers: Record<string, string> = {
       'content-type': req.headers['content-type'] as string || 'application/json',
       ...(req.headers['x-internal-token'] ? { 'x-internal-token': req.headers['x-internal-token'] as string } : {}),
+      // auth-service parses this with ua-parser-js to label a session's
+      // browser/OS (createSession) and to tell the user which device changed
+      // their password. Without it every session records as a bare "desktop"
+      // with no browser or OS, and the notification email cannot name the
+      // device — same class of silent breakage as the x-forwarded-for case
+      // below, and invisible because an absent header is not an error.
+      ...(req.headers['user-agent'] ? { 'user-agent': req.headers['user-agent'] as string } : {}),
       // Company-scoped invitations routes (CompanyContextGuard) read this
       // to authorize the caller against :companyId.
       ...(req.headers['x-company-id'] ? { 'x-company-id': req.headers['x-company-id'] as string } : {}),
@@ -79,6 +93,11 @@ export class ProxyService {
       // these exact paths ahead of the global json() parser).
       ...(req.headers['stripe-signature'] ? { 'stripe-signature': req.headers['stripe-signature'] as string } : {}),
       ...(req.headers['x-ramp-signature'] ? { 'x-ramp-signature': req.headers['x-ramp-signature'] as string } : {}),
+      // Didit Free KYC webhook headers — identity-verification-service
+      // verifies the V2 HMAC and the timestamp window from these. Forwarded
+      // verbatim and only when present; never fabricated.
+      ...(req.headers['x-signature-v2'] ? { 'x-signature-v2': req.headers['x-signature-v2'] as string } : {}),
+      ...(req.headers['x-timestamp'] ? { 'x-timestamp': req.headers['x-timestamp'] as string } : {}),
     }
 
     // Downstream services (timezone-resolution.service.ts, geo.service.ts's

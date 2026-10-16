@@ -570,6 +570,7 @@ const RichTextToolbar = ({
   isFontMenuOpen,
   onFontMenuOpenChange,
   onFontMenuTriggerMouseDown,
+  onSmartAssistant,
   getSelectionSnapshot,
   isPinned,
   onTogglePinned,
@@ -582,16 +583,20 @@ const RichTextToolbar = ({
   isFontMenuOpen: boolean
   onFontMenuOpenChange: (open: boolean) => void
   onFontMenuTriggerMouseDown: () => void
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
   getSelectionSnapshot: () => { from: number; to: number } | null
   isPinned: boolean
   onTogglePinned: () => void
   /**
    * "simple" drops the image button, Smart Assistant shortcut, and
    * pin/lock toggle — just heading, bold/italic/underline/strike, align,
-   * and lists. Used by the case-study editor (Figma: text editor toolbar),
-   * which is local-only and has no image-in-text or Smart Assistant flow.
+   * and lists. "final-review" keeps only the final review controls:
+   * heading, inline marks, lists, and Smart Assistant.
    */
-  variant?: "full" | "simple"
+  variant?: "full" | "simple" | "final-review"
 }) => {
   const toolbarState = useEditorState({
     editor,
@@ -689,6 +694,25 @@ const RichTextToolbar = ({
     chain.setTextSelection({ from: cursorFrom, to: cursorTo }).run()
   }
 
+  const handleSmartAssistantClick = () => {
+    const { from, to } = editor.state.selection
+    const selectedText = editor.state.doc.textBetween(from, to, "\n").trim()
+
+    if (!selectedText) return
+
+    onSmartAssistant?.({
+      selectedText,
+      insertText: (text: string) => {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection({ from, to })
+          .insertContent(text)
+          .run()
+      },
+    })
+  }
+
   const getActiveInlineMarks = () => ({
     bold: editor.isActive("bold"),
     italic: editor.isActive("italic"),
@@ -752,6 +776,10 @@ const RichTextToolbar = ({
     ? "Uploading image..."
     : "Upload Image"
   const pinTooltipLabel = isPinned ? "Unlock Toolbar" : "Lock Toolbar"
+  const showAlignmentControls = variant !== "final-review"
+  const showImageControls = variant === "full"
+  const showSmartAssistant = variant === "full" || variant === "final-review"
+  const showPinControl = variant === "full"
 
   return (
     <div
@@ -896,75 +924,79 @@ const RichTextToolbar = ({
           </Tooltip>
         </TooltipProvider>
       </div>
-      <span className="h-4 inline-block w-px bg-white/20" />
-      <div className="inline-flex px-2 items-center gap-x-1">
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <Toggle
-              pressed={toolbarState.alignLeft}
-              onPressedChange={() =>
-                editor.chain().focus().setTextAlign("left").run()
-              }
-              asChild
-            >
-              <TooltipTrigger
-                data-rich-text-command="align-left"
-                onMouseDown={preventToolbarFocusChange}
-                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
-              >
-                <ToLeft />
-              </TooltipTrigger>
-            </Toggle>
-            <TooltipContent side="top" visual="white" sideOffset={9.14}>
-              Left Align ⌘+Shift+L
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <Toggle
-              pressed={toolbarState.alignCenter}
-              onPressedChange={() =>
-                editor.chain().focus().setTextAlign("center").run()
-              }
-              asChild
-            >
-              <TooltipTrigger
-                data-rich-text-command="align-center"
-                onMouseDown={preventToolbarFocusChange}
-                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
-              >
-                <ToCenter />
-              </TooltipTrigger>
-            </Toggle>
-            <TooltipContent side="top" visual="white" sideOffset={9.14}>
-              Center Align ⌘+Shift+C
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider delayDuration={75}>
-          <Tooltip>
-            <Toggle
-              pressed={toolbarState.alignRight}
-              onPressedChange={() =>
-                editor.chain().focus().setTextAlign("right").run()
-              }
-              asChild
-            >
-              <TooltipTrigger
-                data-rich-text-command="align-right"
-                onMouseDown={preventToolbarFocusChange}
-                className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
-              >
-                <ToRight />
-              </TooltipTrigger>
-            </Toggle>
-            <TooltipContent side="top" visual="white" sideOffset={9.14}>
-              Right Align ⌘+Shift+R
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      {showAlignmentControls ? (
+        <>
+          <span className="h-4 inline-block w-px bg-white/20" />
+          <div className="inline-flex px-2 items-center gap-x-1">
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <Toggle
+                  pressed={toolbarState.alignLeft}
+                  onPressedChange={() =>
+                    editor.chain().focus().setTextAlign("left").run()
+                  }
+                  asChild
+                >
+                  <TooltipTrigger
+                    data-rich-text-command="align-left"
+                    onMouseDown={preventToolbarFocusChange}
+                    className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+                  >
+                    <ToLeft />
+                  </TooltipTrigger>
+                </Toggle>
+                <TooltipContent side="top" visual="white" sideOffset={9.14}>
+                  Left Align ⌘+Shift+L
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <Toggle
+                  pressed={toolbarState.alignCenter}
+                  onPressedChange={() =>
+                    editor.chain().focus().setTextAlign("center").run()
+                  }
+                  asChild
+                >
+                  <TooltipTrigger
+                    data-rich-text-command="align-center"
+                    onMouseDown={preventToolbarFocusChange}
+                    className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+                  >
+                    <ToCenter />
+                  </TooltipTrigger>
+                </Toggle>
+                <TooltipContent side="top" visual="white" sideOffset={9.14}>
+                  Center Align ⌘+Shift+C
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider delayDuration={75}>
+              <Tooltip>
+                <Toggle
+                  pressed={toolbarState.alignRight}
+                  onPressedChange={() =>
+                    editor.chain().focus().setTextAlign("right").run()
+                  }
+                  asChild
+                >
+                  <TooltipTrigger
+                    data-rich-text-command="align-right"
+                    onMouseDown={preventToolbarFocusChange}
+                    className="inline-flex h-[25px] shrink-0 focus-visible:outline-none justify-center items-center rounded-[4px] hover:bg-white/15 data-[state=on]:bg-white/15 text-gray-50/50 hover:text-white/75 data-[state=on]:text-white data-[state=on]:hover:text-white transition duration-300"
+                  >
+                    <ToRight />
+                  </TooltipTrigger>
+                </Toggle>
+                <TooltipContent side="top" visual="white" sideOffset={9.14}>
+                  Right Align ⌘+Shift+R
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </>
+      ) : null}
       <span className="h-4 inline-block w-px bg-white/20" />
       <div className="inline-flex px-2 items-center gap-x-1">
         <TooltipProvider delayDuration={75}>
@@ -1008,7 +1040,7 @@ const RichTextToolbar = ({
           </Tooltip>
         </TooltipProvider>
       </div>
-      {variant === "full" && (
+      {showImageControls ? (
         <>
           <span className="h-4 inline-block w-px bg-white/20" />
           <div className="inline-flex px-2 items-center">
@@ -1030,17 +1062,26 @@ const RichTextToolbar = ({
               </Tooltip>
             </TooltipProvider>
           </div>
+        </>
+      ) : null}
+      {showSmartAssistant ? (
+        <>
           <span className="h-4 inline-block w-px bg-white/20" />
           <div className="inline-flex pl-2 items-center">
             <button
               type="button"
               onMouseDown={preventToolbarFocusChange}
+              onClick={handleSmartAssistantClick}
               className="inline-flex h-[25px] shrink-0 items-center justify-center gap-x-1 rounded-[4px] px-2 text-xs leading-none text-white/75 hover:bg-white/15 hover:text-white active:bg-white/15 active:text-white transition duration-300 focus-visible:outline-none"
             >
               <MagicWand01 className="size-4 shrink-0" />
               <span className="whitespace-nowrap">Edit with Smart Assistant</span>
             </button>
           </div>
+        </>
+      ) : null}
+      {showPinControl ? (
+        <>
           <span className="h-4 inline-block w-px bg-white/20" />
           <div className="inline-flex pl-2 items-center">
             <TooltipProvider delayDuration={75}>
@@ -1070,7 +1111,7 @@ const RichTextToolbar = ({
             </TooltipProvider>
           </div>
         </>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -1090,6 +1131,8 @@ const ActiveEditor = ({
   stickyToolbarActions,
   onUploadImage,
   toolbarVariant = "full",
+  showToolbarOnFocus = false,
+  onSmartAssistant,
 }: {
   defaultValue: string
   editorClassName?: string
@@ -1115,7 +1158,13 @@ const ActiveEditor = ({
    */
   onUploadImage?: (file: File) => Promise<string>
   /** See RichTextEditor's toolbarVariant — passed straight through. */
-  toolbarVariant?: "full" | "simple"
+  toolbarVariant?: "full" | "simple" | "final-review"
+  /** Shows the floating text toolbar as soon as the editor receives focus. */
+  showToolbarOnFocus?: boolean
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -1504,7 +1553,10 @@ const ActiveEditor = ({
     },
   })
 
-  const shouldKeepToolbarVisible = hasSelectedText || hasFontMenuAnchorSelection
+  const shouldKeepToolbarVisible =
+    hasSelectedText ||
+    hasFontMenuAnchorSelection ||
+    (showToolbarOnFocus && isEditorFocused)
 
   const updateFloatingToolbarPosition = useCallback(() => {
     if (!editor || !containerRef.current) {
@@ -1514,6 +1566,15 @@ const ActiveEditor = ({
 
     const selection = window.getSelection()
     if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      if (showToolbarOnFocus && isEditorFocused) {
+        const rect = containerRef.current.getBoundingClientRect()
+        setFloatingToolbarPosition({
+          top: Math.max(rect.top - 49, 8),
+          left: rect.left + 64,
+        })
+        return
+      }
+
       if (!hasFontMenuAnchorSelection) {
         setFloatingToolbarPosition(null)
       }
@@ -1541,7 +1602,7 @@ const ActiveEditor = ({
       top: Math.max(idealTop, minVisibleTop),
       left: rect.left,
     })
-  }, [editor, hasFontMenuAnchorSelection])
+  }, [editor, hasFontMenuAnchorSelection, isEditorFocused, showToolbarOnFocus])
 
   const handleFontMenuOpenChange = useCallback(
     (open: boolean) => {
@@ -2285,6 +2346,7 @@ const ActiveEditor = ({
             isPinned={isToolbarPinned}
             onTogglePinned={() => handleToolbarPinnedChange(false)}
             variant={toolbarVariant}
+            onSmartAssistant={onSmartAssistant}
           />
           {stickyToolbar && stickyToolbarActions ? (
             <div className="flex items-center gap-x-1.5 shrink-0 ml-3">
@@ -2323,6 +2385,7 @@ const ActiveEditor = ({
                 isPinned={isToolbarPinned}
                 onTogglePinned={() => handleToolbarPinnedChange(true)}
                 variant={toolbarVariant}
+                onSmartAssistant={onSmartAssistant}
               />
             </div>,
             document.body
@@ -2407,6 +2470,8 @@ const RichTextEditor = ({
   onUploadImage,
   hideImageButton = false,
   toolbarVariant = "full",
+  showToolbarOnFocus = false,
+  onSmartAssistant,
 }: {
   defaultValue?: string
   placeholder?: string
@@ -2425,13 +2490,20 @@ const RichTextEditor = ({
   onUploadImage?: (file: File) => Promise<string>
   /** Hides the floating "Add image" button in the top-right corner. */
   hideImageButton?: boolean
+  /** Shows the floating text toolbar as soon as the editor receives focus. */
+  showToolbarOnFocus?: boolean
   /**
    * "simple" renders the floating text toolbar without the image button,
    * Smart Assistant shortcut, or pin/lock toggle — just heading,
    * bold/italic/underline/strike, align, and lists (Figma: case-study
-   * text editor toolbar). Defaults to "full" everywhere else.
+   * text editor toolbar). "final-review" shows only the final review controls.
+   * Defaults to "full" everywhere else.
    */
-  toolbarVariant?: "full" | "simple"
+  toolbarVariant?: "full" | "simple" | "final-review"
+  onSmartAssistant?: (payload: {
+    selectedText: string
+    insertText: (text: string) => void
+  }) => void
 }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [internalFullscreenOpen, setInternalFullscreenOpen] = useState(false)
@@ -2696,6 +2768,8 @@ const RichTextEditor = ({
       onBlur={handleBlur}
       onUploadImage={onUploadImage}
       toolbarVariant={toolbarVariant}
+      showToolbarOnFocus={showToolbarOnFocus}
+      onSmartAssistant={onSmartAssistant}
     />
   ) : (
     <div

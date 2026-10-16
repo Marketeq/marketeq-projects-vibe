@@ -4,6 +4,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { KycGateService } from './kyc-gate.service';
 import { EddService } from './edd.service';
+import { KycController } from './kyc.controller';
 import { PayoutRequest } from '../entities/payout-request.entity';
 import { DepositMethod } from '../entities/deposit-method.entity';
 import { FirstPayoutHold } from '../entities/first-payout-hold.entity';
@@ -16,6 +17,7 @@ import { PublishersModule } from '../publishers/publishers.module';
     CommonModule,       // KycClient
     PublishersModule,   // PayoutPublisher (for EDD events)
   ],
+  controllers: [KycController],
   providers: [KycGateService, EddService],
   exports: [KycGateService, EddService],
 })

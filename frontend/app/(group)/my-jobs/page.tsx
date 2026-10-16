@@ -286,7 +286,13 @@ const ClientMyJobsView = () => {
       <div className="min-w-0 space-y-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <h1 className="text-xl font-bold text-dark-blue-400">My Jobs</h1>
-          <Button onClick={() => router.push("/job-listing")}>
+          <Button
+            className="w-auto"
+            onClick={() => {
+              window.sessionStorage.removeItem("marketeq-job-listing-id")
+              router.push("/job-listing")
+            }}
+          >
             <Plus className="size-4" /> Create Job
           </Button>
         </div>
@@ -782,7 +788,7 @@ export default function MyJobsPage() {
         <div className="flex min-h-screen bg-gray-50">
           <LeftSidebar />
 
-          <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
+          <div className="flex-auto overflow-hidden pt-3 px-3.5 pb-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px]">
             <ClientMyJobsView />
           </div>
         </div>
@@ -795,7 +801,7 @@ export default function MyJobsPage() {
       <div className="flex min-h-screen bg-gray-50">
         <LeftSidebar />
 
-        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px]">
+        <div className="flex-auto overflow-hidden p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px]">
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
             <div className="min-w-0 space-y-6">
               <Card className="overflow-hidden rounded-xl border-primary-100 bg-primary-50">

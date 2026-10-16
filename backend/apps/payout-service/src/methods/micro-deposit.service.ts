@@ -244,24 +244,74 @@ export class MicroDepositService {
       ],
     });
 
+    // A null deposit_method_id is a normal, expected state here, not corrupt
+    // data: migration 002 drops NOT NULL precisely because Stripe Financial
+    // Connections creates the verification row before the deposit_method row
+    // exists (the session is created before OAuth completes, PS-05). Any FC
+    // session the contractor abandons therefore reaches this sweep with a null
+    // method — so this path is guaranteed to be hit, not a rare edge case.
+    //
+    // Passing that null straight to em.update() made TypeORM throw "Empty
+    // criteria(s) are not allowed for the update method", and because nothing
+    // caught it the throw escaped the whole cron: every later row went
+    // unexpired and the magic-link cleanup below never ran at all. Expiring
+    // the verification and skipping the method update is the correct handling
+    // for an abandoned session — there is no method row to mark yet.
+    let succeeded = 0;
+    const failed: string[] = [];
+
     for (const v of expired) {
-      await this.dataSource.transaction(async (em) => {
-        await em.update(DepositMethodVerification, v.id, {
-          status: VerificationStatus.EXPIRED as any,
+      try {
+        await this.dataSource.transaction(async (em) => {
+          await em.update(DepositMethodVerification, v.id, {
+            status: VerificationStatus.EXPIRED as any,
+          });
+          if (v.depositMethodId) {
+            await em.update(DepositMethod, v.depositMethodId, {
+              verificationStatus: VerificationStatus.EXPIRED,
+            });
+          }
         });
-        await em.update(DepositMethod, v.depositMethodId, {
-          verificationStatus: VerificationStatus.EXPIRED,
-        });
-      });
-      this.logger.log(`Verification expired: method ${v.depositMethodId}`);
+        succeeded++;
+        if (v.depositMethodId) {
+          this.logger.log(`Verification expired: method ${v.depositMethodId}`);
+        } else {
+          // Routine, so logged at the same level as the normal case: an
+          // abandoned Stripe FC session has no method row to mark yet.
+          this.logger.log(
+            `Verification ${v.id} expired with no deposit_method_id ` +
+            `(unconsummated session) — nothing to update on the method`,
+          );
+        }
+      } catch (err: unknown) {
+        failed.push(v.id);
+        this.logger.error(
+          `Failed to expire verification ${v.id} ` +
+          `(method ${v.depositMethodId ?? 'none'}): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
-    // Cleanup expired magic link tokens
-    await this.mlTokenRepo.update(
-      { isUsed: false, expiresAt: LessThan(now) } as any,
-      { isUsed: true },
-    );
+    // Cleanup expired magic link tokens. Kept outside the loop's failure path
+    // so a bad verification row can no longer suppress it.
+    try {
+      await this.mlTokenRepo.update(
+        { isUsed: false, expiresAt: LessThan(now) } as any,
+        { isUsed: true },
+      );
+    } catch (err: unknown) {
+      this.logger.error(
+        `Magic link token cleanup failed: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
-    if (expired.length > 0) this.logger.log(`Expired ${expired.length} stale verifications`);
+    if (succeeded > 0) this.logger.log(`Expired ${succeeded} stale verifications`);
+    if (failed.length > 0) {
+      this.logger.error(
+        `${failed.length} verification(s) could not be expired: ${failed.join(', ')}`,
+      );
+    }
   }
 }

@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer } from "@/service/http/offers"
+import { createCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -65,6 +65,7 @@ import { format, isSameDay, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
+import type { DeclineChip, OfferStatus } from "@/types/offer"
 import { User } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { toast } from "@/components/ui/toast/use-toast"
@@ -78,6 +79,7 @@ import {
   OfferFlowDialog,
   type OfferFlowDialogVariant,
 } from "@/components/offer-flow-dialog"
+import { useOfferChannel } from "@/utils/useOfferChannel"
 import {
   Avatar,
   AvatarFallback,
@@ -190,6 +192,10 @@ interface ChatsProps {
   counterOfferCard?: CounterOfferCardData | null
   declinedOfferCard?: DeclinedOfferCardData | null
   offerNotificationMessages?: OfferNotificationMessageData[]
+  /** Ably 'offer.updated' fired (or the channel reconnected) for the
+   * currently open offer notification — re-run the existing notification
+   * list refetch so selectedNotificationOffer picks up fresh data. */
+  onOfferUpdateRequested?: () => void
 }
 
 const COMPOSER_MAX_CHARS = 8000
@@ -317,6 +323,24 @@ export interface DeclinedOfferCardData {
 export interface OfferNotificationMessageData {
   id: string
   contractId: string
+  // PMCM-393 AC-42: the offer's live status as of the last refetch — distinct
+  // from `event` below, which is fixed to whatever this notification's own
+  // event type was when it was created and never changes. Undefined means
+  // "no live signal" (seeded fixtures, or the offer-service lookup failed)
+  // and must never be treated as withdrawn/expired.
+  offerStatus?: OfferStatus
+  // PMCM-392 AC-40.06: the real contracts-service contract id, once one
+  // exists — a different thing from `contractId` above, which (despite the
+  // name) is this offer's own id. Undefined means no contract yet, same
+  // "no live signal" rule as offerStatus: never invent one, never treat
+  // absence as an error.
+  realContractId?: string | null
+  // PMCM-376: the id of this offer's own latest counter offer (whatever its
+  // status), sourced from getOffer()'s latestCounterOffer.id. Undefined
+  // means "no live signal" — the seeded catch branch in page.tsx never sets
+  // this, and neither does a pre-PMCM-376-backend-merge fetch. Never invent
+  // one; a withdraw action must stay disabled/hidden when this is absent.
+  latestCounterOfferId?: string
   event: string
   title: string
   body: string
@@ -355,6 +379,38 @@ export interface OfferNotificationMessageData {
 }
 
 const COUNTER_OFFER_STORAGE_PREFIX = "inbox_counter_offer_submitted"
+
+// BTB-287: OfferFlowDialog's own DECLINE_REASONS chip labels
+// (offer-flow-dialog.tsx, not exported) mapped to offer-service's
+// DeclineChip enum (decline-chip.enum.ts) — same six reasons, same order.
+// The dialog only ever hands back the human label via
+// onDeclineReasonChange; DeclineOfferDto's optional `chip` field needs the
+// enum value, so this is the one place that conversion has to happen.
+const DECLINE_CHIP_BY_REASON: Record<string, DeclineChip> = {
+  "Budget doesn’t work": "BUDGET_DOESNT_WORK",
+  "Start date doesn’t work": "START_DATE_DOESNT_WORK",
+  "Requirements are unclear": "REQUIREMENTS_UNCLEAR",
+  "Not a fit for my skills": "NOT_A_FIT",
+  "Too busy right now": "TOO_BUSY",
+  "Need different terms": "NEED_DIFFERENT_TERMS",
+}
+
+// PMCM-392 AC-40.02: "Monday, Jan 30, 2025" — the weekday variant, matching
+// offer-service's own OfferResponse.startDateDisplay spec and the identical
+// toLocaleDateString call already in hire-me-button.tsx. Display-time only:
+// the already-formatted "Jan 30, 2025" values this reads (selectedNotificationOfferData.startDate,
+// acceptedOfferCard.startDate) are untouched everywhere else they render.
+const formatAcceptedHeadlineDate = (startDate: string): string => {
+  const parsed = new Date(startDate)
+  return Number.isNaN(parsed.getTime())
+    ? startDate
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+}
 
 const OFFER_EVENT_ACTION: Record<string, string> = {
   "offer.received": "sent an offer",
@@ -420,8 +476,27 @@ export function Chats({
   counterOfferCard,
   declinedOfferCard,
   offerNotificationMessages = [],
+  onOfferUpdateRequested,
 }: ChatsProps) {
   const router = useRouter()
+  // AC-42.08: live connectivity, unlike the existing navigator.onLine
+  // pre-flight checks elsewhere in this file (one-time checks paired with a
+  // toast) — this needs to react while a dialog is already open. Named
+  // isNetworkOnline (not isOnline) — that name is already the presence-check
+  // function returned by useOnlineUsers() below.
+  const [isNetworkOnline, setIsNetworkOnline] = useState(
+    typeof navigator === "undefined" ? true : navigator.onLine
+  )
+  useEffect(() => {
+    const goOnline = () => setIsNetworkOnline(true)
+    const goOffline = () => setIsNetworkOnline(false)
+    window.addEventListener("online", goOnline)
+    window.addEventListener("offline", goOffline)
+    return () => {
+      window.removeEventListener("online", goOnline)
+      window.removeEventListener("offline", goOffline)
+    }
+  }, [])
   const [textareaValue, setTextareaValue] = useState("")
   const lastTypedAtRef = useRef(0)
   const userTypedRef = useRef(false)
@@ -439,6 +514,48 @@ export function Chats({
     useState<string[]>([])
   const [selectedNotificationOffer, setSelectedNotificationOffer] =
     useState<OfferNotificationMessageData | null>(null)
+
+  // PMCM-393 AC-42: keep the open offer notification dialog live. The
+  // channel event doesn't carry OfferNotificationMessageData's display shape
+  // (formatted currency/duration/schedule strings), so rather than hand-merge
+  // the raw payload, re-run the existing offerNotificationMessages refetch
+  // (owned by the inbox page) and let the sync effect below pick up the
+  // refreshed item — no parallel formatting/state.
+  const { isLive: offerChannelIsLive, hasConnected: offerChannelHasConnected } =
+    useOfferChannel(
+      selectedNotificationOffer?.contractId,
+      () => onOfferUpdateRequested?.(),
+      () => onOfferUpdateRequested?.()
+    )
+  // AC-42.07: only once we've actually connected once — otherwise this would
+  // read true (not live yet) for the brief moment every modal takes to open.
+  const showOfferChannelReconnecting =
+    offerChannelHasConnected && !offerChannelIsLive
+
+  // AC-42.05: fires only when the expiry itself changed on a still-open
+  // offer — not on every unrelated update — so it can't misfire together
+  // with the withdrawn/expired button-swap below.
+  const [showOfferUpdatedBanner, setShowOfferUpdatedBanner] = useState(false)
+  useEffect(() => {
+    if (!selectedNotificationOffer) setShowOfferUpdatedBanner(false)
+  }, [selectedNotificationOffer])
+
+  useEffect(() => {
+    if (!selectedNotificationOffer) return
+    const fresh = offerNotificationMessages.find(
+      (item) => item.id === selectedNotificationOffer.id
+    )
+    if (fresh && fresh !== selectedNotificationOffer) {
+      if (
+        fresh.offerStatus === "PENDING" &&
+        fresh.expiresLabel !== selectedNotificationOffer.expiresLabel
+      ) {
+        setShowOfferUpdatedBanner(true)
+      }
+      setSelectedNotificationOffer(fresh)
+    }
+  }, [offerNotificationMessages, selectedNotificationOffer])
+
   const [notificationOfferStep, setNotificationOfferStep] = useState<
     | "event"
     | "accept"
@@ -468,6 +585,10 @@ export function Chats({
   const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  const [decliningOffer, setDecliningOffer] = useState(false)
+  const [editingCounterOffer, setEditingCounterOffer] = useState(false)
+  const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
+  const [withdrawingOffer, setWithdrawingOffer] = useState(false)
   const [declinedCounterOfferMessage, setDeclinedCounterOfferMessage] =
     useState<OfferNotificationMessageData | null>(null)
   const [acceptedCounterOfferMessage, setAcceptedCounterOfferMessage] =
@@ -644,6 +765,73 @@ export function Chats({
     notificationOfferStep === "event" &&
     selectedNotificationOffer?.event === "offer.withdrawn"
 
+  // PMCM-393 AC-42.02/03/04: live status for whichever offer/counter view is
+  // currently open. `offerStatus` is undefined whenever there's no live
+  // signal (seeded fixtures, or the getOffer() lookup failed) — every check
+  // below requires an explicit match against a live value, so undefined
+  // always falls through to "no override", never to withdrawn/expired.
+  //
+  // A local Decline never reaches this: declining closes the dialog
+  // synchronously in the same handler that calls the API (see onDecline
+  // below), before any Ably-driven refetch could arrive, so there's no
+  // window where our own decline could be misread as a withdrawal here.
+  const liveOfferWithdrawn = selectedNotificationOffer?.offerStatus === "WITHDRAWN"
+
+  // The offer's own status has no notion of "counter offer" — a COUNTERED
+  // offer falling back to PENDING just means whatever counter was active is
+  // no longer active. That's true whether the talent withdrew it, it timed
+  // out, or the client declined it (declined is excluded above the same way
+  // as the primary-offer case). Disambiguating withdrawn vs. expired needs
+  // an extra signal.
+  const liveCounterOfferGone =
+    selectedNotificationOffer?.offerStatus === "PENDING" &&
+    selectedNotificationOfferEventVariant === "counter-offer-details"
+  const newestNotificationForOpenOffer = useMemo(() => {
+    if (!liveCounterOfferGone || !selectedNotificationOffer) return undefined
+    return offerNotificationMessages
+      .filter((item) => item.contractId === selectedNotificationOffer.contractId)
+      .sort(
+        (left, right) =>
+          new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+      )
+      .at(-1)
+  }, [liveCounterOfferGone, offerNotificationMessages, selectedNotificationOffer])
+  // Disambiguation source: the refreshed notification list, not the Ably
+  // payload — offers.service.ts/counter-offers.service.ts publish the exact
+  // same { offer: { status: 'PENDING' }, counterOffer: null } shape for
+  // counter withdrawn, counter declined, and counter expired alike (verified
+  // against counter-offers.service.ts's decline/withdraw and
+  // expiry.processor.ts's expireCounterOffers — all three restore the parent
+  // offer to PENDING the same way), so the live payload alone cannot tell
+  // withdrawn from expired. offer.counter_expired and offer.counter_withdrawn
+  // notification events already exist as first-class strings in this file
+  // (see selectedNotificationOfferEventVariant above), so if the backend
+  // ever creates one for this offer, use it. In production, no producer in
+  // offer-service or notification-service currently emits a notification for
+  // either event (confirmed: no OFFER_EXCHANGE consumer in notification-service
+  // and no notification client in offer-service) — so newestNotificationForOpenOffer
+  // will not exist for real traffic, and this falls through to the withdrawn
+  // copy every time, per instruction, until a backend producer is added.
+  const liveCounterResolvedExpired =
+    liveCounterOfferGone &&
+    newestNotificationForOpenOffer?.event === "offer.counter_expired"
+  const liveCounterWithdrawn = liveCounterOfferGone && !liveCounterResolvedExpired
+  const liveOfferExpired =
+    selectedNotificationOffer?.offerStatus === "EXPIRED" ||
+    liveCounterResolvedExpired
+  // Applies even outside the "event" step (AC-42.04 point 4): if the viewer
+  // is mid Accept/Decline/Counter when the offer goes terminal, the submit
+  // action must disable and show this text rather than ripping them out of
+  // the sub-flow. Copy matches offer-flow-dialog.tsx's existing terminal
+  // notice for "expired" so there's no third string for the same state.
+  const liveTerminalNotice = liveOfferWithdrawn
+    ? "This offer has been withdrawn."
+    : liveCounterWithdrawn
+      ? "This counter offer has been withdrawn."
+      : liveOfferExpired
+        ? "This offer has expired."
+        : undefined
+
   const selectedNotificationOfferVariant: OfferFlowDialogVariant =
     notificationOfferStep === "accept"
       ? notificationAcceptanceMessage.trim() && notificationTermsAccepted
@@ -671,6 +859,7 @@ export function Chats({
     setNotificationTermsAccepted(false)
     setNotificationDeclineMessage("")
     setNotificationDeclineReason("")
+    setShowOfferUpdatedBanner(false)
   }
 
   const selectedNotificationOfferData = useMemo<OfferDialogData | null>(() => {
@@ -2416,6 +2605,18 @@ export function Chats({
   const conversationOfferContractIds = new Set(
     conversationOfferNotifications.map((item) => item.contractId)
   )
+  // PMCM-392 AC-40.03/40.06: acceptedOfferCard is frozen into sessionStorage
+  // at accept time, before contracts-service could possibly have created
+  // anything — there is no real contractId to write there. Looked up here
+  // instead, from the same live, already-refetched list selectedNotificationOffer
+  // reads, matched on the shared offer id (acceptedOfferCard.contractId is
+  // that same misnomer). Picks up a real id automatically once one exists,
+  // with no new polling.
+  const acceptedOfferCardRealContractId = acceptedOfferCard
+    ? conversationOfferNotifications.find(
+        (item) => item.contractId === acceptedOfferCard.contractId
+      )?.realContractId
+    : undefined
   const seededTalentFollowOnId = [...conversationOfferNotifications]
     .reverse()
     .find(
@@ -3061,13 +3262,40 @@ export function Chats({
                   (isActiveTalentOffer ||
                     isAcceptedOffer ||
                     isExpiredOffer ||
-                    isClientSentTalentCounter)
+                    isClientSentTalentCounter ||
+                    isDeclinedOffer ||
+                    // BTB-291/PMCM-367 AC-13.02: isActiveTalentOffer is
+                    // `!state`, and OFFER_EVENT_STATE maps
+                    // offer.expiring_soon to a real (Badge-worthy) state —
+                    // so a PENDING offer nearing expiry fell through every
+                    // branch here and lost its CTA, even though it's still
+                    // fully actionable. isPendingOffer (already computed
+                    // above) is exactly that "expiring but not terminal"
+                    // case; QA's jobListingId theory didn't hold up — see
+                    // hasJobListing above, which is a separate, real bug in
+                    // the modal's View Job link, not this gate.
+                    isPendingOffer ||
+                    (isWithdrawnOffer &&
+                      !item.event.includes("counter_withdrawn")))
+                // PMCM-367 AC-13.05: only the superseded original drops its
+                // CTA. A client-sent counter is also isCounteredOffer, but it
+                // is the live offer the talent responds to, so it keeps
+                // View Offer. The client's counter_declined/counter_withdrawn
+                // cards stay CTA-less as before — the counter card carries
+                // those actions (AC-13.09).
+                const hideOfferCardAction =
+                  (isCounteredOffer && !isClientSentTalentCounter) ||
+                  (item.clientPerspective === true &&
+                    (item.event.includes("counter_declined") ||
+                      item.event.includes("counter_withdrawn")))
                 const talentOfferDescription = isAcceptedOffer
                   ? `Starts on ${item.startDate}.`
                   : isDeclinedOffer
                     ? "This offer is now closed."
                     : isCounteredOffer
-                      ? `This offer expires ${item.expiresLabel}.`
+                      ? isClientSentTalentCounter
+                        ? `This offer expires ${item.expiresLabel}.`
+                        : "This offer was replaced by new terms."
                       : isCounterDeclinedOffer
                         ? `This offer expires ${item.expiresLabel}.`
                       : isWithdrawnOffer
@@ -3369,9 +3597,7 @@ export function Chats({
                                   {state && !isClientSentTalentCounter ? (
                                     <Badge
                                       visual={
-                                        isTalentOffer &&
-                                        (isCounteredOffer ||
-                                          isCounterDeclinedOffer)
+                                        isTalentOffer && isCounterDeclinedOffer
                                           ? "warning"
                                           : showOriginalAsCountered
                                             ? "gray"
@@ -3386,9 +3612,7 @@ export function Chats({
                                           "ml-auto"
                                       )}
                                     >
-                                      {isTalentOffer &&
-                                      (isCounteredOffer ||
-                                        isCounterDeclinedOffer)
+                                      {isTalentOffer && isCounterDeclinedOffer
                                         ? "Offer Pending"
                                         : showOriginalAsCountered
                                           ? "Offer Countered"
@@ -3413,15 +3637,15 @@ export function Chats({
                                         : item.clientPerspective &&
                                             item.event.includes("withdrawn")
                                           ? "This offer was withdrawn."
-                                          : `This offer expires ${item.expiresLabel}.`}
+                                          : isCounteredOffer
+                                            ? "This offer was replaced by new terms."
+                                            : isExpiredOffer
+                                              ? `This offer expired on ${item.expiresLabel}.`
+                                              : `This offer expires ${item.expiresLabel}.`}
                                   </span>
                                 </div>
                               </div>
-                              {!(
-                                item.clientPerspective &&
-                                (item.event.includes("declined") ||
-                                  item.event.includes("withdrawn"))
-                              ) &&
+                              {!hideOfferCardAction &&
                               (!isTalentOffer || showTalentOfferAction) ? (
                                 <Button
                                   size="sm"
@@ -3476,6 +3700,24 @@ export function Chats({
                                       return
                                     }
                                     openNotificationOffer(item)
+                                    // PMCM-367: the talent's closed states open
+                                    // their read-only views, the same steps the
+                                    // seeded follow-on card uses. "declined"
+                                    // also covers an offer declined this session,
+                                    // whose item.event is still the pre-decline
+                                    // one. A withdrawn offer stays on "event" for
+                                    // the "This offer was withdrawn" dialog —
+                                    // "previous" would show Accept/Decline on it.
+                                    if (isTalentOffer && isDeclinedOffer) {
+                                      setNotificationOfferStep("declined")
+                                      return
+                                    }
+                                    if (
+                                      isTalentOffer &&
+                                      item.event === "offer.withdrawn"
+                                    ) {
+                                      return
+                                    }
                                     if (
                                       item.clientPerspective &&
                                       (item.event === "offer.countered" ||
@@ -3496,14 +3738,18 @@ export function Chats({
                                     ? "View Details"
                                     : isTalentOffer && isAcceptedOffer
                                       ? "View Contract"
+                                      : isTalentOffer && isDeclinedOffer
+                                      ? "View Details"
                                       : item.event.includes("accepted")
                                       ? "View Contract"
-                                      : item.event.includes("withdrawn")
+                                      : item.event.includes("counter_withdrawn")
                                         ? "View Active Offer"
-                                        : item.event.includes("declined") ||
-                                            item.event.includes("expired")
+                                        : item.event.includes("withdrawn")
                                           ? "View Details"
-                                          : "View Offer"}
+                                          : item.event.includes("declined") ||
+                                              item.event.includes("expired")
+                                            ? "View Details"
+                                            : "View Offer"}
                                 </Button>
                               ) : null}
                             </div>
@@ -4671,7 +4917,9 @@ export function Chats({
 
                     <Card className="mt-4 w-full min-w-[320px] flex-col items-stretch justify-start rounded-lg p-5 shadow-none hover:border-gray-200 hover:ring-0">
                       <h3 className="text-base font-bold leading-[19.36px] text-dark-blue-400">
-                        Offer Accepted!
+                        {acceptedOfferCard.startDate.startsWith("Starts")
+                          ? `Offer Accepted — ${acceptedOfferCard.startDate}`
+                          : `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(acceptedOfferCard.startDate)}`}
                       </h3>
                       <p className="mt-5 text-sm font-medium leading-[16.94px] text-dark-blue-400">
                         {acceptedOfferCard.offerTitle}
@@ -4680,27 +4928,28 @@ export function Chats({
                         <Badge variant="rounded" visual="gray" size="sm">
                           {acceptedOfferCard.offerType}
                         </Badge>
-                        <span className="text-xs leading-[14.52px] text-gray-500">
-                          {acceptedOfferCard.startDate.startsWith("Starts")
-                            ? acceptedOfferCard.startDate
-                            : `Starts on ${acceptedOfferCard.startDate}`}
-                        </span>
                       </div>
-                      <Button
-                        variant="link"
-                        visual="primary"
-                        size="sm"
-                        className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
-                        onClick={() =>
-                          router.push(
-                            `/active-project/${encodeURIComponent(
-                              acceptedOfferCard.contractId
-                            )}?title=${encodeURIComponent(acceptedOfferCard.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
-                          )
-                        }
-                      >
-                        View Contract
-                      </Button>
+                      {acceptedOfferCardRealContractId ? (
+                        <Button
+                          variant="link"
+                          visual="primary"
+                          size="sm"
+                          className="mt-4 h-5 w-fit p-0 text-xs font-semibold leading-5 no-underline hover:no-underline"
+                          onClick={() =>
+                            router.push(
+                              `/active-project/${encodeURIComponent(
+                                acceptedOfferCardRealContractId
+                              )}?title=${encodeURIComponent(acceptedOfferCard.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract&perspective=talent`
+                            )
+                          }
+                        >
+                          View Contract
+                        </Button>
+                      ) : (
+                        <span className="mt-4 block text-xs leading-[14.52px] text-gray-500">
+                          Contract being prepared...
+                        </span>
+                      )}
                     </Card>
                   </article>
                 </div>
@@ -5963,11 +6212,56 @@ export function Chats({
           termsAccepted={notificationTermsAccepted}
           declineMessage={notificationDeclineMessage}
           selectedDeclineReason={notificationDeclineReason}
+          declineLoading={decliningOffer}
           declinedByViewer={
             notificationOfferStep === "declined" ||
             (selectedNotificationOffer?.event !== "offer.declined" &&
               selectedNotificationOffer?.event !== "offer.counter_declined")
           }
+          liveWithdrawn={notificationOfferStep === "event" && liveOfferWithdrawn}
+          liveCounterWithdrawn={
+            notificationOfferStep === "event" && liveCounterWithdrawn
+          }
+          liveExpired={notificationOfferStep === "event" && liveOfferExpired}
+          talentAskNowLabel={
+            selectedTalentOfferExpiredOverThirtyDays
+              ? "Ask Now"
+              : "Request Extension"
+          }
+          onTalentRecoveryAction={() => {
+            if (!selectedNotificationOffer || !selectedNotificationOfferData) return
+            setSelectedTab("Messages")
+            setTextareaValue(
+              selectedTalentOfferExpiredOverThirtyDays
+                ? `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+                : `Hi ${selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}! Can you extend the offer for the project ${selectedNotificationOfferData.offerTitle}? I’m still interested.`
+            )
+            lastTypedAtRef.current = Date.now()
+            userTypedRef.current = true
+            sendTyping(true)
+            requestAnimationFrame(() => composerRef.current?.focus())
+            setSelectedNotificationOffer(null)
+          }}
+          onLiveExpiredEditOffer={() => setNotificationOfferStep("edit-expired")}
+          onLiveExpiredResendOffer={() => {
+            setNotificationResendMessage("")
+            setNotificationOfferStep("resend")
+          }}
+          showUpdatedBanner={showOfferUpdatedBanner}
+          showReconnecting={showOfferChannelReconnecting}
+          offline={!isNetworkOnline}
+          liveTerminalNotice={liveTerminalNotice}
+          contractId={selectedNotificationOffer?.realContractId}
+          onViewContract={() => {
+            if (!selectedNotificationOffer?.realContractId || !selectedNotificationOfferData) {
+              return
+            }
+            const realContractId = selectedNotificationOffer.realContractId
+            setSelectedNotificationOffer(null)
+            router.push(
+              `/active-project/${encodeURIComponent(realContractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+            )
+          }}
           onAcceptanceMessageChange={setNotificationAcceptanceMessage}
           onTermsAcceptedChange={setNotificationTermsAccepted}
           onDeclineMessageChange={setNotificationDeclineMessage}
@@ -6031,7 +6325,7 @@ export function Chats({
               step === "accept" ? "accepted" : "accept"
             )
           }}
-          onDecline={() => {
+          onDecline={async () => {
             if (
               notificationOfferStep === "decline" &&
               selectedNotificationOffer &&
@@ -6039,59 +6333,96 @@ export function Chats({
               !selectedNotificationOffer.clientPerspective &&
               !selectedNotificationOffer.event.includes("counter")
             ) {
-              const declinedAt = new Date().toISOString()
+              if (decliningOffer) return
+
               const contractId = selectedNotificationOffer.contractId
+              const trimmedReason = notificationDeclineReason.trim()
               const declineMessage =
                 notificationDeclineMessage.trim() ||
                 "Thanks, unfortunately I can't take this on right now."
+              // BTB-287: DeclineOfferDto has one free-text `reason` field
+              // (required) plus an optional structured `chip` — the chip
+              // buttons hand back a human label ("Budget doesn’t work"),
+              // never the enum value, so DECLINE_CHIP_BY_REASON does that
+              // conversion. declineMessage always has content (its own
+              // fallback above), so `reason` is never sent empty even when
+              // the talent only picked a chip and typed nothing.
+              const reason = declineMessage
+              const chip = trimmedReason
+                ? DECLINE_CHIP_BY_REASON[trimmedReason]
+                : undefined
 
-              setLocallyDeclinedTalentOffers((contractIds) =>
-                contractIds.includes(contractId)
-                  ? contractIds
-                  : [...contractIds, contractId]
-              )
+              setDecliningOffer(true)
+              try {
+                await declineOffer(contractId, { reason, chip })
+                // BTB-287: fire the refetch explicitly, same reasoning as
+                // the withdraw/edit handlers — the backend's Ably publish
+                // is not awaited, and the channel tears down as soon as
+                // selectedNotificationOffer is nulled below, so waiting on
+                // the offer.updated event would reliably lose that race.
+                onOfferUpdateRequested?.()
 
-              if (typeof window !== "undefined") {
-                sessionStorage.setItem(
-                  `inbox_offer_declined:${contractId}`,
-                  JSON.stringify({
-                    status: "declined",
-                    contractId,
-                    offerTitle: selectedNotificationOfferData.offerTitle,
-                    offerType: selectedNotificationOfferData.offerType,
-                    receivedLabel:
-                      selectedNotificationOfferData.receivedLabel ||
-                      "Feb 1, 2025",
-                    declinedAt,
-                    declinedLabel: "Feb 1, 2025",
-                    offerRate: selectedNotificationOfferData.offerRate,
-                    role: selectedNotificationOfferData.role,
-                    duration: selectedNotificationOfferData.duration,
-                    schedule: selectedNotificationOfferData.schedule,
-                    startDate: selectedNotificationOfferData.startDate,
-                    senderDisplayName:
-                      selectedNotificationOfferData.senderDisplayName,
-                    senderUsername:
-                      selectedNotificationOfferData.senderUsername,
-                    senderAvatarSrc:
-                      selectedNotificationOfferData.senderAvatarSrc,
-                    declineMessage,
-                    declineReason:
-                      notificationDeclineReason.trim() ||
-                      "The budget does not align.",
-                  })
+                const declinedAt = new Date().toISOString()
+
+                setLocallyDeclinedTalentOffers((contractIds) =>
+                  contractIds.includes(contractId)
+                    ? contractIds
+                    : [...contractIds, contractId]
                 )
 
-                const url = new URL(window.location.href)
-                url.searchParams.set("offerStatus", "declined")
-                url.searchParams.set("contractId", contractId)
-                router.replace(`${url.pathname}${url.search}${url.hash}`)
-              }
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem(
+                    `inbox_offer_declined:${contractId}`,
+                    JSON.stringify({
+                      status: "declined",
+                      contractId,
+                      offerTitle: selectedNotificationOfferData.offerTitle,
+                      offerType: selectedNotificationOfferData.offerType,
+                      receivedLabel:
+                        selectedNotificationOfferData.receivedLabel ||
+                        "Feb 1, 2025",
+                      declinedAt,
+                      declinedLabel: "Feb 1, 2025",
+                      offerRate: selectedNotificationOfferData.offerRate,
+                      role: selectedNotificationOfferData.role,
+                      duration: selectedNotificationOfferData.duration,
+                      schedule: selectedNotificationOfferData.schedule,
+                      startDate: selectedNotificationOfferData.startDate,
+                      senderDisplayName:
+                        selectedNotificationOfferData.senderDisplayName,
+                      senderUsername:
+                        selectedNotificationOfferData.senderUsername,
+                      senderAvatarSrc:
+                        selectedNotificationOfferData.senderAvatarSrc,
+                      declineMessage,
+                      declineReason:
+                        trimmedReason || "The budget does not align.",
+                    })
+                  )
 
-              setSelectedNotificationOffer(null)
-              setNotificationOfferStep("event")
-              setNotificationDeclineMessage("")
-              setNotificationDeclineReason("")
+                  const url = new URL(window.location.href)
+                  url.searchParams.set("offerStatus", "declined")
+                  url.searchParams.set("contractId", contractId)
+                  router.replace(`${url.pathname}${url.search}${url.hash}`)
+                }
+
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationDeclineMessage("")
+                setNotificationDeclineReason("")
+              } catch (error) {
+                console.error("Offer decline failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't decline the offer",
+                  description: "Please try again.",
+                })
+                // Modal stays open on failure — no state change that would
+                // close it or advance the step, matching the withdraw/edit
+                // handlers' failure paths.
+              } finally {
+                setDecliningOffer(false)
+              }
               return
             }
             if (
@@ -6118,6 +6449,11 @@ export function Chats({
           onBack={() => setNotificationOfferStep("event")}
           onResend={() => setNotificationOfferStep("previous")}
           onEditTerms={() => setNotificationOfferStep("counter")}
+          // BTB-291: offerJobHref() always returns a non-empty
+          // /job-details/... string even with no real jobListingId, so
+          // onViewJob's own `if (!href) return` never catches that case —
+          // hide the link instead of letting it navigate to a broken URL.
+          hasJobListing={Boolean(selectedNotificationOffer?.jobListingId)}
           onViewJob={() => {
             const href = selectedNotificationOffer?.viewJobHref
             if (!href) return
@@ -6305,7 +6641,16 @@ export function Chats({
                       <span>{selectedNotificationOfferData.startDate}</span>
                       {counterTermChanges.startDate ? (
                         <span className="text-xs font-medium text-gray-400">
-                          (was {selectedNotificationOffer?.originalStartDate})
+                          {/* BTB-285: originalStartDate can be a raw ISO
+                          string (seeded/notification metadata never
+                          reformats it, unlike startDate above) — reuse the
+                          same display-time reformatter already in this
+                          file rather than rendering it unparsed. */}
+                          (was{" "}
+                          {formatAcceptedHeadlineDate(
+                            selectedNotificationOffer?.originalStartDate ?? ""
+                          )}
+                          )
                         </span>
                       ) : null}
                     </div>
@@ -6604,18 +6949,16 @@ export function Chats({
             variant="unanimated"
             className="pointer-events-none inset-0 flex max-w-none items-center justify-center bg-transparent p-0 shadow-none"
           >
-            <div className={`pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl ${selectedNotificationOffer.withdrawnByViewer || selectedNotificationOfferIsClientDeclined ? "h-[608px]" : "h-[500px]"}`}>
+            <div className={`pointer-events-auto flex w-[480px] flex-col overflow-hidden rounded-xl bg-white shadow-xl ${selectedNotificationOfferIsClientWithdrawn || selectedNotificationOfferIsClientDeclined ? "h-[608px]" : "h-[500px]"}`}>
               <div className="flex h-[60px] items-center border-b border-gray-200 p-3">
                 <DialogTitle className="flex-1 pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
                   {selectedNotificationOfferIsClientDeclined
                     ? "Your offer was declined"
-                    : selectedNotificationOffer.withdrawnByViewer
-                    ? "You withdrew this offer"
                     : selectedNotificationOfferIsClientWithdrawn
-                    ? "This Offer Was Withdrawn"
+                    ? "You withdrew this offer"
                     : selectedNotificationOfferIsClientExpired
                       ? "This Offer Expired"
-                      : "This Offer Was Accepted"}
+                      : `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(selectedNotificationOfferData.startDate)}`}
                 </DialogTitle>
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -6631,7 +6974,7 @@ export function Chats({
                         {selectedNotificationOfferData.offerType}
                       </Badge>
                       <span className="text-sm font-medium leading-[18px] text-gray-400">
-                        {selectedNotificationOfferIsClientDeclined ? "Declined" : selectedNotificationOffer.withdrawnByViewer ? "Withdrawn" : "Expired"} on {selectedNotificationOfferData.expiresLabel}
+                        {selectedNotificationOfferIsClientDeclined ? "Declined" : selectedNotificationOfferIsClientWithdrawn ? "Withdrawn" : "Expired"} on {selectedNotificationOfferData.expiresLabel}
                       </span>
                     </div>
                     <div className="text-[16px] font-medium leading-6 text-dark-blue-400">
@@ -6678,7 +7021,7 @@ export function Chats({
                   </div>
                 </div>
                 <div className="border-t border-gray-100" />
-                {selectedNotificationOffer.withdrawnByViewer ? (
+                {selectedNotificationOfferIsClientWithdrawn ? (
                   <div className="h-[84px] rounded-lg bg-gray-50 p-4">
                     <div className="text-sm font-medium leading-6 text-dark-blue-400">Message</div>
                     <div className="text-sm leading-6 text-gray-400">
@@ -6748,21 +7091,26 @@ export function Chats({
                         Resend Offer
                       </Button>
                     </div>
-                  ) : (
+                  ) : selectedNotificationOffer.realContractId ? (
                     <Button
                       variant="outlined"
                       visual="gray"
                       size="sm"
                       onClick={() => {
-                        const contractId = selectedNotificationOffer.contractId
+                        const realContractId = selectedNotificationOffer.realContractId
+                        if (!realContractId) return
                         setSelectedNotificationOffer(null)
                         router.push(
-                          `/active-project/${encodeURIComponent(contractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
+                          `/active-project/${encodeURIComponent(realContractId)}?title=${encodeURIComponent(selectedNotificationOfferData.offerTitle)}&group=${encodeURIComponent("My Contracts")}&tab=contract`
                         )
                       }}
                     >
                       View Contract
                     </Button>
+                  ) : (
+                    <span className="text-xs font-medium leading-[15px] text-gray-500">
+                      Contract being prepared...
+                    </span>
                   )}
                 </div>
               </div>
@@ -7243,6 +7591,7 @@ export function Chats({
                     variant="ghost"
                     visual="gray"
                     size="sm"
+                    disabled={withdrawingCounterOffer || withdrawingOffer}
                     onClick={() =>
                       setNotificationOfferStep(
                         selectedNotificationOfferIsTalentCounter
@@ -7256,31 +7605,97 @@ export function Chats({
                   <Button
                     visual="error"
                     size="sm"
-                    onClick={() => {
+                    loading={withdrawingCounterOffer || withdrawingOffer}
+                    disabled={
+                      selectedNotificationOfferIsTalentCounter &&
+                      !selectedNotificationOffer?.latestCounterOfferId
+                    }
+                    onClick={async () => {
                       if (!selectedNotificationOffer) return
                       if (selectedNotificationOfferIsTalentCounter) {
-                        setWithdrawnClientOfferMessage(null)
-                        setWithdrawnTalentCounterOfferMessage({
+                        const counterOfferId =
+                          selectedNotificationOffer.latestCounterOfferId
+                        if (!counterOfferId) return
+                        const trimmedMessage =
+                          notificationWithdrawalMessage.trim()
+                        setWithdrawingCounterOffer(true)
+                        try {
+                          await withdrawCounterOffer(
+                            selectedNotificationOffer.contractId,
+                            counterOfferId,
+                            trimmedMessage
+                              ? { message: trimmedMessage }
+                              : undefined
+                          )
+                          // PMCM-376: fire the refetch explicitly — the
+                          // backend's Ably publish is not awaited, and the
+                          // channel tears down as soon as
+                          // selectedNotificationOffer is nulled below, so
+                          // waiting on the offer.updated event would
+                          // reliably lose that race.
+                          onOfferUpdateRequested?.()
+                          setWithdrawnClientOfferMessage(null)
+                          setWithdrawnTalentCounterOfferMessage({
+                            ...selectedNotificationOffer,
+                            event: "offer.counter_withdrawn",
+                            withdrawnByViewer: true,
+                            withdrawalMessage: trimmedMessage,
+                          })
+                          setSelectedNotificationOffer(null)
+                          setNotificationOfferStep("event")
+                          setNotificationWithdrawalMessage("")
+                        } catch (error) {
+                          console.error(
+                            "Counter offer withdrawal failed",
+                            error
+                          )
+                          toast({
+                            variant: "destructive",
+                            title: "Couldn't withdraw the counter offer",
+                            description: "Please try again.",
+                          })
+                        } finally {
+                          setWithdrawingCounterOffer(false)
+                        }
+                        return
+                      }
+                      const trimmedOfferMessage =
+                        notificationWithdrawalMessage.trim()
+                      setWithdrawingOffer(true)
+                      try {
+                        await withdrawOffer(
+                          selectedNotificationOffer.contractId,
+                          trimmedOfferMessage
+                            ? { message: trimmedOfferMessage }
+                            : undefined
+                        )
+                        // PMCM-379: fire the refetch explicitly — the
+                        // backend's Ably publish in OffersService.withdraw()
+                        // is also not awaited, and the channel tears down as
+                        // soon as selectedNotificationOffer is nulled below,
+                        // so waiting on the offer.updated event would
+                        // reliably lose that race — same reasoning as the
+                        // counter-offer branch above.
+                        onOfferUpdateRequested?.()
+                        setWithdrawnClientOfferMessage({
                           ...selectedNotificationOffer,
-                          event: "offer.counter_withdrawn",
+                          event: "offer.withdrawn",
                           withdrawnByViewer: true,
-                          withdrawalMessage:
-                            notificationWithdrawalMessage.trim(),
+                          withdrawalMessage: trimmedOfferMessage,
                         })
                         setSelectedNotificationOffer(null)
                         setNotificationOfferStep("event")
                         setNotificationWithdrawalMessage("")
-                        return
+                      } catch (error) {
+                        console.error("Offer withdrawal failed", error)
+                        toast({
+                          variant: "destructive",
+                          title: "Couldn't withdraw the offer",
+                          description: "Please try again.",
+                        })
+                      } finally {
+                        setWithdrawingOffer(false)
                       }
-                      setWithdrawnClientOfferMessage({
-                        ...selectedNotificationOffer,
-                        event: "offer.withdrawn",
-                        withdrawnByViewer: true,
-                        withdrawalMessage:
-                          notificationWithdrawalMessage.trim(),
-                      })
-                      setSelectedNotificationOffer(null)
-                      setNotificationOfferStep("event")
                     }}
                   >
                     {selectedNotificationOfferIsTalentCounter
@@ -7359,6 +7774,19 @@ export function Chats({
               : undefined
           }
           data={selectedNotificationOfferData}
+          // PMCM-393 AC-42.04 point 4: only the "counter" sub-flow (composing
+          // a new counter against a still-live offer) needs this — "edit"/
+          // "edit-expired"/"resend-edit" are themselves the recovery/edit
+          // flows for an already-terminal offer, so showing the same notice
+          // there would contradict the screen the viewer is already on.
+          submitDisabled={
+            submittingCounterOffer ||
+            editingCounterOffer ||
+            (notificationOfferStep === "counter" && Boolean(liveTerminalNotice))
+          }
+          terminalNotice={
+            notificationOfferStep === "counter" ? liveTerminalNotice : undefined
+          }
           onCancel={() => {
             setShowClientPreviousStartDate(false)
             setNotificationOfferStep(
@@ -7394,31 +7822,138 @@ export function Chats({
               selectedNotificationOffer.event.includes("counter") &&
               !selectedNotificationOffer.clientPerspective
             ) {
-              setSelectedNotificationOffer({
-                ...selectedNotificationOffer,
-                originalOfferRate:
-                  selectedNotificationOffer.originalOfferRate ||
-                  selectedNotificationOffer.offerRate,
-                originalDuration:
-                  selectedNotificationOffer.originalDuration ||
-                  selectedNotificationOffer.duration,
-                originalSchedule:
-                  selectedNotificationOffer.originalSchedule ||
-                  selectedNotificationOffer.schedule,
-                originalStartDate:
-                  selectedNotificationOffer.originalStartDate ||
-                  selectedNotificationOffer.startDate,
-                offerRate: counterOffer.offerRate,
-                duration: counterOffer.duration,
-                schedule: counterOffer.schedule,
-                startDate: counterOffer.startDate,
-                counterOfferMessage: counterOffer.message || undefined,
-              })
-              setNotificationOfferStep("sent-counter")
-              toast({
-                title: "Counter Offer Updated",
-                description: "Your revised counteroffer is ready.",
-              })
+              // BTB-285: same id source as the withdraw handler above
+              // (latestCounterOfferId) — gate exactly as withdraw does
+              // rather than sending an undefined id to the PATCH.
+              const counterOfferId =
+                selectedNotificationOffer.latestCounterOfferId
+              if (!counterOfferId) {
+                // Withdraw disables its own button when the id is missing;
+                // this Submit is shared with the create and edit-offer
+                // flows, so say nothing was saved rather than do nothing.
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't save the counter offer",
+                  description: "Please try again.",
+                })
+                return
+              }
+              if (editingCounterOffer) return
+
+              // BTB-285: same parsing shape as the new-counter submission
+              // below (rate/durationMonths/workSchedule/parsedStartDate) —
+              // this branch was never sending any of it to the backend.
+              const rate = Number(
+                counterOffer.offerRate.replace(/[^\d]/g, "")
+              )
+              const durationMonths =
+                counterOffer.duration === "Ongoing"
+                  ? 12
+                  : Number(counterOffer.duration.match(/\d+/)?.[0] ?? 0) *
+                    (counterOffer.duration.toLowerCase().includes("year")
+                      ? 12
+                      : 1)
+              const scheduleHours = Number(
+                counterOffer.schedule.match(/\d+/)?.[0] ?? 0
+              )
+              const workSchedule = counterOffer.schedule.startsWith(
+                "Full Time"
+              )
+                ? { type: "FULL_TIME" as const }
+                : counterOffer.schedule.startsWith("Part Time")
+                  ? { type: "PART_TIME" as const }
+                  : {
+                      type: "CUSTOM" as const,
+                      hoursPerWeek: Math.min(
+                        168,
+                        Math.max(1, scheduleHours > 0 ? scheduleHours * 5 : 40)
+                      ),
+                    }
+              const parsedStartDate = new Date(
+                counterOffer.startDate.replace(/(\d+)(st|nd|rd|th)/i, "$1")
+              )
+
+              if (
+                !Number.isFinite(rate) ||
+                rate <= 0 ||
+                !Number.isFinite(durationMonths) ||
+                durationMonths <= 0 ||
+                Number.isNaN(parsedStartDate.getTime())
+              ) {
+                toast({
+                  variant: "destructive",
+                  title: "Check the counteroffer terms",
+                  description:
+                    "Rate, duration, schedule, and start date are required.",
+                })
+                return
+              }
+
+              setEditingCounterOffer(true)
+              try {
+                await editCounterOffer(
+                  selectedNotificationOffer.contractId,
+                  counterOfferId,
+                  {
+                    rate,
+                    currencyCode: "USD",
+                    durationMonths,
+                    workSchedule,
+                    startDate: `${parsedStartDate.getFullYear()}-${String(
+                      parsedStartDate.getMonth() + 1
+                    ).padStart(2, "0")}-${String(
+                      parsedStartDate.getDate()
+                    ).padStart(2, "0")}`,
+                    message: counterOffer.message.trim() || undefined,
+                  }
+                )
+                // BTB-285: fire the refetch explicitly, same reasoning as
+                // the withdraw handler above — the backend's Ably publish
+                // is not awaited, and the channel tears down once this
+                // step moves off "edit" below, so waiting on the
+                // offer.updated event would reliably lose that race.
+                onOfferUpdateRequested?.()
+                setSelectedNotificationOffer({
+                  ...selectedNotificationOffer,
+                  originalOfferRate:
+                    selectedNotificationOffer.originalOfferRate ||
+                    selectedNotificationOffer.offerRate,
+                  originalDuration:
+                    selectedNotificationOffer.originalDuration ||
+                    selectedNotificationOffer.duration,
+                  originalSchedule:
+                    selectedNotificationOffer.originalSchedule ||
+                    selectedNotificationOffer.schedule,
+                  originalStartDate:
+                    selectedNotificationOffer.originalStartDate ||
+                    selectedNotificationOffer.startDate,
+                  offerRate: counterOffer.offerRate,
+                  duration: counterOffer.duration,
+                  schedule: counterOffer.schedule,
+                  startDate: counterOffer.startDate,
+                  counterOfferMessage: counterOffer.message || undefined,
+                })
+                setNotificationOfferStep("sent-counter")
+                // BTB-285: only fires after the PATCH resolves — this used
+                // to run unconditionally, which is why QA saw success on a
+                // save that never happened.
+                toast({
+                  title: "Counter Offer Updated",
+                  description: "Your revised counteroffer is ready.",
+                })
+              } catch (error) {
+                console.error("Counter offer edit failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't save the counter offer",
+                  description: "Please try again.",
+                })
+                // Modal stays open on failure — no state change that would
+                // close it or advance the step, matching the withdraw
+                // handler's failure path above.
+              } finally {
+                setEditingCounterOffer(false)
+              }
               return
             }
 

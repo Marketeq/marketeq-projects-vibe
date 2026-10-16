@@ -97,6 +97,16 @@ export interface Offer {
   withdrawalMessage: string | null
   expiredAt: IsoDateString | null
   originalOfferId: string | null
+  // PMCM-392 AC-40.06: set once contracts-service creates the contract for
+  // this (accepted) offer; null/absent otherwise. Unrelated to
+  // chats-comp.tsx's OfferNotificationMessageData.contractId, which is a
+  // pre-existing misnomer for the offer's own id — do not conflate the two.
+  contractId?: string | null
+  // PMCM-376: added by feat/PMCM-376-expose-latest-counter-offer (not yet
+  // merged) — absent/undefined until that PR lands, null when the offer
+  // has never had a counter offer. Only `id` is typed here; nothing on the
+  // frontend consumes the rest of the backend's LatestCounterOfferSummary.
+  latestCounterOffer?: { id: string } | null
   createdAt: IsoDateString
   updatedAt: IsoDateString
 }
@@ -115,6 +125,9 @@ export interface ListOffersParams {
   // derives which offers are visible from the JWT's userId, never from
   // this param (list-offers-query.dto.ts).
   as?: ViewerRoleFilter
+  // PMCM-393 AC-41.02: narrows to offers with this talent — never widens,
+  // same invariant as `as` above (backend derives the caller from the JWT).
+  talentId?: string
 }
 
 // Mirrors LatestCounterOfferSummary — offer-response.interface.ts.
@@ -246,6 +259,17 @@ export interface CreateCounterOfferPayload {
   durationMonths: number
   workSchedule: WorkScheduleResponse
   startDate: string
+  message?: string
+}
+
+// EditCounterOfferDto — every field optional, unlike CreateCounterOfferDto
+// (PATCH is an in-place partial edit, not a resubmission).
+export interface EditCounterOfferPayload {
+  rate?: number
+  currencyCode?: string
+  durationMonths?: number
+  workSchedule?: WorkScheduleResponse
+  startDate?: string
   message?: string
 }
 

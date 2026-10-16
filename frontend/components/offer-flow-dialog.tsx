@@ -13,6 +13,9 @@ import {
 import NextLink from "@/components/next-link"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
+  Alert,
+  AlertContent,
+  AlertIcon,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -57,6 +60,12 @@ interface OfferFlowDialogProps {
   onTermsAcceptedChange?: (value: boolean) => void
   onDeclineMessageChange?: (value: string) => void
   onDeclineReasonChange?: (value: string) => void
+  /** BTB-291: hides the View Job link when the offer has no linked job
+   * listing — without a real jobListingId onViewJob's own href resolves to
+   * a broken /job-details/ URL, not an empty/no-op one, so the caller must
+   * say there's nothing to link to rather than this component guessing.
+   * Defaults true so every existing caller keeps today's behavior. */
+  hasJobListing?: boolean
   onViewJob?: () => void
   onOfferHistory?: () => void
   onPreviousOffer?: () => void
@@ -69,6 +78,56 @@ interface OfferFlowDialogProps {
   onCancelDecline?: () => void
   onResend?: () => void
   onEditTerms?: () => void
+  // PMCM-393 AC-42.02/03/04: live status of the offer/counter this dialog is
+  // currently showing, layered on top of `variant` — the dialog's shape
+  // stays whatever `variant` already decided, only the action-button row
+  // swaps. Distinctly named from onResend/onEditTerms above, which are
+  // already wired to different (declined-offer) targets at the call site.
+  liveWithdrawn?: boolean
+  liveCounterWithdrawn?: boolean
+  liveExpired?: boolean
+  /** Talent's single recovery button label — stays one button with a
+   * switching label, matching the existing hand-rolled expired dialog. */
+  talentAskNowLabel?: "Ask Now" | "Request Extension"
+  onTalentRecoveryAction?: () => void
+  onLiveExpiredEditOffer?: () => void
+  onLiveExpiredResendOffer?: () => void
+  /** AC-42.05: expiry changed on a still-open offer. */
+  showUpdatedBanner?: boolean
+  /** AC-42.07: connection dropped after connecting at least once. */
+  showReconnecting?: boolean
+  /** AC-42.08: disables Accept/Decline/Counter; read-only content unaffected. */
+  offline?: boolean
+  /** AC-42.04 point 4: offer went terminal while viewer is mid Accept/Decline
+   * (isAcceptState/isDeclineState below) — disables the submit action and
+   * shows this text instead of pulling them out of the sub-flow. */
+  liveTerminalNotice?: string
+  /** PMCM-392 AC-40.03/40.06: the real contracts-service contract id, once
+   * one exists — a different thing from any offer id. Undefined/null means
+   * no contract yet (AC-40.07: an indefinite, honest wait, not a stub). */
+  contractId?: string | null
+  /** PMCM-392 AC-40.05: caller navigates (existing /active-project/[id]
+   * route, unmodified) — this component never does its own routing. */
+  onViewContract?: () => void
+}
+
+const OFFLINE_NOTICE = "You're offline. Some actions may not be available."
+
+// PMCM-392 AC-40.02: "Monday, Jan 30, 2025" — the weekday variant, matching
+// offer-service's own OfferResponse.startDateDisplay spec and the identical
+// toLocaleDateString call already in hire-me-button.tsx. This reformats at
+// display time only — data.startDate itself (already "Jan 30, 2025", no
+// weekday) is untouched everywhere else it renders in this file.
+const formatAcceptedHeadlineDate = (startDate: string): string => {
+  const parsed = new Date(startDate)
+  return Number.isNaN(parsed.getTime())
+    ? startDate
+    : parsed.toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
 }
 
 const DECLINE_REASONS = [
@@ -100,6 +159,7 @@ export function OfferFlowDialog({
   onTermsAcceptedChange,
   onDeclineMessageChange,
   onDeclineReasonChange,
+  hasJobListing = true,
   onViewJob,
   onOfferHistory,
   onPreviousOffer,
@@ -112,6 +172,19 @@ export function OfferFlowDialog({
   onCancelDecline,
   onResend,
   onEditTerms,
+  liveWithdrawn = false,
+  liveCounterWithdrawn = false,
+  liveExpired = false,
+  talentAskNowLabel = "Ask Now",
+  onTalentRecoveryAction,
+  onLiveExpiredEditOffer,
+  onLiveExpiredResendOffer,
+  showUpdatedBanner = false,
+  showReconnecting = false,
+  offline = false,
+  liveTerminalNotice,
+  contractId,
+  onViewContract,
 }: OfferFlowDialogProps) {
   const isAcceptState =
     variant === "accept-offer-empty" || variant === "accept-offer-ready"
@@ -122,12 +195,15 @@ export function OfferFlowDialog({
   const isCounterDetailsState = variant === "counter-offer-details"
   const isDeclinedTerminalState = variant === "offer-declined"
   const isWithdrawnTerminalState = variant === "offer-withdrawn"
+  const isAcceptedTerminalState = variant === "offer-accepted"
   const isDetailedTerminalState =
     isDeclinedTerminalState || isWithdrawnTerminalState
   const terminalState =
     variant === "offer-accepted"
       ? {
-          title: "Offer Accepted",
+          title: data.startDate
+            ? `Offer Accepted — Starts on ${formatAcceptedHeadlineDate(data.startDate)}`
+            : "Offer Accepted",
           notice: data.statusDateLabel
             ? `This offer was accepted ${data.statusDateLabel}.`
             : "This offer was accepted.",
@@ -298,6 +374,17 @@ export function OfferFlowDialog({
                   </div>
                 </div>
 
+                {liveTerminalNotice ? (
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {liveTerminalNotice}
+                    </AlertContent>
+                  </Alert>
+                ) : null}
+
                 <div className="flex items-center justify-end gap-3">
                   <Button
                     variant="ghost"
@@ -307,7 +394,11 @@ export function OfferFlowDialog({
                     Cancel
                   </Button>
                   <Button
-                    disabled={!resolvedTermsAccepted || acceptLoading}
+                    disabled={
+                      !resolvedTermsAccepted ||
+                      acceptLoading ||
+                      Boolean(liveTerminalNotice)
+                    }
                     onClick={onAccept}
                   >
                     {acceptLoading ? "Accepting..." : "Accept Offer"}
@@ -371,6 +462,17 @@ export function OfferFlowDialog({
                   })}
                 </div>
 
+                {liveTerminalNotice ? (
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {liveTerminalNotice}
+                    </AlertContent>
+                  </Alert>
+                ) : null}
+
                 <div className="flex items-center justify-between gap-3">
                   <Button
                     variant="ghost"
@@ -390,7 +492,11 @@ export function OfferFlowDialog({
                     </Button>
                     <Button
                       visual="primary"
-                      disabled={!canDecline || declineLoading}
+                      disabled={
+                        !canDecline ||
+                        declineLoading ||
+                        Boolean(liveTerminalNotice)
+                      }
                       onClick={onDecline}
                     >
                       {declineLoading ? "Declining..." : "Decline Offer"}
@@ -633,12 +739,19 @@ export function OfferFlowDialog({
           ) : isCounterDetailsState ? (
             <>
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
-                <DialogTitle className="pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
-                  Counter offer from{" "}
-                  <span className="text-primary-500">
-                    {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                  </span>
-                </DialogTitle>
+                <div className="flex items-center gap-2 pl-3">
+                  <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                    Counter offer from{" "}
+                    <span className="text-primary-500">
+                      {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                    </span>
+                  </DialogTitle>
+                  {showReconnecting ? (
+                    <span className="text-xs font-medium text-gray-400">
+                      Reconnecting...
+                    </span>
+                  ) : null}
+                </div>
 
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -648,6 +761,16 @@ export function OfferFlowDialog({
               </div>
 
               <div className="flex h-[545px] flex-col gap-6 p-6">
+                {offline ? (
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {OFFLINE_NOTICE}
+                    </AlertContent>
+                  </Alert>
+                ) : null}
                 <div className="flex h-[82px] items-start gap-6">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2">
@@ -661,15 +784,17 @@ export function OfferFlowDialog({
                     <div className="truncate text-[16px] font-medium leading-6 text-dark-blue-400">
                       {data.offerTitle}
                     </div>
-                    <Button
-                      variant="link"
-                      visual="primary"
-                      className="h-5 gap-2 text-xs"
-                      leftIcon={<Briefcase className="size-[15px]" />}
-                      onClick={onViewJob}
-                    >
-                      View Job
-                    </Button>
+                    {hasJobListing ? (
+                      <Button
+                        variant="link"
+                        visual="primary"
+                        className="h-5 gap-2 text-xs"
+                        leftIcon={<Briefcase className="size-[15px]" />}
+                        onClick={onViewJob}
+                      >
+                        View Job
+                      </Button>
+                    ) : null}
                   </div>
 
                   {clientPerspective ? (
@@ -749,35 +874,90 @@ export function OfferFlowDialog({
                 </div>
               </div>
 
-              <div className="flex h-[60px] items-center gap-3 border-t border-gray-200 p-3">
-                <Button
-                  variant="outlined"
-                  visual="gray"
-                  size="sm"
-                  onClick={clientPerspective ? onCounterOffer : onPreviousOffer}
-                >
-                  {clientPerspective ? "Counter Offer" : "Previous Offer"}
-                </Button>
-                <div className="flex flex-1 justify-end gap-3">
-                  <Button variant="ghost" visual="gray" size="sm" disabled={declineLoading} onClick={onDecline}>
-                    {declineLoading ? "Declining..." : "Decline"}
-                  </Button>
-                  <Button size="sm" disabled={acceptLoading} onClick={onAccept}>
-                    {acceptLoading ? "Accepting..." : "Accept Offer"}
-                  </Button>
+              {liveCounterWithdrawn ? (
+                <div className="flex h-[60px] items-center border-t border-gray-200 p-3">
+                  <span className="pl-3 text-sm font-medium text-gray-500">
+                    This counter offer has been withdrawn.
+                  </span>
                 </div>
-              </div>
+              ) : liveExpired ? (
+                <div className="flex h-[60px] items-center gap-3 border-t border-gray-200 p-3">
+                  {clientPerspective ? (
+                    <div className="flex flex-1 items-center gap-3 pl-3">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onLiveExpiredEditOffer}
+                      >
+                        Edit Offer
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onLiveExpiredResendOffer}
+                      >
+                        Resend Offer
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-1 justify-end">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onTalentRecoveryAction}
+                      >
+                        {talentAskNowLabel}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex h-[60px] items-center gap-3 border-t border-gray-200 p-3">
+                  <Button
+                    variant="outlined"
+                    visual="gray"
+                    size="sm"
+                    onClick={clientPerspective ? onCounterOffer : onPreviousOffer}
+                  >
+                    {clientPerspective ? "Counter Offer" : "Previous Offer"}
+                  </Button>
+                  <div className="flex flex-1 justify-end gap-3">
+                    <Button
+                      variant="ghost"
+                      visual="gray"
+                      size="sm"
+                      disabled={declineLoading || offline}
+                      onClick={onDecline}
+                    >
+                      {declineLoading ? "Declining..." : "Decline"}
+                    </Button>
+                    <Button size="sm" disabled={acceptLoading || offline} onClick={onAccept}>
+                      {acceptLoading ? "Accepting..." : "Accept Offer"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           ) : isPendingDetailsState ? (
             <>
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
-                <DialogTitle className="pl-3 text-[18px] font-bold leading-[22px] text-dark-blue-400">
-                  Offer from{" "}
-                  <span className="text-primary-500">
-                    {data.senderUsername ||
-                      `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                  </span>
-                </DialogTitle>
+                <div className="flex items-center gap-2 pl-3">
+                  <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
+                    Offer from{" "}
+                    <span className="text-primary-500">
+                      {data.senderUsername ||
+                        `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                    </span>
+                  </DialogTitle>
+                  {showReconnecting ? (
+                    <span className="text-xs font-medium text-gray-400">
+                      Reconnecting...
+                    </span>
+                  ) : null}
+                </div>
 
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -787,6 +967,26 @@ export function OfferFlowDialog({
               </div>
 
               <div className="flex flex-1 flex-col gap-6 p-6">
+                {offline ? (
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      {OFFLINE_NOTICE}
+                    </AlertContent>
+                  </Alert>
+                ) : null}
+                {showUpdatedBanner ? (
+                  <Alert className="min-h-[auto] p-4">
+                    <AlertIcon className="shrink-0">
+                      <Info className="size-5" />
+                    </AlertIcon>
+                    <AlertContent className="text-sm font-semibold leading-5 text-gray-600">
+                      This offer has been updated.
+                    </AlertContent>
+                  </Alert>
+                ) : null}
                 <div className="h-[78px]">
                   <div className="flex h-[50px] items-start justify-between gap-6">
                     <div className="min-w-0 flex-1 space-y-1">
@@ -815,15 +1015,17 @@ export function OfferFlowDialog({
                     </Button>
                   </div>
 
-                  <Button
-                    variant="link"
-                    visual="primary"
-                    className="h-5 gap-2 text-xs"
-                    leftIcon={<Briefcase className="size-4" />}
-                    onClick={onViewJob}
-                  >
-                    View Job
-                  </Button>
+                  {hasJobListing ? (
+                    <Button
+                      variant="link"
+                      visual="primary"
+                      className="h-5 gap-2 text-xs"
+                      leftIcon={<Briefcase className="size-4" />}
+                      onClick={onViewJob}
+                    >
+                      View Job
+                    </Button>
+                  ) : null}
                 </div>
 
                 <div className="border-t border-gray-100" />
@@ -883,36 +1085,82 @@ export function OfferFlowDialog({
 
                 <div className="border-t border-gray-100" />
 
-                <p className="text-xs font-medium leading-[19px] text-gray-400">
-                  This offer expires {data.expiresLabel}
-                </p>
-
-                <div className="flex h-9 items-start gap-3">
-                  <Button
-                    variant="outlined"
-                    visual="gray"
-                    size="sm"
-                    className="w-[109px]"
-                    onClick={onCounterOffer}
-                  >
-                    Counter Offer
-                  </Button>
-                  <div className="flex flex-1 items-center justify-end gap-3">
-                    <Button
-                      variant="ghost"
-                      visual="gray"
-                      size="sm"
-                      className="w-[105px]"
-                      disabled={declineLoading}
-                      onClick={onDecline}
-                    >
-                      {declineLoading ? "Declining..." : "Decline Offer"}
-                    </Button>
-                    <Button size="sm" className="w-[103px]" onClick={onAccept}>
-                      Accept Offer
-                    </Button>
+                {liveWithdrawn ? (
+                  <p className="text-sm font-medium leading-6 text-gray-500">
+                    This offer has been withdrawn.
+                  </p>
+                ) : liveExpired ? (
+                  <div className="flex h-9 items-center">
+                    {clientPerspective ? (
+                      <div className="flex items-center gap-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={onLiveExpiredEditOffer}
+                        >
+                          Edit Offer
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          onClick={onLiveExpiredResendOffer}
+                        >
+                          Resend Offer
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onTalentRecoveryAction}
+                      >
+                        {talentAskNowLabel}
+                      </Button>
+                    )}
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <p className="text-xs font-medium leading-[19px] text-gray-400">
+                      This offer expires {data.expiresLabel}
+                    </p>
+
+                    <div className="flex h-9 items-start gap-3">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[109px]"
+                        onClick={onCounterOffer}
+                        disabled={offline}
+                      >
+                        Counter Offer
+                      </Button>
+                      <div className="flex flex-1 items-center justify-end gap-3">
+                        <Button
+                          variant="ghost"
+                          visual="gray"
+                          size="sm"
+                          className="w-[105px]"
+                          disabled={declineLoading || offline}
+                          onClick={onDecline}
+                        >
+                          {declineLoading ? "Declining..." : "Decline Offer"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="w-[103px]"
+                          disabled={offline}
+                          onClick={onAccept}
+                        >
+                          Accept Offer
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </>
           ) : (
@@ -967,15 +1215,17 @@ export function OfferFlowDialog({
                       {data.offerTitle}
                     </div>
 
-                    <Button
-                      variant="link"
-                      visual="primary"
-                      className="mt-3 underline-offset-2 hover:underline"
-                      leftIcon={<Briefcase className="size-4" />}
-                      onClick={onViewJob}
-                    >
-                      View Job
-                    </Button>
+                    {hasJobListing ? (
+                      <Button
+                        variant="link"
+                        visual="primary"
+                        className="mt-3 underline-offset-2 hover:underline"
+                        leftIcon={<Briefcase className="size-4" />}
+                        onClick={onViewJob}
+                      >
+                        View Job
+                      </Button>
+                    ) : null}
                   </div>
 
                   {isHistoryState ? (
@@ -1060,7 +1310,22 @@ export function OfferFlowDialog({
                     </p>
                   )}
 
-                  {terminalState ? null : (
+                  {isAcceptedTerminalState ? (
+                    contractId ? (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        onClick={onViewContract}
+                      >
+                        View Contract
+                      </Button>
+                    ) : (
+                      <p className="text-sm leading-6 text-gray-400">
+                        Contract being prepared...
+                      </p>
+                    )
+                  ) : terminalState ? null : (
                     <div className="flex items-center justify-between gap-3">
                       {isHistoryState ? null : (
                         <Button

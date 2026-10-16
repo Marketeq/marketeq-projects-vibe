@@ -34,6 +34,8 @@ extraResources:
     to: migrations
     filter:
       - '**/*.sql'
+  - from: resources/activitywatch/${os}-${arch}
+    to: activitywatch/${os}-${arch}
 
 asar: true
 asarUnpack:

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
+import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 
 import { PayoutRequest } from './entities/payout-request.entity';
 import { DepositMethod } from './entities/deposit-method.entity';
@@ -34,8 +35,47 @@ import { BankModule } from './bank/bank.module';
 import { KycModule } from './kyc/kyc.module';
 import { PauseModule } from './pause/pause.module';
 
+// Real topic-exchange pub/sub — separate from publishers/payout.publisher.ts's
+// point-to-point send() straight into earnings-service's own queue, which
+// stays as-is. marketeq.payout already exists — declared and consumed by
+// transaction-service (apps/transaction-service/src/consumers/payout.consumer.ts,
+// routing keys payout.initiated/payout.completed/payout.failed) — payout-service
+// itself never published onto it. marketeq.identity is declared ahead of
+// identity-service actually publishing anything (PS-35) so the exchange
+// exists for payout-service's consumer bindings to attach to; consumers
+// bound to routing keys nothing publishes yet simply never fire.
+//
+// Must be imported directly here, at the top level — NOT nested inside a
+// custom wrapper module's own `imports` array. golevelup's forRoot() uses a
+// static RxJS Subject internally (the "ConfigurableDynamicRootModule"
+// pattern) to broadcast its config to every module that references
+// RabbitMQModule directly; nesting the DynamicModule one level down (an
+// earlier version of this wired it through a @Global() RabbitMQCoreModule
+// wrapper, copying apps/transaction-service/src/app.module.ts's pattern)
+// silently breaks that — the module resolves in the DI graph and logs
+// "dependencies initialized", but AmqpConnection.init() never actually
+// runs: confirmed live, no exchange ever appeared in the broker, and none
+// of AmqpConnection's own connection-lifecycle log lines fired either.
+const rabbitmqUrl = process.env.RABBITMQ_URL;
+const rabbitMQImports = rabbitmqUrl
+  ? [
+      RabbitMQModule.forRoot(RabbitMQModule, {
+        exchanges: [
+          { name: 'marketeq.payout', type: 'topic' },
+          { name: 'marketeq.identity', type: 'topic' },
+        ],
+        uri: rabbitmqUrl,
+        connectionInitOptions: { wait: true },
+        defaultRpcErrorHandler: (channel: any, msg: any, _err: any) => {
+          channel.nack(msg, false, false);
+        },
+      }),
+    ]
+  : [];
+
 @Module({
   imports: [
+    ...rabbitMQImports,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['apps/payout-service/.env', '.env'],

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   Calendar,
@@ -40,8 +40,33 @@ import {
 
 export default function TransactionsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
-  const [activeTab, setActiveTab] = useState("overview")
+  // Every "View Payout History" / "Withdraw Full Amount" style CTA elsewhere
+  // in this area (withdraw-funds-dialog.tsx, transfer-funds/page.tsx, the
+  // decline-state buttons below) navigates here via router.push("/earnings
+  // ?tab=payouts") — but this page never actually read that query param, so
+  // when the contractor was already on /earnings (the common case: Withdraw
+  // Funds was opened from the Overview tab in the first place), the App
+  // Router's shallow same-route navigation left activeTab untouched at its
+  // "overview" default. The URL changed; nothing visible did. Initializing
+  // from the param and reacting to it changing (the effect below) fixes
+  // both the already-here case and a fresh /earnings?tab=payouts load.
+  const [activeTab, setActiveTab] = useState(
+    () => searchParams.get("tab") ?? "overview"
+  )
+  useEffect(() => {
+    const tab = searchParams.get("tab")
+    if (tab) setActiveTab(tab)
+  }, [searchParams])
+  // BTB-286: keep the URL in step with the tab the contractor clicks. If it
+  // stayed on ?tab=payouts after switching to Overview, a later "View Payout
+  // History" pushed that same URL, searchParams didn't change, and the effect
+  // above never switched back — the modal just closed.
+  const selectTab = (tab: string) => {
+    setActiveTab(tab)
+    router.replace(`/earnings?tab=${tab}`, { scroll: false })
+  }
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
   // US-75: Log Time is reachable in-place from the Earnings area, rather than
@@ -148,13 +173,13 @@ export default function TransactionsPage() {
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
           <div className="space-y-5 min-w-0">
             <h1 className="text-xl font-bold text-dark-blue-400">
               Financials
             </h1>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <Tabs value={activeTab} onValueChange={selectTab}>
               {/* Tab Header */}
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <TabsList className="border-b-0">
@@ -206,7 +231,7 @@ export default function TransactionsPage() {
                         visual="gray"
                         size="sm"
                         leftIcon={<CalendarCheck01 className="size-4 text-[#22376B]" />}
-                        onClick={() => setActiveTab("payouts")}
+                        onClick={() => selectTab("payouts")}
                       >
                         View Deposit Schedule
                       </Button>
@@ -304,7 +329,7 @@ export default function TransactionsPage() {
               <TabsContent value="overview" className="mt-5">
                 <OverviewTab
                   key={overviewRefreshKey}
-                  onNavigateTab={setActiveTab}
+                  onNavigateTab={selectTab}
                   onEditPayoutSchedule={() => setShowPayoutSchedule(true)}
                   onOpenHelp={() => setShowHelp(true)}
                   openAddMethodSignal={openAddMethodSignal}

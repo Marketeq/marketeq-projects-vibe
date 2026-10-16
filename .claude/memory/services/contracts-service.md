@@ -71,6 +71,14 @@ by design (per T2-0), and even outbound is currently dead (see above).
   daily CRON auto-cancelling stale pending groups. None of these exist — grepped for each,
   zero matches. Removed from this file rather than left to mislead the next session.
 
+## RPC: contract parties (added 2026-10-03)
+- `subscribers/contract-parties.responder.ts` answers RabbitMQ queue `contracts.parties.rpc`
+  (amqplib, request/reply via `replyTo` + `correlationId`). Request `{contractIds}` |
+  `{clientId}` | `{talentId}` → `{contracts: [{id, clientId, talentId, status}]}`.
+- Caller today: time-tracking-service `contracts/contract-parties.client.ts` (direct reply-to,
+  5s timeout, 60s cache). It decides who may view/moderate screenshots, settings and manual
+  time from the contract, because access tokens carry no `role`.
+
 ## Migration
 - `1710000000000-InitContractsSchema.ts` — creates all 3 tables, indexes, enums
 

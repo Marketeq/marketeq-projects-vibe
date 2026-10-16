@@ -1,9 +1,26 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
-import { Bell, Check, Mail01, Trash } from "@blend-metrics/icons"
+import {
+  type UiNotificationItem,
+  mapApiNotificationToUi,
+  mapAblyNotificationToUi,
+} from "@/libs/notifications"
+import NotificationsAPI, {
+  isTransientNotificationsApiError,
+} from "@/service/http/notifications"
+import { useNotificationChannel } from "@/utils/useNotificationChannel"
+import { cn } from "@/utils/functions"
+import {
+  Bell,
+  Briefcase02,
+  Check,
+  FileCheck02,
+  User,
+} from "@blend-metrics/icons"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
 import {
   Avatar,
@@ -16,84 +33,99 @@ import {
   TabsTrigger,
 } from "@/components/ui"
 
-const sampleNotifications = [
-  {
-    id: 1,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Uploaded final file for project "Video Editing"',
-    time: "Just now",
-    read: false,
-  },
-  {
-    id: 2,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Uploaded final file for project "Video Editing"',
-    time: "2 min ago",
-    read: false,
-  },
-  {
-    id: 3,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Uploaded final file for project "Video Editing"',
-    time: "5 min ago",
-    read: false,
-  },
-  {
-    id: 4,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Uploaded final file for project "Video Editing"',
-    time: "1 hour ago",
-    read: true,
-  },
-  {
-    id: 5,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Uploaded final file for project "Video Editing"',
-    time: "2 hours ago",
-    read: true,
-  },
-  {
-    id: 6,
-    user: "@Cam43",
-    avatar: "/man.jpg",
-    message: 'Left a comment on project "Brand Identity"',
-    time: "3 hours ago",
-    read: true,
-  },
-]
+const NOTIFICATIONS_PAGE_LIMIT = 50
 
 export default function NotificationsPage() {
+  const router = useRouter()
   const { user } = useAuth()
+  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState("all")
-  const [notifications, setNotifications] = useState(sampleNotifications)
+  const [notifications, setNotifications] = useState<UiNotificationItem[]>([])
 
   const unreadCount = notifications.filter((n) => !n.read).length
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      setLoading(true)
+      const response = await NotificationsAPI.list({
+        limit: NOTIFICATIONS_PAGE_LIMIT,
+      })
+      const items: UiNotificationItem[] = Array.isArray(response?.data?.data)
+        ? response.data.data.map(mapApiNotificationToUi)
+        : []
+      setNotifications(items)
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error("Failed to load notifications:", error)
+      }
+      setNotifications([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadNotifications()
+  }, [loadNotifications])
+
+  useNotificationChannel({
+    onNotificationNew: (payload) => {
+      const nextItem = mapAblyNotificationToUi(payload)
+      setNotifications((prev) => {
+        const deduped = prev.filter((item) => item.id !== nextItem.id)
+        return [nextItem, ...deduped]
+      })
+    },
+  })
+
+  const markAllRead = async () => {
+    try {
+      await NotificationsAPI.markAllRead()
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, read: true }))
+      )
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error("Failed to mark all notifications as read:", error)
+      }
+    }
+  }
+
+  const markNotificationRead = async (item: UiNotificationItem) => {
+    try {
+      if (!item.read) {
+        await NotificationsAPI.markRead(item.id)
+        setNotifications((prev) =>
+          prev.map((n) =>
+            n.id === item.id ? { ...n, read: true } : n
+          )
+        )
+      }
+    } catch (error) {
+      if (!isTransientNotificationsApiError(error)) {
+        console.error(`Failed to mark notification ${item.id} as read:`, error)
+      }
+    }
+  }
+
+  const handleNotificationClick = async (item: UiNotificationItem) => {
+    await markNotificationRead(item)
+    if (item.href && item.href !== "/notifications") {
+      router.push(item.href)
+    }
+  }
+
   const filteredNotifications =
     activeTab === "unread"
       ? notifications.filter((n) => !n.read)
       : notifications
-
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
-
-  const markAsRead = (id: number) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    )
-  }
 
   return (
     <AuthenticatedRoute>
       <div className="flex bg-gray-50 min-h-screen">
         <LeftSidebar />
 
-        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[274px] min-[1024px]:pr-[50px] overflow-hidden">
+        <div className="flex-auto p-3.5 md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-dark-blue-400">
@@ -142,13 +174,15 @@ export default function NotificationsPage() {
             <TabsContent value="all" className="mt-4">
               <NotificationList
                 notifications={filteredNotifications}
-                onMarkAsRead={markAsRead}
+                loading={loading}
+                onNotificationClick={handleNotificationClick}
               />
             </TabsContent>
             <TabsContent value="unread" className="mt-4">
               <NotificationList
                 notifications={filteredNotifications}
-                onMarkAsRead={markAsRead}
+                loading={loading}
+                onNotificationClick={handleNotificationClick}
               />
             </TabsContent>
           </Tabs>
@@ -160,11 +194,21 @@ export default function NotificationsPage() {
 
 function NotificationList({
   notifications,
-  onMarkAsRead,
+  loading,
+  onNotificationClick,
 }: {
-  notifications: typeof sampleNotifications
-  onMarkAsRead: (id: number) => void
+  notifications: UiNotificationItem[]
+  loading: boolean
+  onNotificationClick: (item: UiNotificationItem) => void
 }) {
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+        <p className="text-sm text-gray-500">Loading notifications...</p>
+      </div>
+    )
+  }
+
   if (notifications.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
@@ -176,39 +220,120 @@ function NotificationList({
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-      {notifications.map((notification) => (
-        <article
-          key={notification.id}
-          className={`flex items-start gap-x-3 p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
-            !notification.read ? "bg-primary-50/30" : ""
-          }`}
-          onClick={() => onMarkAsRead(notification.id)}
-        >
-          {!notification.read && (
-            <span className="mt-2 size-2 rounded-full bg-primary-500 flex-none" />
-          )}
-          {notification.read && <span className="mt-2 size-2 flex-none" />}
-
-          <Avatar size="md">
-            <AvatarImage src={notification.avatar} alt={notification.user} />
-            <AvatarFallback>
-              {notification.user[1]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-
-          <div className="flex-auto min-w-0">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-dark-blue-400">
-                {notification.user}
-              </span>
-              <span className="text-xs text-gray-400">{notification.time}</span>
-            </div>
-            <p className="text-sm text-gray-600 mt-0.5">
-              {notification.message}
-            </p>
-          </div>
-        </article>
+      {notifications.map((item) => (
+        <NotificationRow
+          key={item.id}
+          item={item}
+          onClick={() => onNotificationClick(item)}
+        />
       ))}
     </div>
+  )
+}
+
+function NotificationRow({
+  item,
+  onClick,
+}: {
+  item: UiNotificationItem
+  onClick: () => void
+}) {
+  const accent =
+    item.kind === "project"
+      ? {
+          label: "Project",
+          className: "bg-[#ECFDF3] text-[#027A48]",
+          icon: FileCheck02,
+        }
+      : item.kind === "team"
+        ? {
+            label: "Team",
+            className: "bg-[#ECFDF3] text-[#027A48]",
+            icon: Briefcase02,
+          }
+        : item.kind === "message"
+          ? {
+              label: "Message",
+              className: "bg-primary-50 text-primary-500",
+              icon: User,
+            }
+          : {
+              label: "System",
+              className: "bg-[#EEF4FF] text-[#3538CD]",
+              icon: Bell,
+            }
+
+  const AccentIcon = accent.icon
+
+  return (
+    <button
+      type="button"
+      className={cn(
+        "w-full text-left flex py-3.5 px-4 items-start gap-x-4 transition-colors",
+        !item.read ? "bg-[#F8F9FC] hover:bg-gray-100" : "hover:bg-gray-50"
+      )}
+      onClick={onClick}
+    >
+      {item.isUserNotification ? (
+        <div className="relative inline-block shrink-0">
+          <Avatar size="md">
+            <AvatarImage src={item.avatarSrc} alt={item.avatarAlt} />
+            <AvatarFallback>{item.title.slice(0, 1)}</AvatarFallback>
+          </Avatar>
+          <span
+            className={cn(
+              "absolute -bottom-1.5 -right-2 flex size-[21px] items-center justify-center rounded-full",
+              item.kind === "team"
+                ? "bg-success-100 text-success-500"
+                : item.kind === "project"
+                  ? "bg-success-100 text-success-500"
+                  : item.kind === "message"
+                    ? "bg-primary-50 text-primary-600"
+                    : "bg-[#EEF4FF] text-[#3538CD]"
+            )}
+          >
+            {item.kind === "team" ? (
+              <Briefcase02 className="size-2.5" />
+            ) : item.kind === "project" ? (
+              <FileCheck02 className="size-2.5" />
+            ) : (
+              <AccentIcon className="size-2.5" />
+            )}
+          </span>
+        </div>
+      ) : (
+        <span
+          className={cn(
+            "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
+            accent.className
+          )}
+        >
+          <AccentIcon className="size-[18px]" />
+        </span>
+      )}
+
+      <div className="flex-auto min-w-0">
+        <div className="flex items-center justify-between gap-x-3">
+          <div className="min-w-0">
+            <div className="text-sm leading-[16.94px] font-semibold text-dark-blue-400 truncate">
+              {item.title}
+            </div>
+          </div>
+
+          <span className="text-xs leading-[14.06px] text-[#585C65] whitespace-nowrap">
+            {item.timeLabel}
+          </span>
+        </div>
+
+        <div className="mt-1 text-sm leading-[16.94px] text-gray-700 break-words">
+          {item.description}
+        </div>
+        {item.ctaLabel ? (
+          <div className="mt-1 text-xs font-semibold leading-5 text-primary-500 underline decoration-primary-500/30 hover:decoration-primary-500 transition-colors duration-300 underline-offset-2">
+            {item.ctaLabel}
+          </div>
+        ) : null}
+      </div>
+    </button>
   )
 }

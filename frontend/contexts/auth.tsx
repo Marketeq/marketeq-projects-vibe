@@ -12,6 +12,9 @@ import { useRouter } from "next/navigation"
 import { AuthAPI } from "@/service/http/auth"
 import { UserAPI } from "@/service/http/user"
 import { setCurrentUserSnapshot } from "@/utils/auth"
+import { setCsrfToken } from "@/src/lib/csrf"
+import AxiosRequest from "@/service"
+import { getPublicAuthUrl } from "@/lib/runtime-urls"
 import Cookies from "js-cookie"
 import { ROLE, User } from "@/types/user"
 import { useToast } from "@/components/ui"
@@ -216,7 +219,18 @@ function useProvideAuth() {
             ) {
               nextUser.onboardingDismissed = true
             }
-            setUser(nextUser)
+
+            // Fetch CSRF token BEFORE setting user — setting user triggers
+            // the heartbeat (a POST), which needs the token to be available.
+            const AUTH_BASE = getPublicAuthUrl()
+            AxiosRequest.get(`${AUTH_BASE}/auth/csrf`)
+              .then((r: any) => {
+                if (r?.data?.csrfToken) setCsrfToken(r.data.csrfToken)
+              })
+              .catch(() => {})
+              .finally(() => {
+                setUser(nextUser)
+              })
           }
         }
       })
@@ -272,6 +286,7 @@ function useProvideAuth() {
         variant: "destructive",
       })
     } finally {
+      setCsrfToken(null)
       setUser(null)
       router.push("/sign-in")
     }

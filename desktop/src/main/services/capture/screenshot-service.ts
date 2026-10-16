@@ -29,8 +29,12 @@
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 import { v4 as uuid } from 'uuid';
 import type { Logger } from 'pino';
 import type { ScreenshotRepo } from '../../db/repos/screenshot.repo';
@@ -41,6 +45,8 @@ import type {
   ScreenshotStats,
   ScreenshotTakenEvent,
 } from '../../../shared/ipc-contracts';
+import { createAppIconExtractionCache } from './app-icon-service';
+import type { AppUsageTracker } from './app-usage-tracker';
 
 interface ElectronCaptureSurface {
   desktopCapturer: {
@@ -68,11 +74,19 @@ interface ElectronCaptureSurface {
     >;
   };
   screen: {
-    getPrimaryDisplay: () => { size: { width: number; height: number } };
+    getPrimaryDisplay: () => {
+      id?: number;
+      size: { width: number; height: number };
+    };
     getAllDisplays: () => Array<{
       id: number;
       size: { width: number; height: number };
+      bounds?: { x: number; y: number };
+      /** True for a laptop's built-in panel. */
+      internal?: boolean;
     }>;
+    getCursorScreenPoint?: () => { x: number; y: number };
+    getDisplayNearestPoint?: (point: { x: number; y: number }) => { id: number };
   };
   app: { getPath: (p: string) => string };
 }
@@ -105,6 +119,8 @@ interface Deps {
   electron?: ElectronCaptureSurface | null;
   // Optional activeSessionId resolver for tests.
   resolveSessionId?: () => string | null;
+  /** Tracks every distinct app seen across the interval, not just at capture instant. */
+  appUsageTracker?: AppUsageTracker;
   rootDir?: string; // override userData for tests
 }
 
@@ -158,6 +174,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
       : path.join(process.cwd(), '.dtt-capture', 'screenshots'));
 
   fs.mkdirSync(rootDir, { recursive: true });
+
+  const appIconCache = createAppIconExtractionCache(path.join(rootDir, 'icons'));
 
   function nextIntervalMs(): number {
     const base = intervalSeconds * 1000;
@@ -282,8 +300,60 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
       }
       const now = Date.now();
       const dir = datedDir(now);
+      // Every monitor of this capture shares one group key, and the monitors
+      // are numbered 1..n: the laptop's built-in screen is 1 (Windows' own
+      // display 1), even when an external monitor is set as the main display;
+      // with no built-in screen the primary display is 1; the rest follow
+      // left to right. The web grid shows only screen 1 and switches between
+      // the others in the screenshot details view.
+      const groupKey = `grp_${uuid()}`;
+      const primaryId = String(electron.screen.getPrimaryDisplay().id ?? '');
+      const internalIds = new Set(
+        displays.filter((d) => d.internal).map((d) => String(d.id)),
+      );
+      const leftOf = new Map(
+        displays.map((d) => [String(d.id), d.bounds?.x ?? 0] as const),
+      );
+      const rank = (displayId: string | undefined): number => {
+        const id = displayId ?? '';
+        if (internalIds.has(id)) return 0;
+        return id === primaryId ? 1 : 2;
+      };
+      const ordered = sources
+        .map((src, i) => ({ src, i }))
+        .sort((a, b) => {
+          const ap = rank(a.src.display_id);
+          const bp = rank(b.src.display_id);
+          if (ap !== bp) return ap - bp;
+          const ax = leftOf.get(a.src.display_id ?? '') ?? 0;
+          const bx = leftOf.get(b.src.display_id ?? '') ?? 0;
+          return ax - bx || a.i - b.i;
+        })
+        .map(({ src }) => src);
 
-      for (const src of sources) {
+      // Web setting "Screen Capture Settings" (synced into preferences as
+      // dtt.captureMode): "active" captures only the monitor the cursor is on.
+      const captureMode = (() => {
+        try {
+          const p = deps.preferenceRepo.get('dtt.captureMode');
+          return p ? String(JSON.parse(p.value_json)) : 'all';
+        } catch {
+          return 'all';
+        }
+      })();
+      const activeDisplayId = (() => {
+        if (captureMode !== 'active') return null;
+        const { getCursorScreenPoint, getDisplayNearestPoint } = electron.screen;
+        if (!getCursorScreenPoint || !getDisplayNearestPoint) return null;
+        return String(getDisplayNearestPoint(getCursorScreenPoint()).id);
+      })();
+      const toCapture =
+        activeDisplayId && ordered.some((s) => s.display_id === activeDisplayId)
+          ? ordered.filter((s) => s.display_id === activeDisplayId)
+          : ordered;
+
+      for (const [screenIdx, src] of toCapture.entries()) {
+        const screenNumber = screenIdx + 1;
         const id = `shot_${uuid()}`;
         const size = src.thumbnail.getSize();
         const fullPath = path.join(dir, `${id}.jpg`);
@@ -388,17 +458,23 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           sha256: sha,
         });
 
-        // Detect the frontmost app on macOS
-        let activeAppName: string | null = null;
-        if (process.platform === 'darwin') {
-          try {
-            const result = execFileSync('osascript', [
-              '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
-            ], { timeout: 2000 }).toString().trim();
-            if (result) activeAppName = result;
-          } catch {
-            // Non-fatal
-          }
+        // Every distinct app seen frontmost across the whole interval since
+        // the last capture (macOS + Windows; empty elsewhere). Falls back to
+        // a single frontmost-app snapshot when no tracker is wired (e.g.
+        // tests), matching the previous single-snapshot behavior exactly.
+        let activeApps: string[];
+        if (deps.appUsageTracker) {
+          activeApps = await deps.appUsageTracker.drain();
+        } else {
+          const single = await detectActiveAppName();
+          activeApps = single ? [single] : [];
+        }
+        // Best-effort: extract each app's own icon (non-fatal, skipped on
+        // any failure — see app-icon-service.ts for why).
+        const activeAppIcons: Record<string, string> = {};
+        for (const name of activeApps) {
+          const iconPath = await appIconCache.getIconPath(name);
+          if (iconPath) activeAppIcons[name] = iconPath;
         }
 
         const evt: ScreenshotTakenEvent = {
@@ -411,8 +487,11 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           filePath: diskPath,
           blurPath,
           displayId,
+          screenNumber,
+          groupKey,
           sensitive: false,
-          activeAppName,
+          activeApps,
+          activeAppIcons,
         };
         results.push(evt);
         bus.emit('taken', evt);
@@ -538,6 +617,84 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
 }
 
 // ---- Exported helpers for unit tests ------------------------------------
+
+/**
+ * Detects the name of the frontmost/foreground application at the moment
+ * of capture. Best-effort, non-fatal: returns null on unsupported
+ * platforms or any failure (missing binary, timeout, no result).
+ */
+export type AsyncDetectExec = (
+  file: string,
+  args: string[],
+  options: { timeout?: number; env?: NodeJS.ProcessEnv },
+) => Promise<string>;
+
+const defaultDetectExec: AsyncDetectExec = async (file, args, options) => {
+  const { stdout } = await execFileAsync(file, args, options);
+  return stdout;
+};
+
+export async function detectActiveAppName(
+  platform: NodeJS.Platform = process.platform,
+  exec: AsyncDetectExec = defaultDetectExec,
+): Promise<string | null> {
+  try {
+    if (platform === 'darwin') {
+      const result = (
+        await exec('osascript', [
+          '-e', 'tell application "System Events" to get name of first application process whose frontmost is true',
+        ], { timeout: 2000 })
+      ).trim();
+      return result || null;
+    }
+    if (platform === 'win32') {
+      // Add-Type compiles this small helper type from C# source fresh on
+      // every call unless told otherwise — real, measured cost on this
+      // machine: ~150ms extra per call versus loading an already-compiled
+      // copy. Compiled once to a cached .dll (survives across app
+      // restarts, not just this process's lifetime) and loaded via
+      // `Add-Type -Path` on every call after that. Confirmed directly:
+      // -OutputAssembly compiles and saves but does NOT load the type into
+      // the calling session by itself — `Add-Type -Path` must always run
+      // afterward regardless of which branch compiled it.
+      const helperDllPath = path.join(os.tmpdir(), 'marketeq-dtt-helpers', 'DttWin32.dll');
+      const psScript = `
+$dllPath = $env:DTT_HELPER_DLL
+$dllDir = Split-Path $dllPath -Parent
+if (-not (Test-Path $dllDir)) { New-Item -ItemType Directory -Path $dllDir -Force | Out-Null }
+if (-not (Test-Path $dllPath)) {
+  Add-Type -OutputAssembly $dllPath -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class DttWin32 {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@
+}
+Add-Type -Path $dllPath
+$hwnd = [DttWin32]::GetForegroundWindow()
+$procId = 0
+[void][DttWin32]::GetWindowThreadProcessId($hwnd, [ref]$procId)
+$p = Get-Process -Id $procId -ErrorAction SilentlyContinue
+if ($p) {
+  $desc = $null
+  try { $desc = $p.MainModule.FileVersionInfo.FileDescription } catch {}
+  if ([string]::IsNullOrWhiteSpace($desc)) { $p.ProcessName } else { $desc }
+}
+`;
+      const result = (
+        await exec('powershell.exe', [
+          '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', psScript,
+        ], { timeout: 2000, env: { ...process.env, DTT_HELPER_DLL: helperDllPath } })
+      ).trim();
+      return result || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function computeNextIntervalMs(
   intervalSeconds: number,

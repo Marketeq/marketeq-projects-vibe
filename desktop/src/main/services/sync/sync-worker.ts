@@ -83,9 +83,17 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
   let lastError: string | null = null;
   let shutdownPromise: Promise<void> | null = null;
 
+  // Doc 16 §4: flush only when the probe says Online. 'Degraded' (one or two
+  // failed probes) still reports online=true, and draining then is what used
+  // to burn every retry within a minute of an outage starting.
+  const isOnline = () => deps.network.detail === 'Online';
+
   const offOnlineChanged = (online: boolean) => {
     if (online) {
       log?.info('network back online — kicking sync');
+      // Recover work an earlier outage dead-lettered before network failures
+      // stopped counting as attempts.
+      deps.outbox.requeueNetworkDeadLetters();
       void drain();
     } else {
       log?.info('network offline — sync paused');
@@ -126,6 +134,15 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       lastSyncAt = Date.now();
       return;
     }
+    // Two copies of the same create landed at once (e.g. a retry racing the
+    // original after reconnect): the server saved one and rejected the other
+    // as a duplicate key. The data is on the server, so this row is done.
+    const message = (resp.data as { message?: unknown } | undefined)?.message;
+    if (resp.status === 409 && message === 'Duplicate key') {
+      deps.outbox.markDone(row.id);
+      lastSyncAt = Date.now();
+      return;
+    }
     // Non-2xx — decide retryable vs dead-letter per doc 16 §5. 401 is
     // deliberately excluded here (matching doc 16 §4's reference queue
     // exactly) — a 401 reaching this layer means api-client's own
@@ -149,9 +166,12 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
         lastError = err.message;
         return err.retryable ? 'retry' : 'dead';
       }
-      // Network / timeout / unknown — always retryable.
+      // Network / timeout / unknown — always retryable. A request that never
+      // got an HTTP response (offline, DNS, refused, timed out) is transient:
+      // it waits for the network instead of spending one of its attempts.
       const msg = describe(err);
-      deps.outbox.markFailed(row.id, msg, { retryable: true });
+      const transient = axios.isAxiosError(err) && !err.response;
+      deps.outbox.markFailed(row.id, msg, { retryable: true, transient });
       bus.emit('sync:error', { id: row.id, message: msg });
       lastError = msg;
       return 'retry';
@@ -164,7 +184,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
 
   async function drain(): Promise<void> {
     if (draining) return;
-    if (!deps.network.online) {
+    if (!isOnline()) {
       emitStatus();
       return;
     }
@@ -181,7 +201,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       // Safety: don't loop forever on a pathological queue.
       const maxIterations = 100;
       for (let i = 0; i < maxIterations; i++) {
-        if (!deps.network.online) {
+        if (!isOnline()) {
           log?.info('network dropped mid-drain — pausing');
           break;
         }
@@ -222,7 +242,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     if (pollHandle) return;
     deps.network.on('net:online-changed', offOnlineChanged);
     pollHandle = setInterval(() => {
-      if (deps.network.online) void drain();
+      if (isOnline()) void drain();
     }, pollIntervalMs);
     if (pollHandle.unref) pollHandle.unref();
     sweepHandle = setInterval(() => {
@@ -234,6 +254,9 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     }, retentionSweepMs);
     if (sweepHandle.unref) sweepHandle.unref();
     log?.info('sync-worker started');
+    // Work an earlier outage dead-lettered (before network failures stopped
+    // counting as attempts) gets another chance on every launch.
+    deps.outbox.requeueNetworkDeadLetters();
     // Immediate kick.
     void drain();
   }
@@ -252,7 +275,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       deps.network.off('net:online-changed', offOnlineChanged);
       // Final drain with a short grace period so writes in flight have
       // a chance to complete.
-      if (deps.network.online) {
+      if (isOnline()) {
         try {
           await Promise.race([
             drain(),

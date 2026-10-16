@@ -197,4 +197,38 @@ describe('notification-service', () => {
     svc.permissionsChanged('screen', 'granted');
     expect(shown).toHaveLength(2);
   });
+
+  it('network offline / restored notices show even with every pref off, and are rate-limited', () => {
+    const { factory, shown } = makeFactory();
+    const allOff: NotificationPrefs = {
+      workReminders: false,
+      breakReminders: false,
+      idleAlerts: false,
+      syncErrors: false,
+      permissionChanges: false,
+      authAlerts: false,
+    };
+    const svc = createNotificationService({
+      logger,
+      windowManager: wm,
+      getPrefs: () => allOff,
+      notificationFactory: factory,
+      now: () => nowRef.value,
+    });
+
+    svc.networkOffline();
+    svc.networkOffline(); // flapping connection: suppressed
+    expect(shown).toHaveLength(1);
+    expect(shown[0]!.title).toBe("You're offline — tracking continues");
+    expect(shown[0]!.body).toContain('saved on this computer');
+
+    svc.networkRestored(3);
+    expect(shown).toHaveLength(2);
+    expect(shown[1]!.title).toBe('Back online');
+    expect(shown[1]!.body).toBe('Syncing 3 saved items.');
+
+    nowRef.value += 60_001;
+    svc.networkRestored(1);
+    expect(shown[2]!.body).toBe('Syncing 1 saved item.');
+  });
 });

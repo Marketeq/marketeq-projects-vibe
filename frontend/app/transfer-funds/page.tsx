@@ -18,6 +18,7 @@ import { Button, Input } from "@/components/ui"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
+import { csrfHeader } from "@/src/lib/csrf"
 
 // Routed through api-gateway, not payout-service directly: access_token is an
 // HttpOnly cookie (invisible to JS), so a manually-read "Bearer <token>" header
@@ -73,7 +74,9 @@ let sessionExpiredRedirecting = false
 // and retry the original request; if that also fails, this is a real session
 // expiry mid-withdrawal — bounce to sign-in rather than a confusing generic error.
 async function payoutFetch(input: string, init: RequestInit = {}): Promise<Response> {
-  const res = await fetch(input, { ...init, credentials: "include" })
+  const csrf = csrfHeader(init.method)
+  const mergedHeaders = { ...Object.fromEntries(new Headers(init.headers).entries()), ...csrf }
+  const res = await fetch(input, { ...init, credentials: "include", headers: mergedHeaders })
   if (res.status !== 401) return res
 
   try {
@@ -87,7 +90,10 @@ async function payoutFetch(input: string, init: RequestInit = {}): Promise<Respo
     return res
   }
 
-  return fetch(input, { ...init, credentials: "include" })
+  // Re-read CSRF token after refresh (it may have changed)
+  const freshCsrf = csrfHeader(init.method)
+  const retryHeaders = { ...Object.fromEntries(new Headers(init.headers).entries()), ...freshCsrf }
+  return fetch(input, { ...init, credentials: "include", headers: retryHeaders })
 }
 
 // AC-25.03/EC pattern used throughout this epic: never map a backend errorCode
@@ -358,7 +364,7 @@ const MethodStep = ({
   )
 }
 
-// US-46: bank-manual only — Stripe FC/Wise/Payoneer all redirect to an
+// US-46: bank-manual only — Stripe FC/Wise all redirect to an
 // external hosted flow regardless of where the "Add" trigger lives, so an
 // in-page modal genuinely keeps the contractor in-flow only for the manual
 // bank-details path. A manually-added account also isn't instantly verified

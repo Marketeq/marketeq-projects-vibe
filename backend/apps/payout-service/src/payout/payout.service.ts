@@ -14,15 +14,19 @@ import { MagicLinkToken }     from '../entities/magic-link-token.entity';
 import { PayoutSchedule }     from '../entities/payout-schedule.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
+import { UserClient }         from '../common/user.client';
 import { AuditService }       from '../audit/audit.service';
 import { MagicLinkService }   from '../magic-link/magic-link.service';
 import { WithdrawalRateLimitService } from './withdrawal-rate-limit.service';
 import { KycGateService }     from '../kyc/kyc-gate.service';
+import { EddService }         from '../kyc/edd.service';
 import { PayoutError }        from '../common/errors/payout.error';
 import { ValidateAmountDto, ValidateAmountResponseDto } from './dto/validate-amount.dto';
 import { InitiatePayoutDto, InitiatePayoutResponseDto } from './dto/initiate-payout.dto';
 import { VerifyResponseDto }  from './dto/verify-response.dto';
 import { PayoutPublisher }    from '../publishers/payout.publisher';
+import { PayoutFeeService }   from '../fees/payout-fee.service';
+import { PauseStatusService } from '../pause/pause-status.service';
 
 const INSTANT_FEE = '1.75';
 
@@ -44,11 +48,15 @@ export class PayoutService {
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
     private readonly kycClient: KycClient,
+    private readonly userClient: UserClient,
     private readonly auditService: AuditService,
     private readonly magicLinkService: MagicLinkService,
     private readonly rateLimitService: WithdrawalRateLimitService,
     private readonly kycGateService: KycGateService,
+    private readonly eddService: EddService,
     private readonly publisher: PayoutPublisher,
+    private readonly feeService: PayoutFeeService,
+    private readonly pauseStatusService: PauseStatusService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
@@ -77,6 +85,24 @@ export class PayoutService {
     // AC-30.04: KYC service unreachable → fail-closed, never fail-open.
     if (kyc.tier === 'unknown') return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
     if (kyc.suspended) return { allowed: false, blockedBy: 'ACCOUNT_SUSPENDED' };
+
+    // PS-15 §3.1/§7 checks 1-2: account-level tiers, checkable before the
+    // contractor has picked a method (Tier 3 is method-scoped — checked in
+    // initiate() once dto.depositMethodId exists, not here). Additive
+    // alongside the kyc.status checks below, which come from a different,
+    // already-integrated field this pre-flight endpoint also honors.
+    // Caught rather than left to propagate — this endpoint's contract is
+    // "always return a structured { allowed, blockedBy } body," never a
+    // thrown 503, and getGateStatus() throws independently of the kyc.tier
+    // check above (a separate network call that can fail on its own).
+    try {
+      const gateStatus = await this.kycClient.getGateStatus(contractorId);
+      if (gateStatus.tier1.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_1' };
+      if (gateStatus.tier2.blocksWithdrawal) return { allowed: false, blockedBy: 'TIER_2' };
+    } catch {
+      return { allowed: false, blockedBy: 'KYC_SERVICE_UNAVAILABLE' };
+    }
+
     // Doc08 ERR-35/36/37: identity-review status, when kyc-identity-service
     // returns one — undefined `status` (current MVP contract) falls through to
     // the existing tier-based checks below rather than blocking on absence,
@@ -139,6 +165,16 @@ export class PayoutService {
     const fee = dto.speed === 'instant' ? instantFee : 0;
     const net = amount - fee;
 
+    // PS-25 §3.1: the minimum applies to the NET amount, not the gross
+    // request — a $50 request with a fee taken out must not settle below
+    // the $50 floor this platform otherwise enforces everywhere else.
+    if (net < this.payoutMinimum) {
+      throw new PayoutError(
+        `After fees, this withdrawal would be below the $${this.payoutMinimum} minimum.`,
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_INSUFFICIENT_FUNDS_AFTER_FEE',
+      );
+    }
+
     return {
       amountUsd:           amount.toFixed(2),
       speed:               dto.speed,
@@ -177,6 +213,13 @@ export class PayoutService {
     const existing = await this.payoutRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) return { ...this.toInitiateResponse(existing), replayed: true };
 
+    // PS-16 §6: "payout-service must check for active pause conditions
+    // before every withdrawal initiation" — assertNotPaused() was already
+    // wired into the scheduled-payout cron but never called here, so manual
+    // withdrawals silently skipped NO_DEFAULT_METHOD/DEFAULT_METHOD_DEACTIVATED
+    // (the two conditions with no equivalent inline check below).
+    await this.pauseStatusService.assertNotPaused(contractorId);
+
     // PS-19 §3.2: Rate limit — 5 manual withdrawals per hour
     await this.rateLimitService.checkWithdrawalRateLimit(contractorId);
 
@@ -198,16 +241,58 @@ export class PayoutService {
 
     await this.checkReserveBalance(contractorId, requestedAmount, parseFloat(balance.availableBalance), dto.ignoreReserve);
 
-    // PS-19 §3.4: KYC check at initiation — kept consistent with checkGate() so a
-    // contractor who passes the pre-flight gate can't still be blocked here (or
-    // vice versa) by two different hold computations.
+    // Validate deposit method — kept ahead of the tiered gate below so an
+    // unverified/pending-biometric bank method keeps returning its existing,
+    // frontend-handled code (ERR_METHOD_PENDING_BIOMETRIC/
+    // ERR_PAYOUT_METHOD_UNVERIFIED) instead of being masked by the tiered
+    // gate's ERR_KYC_TIER3_REQUIRED, which transfer-funds/page.tsx and
+    // withdraw-funds-dialog.tsx don't know how to recover from.
+    const method = await this.methodRepo.findOne({
+      where: { id: dto.depositMethodId, contractorId, isActive: true },
+    });
+    if (!method) throw new PayoutError('Deposit method not found.',
+      HttpStatus.NOT_FOUND, 'ERR_PAYOUT_METHOD_NOT_FOUND');
+    // PS-35 §9 pre-flight check 4: a method still awaiting (or that failed)
+    // biometric verification gets its own error code/copy — distinct from
+    // the generic "not verified" below — so the contractor is told to
+    // complete identity verification, not to re-add the method.
+    if (
+      method.verificationStatus === VerificationStatus.PENDING_BIOMETRIC ||
+      method.verificationStatus === VerificationStatus.VERIFICATION_FAILED
+    ) {
+      throw new PayoutError(
+        'This payout method is awaiting identity verification and cannot be used yet.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_METHOD_PENDING_BIOMETRIC');
+    }
+    if (method.verificationStatus !== VerificationStatus.VERIFIED) {
+      throw new PayoutError('This deposit method has not been verified yet.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
+    }
+    // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
+    // refresh has failed must be blocked until the contractor re-authorizes.
+    if ((method as any).reauthRequired) {
+      throw new PayoutError('Your Wise connection needs to be re-authorized before you can withdraw to this method.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
+    }
+    if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
+      throw new PayoutError('This payout method is not currently available.',
+        HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
+    }
+
+    // Legacy kyc.status checks — kept ahead of the tiered gate below (and
+    // its FIRST_PAYOUT_HOLD case) so a not_started/in_review/rejected
+    // contractor keeps getting that specific code instead of the hold's
+    // "this will lift automatically" message, which would be wrong for
+    // them. This is the invariant the comment this replaced described:
+    // "kept consistent with checkGate() so a contractor who passes the
+    // pre-flight gate can't still be blocked here (or vice versa)" — the
+    // pre-flight GET /v1/payouts/gate-check runs these same checks first,
+    // so initiate() must match that order.
     const kyc = await this.kycClient.getStatus(contractorId);
-    const hold = await this.kycGateService.checkFirstPayoutHold(contractorId);
     if (kyc.suspended) {
       throw new PayoutError('Your account is suspended.',
         HttpStatus.FORBIDDEN, 'ERR_PAYOUT_ACCOUNT_SUSPENDED');
     }
-    // ERR-35/36/37: kept consistent with checkGate() — see comment there.
     if (kyc.status === 'not_started') {
       throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
         HttpStatus.FORBIDDEN, 'ERR_KYC_NOT_STARTED');
@@ -220,39 +305,135 @@ export class PayoutService {
       throw new PayoutError('Your identity verification was unsuccessful. Please contact support for assistance.',
         HttpStatus.FORBIDDEN, 'ERR_KYC_REJECTED', { rejectionReason: kyc.rejectionReason });
     }
-    if (kyc.firstPayoutHold || hold.holdActive) {
-      throw new PayoutError(
-        'Your first payout is on hold. This is a standard verification step.',
+
+    // PS-15 §3.2/§7: the real tiered gate — checkGate() throws for
+    // suspended/service-unavailable and returns { allowed: false,
+    // blockedBy: 'TIER_1'|'TIER_2'|'TIER_3'|'FIRST_PAYOUT_HOLD' } for
+    // everything else. This used to be an ad-hoc, non-tiered check against
+    // a different (already-integrated) status field — PS-15's own error
+    // codes (ERR_KYC_TIER1_REQUIRED/TIER2_REQUIRED/TIER3_REQUIRED) never
+    // existed anywhere in code. Tier1/Tier2 are new here; Tier3 and the
+    // first-payout hold were already correctly gated above/below and are
+    // now folded into the same single check instead of two separate ones.
+    // By this point the method above is already confirmed VERIFIED and
+    // kyc.status already confirmed approved, so the only new things this
+    // can still block on are TIER_1/TIER_2 (kyc-identity-service tiers this
+    // service didn't check yet) and FIRST_PAYOUT_HOLD.
+    const gate = await this.kycGateService.checkGate(contractorId, dto.depositMethodId);
+    if (!gate.allowed) {
+      switch (gate.blockedBy) {
+        case 'TIER_1':
+          throw new PayoutError('You need to complete identity verification before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER1_REQUIRED');
+        case 'TIER_2':
+          throw new PayoutError('You need to add your tax information before you can withdraw funds.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER2_REQUIRED', { subType: gate.tier2SubType });
+        case 'TIER_3':
+          throw new PayoutError('This bank account has not been verified yet.',
+            HttpStatus.FORBIDDEN, 'ERR_KYC_TIER3_REQUIRED', { depositMethodId: gate.depositMethodId });
+        case 'FIRST_PAYOUT_HOLD':
+          throw new PayoutError(
+            'Your first payout is on hold. This is a standard verification step.',
+            HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD', { holdReleasesAt: gate.holdReleasesAt });
+      }
+    }
+
+    // The external first-payout hold kyc-identity-service signals (PS-00 §5).
+    // checkGate() above only computes the local, payout-history-based hold, so
+    // without this the pre-flight gate-check (which honours both) would show
+    // "on hold" while submit went straight through. Checked last, after the
+    // tiers, to match the pre-flight order.
+    if (kyc.firstPayoutHold) {
+      throw new PayoutError('Your first payout is on hold. This is a standard verification step.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_FIRST_HOLD');
     }
 
-    // Validate deposit method
-    const method = await this.methodRepo.findOne({
-      where: { id: dto.depositMethodId, contractorId, isActive: true },
-    });
-    if (!method) throw new PayoutError('Deposit method not found.',
-      HttpStatus.NOT_FOUND, 'ERR_PAYOUT_METHOD_NOT_FOUND');
-    if (method.verificationStatus !== VerificationStatus.VERIFIED) {
-      throw new PayoutError('This deposit method has not been verified yet.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_UNVERIFIED');
-    }
-    // PS-09 v2.0 §11: a manual withdrawal to a method whose OAuth token
-    // refresh has failed must be blocked until the contractor re-authorizes.
-    if ((method as any).reauthRequired) {
-      throw new PayoutError('Your Wise/Payoneer connection needs to be re-authorized before you can withdraw to this method.',
-        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_PAYOUT_METHOD_REAUTH_REQUIRED', { depositMethodId: method.id });
-    }
-    if (method.methodType === MethodType.TEQ_COIN && !this.config.get('FEATURE_TEQ_COIN_ENABLED', false)) {
-      throw new PayoutError('This payout method is not currently available.',
-        HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_METHOD_UNAVAILABLE');
-    }
-
-    // Calculate fee
-    const feeUsd = dto.speed === 'instant' ? INSTANT_FEE : '0.00';
+    // Calculate fee — instant-speed surcharge (PS-19) plus, for
+    // international BANK_MANUAL methods, PS-34 §3's country-based transfer
+    // fee (both contractor-paid, both shown before the contractor already
+    // confirmed via the magic link — see validateAmount() for the preview
+    // shown pre-confirmation).
+    const instantFee = dto.speed === 'instant' ? parseFloat(INSTANT_FEE) : 0;
+    const intlFee = this.feeService.calculateFee({
+      amountUsd: requestedAmount,
+      methodType: method.methodType,
+      bankCountry: method.bankCountry ?? undefined,
+    }).feeUsd;
+    const feeUsd = (instantFee + intlFee).toFixed(2);
     const netAmountUsd = (parseFloat(dto.amountUsd) - parseFloat(feeUsd)).toFixed(8);
     if (parseFloat(netAmountUsd) <= 0) {
       throw new PayoutError('The instant withdrawal fee exceeds the requested amount.',
         HttpStatus.BAD_REQUEST, 'ERR_PAYOUT_FEE_EXCEEDS_AMOUNT');
+    }
+    // PS-25 §3.1: same net-below-minimum guard as validateAmount() above —
+    // kept consistent so a request that passed the preview can't still be
+    // rejected here (or vice versa) by two different minimum computations.
+    if (parseFloat(netAmountUsd) < this.payoutMinimum) {
+      throw new PayoutError(
+        `After fees, this withdrawal would be below the $${this.payoutMinimum} minimum.`,
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_INSUFFICIENT_FUNDS_AFTER_FEE',
+      );
+    }
+
+    // PS-15 §6.2: Enhanced Due Diligence — payouts >= $10,000 skip the normal
+    // magic-link confirmation and go straight to a compliance-review hold.
+    // This was previously computed (checkEDD/publishEddEvent both existed)
+    // but never called from anywhere — every payout, regardless of size,
+    // went straight through. requiresEDD payouts get their own row/branch
+    // rather than reusing the magic-link transaction below, since there is
+    // nothing for the contractor to confirm here — compliance approval is
+    // the confirmation.
+    const edd = await this.eddService.checkEDD(requestedAmount, contractorId);
+    if (edd.requiresEDD) {
+      const eddRequest = await this.dataSource.transaction(async (em) => {
+        const req = em.create(PayoutRequest, {
+          contractorId, idempotencyKey: dto.idempotencyKey,
+          trigger: PayoutTrigger.MANUAL,
+          status: PayoutStatus.AWAITING_EDD,
+          amountUsd: dto.amountUsd, feeUsd, netAmountUsd,
+          currency: 'USD',
+          speed: dto.speed as PayoutSpeed,
+        });
+        (req as any).depositMethodId = dto.depositMethodId;
+        await em.save(req);
+
+        await this.auditService.log({
+          contractorId, payoutRequestId: req.id,
+          actorType: 'contractor', actorId: contractorId,
+          action: 'withdrawal.initiated',
+          newStatus: PayoutStatus.AWAITING_EDD,
+        }, em);
+
+        return req;
+      });
+
+      await this.eddService.publishEddEvent({
+        payoutRequestId: eddRequest.id,
+        contractorId,
+        amountUSD: requestedAmount,
+        depositMethodId: dto.depositMethodId,
+        methodType: method.methodType,
+      });
+
+      await this.publisher.publishPayoutInitiated({
+        contractorId, payoutRequestId: eddRequest.id, contractId: null,
+        amount: eddRequest.amountUsd,
+        methodType: method.methodType,
+        methodLabel: method.displayLabel ?? method.methodType,
+        methodIdentifier: method.accountIdentifier ?? method.bankAccountLast4 ?? '',
+        initiatedAt: new Date().toISOString(),
+      });
+
+      return {
+        payoutRequestId: eddRequest.id,
+        status: PayoutStatus.AWAITING_EDD,
+        amountUsd: parseFloat(eddRequest.amountUsd).toFixed(2),
+        feeUsd: parseFloat(eddRequest.feeUsd).toFixed(2),
+        netAmountUsd: parseFloat(eddRequest.netAmountUsd).toFixed(2),
+        magicLinkSentTo: '',
+        magicLinkExpiresAt: '',
+        message: `Withdrawals of $${this.eddService.getThreshold().toLocaleString()} or more require a compliance review before they can be sent. We'll notify you once it's approved — no further action is needed from you right now.`,
+      };
     }
 
     // Create the payout_request first, then generate its magic-link token via
@@ -279,9 +460,18 @@ export class PayoutService {
         actorType: 'contractor', actorId: contractorId,
         action: 'withdrawal.initiated',
         newStatus: PayoutStatus.PENDING_VERIFICATION,
-      });
+      }, em);
 
       return req;
+    });
+
+    await this.publisher.publishPayoutInitiated({
+      contractorId, payoutRequestId: request.id, contractId: null,
+      amount: request.amountUsd,
+      methodType: method.methodType,
+      methodLabel: method.displayLabel ?? method.methodType,
+      methodIdentifier: method.accountIdentifier ?? method.bankAccountLast4 ?? '',
+      initiatedAt: new Date().toISOString(),
     });
 
     const rawToken = await this.magicLinkService.generateAndStore(request.id, contractorId);
@@ -303,9 +493,14 @@ export class PayoutService {
       const balance = await this.earningsClient.getBalance(contractorId);
       const available = parseFloat(balance?.availableBalance ?? '0');
       if (available < amountUsd) {
+        // PS-24 §3: ERR_INSUFFICIENT_BALANCE_AT_EXECUTION — balance dropped
+        // between initiation and execution. Was a bare non-ERR_-prefixed
+        // constant before; every other failureReason on this entity is a
+        // contractor-readable sentence, so this now matches the doc's
+        // userMessage instead of being the odd one out.
         await this.payoutRepo.update(payoutRequestId, {
           status: PayoutStatus.FAILED,
-          failureReason: 'INSUFFICIENT_BALANCE_AT_EXECUTION',
+          failureReason: 'Your balance changed before your withdrawal could be sent. Please start a new withdrawal.',
           failedAt: new Date(),
         });
         this.logger.warn(`Payout ${payoutRequestId} failed: balance $${available} < required $${amountUsd}`);
@@ -427,6 +622,62 @@ export class PayoutService {
     };
   }
 
+  // ─── PS-15 §6.2: Admin — list payouts awaiting EDD review ──────
+  async listAwaitingEDD(): Promise<PayoutRequest[]> {
+    return this.payoutRepo.find({
+      where: { status: PayoutStatus.AWAITING_EDD },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
+  // ─── PS-15 §6.2/§6.3: Admin — release a payout past EDD review ──
+  // PS-15 §6.3's callout is explicit: "When a payout is approved after EDD
+  // review, a fresh magic link is sent to the contractor... This ensures the
+  // contractor re-confirms the withdrawal after the compliance delay, in
+  // case the contractor's intent has changed during the review period."
+  // Previously went straight to QUEUED — compliance approval was being
+  // treated as the contractor's confirmation, skipping the re-confirmation
+  // step entirely. Now mirrors §7 check 6 exactly: PENDING_VERIFICATION +
+  // a fresh magic link, same as the normal (non-EDD) flow. The existing
+  // GET /v1/payouts/verify-email endpoint (magicLinkService.verifyEmailToken)
+  // handles the balance hold + QUEUED transition + enqueue once the
+  // contractor actually clicks it — nothing EDD-specific needed there.
+  async releaseEDD(payoutRequestId: string, actorId: string, contractorEmail?: string): Promise<{ status: string }> {
+    const request = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
+    if (!request) throw new PayoutError('Payout request not found.',
+      HttpStatus.NOT_FOUND, 'ERR_PAYOUT_NOT_FOUND');
+    if (request.status !== PayoutStatus.AWAITING_EDD) {
+      throw new PayoutError('This payout is not awaiting EDD review.',
+        HttpStatus.CONFLICT, 'ERR_PAYOUT_NOT_AWAITING_EDD');
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      await em.update(PayoutRequest, request.id, {
+        status: PayoutStatus.PENDING_VERIFICATION,
+      });
+      await this.auditService.log({
+        contractorId: request.contractorId,
+        payoutRequestId: request.id,
+        actorType: 'admin', actorId,
+        action: 'edd.released',
+        previousStatus: PayoutStatus.AWAITING_EDD,
+        newStatus: PayoutStatus.PENDING_VERIFICATION,
+      });
+    });
+
+    // Reviewer-caught bug: the approving admin's JWT carries the ADMIN's
+    // email, not the contractor's — without resolving the real one here,
+    // publishMagicLinkEvent() silently sends nothing (it only logs a dev
+    // warning when contractorEmail is unset) and the contractor is never
+    // told there's a link to click.
+    const resolvedEmail = contractorEmail ?? await this.userClient.getContractorEmail(request.contractorId) ?? undefined;
+
+    const rawToken = await this.magicLinkService.generateAndStore(request.id, request.contractorId);
+    await this.magicLinkService.publishMagicLinkEvent(request, rawToken, resolvedEmail);
+
+    return { status: 'pending_verification' };
+  }
+
   // ─── Cancel ───────────────────────────────────────────────────
   async cancel(contractorId: string, payoutRequestId: string): Promise<{ status: string }> {
     const request = await this.payoutRepo.findOne({
@@ -497,6 +748,15 @@ export class PayoutService {
         });
       }
     }
+
+    // PS-14 §10, PS-23 §3.5: the dedicated event, additive to the balance
+    // restoration above — notification-service's spec'd consumer.
+    await this.publisher.publishPayoutCancelled({
+      payoutRequestId: request.id,
+      contractorId,
+      reason: 'contractor_cancelled',
+      message: 'Your withdrawal request was cancelled.',
+    });
 
     return { status: 'cancelled' };
   }
@@ -768,7 +1028,6 @@ export class PayoutService {
     [MethodType.MARKETEQ_DEBIT_CARD]: 1,
     [MethodType.BANK_STRIPE]: 2,
     [MethodType.WISE]: 2,
-    [MethodType.PAYONEER]: 2,
     [MethodType.BANK_MANUAL]: 3,
   };
 
@@ -783,7 +1042,8 @@ export class PayoutService {
     return d;
   }
 
-  private estimateArrival(r: PayoutRequest): string | null {
+  // Public for WithdrawalNotifier (PMCM-806), which quotes the same estimate.
+  estimateArrival(r: PayoutRequest): string | null {
     const TERMINAL = new Set([PayoutStatus.COMPLETED, PayoutStatus.FAILED, PayoutStatus.CANCELLED]);
     if (TERMINAL.has(r.status)) return null;
     const methodType = r.depositMethod?.methodType;
@@ -822,11 +1082,28 @@ export class PayoutService {
       trigger: r.trigger,
       failureReason: r.failureReason,
       methodType: r.depositMethod?.methodType ?? null,
-      methodLabel: r.depositMethod?.displayLabel ?? r.depositMethod?.nickname ?? null,
+      methodLabel: this.historyMethodLabel(r.depositMethod),
       createdAt: r.createdAt.toISOString(),
       settledAt: r.completedAt?.toISOString() ?? null,
       estimatedArrivalAt: this.estimateArrival(r),
     };
+  }
+
+  // BTB-294: name a bank the way Connected Accounts does — its nickname (the
+  // bank name the contractor entered) plus the masked last 4 — instead of the
+  // generic "Bank ••••1234" displayLabel that manual US banks get. Other
+  // method types keep displayLabel.
+  // Public for WithdrawalNotifier (PMCM-806), so emails name the method the
+  // same way payout history does.
+  historyMethodLabel(m: DepositMethod | null | undefined): string | null {
+    if (!m) return null;
+    const isBank = m.methodType === MethodType.BANK_MANUAL || m.methodType === MethodType.BANK_STRIPE;
+    if (isBank && m.nickname) {
+      const mask = m.displayLabel?.match(/(••••\d+|\.{3,4}\d+)$/)?.[1]
+        ?? (m.bankAccountLast4 ? `••••${m.bankAccountLast4}` : null);
+      return mask ? `${m.nickname} ${mask}` : m.nickname;
+    }
+    return m.displayLabel ?? m.nickname ?? null;
   }
 
   // ─── Response Mappers ─────────────────────────────────────────

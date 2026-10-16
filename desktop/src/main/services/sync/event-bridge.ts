@@ -23,6 +23,7 @@ import type {
 } from '../timer/timer-service';
 import type { ScreenshotService } from '../capture/screenshot-service';
 import type { ActivityMonitor } from '../capture/activity-monitor';
+import { readIconAsBase64 } from '../capture/app-icon-service';
 import { getInputLevels } from '../capture/input-activity';
 import type { ScreenshotTakenEvent, ActivitySample } from '../../../shared/ipc-contracts';
 
@@ -167,7 +168,7 @@ export function createEventBridge(deps: EventBridgeDeps) {
   // ---- Capture events ------------------------------------------------------
 
   if (deps.screenshotService) {
-    const offShot = deps.screenshotService.subscribe((e: ScreenshotTakenEvent) => {
+    const offShot = deps.screenshotService.subscribe(async (e: ScreenshotTakenEvent) => {
       try {
         const userId = deps.getUserId?.() ?? null;
         if (!userId) {
@@ -200,6 +201,25 @@ export function createEventBridge(deps: EventBridgeDeps) {
         const keyboard = keyboardPct;
         const mouse = mousePct;
 
+        // One entry per distinct app seen during the interval, each with
+        // its real extracted icon (base64 — the backend saves it and
+        // returns a real iconUrl, mirroring exactly how the screenshot
+        // image itself is already sent as imageBase64 above). Best-effort:
+        // an app whose icon extraction failed still gets an entry, just
+        // without iconBase64 — the frontend's name-based guess covers it.
+        const apps =
+          e.activeApps.length > 0
+            ? e.activeApps.map((appName) => {
+                const iconPath = e.activeAppIcons[appName];
+                const iconBase64 = iconPath ? readIconAsBase64(iconPath) : null;
+                return {
+                  appName,
+                  iconUrl: '',
+                  ...(iconBase64 ? { iconBase64 } : {}),
+                };
+              })
+            : undefined;
+
         deps.outbox.enqueue({
           kind: 'screenshot.confirm',
           method: 'POST',
@@ -211,15 +231,17 @@ export function createEventBridge(deps: EventBridgeDeps) {
             mimeType: 'image/jpeg',
             bytes: e.bytes,
             timestamp: new Date(e.takenAt).toISOString(),
-            monitorId: e.displayId,
+            // Screen number, not the OS display id: "1" is the default
+            // screen, which the web grid shows; groupKey ties the monitors
+            // of one capture together for the details view's switcher.
+            monitorId: String(e.screenNumber),
+            groupKey: e.groupKey,
             contractId: contract?.contractId ?? undefined,
             taskId: contract?.taskId ?? undefined,
             imageBase64,
             keyboard,
             mouse,
-            apps: e.activeAppName
-              ? [{ appName: e.activeAppName, iconUrl: '' }]
-              : undefined,
+            apps,
           },
         });
       } catch (err) {
@@ -245,7 +267,9 @@ export function createEventBridge(deps: EventBridgeDeps) {
             minutes: [
               {
                 id: s.id,
-                minuteStartAt: s.sampledAt,
+                // TTS validates this as an ISO 8601 string (@IsISO8601),
+                // so the epoch-ms sample time is sent as an ISO date.
+                minuteStartAt: new Date(s.sampledAt).toISOString(),
                 active: s.active,
               },
             ],

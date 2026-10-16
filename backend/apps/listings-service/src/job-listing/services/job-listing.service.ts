@@ -11,7 +11,10 @@ import { Repository } from "typeorm";
 import { ConfigService } from "@nestjs/config";
 import { HttpService } from "@nestjs/axios";
 import { firstValueFrom } from "rxjs";
-import sanitizeHtml from "sanitize-html";
+// sanitize-html is CommonJS (`module.exports = sanitizeHtml`, no `.default`). The
+// backend compiles without esModuleInterop, so a default import emits
+// `sanitize_html_1.default(...)` and throws "is not a function" at runtime.
+import sanitizeHtml = require("sanitize-html");
 import { v4 as uuidv4 } from "uuid";
 import { JobListing } from "../entities/job-listing.entity";
 import { TeamMemberRow } from "../entities/job-listing-role-row.entity";
@@ -33,7 +36,9 @@ import { UpdateRoleDescriptionDto } from "../dto/update-role-description.dto";
 import { JobListingInviteService } from "./job-listing-invite.service";
 import { JobListingBriefStorageService } from "./job-listing-brief-storage.service";
 import { JobListingScopeService } from "./job-listing-scope.service";
+import { JobListingBudgetService } from "./job-listing-budget.service";
 import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
+import { UserProfileClient } from "../../shared/user-profile/user-profile.client";
 
 // ── Rich text helpers (exported so publish service can reuse wordCount) ───────
 
@@ -75,7 +80,29 @@ export class JobListingService {
     private readonly briefStorage: JobListingBriefStorageService,
     private readonly publisher: JobListingEventsPublisher,
     private readonly scopeService: JobListingScopeService,
+    private readonly budgetService: JobListingBudgetService,
+    private readonly userProfileClient: UserProfileClient,
   ) {}
+
+  // Resolves each row's assignedUserId into a real profile (name/avatar/
+  // skills) for the frontend, batching one hydrateTeam() call per response
+  // rather than one per row. Mutates assignedMember (and assignedUsername,
+  // which the column persists but never had a real writer) in place.
+  private async hydrateAssignees(rows: TeamMemberRow[]): Promise<void> {
+    const ids = Array.from(
+      new Set(rows.map((r) => r.assignedUserId).filter((id): id is string => !!id)),
+    );
+    if (ids.length === 0) return;
+
+    const hydrated = await this.userProfileClient.hydrateTeam(ids);
+    const byId = new Map(hydrated.map((m) => [m.userId, m]));
+
+    for (const row of rows) {
+      const member = row.assignedUserId ? (byId.get(row.assignedUserId) ?? null) : null;
+      row.assignedMember = member;
+      row.assignedUsername = member?.username ?? row.assignedUsername;
+    }
+  }
 
   private inferListingType(input: {
     listingType?: JobListingType | null;
@@ -105,17 +132,38 @@ export class JobListingService {
   }
 
   // Called during create() when contractType is EXISTING.
-  // Validates the selected contract is in a selectable status and the user
-  // has owner or lead permission on it. Throws 409 or 403 otherwise.
+  // Validates the selected contract is in a selectable status (active or
+  // paused) and that the user owns it. Throws 404, 409 or 403 otherwise.
+  // contracts-service has no owner/lead roles; ownership is the only access
+  // concept it knows (isOwner).
   async validateContractSelectable(
     contractId: string,
     userId: string,
   ): Promise<void> {
-    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/v1/contracts/${contractId}`;
-    const response = await firstValueFrom(
-      this.http.get(url, { headers: { "x-user-id": userId } }),
-    );
-    const contract = response.data;
+    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/contracts/groups/${contractId}/selectable`;
+    let contract: { status: string; isOwner: boolean };
+    try {
+      const response = await firstValueFrom(
+        this.http.get(url, { headers: { "x-user-id": userId } }),
+      );
+      contract = response.data;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        throw new NotFoundException({
+          code: "JL_CONTRACT_NOT_FOUND",
+          message: "Contract not found.",
+        });
+      }
+      throw error;
+    }
+
+    if (!contract.isOwner) {
+      throw new ForbiddenException({
+        code: "JL_CONTRACT_FORBIDDEN",
+        message:
+          "You do not have permission to add job listings to this contract.",
+      });
+    }
 
     const SELECTABLE_STATUSES = ["active", "paused"];
     if (!SELECTABLE_STATUSES.includes(contract.status)) {
@@ -130,18 +178,6 @@ export class JobListingService {
       throw new ConflictException({
         code: "JL_CONTRACT_NOT_SELECTABLE",
         message: reason,
-      });
-    }
-
-    const hasPermission = contract.members?.some(
-      (m: { userId: string; role: string }) =>
-        m.userId === userId && ["owner", "lead"].includes(m.role),
-    );
-    if (!hasPermission) {
-      throw new ForbiddenException({
-        code: "JL_CONTRACT_FORBIDDEN",
-        message:
-          "You do not have permission to add job listings to this contract.",
       });
     }
   }
@@ -206,25 +242,14 @@ export class JobListingService {
   }
 
   // Called when contractType is EXISTING during create().
-  // Fetches the parent contract from contracts-service and copies
-  // budget, duration, NDA, and contract link onto the listing record.
+  // Links the listing to the contract. Budget, duration and NDA are not
+  // copied: contracts-service contracts carry none of those fields.
   async populateFromContract(
     listingId: string,
     contractId: string,
   ): Promise<void> {
-    const url = `${this.config.get("CONTRACTS_SERVICE_URL")}/v1/contracts/${contractId}`;
-    const response = await firstValueFrom(this.http.get(url));
-    const contract = response.data;
-
     await this.repo.update(listingId, {
       contractId,
-      budgetAmountUsdCents: contract.budgetAmountUsdCents,
-      budgetFrequency: contract.budgetFrequency,
-      durationMonths: contract.durationMonths,
-      isOngoing: contract.isOngoing,
-      ndaEnabled: contract.ndaEnabled,
-      ndaDocumentId: contract.ndaDocumentId ?? null,
-      ndaScopeVisibility: contract.ndaScopeVisibility,
       inviteBalance: 0, // Calculated properly on publish.
     });
   }
@@ -304,6 +329,10 @@ export class JobListingService {
         code: "JL_NOT_FOUND",
         message: "Job listing not found.",
       });
+    }
+
+    if (listing.teamMemberRows?.length) {
+      await this.hydrateAssignees(listing.teamMemberRows);
     }
 
     return this.attachInheritedScope(listing);
@@ -550,32 +579,69 @@ export class JobListingService {
   ): Promise<TeamMemberRow[]> {
     await this.roleRowRepo.delete({ jobListingId: listingId });
 
-    const roleRows = rows
-      .map((row, positionOrder) => {
-        const roleTitle = row.role?.trim();
-        if (!roleTitle) return null;
+    const validRows = rows
+      .map((row, positionOrder) => ({
+        row,
+        positionOrder,
+        roleTitle: row.role?.trim(),
+      }))
+      .filter((entry) => Boolean(entry.roleTitle));
 
-        return this.roleRowRepo.create({
-          jobListingId: listingId,
-          roleTitle,
-          positionOrder: row.positionOrder ?? positionOrder,
-          assignedUserId: row.assignedUserId ?? null,
-          assignedUsername: null,
-          assignedUserDeactivated: false,
-          location: row.location ?? null,
-          experienceLevel: row.experienceLevel ?? null,
-          workSchedule: row.workSchedule ?? undefined,
-          customHours: row.customHours ?? null,
-          customFrequency: row.customFrequency ?? null,
-          contractLengthMonths: row.contractLengthMonths ?? null,
-          hourlyRateLowUsdCents: row.hourlyRateLowUsdCents ?? null,
-          hourlyRateHighUsdCents: row.hourlyRateHighUsdCents ?? null,
-        });
-      })
-      .filter((row): row is TeamMemberRow => Boolean(row));
+    // Open roles use pricing-service ranges. Assigned roles preserve the
+    // selected talent's own rate sent by the client.
+    const rates = await Promise.all(
+      validRows.map(({ row, roleTitle }) =>
+        row.assignedUserId
+          ? Promise.resolve(0)
+          : this.budgetService.getRateUsdCents(
+              roleTitle as string,
+              row.location ?? null,
+              row.experienceLevel ?? null,
+            ),
+      ),
+    );
+
+    const roleRows = validRows.map(({ row, positionOrder, roleTitle }, i) => {
+      const rateUsdCents = rates[i] > 0 ? rates[i] : null;
+      const assignedRateLowUsdCents =
+        row.assignedUserId &&
+        typeof row.hourlyRateLowUsdCents === "number" &&
+        row.hourlyRateLowUsdCents > 0
+          ? row.hourlyRateLowUsdCents
+          : null;
+      const assignedRateHighUsdCents =
+        row.assignedUserId &&
+        typeof row.hourlyRateHighUsdCents === "number" &&
+        row.hourlyRateHighUsdCents > 0
+          ? row.hourlyRateHighUsdCents
+          : assignedRateLowUsdCents;
+
+      return this.roleRowRepo.create({
+        jobListingId: listingId,
+        roleTitle: roleTitle as string,
+        positionOrder: row.positionOrder ?? positionOrder,
+        assignedUserId: row.assignedUserId ?? null,
+        assignedUsername: null,
+        assignedUserDeactivated: false,
+        location: row.location ?? null,
+        experienceLevel: row.experienceLevel ?? null,
+        workSchedule: row.workSchedule ?? undefined,
+        customHours: row.customHours ?? null,
+        customFrequency: row.customFrequency ?? null,
+        contractLengthMonths: row.contractLengthMonths ?? null,
+        hourlyRateLowUsdCents:
+          assignedRateLowUsdCents ??
+          (rateUsdCents === null ? null : Math.round(rateUsdCents * 0.85)),
+        hourlyRateHighUsdCents:
+          assignedRateHighUsdCents ??
+          (rateUsdCents === null ? null : Math.round(rateUsdCents * 1.15)),
+      });
+    });
 
     if (roleRows.length === 0) return [];
-    return this.roleRowRepo.save(roleRows);
+    const saved = await this.roleRowRepo.save(roleRows);
+    await this.hydrateAssignees(saved);
+    return saved;
   }
 
   async listRoleDescriptions(listingId: string): Promise<RoleDescription[]> {

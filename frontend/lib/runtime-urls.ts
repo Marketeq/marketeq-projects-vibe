@@ -35,31 +35,50 @@ export const normalizePublicUrl = (rawValue?: string | null): string => {
   }
 }
 
+// If the server was started with localhost URLs but the browser is on a LAN
+// IP (mobile testing), swap to the current origin so both share one server.
+const resolveToCurrentOrigin = (url: string): string => {
+  if (typeof window === "undefined") return url
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === "localhost" && window.location.hostname !== "localhost") {
+      return `${window.location.origin}${parsed.pathname}`
+    }
+  } catch {}
+  return url
+}
+
 export const getPublicApiUrl = (): string =>
-  normalizePublicUrl(
-    firstNonEmpty(
-      process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL
+  resolveToCurrentOrigin(
+    normalizePublicUrl(
+      firstNonEmpty(
+        process.env.NEXT_PUBLIC_API_URL,
+        process.env.NEXT_PUBLIC_AUTH_URL,
+        process.env.NEXT_PUBLIC_BACKEND_URL
+      )
     )
   )
 
 export const getPublicAuthUrl = (): string =>
-  normalizePublicUrl(
-    firstNonEmpty(
-      process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL
+  resolveToCurrentOrigin(
+    normalizePublicUrl(
+      firstNonEmpty(
+        process.env.NEXT_PUBLIC_AUTH_URL,
+        process.env.NEXT_PUBLIC_API_URL,
+        process.env.NEXT_PUBLIC_BACKEND_URL
+      )
     )
   )
 
 export const getPublicUserUrl = (): string =>
-  normalizePublicUrl(
-    firstNonEmpty(
-      process.env.NEXT_PUBLIC_USER_URL,
-      process.env.NEXT_PUBLIC_API_URL,
-      process.env.NEXT_PUBLIC_AUTH_URL,
-      process.env.NEXT_PUBLIC_BACKEND_URL
+  resolveToCurrentOrigin(
+    normalizePublicUrl(
+      firstNonEmpty(
+        process.env.NEXT_PUBLIC_USER_URL,
+        process.env.NEXT_PUBLIC_API_URL,
+        process.env.NEXT_PUBLIC_AUTH_URL,
+        process.env.NEXT_PUBLIC_BACKEND_URL
+      )
     )
   )
 

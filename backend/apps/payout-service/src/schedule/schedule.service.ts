@@ -4,20 +4,29 @@ import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { ConfigService }       from '@nestjs/config';
+import Redis                   from 'ioredis';
 
 import { PayoutSchedule, ScheduleFrequency } from '../entities/payout-schedule.entity';
 import { PayoutRequest } from '../entities/payout-request.entity';
 import { DepositMethod, VerificationStatus } from '../entities/deposit-method.entity';
 import { EarningsClient }     from '../common/earnings.client';
 import { KycClient }          from '../common/kyc.client';
+import { IdentityServiceClient } from '../common/identity.client';
 import { AuditService }       from '../audit/audit.service';
 import { PayoutError }        from '../common/errors/payout.error';
 import { UpdateScheduleDto }  from './dto/update-schedule.dto';
-import { NextExecutionService, ACH_METHOD_TYPES } from './next-execution.service';
+import { NextExecutionService, isAchMethod } from './next-execution.service';
+
+// PS-35 §5.1: Redis key for a schedule pending the biometric gate — 1 hour
+// TTL, same value the doc specifies for "contractor must complete
+// verification within 1 hour."
+const PENDING_SCHEDULE_TTL_SECONDS = 3600;
+const pendingScheduleKey = (contractorId: string) => `pending_schedule:${contractorId}`;
 
 @Injectable()
 export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
+  private readonly redis: Redis;
 
   constructor(
     @InjectRepository(PayoutSchedule)
@@ -30,9 +39,12 @@ export class ScheduleService {
     private readonly config: ConfigService,
     private readonly earningsClient: EarningsClient,
     private readonly kycClient: KycClient,
+    private readonly identityService: IdentityServiceClient,
     private readonly auditService: AuditService,
     private readonly nextExecService: NextExecutionService,
-  ) {}
+  ) {
+    this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
+  }
 
   // ─── GET /v1/payouts/schedule ─────────────────────────────────
   async getSchedule(contractorId: string) {
@@ -102,17 +114,50 @@ export class ScheduleService {
     };
   }
 
+  // ─── GET /v1/payouts/schedule/activity ─────────────────────────
+  // Recent Activity has no dedicated feed of its own on the frontend — it's
+  // derived from real data sources, and until now this one didn't exist:
+  // a schedule/split change (updateSchedule/SplitService.updateSplit below,
+  // both of which already call auditService.log) never produces a
+  // PayoutRequest row, so it was invisible to the payout-history-derived
+  // feed no matter how many times the contractor saved Setup Your Direct
+  // Deposit Schedule. Exposes the contractor's own schedule.updated/split.*
+  // rows so the frontend can build "Deposit Settings Changed" entries from
+  // real data instead of never showing them.
+  private static readonly ACTIVITY_ACTIONS = [
+    'schedule.updated',
+    'split.enabled',
+    'split.disabled',
+    'split.percent_updated',
+    'split.secondary_method_changed',
+  ];
+  async getRecentActivity(contractorId: string) {
+    const rows = await this.auditService.findRecentForContractor(
+      contractorId, ScheduleService.ACTIVITY_ACTIONS, 20,
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      createdAt: r.createdAt.toISOString(),
+      metadata: r.metadata,
+    }));
+  }
+
   // ─── PUT /v1/payouts/schedule ─────────────────────────────────
-  async updateSchedule(contractorId: string, dto: UpdateScheduleDto) {
+  async updateSchedule(contractorId: string, dto: UpdateScheduleDto, skipBiometricGate = false) {
     // Validate frequency-specific fields
     if (dto.frequency) this.validateFrequencyFields(dto);
 
-    // Validate threshold
+    // Validate threshold — PS-03 §2.3: $50 minimum, $1,000,000 sanity cap
     if (dto.thresholdUsd !== undefined) {
       const threshold = parseFloat(dto.thresholdUsd);
       if (isNaN(threshold) || threshold < 50) {
         throw new PayoutError('Minimum threshold is $50.',
           HttpStatus.BAD_REQUEST, 'ERR_SCHEDULE_THRESHOLD_BELOW_MINIMUM');
+      }
+      if (threshold > 1_000_000) {
+        throw new PayoutError('Maximum threshold is $1,000,000.',
+          HttpStatus.BAD_REQUEST, 'ERR_SCHEDULE_THRESHOLD_ABOVE_MAXIMUM');
       }
     }
 
@@ -160,6 +205,52 @@ export class ScheduleService {
     let schedule = await this.scheduleRepo.findOne({ where: { contractorId } });
     const isNew = !schedule;
 
+    // PS-35 §2/§5.1: biometric gate applies only to the FIRST schedule ever
+    // created for a contractor, never again after. skipBiometricGate is set
+    // only by the RabbitMQ consumer resuming a schedule whose gate already
+    // cleared (consumers/identity-events.consumer.ts) — the contractor-facing
+    // entry point (schedule.controller.ts) always passes false.
+    //
+    // FEATURE_BIOMETRIC_GATE_ENABLED defaults false: identity-service does
+    // not implement the two status endpoints this calls yet (confirmed —
+    // no biometric capability exists there today), and PS-35 §8 requires
+    // failing closed (503) rather than skipping the gate when
+    // identity-service is unreachable. Deployed with the gate always-on,
+    // that would 503 every contractor's first schedule creation — a real
+    // regression of working functionality, not a feature the flag is
+    // "adding". Flip this on once identity-service ships PS-35.
+    const biometricGateEnabled = this.config.get('FEATURE_BIOMETRIC_GATE_ENABLED', 'false') === 'true';
+    if (isNew && !skipBiometricGate && biometricGateEnabled) {
+      const biometric = await this.identityService.getScheduleGateStatus(contractorId);
+
+      if (biometric.gate === 'FAILED') {
+        throw new PayoutError(
+          'Identity verification failed. You have used all 3 attempts. Please contact support.',
+          HttpStatus.FORBIDDEN, 'ERR_BIOMETRIC_VERIFICATION_FAILED',
+        );
+      }
+
+      if (biometric.gate === 'REQUIRED') {
+        await this.redis.set(
+          pendingScheduleKey(contractorId),
+          JSON.stringify(dto),
+          'EX', PENDING_SCHEDULE_TTL_SECONDS,
+        );
+        await this.auditService.log({
+          contractorId, actorType: 'contractor', actorId: contractorId,
+          action: 'schedule.biometric_required',
+        });
+        return {
+          status: 'VERIFICATION_REQUIRED' as const,
+          sessionUrl: biometric.sessionUrl,
+          errorCode: 'ERR_BIOMETRIC_VERIFICATION_REQUIRED',
+          message: 'Identity verification required before your first automatic payout schedule can be activated.',
+        };
+      }
+
+      // gate === 'VERIFIED' — fall through to normal creation below.
+    }
+
     if (!schedule) {
       schedule = this.scheduleRepo.create({ contractorId });
     }
@@ -168,14 +259,18 @@ export class ScheduleService {
       effectiveMethod = await this.methodRepo.findOne({ where: { id: schedule.primaryMethodId } });
     }
 
+    // PS-41 §5: daily frequency is shown/allowed only for BANK_STRIPE and
+    // BANK_MANUAL/US — an international BANK_MANUAL routes through Stripe
+    // cross-border or Wise Platform (PS-34 §7), neither of which supports a
+    // same-day-every-day initiation cadence the way domestic ACH does.
     const effectiveFrequency = (dto.frequency as ScheduleFrequency) ?? schedule.frequency;
     if (
       effectiveFrequency === ScheduleFrequency.DAILY &&
       effectiveMethod &&
-      !ACH_METHOD_TYPES.includes(effectiveMethod.methodType)
+      !isAchMethod(effectiveMethod.methodType, effectiveMethod.bankCountry)
     ) {
       throw new PayoutError(
-        'Daily payout frequency is only available for bank (ACH) deposit methods.',
+        'Daily payout frequency is only available for US bank (ACH) deposit methods.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_SCHEDULE_INVALID_FREQUENCY',
         { frequency: effectiveFrequency, methodType: effectiveMethod.methodType });
     }
@@ -200,7 +295,7 @@ export class ScheduleService {
     const next = this.nextExecService.calculateNext(
       schedule.frequency, schedule.dayOfWeek, schedule.dayOfMonth,
       schedule.anchorDate, effectiveMethod?.methodType ?? null, new Date(),
-      schedule.customIntervalDays,
+      schedule.customIntervalDays, effectiveMethod?.bankCountry,
     );
     schedule.nextExecutionAt = next;
     schedule.nextRunAt = next;

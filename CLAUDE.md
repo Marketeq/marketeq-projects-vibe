@@ -69,10 +69,197 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 If you are reviewing a PR via Claude CLI, use the prompt in §10 of the SOP verbatim.
 
 ## What This Project Is
-Marketeq is a freelance marketplace platform (similar to Upwork/Fiverr) built with:
+Marketeq is a freelance marketplace / talent network platform (similar to Upwork/Fiverr), built with:
 - **Backend**: NestJS monorepo with microservices at `/backend/apps/`
 - **Frontend**: Next.js App Router at `/frontend/`
 - **Docs**: All technical specs at `/docs/md/` (markdown) and `/docs/Technical Documentation/` (original .docx)
+
+Clients post projects/listings, talent applies or gets invited, work happens
+through contracts with time tracking and a checklist/task board, payment moves
+through Stripe (plus Wise/Payoneer/crypto payout rails), messaging is
+end-to-end encrypted and realtime via Ably, and category/editorial content is
+served from an internal Payload CMS service. Every domain (auth, listings,
+messaging, contracts, payouts, etc.) is its own NestJS microservice with its
+own Postgres schema, talking to each other over RabbitMQ and reachable from
+the outside only through the API Gateway.
+
+## How To Start The App Locally
+
+Prerequisites running first: PostgreSQL, RabbitMQ (`5672`), and Redis
+(`6379`) — several services (OAuth state, Bull queues, rate limiting) need
+Redis even though it isn't mentioned elsewhere in this file.
+
+```bash
+# 1. RabbitMQ + Redis (Docker, or use local installs)
+docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+docker run -d --name redis -p 6379:6379 redis:7
+
+# 2. Env files
+cp backend/.env.local.example backend/.env
+cp frontend/.env.local.example frontend/.env.local   # fill in blanks: OAuth keys, cloud picker keys
+
+# 3. Install deps
+cd backend && npm install --legacy-peer-deps
+cd ../frontend && npm install --legacy-peer-deps
+
+# 4. Build backend services (PM2 runs the compiled dist/, not ts-node — see below)
+cd ../backend
+for svc in apps/*/src/main.ts; do npx nest build "$(echo $svc | cut -d'/' -f2)"; done
+
+# 5. Start backend (all services via PM2)
+npm run dev
+
+# 6. Start frontend, separate terminal
+cd ../frontend && npm run dev
+```
+
+App: **http://localhost:3000**. API Gateway (single external entry point for
+the frontend): **http://localhost:4000**.
+
+After starting, PM2 reporting "online" does **not** mean a service is
+healthy — always verify:
+```bash
+curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/health  # api-gateway
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/health  # auth-service
+curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/health  # user-service
+```
+All must return 200. A `000` almost always means RabbitMQ (or Redis) wasn't
+up before `npm run dev` ran — check `npm run dev:logs`.
+
+## How To Start Every Backend Service
+
+`npm run dev` (PM2, from `backend/`) starts every service below at once per
+`backend/ecosystem.config.js`. To run one service on its own in watch mode
+instead (from `backend/`, standard NestJS services):
+```bash
+npx nest start <service-name> --watch
+```
+`cms-service` and `scheduling-service` are not Nest CLI apps — start them
+with `npm run start:dev` from inside their own `apps/<service>` directory.
+
+| Service | Port | Notes |
+|---|---|---|
+| api-gateway | 4000 | single HTTP entry point |
+| auth-service | 3001 | |
+| user-service | 3002 | needs more heap (`--max-old-space-size=1024`) |
+| listings-service | 3004 | |
+| search-service | 3007 | |
+| offer-service | 3011 | nested build output |
+| contracts-service | 3010 | |
+| checkout-service | 3009 | |
+| messaging-service | 3005 | nested build output; end-to-end encrypted, needs `E2EE_SERVER_SECRET` or it refuses to start |
+| notification-service | 3006 | nested build output; sends via Brevo (SendGrid path exists but is commented out) |
+| favorites-service | 3012 | nested build output |
+| invitations-service | 3013 | nested build output |
+| content-moderation-service | 3014 | also depends on a separate Python FastAPI service (`clip_moderation_api.py`) on port 8000 for image/video moderation |
+| portfolio-service | 3015 | |
+| autocomplete-service | 3016 | |
+| time-tracking-service | 3017 | |
+| transaction-service | 3018 | |
+| identity-verification-service | 3019 | |
+| cms-service (Payload CMS) | 3020 | admin UI at `/admin`; category-service authenticates to it via an API key, not JWT |
+| suggestions-service | 3021 | |
+| payout-service | 3022 | Wise/Payoneer OAuth, Stripe Financial Connections, crypto on/off-ramp |
+| category-service | 3023 | talks to cms-service |
+| scheduling-service | 3024 | `npm run start:dev`, not Nest CLI |
+| earnings-service | 3026 | |
+| billing-service | 3027 | |
+| resume-parsing-service | 3028 | |
+| pricing-service | 3029 | |
+| location-service | 3036 | |
+| browsing-history-service | 3034 | nested build output |
+
+## How To Run The Tests
+
+**Backend** (from `backend/`) — no root `npm test` script exists; run Jest
+directly, scoped to one service's test path:
+```bash
+npx jest --testPathPattern=apps/<service-name>
+# e.g. npx jest --testPathPattern=apps/auth-service
+```
+48 `*.spec.ts` files exist across `backend/apps/*` today.
+
+**Frontend** — there is no unit/e2e test runner configured (no `test` script
+in `frontend/package.json`). Correctness is enforced instead by:
+```bash
+npm run types:check   # tsc
+npm run lint           # next lint
+npm run tooling         # format:check + lint + types:check together
+npm run storybook        # visual verification against Storybook, port 6006
+```
+
+## Where Things Live
+
+```
+backend/
+  apps/<service-name>/src/   # one NestJS microservice per domain, own DB schema
+  apps/<service-name>/src/migrations/   # TypeORM migrations (synchronize: false everywhere)
+  apps/cms-service/          # Payload CMS (category/editorial content), npm run start:dev
+  ecosystem.config.js         # PM2 process list — the source of truth for services/ports
+  shared/                      # code shared across services
+
+frontend/
+  app/                # Next.js App Router pages
+  components/ui/, components/*.tsx, stories/  # Storybook design system — read-only, see COMPONENTS.md
+  service/            # Axios API clients, one file per domain
+  service/index.ts    # the Axios instance: reads NEXT_PUBLIC_API_URL, attaches Bearer token, auto-refreshes on 401
+  lib/runtime-urls.ts # single source of truth for URL resolution — never read process.env directly elsewhere
+  contexts/auth.tsx   # AuthProvider — calls UserAPI.me(), exposes user state + logout
+
+docs/
+  md/<Service Name>/         # per-service technical docs (markdown, converted from .docx)
+  CODE_REVIEW_SOP.md, DEVOPS_SOP.md, STAGING_PROMOTION_SOP.md, JENKINS_GUIDE.md, ...
+
+.claude/memory/    # shared agent memory — read before starting any work (see below)
+scripts/            # agent worktree spawn/merge/cleanup, docs conversion
+```
+
+## Environment Variables
+
+Six frozen env templates are the source of truth — three per app, one per
+environment (`docs/DEVOPS_SOP.md` §5): `backend/.env.{local,staging,production}.example`
+and `frontend/.env.{local,staging,production}.example`. They're checked into
+the repo; copy the `.local.example` ones for local dev (already filled with
+localhost values) and fill in the real secrets.
+
+**Backend** (`backend/.env.local.example`), by area:
+- Core: `NODE_ENV`, `APP_ENV`, `PORT`
+- CORS/cookies: `CORS_ORIGIN`, `CORS_CREDENTIALS`, `COOKIE_DOMAIN`, `COOKIE_SAMESITE`, `COOKIE_SECURE`
+- JWT: `JWT_ISSUER`, `JWT_AUDIENCE`, `JWT_ACCESS_TOKEN_TTL`, `JWT_REFRESH_TOKEN_TTL`, `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (set via shell/gitignored file, never committed)
+- Database/queue: `DATABASE_URL`, `DATABASE_SSL`, `RABBITMQ_URL`
+- Inter-service: `EARNINGS_SERVICE_URL`, `FRONTEND_URL` (also builds the password-reset link)
+- Email: `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, `BREVO_*_TEMPLATE_ID`, `SENDGRID_API_KEY` (fallback path)
+- Storage: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_CDN_BASE`
+- Payments/payouts: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_FC_RETURN_URL`, `STRIPE_PLATFORM_ACCOUNT_ID`, `STRIPE_API_VERSION`, `BANK_ENCRYPTION_KEY`, `OAUTH_TOKEN_ENCRYPTION_KEY`, `CRYPTO_ADDRESS_ENCRYPTION_KEY`, `WISE_CLIENT_ID`/`WISE_CLIENT_SECRET`/`WISE_REDIRECT_URI`/`WISE_API_BASE_URL`, `PAYONEER_CLIENT_ID`/`PAYONEER_CLIENT_SECRET`/`PAYONEER_REDIRECT_URI`/`PAYONEER_API_BASE_URL`, `OAUTH_STATE_TTL_SECONDS`, crypto on/off-ramp keys (`RAMP_*`, `TRANSAK_API_KEY`, `CRYPTO_COM_API_KEY`, `COINBASE_COMMERCE_API_KEY`)
+- Messaging: `E2EE_SERVER_SECRET` (messaging-service refuses to boot without it) — generate with `openssl rand -hex 32`
+- CMS auth: `CMS_API_KEY` (category-service → cms-service, Payload API-Key auth, not JWT)
+
+**Frontend** (`frontend/.env.local.example`) — per this repo's own permission
+settings I'm configured to stay out of `frontend/`, so I didn't read this
+file directly. Per `docs/DEVOPS_SOP.md` §5, each of the three frontend
+templates independently owns: `NEXT_PUBLIC_BACKEND_URL`/`BACKEND_URL`,
+`NEXT_PUBLIC_COOKIE_SAMESITE`, `NEXT_PUBLIC_COOKIE_SECURE`,
+`NEXT_PUBLIC_COOKIE_DOMAIN`, `NEXT_PUBLIC_AUTH_MODE`, and `NODE_ENV`; the
+architecture section below also names `NEXT_PUBLIC_API_URL` as what
+`service/index.ts` reads. Open `frontend/.env.local.example` yourself for the
+full/current list.
+
+## How The Frontend Talks To The Backend
+
+- The frontend never calls individual microservices directly — everything
+  goes through the **API Gateway** on port 4000, which proxies to the right
+  service (`proxy.controller.ts` / `proxy.service.ts`).
+- `frontend/service/index.ts` is the single Axios instance: reads
+  `NEXT_PUBLIC_API_URL`, attaches the Bearer token from the `access_token`
+  cookie on every request, and on a `401` calls `POST /auth/refresh` and
+  retries once — on failure it clears cookies and the user is logged out.
+- `frontend/lib/runtime-urls.ts` (`getPublicApiUrl`/`getPublicAuthUrl`/`getPublicBackendUrl`)
+  is the only place URLs get resolved; nothing else should read
+  `process.env` for a backend URL directly.
+- Auth cookies: `access_token`, `refresh_token`, `session_id`. CORS on the
+  gateway is driven entirely by the `FRONTEND_URL` env var plus a Vercel
+  preview pattern — hardcoding origins is a DevOps SOP violation.
+- Realtime (messaging, live updates) goes over **Ably**, not the REST API.
 
 ## Commands
 
@@ -262,6 +449,7 @@ CMS events use a fan-out exchange (`cms.events`); each consumer binds its own du
 ### What you MUST NEVER do:
 - **NEVER create custom UI components** — no new component files, no inline UI component functions, no wrappers, no abstractions
 - **NEVER modify Storybook components** — `frontend/components/ui/`, `frontend/components/*.tsx`, and `frontend/stories/` are READ-ONLY. You import as-is, never edit
+- **NEVER touch the sidebar** — `frontend/components/account-sidebars.tsx` is FROZEN (locked 2026-09-18). Covers the collapse/expand toggle, the close animation (text fade, icon stability), the `useSidebarCollapsed` hook (localStorage persistence, SSR hydration guard, cross-tab sync), the CSS variable (`--sidebar-content-pl`) that drives content flex width, the `SidebarLink` component, section label behavior (Work label absolute-positioned, Account label height-animated), toggle positioning, all spacing and padding values, and the `CollapseToggle` with its tooltip. No refactors, no cleanup, no restyling, no spacing tweaks. Every value was set deliberately. The ONLY permitted change is adding/removing nav items in `buildTalentSections` or `buildClientSections`. Anything else requires explicit @CTorres9800 approval.
 - **NEVER touch the view applicants screen** — `frontend/app/(group)/job-screening/page.tsx` is FROZEN (locked 2026-08-26). Covers the applicant list and cards, filters and sorting, status handling, empty states, and every string. No refactors, no cleanup, no restyling. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
 - **NEVER touch billing** — the entire `frontend/app/(group)/billing/` tree is FROZEN (locked 2026-08-26). This covers `page.tsx`, `transactions/`, `invoices/`, `my-plans/`, and `payment-methods/`. Money-facing screens: layout, table columns and ordering, status badges, currency and date formatting, empty states, filters, pagination, and every string. No refactors, no cleanup, no restyling, no "improving" the copy. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.
 - **NEVER touch the onboarding flow** — the entire `frontend/app/(group)/onboarding/` tree is FROZEN (locked 2026-08-26), enforced directory-wide: new files added under that path are frozen too, so a new file is not a way around it. This covers `page.tsx` (role picker), `talent/page.tsx`, and `client/page.tsx`, and everything in them: the five talent steps and their order, the step registry and numbering, the resume upload step and its reading modal (skeletons, shimmer, extraction feed, summary rows, Done button, error states and their copy), the autofill mapping from parse result into `stepData`, the avatar empty state (initials for a known name, icon otherwise), and every validation guard and error message. No refactors, no cleanup, no restyling, no re-timing of animations, no "improving" the copy. Every value was set deliberately. The ONLY permitted change is backend wiring that alters no class name, element, timing, or string. Anything else requires explicit @CTorres9800 approval.

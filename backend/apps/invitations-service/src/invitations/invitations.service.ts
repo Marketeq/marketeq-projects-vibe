@@ -92,13 +92,14 @@ export class InvitationsService {
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
   ) {
-    // INVITE_EXP_HOURS is the doc's unit (72h default). INVITE_EXP_DAYS is
-    // honored for deployments that already set it, so expiry doesn't shift
-    // silently on upgrade.
+    // QA-180/PMCM-399: default changed from 72h to 14 days (336h) to match
+    // the invite-link AC. INVITE_EXP_HOURS/INVITE_EXP_DAYS still override
+    // this for any deployment that has already set one explicitly — this
+    // only changes what happens when neither is configured.
     const days = config.get('INVITE_EXP_DAYS');
     this.expHours = days
       ? parseInt(days, 10) * 24
-      : parseInt(config.get('INVITE_EXP_HOURS') ?? '72', 10);
+      : parseInt(config.get('INVITE_EXP_HOURS') ?? '336', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
   }
 

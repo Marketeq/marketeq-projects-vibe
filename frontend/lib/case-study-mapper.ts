@@ -1,6 +1,13 @@
 import { getId } from "@/utils/functions"
 import type { CaseStudyBlock } from "@/service/http/case-study"
 
+// Title a case study is created under before the user has typed one. The API
+// requires a non-empty title at create time, so new case studies carry this
+// placeholder text as their real stored title — the editor recognises it and
+// shows an empty field (with this same text as the input's placeholder) so the
+// user types their own title rather than editing a prefilled one.
+export const DEFAULT_CASE_STUDY_TITLE = "Your case study's title"
+
 // Mirrors State["regions"][number]["region"] in components/case-study-builder.tsx.
 export type CaseStudyBlockType =
   | "introduction"
@@ -122,6 +129,8 @@ export interface TestimonialItem {
   quoteHtml: string
   authorHtml: string
   roleHtml: string
+  /** Photo of the person quoted. Falls back to the default avatar when unset. */
+  avatarUrl?: string
 }
 export interface TestimonialData {
   items: TestimonialItem[]

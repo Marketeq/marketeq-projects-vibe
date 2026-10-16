@@ -21,6 +21,16 @@ export interface ContractDTO {
   updatedAt: string
 }
 
+export interface AddableContractDTO {
+  id: string
+  name: string
+  status: string
+  phase: string | null
+  memberAvatars: string[]
+  memberCount: number
+  createdAt: string
+}
+
 export const getContractsForTalent = async (
   talentId: string
 ): Promise<ContractDTO[]> => {
@@ -37,6 +47,19 @@ export const getContractsForClient = async (
     `/contracts/client/${encodeURIComponent(clientId)}`
   )
   return Array.isArray(res.data) ? res.data : []
+}
+
+export const getAddableJobContractsForClient = async (
+  clientUserId: string
+): Promise<AddableContractDTO[]> => {
+  const res = await AxiosRequest.get("/v1/contracts", {
+    params: {
+      clientUserId,
+      addableJobsOnly: true,
+    },
+  })
+
+  return Array.isArray(res.data?.contracts) ? res.data.contracts : []
 }
 
 export type TalentNetworkStatus = "active" | "pending" | "past"
@@ -145,6 +168,27 @@ export const addContractGroupMember = async (
 ): Promise<ContractDTO> => {
   const res = await AxiosRequest.post(
     `/contracts/groups/${encodeURIComponent(groupId)}/members`,
+    payload
+  )
+  return res.data
+}
+
+export interface EndContractPayload {
+  reasonCode: string
+  notes: string
+}
+
+// PMCM-331: gateway-routed counterpart to src/lib/api/contracts.ts's
+// endContract, which fetches localhost:3010 directly with no Authorization
+// header and always 401s. Throws on non-2xx via AxiosRequest's interceptor,
+// same as every other call in this file — callers handle status codes in
+// their own catch.
+export const endContract = async (
+  contractId: string,
+  payload: EndContractPayload
+): Promise<ContractDTO> => {
+  const res = await AxiosRequest.put(
+    `/contracts/${encodeURIComponent(contractId)}/end`,
     payload
   )
   return res.data

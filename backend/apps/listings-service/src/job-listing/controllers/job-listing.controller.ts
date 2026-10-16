@@ -6,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Patch,
   Post,
@@ -28,8 +29,11 @@ import { PresignBriefUploadDto } from "../dto/presign-brief-upload.dto";
 import { ListJobListingsQueryDto } from "../dto/list-job-listings-query.dto";
 import { CreateRoleRowDto } from "../dto/create-role-row.dto";
 import {
+  EditSelectedTextDto,
   ShortenSelectedTextDto,
   SmartAssistantDto,
+  SmartAssistantScopeDto,
+  SmartAssistantFieldDto,
 } from "../dto/smart-assistant.dto";
 import {
   ApplyGeneratedScopeDto,
@@ -38,21 +42,28 @@ import {
   RecommendRoleConfigurationDto,
   GenerateRoleDescriptionsDto,
   GenerateScopeDto,
+  GenerateTeamRowsDto,
   GenerateToolsDto,
 } from "../dto/ai-generation.dto";
 import { UpdateRoleDescriptionDto } from "../dto/update-role-description.dto";
 import {
   GroqUnavailableException,
   JobListingAiService,
+  computeTeamTotalBudgetUsdCents,
 } from "../services/job-listing-ai.service";
 import {
   GeneratedScopePhaseInput,
   JobListingScopeService,
+  buildScopeSnapshotForPrompt,
+  applyOperationsToSnapshot,
 } from "../services/job-listing-scope.service";
+import { JobListingPhase } from "../entities/job-listing-phase.entity";
 
 @UseGuards(JwtAuthGuard)
 @Controller("v1/job-listings")
 export class JobListingController {
+  private readonly logger = new Logger(JobListingController.name);
+
   constructor(
     private readonly jobListingService: JobListingService,
     private readonly publishService: JobListingPublishService,
@@ -154,17 +165,21 @@ export class JobListingController {
   ) {
     const existing = await this.jobListingService.findOneInternal(id);
     const updateDto: UpdateJobListingDto = { ...dto };
+    let nda: { ndaStatus: "OK" | "FAILED"; message?: string } | undefined;
 
     if (dto.ndaEnabled !== undefined) {
-      if (existing.contractType === "existing") {
-        delete updateDto.ndaEnabled;
-      } else {
-        await this.publishService.handleNdaToggle(id, dto.ndaEnabled);
-        delete updateDto.ndaEnabled;
+      if (existing.contractType !== "existing") {
+        nda = await this.publishService.handleNdaToggle(id, dto.ndaEnabled);
       }
+      delete updateDto.ndaEnabled;
     }
 
-    return this.jobListingService.update(this.getUserId(req), id, updateDto);
+    const updated = await this.jobListingService.update(
+      this.getUserId(req),
+      id,
+      updateDto,
+    );
+    return nda ? { ...updated, ndaStatus: nda.ndaStatus, ndaMessage: nda.message } : updated;
   }
 
   // ── PATCH /v1/job-listings/:id/basic-information ─────────────
@@ -416,6 +431,7 @@ export class JobListingController {
           phases: scope.phases,
           appliedPhases: applied.phases,
           totalBudgetUsdCents: applied.totalBudgetUsdCents,
+          isBudgetStale: applied.isBudgetStale,
         };
       }
 
@@ -460,6 +476,54 @@ export class JobListingController {
     }
   }
 
+  @Post(":id/generate-team-rows")
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.OK)
+  async generateTeamRows(
+    @Param("id") id: string,
+    @Body() dto: GenerateTeamRowsDto,
+  ): Promise<any> {
+    const listing = await this.jobListingService.findOneInternal(id);
+    const headcount = dto.headcount ?? listing.headcount ?? 0;
+    const durationMonths = listing.durationMonths ?? 0;
+    const description = dto.description ?? listing.description ?? "";
+
+    if (headcount < 1 || durationMonths < 1 || !description.trim()) {
+      throw new BadRequestException({
+        code: "JL_TEAM_ROWS_INPUT_MISSING",
+        message:
+          "Headcount, duration and a description are required to generate a team.",
+      });
+    }
+
+    const totalBudgetUsdCents = computeTeamTotalBudgetUsdCents(
+      listing.budgetAmountUsdCents ?? 0,
+      listing.budgetFrequency,
+      durationMonths,
+    );
+
+    try {
+      const rows = await this.aiService.generateTeamRows({
+        description,
+        tools: dto.tools ?? listing.tools ?? [],
+        headcount,
+        durationMonths,
+        totalBudgetUsdCents,
+      });
+      return { aiStatus: "OK", durationMonths, rows };
+    } catch (error) {
+      if (error instanceof GroqUnavailableException) {
+        return {
+          aiStatus: "AI_UNAVAILABLE",
+          durationMonths,
+          rows: [],
+          message: error.message,
+        };
+      }
+      throw error;
+    }
+  }
+
   @Post(":id/scope/apply-generated")
   @UseGuards(JobListingOwnerGuard)
   @HttpCode(HttpStatus.OK)
@@ -477,6 +541,7 @@ export class JobListingController {
     return {
       phases: applied.phases,
       totalBudgetUsdCents: applied.totalBudgetUsdCents,
+      isBudgetStale: applied.isBudgetStale,
     };
   }
 
@@ -587,43 +652,36 @@ export class JobListingController {
     try {
       if (mode === "scope") {
         const workType = dto.workType ?? listing.workType ?? "project";
-        const currentScope = dto.currentScope ?? {
-          phases: (listing.phases ?? []).map((phase) => ({
-            phaseName: phase.phaseName,
-            phaseType: phase.phaseType,
-            recurrenceSchedule: phase.recurrenceSchedule,
-            recurrenceCount: phase.recurrenceCount,
-            durationDays: phase.durationDays,
-            tasks: (phase.tasks ?? []).map((task) => ({
-              taskName: task.taskName,
-              roleTitle: task.roleTitle,
-              location: task.location,
-              experienceLevel: task.experienceLevel,
-              workSchedule: task.workSchedule,
-              customHours: task.customHours,
-              customFrequency: task.customFrequency,
-              estimatedHours: task.estimatedHours,
-            })),
-          })),
-        };
+        // Always built server-side from the listing's persisted phases, in
+        // positionOrder — dto.currentScope (still accepted for wire-contract
+        // compatibility) is ignored here. The operation-based response
+        // addresses phases/tasks by index into this exact array, so the
+        // indices the LLM is shown and the indices applySmartAssistantScope-
+        // Operations resolves against below must come from the same
+        // ordering; trusting a client-supplied scope could desync the two.
+        const currentScope = { phases: buildScopeSnapshotForPrompt(listing.phases ?? []) };
+
         const result = await this.aiService.handleSmartAssistantScopeEdit({
           command: dto.command,
-          currentScope: currentScope as any,
+          currentScope,
           workType,
+          currentTotalBudgetUsdCents: dto.currentTotalBudgetUsdCents,
         });
 
-        const persisted = await this.scopeService.applySmartAssistantScopeEdit(
+        const persisted = await this.scopeService.applySmartAssistantScopeOperations(
           listing,
-          result.updatedScope.phases as GeneratedScopePhaseInput[],
+          result.operations,
           dto.command,
         );
 
         return {
           aiStatus: "OK",
           mode: "scope",
-          ...result,
+          summary: result.summary,
+          suggestions: result.suggestions,
           phases: persisted.phases,
           totalBudgetUsdCents: persisted.totalBudgetUsdCents,
+          isBudgetStale: persisted.isBudgetStale,
         };
       }
 
@@ -688,7 +746,7 @@ export class JobListingController {
   @HttpCode(HttpStatus.OK)
   smartAssistantScope(
     @Param("id") id: string,
-    @Body() dto: SmartAssistantDto,
+    @Body() dto: SmartAssistantScopeDto,
   ): Promise<any> {
     return this.smartAssistant(id, { ...dto, mode: "scope" });
   }
@@ -698,7 +756,7 @@ export class JobListingController {
   @HttpCode(HttpStatus.OK)
   smartAssistantField(
     @Param("id") id: string,
-    @Body() dto: SmartAssistantDto,
+    @Body() dto: SmartAssistantFieldDto,
   ): Promise<any> {
     return this.smartAssistant(id, { ...dto, mode: "field" });
   }
@@ -728,6 +786,31 @@ export class JobListingController {
     }
   }
 
+  @Post(":id/smart-assistant/edit-selection")
+  @UseGuards(JobListingOwnerGuard)
+  @HttpCode(HttpStatus.OK)
+  async editSelectedText(
+    @Param("id") id: string,
+    @Body() dto: EditSelectedTextDto,
+  ): Promise<Record<string, unknown>> {
+    await this.jobListingService.findOneInternal(id);
+
+    try {
+      const result = await this.aiService.editSelectedText(dto);
+      return { aiStatus: "OK", ...result };
+    } catch (error) {
+      if (error instanceof GroqUnavailableException) {
+        return {
+          aiStatus: "AI_UNAVAILABLE",
+          updatedText: dto.selectedText,
+          message: error.message,
+          fallback: { selectedText: dto.selectedText },
+        };
+      }
+      throw error;
+    }
+  }
+
   @Post(":id/smart-assistant/history/:historyId/restore")
   @UseGuards(JobListingOwnerGuard)
   @HttpCode(HttpStatus.OK)
@@ -749,6 +832,7 @@ export class JobListingController {
         mode: "scope",
         phases: restored.phases,
         totalBudgetUsdCents: restored.totalBudgetUsdCents,
+        isBudgetStale: restored.isBudgetStale,
       };
     }
 
@@ -785,6 +869,7 @@ export class JobListingController {
         mode: "scope",
         phases: undone.phases,
         totalBudgetUsdCents: undone.totalBudgetUsdCents,
+        isBudgetStale: undone.isBudgetStale,
       };
     }
 
@@ -821,15 +906,30 @@ export class JobListingController {
     try {
       if (entry.field === "scope") {
         const workType = listing.workType ?? "project";
+        // entry.before is a full JobListingPhase[] snapshot (from history),
+        // heavier than the trimmed prompt shape — trim it the same way the
+        // live-edit path trims listing.phases, so the LLM sees the same
+        // shape and the resulting operations' indices resolve consistently.
+        const beforeSnapshot = buildScopeSnapshotForPrompt(
+          entry.before as unknown as JobListingPhase[],
+        );
         const result = await this.aiService.handleSmartAssistantScopeEdit({
           command: entry.command,
-          currentScope: entry.before as any,
+          currentScope: { phases: beforeSnapshot },
           workType,
         });
+        // Retry regenerates from the ORIGINAL pre-edit state (entry.before),
+        // not from the listing's current (post-edit) rows — so, unlike the
+        // live-edit path, there's no live DB row to target-mutate here.
+        // Materialize the operations against the trimmed snapshot in memory,
+        // then persist via the existing delete-all-reinsert path (same as
+        // this endpoint always used, just with `operations` as an
+        // intermediate step instead of the LLM handing back a full tree).
+        const fullScope = applyOperationsToSnapshot(beforeSnapshot, result.operations);
         const applied =
           await this.scopeService.applyGeneratedScopeAndRecalculate(
             id,
-            result.updatedScope.phases as GeneratedScopePhaseInput[],
+            fullScope as GeneratedScopePhaseInput[],
             true,
           );
         await this.scopeService.replaceLatestSmartAssistantScopeHistoryAfter(
@@ -840,9 +940,11 @@ export class JobListingController {
         return {
           aiStatus: "OK",
           mode: "scope",
-          ...result,
+          summary: result.summary,
+          suggestions: result.suggestions,
           phases: applied.phases,
           totalBudgetUsdCents: applied.totalBudgetUsdCents,
+          isBudgetStale: applied.isBudgetStale,
         };
       }
 

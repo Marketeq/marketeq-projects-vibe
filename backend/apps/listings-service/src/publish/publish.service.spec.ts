@@ -353,3 +353,179 @@ describe('PublishService moderation flow', () => {
     expect(moderationService.moderateProject).not.toHaveBeenCalled();
   });
 });
+
+describe('PublishService scope replacement', () => {
+  const projectRepository = {
+    findOne: jest.fn(),
+    update: jest.fn(),
+    updatePublishedSnapshot: jest.fn(),
+  };
+  const phaseRepository = { replaceForProject: jest.fn() };
+  const deliverablesAdapter = { deriveDeliverables: jest.fn() };
+  const configService = { get: jest.fn() };
+  const userProfileClient = { hydrateTeam: jest.fn() };
+
+  let service: PublishService;
+
+  const scopeDto = (name: string) =>
+    ({
+      scope: [
+        {
+          name,
+          stageName: 'Discovery',
+          startDay: 1,
+          endDay: 5,
+          order: 0,
+          tasks: [
+            {
+              taskName: `${name} task`,
+              role: 'Developer',
+              location: [],
+              experience: [],
+              experienceLevel: 'Senior',
+              duration: '2 days',
+            },
+          ],
+        },
+      ],
+    }) as any;
+
+  const deferred = <T>() => {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    projectRepository.findOne.mockResolvedValue({
+      id: 'project-1',
+      userId: 'user-1',
+      teamMemberIds: [],
+      categories: [],
+    });
+    deliverablesAdapter.deriveDeliverables.mockResolvedValue([]);
+    userProfileClient.hydrateTeam.mockResolvedValue([]);
+
+    service = new PublishService(
+      projectRepository as any,
+      {} as any,
+      phaseRepository as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      configService as any,
+      deliverablesAdapter as any,
+      {} as any,
+      userProfileClient as any,
+    );
+  });
+
+  it('maps the scope onto a single replaceForProject call', async () => {
+    phaseRepository.replaceForProject.mockResolvedValue([]);
+
+    await service.replaceProjectScope('user-1', 'project-1', scopeDto('A'));
+
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(1);
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledWith(
+      'project-1',
+      [
+        expect.objectContaining({
+          name: 'A',
+          phaseType: null,
+          recurrenceSchedule: null,
+          recurrenceCount: null,
+          tasks: [
+            expect.objectContaining({
+              taskName: 'A task',
+              assigneeUserId: null,
+            }),
+          ],
+        }),
+      ],
+    );
+    expect(projectRepository.updatePublishedSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('coalesces requests that arrive mid-write into one run of the latest payload', async () => {
+    const firstWrite = deferred<any[]>();
+    phaseRepository.replaceForProject
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockResolvedValue([]);
+
+    const a = service.replaceProjectScope('user-1', 'project-1', scopeDto('A'));
+    await flush();
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(1);
+
+    const b = service.replaceProjectScope('user-1', 'project-1', scopeDto('B'));
+    const c = service.replaceProjectScope('user-1', 'project-1', scopeDto('C'));
+    await flush();
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(1);
+
+    firstWrite.resolve([]);
+    const [, resultB, resultC] = await Promise.all([a, b, c]);
+
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(2);
+    expect(phaseRepository.replaceForProject.mock.calls[1][1][0].name).toBe(
+      'C',
+    );
+    expect(resultB).toBe(resultC);
+  });
+
+  it('runs different projects independently', async () => {
+    const firstWrite = deferred<any[]>();
+    phaseRepository.replaceForProject
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockResolvedValue([]);
+
+    const a = service.replaceProjectScope('user-1', 'project-1', scopeDto('A'));
+    await flush();
+    await service.replaceProjectScope('user-1', 'project-2', scopeDto('B'));
+
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(2);
+    firstWrite.resolve([]);
+    await a;
+  });
+
+  it('rejects every waiter of a failed run and still serves the next request', async () => {
+    const firstWrite = deferred<any[]>();
+    const secondWrite = deferred<any[]>();
+    phaseRepository.replaceForProject
+      .mockReturnValueOnce(firstWrite.promise)
+      .mockReturnValueOnce(secondWrite.promise)
+      .mockResolvedValue([]);
+
+    const a = service.replaceProjectScope('user-1', 'project-1', scopeDto('A'));
+    await flush();
+    const b = service.replaceProjectScope('user-1', 'project-1', scopeDto('B'));
+    const c = service.replaceProjectScope('user-1', 'project-1', scopeDto('C'));
+    await flush();
+
+    firstWrite.resolve([]);
+    await a;
+    await flush();
+    secondWrite.reject(new Error('db down'));
+
+    await expect(b).rejects.toThrow('db down');
+    await expect(c).rejects.toThrow('db down');
+
+    await expect(
+      service.replaceProjectScope('user-1', 'project-1', scopeDto('D')),
+    ).resolves.toEqual(expect.objectContaining({ scope: [] }));
+    expect(phaseRepository.replaceForProject).toHaveBeenCalledTimes(3);
+  });
+
+  it('refuses a caller without access before queueing anything', async () => {
+    await expect(
+      service.replaceProjectScope('someone-else', 'project-1', scopeDto('A')),
+    ).rejects.toThrow('You do not have access to this project');
+    expect(phaseRepository.replaceForProject).not.toHaveBeenCalled();
+  });
+});

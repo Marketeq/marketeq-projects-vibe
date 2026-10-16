@@ -48,4 +48,31 @@ export class User {
 
   @Column({ type: 'timestamp', nullable: true, select: false })
   twoFactorOtpSentAt: Date;
+
+  /**
+   * An address proven to belong to this account, usable for recovery.
+   *
+   * Kept separate from `pendingRecoveryEmail` so nothing can read an address
+   * that has not been proven: an unverified value never lands here. Follows
+   * the same split the notification email change uses.
+   */
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  recoveryEmail: string | null;
+
+  /** The waiting room. Requested but not yet confirmed. */
+  @Column({ type: 'varchar', length: 320, nullable: true })
+  pendingRecoveryEmail: string | null;
+
+  /**
+   * SHA-256 of the confirmation token, never the token itself — it grants a
+   * change to a recovery address, so a leaked row must not be enough to
+   * complete someone else's verification. Lookup is by hash of the presented
+   * token, which works because the hash is deterministic.
+   */
+  @Index()
+  @Column({ type: 'varchar', length: 64, nullable: true, select: false })
+  recoveryEmailTokenHash: string | null;
+
+  @Column({ type: 'timestamp with time zone', nullable: true, select: false })
+  recoveryEmailExpiresAt: Date | null;
 }

@@ -53,6 +53,20 @@ export class R2Service {
     return { url, key, expiresIn: this.expires, publicUrl };
   }
 
+  async getObject(key: string): Promise<Buffer> {
+    await this.ensureAws();
+    const params: GetParams = { Bucket: this.bucket, Key: key };
+    const res = await this.s3!.send(new GetObjectCommand(params));
+    const bytes = await (res.Body as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray();
+    return Buffer.from(bytes);
+  }
+
+  async putObject(key: string, body: Buffer, contentType = 'image/jpeg'): Promise<void> {
+    await this.ensureAws();
+    const params: PutParams = { Bucket: this.bucket, Key: key, Body: body, ContentType: contentType };
+    await this.s3!.send(new PutObjectCommand(params));
+  }
+
   async presignGet(key: string, expires = this.expires) {
     await this.ensureAws();
     const params: GetParams = { Bucket: this.bucket, Key: key };

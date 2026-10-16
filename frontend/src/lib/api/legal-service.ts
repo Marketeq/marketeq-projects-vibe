@@ -10,6 +10,7 @@
  */
 
 import Cookies from "js-cookie"
+import { getCsrfToken } from "../csrf"
 
 // NEXT_PUBLIC_LEGAL_SERVICE_URL lets you override the target:
 //   simple local (start-legal-dev.sh): http://localhost:3015  (direct, no gateway)
@@ -33,9 +34,10 @@ const DEV_SIGNER_USER_ID =
   process.env.NEXT_PUBLIC_DEV_NDA_USER_ID ??
   "11111111-1111-4111-a111-111111111111"
 
-function authHeaders(): HeadersInit {
+function authHeaders(method?: string): HeadersInit {
   const token = Cookies.get("access_token")
   const isDev = process.env.NODE_ENV !== "production"
+  const csrf = getCsrfToken()
 
   return {
     "Content-Type": "application/json",
@@ -45,6 +47,9 @@ function authHeaders(): HeadersInit {
     // works without needing to go through the full auth flow.
     // The backend JwtAuthGuard accepts x-user-id from trusted callers.
     ...(!token && isDev ? { "x-user-id": DEV_SIGNER_USER_ID } : {}),
+    ...(csrf && method && ["POST", "PUT", "PATCH", "DELETE"].includes(method)
+      ? { "X-CSRF-Token": csrf }
+      : {}),
   }
 }
 
@@ -156,7 +161,7 @@ export async function submitNdaSign(
     `${LEGAL_SERVICE_URL}/v1/nda/${documentId}/sign`,
     {
       method: "POST",
-      headers: authHeaders(),
+      headers: authHeaders("POST"),
       credentials: "include",
       body: JSON.stringify(payload),
     },
@@ -187,7 +192,7 @@ export async function generateNda(
 ): Promise<GenerateNdaResponse> {
   const res = await fetch(`${LEGAL_SERVICE_URL}/v1/nda/self-generate`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: authHeaders("POST"),
     credentials: "include",
     body: JSON.stringify(payload),
   })

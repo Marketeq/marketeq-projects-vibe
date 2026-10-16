@@ -17,8 +17,10 @@ export class GetRatesQueryDto {
   @IsOptional()
   location?: string;
 
-  // Experience level.
-  @IsIn(['junior', 'mid', 'senior'])
+  // Experience level. Full 5-level scale (ps_platform_rate_averages.experience_level
+  // is seeded with all 5). 'mid' from the old 3-level scale is not accepted —
+  // callers must send 'medior' instead.
+  @IsIn(['student', 'junior', 'medior', 'senior', 'guru'])
   @IsOptional()
   experience?: string;
 

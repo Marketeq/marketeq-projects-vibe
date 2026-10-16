@@ -972,6 +972,22 @@ const FullScreenSpinner = () => (
   </div>
 )
 
+// QA-182/PL-AC-010/PMCM-399: same markup shape as the sibling "Invitation
+// Error" state in /invite/accept/page.tsx (min-h-screen flex centered card,
+// same classes) - no new component, no new Tailwind pattern. Copy is the
+// AC's exact required string, verbatim, no heading added around it so
+// nothing here drifts from what the AC specifies.
+const ExpiredInviteState = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8 text-center">
+      <div className="text-red-500 text-4xl mb-4">✗</div>
+      <p className="text-gray-600 mt-2">
+        This invitation has expired. Ask the listing owner to send a new one.
+      </p>
+    </div>
+  </div>
+)
+
 /**
  * Sign-in gate for the setup flow.
  *
@@ -992,6 +1008,16 @@ function InviteSetupGate() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { isLoading, user } = useAuth()
+  // QA-182/PL-AC-010/PMCM-399: gated here, one level above <InviteSetup/>,
+  // rather than inside it — InviteSetup already calls useForm/useState/
+  // useEffect unconditionally further down its own body, and an early
+  // return partway through that function would call a different number of
+  // hooks between renders once this resolves. Same queryKey as InviteSetup's
+  // own useInvitationPreview call, so React Query serves both from the one
+  // shared request/cache entry - this doesn't double the network call.
+  const inviteToken = searchParams.get("token")
+  const { data: preview, isLoading: isPreviewLoading } =
+    useInvitationPreview(inviteToken ?? undefined)
 
   useEffect(() => {
     if (isLoading || user) return
@@ -1002,6 +1028,16 @@ function InviteSetupGate() {
   }, [isLoading, user, pathname, searchParams, router])
 
   if (isLoading || !user) return <FullScreenSpinner />
+
+  // Checked before InviteSetup ever mounts, so no step of the wizard (and
+  // none of the company/inviter identity data InviteSetup would otherwise
+  // render from this same preview) is shown for an expired link. The
+  // existing final-step toast in InviteSetup's goToDashboard (a real
+  // acceptInvitation() rejection) stays in place unchanged - it's the
+  // fallback for a link that expires mid-wizard, after this check already
+  // passed on load.
+  if (inviteToken && isPreviewLoading) return <FullScreenSpinner />
+  if (inviteToken && preview?.status === "expired") return <ExpiredInviteState />
 
   return <InviteSetup />
 }

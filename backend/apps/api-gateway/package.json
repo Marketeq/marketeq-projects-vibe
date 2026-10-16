@@ -6,7 +6,7 @@
     "start": "node dist/apps/api-gateway/src/main",
     "start:dev": "nest start api-gateway --watch",
     "start:prod": "node dist/apps/api-gateway/src/main",
-    "test": "jest"
+    "test": "jest --config jest.config.js"
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

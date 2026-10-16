@@ -517,7 +517,7 @@ export class StripeProvider {
   // account regardless of how many bank methods they add. Looked up
   // locally (methodRepo) rather than via a Stripe-side search — the
   // Accounts API has no metadata-search endpoint the way Customers does.
-  private async getOrCreateConnectAccount(contractorId: string): Promise<{
+  private async getOrCreateConnectAccount(contractorId: string, country: string = 'US'): Promise<{
     accountId: string;
     payoutsEnabled: boolean;
     requirementsDue: string[] | null;
@@ -543,17 +543,25 @@ export class StripeProvider {
     // real Connect account created for a DIFFERENT country (e.g. a
     // contractor who also has a GB/SEPA method attached via a different
     // flow) fails every US bank-account tokenization against it. bank_country
-    // is 'US' on every BANK_STRIPE/BANK_MANUAL-US row, but WISE/PAYONEER
+    // is 'US' on every BANK_STRIPE/BANK_MANUAL-US row, but WISE
     // rows (oauth.service.ts's initiateOAuth) never set it at all — treating
     // NULL as implicitly-US (rather than requiring an exact 'US' match)
     // keeps those legitimate US-context accounts reusable too, while still
     // excluding rows that explicitly recorded a different country.
+    // PS-34 §4.2: Custom accounts are single-country, so a Connect account
+    // created for 'US' can't be reused for a GB/SEPA/AU/CA contractor and
+    // vice versa — matching on the exact requested country (NULL only
+    // counts as a match for 'US', preserving the original WISE
+    // reasoning below) keeps cross-country reuse from ever being attempted.
     const existing = await this.methodRepo
       .createQueryBuilder('m')
       .where('m.contractor_id = :contractorId', { contractorId })
       .andWhere("m.stripe_connect_account_id LIKE 'acct\\_%' ESCAPE '\\'")
       .andWhere("m.stripe_connect_account_id NOT LIKE 'acct\\_mock%' ESCAPE '\\'")
-      .andWhere("(m.bank_country = 'US' OR m.bank_country IS NULL)")
+      .andWhere(
+        country === 'US' ? "(m.bank_country = :country OR m.bank_country IS NULL)" : 'm.bank_country = :country',
+        { country },
+      )
       .orderBy('m.created_at', 'DESC')
       .getOne();
     if (existing?.stripeConnectAccountId) {
@@ -575,7 +583,7 @@ export class StripeProvider {
 
     const account = await this.stripe.accounts.create({
       type: 'custom',
-      country: 'US',
+      country,
       business_type: 'individual',
       // Recipient-only — contractors never take charges on this account, so
       // no card_payments/merchant capability is requested.
@@ -592,12 +600,12 @@ export class StripeProvider {
   // ─── PS-09 v2.0 §8: Connect external_account from a raw routing +
   // account number ──────────────────────────────────────────────
   // Used by OAuthService.handleCallback() after retrieving a contractor's
-  // Wise/Payoneer US routing + account number via fetchBankingDetails() —
+  // Wise US routing + account number via fetchBankingDetails() —
   // this is the step that lets Stripe ACH funds directly to the
-  // contractor's Wise or Payoneer balance without Marketeq ever calling the
-  // Wise/Payoneer Payouts API. Unlike attachVerifiedBankAsExternalAccount
+  // contractor's Wise balance without Marketeq ever calling the
+  // Wise Payouts API. Unlike attachVerifiedBankAsExternalAccount
   // (BANK_STRIPE/BANK_MANUAL, which goes through a confirmed SetupIntent +
-  // token), Wise/Payoneer never hand payout-service a SetupIntent — the
+  // token), Wise never hands payout-service a SetupIntent — the
   // routing/account number is all the provider API returns — so the
   // external_account is created directly from those raw values, per
   // PS-09 §8's documented createExternalAccount() shape.
@@ -645,6 +653,102 @@ export class StripeProvider {
       );
     } catch (err: any) {
       this.logger.warn(`Stripe external_account attach failed (routing) for account ${connectAccountId}: ${err?.message}`);
+      throw new PayoutError('We could not attach your account for payouts. Please contact support.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
+    }
+
+    return {
+      connectAccountId, externalAccountId: externalAccount.id,
+      connectPayoutsEnabled: connect.payoutsEnabled, connectRequirementsDue: connect.requirementsDue,
+    };
+  }
+
+  // ─── PS-34 §4.2: Attach a non-US bank account as a Stripe
+  // external_account ────────────────────────────────────────────
+  // Field mapping confirmed directly against Stripe's own API reference
+  // (docs.stripe.com/api/external_account_bank_accounts/create — the
+  // external_account.routing_number field doc: "The routing number, sort
+  // code, or other country-appropriate institution number for the bank
+  // account... If you are providing an IBAN for account_number, this field
+  // is not required."), not guessed:
+  //  - SEPA/IBAN countries: account_number = IBAN, routing_number omitted.
+  //  - GB: routing_number = sort code, account_number = account number.
+  //  - AU: routing_number = BSB, account_number = account number.
+  //  - CA: routing_number = "0" + 3-digit institution + 5-digit transit
+  //    (the standard CPA EFT routing number Canadian institutions and
+  //    Stripe both expect), account_number = account number.
+  // This is what unblocks StripeProvider.submitDob() below — that method
+  // was already correct/ready but had no external_account to activate
+  // transfers for.
+  async attachInternationalExternalAccount(params: {
+    contractorId: string;
+    depositMethodId: string;
+    bankCountry: string;
+    currency: string;
+    accountHolderName: string;
+    iban?: string;
+    accountNumber?: string;
+    sortCode?: string;
+    bsbNumber?: string;
+    institutionNumber?: string;
+    transitNumber?: string;
+  }): Promise<{
+    connectAccountId: string;
+    externalAccountId: string;
+    connectPayoutsEnabled: boolean;
+    connectRequirementsDue: string[] | null;
+  }> {
+    const connect = await this.getOrCreateConnectAccount(params.contractorId, params.bankCountry);
+    const connectAccountId = connect.accountId;
+
+    let accountNumber: string;
+    let routingNumber: string | undefined;
+    if (params.iban) {
+      accountNumber = params.iban;
+    } else if (params.bankCountry === 'CA' && params.institutionNumber && params.transitNumber) {
+      accountNumber = params.accountNumber!;
+      routingNumber = `0${params.institutionNumber.padStart(3, '0')}${params.transitNumber.padStart(5, '0')}`;
+    } else if (params.bankCountry === 'AU' && params.bsbNumber) {
+      accountNumber = params.accountNumber!;
+      routingNumber = params.bsbNumber;
+    } else if (params.sortCode) {
+      accountNumber = params.accountNumber!;
+      routingNumber = params.sortCode;
+    } else {
+      accountNumber = params.accountNumber!;
+    }
+
+    if (!accountNumber) {
+      throw new PayoutError('Missing bank account details for this country.',
+        HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_BANK_ACCOUNT_VALIDATION_FAILED');
+    }
+
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return {
+        connectAccountId, externalAccountId: `ba_mock_${Date.now()}`,
+        connectPayoutsEnabled: connect.payoutsEnabled, connectRequirementsDue: connect.requirementsDue,
+      };
+    }
+
+    let externalAccount: any;
+    try {
+      externalAccount = await this.stripe.accounts.createExternalAccount(
+        connectAccountId,
+        {
+          external_account: {
+            object: 'bank_account',
+            country: params.bankCountry,
+            currency: params.currency.toLowerCase(),
+            account_number: accountNumber,
+            ...(routingNumber ? { routing_number: routingNumber } : {}),
+            account_holder_name: params.accountHolderName,
+            account_holder_type: 'individual',
+          },
+        },
+        { idempotencyKey: `extaccount-${params.depositMethodId}` },
+      );
+    } catch (err: any) {
+      this.logger.warn(`Stripe external_account attach failed (international) for account ${connectAccountId}: ${err?.message}`);
       throw new PayoutError('We could not attach your account for payouts. Please contact support.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_STRIPE_CONNECT_EXTERNAL_ACCOUNT_FAILED');
     }
@@ -873,7 +977,16 @@ export class StripeProvider {
       return;
     }
 
-    const reason = stripePayout.failure_message ?? 'Bank payout failed.';
+    // PS-24 §12: contractor-facing copy for the two most common ACH
+    // return reasons — was Stripe's raw failure_message verbatim before,
+    // which is developer-facing text ("The bank account has been closed."),
+    // not the reviewed contractor copy this doc specifies.
+    const achFailureCopy: Record<string, string> = {
+      invalid_account_number: 'The bank returned an error for this account number. Please check your details or contact your bank.',
+      invalid_account_number_length: 'The bank returned an error for this account number. Please check your details or contact your bank.',
+      account_frozen: 'Your bank account is frozen and can\'t receive transfers. Please contact your bank.',
+    };
+    const reason = achFailureCopy[stripePayout.failure_code] ?? stripePayout.failure_message ?? 'Bank payout failed.';
     await this.payoutRepo.update(payout.id, {
       status: PayoutStatus.FAILED,
       failedAt: new Date(),
@@ -891,6 +1004,65 @@ export class StripeProvider {
       metadata: { stripePayoutId: stripePayout.id, failureCode: stripePayout.failure_code },
     });
 
+    // PS-39 §5: R02 (account closed), R03 (no account), R10 (unauthorized)
+    // mean the bank account itself is dead or the contractor never
+    // authorized this account — retrying against it will only fail again.
+    // Deactivate so the method drops out of the verified list and the
+    // contractor is prompted to add a new one, instead of every future
+    // scheduled/manual payout to it silently failing the same way.
+    //
+    // Stripe's payout.failure_code is its own semantic enum, not a literal
+    // NACHA R-code — confirmed against Stripe's Payout object reference
+    // (docs.stripe.com/api/payouts/object#payout_object-failure_code).
+    // account_closed/no_account map directly to R02/R03; debit_not_authorized
+    // is the closest Stripe equivalent to R10 (Stripe merges "not authorized"
+    // into the general debit-not-approved code rather than exposing a
+    // separate unauthorized-debit reason).
+    // account_frozen (PS-24 §12 ERR_ACH_ACCOUNT_FROZEN / R16) added — also a
+    // dead end, not something a retry or contractor edit resolves.
+    // invalid_account_number (R04) deliberately excluded: PS-24's own
+    // recovery CTA for that one is "re-enter bank details," implying a
+    // fixable typo, not an account to abandon.
+    const deactivateCodes = ['account_closed', 'no_account', 'debit_not_authorized', 'account_frozen'];
+    if (deactivateCodes.includes(stripePayout.failure_code)) {
+      await this.methodRepo.update(
+        { id: payout.depositMethodId } as any,
+        { isActive: false, deactivatedAt: new Date(), verificationStatus: VerificationStatus.FAILED },
+      );
+      await this.auditService.log({
+        contractorId: payout.contractorId,
+        payoutRequestId: payout.id,
+        actorType: 'service',
+        actorId: 'stripe-webhook',
+        action: 'method.deactivated',
+        metadata: { depositMethodId: payout.depositMethodId, achReturnCode: stripePayout.failure_code },
+      });
+      this.logger.warn(`Deposit method ${payout.depositMethodId} deactivated — ACH return ${stripePayout.failure_code}`);
+
+      // PS-23 §3.5: dedicated event, additive to the audit log above —
+      // notification-service/pause-evaluator's spec'd consumer.
+      await this.publisher.publishMethodDeactivated({
+        contractorId: payout.contractorId,
+        depositMethodId: payout.depositMethodId,
+        methodType: 'BANK',
+        reason: stripePayout.failure_code,
+      });
+
+      // debit_not_authorized is the closest Stripe equivalent to NACHA R10
+      // (unauthorized debit) — the one deactivation code that signals
+      // possible fraud/dispute risk rather than a routine dead account, so
+      // it's the one that also escalates to trust-safety-service.
+      if (stripePayout.failure_code === 'debit_not_authorized') {
+        await this.publisher.publishTrustSafetyEscalation({
+          contractorId: payout.contractorId,
+          depositMethodId: payout.depositMethodId,
+          payoutRequestId: payout.id,
+          achReturnCode: stripePayout.failure_code,
+          reason: 'Contractor\'s bank reported this debit as unauthorized.',
+        });
+      }
+    }
+
     await this.publisher.publishPayoutFailed({
       contractorId: payout.contractorId,
       payoutRequestId: payout.id,
@@ -899,6 +1071,7 @@ export class StripeProvider {
       methodType: 'BANK',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: stripePayout.failure_code ?? null,
     });
 
     // By the time Stripe sends payout.failed, the platform→connected-account
@@ -928,24 +1101,6 @@ export class StripeProvider {
           metadata: { transferId, error: err.message },
         });
       }
-    }
-
-    // PS-33 §8: certain failure codes mean the destination itself is bad
-    // (closed account, wrong routing+account combo, ACH debits blocked) —
-    // retrying the same destination will only fail again, so deactivate the
-    // method and make the contractor add a new one rather than silently
-    // re-attempting on the next payout cycle.
-    const deactivateOn = ['account_closed', 'no_account', 'debit_not_authorized'];
-    if (payout.depositMethodId && deactivateOn.includes(stripePayout.failure_code)) {
-      await this.methodRepo.update(payout.depositMethodId, {
-        isActive: false, deactivatedAt: new Date(),
-      } as any);
-      await this.auditService.log({
-        contractorId: payout.contractorId,
-        actorType: 'service', actorId: 'stripe-webhook',
-        action: 'method.deactivated',
-        metadata: { depositMethodId: payout.depositMethodId, reason: stripePayout.failure_code },
-      });
     }
   }
 
@@ -1032,7 +1187,7 @@ export class StripeProvider {
     });
   }
 
-  // PS-33 §5: an external_account (bank/Wise/Payoneer routing+account) was
+  // PS-33 §5: an external_account (bank/Wise routing+account) was
   // disabled or updated — typically after a payout failure Stripe decided
   // means the destination is no longer usable. Mark the method as needing
   // re-verification rather than silently letting the next scheduled payout
@@ -1072,6 +1227,141 @@ export class StripeProvider {
         connectRequirementsDue: account.requirements?.currently_due ?? null,
       },
     );
+
+    // PS-34 §4.3: international BANK_MANUAL methods (UK/SEPA/AU/CA) sit in
+    // PENDING after StripeProvider.submitDob() until this webhook reports
+    // whether Stripe activated transfers outright or escalated to
+    // government ID + selfie. US methods reach VERIFIED through the
+    // micro-deposit/instant-verification path in methods.service.ts instead
+    // and are unaffected — this only ever touches rows still PENDING.
+    const transfers = account.capabilities?.transfers;
+    if (transfers === 'active') {
+      // Fetch the rows this update is about to touch first — publishStripeKycVerified
+      // (PS-40 §3.3) needs the per-method contractorId/depositMethodId/bankCountry,
+      // which update()'s UpdateResult (just an affected count) doesn't carry.
+      const affectedMethods = await this.methodRepo.find({
+        where: {
+          stripeConnectAccountId: account.id,
+          methodType: MethodType.BANK_MANUAL,
+          verificationStatus: VerificationStatus.PENDING,
+        } as any,
+      });
+      const result = await this.methodRepo.update(
+        {
+          stripeConnectAccountId: account.id,
+          methodType: MethodType.BANK_MANUAL,
+          verificationStatus: VerificationStatus.PENDING,
+        } as any,
+        { verificationStatus: VerificationStatus.VERIFIED },
+      );
+      if (result.affected) {
+        this.logger.log(`account.updated: transfers active — ${result.affected} method(s) on ${account.id} marked VERIFIED`);
+        for (const method of affectedMethods) {
+          await this.publisher.publishStripeKycVerified({
+            contractorId: method.contractorId,
+            depositMethodId: method.id,
+            stripeConnectedAccountId: account.id,
+            bankCountry: method.bankCountry ?? '',
+          });
+        }
+      }
+      return;
+    }
+
+    if (transfers === 'pending' || transfers === 'inactive') {
+      const requirements: string[] = account.requirements?.currently_due ?? [];
+      const needsId = requirements.some(
+        (r) => r.includes('proof_of_liveness') || r.includes('id_number') || r.includes('document'),
+      );
+      if (needsId) {
+        const affectedMethods = await this.methodRepo.find({
+          where: {
+            stripeConnectAccountId: account.id,
+            methodType: MethodType.BANK_MANUAL,
+            verificationStatus: VerificationStatus.PENDING,
+          } as any,
+        });
+        const result = await this.methodRepo.update(
+          {
+            stripeConnectAccountId: account.id,
+            methodType: MethodType.BANK_MANUAL,
+            verificationStatus: VerificationStatus.PENDING,
+          } as any,
+          { verificationStatus: VerificationStatus.PENDING_ADDITIONAL_KYC },
+        );
+        if (result.affected) {
+          this.logger.log(`account.updated: Stripe escalated ${account.id} to government ID + selfie — ${result.affected} method(s) marked PENDING_ADDITIONAL_KYC`);
+          const kycUrl = await this.createAccountLink(account.id);
+          for (const method of affectedMethods) {
+            await this.publisher.publishAdditionalKycRequired({
+              contractorId: method.contractorId,
+              depositMethodId: method.id,
+              kycUrl,
+              requirements,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // PS-40 §3.4: the additional_kyc_required event carries a Stripe Account
+  // Link URL the contractor follows to complete government ID + selfie.
+  // account_onboarding (not account_update) since PENDING_ADDITIONAL_KYC
+  // methods haven't finished onboarding yet — Stripe still has outstanding
+  // currently_due requirements on the account at this point.
+  private async createAccountLink(stripeConnectAccountId: string): Promise<string> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      return this.fcReturnUrl;
+    }
+    const link = await this.stripe.accountLinks.create({
+      account: stripeConnectAccountId,
+      refresh_url: this.fcReturnUrl,
+      return_url: this.fcReturnUrl,
+      type: 'account_onboarding',
+    });
+    return link.url;
+  }
+
+  // ─── PS-34 §4.2: Submit DOB to unlock cross-border transfers ────
+  // UK/SEPA/AU/CA BANK_MANUAL methods need the account holder's date of
+  // birth on file before Stripe will activate the transfers capability.
+  // Now called from methods.service.ts's international-bank branch, right
+  // after attachInternationalExternalAccount() above gives the connected
+  // account a real bank account to activate transfers for. Never marks the
+  // method VERIFIED itself — Stripe may activate transfers immediately or
+  // escalate to ID verification, and only the account.updated webhook
+  // (handleAccountUpdated above) knows which happened.
+  async submitDob(params: {
+    contractorStripeAccountId: string;
+    dateOfBirth: { day: number; month: number; year: number };
+    legalFirstName: string;
+    legalLastName: string;
+  }): Promise<void> {
+    if (!this.stripe || !this.isRealStripeKey()) {
+      this.logger.log(`[STUB] submitDob for ${params.contractorStripeAccountId} — no real Stripe key configured`);
+      return;
+    }
+
+    const persons = await this.stripe.accounts.listPersons(params.contractorStripeAccountId);
+    const person = persons.data[0];
+    if (!person) {
+      throw new PayoutError(
+        'No person found on connected account — onboarding may be incomplete.',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        'ERR_STRIPE_PERSON_NOT_FOUND',
+      );
+    }
+
+    await this.stripe.accounts.updatePerson(params.contractorStripeAccountId, person.id, {
+      dob: {
+        day: params.dateOfBirth.day,
+        month: params.dateOfBirth.month,
+        year: params.dateOfBirth.year,
+      },
+      first_name: params.legalFirstName,
+      last_name: params.legalLastName,
+    });
   }
 
   // ─── Session restart ──────────────────────────────────────────
