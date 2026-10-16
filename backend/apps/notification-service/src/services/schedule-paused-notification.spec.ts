@@ -5,6 +5,7 @@
 import { of, throwError } from 'rxjs';
 import { NotificationController } from '../controllers/notification.controller';
 import { NotificationService } from './notification.service';
+import { memoryIdempotencyRepo } from '../testing/in-memory-idempotency.repo';
 import { NotificationDeliveryService } from '../delivery/notification-delivery.service';
 import { NotificationDeliveryMonitor } from '../delivery/notification-delivery-monitor';
 import {
@@ -18,29 +19,16 @@ import {
 } from '../../../payout-service/src/publishers/payout-notification.publisher';
 
 function world() {
-  const claimed = new Set<string>();
   const stored: any[] = [];
-  const idempotencyRepo = {
-    createQueryBuilder: () => {
-      let key = '';
-      const qb: any = {
-        insert: () => qb,
-        values: (v: any) => ((key = v.key), qb),
-        orIgnore: () => qb,
-        returning: () => qb,
-        execute: async () => {
-          if (claimed.has(key)) return { raw: [] };
-          claimed.add(key);
-          return { raw: [{ key }] };
-        },
-      };
-      return qb;
-    },
-    delete: jest.fn(async ({ key }: any) => { claimed.delete(key); }),
+  const idempotencyRepo = memoryIdempotencyRepo();
+  const claimed = {
+    get size() { return [...idempotencyRepo.rows.values()].filter((r: any) => r.completedAt).length; },
+    has: (k: string) => !!idempotencyRepo.rows.get(k)?.completedAt,
   };
   const notifRepo = {
     create: (v: any) => v,
-    save: jest.fn(async (v: any) => { const row = { id: `n${stored.length + 1}`, ...v }; stored.push(row); return row; }),
+    findOne: jest.fn(async ({ where }: any) => stored.find((r) => r.id === where.id) ?? null),
+    save: jest.fn(async (v: any) => { const row = { id: `n${stored.length + 1}`, ...v }; const at = stored.findIndex((x) => x.id === row.id); if (at >= 0) stored[at] = row; else stored.push(row); return row; }),
   };
   const prefRepo = { findOne: jest.fn(async () => null) };
   const ably = { isEnabled: () => false };

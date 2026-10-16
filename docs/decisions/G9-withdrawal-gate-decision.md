@@ -157,3 +157,34 @@ A split schedule pays two legs (primary, then secondary) from one due occurrence
   of ending the chain silently.
 - **Queue failure after the row is saved** marks the row FAILED, so a resumed occurrence does not
   treat a released, never-queued row as a live payment.
+
+## Notification delivery: channels are delivered at most once per key
+
+`notification.send` with an `idempotencyKey` (the G9 "scheduled payout paused" notification) is
+retried through the delay queues and dead-letter queue. A retry must not repeat a channel that
+already went out, and a key must stay recoverable if a worker dies mid-delivery.
+
+- **Per-channel progress on the key.** `notification_idempotency` now records the stored in-app
+  row (`notificationId`), `ablyDone`, `emailDone`, `completedAt` and a lease (`lockedUntil`).
+  Each channel's success is recorded as soon as it happens (migration
+  `1798500000000-AddNotificationIdempotencyProgress`; additive, existing rows are marked completed).
+- **One stored row per key.** The in-app row's id is derived from the key, so a retry or a
+  takeover can only ever update the same row.
+- **Retries resume.** On failure the progress is kept and the lease is handed back at once; the
+  retry takes the key over and runs only the unfinished channels. A failed Ably push or email is
+  thrown (after the other channel was attempted) so it is retried on its own; before, a keyed
+  email failure was swallowed and never retried.
+- **Duplicates and concurrency.** A completed key is dropped as a duplicate. A key held by a live
+  lease (60 s) raises a retriable "in progress" signal, so a concurrent copy is retried after the
+  normal delay, not lost and not delivered alongside the first. A lease that expired (the worker
+  died) is taken over atomically, one winner.
+- **Dead-letter replay** of a keyed message is safe for the same reason: it resumes at the
+  channel that never succeeded.
+- **Unkeyed notifications behave exactly as before manual acknowledgment existed:** one attempt,
+  no claim row, a failure is logged and the message acknowledged, never retried (a retry could
+  repeat a channel). A malformed message is still dead-lettered.
+- **Payout state is independent.** payout-service emits the notification fire-and-forget; no
+  delivery outcome feeds back into the schedule, the pause or any payout.
+- One narrow window remains by design: a worker that dies after the realtime push was accepted but
+  before `ablyDone` was recorded repeats that one push on takeover (the stored row and the email are
+  not repeated).

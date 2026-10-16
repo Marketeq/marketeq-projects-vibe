@@ -1,9 +1,11 @@
 // Reliable processing of `notification.send` (manual acknowledgment).
 //
+//   no idempotency key -> one attempt, then ack (a failure is logged, never retried: unchanged)
 //   dispatch succeeds (or the idempotency key shows it was already delivered)  -> ack
-//   dispatch throws   (its idempotency claim is released by NotificationService) -> republish the
-//        UNCHANGED message (same body, so the same idempotency key) to a delay queue, then ack
-//        the original; the delay queue dead-letters it back into the main queue after its TTL
+//   dispatch throws   (NotificationService keeps the channels already delivered and frees the key)
+//        -> republish the UNCHANGED message (same body, so the same idempotency key) to a delay
+//        queue, then ack the original; the delay queue dead-letters it back into the main queue
+//        after its TTL, and the retry resumes at the channel that did not finish
 //   still failing after MAX_DELIVERY_ATTEMPTS, or malformed (can never succeed) -> dead-letter
 //        queue, error log, monitor counter, health signal, then ack the original
 //   the retry / dead-letter publish itself fails -> the original is NOT acked: nack with requeue
@@ -72,6 +74,20 @@ export class NotificationDeliveryService {
     const problem = payloadProblem(payload);
     if (problem) {
       await this.deadLetter(channel, message, attempt, `malformed: ${problem}`, payload, key);
+      return;
+    }
+
+    // No idempotency key: the original single attempt. A failure part-way through (the row is
+    // stored and pushed, then the email fails) cannot be retried without repeating the channels
+    // that already went out, so it is logged and acknowledged, exactly as before manual
+    // acknowledgment existed. Only keyed notifications record per-channel progress and retry.
+    if (!key?.trim()) {
+      try {
+        await this.notifications.dispatch(payload);
+      } catch (err) {
+        this.logger.error(`Notification ${payload?.event} (no idempotency key) failed and is not retried: ${describe(err)}`);
+      }
+      channel.ack(message);
       return;
     }
 

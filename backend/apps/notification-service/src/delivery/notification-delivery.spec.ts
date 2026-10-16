@@ -1,6 +1,7 @@
 import { InternalServerErrorException } from '@nestjs/common'
 import { NotificationController } from '../controllers/notification.controller';
-import { NotificationService } from '../services/notification.service';
+import { NotificationService, notificationIdForKey } from '../services/notification.service';
+import { memoryIdempotencyRepo } from '../testing/in-memory-idempotency.repo';
 import { NotificationDeliveryService } from './notification-delivery.service';
 import { NotificationDeliveryMonitor } from './notification-delivery-monitor';
 import { AckingServerRMQ } from './acking-server-rmq';
@@ -50,19 +51,15 @@ function broker() {
 
 function rig(opts: { save?: jest.Mock } = {}) {
   const b = broker();
-  const claimed = new Set<string>();
   const stored: any[] = [];
-  const idempotencyRepo: any = {
-    createQueryBuilder: () => {
-      let key = '';
-      const qb: any = { insert: () => qb, values: (v: any) => ((key = v.key), qb), orIgnore: () => qb, returning: () => qb,
-        execute: async () => (claimed.has(key) ? { raw: [] } : (claimed.add(key), { raw: [{ key }] })) };
-      return qb;
-    },
-    delete: jest.fn(async ({ key }: any) => { claimed.delete(key); }),
+  const idempotencyRepo: any = memoryIdempotencyRepo();
+  // "Claimed" here means the key is completed: a repeat of it is a duplicate.
+  const claimed = {
+    get size() { return [...idempotencyRepo.rows.values()].filter((r: any) => r.completedAt).length; },
+    has: (k: string) => !!idempotencyRepo.rows.get(k)?.completedAt,
   };
-  const save = opts.save ?? jest.fn(async (v: any) => { const r = { id: `n${stored.length + 1}`, ...v }; stored.push(r); return r; });
-  const notifRepo: any = { create: (v: any) => v, save };
+  const save = opts.save ?? jest.fn(async (v: any) => { const r = { id: `n${stored.length + 1}`, ...v }; const at = stored.findIndex((x) => x.id === r.id); if (at >= 0) stored[at] = r; else stored.push(r); return r; });
+  const notifRepo: any = { create: (v: any) => v, save, findOne: async ({ where }: any) => stored.find((r) => r.id === where.id) ?? null };
   const prefRepo: any = { findOne: async () => null };
   const service = new NotificationService(notifRepo, prefRepo, idempotencyRepo, { isEnabled: () => false } as any, {} as any);
   const monitor = new NotificationDeliveryMonitor();
@@ -111,7 +108,8 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
     // first failure: original acked only after the retry was stored; claim released
     expect(r.b.q(RETRY_QUEUE_SHORT)).toHaveLength(1);
     expect(r.claimed.size).toBe(0);
-    expect(r.idempotencyRepo.delete).toHaveBeenCalledWith({ key: 'k1' });
+    expect(r.idempotencyRepo.rows.get('k1')!.completedAt).toBeNull();      // not mistaken for a delivered key
+    expect(r.idempotencyRepo.rows.get('k1')!.lockedUntil!.getTime()).toBeLessThanOrEqual(Date.now()); // handed back for the retry
     const retried = r.b.q(RETRY_QUEUE_SHORT)[0];
     expect(retried.properties.headers[ATTEMPT_HEADER]).toBe(1);
     expect(JSON.parse(retried.content.toString()).data.idempotencyKey).toBe('k1');
@@ -193,7 +191,7 @@ describe('notification.send: reliable processing with manual acknowledgment', ()
     await expect(r.service.dispatch(payload() as any)).rejects.toThrow('x');
     expect(r.claimed.size).toBe(0);
     fail = false;
-    await expect(r.service.dispatch(payload() as any)).resolves.toMatchObject({ id: 'n' });
+    await expect(r.service.dispatch(payload() as any)).resolves.toMatchObject({ id: notificationIdForKey('k1') });
   });
 
   it('an email failure after the in-app row was stored does not re-store it on retry', async () => {
