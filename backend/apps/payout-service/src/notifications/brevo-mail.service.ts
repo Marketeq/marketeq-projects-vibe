@@ -13,6 +13,47 @@ import axios, { AxiosInstance } from 'axios';
 
 const BREVO_API_BASE = 'https://api.brevo.com/v3';
 
+// PS-14 §4.2 copy.
+export const MAGIC_LINK_SUBJECT = 'Confirm your Marketeq withdrawal — action required';
+const SUPPORT_EMAIL = 'support@marketeq.com';
+
+/** "$1,250.00" */
+export function formatUsd(amountUsd: string): string {
+  const n = Number(amountUsd);
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** "10:45 AM", in UTC. The email appends " UTC" itself (PS-14 §4.2). */
+export function formatUtcTime(at: Date): string {
+  return at.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  });
+}
+
+export function buildWithdrawalConfirmText(
+  link: string,
+  amount: string,
+  methodLabel: string,
+  expiresAt: string,
+): string {
+  return [
+    'Confirm your withdrawal',
+    '',
+    `You requested a withdrawal of ${amount} to ${methodLabel}.`,
+    `Click the link below to confirm. This link expires at ${expiresAt} UTC.`,
+    '',
+    `Confirm withdrawal: ${link}`,
+    '',
+    `If you did not request this withdrawal, contact support immediately at ${SUPPORT_EMAIL}.`,
+    'If you do not confirm within 15 minutes, your withdrawal request will be cancelled and your balance will remain unchanged.',
+    '',
+    'Do not forward this email. This link can only be used once.',
+  ].join('\n');
+}
+
 @Injectable()
 export class BrevoMailService {
   private readonly logger = new Logger(BrevoMailService.name);
@@ -46,12 +87,22 @@ export class BrevoMailService {
     });
   }
 
-  async sendMagicLink(to: string, link: string, amountUsd: string): Promise<void> {
+  // PS-14 §4.2 fixes every line of this email: subject, headline, the two
+  // body lines, CTA label, security note, no-action note and footer.
+  async sendMagicLink(
+    to: string,
+    link: string,
+    details: { amountUsd: string; methodLabel: string; expiresAt: Date },
+  ): Promise<void> {
     if (!this.enabled) {
       throw new Error('BREVO_API_KEY is not configured');
     }
 
+    // PS-14 §4.2: the URL carries the raw token, so it is never logged.
     this.logger.log(`Brevo sending magic link: to=${to} templateId=${this.withdrawalTemplateId ?? 'inline'}`);
+
+    const amount = formatUsd(details.amountUsd);
+    const expiresAt = formatUtcTime(details.expiresAt);
 
     const request: Record<string, unknown> = {
       sender: { email: this.fromEmail, name: this.fromName },
@@ -61,10 +112,16 @@ export class BrevoMailService {
 
     if (this.withdrawalTemplateId) {
       request.templateId = this.withdrawalTemplateId;
-      request.params = { amount: amountUsd, verifyUrl: link };
+      request.params = {
+        amount,
+        methodLabel: details.methodLabel,
+        expiresAt,
+        verifyUrl: link,
+      };
     } else {
-      request.subject = 'Confirm your withdrawal — Marketeq';
-      request.htmlContent = this.buildWithdrawalConfirmHtml(link, amountUsd);
+      request.subject = MAGIC_LINK_SUBJECT;
+      request.htmlContent = this.buildWithdrawalConfirmHtml(link, amount, details.methodLabel, expiresAt);
+      request.textContent = buildWithdrawalConfirmText(link, amount, details.methodLabel, expiresAt);
     }
 
     try {
@@ -79,11 +136,18 @@ export class BrevoMailService {
   }
 
   // Same visual template as frontend/public/emailTemplate.html (the
-  // "verify your account" email) — heading, body copy, blue CTA button,
-  // expiry note, footer disclaimer with a plain-text fallback link.
-  private buildWithdrawalConfirmHtml(link: string, amountUsd: string): string {
+  // "verify your account" email): heading, body copy, blue CTA button, notes,
+  // footer, and a plain-text fallback link. The copy is PS-14 §4.2 verbatim.
+  private buildWithdrawalConfirmHtml(
+    link: string,
+    amount: string,
+    methodLabel: string,
+    expiresAt: string,
+  ): string {
     const safeLink = this.escapeAttribute(link);
-    const safeAmount = this.escapeHtml(amountUsd);
+    const safeAmount = this.escapeHtml(amount);
+    const safeMethod = this.escapeHtml(methodLabel);
+    const safeExpiry = this.escapeHtml(expiresAt);
 
     return `<!doctype html>
 <html>
@@ -99,8 +163,11 @@ export class BrevoMailService {
         </tr>
         <tr>
           <td>
+            <p style="font-size:16px;font-weight:300;color:#000000;margin:0 0 12px;">
+              You requested a withdrawal of <strong>${safeAmount}</strong> to <strong>${safeMethod}</strong>.
+            </p>
             <p style="font-size:16px;font-weight:300;color:#000000;margin:0 0 24px;">
-              Click the button below to confirm your withdrawal of <strong>$${safeAmount}</strong>.
+              Click the button below to confirm. This link expires at ${safeExpiry} UTC.
             </p>
           </td>
         </tr>
@@ -108,21 +175,25 @@ export class BrevoMailService {
           <td style="padding-top:12px;">
             <a href="${safeLink}"
               style="padding:18px 14px;background-color:#306cfe;color:#ffffff;text-decoration:none;font-size:16px;font-weight:600;display:inline-block;">
-              Confirm Withdrawal
+              Confirm withdrawal
             </a>
           </td>
         </tr>
         <tr>
           <td style="padding-top:24px;">
-            <h3 style="font-size:14px;font-weight:500;color:#000000;margin:0;">
-              This link expires in 15 minutes.
-            </h3>
+            <p style="font-size:14px;font-weight:500;color:#000000;margin:0 0 12px;">
+              If you did not request this withdrawal, contact support immediately at
+              <a href="mailto:${SUPPORT_EMAIL}" style="color:#306cfe;text-decoration:underline;">${SUPPORT_EMAIL}</a>.
+            </p>
+            <p style="font-size:14px;font-weight:400;color:#000000;margin:0;">
+              If you do not confirm within 15 minutes, your withdrawal request will be cancelled and your balance will remain unchanged.
+            </p>
           </td>
         </tr>
         <tr>
           <td style="padding-top:24px;">
             <p style="font-size:12px;font-weight:400;color:#929292;margin:0;">
-              If you didn't request this withdrawal, you can ignore this email. Button not
+              Do not forward this email. This link can only be used once. Button not
               working? Copy the link below and paste it into your browser:
               <a href="${safeLink}" style="color:#306cfe;text-decoration:underline;">${safeLink}</a>
             </p>
