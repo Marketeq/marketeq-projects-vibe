@@ -70,6 +70,12 @@ describe('withdrawal notifications (PMCM-806)', () => {
         body: '$650.00 has been returned to your balance.',
       });
     });
+
+    it('N-04 says cancelled and that the money is back in the balance', () => {
+      const push = buildWithdrawalPush({ kind: 'cancelled', ...base });
+      expect(push.title).toBe('Withdrawal cancelled');
+      expect(push.body).toBe('$650.00 has been returned to your balance.');
+    });
   });
 
   describe('email', () => {
@@ -126,6 +132,21 @@ describe('withdrawal notifications (PMCM-806)', () => {
         expect(email.text).toContain(`Reason: ${NO_SPECIFIC_REASON}`);
         expect(email.html).not.toContain('account_closed');
       }
+    });
+
+    it('N-04 mirrors N-03: money back first, says cancelled, same CTAs, no reason row', () => {
+      const email = buildWithdrawalEmail({ kind: 'cancelled', ...base });
+      expect(email.subject).toBe('Your $650.00 withdrawal was cancelled');
+      expect(email.text.startsWith('$650.00 is back in your balance')).toBe(true);
+      expect(email.text).toContain('was cancelled before it was completed');
+      expect(email.text.indexOf('No funds have been lost')).toBeLessThan(email.text.indexOf('Status: Cancelled'));
+      expect(email.text).not.toContain('Reason:');
+      expect(email.text).toContain(`Reference: ${base.reference}`);
+      expect(email.text).toContain('What to do next');
+      expect(email.text).toContain(`Review payout method: ${base.reviewMethodUrl}`);
+      expect(email.text).toContain(`Try again: ${base.tryAgainUrl}`);
+      expect(email.html).toContain('Review payout method');
+      expect(email.html).toContain('Try again');
     });
 
     it('falls back to a neutral greeting without a first name', () => {
