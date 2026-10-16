@@ -167,13 +167,35 @@ export class MagicLinkService {
     }
 
     try {
-      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, parseFloat(payout.amountUsd).toFixed(2));
+      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, {
+        amountUsd: payout.amountUsd,
+        methodLabel: await this.methodLabelFor(payout),
+        expiresAt: await this.activeLinkExpiry(payout.id),
+      });
     } catch (err) {
       // PS-14 / F-18: delivery failure must not block withdrawal initiation —
       // the payout_request already exists; the contractor can use resend (F-19).
       this.logger.error(`Magic link email delivery failed for payout ${payout.id}: ${(err as Error).message}`);
       this.logDevVerifyUrl(magicLinkUrl);
     }
+  }
+
+  // PS-14 §4.2 body line 1: "…to {methodLabel}".
+  private async methodLabelFor(payout: PayoutRequest): Promise<string> {
+    const method =
+      payout.depositMethod ??
+      (await this.methodRepo.findOne({ where: { id: payout.depositMethodId } }));
+    return method?.displayLabel || 'your payout method';
+  }
+
+  // PS-14 §4.2 body line 2: the exact expiry of the link being sent, read
+  // from the verification row generateAndStore() just wrote.
+  private async activeLinkExpiry(payoutRequestId: string): Promise<Date> {
+    const active = await this.verificationRepo.findOne({
+      where: { payoutRequestId, superseded: false, used: false },
+      order: { createdAt: 'DESC' },
+    });
+    return active?.expiresAt ?? new Date(Date.now() + this.ttlSeconds * 1000);
   }
 
   // ─── PS-14 §5: Verify Magic Link Token ──────────────────────
