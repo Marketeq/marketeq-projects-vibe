@@ -104,6 +104,7 @@ import {
   Trash2,
   Type,
   Upload01,
+  WifiOff,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -358,6 +359,83 @@ function classifyPublishError(input: {
   }
 
   return "other"
+}
+
+// PMCM-252 follow-up: each autosave's recursive setTimeout loop is re-entered
+// from multiple places — the timer itself, the online-reconnect flush, and
+// promptSignInToRetry's post-login resume — and a bare `let timeoutId` with
+// no guard let two of those overlap into a second concurrent loop (doubling
+// requests, outliving the effect that scheduled it). This factory is the one
+// place that enforces: at most one pending timer, at most one in-flight
+// `save()` call, and a `disposed` flag that permanently stops rescheduling
+// once the owning effect's cleanup runs.
+type AutosaveLoop = {
+  // Entry point for every caller (the timer, the online flush, a retry
+  // resume). Resolves once THIS invocation's save (plus any rerun folded
+  // into it, see below) has actually completed — callers that `await` it
+  // (the online flush's sequential ordering) keep working unchanged.
+  run: () => Promise<void>
+  // Permanently stops the loop: no further reschedule, no new run() actually
+  // executes a save. Call once from the effect's cleanup.
+  dispose: () => void
+}
+
+function createAutosaveLoop(
+  save: () => Promise<boolean>,
+  nextDelayMs: () => number
+): AutosaveLoop {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let inFlight: Promise<void> | null = null
+  // Set when run() is called while a save is already in flight — instead of
+  // starting a second concurrent save, the current one is asked to go again
+  // once it finishes, so the latest data still goes out exactly once more.
+  let rerunRequested = false
+  let disposed = false
+
+  const clearPendingTimer = () => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  const scheduleNext = () => {
+    clearPendingTimer()
+    if (disposed) return
+    timeoutId = setTimeout(() => void run(), nextDelayMs())
+  }
+
+  const runOnce = async (): Promise<void> => {
+    do {
+      rerunRequested = false
+      const paused = await save()
+      if (disposed || paused) return
+    } while (rerunRequested)
+    scheduleNext()
+  }
+
+  const run = (): Promise<void> => {
+    // Whoever calls run() — timer fire, online flush, retry resume — first
+    // cancels any timer still pending, so a stale scheduled tick can never
+    // kick off a second loop alongside this call.
+    clearPendingTimer()
+    if (disposed) return Promise.resolve()
+    if (inFlight) {
+      rerunRequested = true
+      return inFlight
+    }
+    inFlight = runOnce().finally(() => {
+      inFlight = null
+    })
+    return inFlight
+  }
+
+  const dispose = () => {
+    disposed = true
+    clearPendingTimer()
+  }
+
+  return { run, dispose }
 }
 
 function makeUniqueFile(
@@ -1120,27 +1198,62 @@ const Sidebar = ({
             <div
               className={cn(
                 "grid transition-[grid-template-rows] duration-300 ease-in-out",
-                isActive ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                // PMCM-252/N2: a locked section's sub-items now also
+                // expand (blurred/disabled below) instead of staying
+                // collapsed — otherwise "locked sub-items are blurred"
+                // would never be observable, since a locked step can
+                // never become active. Every other inactive-but-reachable
+                // step keeps the existing collapsed-unless-active pattern.
+                isActive || disabled ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
               )}
             >
               <div className="overflow-hidden">
-              <div className="mt-1 pl-9">
+              <div
+                className={cn("mt-1 pl-9", disabled && "opacity-50")}
+              >
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
                       const hasError = hasProjectInfoFieldError(field.name)
                       const hasValue = hasProjectInfoFieldValue(field.name)
                       const shouldShowStatus = hasError || hasValue
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
+
+                      const subItem = (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          onClick={() => {
+                            if (disabled || !targetId) return
+                            scrollToWizardField(targetId)
+                          }}
+                        >
+                          {field.label}
+                        </button>
+                      )
 
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                          {disabled ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {subItem}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Complete the previous section first
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            subItem
+                          )}
 
-                          {shouldShowStatus &&
+                          {!disabled &&
+                            shouldShowStatus &&
                             (hasError ? (
                               <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
                             ) : (
@@ -1173,17 +1286,44 @@ const Sidebar = ({
                         ? additionalCount >= requiredAdditional
                         : hasMediaFieldValue(field.name)
                       const shouldShowStatus = hasError || hasValue
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
+
+                      const subItem = (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          onClick={() => {
+                            if (disabled || !targetId) return
+                            scrollToWizardField(targetId)
+                          }}
+                        >
+                          {field.label}
+                        </button>
+                      )
 
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                          {disabled ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {subItem}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Complete the previous section first
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            subItem
+                          )}
 
-                          {shouldShowStatus &&
+                          {!disabled &&
+                            shouldShowStatus &&
                             (hasError ? (
                               <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
                             ) : (
@@ -1195,74 +1335,119 @@ const Sidebar = ({
                       )
                     })}
                   {label === "Project Scope" &&
-                    meta[label].map((field, i) => (
-                      <div
-                        className="py-1.5 flex items-center justify-between pr-3"
-                        key={i}
-                      >
-                        {field.label === "Task Name" ? (
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
-                            onClick={() => setTaskSearchDialogOpen(true)}
-                          >
-                            {field.label}
-                          </button>
-                        ) : (
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
-                        )}
-
-                        {hasStartedScope ? (
-                          (field.label === "Task Name" &&
-                            pickFromProjectScopeSchema({
-                              task: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Role" &&
-                            pickFromProjectScopeSchema({
-                              role: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Location" &&
-                            pickFromProjectScopeSchema({
-                              location: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Experience" &&
-                            pickFromProjectScopeSchema({
-                              experience: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Duration" &&
-                            pickFromProjectScopeSchema({
-                              duration: true,
-                            }).safeParse(phases)) ? (
-                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                              <Check className="size-3 text-white" />
-                            </div>
+                    meta[label].map((field, i) => {
+                      const targetId =
+                        field.label === "Task Name"
+                          ? null
+                          : SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
+                      const subItem = (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          onClick={() => {
+                            if (disabled) return
+                            if (field.label === "Task Name") {
+                              setTaskSearchDialogOpen(true)
+                            } else if (targetId) {
+                              scrollToWizardField(targetId)
+                            }
+                          }}
+                        >
+                          {field.label}
+                        </button>
+                      )
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3"
+                          key={i}
+                        >
+                          {disabled ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {subItem}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Complete the previous section first
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           ) : (
-                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                          )
-                        ) : null}
-                      </div>
-                    ))}
+                            subItem
+                          )}
+
+                          {!disabled && hasStartedScope ? (
+                            (field.label === "Task Name" &&
+                              pickFromProjectScopeSchema({
+                                task: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Role" &&
+                              pickFromProjectScopeSchema({
+                                role: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Location" &&
+                              pickFromProjectScopeSchema({
+                                location: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Experience" &&
+                              pickFromProjectScopeSchema({
+                                experience: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Duration" &&
+                              pickFromProjectScopeSchema({
+                                duration: true,
+                              }).safeParse(phases)) ? (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ) : (
+                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                            )
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   {label === "Team" &&
                     meta.Team.map((field, i) => {
                       const isSubActive = teamSubTab === field.name
+                      const subItem = (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className={cn(
+                            "text-sm leading-6 transition duration-300 focus-visible:outline-none disabled:cursor-not-allowed",
+                            isSubActive
+                              ? "text-primary-500"
+                              : "text-gray-500 hover:text-dark-blue-400 disabled:hover:text-gray-500"
+                          )}
+                          onClick={() => {
+                            if (disabled) return
+                            setTeamSubTab(field.name)
+                          }}
+                        >
+                          {field.label}
+                        </button>
+                      )
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pr-3 cursor-pointer"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
-                          onClick={() => setTeamSubTab(field.name)}
                         >
-                          <span
-                            className={cn(
-                              "text-sm leading-6 transition duration-300",
-                              isSubActive
-                                ? "text-primary-500"
-                                : "text-gray-500 hover:text-dark-blue-400"
-                            )}
-                          >
-                            {field.label}
-                          </span>
+                          {disabled ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {subItem}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Complete the previous section first
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            subItem
+                          )}
                         </div>
                       )
                     })}
@@ -1277,22 +1462,48 @@ const Sidebar = ({
                       const hasError =
                         field.name === "faqs" &&
                         (faqError || faqModerationHasError)
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
+                      const subItem = (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          onClick={() => {
+                            if (disabled || !targetId) return
+                            scrollToWizardField(targetId)
+                          }}
+                        >
+                          {field.label}
+                        </button>
+                      )
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
+                          {disabled ? (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  {subItem}
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Complete the previous section first
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : (
+                            subItem
+                          )}
 
-                          {hasError ? (
-                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                          ) : hasValue ? (
-                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                              <Check className="size-3 text-white" />
-                            </div>
-                          ) : null}
+                          {!disabled &&
+                            (hasError ? (
+                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                            ) : hasValue ? (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ) : null)}
                         </div>
                       )
                     })}
@@ -1312,12 +1523,16 @@ const Header = ({
   lastSavedAt,
   onPublish,
   publishing,
+  saveStatus,
+  isOffline,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
   onPublish?: () => void
   publishing?: boolean
+  saveStatus?: "idle" | "saving" | "saved" | "error"
+  isOffline?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1326,16 +1541,33 @@ const Header = ({
       </h3>
 
       <div className="flex items-center gap-x-3">
-        {lastSavedAt && (
+        {isOffline ? (
+          <Badge visual="warning">
+            <WifiOff className="size-3.5" />
+            You&apos;re offline. Changes will sync when you reconnect.
+          </Badge>
+        ) : saveStatus === "error" ? (
+          <Badge visual="error">
+            <AlertCircle className="size-3.5" />
+            Couldn&apos;t save. Retrying…
+          </Badge>
+        ) : saveStatus === "saving" ? (
           <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
-            <Clock className="size-4" />
-            Saved at{" "}
-            {lastSavedAt.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            })}
+            <RefreshCcw05 className="size-4 animate-spin" />
+            Saving…
           </span>
+        ) : (
+          lastSavedAt && (
+            <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
+              <Clock className="size-4" />
+              Saved at{" "}
+              {lastSavedAt.toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })}
+            </span>
+          )
         )}
         <TooltipProvider>
           <Tooltip>
@@ -1949,6 +2181,41 @@ const PROJECT_INFO_VALIDATION_TARGETS: Array<{
 const scrollToPublishField = (targetId: string) => {
   if (typeof window === "undefined") return
 
+  window.requestAnimationFrame(() => {
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
+// PMCM-252/N2: sidebar sub-item → field-group anchor, for every sub-item
+// that doesn't already have a more specific click behavior (Project
+// Scope's "Task Name" opens the task-search dialog; every Team sub-item
+// already switches teamSubTab — both left as they are). The Questions
+// targets are RadixTabs.Trigger buttons (uncontrolled tabs), so the
+// shared helper below also clicks the element when it's a button, to
+// actually switch to that tab, not just scroll to its (already visible)
+// trigger.
+const SIDEBAR_SUB_ITEM_TARGET_IDS: Record<string, string> = {
+  title: "publish-project-title-field",
+  shortDescription: "publish-project-short-description-field",
+  tags: "publish-project-tags-field",
+  featuredImages: "publish-project-featured-images-field",
+  additionalImages: "publish-project-additional-images-field",
+  featuredVideo: "publish-project-featured-video-field",
+  role: "publish-project-scope-table-field",
+  location: "publish-project-scope-table-field",
+  experience: "publish-project-scope-table-field",
+  duration: "publish-project-scope-table-field",
+  faqs: "publish-project-faqs-field",
+  recentQuestions: "publish-project-recent-questions-field",
+}
+
+const scrollToWizardField = (targetId: string) => {
+  if (typeof window === "undefined") return
+  const el = document.getElementById(targetId)
+  if (el instanceof HTMLButtonElement) el.click()
   window.requestAnimationFrame(() => {
     document.getElementById(targetId)?.scrollIntoView({
       behavior: "smooth",
@@ -7073,7 +7340,10 @@ const ProjectScope = ({
             </div>
           </div>
 
-          <div className="space-y-6 flex-auto min-w-0">
+          <div
+            className="space-y-6 flex-auto min-w-0"
+            id="publish-project-scope-table-field"
+          >
             {/* Budget Calculator & Duration cards */}
             <div className="grid grid-cols-2 gap-x-4">
               <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
@@ -9380,12 +9650,14 @@ const Questions = ({
           <RadixTabs.Root defaultValue="FAQs">
             <RadixTabs.List className="inline-flex items-end gap-4 border-b border-b-gray-200 w-full">
               <RadixTabs.Trigger
+                id="publish-project-faqs-field"
                 value="FAQs"
                 className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
               >
                 FAQ&apos;s
               </RadixTabs.Trigger>
               <RadixTabs.Trigger
+                id="publish-project-recent-questions-field"
                 value="RecentQuestions"
                 className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
               >
@@ -10118,15 +10390,30 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("")
   const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
-  // PMCM-261/E2: each of these autosaves retries on every 2s tick until the
-  // payload changes or the save succeeds — without this, a non-401 failure
-  // would toast every 2 seconds indefinitely. Tracks the payload signature
-  // already toasted for, so each distinct failing edit gets exactly one
-  // toast, not a repeat every tick.
-  const lastDraftToastedForRef = useRef<string>("")
-  const lastScopeToastedForRef = useRef<string>("")
-  const lastFaqsToastedForRef = useRef<string>("")
-  const lastVideoToastedForRef = useRef<string>("")
+  // PMCM-252/E1: consecutive-failure counts, for the backoff curve above —
+  // reset to 0 on success or on a definitive 4xx (which stops retrying
+  // that payload instead of backing off on it). The "rejected" refs below
+  // are the definitive-4xx payload signatures themselves, so that exact
+  // payload isn't retried again until the seller actually changes it.
+  const draftFailureCountRef = useRef(0)
+  const draftRejectedPayloadRef = useRef<string>("")
+  const scopeFailureCountRef = useRef(0)
+  const scopeRejectedPayloadRef = useRef<string>("")
+  const mediaFailureCountRef = useRef(0)
+  const faqsFailureCountRef = useRef(0)
+  const faqsRejectedPayloadRef = useRef<string>("")
+  const videoFailureCountRef = useRef(0)
+  const videoRejectedPayloadRef = useRef<string>("")
+  // PMCM-252/E1: the header already shows "Couldn't save. Retrying…" for the
+  // whole duration of a failure streak, so a toast per autosave tick (or per
+  // edit made while still failing) would be redundant noise on top of that.
+  // One shared gate across all four generic-failure autosaves below — set on
+  // the first failure of a streak, cleared only in endSaveSuccess (i.e. on
+  // the NEXT successful save, by any autosave), so at most one toast fires
+  // per streak regardless of how many payload changes happen during it.
+  // (Supersedes the former per-save, per-payload-signature dedup refs, which
+  // would otherwise re-toast on every new edit made while still failing.)
+  const hasToastedForFailureRef = useRef(false)
   // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
   // saveMedia had no ref here and its effect's cleanup only cleared the
   // interval — a media change made within the ~2s polling window, followed
@@ -10142,6 +10429,60 @@ function PublishProject({
   const lastVideoUrlRef = useRef<string>("")
   const saveVideoRef = useRef<() => Promise<void>>(async () => {})
   const hasHydratedRef = useRef(false)
+
+  // PMCM-252/AC2/E1/E3: one shared save-status machine derived from every
+  // autosave below, so the header can show more than just "Saved at h:mm".
+  // "saving" wins while anything is in flight; "error" is sticky until the
+  // NEXT save (any of them) succeeds, since a silent "saved" while a
+  // different field is still failing to persist would be misleading.
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle")
+  const saveInFlightCountRef = useRef(0)
+  // Set true the moment any autosave starts, cleared only once EVERY
+  // in-flight save has resolved successfully — covers X1/beforeunload
+  // ("are there unsynced changes right now").
+  const hasUnsyncedChangesRef = useRef(false)
+  const beginSave = () => {
+    saveInFlightCountRef.current += 1
+    hasUnsyncedChangesRef.current = true
+    setSaveStatus("saving")
+  }
+  const endSaveSuccess = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+    setLastSavedAt(new Date())
+    if (saveInFlightCountRef.current === 0) {
+      hasUnsyncedChangesRef.current = false
+      setSaveStatus("saved")
+    }
+    hasToastedForFailureRef.current = false
+  }
+  const endSaveError = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+    setSaveStatus("error")
+  }
+  // A 401 isn't a save failure in the "couldn't save, retrying" sense —
+  // it's paused on login, with its own modal as the indicator — so it
+  // intentionally does NOT flip saveStatus to "error".
+  const endSavePaused = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+  }
+
+  // PMCM-252/E1: shared backoff curve for every autosave's retry loop —
+  // 2s baseline, doubling per consecutive non-definitive failure, capped
+  // at 30s; back to 2s the moment that autosave's failure count resets
+  // (on success, or on a definitive 4xx that stops retrying until the
+  // payload changes).
+  const nextAutosaveDelayMs = (consecutiveFailures: number): number =>
+    consecutiveFailures <= 0
+      ? 2000
+      : Math.min(2000 * 2 ** consecutiveFailures, 30000)
+
+  // PMCM-252/E3: offline detection. A ref (not just the state) so the
+  // long-lived recursive autosave timeouts below always read the CURRENT
+  // connectivity without needing to be recreated on every flip.
+  const [isOffline, setIsOffline] = useState(false)
+  const isOfflineRef = useRef(false)
 
   useEffect(() => {
     faqsRef.current = faqs
@@ -10536,7 +10877,12 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveDraft = async () => {
+    // Returns true when this attempt was skipped/paused (offline, or a
+    // 401 handed off to promptSignInToRetry) — the scheduler below uses
+    // that to decide whether to keep the normal retry loop running.
+    const saveDraft = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const info = projectInfoMethods.getValues()
       const payload = buildProjectDraftPayload({
         title: info.title ?? "",
@@ -10550,34 +10896,60 @@ function PublishProject({
       })
 
       const serializedPayload = JSON.stringify(payload)
-      if (serializedPayload === lastDraftPayloadRef.current) return
+      if (
+        serializedPayload === lastDraftPayloadRef.current ||
+        serializedPayload === draftRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
         lastDraftPayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        draftRejectedPayloadRef.current = ""
+        draftFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project draft", error)
         if (isUnauthorizedError(error)) {
-          // The next 2s poll already re-sends unchanged (lastDraftPayloadRef
-          // was never advanced on failure) — this just also surfaces the
-          // modal and re-triggers it immediately after login.
+          endSavePaused()
+          // PMCM-261: the queued retry calls saveDraftRef.current(), which
+          // (below) is this same recursive cycle — resuming it also
+          // re-arms the backoff loop, not just one bare retry.
           promptSignInToRetry(() => void saveDraftRef.current())
-        } else if (lastDraftToastedForRef.current !== serializedPayload) {
-          lastDraftToastedForRef.current = serializedPayload
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          // PMCM-252/E1: a real validation/moderation rejection — stop
+          // retrying THIS payload (it will never succeed unchanged), but
+          // don't back off on it; the next genuinely new edit tries fresh.
+          draftRejectedPayloadRef.current = serializedPayload
+        } else {
+          draftFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
           toast({ title: toUserMessage(error), variant: "destructive" })
         }
+        return false
       }
     }
 
-    saveDraftRef.current = saveDraft
+    const loop = createAutosaveLoop(saveDraft, () =>
+      nextAutosaveDelayMs(draftFailureCountRef.current)
+    )
 
-    void saveDraft()
-    const interval = setInterval(() => {
-      void saveDraft()
-    }, 2000)
+    saveDraftRef.current = loop.run
+
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveDraft()
     }
   }, [
@@ -10590,16 +10962,29 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveScope = async () => {
+    const saveScope = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const payload = buildScopeDraftPayload(
         draftProjectId,
         projectScopeMethods[0]
       )
       const serializedPayload = JSON.stringify(payload)
 
-      if (serializedPayload === lastScopePayloadRef.current) return
+      if (
+        serializedPayload === lastScopePayloadRef.current ||
+        serializedPayload === scopeRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      // Never stack ticks: the recursive scheduler below only ever starts
+      // the next cycle once this one resolves, which is what actually
+      // prevents the overlapping-saves pile-up that took listings-service
+      // down on 2026-10-03 — this counter is now just an in-flight marker,
+      // kept for that same defensive intent.
       scopeSavesInFlightRef.current += 1
+      beginSave()
       try {
         const scopeRes = await ProjectAPI.ReplaceProjectScope(
           draftProjectId,
@@ -10610,34 +10995,45 @@ function PublishProject({
           setPricingBudgetCents(nextBudget)
         }
         lastScopePayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        scopeRejectedPayloadRef.current = ""
+        scopeFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project scope draft", error)
         if (isUnauthorizedError(error)) {
+          endSavePaused()
           promptSignInToRetry(() => void saveScopeRef.current())
-        } else if (lastScopeToastedForRef.current !== serializedPayload) {
-          lastScopeToastedForRef.current = serializedPayload
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          scopeRejectedPayloadRef.current = serializedPayload
+        } else {
+          scopeFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
           toast({ title: toUserMessage(error), variant: "destructive" })
         }
+        return false
       } finally {
         scopeSavesInFlightRef.current -= 1
       }
     }
 
-    saveScopeRef.current = saveScope
+    const loop = createAutosaveLoop(saveScope, () =>
+      nextAutosaveDelayMs(scopeFailureCountRef.current)
+    )
 
-    void saveScope()
-    const interval = setInterval(() => {
-      // Never stack ticks: until a save resolves, the payload still differs
-      // from lastScopePayloadRef, so a slow save got re-sent every 2s — the
-      // pile-up that took listings-service down on 2026-10-03. The flushes
-      // on cleanup and beforeunload still go out regardless.
-      if (scopeSavesInFlightRef.current > 0) return
-      void saveScope()
-    }, 2000)
+    saveScopeRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveScope()
     }
   }, [
@@ -10650,37 +11046,62 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveFaqs = async () => {
+    const saveFaqs = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const payload = faqsRef.current
         .filter((f) => f.q.trim() || f.a.trim())
         .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
       const serializedPayload = JSON.stringify(payload)
 
-      if (serializedPayload === lastFaqsPayloadRef.current) return
+      if (
+        serializedPayload === lastFaqsPayloadRef.current ||
+        serializedPayload === faqsRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { faqs: payload })
         lastFaqsPayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        faqsRejectedPayloadRef.current = ""
+        faqsFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project FAQs draft", error)
         if (isUnauthorizedError(error)) {
+          endSavePaused()
           promptSignInToRetry(() => void saveFaqsRef.current())
-        } else if (lastFaqsToastedForRef.current !== serializedPayload) {
-          lastFaqsToastedForRef.current = serializedPayload
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          faqsRejectedPayloadRef.current = serializedPayload
+        } else {
+          faqsFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
           toast({ title: toUserMessage(error), variant: "destructive" })
         }
+        return false
       }
     }
 
-    saveFaqsRef.current = saveFaqs
+    const loop = createAutosaveLoop(saveFaqs, () =>
+      nextAutosaveDelayMs(faqsFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveFaqs()
-    }, 2000)
+    saveFaqsRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveFaqs()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted])
@@ -10688,61 +11109,128 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveVideo = async () => {
+    const saveVideo = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
 
-      if (videoUrl === lastVideoUrlRef.current) return
+      if (videoUrl === lastVideoUrlRef.current) return false
       // PMCM-256: invalid URL gets an inline error (mediaFormSchema's
       // featuredVideo .refine()) and nothing saved — without this gate,
       // this 2s-interval autosave persisted whatever was typed regardless
       // of validity, since it reads form state directly rather than
       // going through form validation.
-      if (!isValidFeaturedVideoUrl(videoUrl)) return
+      if (!isValidFeaturedVideoUrl(videoUrl)) return false
+      if (videoUrl === videoRejectedPayloadRef.current) return false
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
         lastVideoUrlRef.current = videoUrl
-        setLastSavedAt(new Date())
+        videoRejectedPayloadRef.current = ""
+        videoFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project video draft", error)
         if (isUnauthorizedError(error)) {
+          endSavePaused()
           promptSignInToRetry(() => void saveVideoRef.current())
-        } else if (lastVideoToastedForRef.current !== videoUrl) {
-          lastVideoToastedForRef.current = videoUrl
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          videoRejectedPayloadRef.current = videoUrl
+        } else {
+          videoFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
           toast({ title: toUserMessage(error), variant: "destructive" })
         }
+        return false
       }
     }
 
-    saveVideoRef.current = saveVideo
+    const loop = createAutosaveLoop(saveVideo, () =>
+      nextAutosaveDelayMs(videoFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveVideo()
-    }, 2000)
+    saveVideoRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveVideo()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
-  // Flush pending saves when the user navigates away or closes the tab
+  // Flush pending saves when the user navigates away or closes the tab.
+  // PMCM-252/E3/X1: also warns the user first (native "leave site?"
+  // dialog) when there's a save still in flight or unsynced from an
+  // offline edit — reusing this same handler rather than adding a second
+  // one, since firing the saves fire-and-forget here was already the
+  // existing behavior and the browser may kill the page before any of
+  // them complete.
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       void saveDraftRef.current()
       void saveScopeRef.current()
       void saveMediaRef.current()
-      void saveFaqsRef.current()
       void saveVideoRef.current()
+      void saveFaqsRef.current()
+      if (hasUnsyncedChangesRef.current) {
+        event.preventDefault()
+        event.returnValue = ""
+      }
     }
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
+  // PMCM-252/E3: offline/online. While offline, every autosave below
+  // pauses (no API calls, no error spam) instead of treating a network
+  // failure as a save error. The moment the browser reports "online"
+  // again, flush every pending save once, in a safe order — draft (the
+  // project's own fields) before scope (which can reference team members
+  // the draft save doesn't touch), then media, then video, then FAQs —
+  // reusing the exact same save functions autosave/beforeunload already
+  // use, not a new sync path.
+  useEffect(() => {
+    const syncOnline = () => {
+      isOfflineRef.current = false
+      setIsOffline(false)
+      void (async () => {
+        await saveDraftRef.current()
+        await saveScopeRef.current()
+        await saveMediaRef.current()
+        await saveVideoRef.current()
+        await saveFaqsRef.current()
+      })()
+    }
+    const syncOffline = () => {
+      isOfflineRef.current = true
+      setIsOffline(true)
+    }
+    isOfflineRef.current = !navigator.onLine
+    setIsOffline(!navigator.onLine)
+    window.addEventListener("online", syncOnline)
+    window.addEventListener("offline", syncOffline)
+    return () => {
+      window.removeEventListener("online", syncOnline)
+      window.removeEventListener("offline", syncOffline)
+    }
+  }, [])
+
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveMedia = async () => {
+    const saveMedia = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const mediaValues = mediaMethods.getValues()
       const featuredMeta = mediaValues.featuredImages?.[0]?.meta
       const additionalMeta =
@@ -10763,11 +11251,11 @@ function PublishProject({
         hiddenImages,
       })
 
-      if (signature === lastMediaPayloadRef.current) return
+      if (signature === lastMediaPayloadRef.current) return false
 
       const isClearingFeatured =
         !featuredMeta && !!persistedMediaRef.current?.featuredImage
-      if (!featuredMeta && !isClearingFeatured) return
+      if (!featuredMeta && !isClearingFeatured) return false
 
       const prevMediaSignature = lastMediaPayloadRef.current
       lastMediaPayloadRef.current = signature
@@ -10784,7 +11272,7 @@ function PublishProject({
         )
         if (!hasFeatured) {
           lastMediaPayloadRef.current = prevMediaSignature
-          return
+          return false
         }
       }
 
@@ -10796,6 +11284,7 @@ function PublishProject({
       }
       formData.append("replaceHidden", "true")
 
+      beginSave()
       try {
         const response = await ProjectAPI.UploadMedia(formData)
         const nextMedia = {
@@ -10865,23 +11354,34 @@ function PublishProject({
           ),
           hiddenImages: resetValues.hiddenImages ?? [],
         })
-        setLastSavedAt(new Date())
+        mediaFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error: any) {
         console.error("Failed to save project media draft", error)
         if (isUnauthorizedError(error)) {
           // PMCM-261/AC3: this autosave has no `fields`-style argument to
           // thread through — reverting the signature ref (like the 5xx
-          // branch below) makes the *next* 2s poll see the payload as
+          // branch below) makes the *next* poll see the payload as
           // changed again and resend it once logged back in, which is
           // exactly the retry this needs.
           lastMediaPayloadRef.current = prevMediaSignature
+          endSavePaused()
           promptSignInToRetry(() => void saveMediaRef.current())
-          return
+          return true
         }
         const status = error?.response?.status
         if (!status || status >= 500) {
           lastMediaPayloadRef.current = prevMediaSignature
+          mediaFailureCountRef.current += 1
+          endSaveError()
         } else {
+          // PMCM-252/E1: a real validation/moderation rejection — never
+          // retried (lastMediaPayloadRef is already at this signature, so
+          // the next tick's unchanged-check skips it), so the backoff
+          // resets rather than growing.
+          mediaFailureCountRef.current = 0
+          endSaveError()
           const errorMessage =
             error?.response?.data?.reason ||
             error?.response?.data?.message ||
@@ -10926,17 +11426,19 @@ function PublishProject({
             variant: "destructive",
           })
         }
+        return false
       }
     }
 
-    saveMediaRef.current = saveMedia
+    const loop = createAutosaveLoop(saveMedia, () =>
+      nextAutosaveDelayMs(mediaFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveMedia()
-    }, 2000)
+    saveMediaRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveMedia()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
@@ -11118,6 +11620,8 @@ function PublishProject({
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}
                     publishing={isPublishing}
+                    saveStatus={saveStatus}
+                    isOffline={isOffline}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
