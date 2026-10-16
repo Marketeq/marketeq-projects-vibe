@@ -167,13 +167,35 @@ export class MagicLinkService {
     }
 
     try {
-      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, parseFloat(payout.amountUsd).toFixed(2));
+      await this.brevoMail.sendMagicLink(contractorEmail, magicLinkUrl, {
+        amountUsd: payout.amountUsd,
+        methodLabel: await this.methodLabelFor(payout),
+        expiresAt: await this.activeLinkExpiry(payout.id),
+      });
     } catch (err) {
       // PS-14 / F-18: delivery failure must not block withdrawal initiation —
       // the payout_request already exists; the contractor can use resend (F-19).
       this.logger.error(`Magic link email delivery failed for payout ${payout.id}: ${(err as Error).message}`);
       this.logDevVerifyUrl(magicLinkUrl);
     }
+  }
+
+  // PS-14 §4.2 body line 1: "…to {methodLabel}".
+  private async methodLabelFor(payout: PayoutRequest): Promise<string> {
+    const method =
+      payout.depositMethod ??
+      (await this.methodRepo.findOne({ where: { id: payout.depositMethodId } }));
+    return method?.displayLabel || 'your payout method';
+  }
+
+  // PS-14 §4.2 body line 2: the exact expiry of the link being sent, read
+  // from the verification row generateAndStore() just wrote.
+  private async activeLinkExpiry(payoutRequestId: string): Promise<Date> {
+    const active = await this.verificationRepo.findOne({
+      where: { payoutRequestId, superseded: false, used: false },
+      order: { createdAt: 'DESC' },
+    });
+    return active?.expiresAt ?? new Date(Date.now() + this.ttlSeconds * 1000);
   }
 
   // ─── PS-14 §5: Verify Magic Link Token ──────────────────────
@@ -420,13 +442,22 @@ export class MagicLinkService {
     }
 
     for (const payout of expired) {
-      await this.dataSource.transaction(async (em) => {
-        await em.update(PayoutRequest, payout.id, {
-          status: PayoutStatus.CANCELLED,
-          cancelledAt: new Date(),
-          failureReason: 'magic_link_expired',
-        });
+      // Conditional on PENDING_VERIFICATION: a contractor who confirms the
+      // link while this job runs has had their balance held and the payout
+      // queued, and cancelling it here would strand that hold.
+      const cancelled = await this.dataSource.transaction(async (em) => {
+        const result = await em.update(
+          PayoutRequest,
+          { id: payout.id, status: PayoutStatus.PENDING_VERIFICATION },
+          {
+            status: PayoutStatus.CANCELLED,
+            cancelledAt: new Date(),
+            failureReason: 'magic_link_expired',
+          },
+        );
+        return !!result.affected;
       });
+      if (!cancelled) continue;
 
       await this.auditService.log({
         contractorId: payout.contractorId,
@@ -439,26 +470,13 @@ export class MagicLinkService {
         metadata: { reason: 'magic_link_expired' },
       });
 
-      // PS-14 §7/§10: previously the contractor was never told why their
-      // withdrawal disappeared — no email, no event, just a silent DB
-      // update. No contractor email is available here (this is a cron job,
-      // not a request — payout-service never stores it, only receives it
-      // per-request from the JWT), so this reuses publishPayoutFailed()
-      // rather than guessing at a user-service email-lookup contract that
-      // doesn't exist anywhere in this codebase. Same event/consumer
-      // earnings-service already handles for every other failed payout.
-      await this.publisher.publishPayoutFailed({
-        contractorId: payout.contractorId,
-        payoutRequestId: payout.id,
-        amount: payout.amountUsd,
-        currency: 'USD',
-        methodType: 'MAGIC_LINK',
-        reason: 'Your withdrawal request expired before it was confirmed.',
-        failedAt: new Date().toISOString(),
-      });
-
-      // PS-14 §10: the dedicated event, additive to payout.failed above —
-      // notification-service's spec'd consumer for this exact message.
+      // PMCM-285: this used to publish payout.failed as well, to reuse its
+      // notification. earnings-service's consumer for that event credits the
+      // amount back to available_balance, but an unconfirmed withdrawal never
+      // had a hold (the hold is placed when the link is confirmed), so every
+      // expired link added the withdrawal amount to the contractor's balance.
+      // payout.cancelled below is the event that tells the contractor.
+      // PS-14 §10: notification-service's spec'd consumer for this exact message.
       await this.publisher.publishPayoutCancelled({
         payoutRequestId: payout.id,
         contractorId: payout.contractorId,
