@@ -780,9 +780,11 @@ export class PayoutService {
 
     if (request.status === PayoutStatus.QUEUED) {
       const jobs = await (this.queue as any).getJobs(['waiting', 'delayed']);
+      let removedQueuedJob = false;
       for (const job of jobs) {
         if (job.data?.payoutRequestId === request.id) {
           await job.remove();
+          removedQueuedJob = true;
           break;
         }
       }
@@ -796,7 +798,13 @@ export class PayoutService {
       // PMCM-285: scheduled payouts do hold now (schedule-execution.cron.ts
       // calls holdBalance before creating the row), without ever setting
       // verifiedAt, so they are restored too.
-      if (request.verifiedAt || request.trigger === PayoutTrigger.SCHEDULED) {
+      // Only when this cancel removed the payout's queue job, though. Before
+      // #586 the cron wrote the same QUEUED row with no hold and never
+      // enqueued it, so a scheduled payout with no waiting/delayed job is one
+      // of those, and restoring it would credit money that was never held.
+      const scheduledWithHold =
+        request.trigger === PayoutTrigger.SCHEDULED && removedQueuedJob;
+      if (request.verifiedAt || scheduledWithHold) {
         await this.publisher.publishPayoutFailed({
           contractorId, payoutRequestId: request.id,
           amount: request.amountUsd, currency: request.currency ?? 'USD',

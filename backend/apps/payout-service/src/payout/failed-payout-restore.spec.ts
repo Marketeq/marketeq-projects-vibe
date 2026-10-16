@@ -137,7 +137,7 @@ describe('queue processor re-check errors (PMCM-285 C)', () => {
 });
 
 describe('cancelling a queued scheduled payout', () => {
-  it('releases its hold even though it never set verifiedAt', async () => {
+  function makeCancel(jobs: unknown[]) {
     const svc = Object.create(PayoutService.prototype) as PayoutService;
     const publisher = {
       publishPayoutFailed: jest.fn().mockResolvedValue(undefined),
@@ -153,13 +153,27 @@ describe('cancelling a queued scheduled payout', () => {
       },
       dataSource: { transaction: (fn: (e: unknown) => unknown) => fn(em) },
       auditService: { log: jest.fn().mockResolvedValue(undefined) },
-      queue: { getJobs: jest.fn().mockResolvedValue([]) },
+      queue: { getJobs: jest.fn().mockResolvedValue(jobs) },
       publisher,
     });
+    return { svc, publisher };
+  }
+
+  it('releases its hold even though it never set verifiedAt', async () => {
+    const job = { data: { payoutRequestId: PAYOUT_ID }, remove: jest.fn().mockResolvedValue(undefined) };
+    const { svc, publisher } = makeCancel([job]);
     await svc.cancel(CONTRACTOR, PAYOUT_ID);
+    expect(job.remove).toHaveBeenCalled();
     expect(publisher.publishPayoutFailed).toHaveBeenCalledWith(expect.objectContaining({
       payoutRequestId: PAYOUT_ID, amount: '80.00000000',
     }));
+  });
+
+  it('does not credit a pre-#586 scheduled payout that was never enqueued or held', async () => {
+    const { svc, publisher } = makeCancel([]);
+    await svc.cancel(CONTRACTOR, PAYOUT_ID);
+    expect(publisher.publishPayoutFailed).not.toHaveBeenCalled();
+    expect(publisher.publishPayoutCancelled).toHaveBeenCalled();
   });
 });
 
