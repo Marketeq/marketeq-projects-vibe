@@ -438,6 +438,64 @@ function createAutosaveLoop(
   return { run, dispose }
 }
 
+// PMCM-253: the wizard's six-state section model (AC1). One pure, exported,
+// unit-testable function — every input is an explicit boolean, nothing here
+// closes over component state. `isActive` takes top priority so the current
+// section always has a visually distinct icon (N1) even while it also has
+// an error or warning underneath; callers that need that underlying status
+// (the publish gate, and the secondary badge shown next to an active
+// section's icon) call this again with `isActive: false` to bypass it.
+export type SectionStatus =
+  | "locked"
+  | "incomplete"
+  | "complete"
+  | "warning"
+  | "error"
+export type SectionState = SectionStatus | "active"
+
+export type DeriveSectionStateInput = {
+  // The step this section would become the moment its prerequisite is met —
+  // once true, stays true for the rest of the session (X2): the wizard
+  // never re-locks a section that was already reachable.
+  isUnlocked: boolean
+  // Live validity for this section's required fields (the same schema/count
+  // check already driving stepsState[index].isValid) — recalculated from
+  // current form values on every render, never a stale save result (AC3).
+  isValid: boolean
+  // True forever once isValid has been true at least once this session —
+  // lets a since-cleared required field in an already-finished section
+  // drop straight to "error" (E1) instead of silently back to "incomplete".
+  everCompleted: boolean
+  // A field-level RHF error or a backend moderation rejection tied to this
+  // section specifically (independent of the plain schema check above).
+  hasBlockingFieldError: boolean
+  // Publish was clicked at least once while this section was still invalid
+  // — the existing AC4/E2 signal, forces every remaining gap into view.
+  publishAttempted: boolean
+  // A non-blocking advisory on an otherwise-valid section (X1). No trigger
+  // is cataloged in this wizard today — see the PMCM-253 progress.md entry
+  // — so every caller currently passes `false`; the state/icon/publish rule
+  // below are fully implemented and ready for one.
+  hasWarning: boolean
+  isActive: boolean
+}
+
+export function deriveSectionState(
+  input: DeriveSectionStateInput
+): SectionState {
+  if (input.isActive) return "active"
+  if (!input.isUnlocked) return "locked"
+
+  const hasBlockingError =
+    input.hasBlockingFieldError ||
+    (input.everCompleted && !input.isValid) ||
+    (input.publishAttempted && !input.isValid)
+
+  if (hasBlockingError) return "error"
+  if (input.isValid) return input.hasWarning ? "warning" : "complete"
+  return "incomplete"
+}
+
 function makeUniqueFile(
   file: File | Blob | undefined
 ): File | Blob | undefined {
@@ -989,16 +1047,22 @@ const Sidebar = ({
   faqError = false,
   faqModerationHasError = false,
   projectInfoModerationHasError = false,
+  mediaModerationHasError = false,
   publishAttempted = false,
   questionsStarted = false,
+  everCompletedSteps = [false, false, false, false, false],
 }: {
   hasFaqs?: boolean
   hasRecentQuestions?: boolean
   faqError?: boolean
   faqModerationHasError?: boolean
   projectInfoModerationHasError?: boolean
+  mediaModerationHasError?: boolean
   publishAttempted?: boolean
   questionsStarted?: boolean
+  // PMCM-253/E1: true forever, per section, once it has been valid at
+  // least once this session — see deriveSectionState's `everCompleted`.
+  everCompletedSteps?: boolean[]
 }) => {
   const { currentStep, stepsState } = useStepRootContext()
   const { setStep } = useStepperContext()
@@ -1099,28 +1163,6 @@ const Sidebar = ({
     [mediaValues]
   )
 
-  const stepHasStarted = (index: number): boolean => {
-    if (index === 0)
-      return Boolean(
-        projectInfoValues.title?.trim() ||
-          projectInfoValues.shortDescription?.trim() ||
-          projectInfoValues.fullDescription?.trim() ||
-          projectInfoValues.category?.some((c) => c?.category?.trim()) ||
-          projectInfoValues.tags?.length ||
-          projectInfoValues.skills?.length ||
-          projectInfoValues.industry?.length
-      )
-    if (index === 1)
-      return Boolean(
-        mediaValues.featuredImages?.length ||
-          mediaValues.additionalImages?.flat().length ||
-          mediaValues.featuredVideo?.trim()
-      )
-    if (index === 2) return hasStartedScope
-    if (index === 4) return questionsStarted
-    return false
-  }
-
   return (
     <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
       <div className="mb-8">
@@ -1129,13 +1171,41 @@ const Sidebar = ({
       {stepsState.map(({ label, isValid, disabled }, index) => {
         const isActive = currentStep === index
         const isLast = index === stepsState.length - 1
-        const hasError =
-          (publishAttempted && !isValid) ||
+        // PMCM-253/AC4: `disabled` here is the WIZARD's own "unlocked" set
+        // (PublishProject overrides stepsState.disabled with it, see the
+        // deriveSectionState block near createAutosaveLoop) — never
+        // re-locks a once-reachable section (X2), unlike the shared
+        // useStepper hook's own disabled cascade.
+        const isUnlocked = !disabled
+        const hasBlockingFieldError =
           (label === "Questions" && faqModerationHasError) ||
-          (label === "Project Info" && projectInfoModerationHasError)
-        const showErrorBadge = hasError
-        const showWarningBadge =
-          !hasError && !isValid && !isActive && stepHasStarted(index)
+          (label === "Project Info" && projectInfoModerationHasError) ||
+          (label === "Media" && mediaModerationHasError)
+        const commonStateInput = {
+          isUnlocked,
+          isValid: Boolean(isValid),
+          everCompleted: everCompletedSteps[index] ?? false,
+          hasBlockingFieldError,
+          publishAttempted,
+          // No non-blocking advisory is cataloged in this wizard today —
+          // see deriveSectionState's own comment. Always false until one
+          // exists; the state/icon/publish rule below are fully wired for
+          // it regardless.
+          hasWarning: false,
+        }
+        const displayState = deriveSectionState({
+          ...commonStateInput,
+          isActive,
+        })
+        // The active section's icon always wins (N1), but the publish gate
+        // and the secondary badge both need the status UNDER that — a
+        // section can be actively open and still flagged error/warning.
+        const underlyingStatus = deriveSectionState({
+          ...commonStateInput,
+          isActive: false,
+        })
+        const showErrorBadge = underlyingStatus === "error"
+        const showWarningBadge = underlyingStatus === "warning"
         return (
           <div key={index} className="relative pb-6 last:pb-0">
             {!isLast && (
@@ -1150,33 +1220,22 @@ const Sidebar = ({
                 "group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none",
                 disabled && "opacity-50 cursor-not-allowed"
               )}
-              data-ui-state={
-                hasError
-                  ? "error"
-                  : isActive
-                    ? "active"
-                    : isValid
-                      ? "complete"
-                      : undefined
-              }
-              // PMCM-254: stepsState.disabled already tracks "can't reach this
-              // step yet" (toggleStepValidation in utils/hooks.ts disables
-              // every later step the moment an earlier one goes invalid) —
-              // this sidebar just never read it, so any step was clickable
-              // regardless of whether Basic Info/Project Info was complete.
+              data-ui-state={displayState}
               aria-disabled={disabled}
               onClick={() => {
                 if (disabled) return
                 setStep(index)
               }}
             >
-              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
-                {hasError ? (
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=warning]:border-primary-500 group-data-[ui-state=warning]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
+                {displayState === "error" ? (
                   <Plus className="size-3.5 text-error-500" />
-                ) : isActive ? (
+                ) : displayState === "active" ? (
                   <span className="size-2 rounded-full bg-primary-500" />
-                ) : isValid ? (
+                ) : displayState === "complete" || displayState === "warning" ? (
                   <Check className="size-3.5 text-white" />
+                ) : displayState === "locked" ? (
+                  <Lock01 className="size-3.5 text-gray-400" />
                 ) : (
                   <Plus className="size-3.5 text-gray-400" />
                 )}
@@ -1535,6 +1594,8 @@ const Header = ({
   publishing,
   saveStatus,
   isOffline,
+  publishDisabled,
+  blockedSectionLabels,
 }: {
   onClose?: () => void
   slug?: string
@@ -1543,6 +1604,12 @@ const Header = ({
   publishing?: boolean
   saveStatus?: "idle" | "saving" | "saved" | "error"
   isOffline?: boolean
+  // PMCM-253/AC4/E2/X1: true while any section is error/incomplete/locked.
+  // Disables Publish directly instead of the previous always-clickable
+  // block-and-reveal — the names below are how a seller still discovers
+  // what's left without clicking a dead button.
+  publishDisabled?: boolean
+  blockedSectionLabels?: string[]
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1598,9 +1665,25 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button onClick={onPublish} disabled={publishing}>
-          {publishing ? "Publishing…" : "Publish"}
-        </Button>
+        {publishDisabled &&
+        !publishing &&
+        blockedSectionLabels &&
+        blockedSectionLabels.length > 0 ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button disabled>Publish</Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Finish {blockedSectionLabels.join(", ")} before publishing.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <Button onClick={onPublish} disabled={publishing || publishDisabled}>
+            {publishing ? "Publishing…" : "Publish"}
+          </Button>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -10215,15 +10298,58 @@ function PublishProject({
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
     [nextStep, prevStep, setStep, toggleStepValidation]
   )
+  // PMCM-253/X2: the wizard's own "unlocked" set, layered on top of the
+  // shared useStepper hook instead of changing it (that hook is shared by
+  // onboarding/client, onboarding/talent, job-listing, publish-project, and
+  // security-settings.tsx — its own disabled cascade re-locks every later
+  // step the instant an earlier one goes invalid, which is exactly the
+  // behavior this ticket must NOT have here). Index 0 starts unlocked;
+  // every other index flips to true the first time its prerequisite is
+  // valid and then never flips back — see the cascading effect below,
+  // once every section's live validity is available.
+  const [unlockedSteps, setUnlockedSteps] = useState<boolean[]>([
+    true,
+    false,
+    false,
+    false,
+    false,
+  ])
+  // PMCM-253/E1: true forever once a section has been valid at least once
+  // this session — lets a since-cleared required field in an
+  // already-finished section drop straight to "error" instead of quietly
+  // back to "incomplete".
+  const [everCompletedSteps, setEverCompletedSteps] = useState<boolean[]>([
+    false,
+    false,
+    false,
+    false,
+    false,
+  ])
   const stepperRootValue = useMemo(
     () => ({
       currentStep,
       hasNextStep,
       hasPreviousStep,
       totalSteps,
-      stepsState,
+      // PMCM-253/N2: override the shared hook's own `disabled` with the
+      // wizard-local unlocked set computed above — every existing reader
+      // of stepsState[index].disabled (this sidebar's click guard/opacity,
+      // the PMCM-252 sub-item lock/tooltip) picks this up for free via
+      // context, with no change to useStepper itself or to the frozen
+      // Stepper component.
+      stepsState: stepsState.map((step, index) => ({
+        ...step,
+        disabled: !unlockedSteps[index],
+      })),
     }),
-    [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
+    [
+      currentStep,
+      hasNextStep,
+      hasPreviousStep,
+      totalSteps,
+      stepsState,
+      unlockedSteps,
+    ]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
@@ -10279,6 +10405,7 @@ function PublishProject({
     setPublishAttempted(true)
     setFaqModerationError(null)
     setProjectInfoModerationError(null)
+    setMediaModerationError(null)
     if (firstInvalidStep !== null) {
       setStep(firstInvalidStep)
       if (firstInvalidStep === 0) await projectInfoMethods.trigger()
@@ -10333,9 +10460,11 @@ function PublishProject({
         setStep(4)
       } else if (errorType === "video_rejection") {
         mediaMethods.setError("featuredVideo", { message: errorMessage })
+        setMediaModerationError(errorMessage)
         setStep(1)
       } else if (errorType === "image_rejection") {
         mediaMethods.setError("featuredImages", { message: errorMessage })
+        setMediaModerationError(errorMessage)
         setStep(1)
       } else if (errorType === "content_rejection") {
         projectInfoMethods.setError("fullDescription", { message: errorMessage })
@@ -10387,6 +10516,14 @@ function PublishProject({
     null
   )
   const [projectInfoModerationError, setProjectInfoModerationError] = useState<
+    string | null
+  >(null)
+  // PMCM-253/AC4: Media's moderation/validation rejections (saveMedia's and
+  // handlePublish's `mediaMethods.setError(...)` calls, PMCM-261/252) had no
+  // boolean flag reaching the sidebar the way Project Info's and FAQ's do —
+  // the section's own circle/badge, and therefore the publish gate, never
+  // actually reflected a rejected image/video. Mirrors the other two.
+  const [mediaModerationError, setMediaModerationError] = useState<
     string | null
   >(null)
   const [hasRecentQuestions, setHasRecentQuestions] = useState(false)
@@ -10506,6 +10643,14 @@ function PublishProject({
     setProjectInfoModerationError(null)
   }, [projectInfoModerationWatch])
 
+  // PMCM-253: same clear-on-edit convention as the two watches above —
+  // the instant the seller touches Media again, drop the stale rejection
+  // so E3's "fixing it updates the status automatically" actually applies.
+  const mediaModerationWatch = useWatch({ control: mediaMethods.control })
+  useEffect(() => {
+    setMediaModerationError(null)
+  }, [mediaModerationWatch])
+
   // Sidebar step ticks: each step's form only mounts when it's the active step,
   // so validate every step here (always mounted) — an existing/edited project
   // shows completed steps immediately, and Team/Questions can tick too.
@@ -10562,8 +10707,14 @@ function PublishProject({
     setStepValid(4, completedFaqCount >= 3)
   }, [completedFaqCount, setStepValid])
 
-  const firstInvalidStep = useMemo(() => {
-    const validity: Record<number, boolean> = {
+  // PMCM-253: the one canonical per-section validity record — PMCM-261
+  // flagged `firstInvalidStep` as a second, independently-reimplemented copy
+  // of the exact same five checks `setStepValid` above already runs; this
+  // extracts it once so firstInvalidStep, the unlock cascade, and the
+  // publish-gate state machine below all read the SAME values instead of
+  // three separately-maintained copies that could drift apart.
+  const sectionValidity = useMemo<Record<number, boolean>>(
+    () => ({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
       1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
       2: projectScopeSchema.safeParse(scopePhases),
@@ -10572,17 +10723,111 @@ function PublishProject({
       // (PMCM-401), and it was blocked by the identical stale condition.
       3: teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id),
       4: completedFaqCount >= 3,
-    }
-    return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
-  }, [
-    projectInfoWatch,
-    mediaWatch,
-    scopePhases,
-    teamMemberIds,
-    completedFaqCount,
-    projectInfoMethods,
-    mediaMethods,
-  ])
+    }),
+    [
+      projectInfoWatch,
+      mediaWatch,
+      scopePhases,
+      teamMemberIds,
+      completedFaqCount,
+      projectInfoMethods,
+      mediaMethods,
+    ]
+  )
+
+  const firstInvalidStep = useMemo(
+    () => [0, 1, 2, 3, 4].find((index) => !sectionValidity[index]) ?? null,
+    [sectionValidity]
+  )
+
+  // PMCM-253/AC2/X2: unlock section i+1 the first time section i is valid —
+  // never removed, even if section i later goes back to invalid (X2). A
+  // single increasing pass so an already-complete multi-section draft
+  // (e.g. reopening a published listing, X1) unlocks every reachable
+  // section in one go on load, not one render per step.
+  useEffect(() => {
+    setUnlockedSteps((prev) => {
+      const next = [...prev]
+      let changed = false
+      for (let i = 0; i < next.length - 1; i++) {
+        if (next[i] && sectionValidity[i] && !next[i + 1]) {
+          next[i + 1] = true
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [sectionValidity])
+
+  // PMCM-253/E1: mark a section "ever completed" the first time it's valid
+  // — stays true even if a required field is cleared afterward, which is
+  // exactly the signal deriveSectionState uses to drop that section to
+  // "error" instead of back to "incomplete".
+  useEffect(() => {
+    setEverCompletedSteps((prev) => {
+      let changed = false
+      const next = prev.map((wasCompleted, index) => {
+        if (wasCompleted) return true
+        if (sectionValidity[index]) {
+          changed = true
+          return true
+        }
+        return false
+      })
+      return changed ? next : prev
+    })
+  }, [sectionValidity])
+
+  // PMCM-253/AC4/E2/X1: the publish gate. Every section must resolve to
+  // "complete" or "warning" — a non-blocking advisory never blocks
+  // publish (X1); "error", "incomplete", or "locked" all do. A locked
+  // section's own prerequisite is, by construction, itself still
+  // incomplete/error, so it never needs to be named separately below —
+  // fixing the one blocking section ahead of it is what actually unlocks
+  // it, which is why only error/incomplete sections are listed by name.
+  const sectionStatuses = useMemo<SectionState[]>(
+    () =>
+      steps.map((_, index) => {
+        const hasBlockingFieldError =
+          (index === 0 && Boolean(projectInfoModerationError)) ||
+          (index === 1 && Boolean(mediaModerationError)) ||
+          (index === 4 && Boolean(faqModerationError))
+        return deriveSectionState({
+          isUnlocked: unlockedSteps[index],
+          isValid: Boolean(sectionValidity[index]),
+          everCompleted: everCompletedSteps[index],
+          hasBlockingFieldError,
+          publishAttempted,
+          hasWarning: false,
+          isActive: false,
+        })
+      }),
+    [
+      unlockedSteps,
+      sectionValidity,
+      everCompletedSteps,
+      publishAttempted,
+      projectInfoModerationError,
+      mediaModerationError,
+      faqModerationError,
+    ]
+  )
+
+  const canPublish = sectionStatuses.every(
+    (status) => status === "complete" || status === "warning"
+  )
+
+  const blockedSectionLabels = useMemo(
+    () =>
+      steps
+        .filter((_, index) =>
+          (["error", "incomplete"] as SectionState[]).includes(
+            sectionStatuses[index]
+          )
+        )
+        .map((step) => step.label),
+    [sectionStatuses]
+  )
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -11424,6 +11669,7 @@ function PublishProject({
           } else {
             mediaMethods.setError("featuredImages", { message: safeMessage })
           }
+          setMediaModerationError(safeMessage)
           toast({
             title:
               errorType === "video_rejection"
@@ -11614,8 +11860,10 @@ function PublishProject({
                   projectInfoModerationHasError={Boolean(
                     projectInfoModerationError
                   )}
+                  mediaModerationHasError={Boolean(mediaModerationError)}
                   publishAttempted={publishAttempted}
                   questionsStarted={faqs.length > 0}
+                  everCompletedSteps={everCompletedSteps}
                 />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
                   <Header
@@ -11632,6 +11880,8 @@ function PublishProject({
                     publishing={isPublishing}
                     saveStatus={saveStatus}
                     isOffline={isOffline}
+                    publishDisabled={!canPublish}
+                    blockedSectionLabels={blockedSectionLabels}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
