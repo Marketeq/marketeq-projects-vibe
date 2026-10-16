@@ -89,16 +89,47 @@ export default function NotificationPreferences() {
 
   const handleSetBrowserAlerts = (enabled: boolean) => {
     update({ channels: { inApp: { browser: enabled } } })
+    toast({
+      title: enabled
+        ? "Browser alerts are now enabled"
+        : "Browser alerts are now disabled",
+      variant: "success",
+    })
   }
 
   const handleSetEmailAddress = async (address: string | null) => {
     update({ channels: { email: { address } } })
+    // Only on a value. Clearing the address is a removal, not an update, and
+    // saying "updated" for it would misdescribe what happened.
+    if (address) {
+      toast({ title: "Your email has been updated", variant: "success" })
+    }
   }
 
   const handleSetAccountPhone = async (phone: string | null) => {
-    await updatePhone(phone)
-    setUser((prev) => (prev ? { ...prev, phone } : prev))
-    update({ channels: { sms: { phone } } })
+    // updatePhone writes to the account and can reject. EditPhoneModal awaits
+    // this and then closes regardless, with no catch of its own, so an error
+    // here would otherwise surface as an unhandled rejection behind a dialog
+    // that already looks like it succeeded. Mirrors handleConfirmReset.
+    try {
+      await updatePhone(phone)
+      setUser((prev) => (prev ? { ...prev, phone } : prev))
+      update({ channels: { sms: { phone } } })
+      if (phone) {
+        toast({
+          title: "Your phone number has been updated",
+          variant: "success",
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update your phone number",
+        variant: "destructive",
+      })
+    }
   }
 
   const handleToggleCategoryMaster = (categoryId: string) => {
@@ -263,9 +294,14 @@ export default function NotificationPreferences() {
 
   return (
     <>
-      {isSaving && (
-        <p className="text-xs text-gray-400 mb-2 text-right">Saving…</p>
-      )}
+      {/* Fixed-height slot rather than a conditional mount. This sits in normal
+          flow above the whole card, so mounting it on save pushed the card and
+          everything below it down by its height, then back up when the save
+          finished — a jump on every toggle. h-4 matches text-xs's 16px line box,
+          so the space is identical whether or not the label is showing. */}
+      <div className="mb-2 h-4 text-right">
+        {isSaving && <p className="text-xs text-gray-400">Saving…</p>}
+      </div>
 
       {/* The categories now expand in place rather than replacing the screen,
           so the channels card and the list stay mounted throughout. */}

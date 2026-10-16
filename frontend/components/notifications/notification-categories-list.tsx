@@ -12,12 +12,18 @@ import {
   DotsHorizontal,
   RefreshCcw01,
   SearchMd,
+  XCircle,
 } from "@blend-metrics/icons"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  IconButton,
+  Input,
+  InputGroup,
+  InputLeftElement,
+  InputRightElement,
   Switch,
 } from "@/components/ui"
 import { cn } from "@/utils/functions"
@@ -60,25 +66,45 @@ export default function NotificationCategoriesList({
           Notifications
         </h3>
         <div className="flex items-center gap-3">
-          <div className="relative w-[220px]">
-            <SearchMd className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-            <input
-              type="text"
+          {/* COMPONENTS.md "Search Input Pattern". The width behaviour is
+              page-specific per that entry; 220 -> 375 on focus matches the
+              transactions and invoices searches. transition-all belongs on the
+              group (for width) — never on the Input, where it interpolates
+              box-shadow and causes a dark flash. */}
+          <InputGroup className="group/search w-[220px] transition-all duration-300 focus-within:w-[375px]">
+            <InputLeftElement>
+              <SearchMd className="size-4 text-gray-400 transition-colors duration-300 group-hover/search:text-gray-500 group-focus-within/search:!text-primary-500" />
+            </InputLeftElement>
+            <Input
               placeholder="Search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-10 w-full rounded-[5px] border border-gray-300 bg-white pl-9 pr-3 text-sm text-dark-blue-400 shadow-xs placeholder:text-gray-500 placeholder:opacity-50 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50 transition-colors"
+              className="pl-9 pr-9 transition-[border-color] duration-300 hover:border-primary-200 hover:shadow-[0px_0px_0px_4px_#E1EAFF] focus:!ring-0 focus:!shadow-[0px_0px_0px_4px_#E1EAFF]"
             />
-          </div>
+            {search && (
+              <InputRightElement>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setSearch("")}
+                >
+                  <XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />
+                </button>
+              </InputRightElement>
+            )}
+          </InputGroup>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
+              <IconButton
                 type="button"
-                className="flex items-center justify-center size-6 rounded-[5px] bg-white text-gray-500 hover:bg-gray-100 transition-colors"
+                visual="gray"
+                variant="ghost"
+                size="sm"
                 aria-label="More options"
+                className="size-6 rounded-[5px] text-gray-500"
               >
                 <DotsHorizontal className="size-5" />
-              </button>
+              </IconButton>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[180px]">
               <DropdownMenuItem onSelect={onRequestReset} className="gap-2">
