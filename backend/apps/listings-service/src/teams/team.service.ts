@@ -10,6 +10,7 @@ import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isUUIDLike = (v: string) => UUID_RE.test(v);
+import { isSameAccount } from '../identity-gate/viewer.decorator';
 
 @Injectable()
 export class TeamsService {
@@ -48,7 +49,7 @@ export class TeamsService {
   /** GET /v1/teams/:id for a public or client viewer; the team's owner sees everyone. */
   async findOneForViewer(id: string, viewerId: string | null) {
     const team = await this.findOne(id);
-    if (viewerId && team.createdBy && team.createdBy === viewerId) return team;
+    if (isSameAccount(team.createdBy, viewerId)) return team;
     const open = await this.rosterGate.visibleUserIds([team.createdBy ?? null, ...(team.memberIds ?? [])]);
     return this.withVisibleMembers(team, open);
   }

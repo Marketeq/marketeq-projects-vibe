@@ -122,3 +122,20 @@ PostgreSQL in a throwaway database, which was dropped afterwards.
 **Still needs staging QA:** real RabbitMQ delivery to `listings_service_gate_queue` end to end (verify, lose verification, grace
 expiry, reopen) and the visible effect on the service detail page, marketplace list and homepage; the first reconcile after
 deploy; and a real Algolia app for the secured-key / `owner_gate_open` / `owner_gate_exempt` behaviour, including that an old, un-backfilled record is hidden and that the first backfill makes the expected records visible (no Algolia credentials were available).
+
+## Owner recognition: the session must reach the service
+The owner view depends on the request carrying the owner's session. The two owner-facing pages that
+read a listing (`project-details/[slug]` and `my-listings/[slug]`) used to call
+`/v1/projects/slug/...` and `/v1/services/slug/...` with a plain `fetch`, which sends no cookie
+cross-origin, so the gateway had no token to forward and the owner was served the public roster of
+their own listing. Those reads now send `credentials: "include"` (guarded by
+`src/lib/api/owner-listing-fetch.test.ts`).
+
+On the service side, nothing else can name the viewer: only the verified bearer token (`Authorization`
+- the gateway forwards it, building it from the `access_token` cookie when needed) is read. Missing,
+malformed, expired, wrongly-signed or non-bearer credentials are an anonymous viewer. The owner
+comparison tolerates the case and whitespace differences UUIDs can legitimately have
+(`isSameAccount`), and never matches an empty id. Viewer-dependent routes (project/service detail,
+by id and by slug, and team detail) answer `Vary: Authorization, Cookie`, so a cache in front of the
+service keeps the anonymous response and each signed-in response apart. The homepage cache is built
+from anonymous calls only and is never served to an owner as an owner response.

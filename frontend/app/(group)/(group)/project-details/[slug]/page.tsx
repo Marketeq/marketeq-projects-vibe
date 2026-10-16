@@ -2301,7 +2301,7 @@ export default function ProjectDetails({
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store' })
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store', credentials: 'include' })
           if (r.ok) {
             res = r
             slug = candidate
@@ -2311,21 +2311,21 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store', credentials: 'include' })
         }
         if (!res.ok) {
           // Try as a service. Service URLs are also generated as
           // `${slug}-${shortId}`, while the API expects the plain slug.
           let svcRes: Response | null = null
           for (const candidate of candidates) {
-            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`)
+            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`, { credentials: 'include' })
             if (r.ok) {
               svcRes = r
               break
             }
           }
           if (!svcRes) {
-            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, { credentials: 'include' })
           }
           if (!svcRes.ok) {
             // If rawSlug looks like a UUID, try the publish/draft endpoint

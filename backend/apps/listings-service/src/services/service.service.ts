@@ -11,6 +11,7 @@ import { slugify } from '../shared/utils/slugify';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
 import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
 import { VerificationRequiredException } from '../identity-gate/identity-gate.exceptions';
+import { isSameAccount } from '../identity-gate/viewer.decorator';
 import { RosterGateService } from '../identity-gate/roster-gate.service';
 
 @Injectable()
@@ -241,7 +242,7 @@ export class ServicesService {
    */
   private async presentRoster(item: Service, viewerId: string | null, hydrate: boolean) {
     const owner = this.listingOwnerOf(item);
-    const ownerView = !!viewerId && !!owner && owner === viewerId;
+    const ownerView = !!owner && isSameAccount(owner, viewerId);
     const allMemberIds = (item.teamMemberIds ?? []).map(String);
 
     if (ownerView) {

@@ -18,7 +18,7 @@ import { ProjectsService } from './projects.service';
 import { Project } from './entities/project.entity';
 import { ReportProjectDto } from './dto/report-project.dto';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
-import { ViewerId } from '../identity-gate/viewer.decorator';
+import { ViewerDependent, ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/projects')
 export class ProjectsController {
@@ -38,6 +38,7 @@ export class ProjectsController {
     return this.service.getRecommendedBySkills(skillList, limit ? parseInt(limit, 10) : 10);
   }
 
+  @ViewerDependent()
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string, @ViewerId() viewerId: string | null) {
     return this.service.findBySlug(slug, viewerId);
@@ -111,6 +112,7 @@ export class ProjectsController {
     );
   }
 
+  @ViewerDependent()
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @ViewerId() viewerId: string | null) {
     return this.service.findOnePublished(id, viewerId);

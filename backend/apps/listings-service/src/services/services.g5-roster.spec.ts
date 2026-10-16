@@ -234,6 +234,63 @@ describe('G5 - client-facing roster on service listings', () => {
     });
   });
 
+  describe('owner recognition, gateway-forwarded identity and cache separation', () => {
+    it('the owner is the owner however the token spells their id (case or stray space)', async () => {
+      for (const sub of [OWNER.toUpperCase(), ` ${OWNER} `]) {
+        const res = await detail('one').set('Authorization', `Bearer ${token(sub)}`);
+        expect(ids(res.body.team)).toEqual([OWNER, VERIFIED, GRACE, UNVERIFIED, LAPSED, NEVER_SEEN]);
+      }
+    });
+
+    it('the gateway forwards the verified token as a Bearer (also when it came from the cookie): that is the owner', async () => {
+      const res = await detail('one').set('Authorization', `Bearer ${token(OWNER)}`).set('Cookie', 'access_token=ignored; session_id=x');
+      expect(ids(res.body.team)).toEqual([OWNER, VERIFIED, GRACE, UNVERIFIED, LAPSED, NEVER_SEEN]);
+      // the cookie alone is NOT read by the service: without the Bearer the gateway adds, it is public
+      const cookieOnly = await detail('one').set('Cookie', `access_token=${token(OWNER)}`);
+      expect(ids(cookieOnly.body.team)).toEqual([OWNER, VERIFIED, GRACE]);
+    });
+
+    it('an owner whose own gate is closed still gets the full management view of their listing', async () => {
+      const res = await detail('two').set('Authorization', `Bearer ${token(UNVERIFIED)}`);
+      expect(res.status).toBe(200);
+      expect(ids(res.body.team)).toEqual([UNVERIFIED, VERIFIED]);
+      expect(res.body.userId).toBe(UNVERIFIED);
+    });
+
+    it('the owner marker never carries a reason, only the neutral label', async () => {
+      const res = await detail('one').set('Authorization', `Bearer ${token(OWNER)}`);
+      expect(res.body.notShownToClients.every((n: any) => Object.keys(n).sort().join() === 'label,userId' && n.label === 'Not shown to clients')).toBe(true);
+      expect(JSON.stringify(res.body.notShownToClients)).not.toMatch(/verif|grace|lapsed|identity|location|reason|gate/i);
+      expect(Object.keys(res.body).filter((k) => /verif|gate|reason|missing/i.test(k))).toEqual([]);
+    });
+
+    it('viewer-dependent responses say so: Vary on Authorization and Cookie, so a cache keeps them apart', async () => {
+      for (const res of [await detail('one'), await byId(S_ONE), await detail('one').set('Authorization', `Bearer ${token(OWNER)}`)]) {
+        const vary = String(res.headers.vary ?? '').toLowerCase();
+        expect(vary).toContain('authorization');
+        expect(vary).toContain('cookie');
+      }
+    });
+
+    it('order does not matter: anonymous, owner, anonymous again, other client - nobody receives anyone else\'s response', async () => {
+      const anon1 = (await detail('one')).body;
+      const owner = (await detail('one').set('Authorization', `Bearer ${token(OWNER)}`)).body;
+      const anon2 = (await detail('one')).body;
+      const other = (await detail('one').set('Authorization', `Bearer ${token(CLIENT)}`)).body;
+      expect(ids(owner.team)).toHaveLength(6);
+      for (const pub of [anon1, anon2, other]) {
+        expect(ids(pub.team)).toEqual([OWNER, VERIFIED, GRACE]);
+        expect(pub.notShownToClients).toBeUndefined();
+        for (const hidden of HIDDEN) expect(JSON.stringify(pub)).not.toContain(hidden);
+      }
+    });
+
+    it('a request that mixes a forged owner claim with no valid token is public', async () => {
+      const res = await detail('one').query({ viewer: OWNER }).set('x-user-id', OWNER).send({ viewerId: OWNER }).set('Authorization', 'Bearer ');
+      expect(ids(res.body.team)).toEqual([OWNER, VERIFIED, GRACE]);
+    });
+  });
+
   describe('marketplace discovery (GET /v1/services)', () => {
     it('withholds a listing whose owner has a closed gate; keeps the others and ownerless listings', async () => {
       const res = await list();

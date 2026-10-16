@@ -18,7 +18,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
-import { ViewerId } from '../identity-gate/viewer.decorator';
+import { ViewerDependent, ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/services')
 export class ServicesController {
@@ -29,11 +29,13 @@ export class ServicesController {
     return this.service.findAll();
   }
 
+  @ViewerDependent()
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string, @ViewerId() viewerId: string | null) {
     return this.service.findBySlug(slug, viewerId);
   }
 
+  @ViewerDependent()
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @ViewerId() viewerId: string | null) {
     return this.service.findOneForViewer(id, viewerId);

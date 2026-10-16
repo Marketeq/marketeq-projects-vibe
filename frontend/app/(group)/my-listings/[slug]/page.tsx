@@ -3598,7 +3598,7 @@ function ProjectDetailsInner() {
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { credentials: "include" })
           if (r.ok) {
             res = r
             slug = candidate
@@ -3606,10 +3606,10 @@ function ProjectDetailsInner() {
           }
         }
         if (!res) {
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { credentials: "include" })
         }
         if (!res.ok) {
-          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, { credentials: "include" })
           if (!svcRes.ok) {
             // Not found anywhere — fall through to step 4 (auto-create draft)
             throw new Error("not-found")

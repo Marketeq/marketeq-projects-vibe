@@ -23,6 +23,7 @@ import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
 import { RelatedTermsService } from './related-terms.service';
 import { taxonomyChildren } from './related-taxonomy';
 import { ReportProjectDto } from './dto/report-project.dto';
+import { isSameAccount } from '../identity-gate/viewer.decorator';
 import { RosterGateService } from '../identity-gate/roster-gate.service';
 import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
 
@@ -150,7 +151,7 @@ export class ProjectsService {
     if (!item) throw new NotFoundException('Project not found');
     // G5: the project's owner (authenticated) sees every assignee; anyone else sees
     // only assignees whose linked account has a known open gate.
-    const ownerView = !!viewerId && !!item.userId && String(item.userId) === viewerId;
+    const ownerView = isSameAccount(item.userId, viewerId);
     const [shaped] = await this.withVisibleAssignees([this.shapeProject(item)], () => ownerView);
     return shaped;
   }
@@ -172,7 +173,7 @@ export class ProjectsService {
     // G5: the viewer is the authenticated caller (null when anonymous), taken
     // from the verified token only. The project's owner sees everyone; every
     // other viewer sees only members with a known open gate.
-    const ownerView = !!viewerId && !!item.userId && String(item.userId) === viewerId;
+    const ownerView = isSameAccount(item.userId, viewerId);
 
     const [similarProjects, projectHistoryRatings, roster] = await Promise.all([
       this.getSimilarProjects(item),
