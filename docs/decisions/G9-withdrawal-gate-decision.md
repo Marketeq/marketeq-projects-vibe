@@ -130,3 +130,30 @@ required copy. The frontend never decides whether the gate is open.
   works; a key sent to an older notification-service is simply ignored by it and the notification is delivered unkeyed.
 * Identity-verification-service must be deployed with the new third gate-change target before the resume path works; until then
   paused schedules stay paused (safe) and the queue simply fills.
+
+## Split scheduled payouts: each leg is paid at most once
+
+A split schedule pays two legs (primary, then secondary) from one due occurrence.
+
+- **Deterministic leg keys.** Each leg's `payout_requests.idempotency_key` is derived from the
+  schedule, the due occurrence (`next_execution_at`) and the role
+  (`legIdempotencyKey` in `schedule-execution.cron.ts`). The column is UNIQUE, so the database
+  refuses a second row for a leg that exists. A pass that finds the leg's row does not hold,
+  create or enqueue it again.
+- **Resume, not restart.** The secondary amount is recorded on the schedule
+  (`split_occurrence_at`, `split_secondary_usd`, migration 016) in the same transaction as the
+  primary row. The schedule only advances when the occurrence is finished, so a retry (next
+  tick, restarted process, a gate outage or closure between the legs) finds the primary, skips
+  the balance/threshold checks, and runs only the unfinished leg at its original amount.
+- **Verification before every payment.** The gate is evaluated immediately before each leg.
+  Closed between the legs: the schedule is paused, the secondary stays in the balance, the
+  primary is not repeated (resume moves an overdue date to the next occurrence, as before).
+  Unanswered: nothing is paid and the schedule stays due; the next tick retries only the
+  secondary.
+- **Concurrent workers.** Two workers racing for a leg both pass the existence check; the
+  unique key lets one insert win, and the other releases its extra hold.
+- **Secondary retries.** Each attempt has its own key, so a redelivered or stalled job cannot pay
+  twice. An unanswered gate re-queues the same attempt (bounded; then finance is alerted) instead
+  of ending the chain silently.
+- **Queue failure after the row is saved** marks the row FAILED, so a resumed occurrence does not
+  treat a released, never-queued row as a live payment.

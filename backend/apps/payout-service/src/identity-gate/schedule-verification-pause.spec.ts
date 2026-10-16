@@ -159,7 +159,7 @@ describe('scheduled payout cron gate (G9)', () => {
       id: 'm1', methodType: MethodType.WISE, verificationStatus: VerificationStatus.VERIFIED, isActive: true, reauthRequired: false, bankCountry: null, displayLabel: 'Wise',
     })) };
     const c = new ScheduleExecutionCron(
-      t as any, {} as any, methodRepo as any, dataSource as any, { get: (_k: string, d?: any) => d } as any,
+      t as any, { findOne: jest.fn(async () => null), update: jest.fn() } as any, methodRepo as any, dataSource as any, { get: (_k: string, d?: any) => d } as any,
       {} as any, { checkThreshold: async () => ({ proceed: true }) } as any, nextExec as any, { isHoliday: () => false } as any,
       { assertNotPaused: async () => undefined } as any, earnings as any, { log: jest.fn() } as any,
       { publishScheduleCompleted: jest.fn(), publishPayoutFailed: jest.fn() } as any, payoutService as any,

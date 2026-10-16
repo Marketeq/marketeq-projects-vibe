@@ -110,6 +110,17 @@ export class PayoutSchedule {
   @Column({ name: 'next_execution_at', type: 'timestamptz', nullable: true })
   nextExecutionAt: Date | null;
 
+  // Split payouts: which due occurrence (the nextExecutionAt it started from) the primary leg
+  // was created for, and the secondary amount fixed at that moment. Written in the SAME
+  // transaction as the primary payout row, so a retry of the occurrence resumes with the
+  // original sizing instead of recomputing it from a balance the primary already reduced.
+  // Cleared when the occurrence is finished.
+  @Column({ name: 'split_occurrence_at', type: 'timestamptz', nullable: true })
+  splitOccurrenceAt: Date | null;
+
+  @Column({ name: 'split_secondary_usd', type: 'numeric', precision: 18, scale: 8, nullable: true })
+  splitSecondaryUsd: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
