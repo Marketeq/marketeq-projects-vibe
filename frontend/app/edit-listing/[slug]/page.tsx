@@ -1302,7 +1302,15 @@ const Sidebar = ({
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  {subItem}
+                                  {/* PMCM-253 follow-up: subItem is a
+                                  disabled <button>, which doesn't fire
+                                  pointer events — wrap it in a focusable
+                                  span so the tooltip actually opens on
+                                  hover/keyboard focus, same fix as the
+                                  Publish button above. */}
+                                  <span className="inline-block" tabIndex={0}>
+                                    {subItem}
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Complete the previous section first
@@ -1374,7 +1382,15 @@ const Sidebar = ({
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  {subItem}
+                                  {/* PMCM-253 follow-up: subItem is a
+                                  disabled <button>, which doesn't fire
+                                  pointer events — wrap it in a focusable
+                                  span so the tooltip actually opens on
+                                  hover/keyboard focus, same fix as the
+                                  Publish button above. */}
+                                  <span className="inline-block" tabIndex={0}>
+                                    {subItem}
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Complete the previous section first
@@ -1431,7 +1447,15 @@ const Sidebar = ({
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  {subItem}
+                                  {/* PMCM-253 follow-up: subItem is a
+                                  disabled <button>, which doesn't fire
+                                  pointer events — wrap it in a focusable
+                                  span so the tooltip actually opens on
+                                  hover/keyboard focus, same fix as the
+                                  Publish button above. */}
+                                  <span className="inline-block" tabIndex={0}>
+                                    {subItem}
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Complete the previous section first
@@ -1505,7 +1529,15 @@ const Sidebar = ({
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  {subItem}
+                                  {/* PMCM-253 follow-up: subItem is a
+                                  disabled <button>, which doesn't fire
+                                  pointer events — wrap it in a focusable
+                                  span so the tooltip actually opens on
+                                  hover/keyboard focus, same fix as the
+                                  Publish button above. */}
+                                  <span className="inline-block" tabIndex={0}>
+                                    {subItem}
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Complete the previous section first
@@ -1554,7 +1586,15 @@ const Sidebar = ({
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  {subItem}
+                                  {/* PMCM-253 follow-up: subItem is a
+                                  disabled <button>, which doesn't fire
+                                  pointer events — wrap it in a focusable
+                                  span so the tooltip actually opens on
+                                  hover/keyboard focus, same fix as the
+                                  Publish button above. */}
+                                  <span className="inline-block" tabIndex={0}>
+                                    {subItem}
+                                  </span>
                                 </TooltipTrigger>
                                 <TooltipContent>
                                   Complete the previous section first
@@ -1669,13 +1709,22 @@ const Header = ({
         !publishing &&
         blockedSectionLabels &&
         blockedSectionLabels.length > 0 ? (
+          // PMCM-253 follow-up: a disabled <button> doesn't fire pointer
+          // events, so a TooltipTrigger placed directly on it never opens —
+          // wrap it in a focusable span instead (same pattern as
+          // project-details/[slug]'s Favorite icon tooltip) so the Button
+          // itself stays disabled while the wrapper still receives hover
+          // and keyboard focus.
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button disabled>Publish</Button>
+                <span className="inline-block" tabIndex={0}>
+                  <Button disabled>Publish</Button>
+                </span>
               </TooltipTrigger>
               <TooltipContent>
-                Finish {blockedSectionLabels.join(", ")} before publishing.
+                Complete these sections to publish:{" "}
+                {blockedSectionLabels.join(", ")}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
