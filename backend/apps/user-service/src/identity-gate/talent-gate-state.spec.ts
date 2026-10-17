@@ -3,6 +3,7 @@ import { lstatSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { InternalServerErrorException } from '@nestjs/common'
 import { CreateTalentGateState1799500000000 } from '../migrations/1799500000000-CreateTalentGateState'
+import { AddTalentDiscoveryIndexes1799600000000 } from '../migrations/1799600000000-AddTalentDiscoveryIndexes'
 import { TalentGateStateConsumer, USER_GATE_QUEUE, GATE_CHANGED_PATTERN } from './talent-gate-state.consumer'
 import { TALENT_GATE_STATE_TABLE, TalentGateStateService, openTalentSql, openTalentTextSql } from './talent-gate-state.service'
 
@@ -201,7 +202,7 @@ describe('migration 1799500000000-CreateTalentGateState', () => {
     })
 
     it('it sorts after the newest user-service migration that existed before it', () => {
-      const userService = all.filter((m) => m.file.includes(`${join('apps', 'user-service')}`) && m.ts !== '1799500000000')
+      const userService = all.filter((m) => m.file.includes(`${join('apps', 'user-service')}`) && !['1799500000000', '1799600000000'].includes(m.ts))
       expect(Math.max(...userService.map((m) => Number(m.ts)))).toBeLessThan(1799500000000)
     })
 
@@ -209,5 +210,67 @@ describe('migration 1799500000000-CreateTalentGateState', () => {
       const src = readFileSync(join(__dirname, '..', 'migrations', '1799500000000-CreateTalentGateState.ts'), 'utf8')
       expect(src).toContain("name = 'CreateTalentGateState1799500000000'")
     })
+  })
+})
+
+describe('migration 1799600000000-AddTalentDiscoveryIndexes', () => {
+  const run = async (dir: 'up' | 'down') => {
+    const statements: string[] = []
+    const q = { query: jest.fn(async (sql: string) => void statements.push(sql.replace(/\s+/g, ' ').trim())) }
+    await new AddTalentDiscoveryIndexes1799600000000()[dir](q as any)
+    return statements
+  }
+
+  it('up: two partial ordered indexes in the service schema, matching the queries\' ORDER BY and filter', async () => {
+    const [profiles, users] = await run('up')
+    expect(profiles).toContain('CREATE INDEX IF NOT EXISTS "IDX_talent_profiles_active_updated"')
+    expect(profiles).toContain('ON "user_service"."talent_profiles" ("updatedAt" DESC, "id" ASC)')
+    expect(profiles).toContain(`WHERE "status" = 'active'`)
+    expect(users).toContain('CREATE INDEX IF NOT EXISTS "IDX_users_talent_onboarded"')
+    expect(users).toContain('ON "user_service"."users" ("onboardedAt" DESC, "id" ASC)')
+    expect(users).toContain(`WHERE "userType" = 'talent'`)
+  })
+
+  it('is additive and idempotent: creates only, IF NOT EXISTS, drops nothing', async () => {
+    const up = await run('up')
+    for (const s of up) expect(s).toContain('IF NOT EXISTS')
+    expect(up.join(' ')).not.toMatch(/DROP|TRUNCATE|DELETE|ALTER TABLE|UPDATE /i)
+  })
+
+  it('down removes only the two indexes it created', async () => {
+    expect(await run('down')).toEqual([
+      'DROP INDEX IF EXISTS "user_service"."IDX_users_talent_onboarded"',
+      'DROP INDEX IF EXISTS "user_service"."IDX_talent_profiles_active_updated"',
+    ])
+  })
+
+  it('the index order matches the ORDER BY of the queries that rely on it (so the planner can walk it)', () => {
+    const controller = readFileSync(join(__dirname, '..', 'talent-profile', 'talent-profile.controller.ts'), 'utf8')
+    const recommend = readFileSync(join(__dirname, '..', 'talent-profile', 'talent-profile-recommendation.service.ts'), 'utf8')
+    const talent = readFileSync(join(__dirname, '..', 'talent', 'talent.service.ts'), 'utf8')
+    for (const src of [controller, recommend]) {
+      expect(src).toMatch(/orderBy\(\s*["']p\.updatedAt["'],\s*["']DESC["']\)\s*\.addOrderBy\(\s*["']p\.id["'],\s*["']ASC["']\)/)
+      expect(src).toContain('"p.status = :status", { status: "active" }')
+    }
+    expect(talent).toMatch(/\.orderBy\('u\.onboardedAt', 'DESC'\)\s*\.addOrderBy\('u\.id', 'ASC'\)/)
+    expect(talent).toContain(`'u.userType = :userType', { userType: 'talent' }`)
+  })
+
+  it('its identifier is unique across every service and sorts after the gate-state migration', () => {
+    const appsDir = join(__dirname, '..', '..', '..')
+    const hits: string[] = []
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        if (entry === 'node_modules' || entry === 'dist' || entry === 'app' || entry.startsWith('.')) continue
+        const full = join(dir, entry)
+        const stat = lstatSync(full, { throwIfNoEntry: false })
+        if (!stat || stat.isSymbolicLink()) continue
+        if (stat.isDirectory()) walk(full)
+        else if (/[\\/]migrations[\\/]1799600000000-/.test(full) || /AddTalentDiscoveryIndexes\.ts$/.test(full)) hits.push(full)
+      }
+    }
+    walk(appsDir)
+    expect(hits).toHaveLength(1)
+    expect(1799600000000).toBeGreaterThan(1799500000000)
   })
 })

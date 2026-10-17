@@ -14,7 +14,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import { Transport } from '@nestjs/microservices';
-import { PAYOUT_GATE_QUEUE } from './consumers/gate-changed.consumer';
+import { PAYOUT_GATE_QUEUE } from './consumers/gate-queue.constants';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 

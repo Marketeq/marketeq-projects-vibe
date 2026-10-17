@@ -153,6 +153,22 @@ and before anything is hydrated:
 * **Fail closed, narrowly.** If the state table cannot be read (migration not run), public discovery lists nobody -
   never everybody - and logs it. Any other database error is not swallowed. Owner and administrative views do not use
   these paths, and direct profile URLs stay open as before.
-* **Live validation still required** (no PostgreSQL available in this environment): run `EXPLAIN (ANALYZE, BUFFERS)` on
-  the COUNT and page queries against a realistic table and confirm the semi-join uses the primary key / the partial
-  index, not a sequential scan of `talent_gate_state`.
+* **Measured on a local PostgreSQL 16 database** (200,000 talent profiles, 250,000 talent users, 204,000 gate rows of which
+  92,000 open, the first 20,000 accounts hidden - the "hidden first" worst case), `EXPLAIN (ANALYZE, BUFFERS)` of the SQL the
+  production code actually issues:
+  * Without ordered indexes the page queries were `Seq Scan` of the talent table + `HashAggregate` of every open gate row +
+    `Sort` (65-75 ms, temp-file spills) - cost proportional to the table, the problem this change set out to remove.
+  * Migration `1799600000000-AddTalentDiscoveryIndexes` adds two partial ordered indexes
+    (`talent_profiles ("updatedAt" DESC, id) WHERE status = 'active'`, `users ("onboardedAt" DESC, id) WHERE "userType" = 'talent'`).
+    The page queries then run as an ordered index scan with a nested-loop semi-join into the gate table's primary key (users) or
+    its partial index (profiles, search), stopping at the LIMIT: 13-18 ms, no temp files, work proportional to the hidden
+    accounts ahead of the page, not to the table.
+  * The exact `COUNT` (and any page whose OFFSET reaches deep into the list, e.g. page 500) is still a set-based hash
+    semi-join over the talent and open-gate rows (35-80 ms at this size, and linear in the table). That is inherent to an exact
+    total; it runs inside PostgreSQL and loads no rows into the service. If it becomes a cost, the options are a short-lived
+    cache of the total, a maintained counter, or `work_mem` large enough to avoid the temp spill - a product/ops decision.
+  * `cms.talent_profiles` belongs to cms-service (Payload). The search fallback's page query orders by
+    `created_at DESC NULLS LAST, id`; Payload's default index on `created_at` does not match that ordering. Measured with a
+    matching index (`(created_at DESC NULLS LAST, id)`): 75 ms -> 19-26 ms. It is NOT created here (table ownership); it should
+    be added by a cms-service migration.
+* Migration order in user-service: `1799500000000-CreateTalentGateState`, then `1799600000000-AddTalentDiscoveryIndexes`.

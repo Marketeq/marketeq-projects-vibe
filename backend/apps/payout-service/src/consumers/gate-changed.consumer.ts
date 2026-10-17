@@ -17,7 +17,7 @@ import { ScheduleVerificationPauseService } from '../schedule/schedule-verificat
 
 // Owned by identity-verification-service (its GateChange); a deliberate copy.
 export const GATE_CHANGED_PATTERN = 'identity.gate_changed';
-export const PAYOUT_GATE_QUEUE = 'payout_service_gate_queue';
+export { PAYOUT_GATE_QUEUE } from './gate-queue.constants';
 
 interface GateChangedPayload {
   userId: string;
