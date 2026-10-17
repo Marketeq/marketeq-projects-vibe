@@ -10,8 +10,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // Deliberately NOT a foreign key onto project/team/member rows: visibility is a
 // display filter, so changing it can never touch (or cascade into) a listing,
 // a membership or any other record.
-export class CreateAccountGateState1799000000000 implements MigrationInterface {
-  name = 'CreateAccountGateState1799000000000';
+export class CreateAccountGateState1799100000000 implements MigrationInterface {
+  name = 'CreateAccountGateState1799100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

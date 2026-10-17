@@ -33,7 +33,7 @@ returns automatically when the gate opens and the new state arrives.
 
 ## Availability and propagation (no synchronous identity calls)
 * **Last-known state, kept locally.** listings-service owns a table `listings.account_gate_state`
-  (`userId` PK, `gateOpen`, `occurredAt`, `receivedAt`; migration `1799000000000-CreateAccountGateState`, no schema
+  (`userId` PK, `gateOpen`, `occurredAt`, `receivedAt`; migration `1799100000000-CreateAccountGateState`, no schema
   synchronisation). It deliberately has no foreign key to any listing, team or member row. "No row" means "never received".
 * **Fed by the G1 event.** identity-verification-service's `GateVisibilitySweepJob` publishes `identity.gate_changed`
   (`{ userId, gateOpen, occurredAt }`, unchanged format) for every write path and for **grace-period expiry at its exact
