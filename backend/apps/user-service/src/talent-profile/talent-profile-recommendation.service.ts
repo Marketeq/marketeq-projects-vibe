@@ -3,10 +3,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { firstValueFrom } from "rxjs";
-import { In, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import { RecommendTalentDto } from "./dto/recommend-talent.dto";
 import { TalentProfile } from "./entities/talent-profile.entity";
-import { TalentDiscoveryGateService } from "../identity-gate/talent-discovery-gate.service";
+import { TalentGateStateService, openTalentTextSql } from "../identity-gate/talent-gate-state.service";
 
 type TalentRecommendation = {
   id: string;
@@ -64,61 +64,51 @@ export class TalentProfileRecommendationService {
     private readonly repo: Repository<TalentProfile>,
     private readonly http: HttpService,
     private readonly config: ConfigService,
-    private readonly discoveryGate: TalentDiscoveryGateService,
+    private readonly gateState: TalentGateStateService,
   ) {}
 
   async recommend(
     dto: RecommendTalentDto,
   ): Promise<TalentRecommendationResponse> {
     const limit = dto.limit ?? 30;
-    // G1: only talent whose gate is open are candidates. A light scan (id and
-    // account id only) walks the newest-first order in pages until 80 visible
-    // candidates are found or the table is exhausted, asking identity in
-    // batches. Only those visible profiles are then loaded, so a hidden
-    // talent's profile is never read, let alone sent to the ranking model.
-    // sourceId is the account id the gate is keyed on; it is never returned.
-    const visibleIds = (
-      await this.discoveryGate.collectVisible<TalentProfile>({
-        fetchChunk: (offset, size) =>
-          this.repo.find({
-            where: { status: "active" },
-            select: ["id", "sourceId"],
-            order: { updatedAt: "DESC", id: "ASC" },
-            skip: offset,
-            take: size,
-          }),
-        userIdOf: (p) => p.sourceId,
-        wanted: 80,
-        chunkSize: 200,
-      })
-    ).map((p) => p.id);
-    const loaded = visibleIds.length
-      ? await this.repo.find({
-          where: { id: In(visibleIds) },
-          select: [
-            "id",
-            "username",
-            "name",
-            "avatarUrl",
-            "jobTitles",
-            "availability",
-            "location",
-            "country",
-            "timezone",
-            "rate",
-            "overview",
-            "skills",
-            "rating",
-            "reviewsCount",
-            "totalProjectsCompleted",
-            "updatedAt",
-          ],
-        })
-      : [];
-    const byId = new Map(loaded.map((p) => [p.id, p]));
-    const profiles = visibleIds
-      .map((id) => byId.get(id))
-      .filter((p): p is TalentProfile => Boolean(p));
+    // G1: only talent whose gate is open are candidates. The gate is part of the query (a
+    // semi-join on the locally kept last-known gate state), so the newest 80 candidates are
+    // already the newest 80 VISIBLE profiles, in one query that reads only the columns the
+    // ranking needs - a hidden talent's profile is never read, let alone sent to the ranking
+    // model, and identity is not called. sourceId is the account id the gate is keyed on; it is
+    // never returned. If the state table cannot be read, nobody is a candidate.
+    let profiles: TalentProfile[] = [];
+    try {
+      profiles = await this.repo
+        .createQueryBuilder("p")
+        .select([
+          "p.id",
+          "p.username",
+          "p.name",
+          "p.avatarUrl",
+          "p.jobTitles",
+          "p.availability",
+          "p.location",
+          "p.country",
+          "p.timezone",
+          "p.rate",
+          "p.overview",
+          "p.skills",
+          "p.rating",
+          "p.reviewsCount",
+          "p.totalProjectsCompleted",
+          "p.updatedAt",
+        ])
+        .where("p.status = :status", { status: "active" })
+        .andWhere(openTalentTextSql("p.sourceId"))
+        .orderBy("p.updatedAt", "DESC")
+        .addOrderBy("p.id", "ASC")
+        .take(80)
+        .getMany();
+    } catch (err) {
+      if (!this.gateState.isUnreadable(err)) throw err;
+      this.gateState.warnUnreadable("talent recommendations", err);
+    }
     const filteredProfiles = this.applyFilters(dto, profiles);
 
     if (filteredProfiles.length === 0) {

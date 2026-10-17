@@ -122,3 +122,37 @@ the "out of scope" conclusion is withdrawn.**
   messages. That queue was not purged or modified. It also shows a pre-existing redelivery loop.
 * A fault-injection responder briefly attached to the normal vhost's `identity_verification_rpc_queue` (0 consumers
   before and after; it handled no messages).
+
+## PostgreSQL discovery paths: the gate is applied inside the query
+Review finding: the PostgreSQL talent paths loaded talent and asked identity-verification-service about them
+page by page (`collectVisible`, one batch RPC per 100-500 rows), so a request could walk the whole talent table and
+make an RPC per chunk - the cost grew with the table, not the page.
+
+The gate is now a **semi-join inside the SQL**, so it is evaluated before the COUNT, before ORDER BY/LIMIT/OFFSET
+and before anything is hydrated:
+
+* **Last-known state, kept locally.** `user_service.talent_gate_state` (`userId` PK, `gateOpen`, `occurredAt`,
+  `receivedAt`; migration `1799500000000-CreateTalentGateState`, additive, no foreign key). "No row" means the state was
+  never received, which is hidden - the same rule as before.
+* **Fed by the G1 event, plus a reconcile.** identity-verification-service publishes the same `identity.gate_changed`
+  event to a fourth durable queue, `user_service_gate_queue`; user-service consumes it with manual ack after the write,
+  newer-decision-wins (`TalentGateStateConsumer`). `TalentProfileSyncService.reindexGate` (the existing boot + hourly
+  reconcile and operator message) also writes the decisions it already fetches, and now also reconciles every talent
+  user in id-keyset batches of 100 (`reconcileUserGateState`) - background work, never on a request path. Until a
+  talent's state has arrived they stay hidden (fail closed), so run the reconcile once after rollout
+  (`TALENT_GATE_RECONCILE_INTERVAL_MS=0` disables the schedule; the operator message still works).
+* **Paths changed.** `GET /public/talent` (one COUNT + one page, public columns only), `GET /talent/users` (one
+  bounded read, then hydration of only the visible ids), `POST /public/talent/recommendations` (the newest 80 *visible*
+  candidates in one read), and search-service's PostgreSQL fallback (COUNT + `LIMIT/OFFSET` page; the job-title facet
+  counts; the category-derivation candidate probe). The account is the same one the index is keyed on (`source_id`,
+  else the profile uuid). None of these calls identity-verification-service any more.
+* **Indexes.** The primary key serves the `uuid = uuid` semi-join (users). A partial expression index on
+  `("userId"::text) WHERE "gateOpen"` serves the text comparison (talent profiles, search-service) and holds only open
+  accounts. Existing ordering is untouched (`updatedAt DESC, id ASC` / `onboardedAt DESC, id ASC` / the fallback's
+  ranking `ORDER BY`).
+* **Fail closed, narrowly.** If the state table cannot be read (migration not run), public discovery lists nobody -
+  never everybody - and logs it. Any other database error is not swallowed. Owner and administrative views do not use
+  these paths, and direct profile URLs stay open as before.
+* **Live validation still required** (no PostgreSQL available in this environment): run `EXPLAIN (ANALYZE, BUFFERS)` on
+  the COUNT and page queries against a realistic table and confirm the semi-join uses the primary key / the partial
+  index, not a sequential scan of `talent_gate_state`.

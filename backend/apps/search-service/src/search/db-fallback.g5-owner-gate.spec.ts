@@ -18,7 +18,7 @@ describe('G5 - DB fallback withholds listings by owner gate', () => {
         return { rows: [] }
       }),
     }
-    const svc = new DbFallbackService({ get: () => undefined } as any, { send: jest.fn() } as any, { evaluate: jest.fn(), collectVisible: jest.fn() } as any)
+    const svc = new DbFallbackService({ get: () => undefined } as any, { send: jest.fn() } as any)
     ;(svc as any).pool = pool
     await svc.search('', category, 10, 0, undefined, undefined)
     return statements.filter((s) => /FROM listings\.(project|teams)/.test(s))

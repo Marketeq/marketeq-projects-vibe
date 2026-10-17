@@ -34,6 +34,8 @@ import {
   PAYOUT_GATE_CLIENT,
   PAYOUT_GATE_QUEUE,
   RmqGateChangePublisher,
+  USER_GATE_CLIENT,
+  USER_GATE_QUEUE,
 } from './gate-index/gate-change-publisher';
 import { HealthModule } from './health/health.module';
 import { DOCUMENT_VERIFICATION_PROVIDER } from './providers/document-verification/document-verification-provider.interface';
@@ -97,6 +99,15 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
         options: {
           urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
           queue: PAYOUT_GATE_QUEUE,
+          queueOptions: { durable: true },
+        },
+      },
+      {
+        name: USER_GATE_CLIENT,
+        transport: Transport.RMQ,
+        options: {
+          urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          queue: USER_GATE_QUEUE,
           queueOptions: { durable: true },
         },
       },

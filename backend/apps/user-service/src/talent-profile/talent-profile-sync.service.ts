@@ -7,6 +7,7 @@ import { TalentProfile } from './entities/talent-profile.entity';
 import { TalentProfileSavedEvent } from './interfaces/talent-profile-events';
 import { User } from '../user/entities/user.entity';
 import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
+import { TalentGateStateService } from '../identity-gate/talent-gate-state.service';
 
 // Mirrors TalentEventPayload in algolia-service — keep the two in step, since
 // SyncService.syncTalent reads these exact names off the event. Note the rate
@@ -92,6 +93,7 @@ export class TalentProfileSyncService implements OnModuleInit, OnModuleDestroy {
     @Inject('CATEGORY_CLIENT')
     private readonly categoryClient: ClientProxy,
     private readonly gateClient: IdentityVerificationGateClient,
+    private readonly gateState: TalentGateStateService,
   ) {
     this.logger.log('TalentProfileSyncService initialized');
   }
@@ -357,6 +359,59 @@ export class TalentProfileSyncService implements OnModuleInit, OnModuleDestroy {
     return { processed, categorised };
   }
 
+  /** Writes decisions identity gave us into the local table; a failure is logged, never thrown. */
+  private async recordLocalGateState(
+    decisions: Array<{ userId: string; gateOpen: boolean }>,
+    decidedAtIso: string,
+  ): Promise<void> {
+    if (!decisions.length) return;
+    try {
+      await this.gateState.applyMany(decisions, new Date(decidedAtIso));
+    } catch (err) {
+      this.logger.warn(`Local gate state not updated: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Asks identity (batches of `batchSize`, never per account) for every talent USER account and
+   * records the answers locally, so the browse list - which reads users, not profiles - has a
+   * decision for each. Keyset-paged by id, so it never offsets through the table. An account
+   * identity cannot answer keeps whatever state it has (none = hidden); the next pass retries it.
+   */
+  async reconcileUserGateState(batchSize = GATE_BACKFILL_BATCH): Promise<{ processed: number; recorded: number }> {
+    let processed = 0;
+    let recorded = 0;
+    let after: string | null = null;
+    for (;;) {
+      const qb = this.userRepo
+        .createQueryBuilder('u')
+        .select(['u.id'])
+        .where('u.userType = :userType', { userType: 'talent' })
+        .orderBy('u.id', 'ASC')
+        .take(batchSize);
+      if (after) qb.andWhere('u.id > :after', { after });
+      const batch = await qb.getMany();
+      if (!batch.length) break;
+      processed += batch.length;
+      after = batch[batch.length - 1].id;
+
+      const checkedAt = new Date().toISOString();
+      try {
+        const decisions = await this.gateClient.checkGateBatch(batch.map((u) => u.id));
+        const answered = batch.flatMap((u) => {
+          const decision = decisions.get(u.id);
+          return decision ? [{ userId: u.id, gateOpen: decision.gateOpen === true }] : [];
+        });
+        await this.recordLocalGateState(answered, checkedAt);
+        recorded += answered.length;
+      } catch {
+        // identity could not answer this batch: those accounts keep their current state
+      }
+      if (batch.length < batchSize) break;
+    }
+    return { processed, recorded };
+  }
+
   /**
    * G1: backfill / reconcile `gate_open` on every talent record. Repeatable and
    * idempotent - each pass asks identity for the current decision of every
@@ -403,6 +458,16 @@ export class TalentProfileSyncService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
+        // The same decisions also refresh the local last-known gate state the PostgreSQL discovery
+        // paths filter by (independent of whether the index accepts them below).
+        await this.recordLocalGateState(
+          withAccount.flatMap((p) => {
+            const decision = decisions.get(p.sourceId as string);
+            return decision ? [{ userId: p.sourceId as string, gateOpen: decision.gateOpen === true }] : [];
+          }),
+          checkedAt,
+        );
+
         const entries = withAccount.flatMap((p) => {
           const decision = decisions.get(p.sourceId as string);
           if (!decision) {
@@ -427,6 +492,9 @@ export class TalentProfileSyncService implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
+      await this.reconcileUserGateState(batchSize).catch((err) =>
+        this.logger.warn(`User gate-state reconcile failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
       this.logger.log(
         `Talent gate reindex complete: ${processed} profiles, ${sent} sent, ${unanswered} unanswered, ${failedBatches} failed batches`,
       );

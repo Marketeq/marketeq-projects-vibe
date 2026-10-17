@@ -20,6 +20,11 @@ export const LISTINGS_GATE_QUEUE = 'listings_service_gate_queue';
 // own durable queue.
 export const PAYOUT_GATE_CLIENT = 'PAYOUT_GATE_CLIENT';
 export const PAYOUT_GATE_QUEUE = 'payout_service_gate_queue';
+// G1 (PostgreSQL discovery paths): user-service keeps the last known gate of every talent
+// account in its own table, fed by this same event on its own durable queue, so talent
+// search and browse filter by it inside their SQL instead of asking identity per page.
+export const USER_GATE_CLIENT = 'USER_GATE_CLIENT';
+export const USER_GATE_QUEUE = 'user_service_gate_queue';
 export const GATE_CHANGED_PATTERN = 'identity.gate_changed';
 const PUBLISH_TIMEOUT_MS = 5000;
 
@@ -46,6 +51,7 @@ export class RmqGateChangePublisher implements GateChangePublisher {
     @Inject(ALGOLIA_GATE_CLIENT) private readonly algolia: ClientProxy,
     @Inject(LISTINGS_GATE_CLIENT) private readonly listings: ClientProxy,
     @Inject(PAYOUT_GATE_CLIENT) private readonly payout: ClientProxy,
+    @Inject(USER_GATE_CLIENT) private readonly user: ClientProxy,
   ) {}
 
   // One identical event to every consumer's own durable queue. If any queue
@@ -56,6 +62,6 @@ export class RmqGateChangePublisher implements GateChangePublisher {
       lastValueFrom(client.emit(GATE_CHANGED_PATTERN, change).pipe(timeout(PUBLISH_TIMEOUT_MS)), {
         defaultValue: undefined,
       });
-    await Promise.all([emit(this.algolia), emit(this.listings), emit(this.payout)]);
+    await Promise.all([emit(this.algolia), emit(this.listings), emit(this.payout), emit(this.user)]);
   }
 }

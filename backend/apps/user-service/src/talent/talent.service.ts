@@ -19,7 +19,7 @@ import { Language } from '../languages/languages.entity';
 import { UserService } from '../user/user.service';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { TalentProfile } from '../talent-profile/entities/talent-profile.entity';
-import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service';
+import { TalentGateStateService, openTalentSql } from '../identity-gate/talent-gate-state.service';
 
 @Injectable()
 export class TalentService {
@@ -46,7 +46,7 @@ export class TalentService {
     private readonly talentProfileRepository: Repository<TalentProfile>,
     private readonly r2Service: R2Service,
     private readonly userService: UserService,
-    private readonly discoveryGate: TalentDiscoveryGateService,
+    private readonly gateState: TalentGateStateService,
   ) {}
 
   async createTalent(
@@ -165,28 +165,30 @@ export class TalentService {
    * so cards never fall back to the placeholder.
    */
   async listTalentUsers(limit = 24): Promise<any[]> {
-    // G1: only talent whose gate is open reach the marketplace browse list. A
-    // light scan (account id only) walks the original order in pages until
-    // `limit` visible talent are found or the table is exhausted - however
-    // many hidden accounts come first - asking identity in batches. Only the
-    // visible accounts are then loaded and hydrated, so a hidden talent's
-    // profile data is never read. A viewer's own verification state plays no
-    // part here.
-    const visibleIds = (
-      await this.discoveryGate.collectVisible<Pick<User, 'id'>>({
-        fetchChunk: (offset, size) =>
-          this.userRepository.find({
-            select: { id: true },
-            where: { userType: 'talent' },
-            skip: offset,
-            take: size,
-            order: { onboardedAt: 'DESC', id: 'ASC' },
-          }),
-        userIdOf: (u) => u.id,
-        wanted: limit,
-        chunkSize: 200,
-      })
-    ).map((u) => u.id);
+    // G1: only talent whose gate is open reach the marketplace browse list. The gate is part of
+    // the query itself (a semi-join on the locally kept last-known gate state), so it is applied
+    // BEFORE the limit: the first `limit` rows are already the first `limit` visible talent,
+    // however many hidden accounts come first, in the original order, in ONE query. No talent is
+    // loaded just to be tested, and identity-verification-service is not called. An account whose
+    // state was never received has no row and is not listed. A viewer's own verification state
+    // plays no part here. If the state table cannot be read, nobody is listed (never everybody).
+    let visibleIds: string[] = [];
+    try {
+      const rows = await this.userRepository
+        .createQueryBuilder('u')
+        .select(['u.id'])
+        .where('u.userType = :userType', { userType: 'talent' })
+        .andWhere(openTalentSql('u.id'))
+        .orderBy('u.onboardedAt', 'DESC')
+        .addOrderBy('u.id', 'ASC')
+        .take(limit)
+        .getMany();
+      visibleIds = rows.map((u) => u.id);
+    } catch (err) {
+      if (!this.gateState.isUnreadable(err)) throw err;
+      this.gateState.warnUnreadable('the talent browse list', err);
+      return [];
+    }
     const loaded = visibleIds.length
       ? await this.userRepository.find({ where: { id: In(visibleIds) } })
       : [];

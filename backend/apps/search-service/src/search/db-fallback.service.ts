@@ -9,7 +9,6 @@ import {
   normalizeLooseText,
   normalizedTextSql,
 } from '../config/search-config'
-import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service'
 
 /**
  * Categories derived for a profile by category-service rather than stored on
@@ -36,6 +35,15 @@ interface FallbackHits {
   hitsPerPage: number
   fallback: true
 }
+
+// G1 - a talent profile is listed only when its account has a KNOWN OPEN gate. user-service owns
+// the last-known state (user_service.talent_gate_state, migration 1799500000000); this is a
+// semi-join against it, and the partial expression index on ("userId"::text) WHERE "gateOpen" serves
+// the text comparison. The account is the one the talent index is keyed on: source_id, else uuid.
+const openTalentSqlFor = (rel: string): string => `EXISTS (SELECT 1 FROM user_service.talent_gate_state g
+               WHERE g."userId"::text = COALESCE(NULLIF(${rel}.source_id::text, ''), ${rel}.uuid::text)
+                 AND g."gateOpen" = true)`
+const OPEN_TALENT_SQL = openTalentSqlFor('talent_profiles')
 
 // G5 - a listing whose OWNER has no known open gate is withheld from marketplace
 // discovery (no public owner exemption). The gate state is listings-service's own
@@ -125,7 +133,6 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject('CATEGORY_CLIENT')
     private readonly categoryClient: ClientProxy,
-    private readonly discoveryGate: TalentDiscoveryGateService,
   ) {}
 
   onModuleInit() {
@@ -421,34 +428,47 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         if (experienceClause) clauses.push(experienceClause)
 
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
-        // G1 - marketplace discovery gate. Visibility is decided for EVERY
-        // matching talent (no scan ceiling), from a light id-only query in the
-        // final ranking order, asking identity in batches. The requested page
-        // is then cut from the visible list, so the total, page count and page
-        // contents are exact, and only the page's visible talent are ever read
-        // in full - a hidden talent's profile data is never loaded.
-        const candidates = await this.pool.query(
-          `SELECT id, source_id, uuid
-           FROM cms.talent_profiles
-           WHERE status = 'active'
+        // G1 - marketplace discovery gate, applied INSIDE the query. A talent is listed only
+        // while its account has a KNOWN OPEN gate in user-service's locally kept last-known state
+        // (user_service.talent_gate_state, fed by identity's gate_changed events): a semi-join,
+        // evaluated before the COUNT and before LIMIT/OFFSET. So the total, the page count and the
+        // page are all over visible talent, in the original ranking order, in two bounded
+        // queries - no id list of every matching talent is loaded, identity is not called, and a
+        // hidden talent's profile data is never read. The account is the same one the index is
+        // keyed on (source_id, else the profile uuid). An account whose state was never received
+        // has no row and is hidden. If the state table cannot be read, nobody is listed.
+        const baseWhere = `status = 'active'
              AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
              ${filterSql}
-           ORDER BY ${orderBy}, id ASC`,
-          params,
-        )
-        const { visible, failed } = await this.discoveryGate.evaluate(
-          candidates.rows.map((r) => r.source_id || r.uuid),
-        )
-        if (failed) return this.empty(limit, page)
-
-        const visibleIds: number[] = candidates.rows
-          .filter((r) => {
-            const account = r.source_id || r.uuid
-            return typeof account === 'string' && visible.has(account)
-          })
-          .map((r) => r.id)
-        const total = visibleIds.length
-        const pageIds = visibleIds.slice(page * limit, page * limit + limit)
+             AND ${OPEN_TALENT_SQL}`
+        let total: number
+        let pageIds: number[]
+        try {
+          const counted = await this.pool.query(
+            `SELECT COUNT(*)::int AS n FROM cms.talent_profiles WHERE ${baseWhere}`,
+            params,
+          )
+          total = Number(counted.rows[0]?.n ?? 0)
+          if (total === 0 || page * limit >= total) {
+            pageIds = []
+          } else {
+            const pageParams = [...params, limit, page * limit]
+            const paged = await this.pool.query(
+              `SELECT id FROM cms.talent_profiles
+               WHERE ${baseWhere}
+               ORDER BY ${orderBy}, id ASC
+               LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+              pageParams,
+            )
+            pageIds = paged.rows.map((r) => r.id)
+          }
+        } catch (err) {
+          if (!/talent_gate_state/i.test(err instanceof Error ? err.message : String(err))) throw err
+          this.logger.warn(
+            `Talent gate state unreadable; showing no talent: ${err instanceof Error ? err.message : String(err)}`,
+          )
+          return this.empty(limit, page)
+        }
 
         let hits: any[] = []
         if (pageIds.length) {
@@ -787,6 +807,9 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
    *
    * Returns a map of profile id to the categories that were derived for it, so
    * the caller can both filter by id and render chips without matching twice.
+   *
+   * G1: only talent with a known open gate are candidates, so a hidden talent's text is never
+   * sent for scoring and the candidate cap is spent on talent that can actually be listed.
    */
   private async semanticCategoryMatch(
     selected: string[],
@@ -822,6 +845,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           WHERE status = 'active'
             AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
             ${filterSql}
+            AND ${OPEN_TALENT_SQL}
           LIMIT ${DbFallbackService.MAX_SEMANTIC_CANDIDATES}`,
         probeParams,
       )
@@ -1058,6 +1082,9 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
    * That keeps the number meaning the same thing as the Algolia facet count it
    * stands in for, which counts records.
    *
+   * G1: for talent, only profiles whose account has a known open gate are counted, the same
+   * rule the results use, so a sidebar count never includes a talent the results leave out.
+   *
    * Table and column names come from hardcoded maps, never from the request,
    * so interpolating them into the SQL is injection-safe.
    */
@@ -1077,6 +1104,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           WHERE p.status = $1
             AND c."${column}" IS NOT NULL
             AND btrim(c."${column}") <> ''
+            ${category === SearchCategory.TALENT ? `AND ${openTalentSqlFor('p')}` : ''}
           GROUP BY btrim(c."${column}")
           ORDER BY usage_count DESC, name ASC
           LIMIT 1000`,

@@ -11,6 +11,8 @@ import {
 } from './identity-verification-gate.client';
 import { TalentDiscoveryGateService } from './talent-discovery-gate.service';
 import { MemberAddGate } from './member-add-gate';
+import { TalentGateStateService } from './talent-gate-state.service';
+import { TalentGateStateConsumer } from './talent-gate-state.consumer';
 
 @Module({
   imports: [
@@ -34,7 +36,8 @@ import { MemberAddGate } from './member-add-gate';
       },
     ]),
   ],
-  providers: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate],
-  exports: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate],
+  controllers: [TalentGateStateConsumer],
+  providers: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate, TalentGateStateService],
+  exports: [IdentityVerificationGateClient, TalentDiscoveryGateService, MemberAddGate, TalentGateStateService],
 })
 export class IdentityGateModule {}

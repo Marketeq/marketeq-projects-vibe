@@ -10,12 +10,12 @@ import {
   DefaultValuePipe,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { In, Repository } from "typeorm";
+import { Repository } from "typeorm";
 import { TalentProfile } from "./entities/talent-profile.entity";
 import { Public } from "../decorators/public.decorator";
 import { RecommendTalentDto } from "./dto/recommend-talent.dto";
 import { TalentProfileRecommendationService } from "./talent-profile-recommendation.service";
-import { TalentDiscoveryGateService } from "../identity-gate/talent-discovery-gate.service";
+import { TalentGateStateService, openTalentTextSql } from "../identity-gate/talent-gate-state.service";
 
 @Controller("public/talent")
 export class TalentProfileController {
@@ -23,7 +23,7 @@ export class TalentProfileController {
     @InjectRepository(TalentProfile)
     private readonly repo: Repository<TalentProfile>,
     private readonly recommendationService: TalentProfileRecommendationService,
-    private readonly discoveryGate: TalentDiscoveryGateService,
+    private readonly gateState: TalentGateStateService,
   ) {}
 
   private static readonly PUBLIC_FIELDS: (keyof TalentProfile)[] = [
@@ -82,41 +82,31 @@ export class TalentProfileController {
   ) {
     const take = Math.min(limit, 100);
 
-    // G1: the browse list contains only talent whose gate is open, and its
-    // total and pages count only those. Visibility is decided from a light
-    // (id, sourceId) scan of the WHOLE table in the original order (no scan
-    // ceiling, so the total is exact), so a page is a slice of the
-    // visible list rather than a filtered slice of the raw one; only the
-    // visible page's profiles are then read. sourceId is the account id the
-    // gate is keyed on and is never part of the response. A profile with no
-    // sourceId has no account to verify and is not listed.
-    const scan = await this.discoveryGate.collectVisible({
-      fetchChunk: (offset, size) =>
-        this.repo.find({
-          where: { status: "active" },
-          select: ["id", "sourceId"],
-          order: { updatedAt: "DESC", id: "ASC" },
-          skip: offset,
-          take: size,
-        }),
-      userIdOf: (p) => p.sourceId,
-      wanted: Number.POSITIVE_INFINITY,
-      chunkSize: 500,
-    });
-
-    const total = scan.length;
-    const start = Math.max(0, (page - 1) * take);
-    const pageIds = scan.slice(start, start + take).map((p) => p.id);
-    if (pageIds.length === 0) return { data: [], total, page, limit: take };
-
-    const rows = await this.repo.find({
-      where: { id: In(pageIds) },
-      select: TalentProfileController.PUBLIC_FIELDS,
-    });
-    const byId = new Map(rows.map((r) => [r.id, r]));
-    const profiles = pageIds
-      .map((id) => byId.get(id))
-      .filter((p): p is TalentProfile => Boolean(p));
-    return { data: profiles, total, page, limit: take };
+    // G1: the browse list contains only talent whose gate is open, and its total and pages count
+    // only those. The gate is a semi-join inside the query (against the locally kept last-known
+    // gate state), so it is applied before the count and before skip/take: the page is a slice of
+    // the visible list, the total is exact, and only the visible page's columns are read - one
+    // COUNT and one page query, however large the table, with no call to identity. sourceId is the
+    // account id the gate is keyed on and is never part of the response. A profile with no
+    // sourceId has no account to verify and is not listed; an account whose state was never
+    // received is not listed. If the state table cannot be read, nobody is listed.
+    const skip = Math.max(0, (page - 1) * take);
+    try {
+      const [profiles, total] = await this.repo
+        .createQueryBuilder("p")
+        .select(TalentProfileController.PUBLIC_FIELDS.map((f) => `p.${String(f)}`))
+        .where("p.status = :status", { status: "active" })
+        .andWhere(openTalentTextSql("p.sourceId"))
+        .orderBy("p.updatedAt", "DESC")
+        .addOrderBy("p.id", "ASC")
+        .skip(skip)
+        .take(take)
+        .getManyAndCount();
+      return { data: profiles, total, page, limit: take };
+    } catch (err) {
+      if (!this.gateState.isUnreadable(err)) throw err;
+      this.gateState.warnUnreadable("the public talent list", err);
+      return { data: [], total: 0, page, limit: take };
+    }
   }
 }

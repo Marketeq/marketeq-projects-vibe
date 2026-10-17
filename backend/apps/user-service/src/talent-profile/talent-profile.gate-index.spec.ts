@@ -10,7 +10,7 @@ import { TalentProfileController } from './talent-profile.controller'
 import { TalentProfileRecommendationService } from './talent-profile-recommendation.service'
 import { TalentProfileSyncService } from './talent-profile-sync.service'
 import { TalentProfile } from './entities/talent-profile.entity'
-import { TalentDiscoveryGateService } from '../identity-gate/talent-discovery-gate.service'
+import { TalentGateStateService } from '../identity-gate/talent-gate-state.service'
 import {
   IDENTITY_VERIFICATION_CLIENT,
   IdentityVerificationGateClient,
@@ -42,6 +42,22 @@ describe('G1 - gate state on talent index events (user-service)', () => {
   let rabbitEmit: jest.Mock
   let rows: TalentProfile[]
   let service: TalentProfileSyncService
+  let localApply: jest.Mock
+  let talentUsers: Array<{ id: string }>
+  const userQb = () => {
+    // keyset-paged, id-ordered read of talent users: where u.id > :after, take N
+    let after: string | null = null
+    let take = Number.MAX_SAFE_INTEGER
+    const qb: any = {
+      select: () => qb,
+      where: () => qb,
+      orderBy: () => qb,
+      take: (n: number) => ((take = n), qb),
+      andWhere: (_sql: string, p: { after: string }) => ((after = p.after), qb),
+      getMany: async () => talentUsers.filter((u) => (after ? u.id > after : true)).slice(0, take),
+    }
+    return qb
+  }
 
   const reply = (record: any) => ({
     decisions: (record.data.userIds as string[]).filter((u) => IDENTITY[u]).map((u) => ({ userId: u, ...IDENTITY[u] })),
@@ -49,6 +65,8 @@ describe('G1 - gate state on talent index events (user-service)', () => {
 
   const build = async (identity?: (p: string, r: any) => Observable<unknown>) => {
     transport = jest.fn(identity ?? ((_p, r) => of(reply(r))))
+    localApply = jest.fn(async () => 1)
+    talentUsers = []
     algoliaEmit = jest.fn(() => of(undefined))
     algoliaSend = jest.fn(() => of({ updated: 1 }))
     rabbitEmit = jest.fn(async () => undefined)
@@ -62,9 +80,10 @@ describe('G1 - gate state on talent index events (user-service)', () => {
       providers: [
         TalentProfileSyncService,
         IdentityVerificationGateClient,
+        { provide: TalentGateStateService, useValue: { applyMany: localApply } },
         { provide: IDENTITY_VERIFICATION_CLIENT, useValue: { send: transport } },
         { provide: getRepositoryToken(TalentProfile), useValue: repo },
-        { provide: getRepositoryToken(require('../user/entities/user.entity').User), useValue: { findOne: jest.fn(), save: jest.fn(), create: jest.fn((d: any) => d), update: jest.fn() } },
+        { provide: getRepositoryToken(require('../user/entities/user.entity').User), useValue: { findOne: jest.fn(), save: jest.fn(), create: jest.fn((d: any) => d), update: jest.fn(), createQueryBuilder: userQb } },
         { provide: 'ALGOLIA_CLIENT', useValue: { emit: algoliaEmit, send: algoliaSend } },
         { provide: 'RABBITMQ_CLIENT', useValue: { emit: rabbitEmit } },
         { provide: 'CATEGORY_CLIENT', useValue: { send: jest.fn(() => of({ categories: [], subcategories: [] })) } },
@@ -178,6 +197,72 @@ describe('G1 - gate state on talent index events (user-service)', () => {
       await service.reindexGate(100)
       expect(JSON.stringify(algoliaSend.mock.calls.map((c) => c[1].entries))).toBe(first)
     })
+
+    it('also records every answered decision in the local gate state the PostgreSQL discovery paths read', async () => {
+      await build()
+      await service.reindexGate(100)
+      const written = localApply.mock.calls.flatMap((c) => c[0] as Array<{ userId: string; gateOpen: boolean }>)
+      expect(written).toEqual(expect.arrayContaining([
+        { userId: 'acct-1', gateOpen: true }, { userId: 'acct-2', gateOpen: false }, { userId: 'acct-3', gateOpen: true },
+      ]))
+      expect(written.map((w) => w.userId)).not.toContain('null') // the account-less profile writes nothing
+      expect(localApply.mock.calls.every((c) => c[1] instanceof Date)).toBe(true)
+    })
+
+    it('a local write that fails never stops the index backfill', async () => {
+      await build()
+      localApply.mockRejectedValue(new Error('db down'))
+      const res = await service.reindexGate(100)
+      expect(res.sent).toBe(3)
+    })
+
+    it('the local state is written even when algolia-service cannot apply the batch', async () => {
+      await build()
+      algoliaSend.mockImplementation(() => throwError(() => new Error('algolia down')))
+      await service.reindexGate(100)
+      expect(localApply).toHaveBeenCalled()
+    })
+  })
+
+  describe('reconcileUserGateState (the browse list reads users, not profiles)', () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `u-${String(i).padStart(4, '0')}` }))
+    beforeEach(() => build())
+
+    it('asks identity in batches by keyset (never an offset, never one call per user) and records each answer', async () => {
+      talentUsers = ids(250)
+      transport.mockImplementation((_p: string, r: any) => of({ decisions: (r.data.userIds as string[]).map((u) => ({ userId: u, gateOpen: true, missingRequirements: 'none' })) }))
+      const res = await service.reconcileUserGateState(100)
+      expect(res).toEqual({ processed: 250, recorded: 250 })
+      expect(transport).toHaveBeenCalledTimes(3)
+      expect(transport.mock.calls.every(([, r]) => r.data.userIds.length <= 100)).toBe(true)
+      expect(localApply).toHaveBeenCalledTimes(3)
+    })
+
+    it('an account identity does not answer is not recorded (it stays hidden), and the next batch still runs', async () => {
+      talentUsers = ids(150)
+      transport.mockImplementation((_p: string, r: any) =>
+        of({ decisions: (r.data.userIds as string[]).filter((u) => u !== 'u-0003').map((u) => ({ userId: u, gateOpen: false, missingRequirements: 'both' })) }))
+      const res = await service.reconcileUserGateState(100)
+      expect(res.recorded).toBe(149)
+      const written = localApply.mock.calls.flatMap((c) => c[0] as Array<{ userId: string }>)
+      expect(written.map((w) => w.userId)).not.toContain('u-0003')
+    })
+
+    it('an identity failure for one batch skips it and continues with the next', async () => {
+      talentUsers = ids(150)
+      let n = 0
+      transport.mockImplementation((_p: string, r: any) => (++n === 1 ? throwError(() => new Error('down')) : of({ decisions: (r.data.userIds as string[]).map((u) => ({ userId: u, gateOpen: true, missingRequirements: 'none' })) })))
+      const res = await service.reconcileUserGateState(100)
+      expect(res).toEqual({ processed: 150, recorded: 50 })
+    })
+
+    it('reindexGate also reconciles the users, so the operator message covers the browse list too', async () => {
+      talentUsers = ids(5)
+      transport.mockImplementation((_p: string, r: any) => of({ decisions: (r.data.userIds as string[]).map((u) => ({ userId: u, gateOpen: true, missingRequirements: 'none' })) }))
+      await service.reindexGate(100)
+      const written = localApply.mock.calls.flatMap((c) => c[0] as Array<{ userId: string }>)
+      expect(written.map((w) => w.userId)).toEqual(expect.arrayContaining(['u-0000', 'u-0004']))
+    })
   })
 })
 
@@ -186,16 +271,14 @@ describe('G1 - direct talent profile URLs stay accessible (user-service)', () =>
   let transport: jest.Mock
 
   beforeEach(async () => {
-    transport = jest.fn(() => of({ decisions: [{ userId: 'acct-2', ...CLOSED }] }))
+    transport = jest.fn()
     const hidden = { id: 'id-2', username: 'user2', name: 'Name2', sourceId: 'acct-2', status: 'active' }
     const repo = { findOne: jest.fn(async ({ where }: any) => (where.username === 'user2' ? hidden : null)) }
     const moduleRef = await Test.createTestingModule({
       controllers: [TalentProfileController],
       providers: [
         TalentProfileRecommendationService,
-        TalentDiscoveryGateService,
-        IdentityVerificationGateClient,
-        { provide: IDENTITY_VERIFICATION_CLIENT, useValue: { send: transport } },
+        { provide: TalentGateStateService, useValue: { isUnreadable: () => false, warnUnreadable: jest.fn() } },
         { provide: getRepositoryToken(TalentProfile), useValue: repo },
         { provide: HttpService, useValue: { post: jest.fn() } },
         { provide: ConfigService, useValue: { get: (k: string) => (k === 'RABBITMQ_URL' ? 'amqp://test' : undefined) } },
