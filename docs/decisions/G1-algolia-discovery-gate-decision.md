@@ -167,8 +167,15 @@ and before anything is hydrated:
     semi-join over the talent and open-gate rows (35-80 ms at this size, and linear in the table). That is inherent to an exact
     total; it runs inside PostgreSQL and loads no rows into the service. If it becomes a cost, the options are a short-lived
     cache of the total, a maintained counter, or `work_mem` large enough to avoid the temp spill - a product/ops decision.
-  * `cms.talent_profiles` belongs to cms-service (Payload). The search fallback's page query orders by
-    `created_at DESC NULLS LAST, id`; Payload's default index on `created_at` does not match that ordering. Measured with a
-    matching index (`(created_at DESC NULLS LAST, id)`): 75 ms -> 19-26 ms. It is NOT created here (table ownership); it should
-    be added by a cms-service migration.
+  * `cms.talent_profiles` (Payload, cms-service) - the search fallback's talent tables. Existing indexes: `pkey`, `created_at`
+    (ascending), and unique `source_id`, `username`, `uuid`. The fallback orders by `created_at DESC NULLS LAST, id ASC`,
+    which the ascending `created_at` index cannot deliver. dev-main's single query (rows + `COUNT(*) OVER ()`) never used an
+    index at all: it scanned every matching profile and sorted them, spilling to disk (87 ms first page, 538 ms at offset
+    100,000, on 250,000 profiles). The gate change splits it into a COUNT and a page query, so without a matching index the
+    first page cost 51 + 92 ms = 143 ms (a second table scan, a hash of the open gate rows, a spilling top-N sort). With
+    cms-service migration `20261016_000000_add_talent_profiles_active_created_at_index`
+    (`(created_at DESC NULLS LAST, id ASC) WHERE status = 'active'`) the page is an ordered index scan with a nested-loop
+    semi-join into the gate table's partial index, no sort, no temp file: 28-30 ms (COUNT stays ~50 ms), i.e. 80 ms for the
+    first page against dev-main's 87 ms, and 50 ms against 538 ms at a deep offset. Run it with `npx payload migrate`
+    (cms-service does not run migrations on boot).
 * Migration order in user-service: `1799500000000-CreateTalentGateState`, then `1799600000000-AddTalentDiscoveryIndexes`.
