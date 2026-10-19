@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
+import { createCounterOffer, declineCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -586,6 +586,7 @@ export function Chats({
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
   const [decliningOffer, setDecliningOffer] = useState(false)
+  const [decliningCounterOffer, setDecliningCounterOffer] = useState(false)
   const [editingCounterOffer, setEditingCounterOffer] = useState(false)
   const [withdrawingCounterOffer, setWithdrawingCounterOffer] = useState(false)
   const [withdrawingOffer, setWithdrawingOffer] = useState(false)
@@ -983,9 +984,7 @@ export function Chats({
     declinedOfferSenderUsername.replace(/^@/, "").slice(0, 1) ||
     "L"
   const declinedDisplayLabel =
-    declinedOfferCard?.declinedLabel ||
-    declinedOfferCard?.receivedLabel ||
-    "Feb 1, 2025"
+    declinedOfferCard?.declinedLabel || declinedOfferCard?.receivedLabel || ""
   const askNowMessage = declinedOfferCard
     ? `Hi ${declinedOfferSenderName}! I wanted to check in and see if the ${declinedOfferCard.role} role for the project ${declinedOfferCard.offerTitle} is still available. If so, I’m still interested.`
     : ""
@@ -3219,6 +3218,30 @@ export function Chats({
                 const counteredInCurrentTalentFlow =
                   !item.clientPerspective &&
                   counterOfferCard?.contractId === item.contractId
+                // Offer card reverts to "Pending" after reload: this card
+                // used to fall straight back to `item.event` — the fixed
+                // event type of whichever notification happened to be
+                // first created for this offer, never updated afterward —
+                // the instant none of the ephemeral same-session overlays
+                // above were set (i.e. on every reload). `item.offerStatus`
+                // is the live status from the same getOffer() refetch this
+                // page already runs on every load (PMCM-393 AC-42, see its
+                // definition above) and was simply never consulted here.
+                // Undefined still means "no live signal" (seeded fixtures,
+                // or the lookup failed) and correctly falls through to the
+                // old event-based behavior in that case.
+                const liveStatusEvent =
+                  item.offerStatus === "ACCEPTED"
+                    ? "offer.accepted"
+                    : item.offerStatus === "DECLINED"
+                      ? "offer.declined"
+                      : item.offerStatus === "WITHDRAWN"
+                        ? "offer.withdrawn"
+                        : item.offerStatus === "EXPIRED"
+                          ? "offer.expired"
+                          : item.offerStatus === "COUNTERED"
+                            ? "offer.countered"
+                            : undefined
                 const effectiveEvent =
                   counteredInCurrentTalentFlow
                     ? "offer.countered"
@@ -3227,7 +3250,7 @@ export function Chats({
                     : !item.clientPerspective &&
                         locallyDeclinedTalentOffers.includes(item.contractId)
                     ? "offer.declined"
-                    : item.event
+                    : liveStatusEvent ?? item.event
                 const state = OFFER_EVENT_STATE[effectiveEvent]
                 const isTalentOffer = !item.clientPerspective
                 const isAcceptedOffer = effectiveEvent.includes("accepted")
@@ -5051,8 +5074,7 @@ export function Chats({
                         </span>
                       </div>
                       <p className="text-sm leading-[17px] text-dark-blue-400">
-                        {declinedOfferCard.declineMessage ||
-                          "Thanks, unfortunately I can't take this on right now."}
+                        {declinedOfferCard.declineMessage || "No reason given"}
                       </p>
                     </div>
 
@@ -5768,9 +5790,11 @@ export function Chats({
                         <Badge variant="rounded" visual="gray" size="sm">
                           {declinedOfferCard.offerType}
                         </Badge>
-                        <span className="text-sm leading-5 text-gray-500">
-                          Declined on {declinedDisplayLabel}
-                        </span>
+                        {declinedDisplayLabel ? (
+                          <span className="text-sm leading-5 text-gray-500">
+                            Declined on {declinedDisplayLabel}
+                          </span>
+                        ) : null}
                       </div>
 
                       <div className="mt-3 text-[18px] font-semibold leading-7 text-dark-blue-400">
@@ -5852,15 +5876,16 @@ export function Chats({
                     </div>
                   </div>
 
-                  <div className="rounded-lg bg-gray-50 p-4">
-                    <div className="text-sm font-medium leading-6 text-dark-blue-400">
-                      Reason
+                  {declinedOfferCard.declineReason ? (
+                    <div className="rounded-lg bg-gray-50 p-4">
+                      <div className="text-sm font-medium leading-6 text-dark-blue-400">
+                        Reason
+                      </div>
+                      <p className="mt-1 text-sm leading-6 text-dark-blue-400">
+                        {declinedOfferCard.declineReason}
+                      </p>
                     </div>
-                    <p className="mt-1 text-sm leading-6 text-dark-blue-400">
-                      {declinedOfferCard.declineReason ||
-                        "The budget does not align."}
-                    </p>
-                  </div>
+                  ) : null}
                 </div>
               </ScrollArea>
 
@@ -6212,7 +6237,7 @@ export function Chats({
           termsAccepted={notificationTermsAccepted}
           declineMessage={notificationDeclineMessage}
           selectedDeclineReason={notificationDeclineReason}
-          declineLoading={decliningOffer}
+          declineLoading={decliningOffer || decliningCounterOffer}
           declinedByViewer={
             notificationOfferStep === "declined" ||
             (selectedNotificationOffer?.event !== "offer.declined" &&
@@ -6337,16 +6362,20 @@ export function Chats({
 
               const contractId = selectedNotificationOffer.contractId
               const trimmedReason = notificationDeclineReason.trim()
+              const trimmedMessage = notificationDeclineMessage.trim()
+              // QA retest follow-up: this used to send a sentence the
+              // talent never typed ("Thanks, unfortunately I can't take
+              // this on right now.") whenever they left the free-text box
+              // empty, attributing invented words to them. DeclineOfferDto
+              // has one free-text `reason` field (required) plus an
+              // optional structured `chip` — the chip buttons hand back a
+              // human label ("Budget doesn’t work"), never the enum value,
+              // so DECLINE_CHIP_BY_REASON does that conversion. `reason` is
+              // still never sent empty: typed text wins, else the selected
+              // chip's own label is a real reason too, else a neutral
+              // "No reason given" — never a fabricated sentence.
               const declineMessage =
-                notificationDeclineMessage.trim() ||
-                "Thanks, unfortunately I can't take this on right now."
-              // BTB-287: DeclineOfferDto has one free-text `reason` field
-              // (required) plus an optional structured `chip` — the chip
-              // buttons hand back a human label ("Budget doesn’t work"),
-              // never the enum value, so DECLINE_CHIP_BY_REASON does that
-              // conversion. declineMessage always has content (its own
-              // fallback above), so `reason` is never sent empty even when
-              // the talent only picked a chip and typed nothing.
+                trimmedMessage || trimmedReason || "No reason given"
               const reason = declineMessage
               const chip = trimmedReason
                 ? DECLINE_CHIP_BY_REASON[trimmedReason]
@@ -6378,11 +6407,9 @@ export function Chats({
                       contractId,
                       offerTitle: selectedNotificationOfferData.offerTitle,
                       offerType: selectedNotificationOfferData.offerType,
-                      receivedLabel:
-                        selectedNotificationOfferData.receivedLabel ||
-                        "Feb 1, 2025",
+                      receivedLabel: selectedNotificationOfferData.receivedLabel,
                       declinedAt,
-                      declinedLabel: "Feb 1, 2025",
+                      declinedLabel: format(parseISO(declinedAt), "MMM d, yyyy"),
                       offerRate: selectedNotificationOfferData.offerRate,
                       role: selectedNotificationOfferData.role,
                       duration: selectedNotificationOfferData.duration,
@@ -6395,8 +6422,7 @@ export function Chats({
                       senderAvatarSrc:
                         selectedNotificationOfferData.senderAvatarSrc,
                       declineMessage,
-                      declineReason:
-                        trimmedReason || "The budget does not align.",
+                      declineReason: reason,
                     })
                   )
 
@@ -6430,11 +6456,67 @@ export function Chats({
               selectedNotificationOffer?.clientPerspective &&
               selectedNotificationOffer.event.includes("counter")
             ) {
-              setDeclinedCounterOfferMessage(selectedNotificationOffer)
-              setSelectedNotificationOffer(null)
-              setNotificationOfferStep("event")
-              setNotificationDeclineMessage("")
-              setNotificationDeclineReason("")
+              // BTB-287 follow-up: this branch used to just stash the
+              // notification into local state and render a fake "Declined"
+              // card — it never called the backend at all, so the talent's
+              // counter stayed PENDING server-side no matter what the
+              // client's screen showed. Same id source, same reason/chip
+              // mapping, and the same try/catch/toast shape as the
+              // already-fixed base-offer decline branch above.
+              if (decliningCounterOffer) return
+
+              const counterOfferId =
+                selectedNotificationOffer.latestCounterOfferId
+              if (!counterOfferId) {
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't decline the counter offer",
+                  description: "Please try again.",
+                })
+                return
+              }
+
+              const trimmedReason = notificationDeclineReason.trim()
+              const trimmedMessage = notificationDeclineMessage.trim()
+              // Same fix as the base-offer decline branch above: never send
+              // a sentence the client didn't type. Typed text wins, else
+              // the selected chip's own label, else a neutral fallback.
+              const declineMessage =
+                trimmedMessage || trimmedReason || "No reason given"
+              const chip = trimmedReason
+                ? DECLINE_CHIP_BY_REASON[trimmedReason]
+                : undefined
+
+              setDecliningCounterOffer(true)
+              try {
+                await declineCounterOffer(
+                  selectedNotificationOffer.contractId,
+                  counterOfferId,
+                  { reason: declineMessage, chip }
+                )
+                // Same reasoning as the withdraw/edit/decline handlers
+                // above — the backend's Ably publish isn't awaited, and
+                // the channel tears down once selectedNotificationOffer is
+                // nulled below, so waiting on offer.updated would
+                // reliably lose that race.
+                onOfferUpdateRequested?.()
+                setDeclinedCounterOfferMessage(selectedNotificationOffer)
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationDeclineMessage("")
+                setNotificationDeclineReason("")
+              } catch (error) {
+                console.error("Counter offer decline failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't decline the counter offer",
+                  description: "Please try again.",
+                })
+                // Modal stays open on failure, matching the other
+                // handlers' failure paths above.
+              } finally {
+                setDecliningCounterOffer(false)
+              }
               return
             }
             setNotificationOfferStep((step) =>
@@ -7726,16 +7808,14 @@ export function Chats({
           mode={
             notificationOfferStep === "counter" ||
             (notificationOfferStep === "edit" &&
-              selectedNotificationOffer?.event.includes("counter") &&
-              !selectedNotificationOffer.clientPerspective)
+              selectedNotificationOffer?.event.includes("counter"))
               ? "counter"
               : "edit"
           }
           initialReview={false}
           reviewTitle={
             notificationOfferStep === "edit" &&
-            selectedNotificationOffer?.event.includes("counter") &&
-            !selectedNotificationOffer.clientPerspective
+            selectedNotificationOffer?.event.includes("counter")
               ? "Review Your Counter Offer"
               : notificationOfferStep === "edit-expired"
               ? "Review your offer"
@@ -7743,8 +7823,7 @@ export function Chats({
           }
           editTitle={
             notificationOfferStep === "edit" &&
-            selectedNotificationOffer?.event.includes("counter") &&
-            !selectedNotificationOffer.clientPerspective
+            selectedNotificationOffer?.event.includes("counter")
               ? "Edit Your Counter Offer"
               : notificationOfferStep === "resend-edit"
               ? `Resend your offer to ${selectedNotificationOfferData.senderUsername.startsWith("@") ? selectedNotificationOfferData.senderUsername : `@${selectedNotificationOfferData.senderUsername}`}`
@@ -7754,8 +7833,7 @@ export function Chats({
           }
           editSubtitle={
             notificationOfferStep === "edit" &&
-            selectedNotificationOffer?.event.includes("counter") &&
-            !selectedNotificationOffer.clientPerspective
+            selectedNotificationOffer?.event.includes("counter")
               ? "Update the terms of your counter offer."
               : notificationOfferStep === "resend-edit"
               ? "Confirm the details before sending."
@@ -7765,8 +7843,7 @@ export function Chats({
           }
           reviewButtonLabel={
             notificationOfferStep === "edit" &&
-            selectedNotificationOffer?.event.includes("counter") &&
-            !selectedNotificationOffer.clientPerspective
+            selectedNotificationOffer?.event.includes("counter")
               ? "Review Counteroffer"
               : notificationOfferStep === "edit-expired" ||
             notificationOfferStep === "resend-edit"
@@ -7793,8 +7870,7 @@ export function Chats({
               notificationOfferStep === "counter"
                 ? "previous"
                 : notificationOfferStep === "edit"
-                ? selectedNotificationOffer?.event.includes("counter") &&
-                  !selectedNotificationOffer.clientPerspective
+                ? selectedNotificationOffer?.event.includes("counter")
                   ? "sent-counter"
                   : "previous"
                 : "event"
@@ -7819,8 +7895,7 @@ export function Chats({
 
             if (
               notificationOfferStep === "edit" &&
-              selectedNotificationOffer.event.includes("counter") &&
-              !selectedNotificationOffer.clientPerspective
+              selectedNotificationOffer.event.includes("counter")
             ) {
               // BTB-285: same id source as the withdraw handler above
               // (latestCounterOfferId) — gate exactly as withdraw does

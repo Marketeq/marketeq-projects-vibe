@@ -2,6 +2,7 @@
 // OS-20: All 14 event payload interfaces for offer-service.
 import { ContractType } from '../../offers/enums/contract-type.enum';
 import { WorkScheduleType } from '../../offers/enums/work-schedule-type.enum';
+import { DeclineChip } from '../../offers/enums/decline-chip.enum';
 import { OfferRoutingKey } from '../constants/rabbitmq.constants';
 
 export interface PayloadWorkSchedule {
@@ -139,6 +140,15 @@ export interface OfferCounterDeclinedPayload extends BaseOfferEventPayload {
   declinedAt: string;
   counterOfferTerms: OfferTermsPayload;
   parentOfferStatus: 'PENDING' | 'EXPIRED';
+  // QA retest follow-up: not persisted anywhere (no counter_offers column —
+  // see counter-offers.service.ts's decline()), only carried on the event
+  // itself, same as every other optional field on this payload. Undefined
+  // when the submitter typed no reason and picked no chip. Named to match
+  // this payload's own declinedBy/declinedAt (and Offer.declinedReason/
+  // declinedChip) rather than DeclineCounterOfferDto's reason/chip —
+  // offer-logger.service.ts's SENSITIVE_KEYS masks exactly these two names.
+  declinedReason?: string;
+  declinedChip?: DeclineChip;
 }
 
 export interface OfferCounterWithdrawnPayload extends BaseOfferEventPayload {
