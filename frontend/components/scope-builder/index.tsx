@@ -196,15 +196,27 @@ type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 const taskFormSchema = z.object({
   task: z.string().min(1, "Please enter a task name"),
   role: z.string().min(1, "Please select a role"),
+  // PMCM-257 fix: reverted to optional (matches dev-main) — the
+  // TaskDialog using this schema has no location input at all (it's set
+  // afterward in the PhaseTable's own location column), so requiring it
+  // here made "Add Task" permanently fail on a field the user can't see
+  // or fill from this dialog. Location-required is now enforced where
+  // location is actually editable — see the location column below.
   location: z.string().optional().default(""),
   experience: z.enum(EXPERIENCE_LEVELS, {
     required_error: "Please select an experience level",
     invalid_type_error: "Please select an experience level",
   }),
   duration: z.object({
-    value: z.coerce.number({
-      invalid_type_error: "Please enter a valid number",
-    }),
+    value: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+      })
+      // PMCM-257: "Task with 0 hours → inline 'Minimum 1 hour per task.'
+      // on that row." Checked on the raw entered value/unit (not
+      // converted through durationToHours) — the concrete, named failure
+      // case is literally 0, regardless of unit.
+      .min(1, "Minimum 1 hour per task."),
     type: z.enum(DURATION_TYPE, {
       invalid_type_error: "Please select an option",
       required_error: "Please select an option",
@@ -290,6 +302,12 @@ export function durationToHours(
 
   if (durationType === "hours") return durationValue
   if (durationType === "weeks") return durationValue * hoursPerWeek
+  // PMCM-258 follow-up: months previously fell through to the "days"
+  // branch below (durationValue * hoursPerDay), so "2 months" billed as
+  // 2 days. Same 30-day month as listing-pricing.ts's MONTH_DAYS and this
+  // file's own durationToDays — 30/7 weeks per month, scaled by the same
+  // workSchedule-derived hoursPerWeek the other branches already use.
+  if (durationType === "months") return durationValue * (30 / 7) * hoursPerWeek
   // days
   return durationValue * hoursPerDay
 }
@@ -467,6 +485,63 @@ export const getPhaseDurationLabel = (phases: Phase[], phaseIndex: number) => {
   }
   return `${days} ${formatDurationUnit(days, "days")}`
 }
+
+// PMCM-257 follow-up: converts phases between the Project (flat, no
+// phaseType) and Service (setup/recurring/ongoing) shapes on a scope-type
+// switch, preserving phaseName/rows/order instead of clearing them —
+// replaces the earlier clear-on-switch behavior per product direction.
+//
+// PMCM-257 follow-up 2: the "service" branch is non-destructive and
+// doubles as the general-purpose "every phase must have a phaseType in
+// Service scope" normalizer (see ensureServicePhaseTypes below) — an
+// already-typed phase (and its recurrenceSchedule/recurrenceCount) is
+// left untouched; only an untyped phase gets assigned one. This keeps
+// Project→Service conversion's own output identical to before (project
+// phases have no phaseType at all, so index 0 still becomes "setup" and
+// the rest "recurring") while also being safe to call on a scope that's
+// already partially or fully typed.
+export function convertPhasesForScopeType(
+  phases: Phase[],
+  target: ScopeType
+): Phase[] {
+  if (target === "service") {
+    const hasSetup = phases.some((phase) => phase.phaseType === "setup")
+    return phases.map((phase, index) => {
+      if (phase.phaseType) {
+        // Already typed — keep it and its recurrence fields as-is.
+        return phase
+      }
+      if (index === 0 && !hasSetup) {
+        return { ...phase, phaseType: "setup" as const }
+      }
+      // Every other untyped phase, and an untyped phase at index 0 when
+      // some other phase already claims "setup" — never auto-assign
+      // "ongoing".
+      return {
+        ...phase,
+        phaseType: "recurring" as const,
+        recurrenceSchedule: "monthly" as const,
+        recurrenceCount: 1,
+      }
+    })
+  }
+
+  // target === "project": omit the service-only keys entirely (not set to
+  // null/undefined) so day ranges recompute from task durations the same
+  // way they always have for a flat project phase.
+  return phases.map((phase) => {
+    const { phaseType, recurrenceSchedule, recurrenceCount, ...rest } = phase
+    return rest
+  })
+}
+
+// PMCM-257 follow-up 2: Service scope must never show the Project header
+// fallback ("Phase One") — every phase needs a phaseType. This is just
+// convertPhasesForScopeType's non-destructive "service" branch under a
+// name that reads correctly at a normalization call site (no actual
+// scope-type switch happening).
+export const ensureServicePhaseTypes = (phases: Phase[]): Phase[] =>
+  convertPhasesForScopeType(phases, "service")
 
 const RECURRENCE_LABEL: Record<RecurrenceSchedule, string> = {
   weekly: "Weekly",
@@ -664,6 +739,20 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 
+// PMCM-257: matches a phase's own name OR any of its task rows' task/
+// role/location text against the normalized search query.
+const matchesPhaseSearch = (phase: Phase, normalizedQuery: string) => {
+  if (!normalizedQuery) return true
+  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
+    return true
+  }
+  return (phase.rows ?? []).some((row) =>
+    [row.task, row.role, row.location].some((value) =>
+      normalizeSearchText(value).includes(normalizedQuery)
+    )
+  )
+}
+
 const numberToWord = (num: number) => {
   const words = [
     "One",
@@ -848,6 +937,17 @@ type DurationFormValues = {
   }
 }
 
+// PMCM-257: this dialog previously had no resolver at all — a plain HTML
+// min={1} on the number input, which React Hook Form's handleSubmit does
+// not enforce, so 0 (or a negative value) saved silently. Same rule as
+// taskFormSchema.duration above.
+const durationFormSchema = z.object({
+  duration: z.object({
+    value: z.coerce.number().min(1, "Minimum 1 hour per task."),
+    type: z.enum(DURATION_TYPE),
+  }),
+})
+
 interface DurationDialogProps {
   open: boolean
   durationFormValues?: DurationFormValues
@@ -856,6 +956,29 @@ interface DurationDialogProps {
 }
 
 // ─── Sub-components ─────────────────────────────────────────────────────
+
+// PMCM-257 follow-up: extracted so the scope-type switch confirm dialog's
+// "Learn More" can reuse the same tip video instead of duplicating it.
+const ProjectScopeTipVideo = () => (
+  <>
+    <DialogHeader>
+      <DialogTitle>Project Scope Tip Video</DialogTitle>
+    </DialogHeader>
+    {PROJECT_SCOPE_TIP_VIDEO_URL ? (
+      <ReactPlayer
+        controls
+        width="100%"
+        height={300}
+        url={PROJECT_SCOPE_TIP_VIDEO_URL}
+      />
+    ) : (
+      <p className="text-sm text-gray-500">
+        Tip video URL is not configured yet. Add
+        `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
+      </p>
+    )}
+  </>
+)
 
 const ProjectScopeTip = ({
   showArrow,
@@ -908,22 +1031,7 @@ const ProjectScopeTip = ({
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Project Scope Tip Video</DialogTitle>
-          </DialogHeader>
-          {PROJECT_SCOPE_TIP_VIDEO_URL ? (
-            <ReactPlayer
-              controls
-              width="100%"
-              height={300}
-              url={PROJECT_SCOPE_TIP_VIDEO_URL}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">
-              Tip video URL is not configured yet. Add
-              `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
-            </p>
-          )}
+          <ProjectScopeTipVideo />
         </DialogContent>
       </Dialog>
 
@@ -2243,15 +2351,27 @@ const columns = [
         )
       }
 
+      // PMCM-257: location is required per task, but only enforceable
+      // here — the TaskDialog that creates the row has no location input
+      // at all (location is set afterward, in this column). Assigned
+      // rows take the assignee's own country (the branch above), so this
+      // only ever applies to an unassigned row.
+      const isMissing = !currentValue.trim()
       return (
         <TableCell className="px-3 py-4">
           <CountriesCombobox
             placeholder="Location"
             value={currentValue}
+            triggerClassName={isMissing ? "border-error-500" : undefined}
             onValueChange={(v) => {
               table.options.meta?.updateData(index, id, v)
             }}
           />
+          {isMissing && (
+            <ErrorMessage size="sm" className="mt-1">
+              Please select a location
+            </ErrorMessage>
+          )}
         </TableCell>
       )
     },
@@ -2429,7 +2549,13 @@ const DurationDialog = ({
   onDurationFormValuesChange,
   onOpenChange,
 }: DurationDialogProps) => {
-  const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<DurationFormValues>({
+    resolver: zodResolver(durationFormSchema),
     defaultValues: durationFormValues || {
       duration: { value: 1, type: "days" },
     },
@@ -2484,6 +2610,10 @@ const DurationDialog = ({
                     min={1}
                     className="w-[100px]"
                     placeholder="1"
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
                   />
                 )}
               />
@@ -2509,6 +2639,11 @@ const DurationDialog = ({
                 )}
               />
             </div>
+            {hookFormHasError({ errors, name: "duration.value" }) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message")}
+              </ErrorMessage>
+            )}
           </div>
           <DialogFooter className="gap-x-3">
             <DialogClose asChild>
@@ -2567,19 +2702,47 @@ export function ScopeBuilder({
   )
   const [scopeTypeDropdownOpen, setScopeTypeDropdownOpen] = useState(false)
   const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = useState(false)
+  const [scopeTypeLearnMoreOpen, setScopeTypeLearnMoreOpen] = useState(false)
   const [pendingScopeType, setPendingScopeType] = useState<ScopeType | null>(
     null
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  // PMCM-257: this input previously had no value/onChange at all — a
+  // static placeholder with nothing wired up. getPhaseSearchTargetId/
+  // getTaskSearchTargetId below are unused dead code (confirmed via
+  // grep — no call sites), so there's no existing scroll-to-target
+  // behavior this filter could break.
+  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
 
   // Local state for phases — replaces useProjectScopeContext
   const [phases, setPhases] = useControllableState<Phase[]>({
-    defaultValue: initialPhases ?? [{ phaseName: "" }],
+    // PMCM-257 follow-up 2: a fresh/empty Service scope must start typed
+    // ("Setup", not "Phase One") — this only matters when `initialPhases`
+    // is undefined/empty (uncontrolled fallback); once a real scope
+    // exists, the normalization effect below handles any untyped phase.
+    defaultValue:
+      initialPhases ??
+      (scopeType === "service"
+        ? [{ phaseName: "", phaseType: "setup" }]
+        : [{ phaseName: "" }]),
     value: initialPhases,
     onChange: (value) => {
       onPhasesChange?.(value)
     },
   })
+
+  // PMCM-257 follow-up 2: Service scope must never have an untyped phase
+  // (the header falls back to "Phase One" otherwise) — this catches an
+  // older service draft saved before phaseType was required, or a scope
+  // hydrated after the type already switched. Runs once per untyped
+  // scope: after normalizing, every phase has a phaseType, so the guard
+  // condition is false on the next run and this does not loop.
+  useEffect(() => {
+    if (scopeType !== "service") return
+    if (phases.some((phase) => !phase.phaseType)) {
+      setPhases(ensureServicePhaseTypes(phases))
+    }
+  }, [scopeType, phases, setPhases])
 
   // Task search dialog state — managed internally
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
@@ -3107,80 +3270,143 @@ export function ScopeBuilder({
         </div>
       </div>
 
-      {/* Scope type change confirmation dialog */}
+      {/* Scope type change confirmation dialog. Width: Figma specs 409px;
+          max-w-sm (384px) is the nearest standard Tailwind class — no
+          arbitrary value added. */}
       <Dialog
         open={scopeTypeConfirmOpen}
         onOpenChange={setScopeTypeConfirmOpen}
       >
-        <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
-          <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-            <DialogTitle>
-              Change to {pendingScopeType === "service" ? "Service" : "Project"}
-              ?
+        <DialogContent className="max-w-sm p-0">
+          <div className="p-6 border-b border-gray-200">
+            <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+              Change to{" "}
+              {pendingScopeType === "service" ? "Service" : "Project"}?
             </DialogTitle>
-            <DialogDescription>
-              This action will modify the entire {scopeType} scope. You&apos;ll
-              need to manually update the{" "}
-              {pendingScopeType === "service" ? "service" : "project"} plan
-              details, including time intervals for each phase and other related
-              settings. You can undo this at anytime.
+            <DialogDescription className="mt-2 text-sm font-light text-dark-blue-400">
+              {pendingScopeType === "service"
+                ? "This action will modify the entire project scope. You'll need to manually update the service plan details, including time intervals for each phase and other related settings. You can undo this at anytime."
+                : "This action will modify the entire service scope. You'll need to manually update the project plan details, including the duration of each phase and other related settings. You can undo this at anytime."}
             </DialogDescription>
-
-            <DialogFooter className="mt-8 grid gap-x-3">
-              <DialogClose asChild>
+            <Dialog
+              open={scopeTypeLearnMoreOpen}
+              onOpenChange={setScopeTypeLearnMoreOpen}
+            >
+              <DialogTrigger asChild>
+                {/* visual="gray" variant="link" already gives
+                    text-gray-500, and size defaults to "sm" (text-sm) —
+                    only font-semibold/underline(persistent)/capitalize
+                    aren't covered by the variant. */}
                 <Button
-                  variant="outlined"
+                  type="button"
+                  variant="link"
                   visual="gray"
-                  onClick={() => setPendingScopeType(null)}
+                  className="mt-3 font-semibold underline capitalize"
                 >
-                  Cancel
+                  Learn More
                 </Button>
-              </DialogClose>
+              </DialogTrigger>
+              <DialogContent className="max-w-[560px]">
+                <ProjectScopeTipVideo />
+              </DialogContent>
+            </Dialog>
+          </div>
 
+          <div className="bg-gray-25 px-6 py-4 rounded-b-xl flex items-center justify-between">
+            <DialogClose asChild>
               <Button
-                onClick={() => {
-                  const previousType = scopeType
-                  if (pendingScopeType) {
-                    onScopeTypeChange?.(pendingScopeType)
-                    toast({
-                      variant: "success",
-                      title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
-                      action: (
-                        <ToastAction
-                          altText="Undo"
-                          className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
-                          onClick={() => onScopeTypeChange?.(previousType)}
-                        >
-                          Undo
-                        </ToastAction>
-                      ),
-                    })
-                  }
-                  setPendingScopeType(null)
-                  setScopeTypeConfirmOpen(false)
-                }}
+                className="opacity-50 hover:opacity-100"
+                variant="link"
+                visual="gray"
+                onClick={() => setPendingScopeType(null)}
               >
-                Yes, Change
+                <X className="size-[15px]" />
+                Cancel
               </Button>
-            </DialogFooter>
+            </DialogClose>
+
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={() => {
+                const previousType = scopeType
+                // PMCM-257 follow-up: previously cleared the scope on
+                // switch (setPhases([{ phaseName: "" }])) — per product
+                // direction this now converts and preserves phaseName/
+                // rows/order instead (convertPhasesForScopeType). Undo
+                // still restores the exact previous phases (not the
+                // converted ones) and the exact previous type.
+                const previousPhases = phases
+                if (pendingScopeType) {
+                  setPhases(
+                    convertPhasesForScopeType(phases, pendingScopeType)
+                  )
+                  onScopeTypeChange?.(pendingScopeType)
+                  toast({
+                    variant: "success",
+                    title: `Your ${previousType} has been changed to a ${pendingScopeType}`,
+                    action: (
+                      <ToastAction
+                        altText="Undo"
+                        className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                        onClick={() => {
+                          setPhases(previousPhases)
+                          onScopeTypeChange?.(previousType)
+                        }}
+                      >
+                        Undo
+                      </ToastAction>
+                    ),
+                  })
+                }
+                setPendingScopeType(null)
+                setScopeTypeConfirmOpen(false)
+              }}
+            >
+              Yes, Change
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
 
       <InputGroup>
-        <Input type="text" placeholder="Find a phase or task" />
+        <Input
+          type="text"
+          placeholder="Find a phase or task"
+          value={phaseSearchQuery}
+          onChange={(event) => setPhaseSearchQuery(event.target.value)}
+        />
         <InputLeftElement>
           <SearchMd className="text-gray-500 h-5 w-5" />
         </InputLeftElement>
       </InputGroup>
 
-      <Accordion
-        value={accordionState}
-        onValueChange={setAccordionState}
-        type="multiple"
-        className="flex-auto space-y-3"
-      >
-        {phases.map(({ phaseName, rows, phaseType }, index) => (
+      {(() => {
+        const normalizedQuery = normalizeSearchText(phaseSearchQuery)
+        const hasVisiblePhase = phases.some((phase) =>
+          matchesPhaseSearch(phase, normalizedQuery)
+        )
+        if (normalizedQuery && !hasVisiblePhase) {
+          return (
+            <p className="py-6 text-center text-sm text-gray-500">
+              No phases found
+            </p>
+          )
+        }
+        return (
+          <Accordion
+            value={accordionState}
+            onValueChange={setAccordionState}
+            type="multiple"
+            className="flex-auto space-y-3"
+          >
+            {phases.map(({ phaseName, rows, phaseType }, index) => {
+              if (
+                !matchesPhaseSearch({ phaseName, rows, phaseType }, normalizedQuery)
+              ) {
+                return null
+              }
+              return (
           <ArrayNavigator key={index} value={phases} index={index}>
             {rows ? (
               <AccordionItem value={`item-${index}`} asChild>
@@ -3452,8 +3678,11 @@ export function ScopeBuilder({
               </AccordionItem>
             )}
           </ArrayNavigator>
-        ))}
-      </Accordion>
+              )
+            })}
+          </Accordion>
+        )
+      })()}
 
       <Button
         className="mt-5"

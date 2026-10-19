@@ -29,6 +29,16 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
@@ -118,7 +128,9 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
 import {
   AddRoleDialog,
+  convertPhasesForScopeType,
   countryFromLocation,
+  ensureServicePhaseTypes,
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
   PhaseHeaderMeta,
@@ -215,6 +227,7 @@ import {
   Dropzone,
   HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -225,6 +238,7 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  ONE_MB,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -362,6 +376,46 @@ const UUID_PATTERN =
 
 type PersistedMediaFile = File & {
   __persistedUrl?: string
+}
+
+// PMCM-256: Dropzone/SquareShapeDropzone (catalogued, frozen) generate
+// their own error text — "Must be in .png .jpg .jpeg format(s)" for a
+// rejected extension, and react-dropzone's own "File is larger than N
+// bytes" for maxSize — neither matches the ticket's exact required copy.
+// Both only ever surface through the page-level onError prop, so remap
+// here instead of touching the frozen component.
+const MEDIA_FILE_TYPE_ERROR = "Only JPG and PNG files are supported."
+const MEDIA_FILE_SIZE_ERROR = "File size must be 10 MB or less."
+const MEDIA_MAX_SIZE_BYTES = 10 * ONE_MB
+
+const mapDropzoneErrorMessage = (message?: string): string | undefined => {
+  if (!message) return message
+  if (/larger than/i.test(message)) return MEDIA_FILE_SIZE_ERROR
+  if (/must be in/i.test(message)) return MEDIA_FILE_TYPE_ERROR
+  return message
+}
+
+// PMCM-256: mirrors mediaFormSchema's featuredVideo .refine() check below —
+// used by the saveVideo autosave effect so an invalid URL is never
+// persisted even though it's already blocked from reaching backend-submit
+// via the form's own validation. Not derived from the schema object
+// directly since mediaFormSchema is wrapped in a trailing object-level
+// .refine(), which doesn't expose .shape.
+const isValidFeaturedVideoUrl = (value: string): boolean => {
+  const rawValue = value?.trim()
+  if (!rawValue) return true // empty is allowed — video is optional
+  const normalized = /^https?:\/\//i.test(rawValue)
+    ? rawValue
+    : `https://${rawValue.replace(/^\/+/, "")}`
+  try {
+    const parsed = new URL(normalized)
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.includes(".")
+    )
+  } catch {
+    return false
+  }
 }
 
 const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
@@ -785,9 +839,14 @@ const taskFormSchema = z.object({
     invalid_type_error: "Please enter/select at least 1 experience level",
   }),
   duration: z.object({
-    value: z.coerce.number({
-      invalid_type_error: "Please enter a valid number",
-    }),
+    value: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+      })
+      // PMCM-257: "Task with 0 hours → inline 'Minimum 1 hour per task.'
+      // on that row." Checked on the raw entered value/unit — the
+      // concrete, named failure case is literally 0, regardless of unit.
+      .min(1, "Minimum 1 hour per task."),
     type: z.enum(DURATION_TYPE, {
       invalid_type_error: "Please select an option",
       required_error: "Please select an option",
@@ -826,7 +885,21 @@ const pickFromProjectScopeSchema = (
   }
 }
 
-const projectScopeSchema = pickFromProjectScopeSchema()
+// PMCM-257: called with no options before, so rowSchema.pick({}) picked
+// zero fields — any object (even `{}`) satisfied every row, so "at least
+// one phase with at least one valid task" (AC5) was actually just "at
+// least one phase with at least one row of any shape." Picking the
+// fields that make a task real enforces role/location/experience/
+// duration (which now includes the min-1-hour check above) for section
+// completeness, matching the per-field TaskDialog validation used when
+// adding a task.
+const projectScopeSchema = pickFromProjectScopeSchema({
+  task: true,
+  role: true,
+  location: true,
+  experience: true,
+  duration: true,
+})
 
 const Sidebar = ({
   hasFaqs = false,
@@ -1779,20 +1852,23 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter at least 1 industry(s)")
     .max(5, "Please do not enter more than 5 industry(s)"),
+  // PMCM-255: settled at max 300, no minimum — required just means
+  // non-empty (after trim).
   shortDescription: z
     .string()
-    .min(350, "Please enter at least 350 character(s)")
-    .max(450, "Please do not enter more than 450 character(s)"),
+    .trim()
+    .min(1, "Short description is required.")
+    .max(300, "Please do not enter more than 300 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
-    if (contentLength < 100) {
+    if (contentLength < 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.too_small,
-        minimum: 100,
+        minimum: 1,
         type: "string",
         inclusive: true,
-        message: "Please enter at least 100 character(s)",
+        message: "Full description is required.",
       })
     }
 
@@ -1802,7 +1878,7 @@ const projectInfoSchema = z.object({
         maximum: FULL_DESCRIPTION_MAX_LENGTH,
         type: "string",
         inclusive: true,
-        message: "Please do not enter more than 5,000 character(s)",
+        message: "Please do not enter more than 2,000 character(s)",
       })
     }
   }),
@@ -1878,13 +1954,14 @@ const scrollToPublishField = (targetId: string) => {
 }
 
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+// PMCM-255: settled at max 300 / 2,000, no minimum on either field.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 450 character(s)"
+  "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 5,000 character(s)"
+  "Please do not enter more than 2,000 character(s)"
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -2290,6 +2367,20 @@ const ProjectInfo = ({
   const fullDescriptionCharacterCount = getRichTextCharacterCount(
     projectInfoValues.fullDescription ?? ""
   )
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping a form-state commit while typing does nothing to stop the
+  // seller from typing past the limit — the editor just keeps going on its
+  // own internal state. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper around the
+  // editor below); this ref gives those capture-phase handlers a
+  // synchronous, always-current character count to check against (a
+  // closure over `fullDescriptionCharacterCount` state could be stale).
+  const fullDescriptionLiveCountRef = useRef(fullDescriptionCharacterCount)
+  useEffect(() => {
+    fullDescriptionLiveCountRef.current = fullDescriptionCharacterCount
+  }, [fullDescriptionCharacterCount])
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
@@ -3295,7 +3386,7 @@ const ProjectInfo = ({
 
                   <Textarea
                     id="short-description"
-                    placeholder="Enter a short Description"
+                    placeholder="Enter a description..."
                     maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
                     {...shortDescriptionField}
                     onChange={(event) => {
@@ -3367,7 +3458,15 @@ const ProjectInfo = ({
                         including its purpose and features.
                       </HelperText>
 
-                      <span className="text-xs leading-[14.52px] text-gray-500">
+                      <span
+                        className={cn(
+                          "text-xs leading-[14.52px]",
+                          fullDescriptionCharacterCount >=
+                            FULL_DESCRIPTION_MAX_LENGTH
+                            ? "text-error-500"
+                            : "text-gray-500"
+                        )}
+                      >
                         {fullDescriptionCharacterCount}/
                         {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                       </span>
@@ -3378,61 +3477,96 @@ const ProjectInfo = ({
                     name="fullDescription"
                     control={methods.control}
                     render={({ field }) => (
-                      <RichTextEditor
-                        defaultValue={field.value ?? ""}
-                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                        allowFullscreen
-                        className={cn(
-                          "rounded-lg border bg-white transition-colors",
-                          fullDescriptionHasError
-                            ? "border-error-500"
-                            : "border-gray-300 focus-within:border-primary-500"
-                        )}
-                        toolbarClassName="left-4"
-                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                        onUpdate={(html) => {
-                          field.onChange(html)
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                      // PMCM-255 (follow-up): capture-phase guard — fires
+                      // before the event reaches the editor's own
+                      // contenteditable, so it blocks input without
+                      // touching the frozen RichTextEditor component.
+                      // Single-character typing is blocked once already at
+                      // the limit (liveCount >= max); paste/drop are
+                      // checked precisely against the text they'd actually
+                      // insert, since a multi-character paste can cross the
+                      // limit from under it. Deletions are never blocked.
+                      <div
+                        onBeforeInputCapture={(event) => {
+                          const inputType = event.nativeEvent.inputType
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            inputType?.startsWith("insert") &&
+                            fullDescriptionLiveCountRef.current >=
+                              FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
                         }}
-                        onBlur={(html) => {
-                          field.onBlur()
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                        onPasteCapture={(event) => {
+                          const pastedText =
+                            event.clipboardData.getData("text")
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            fullDescriptionLiveCountRef.current +
+                              pastedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
-
-                          void trigger("fullDescription")
                         }}
-                      />
+                        onDropCapture={(event) => {
+                          const droppedText = event.dataTransfer.getData(
+                            "text/plain"
+                          )
+                          if (
+                            fullDescriptionLiveCountRef.current +
+                              droppedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
+                          ) {
+                            event.preventDefault()
+                          }
+                        }}
+                      >
+                        <RichTextEditor
+                          defaultValue={field.value ?? ""}
+                          placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                          allowFullscreen
+                          fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
+                          fullscreenCharacterCount={fullDescriptionCharacterCount}
+                          fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
+                          className={cn(
+                            "rounded-lg border bg-white transition-colors",
+                            fullDescriptionHasError
+                              ? "border-error-500"
+                              : "border-gray-300 focus-within:border-primary-500"
+                          )}
+                          toolbarClassName="left-4"
+                          editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                          onUpdate={(html) => {
+                            // PMCM-255 (follow-up): always commit the real
+                            // HTML, even over the limit — form state must
+                            // reflect what the seller actually sees, so the
+                            // counter/error are truthful and nothing typed
+                            // (and visible) is ever silently lost. Actual
+                            // enforcement is the capture-phase wrapper above.
+                            const contentLength =
+                              getRichTextCharacterCount(html)
+                            fullDescriptionLiveCountRef.current = contentLength
+                            field.onChange(html)
+
+                            if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                              triggerMaxLengthError(
+                                "fullDescription",
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                              )
+                            } else if (
+                              fullDescriptionHasError &&
+                              get(errors, "fullDescription.message") ===
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            ) {
+                              methods.clearErrors("fullDescription")
+                            }
+                          }}
+                          onBlur={() => {
+                            field.onBlur()
+                            void trigger("fullDescription")
+                          }}
+                        />
+                      </div>
                     )}
                   />
 
@@ -3917,7 +4051,8 @@ const mediaFormSchema = z
           }
         },
         {
-          message: "Please enter a valid URL",
+          // PMCM-256 follow-up: match the inline editor's copy exactly.
+          message: "Please enter a valid YouTube or Vimeo URL.",
         }
       )
       .optional(),
@@ -4007,6 +4142,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     trigger,
     setValue,
   } = useMediaContext()
+  const { isExistingPublishedListing } = useProjectScopeContext()
 
   const formHiddenImages =
     (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
@@ -4202,48 +4338,122 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               <Controller
                 control={control}
                 name="featuredImages"
-                render={({ field: { value, onChange } }) => (
-                  <Dropzone
-                    className="transition-colors duration-300"
-                    size="lg"
-                    icon
-                    value={value ?? []}
-                    onValueChange={(value) => {
-                      ref.current.forEach((cb) => cb())
-                      ref.current.clear()
+                render={({ field: { value, onChange } }) => {
+                  const currentMeta = value?.[0]?.meta
+                  const currentUrl =
+                    currentMeta && isPersistedMediaFile(currentMeta)
+                      ? currentMeta.__persistedUrl
+                      : undefined
+                  return (
+                    <>
+                      <Dropzone
+                        className="transition-colors duration-300"
+                        size="lg"
+                        icon
+                        maxSize={MEDIA_MAX_SIZE_BYTES}
+                        value={value ?? []}
+                        onValueChange={(nextValue) => {
+                          // PMCM-256/QA-176/PMCM-396: a published listing
+                          // can't be left with no featured image — the
+                          // backend already rejects a bare clear, but it
+                          // can't undo this Dropzone's own optimistic
+                          // empty state, so block the clear here instead,
+                          // matching the inline editor's guard.
+                          if (
+                            isExistingPublishedListing &&
+                            (value?.length ?? 0) > 0 &&
+                            (nextValue?.length ?? 0) === 0
+                          ) {
+                            setError("featuredImages", {
+                              message:
+                                "This listing is published. A replacement image must be uploaded first.",
+                            })
+                            return
+                          }
 
-                      onChange(value)
+                          ref.current.forEach((cb) => cb())
+                          ref.current.clear()
 
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 50,
-                              }))
-                            ),
-                          ONE_SECOND * 3
-                        ).cancel
-                      )
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 100,
-                              }))
-                            ),
-                          ONE_SECOND * 6
-                        ).cancel
-                      )
-                    }}
-                    onError={(message) =>
-                      setError("featuredImages", { message })
-                    }
-                  />
-                )}
+                          onChange(nextValue)
+
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 50,
+                                  }))
+                                ),
+                              ONE_SECOND * 3
+                            ).cancel
+                          )
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                ),
+                              ONE_SECOND * 6
+                            ).cancel
+                          )
+                        }}
+                        onError={(message) =>
+                          setError("featuredImages", {
+                            message: mapDropzoneErrorMessage(message),
+                          })
+                        }
+                      />
+                      {/* PMCM-256: true edit (scale/rotate) via the
+                          catalogued ImageEditor — Dropzone's own hover
+                          overlay (frozen) only exposes Change/Remove, with
+                          no slot for a third action, so this renders
+                          alongside it rather than inside it. Save feeds
+                          the edited file back into this same RHF field,
+                          so it uploads through the exact same saveMedia
+                          autosave path (moderation included) and only
+                          swaps in once that succeeds. */}
+                      {currentUrl && (
+                        <ImageEditor
+                          variant="image"
+                          defaultDataUrl={currentUrl}
+                          defaultFileName={
+                            currentUrl.split("?")[0].split("/").pop() ||
+                            "featured-image.jpg"
+                          }
+                          editDialogTitle="Edit Image"
+                          onSaveImage={(file) =>
+                            onChange([
+                              { meta: file, hasError: false, progress: 100 },
+                            ])
+                          }
+                          startingPoint={({ open, onEdit }) => (
+                            // PMCM-256 fix: ImageEditor's state machine
+                            // has no EDIT transition from "ideal" —
+                            // open() sends REMOVE first (ideal→removing,
+                            // dataUrl is set so no file picker opens),
+                            // then onEdit() sends EDIT (removing→editing).
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              className="mt-1"
+                              onClick={() => {
+                                open()
+                                onEdit()
+                              }}
+                            >
+                              Edit image
+                            </Button>
+                          )}
+                        />
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -4287,33 +4497,87 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                           ? meta.__persistedUrl
                           : undefined
                       return (
-                        <SquareShapeDropzone
-                          className="transition-colors duration-300"
-                          value={value}
-                          onValueChange={(value) => {
-                            onChange(
-                              value?.map((item) => ({ ...item, progress: 50 }))
-                            )
-                            window.setTimeout(() => {
+                        <div>
+                          <SquareShapeDropzone
+                            className="transition-colors duration-300"
+                            value={value}
+                            maxSize={MEDIA_MAX_SIZE_BYTES}
+                            onValueChange={(value) => {
                               onChange(
                                 value?.map((item) => ({
                                   ...item,
-                                  progress: 100,
+                                  progress: 50,
                                 }))
                               )
-                            }, ONE_SECOND * 2)
-                            isSubmitted ? trigger("additionalImages") : noop
-                          }}
-                          onError={(message) =>
-                            setError(`additionalImages.${index}`, { message })
-                          }
-                          isHidden={
-                            url ? hiddenImages.includes(url) : undefined
-                          }
-                          onToggleHidden={
-                            url ? (h) => setHiddenForUrl(url, h) : undefined
-                          }
-                        />
+                              window.setTimeout(() => {
+                                onChange(
+                                  value?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                )
+                              }, ONE_SECOND * 2)
+                              isSubmitted ? trigger("additionalImages") : noop
+                            }}
+                            onError={(message) =>
+                              setError(`additionalImages.${index}`, {
+                                message: mapDropzoneErrorMessage(message),
+                              })
+                            }
+                            isHidden={
+                              url ? hiddenImages.includes(url) : undefined
+                            }
+                            onToggleHidden={
+                              url ? (h) => setHiddenForUrl(url, h) : undefined
+                            }
+                          />
+                          {/* PMCM-256: see the Featured Image ImageEditor
+                              comment above — same reasoning, rendered
+                              alongside this slot since the frozen
+                              SquareShapeDropzone has no slot for a third
+                              overlay action. */}
+                          {url && (
+                            <ImageEditor
+                              variant="image"
+                              defaultDataUrl={url}
+                              defaultFileName={
+                                url.split("?")[0].split("/").pop() ||
+                                "additional-image.jpg"
+                              }
+                              editDialogTitle="Edit Image"
+                              onSaveImage={(file) =>
+                                onChange([
+                                  {
+                                    meta: file,
+                                    hasError: false,
+                                    progress: 100,
+                                  },
+                                ])
+                              }
+                              startingPoint={({ open, onEdit }) => (
+                                // PMCM-256 fix: ImageEditor's state
+                                // machine has no EDIT transition from
+                                // "ideal" — open() sends REMOVE first
+                                // (ideal→removing, dataUrl is set so no
+                                // file picker opens), then onEdit() sends
+                                // EDIT (removing→editing).
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  visual="gray"
+                                  size="sm"
+                                  className="mt-0.5 w-full"
+                                  onClick={() => {
+                                    open()
+                                    onEdit()
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                            />
+                          )}
+                        </div>
                       )
                     }}
                   />
@@ -4447,6 +4711,30 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   )
 }
 
+// PMCM-257 follow-up: extracted so the scope-type switch confirm dialog's
+// "Learn More" can reuse the same tip video instead of duplicating it.
+// Mirrors the identical extraction in scope-builder/index.tsx.
+const ProjectScopeTipVideo = () => (
+  <>
+    <DialogHeader>
+      <DialogTitle>Project Scope Tip Video</DialogTitle>
+    </DialogHeader>
+    {PROJECT_SCOPE_TIP_VIDEO_URL ? (
+      <ReactPlayer
+        controls
+        width="100%"
+        height={300}
+        url={PROJECT_SCOPE_TIP_VIDEO_URL}
+      />
+    ) : (
+      <p className="text-sm text-gray-500">
+        Tip video URL is not configured yet. Add
+        `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
+      </p>
+    )}
+  </>
+)
+
 const ProjectScopeTip = ({
   showArrow,
   closeTrigger,
@@ -4498,22 +4786,7 @@ const ProjectScopeTip = ({
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Project Scope Tip Video</DialogTitle>
-          </DialogHeader>
-          {PROJECT_SCOPE_TIP_VIDEO_URL ? (
-            <ReactPlayer
-              controls
-              width="100%"
-              height={300}
-              url={PROJECT_SCOPE_TIP_VIDEO_URL}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">
-              Tip video URL is not configured yet. Add
-              `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
-            </p>
-          )}
+          <ProjectScopeTipVideo />
         </DialogContent>
       </Dialog>
 
@@ -5340,6 +5613,24 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+
+// PMCM-257: matches a phase's own name OR any of its task rows'
+// task/role/location text against the normalized search query. Mirrors
+// the same helper added to scope-builder/index.tsx's ScopeBuilder.
+const matchesPhaseSearch = (
+  phase: Pick<Phase, "phaseName" | "rows">,
+  normalizedQuery: string
+) => {
+  if (!normalizedQuery) return true
+  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
+    return true
+  }
+  return (phase.rows ?? []).some((row) =>
+    [row.task, row.role, row.location].some((value) =>
+      normalizeSearchText(value).includes(normalizedQuery)
+    )
+  )
+}
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -5891,6 +6182,11 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  // PMCM-257: this search input previously had no value/onChange — a
+  // static placeholder. getPhaseSearchTargetId/getTaskSearchTargetId
+  // above are unused dead code (confirmed via grep — no call sites), so
+  // there's no existing scroll-to-target behavior this filter could break.
+  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
   const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
 
   useEffect(() => {
@@ -5941,12 +6237,41 @@ const ProjectScope = ({
     scopeType,
     setScopeType,
     draftProjectId,
+    initialPricingPeriod,
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
-  const handleScopeTypeChange = (type: ScopeType) => {
+  // PMCM-257: this used to switch instantly — no confirmation, and
+  // (because it never touched `phases`) no clearing of the now-
+  // incompatible scope data either, leaving a Project-shaped scope
+  // (flat phases) sitting under a "Service" label or vice versa. Gated
+  // behind a confirm dialog now (state below), matching the inline
+  // editor's shared ScopeBuilder component, which already had the
+  // dialog but had the identical "doesn't actually clear" gap.
+  const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = React.useState(false)
+  const [scopeTypeLearnMoreOpen, setScopeTypeLearnMoreOpen] =
+    React.useState(false)
+  const [pendingScopeType, setPendingScopeType] =
+    React.useState<ScopeType | null>(null)
+
+  const requestScopeTypeChange = (type: ScopeType) => {
     if (type === scopeType) return
+    setPendingScopeType(type)
+    setScopeTypeConfirmOpen(true)
+  }
+
+  const confirmScopeTypeChange = () => {
+    const type = pendingScopeType
+    if (!type) return
+    const previousType = scopeType
+    const previousPhases = phases
     setScopeType(type)
+    // PMCM-257 follow-up: previously cleared the scope on switch — per
+    // product direction this now converts and preserves phaseName/rows/
+    // order instead (convertPhasesForScopeType, same helper the inline
+    // editor's ScopeBuilder uses). Undo still restores the exact previous
+    // phases (not the converted ones) and the exact previous type.
+    setPhases(convertPhasesForScopeType(phases, type))
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
@@ -5955,7 +6280,26 @@ const ProjectScope = ({
     toast({
       variant: "success",
       title: type === "service" ? "Switched to Service" : "Switched to Project",
+      action: (
+        <ToastAction
+          altText="Undo"
+          className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+          onClick={() => {
+            setScopeType(previousType)
+            setPhases(previousPhases)
+            if (draftProjectId) {
+              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                listingType: previousType,
+              }).catch(() => {})
+            }
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
     })
+    setPendingScopeType(null)
+    setScopeTypeConfirmOpen(false)
   }
   // Scope assignees must be members ON this project (Chris 07-28) — the owner
   // (self) plus added members — never the whole roster.
@@ -5980,63 +6324,34 @@ const ProjectScope = ({
       expandAll()
     },
   })
+
+  // PMCM-257 follow-up 2: Service scope must never have an untyped phase
+  // (the header falls back to "Phase One" otherwise) — covers a scope
+  // that was already "service" when this page mounted but had an
+  // untyped phase slip through some other path. Hydration (draftIsService)
+  // and the scope-type-switch confirm (confirmScopeTypeChange) already
+  // normalize on their own; this is the catch-all. After normalizing,
+  // every phase has a phaseType, so the guard condition is false on the
+  // next run and this does not loop.
+  useEffect(() => {
+    if (scopeType !== "service") return
+    if (phases.some((phase) => !phase.phaseType)) {
+      setPhases(ensureServicePhaseTypes(phases))
+    }
+  }, [scopeType, phases, setPhases])
+
   const success = projectScopeSchema.safeParse(phases)
 
   // Budget + duration computed from the scope (same helper/rate-card as the
   // inline my-listings view) — replaces the hardcoded sidebar figures.
+  // PMCM-258: duration day-counting now comes from the shared
+  // frontend/lib/listing-pricing.ts module instead of this file's own copy
+  // (which, per QA-200/PMCM-397, already matched my-listings' months
+  // handling — now both pages share one implementation instead of two
+  // copies that have to be kept in sync by hand).
   const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
     const scopePhases = Array.isArray(phases) ? phases : []
-    let totalDays = 0
-    for (const phase of scopePhases) {
-      const taskDays = (((phase as any)?.rows ?? []) as any[])
-        .map((row: any) => {
-          const dur = row?.duration
-          // QA-200/PMCM-397: this only handled "weeks" and "hours",
-          // silently treating a "months" duration as raw days (e.g. "2
-          // months" counted as 2 days) and giving up entirely (0) on any
-          // row whose duration didn't arrive as the {value, type} object —
-          // never falling back to estimatedHours the way
-          // estimateScopeBudgetCents (this same memo's budget calculation,
-          // a few lines below) already does. Matched here to that
-          // reference implementation.
-          if (dur && typeof dur === "object") {
-            const val = Number(dur.value) || 0
-            if (val > 0) {
-              if (dur.type === "weeks") return val * 7
-              if (dur.type === "months") return val * 30
-              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-              return val
-            }
-          }
-          if (typeof dur === "string" && dur.trim()) {
-            const [rv, ru] = dur.trim().split(/\s+/)
-            const v = Number(rv) || 0
-            const u = (ru || "days").toLowerCase()
-            if (v > 0) {
-              if (u.startsWith("week")) return v * 7
-              if (u.startsWith("month")) return v * 30
-              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-              return v
-            }
-          }
-          const hrs = Number(row?.estimatedHours) || 0
-          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-        })
-        .filter((d: number) => d > 0)
-      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
-    }
-    let label = "—"
-    if (totalDays > 0) {
-      if (totalDays < 7) {
-        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
-      } else if (totalDays < 28) {
-        const w = Math.max(1, Math.ceil(totalDays / 7))
-        label = `${w} Week${w !== 1 ? "s" : ""}`
-      } else {
-        const m = Math.max(1, Math.ceil(totalDays / 30))
-        label = `${m} Month${m !== 1 ? "s" : ""}`
-      }
-    }
+    const totalDays = scopeDurationDays(scopePhases as any)
     const computedCents = estimateScopeBudgetCents(scopePhases)
     // QA-178/PMCM-397: always prefer the freshly-computed total.
     // pricingBudgetCents only updates ~1.5-2s after a change, via the
@@ -6053,25 +6368,53 @@ const ProjectScope = ({
     // correctly-computed 0.
     return {
       budgetTotalCents: computedCents,
-      durationLabel: label,
+      durationLabel: formatDuration(totalDays),
       durationDays: totalDays,
     }
   }, [phases])
 
-  const formatBudget = React.useCallback(
-    (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
+  // PMCM-258/AC5: the wizard previously had no period selector at all —
+  // the sidebar budget was always shown "per week". Mirrors the
+  // hydrate-once-then-persist-on-change pattern used in my-listings so the
+  // seller's choice here round-trips through the same `pricingPeriod`
+  // draft field.
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>("week")
+  const pricingPeriodHydratedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (!initialPricingPeriod) return
+    pricingPeriodHydratedRef.current = true
+    setBudgetPeriodState(normalizePeriod(initialPricingPeriod))
+  }, [initialPricingPeriod])
+
+  const setBudgetPeriod = React.useCallback(
+    (next: PricingPeriod) => {
+      setBudgetPeriodState(next)
+      if (draftProjectId) {
+        ProjectAPI.UpdateProjectDraft(draftProjectId, {
+          pricingPeriod: next,
+        } as any).catch(() => {})
       }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [draftProjectId]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isService),
+    [durationDays, isService]
+  )
+
+  React.useEffect(() => {
+    if (!availableBudgetPeriods.includes(budgetPeriod)) {
+      setBudgetPeriodState(resolvePeriod(budgetPeriod, durationDays, isService))
+    }
+  }, [availableBudgetPeriods, budgetPeriod, durationDays, isService])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: PricingPeriod) => {
+      if (cents <= 0) return "$0"
+      return `$${costPerPeriod(cents, durationDays, period).toLocaleString()}`
     },
     [durationDays]
   )
@@ -6543,6 +6886,17 @@ const ProjectScope = ({
     }
   }
 
+  // PMCM-257: this dialog previously had no resolver at all — a plain
+  // HTML min={1} on the number input, which React Hook Form's
+  // handleSubmit does not enforce, so 0 (or a negative value) saved
+  // silently. Same rule as taskFormSchema.duration above.
+  const durationFormSchema = z.object({
+    duration: z.object({
+      value: z.coerce.number().min(1, "Minimum 1 hour per task."),
+      type: z.enum(DURATION_TYPE),
+    }),
+  })
+
   interface DurationDialogProps {
     open: boolean
     durationFormValues?: DurationFormValues
@@ -6556,7 +6910,13 @@ const ProjectScope = ({
     onDurationFormValuesChange,
     onOpenChange,
   }: DurationDialogProps) => {
-    const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+    const {
+      control,
+      handleSubmit,
+      reset,
+      formState: { errors },
+    } = useForm<DurationFormValues>({
+      resolver: zodResolver(durationFormSchema),
       defaultValues: durationFormValues || {
         duration: { value: 1, type: "days" },
       },
@@ -6600,6 +6960,10 @@ const ProjectScope = ({
                     min={1}
                     className="w-24"
                     placeholder="Value"
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
                   />
                 )}
               />
@@ -6630,6 +6994,11 @@ const ProjectScope = ({
                 )}
               />
             </div>
+            {hookFormHasError({ errors, name: "duration.value" }) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message")}
+              </ErrorMessage>
+            )}
             <DialogFooter>
               <Button type="submit">Save</Button>
               <DialogClose asChild>
@@ -6720,12 +7089,23 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      {formatBudget(budgetTotalCents, "week")}
+                      {formatBudget(budgetTotalCents, budgetPeriod)}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
-                    <Badge visual="gray" className="rounded-[5px]">
-                      week
-                    </Badge>
+                    <Listbox value={budgetPeriod} onChange={setBudgetPeriod}>
+                      <ListboxButton
+                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
+                        iconClassName="ml-1"
+                        placeholder="Select"
+                      />
+                      <ListboxOptions className="w-[153px]">
+                        {availableBudgetPeriods.map((period) => (
+                          <ListboxOption key={period} value={period}>
+                            {PERIOD_WIDGET_LABELS[period]}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </Listbox>
                   </div>
                 </div>
                 <ShieldDollar className="size-10 text-primary-500" />
@@ -6773,7 +7153,7 @@ const ProjectScope = ({
                   <DropdownMenuContent align="end" className="w-[280px]">
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("project")}
+                      onClick={() => requestScopeTypeChange("project")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {!isService && (
@@ -6789,7 +7169,7 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("service")}
+                      onClick={() => requestScopeTypeChange("service")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {isService && (
@@ -6805,6 +7185,80 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* PMCM-257: mirrors the confirm dialog already built into
+                    the shared scope-builder/index.tsx ScopeBuilder (used by
+                    the inline editor) — same copy/structure, since the
+                    wizard has its own separate phase/task UI here rather
+                    than rendering <ScopeBuilder>. */}
+                <Dialog
+                  open={scopeTypeConfirmOpen}
+                  onOpenChange={setScopeTypeConfirmOpen}
+                >
+                  {/* Figma specs 409px; max-w-sm (384px) is the nearest
+                      standard Tailwind class — no arbitrary value added. */}
+                  <DialogContent className="max-w-sm p-0">
+                    <div className="p-6 border-b border-gray-200">
+                      <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                        Change to{" "}
+                        {pendingScopeType === "service"
+                          ? "Service"
+                          : "Project"}
+                        ?
+                      </DialogTitle>
+                      <DialogDescription className="mt-2 text-sm font-light text-dark-blue-400">
+                        {pendingScopeType === "service"
+                          ? "This action will modify the entire project scope. You'll need to manually update the service plan details, including time intervals for each phase and other related settings. You can undo this at anytime."
+                          : "This action will modify the entire service scope. You'll need to manually update the project plan details, including the duration of each phase and other related settings. You can undo this at anytime."}
+                      </DialogDescription>
+                      <Dialog
+                        open={scopeTypeLearnMoreOpen}
+                        onOpenChange={setScopeTypeLearnMoreOpen}
+                      >
+                        <DialogTrigger asChild>
+                          {/* visual="gray" variant="link" already gives
+                              text-gray-500, and size defaults to "sm"
+                              (text-sm) — only font-semibold/underline
+                              (persistent)/capitalize aren't covered by
+                              the variant. */}
+                          <Button
+                            type="button"
+                            variant="link"
+                            visual="gray"
+                            className="mt-3 font-semibold underline capitalize"
+                          >
+                            Learn More
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[560px]">
+                          <ProjectScopeTipVideo />
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    <div className="bg-gray-25 px-6 py-4 rounded-b-xl flex items-center justify-between">
+                      <DialogClose asChild>
+                        <Button
+                          className="opacity-50 hover:opacity-100"
+                          variant="link"
+                          visual="gray"
+                          onClick={() => setPendingScopeType(null)}
+                        >
+                          <X className="size-[15px]" />
+                          Cancel
+                        </Button>
+                      </DialogClose>
+
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={confirmScopeTypeChange}
+                      >
+                        Yes, Change
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="flex items-center">
                   <Button
@@ -6837,19 +7291,41 @@ const ProjectScope = ({
             </div>
 
             <InputGroup>
-              <Input type="text" placeholder="Find a phase or task" />
+              <Input
+                type="text"
+                placeholder="Find a phase or task"
+                value={phaseSearchQuery}
+                onChange={(event) => setPhaseSearchQuery(event.target.value)}
+              />
               <InputLeftElement>
                 <SearchMd className="text-gray-500 h-5 w-5" />
               </InputLeftElement>
             </InputGroup>
 
+            {(() => {
+              const normalizedQuery = normalizeSearchText(phaseSearchQuery)
+              const hasVisiblePhase = phases.some((phase) =>
+                matchesPhaseSearch(phase, normalizedQuery)
+              )
+              if (normalizedQuery && !hasVisiblePhase) {
+                return (
+                  <p className="py-6 text-center text-sm text-gray-500">
+                    No phases found
+                  </p>
+                )
+              }
+              return (
             <Accordion
               value={accordionState}
               onValueChange={setAccordionState}
               type="multiple"
               className="flex-auto space-y-3"
             >
-              {phases.map(({ phaseName, rows }, index) => (
+              {phases.map(({ phaseName, rows }, index) => {
+                if (!matchesPhaseSearch({ phaseName, rows }, normalizedQuery)) {
+                  return null
+                }
+                return (
                 <ArrayNavigator key={index} value={phases} index={index}>
                   {rows ? (
                     <AccordionItem value={`item-${index}`} asChild>
@@ -7084,8 +7560,11 @@ const ProjectScope = ({
                     </AccordionItem>
                   )}
                 </ArrayNavigator>
-              ))}
+                )
+              })}
             </Accordion>
+              )
+            })()}
 
             <Button
               className="mt-5"
@@ -7212,7 +7691,17 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   pendingInviteEmails: string[]
   setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
+  // PMCM-256: whether this draft was already a published/live listing when
+  // the wizard loaded — distinct from isProjectSubmitted above, which only
+  // tracks "submitted during this session" and resets on a fresh load.
+  // Used to block clearing the featured image without a replacement
+  // (QA-176/PMCM-396), matching the inline editor's guard.
+  isExistingPublishedListing: boolean
   pricingBudgetCents: number
+  // PMCM-258/AC5: the seller's saved pricing-period preference, hydrated
+  // once from the draft on load — read-only from ProjectScope's side, it
+  // only seeds that component's own `budgetPeriod` state once.
+  initialPricingPeriod: string | null
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
   teamSubTab: string
@@ -9461,10 +9950,18 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isExistingPublishedListing, setIsExistingPublishedListing] =
+    useState(false)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  // PMCM-258/AC5: the seller's saved display-period preference, hydrated
+  // once from the draft below and read (not written) by ProjectScope via
+  // context — same read-only-from-context shape as pricingBudgetCents.
+  const [initialPricingPeriod, setInitialPricingPeriod] = useState<
+    string | null
+  >(null)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishAttempted, setPublishAttempted] = useState(false)
@@ -9751,6 +10248,7 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setIsExistingPublishedListing(draft?.status === "published")
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
@@ -9762,6 +10260,7 @@ function PublishProject({
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        setInitialPricingPeriod(draft?.pricingPeriod ?? null)
         const draftIsService =
           draft?.listingType === "service" ||
           (Array.isArray(draft?.scope) &&
@@ -9858,9 +10357,16 @@ function PublishProject({
               "featured-image.jpg"
             )
           : null
+        // PMCM-256 follow-up: additionalImages can now contain "" placeholders
+        // for a cleared slot (gallery slots persist in place, see
+        // handleGalleryDelete-equivalent fixes). hydrateRemoteMediaFile("")
+        // would fetch("") — resolves against the current page in a browser,
+        // producing a bogus "file" rather than an empty slot. Map position
+        // to null instead of calling it, so index alignment with the
+        // per-slot additionalImages.${index} fields below is preserved.
         const hydratedAdditionalImages = await Promise.all(
           (persistedMedia?.additionalImages ?? []).map((url: string) =>
-            hydrateRemoteMediaFile(url, "additional-image.jpg")
+            url ? hydrateRemoteMediaFile(url, "additional-image.jpg") : null
           )
         )
 
@@ -9874,13 +10380,9 @@ function PublishProject({
                 },
               ]
             : [],
-          additionalImages: hydratedAdditionalImages.map((file) => [
-            {
-              meta: file,
-              progress: 100,
-              hasError: false,
-            },
-          ]),
+          additionalImages: hydratedAdditionalImages.map((file) =>
+            file ? [{ meta: file, progress: 100, hasError: false }] : []
+          ),
           featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
           hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
@@ -9931,7 +10433,20 @@ function PublishProject({
             }))
           : []
 
-        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        // PMCM-257 follow-up 2: an older service draft saved before
+        // phaseType was required stays untyped on disk — normalize once
+        // on hydration so the header never falls back to "Phase One"
+        // (project scopes are passed through as-is). The empty-scope
+        // fallback also needs to start typed for a fresh service draft.
+        projectScopeMethods[1](
+          draftIsService
+            ? ensureServicePhaseTypes(
+                scope.length > 0 ? scope : [{ phaseName: "" }]
+              )
+            : scope.length > 0
+              ? scope
+              : [{}]
+        )
         lastScopePayloadRef.current = JSON.stringify(
           buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
         )
@@ -10095,6 +10610,12 @@ function PublishProject({
       const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
 
       if (videoUrl === lastVideoUrlRef.current) return
+      // PMCM-256: invalid URL gets an inline error (mediaFormSchema's
+      // featuredVideo .refine()) and nothing saved — without this gate,
+      // this 2s-interval autosave persisted whatever was typed regardless
+      // of validity, since it reads form state directly rather than
+      // going through form validation.
+      if (!isValidFeaturedVideoUrl(videoUrl)) return
 
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
@@ -10217,14 +10738,24 @@ function PublishProject({
                 },
               ]
             : [],
+          // PMCM-256 follow-up: a blank slot must reset to an empty
+          // array (SquareShapeDropzone's own "empty" shape), not a
+          // PersistedMediaFile wrapping an empty URL — the latter reads
+          // as "has a file" with nothing to actually preview.
           additionalImages: (nextMedia.additionalImages ?? []).map(
-            (url: string) => [
-              {
-                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
-                progress: 100,
-                hasError: false,
-              },
-            ]
+            (url: string) =>
+              url
+                ? [
+                    {
+                      meta: buildPersistedMediaFile(
+                        url,
+                        "additional-image.jpg"
+                      ),
+                      progress: 100,
+                      hasError: false,
+                    },
+                  ]
+                : []
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
           hiddenImages: nextMedia.hiddenImages ?? [],
@@ -10304,7 +10835,9 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
       teamSubTab,
@@ -10323,7 +10856,9 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
       teamSubTab,

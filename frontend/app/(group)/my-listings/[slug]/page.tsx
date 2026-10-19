@@ -118,6 +118,16 @@ import {
   type ProjectStaticIcon,
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Combobox,
@@ -146,7 +156,11 @@ import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
-import { ScopeBuilder, estimateScopeBudgetCents } from "@/components/scope-builder"
+import {
+  ensureServicePhaseTypes,
+  estimateScopeBudgetCents,
+  ScopeBuilder,
+} from "@/components/scope-builder"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -187,10 +201,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   Favorite,
   FavoriteRoot,
   HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -347,10 +363,10 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
-const SHORT_DESCRIPTION_MIN_LENGTH = 350
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
+// PMCM-255: settled at max 300, no minimum — required just means non-empty.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MIN_LENGTH = 100
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 // Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
 // Set to false to hide all publish validation.
 const SHOW_PUBLISH_VALIDATION = true
@@ -389,6 +405,21 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+// PMCM-256: toEmbedUrl silently returns an unrecognized URL unchanged
+// (no error) — this is the actual gate: only a URL toEmbedUrl can convert
+// is a valid YouTube/Vimeo URL, so re-running the same two patterns here
+// is how "invalid" gets defined for the video field's inline error.
+const isValidVideoUrl = (raw?: string | null): boolean => {
+  if (!raw) return false
+  const url = raw.trim()
+  if (!url) return false
+  return (
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/.test(
+      url
+    ) || /vimeo\.com\/(?:video\/)?(\d+)/.test(url)
+  )
+}
+
 const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
   const yt = raw.match(
@@ -408,6 +439,24 @@ const backendErrorMessage = (err: any): string => {
 const isModerationRejection = (err: any): boolean =>
   err?.response?.status === 400 &&
   /moderation|rejected|violat/i.test(backendErrorMessage(err))
+
+// PMCM-256: reject before any network call for the two things the backend
+// has always enforced anyway (allowed mimetypes, 10MB max — see
+// publish.module.ts/upload.validator.ts) — avoids a round trip just to
+// learn a file was always going to be rejected, and surfaces the ticket's
+// exact copy instead of whatever the generic backend error text is.
+const IMAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"])
+
+const validateImageFileBeforeUpload = (file: File): string | null => {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return "Only JPG and PNG files are supported."
+  }
+  if (file.size > IMAGE_MAX_SIZE_BYTES) {
+    return "File size must be 10 MB or less."
+  }
+  return null
+}
 
 const moderationFieldLabel = (field?: string | null): string | null => {
   switch (field) {
@@ -1150,7 +1199,7 @@ function SortableGalleryItem({
   isHidden: boolean
   isUploading: boolean
   isCompleting: boolean
-  onUpload: (files: FileList | null, replaceIndex?: number) => void
+  onUpload: (files: FileList | File[] | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
   onUploadComplete: () => void
@@ -1253,6 +1302,57 @@ function SortableGalleryItem({
               </TooltipProvider>
               {/* Action buttons */}
               <div className="absolute inset-0 flex items-center justify-center gap-x-2 z-10">
+                {/* PMCM-256: true edit (scale/rotate) via the catalogued
+                    ImageEditor, matching the same component's usage inside
+                    rich-text-editor.tsx's image toolbar. Save re-uploads
+                    through the same handleGalleryUpload path (moderation
+                    included) and only swaps the stored URL on success —
+                    on failure the original image is left untouched since
+                    nothing is placed until finalUrl resolves. */}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    {/* PMCM-256 fix: ImageEditor's state machine has no
+                        EDIT transition from its initial "ideal" state —
+                        only UPLOAD/REMOVE — so onEdit() alone was a no-op.
+                        open() sends REMOVE first (ideal→removing, since
+                        dataUrl is set and skipUploadDialog is false, so no
+                        file picker opens), then onEdit() sends EDIT
+                        (removing→editing). Also: ImageEditor itself isn't
+                        a DOM element, so TooltipTrigger asChild moves
+                        inside startingPoint to wrap the actual button. */}
+                    <ImageEditor
+                      variant="image"
+                      defaultDataUrl={url}
+                      defaultFileName={
+                        url?.split("?")[0].split("/").pop() || "image.jpg"
+                      }
+                      editDialogTitle="Edit Image"
+                      onSaveImage={(file) => onUpload([file], index)}
+                      startingPoint={({ open, onEdit }) => (
+                        <TooltipTrigger asChild>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40"
+                            onClick={() => {
+                              open()
+                              onEdit()
+                            }}
+                          >
+                            <Edit03 className="size-4 text-white" />
+                          </IconButton>
+                        </TooltipTrigger>
+                      )}
+                    />
+                    <TooltipContent
+                      side="bottom"
+                      visual="white"
+                      className="text-xs"
+                    >
+                      Edit image
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1270,7 +1370,7 @@ function SortableGalleryItem({
                           input.click()
                         }}
                       >
-                        <Edit03 className="size-4 text-white" />
+                        <Upload01 className="size-4 text-white" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent
@@ -1502,9 +1602,35 @@ function ProjectDetailsInner() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
-  const descDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+  // PMCM-255: snapshot of descDraft at the moment the modal opened, so Save
+  // can stay disabled until actually dirty (same pattern as PMCM-254's
+  // resetProjectInfoDraft/isProjectInfoDirty).
+  const [descDraftBaseline, setDescDraftBaseline] = React.useState("")
+  const descCharCount = getRichTextCharacterCount(descDraft)
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping the setDescDraft commit while typing did nothing to stop the
+  // seller typing past the limit — the editor just kept going on its own
+  // internal state, and the un-committed overflow text was then silently
+  // lost on Save. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper below); this
+  // ref gives those capture-phase handlers a synchronous, always-current
+  // character count (a plain closure over `descCharCount` state could read
+  // a stale value if several input events fire before React re-renders,
+  // e.g. held-down-key repeat).
+  const descLiveCountRef = React.useRef(descCharCount)
+  React.useEffect(() => {
+    descLiveCountRef.current = descCharCount
+  }, [descCharCount])
+  const openDescriptionModal = React.useCallback(() => {
+    const current = project.description || ""
+    setDescDraft(current)
+    setDescDraftBaseline(current)
+    descLiveCountRef.current = getRichTextCharacterCount(current)
+    setDescFullscreenOpen(true)
+  }, [project.description])
+  const isDescDirty = descDraft !== descDraftBaseline
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
     str.replace(/\b\w/g, (char) => char.toUpperCase())
@@ -1639,6 +1765,13 @@ function ProjectDetailsInner() {
   > | null>(null)
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+  // PMCM-256 follow-up: rejected-media errors render inline under the
+  // dropzone/grid (Figma has no error state for Media — this follows the
+  // existing video-URL inline-error pattern), not as toasts.
+  const [featuredImageError, setFeaturedImageError] = React.useState<
+    string | null
+  >(null)
+  const [galleryError, setGalleryError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     galleryUrlsRef.current = project.mediaUrls ?? []
@@ -1670,7 +1803,11 @@ function ProjectDetailsInner() {
         !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
         !project.title || project.title === "Enter Project Title",
         (project.categories || []).length < 3,
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
+        // PMCM-255: required = non-empty, no minimum length. Still blocks
+        // on over-limit so an unshortened over-300 value can't pass as
+        // "complete" either.
+        !(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) > SHORT_DESCRIPTION_MAX_LENGTH,
         getRichTextCharacterCount(project.description || "") === 0,
         !(
           Array.isArray(project.deliverables) &&
@@ -1708,7 +1845,9 @@ function ProjectDetailsInner() {
         (!project.title || project.title === "Enter Project Title") &&
           "project title",
         (project.categories || []).length < 3 && "categories",
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH &&
+        (!(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) >
+            SHORT_DESCRIPTION_MAX_LENGTH) &&
           "short description",
         getRichTextCharacterCount(project.description || "") === 0 &&
           "project description",
@@ -1765,6 +1904,9 @@ function ProjectDetailsInner() {
       ? arr[0] ?? ""
       : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
+  const [videoUrlError, setVideoUrlError] = React.useState<string | null>(
+    null
+  )
   const { toast } = useToast()
 
   const updateGalleryScrollState = React.useCallback(() => {
@@ -1789,14 +1931,63 @@ function ProjectDetailsInner() {
   }, [])
 
   const handleGalleryUpload = React.useCallback(
-    async (files: FileList | null, replaceIndex?: number) => {
+    async (files: FileList | File[] | null, replaceIndex?: number) => {
       if (!files || files.length === 0) return
       if (!project.id || !isRealBackendId(project.id)) {
-        console.error(
-          "Cannot upload images — project has no backend ID yet. Save the project first."
-        )
+        // PMCM-256: was a silent console.error-and-return — nothing told
+        // the seller why their drop did nothing.
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
+
+      const requested = Array.from(files)
+      const validFiles: File[] = []
+      // PMCM-256 follow-up: inline, not a toast per rejected file — if
+      // several files fail, show the first message (valid files in the
+      // same batch still upload). Set once at the end so a later check
+      // (the 8-image cap, below) can still override it — never cleared
+      // partway through only to be stomped by a later failure in the
+      // same call.
+      let nextGalleryError: string | null = null
+      for (const file of requested) {
+        const validationError = validateImageFileBeforeUpload(file)
+        if (validationError) {
+          if (!nextGalleryError) nextGalleryError = validationError
+          continue
+        }
+        validFiles.push(file)
+      }
+      if (validFiles.length === 0) {
+        setGalleryError(nextGalleryError)
+        return
+      }
+
+      // PMCM-256 AC2: cap additional images at 8 total — occupied slots
+      // plus uploads already in flight plus this batch — matching the
+      // backend's @ArrayMaxSize(8)/multer maxCount(8). Replacing an
+      // existing slot never counts against the cap, it isn't adding one.
+      let filesToUpload = validFiles
+      if (replaceIndex === undefined) {
+        const occupiedCount = galleryUrlsRef.current.filter(Boolean).length
+        const inFlightCount = galleryReservedRef.current.size
+        const availableSlots = Math.max(
+          0,
+          8 - occupiedCount - inFlightCount
+        )
+        if (availableSlots < validFiles.length) {
+          nextGalleryError = "You can upload a maximum of 8 images."
+        }
+        filesToUpload = validFiles.slice(0, availableSlots)
+        if (filesToUpload.length === 0) {
+          setGalleryError(nextGalleryError)
+          return
+        }
+      }
+
+      setGalleryError(nextGalleryError)
       setHasChanges(true)
 
       // Reserve the next free slot so concurrent uploads never collide.
@@ -1829,8 +2020,12 @@ function ProjectDetailsInner() {
           try {
             await ProjectAPI.UpdateGalleryImages(
               project.id,
-              galleryUrlsRef.current.filter(
-                (u: string) => u && !u.startsWith("blob:")
+              // PMCM-256: map, don't filter — a filter here compacts the
+              // array, which desyncs the persisted order from the grid's
+              // fixed-by-index slots the next time this loads. Empty/blob
+              // entries become "" in place instead of being dropped.
+              galleryUrlsRef.current.map((u: string) =>
+                u && !u.startsWith("blob:") ? u : ""
               )
             )
           } catch (err) {
@@ -1840,7 +2035,7 @@ function ProjectDetailsInner() {
       }
 
       await Promise.all(
-        Array.from(files).map(async (file) => {
+        filesToUpload.map(async (file) => {
           const targetIndex =
             replaceIndex !== undefined ? replaceIndex : reserveSlot()
           setUploadingSlots((prev) => new Set(prev).add(targetIndex))
@@ -1875,10 +2070,12 @@ function ProjectDetailsInner() {
               // file was never accepted. Previously this fell into the same
               // branch as the 503 case above and showed a local preview of
               // an image that was never actually uploaded.
-              toast({
-                title: backendErrorMessage(err) || "Failed to upload image. Please try again.",
-                variant: "destructive",
-              })
+              // PMCM-256 follow-up: inline, not a toast — this is a
+              // rejected-media error (the backend's own type/size
+              // validation), same category as the client-side checks above.
+              setGalleryError(
+                backendErrorMessage(err) || "Upload failed. Please try again."
+              )
             }
           }
 
@@ -1904,16 +2101,20 @@ function ProjectDetailsInner() {
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
-      // First 3 slots: clear in place so visible grid doesn't shift
-      // Beyond slot 2: remove and shift remaining images forward
-      const newUrls =
-        index < 3
-          ? currentUrls.map((url: string, i: number) =>
-              i === index ? "" : url
-            )
-          : currentUrls.filter((_: string, i: number) => i !== index)
+      // PMCM-256: every slot clears in place — the grid renders by raw
+      // array index (allUrls[index]), so the previous index>=3 branch's
+      // .filter() silently shifted every later slot's image down one
+      // (and desynced hiddenImages' indices with it). No slot's removal
+      // may ever move another slot's image or hidden state.
+      const newUrls = currentUrls.map((url: string, i: number) =>
+        i === index ? "" : url
+      )
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
+      // PMCM-256 follow-up: deleting a slot frees capacity (relevant to
+      // the 8-image-cap error) and is itself a form of "the grid changed",
+      // so any stale rejected-media error no longer applies.
+      setGalleryError(null)
       setHiddenImages((prev) => {
         const next = new Set(prev)
         next.delete(index)
@@ -1924,7 +2125,9 @@ function ProjectDetailsInner() {
         try {
           await ProjectAPI.UpdateGalleryImages(
             project.id,
-            newUrls.filter((u: string) => u && !u.startsWith("blob:"))
+            // Map, don't filter — preserve position so the persisted
+            // order matches the grid's fixed-by-index slots on reload.
+            newUrls.map((u: string) => (u && !u.startsWith("blob:") ? u : ""))
           )
         } catch (err) {
           console.error("Failed to save gallery after delete:", err)
@@ -1943,8 +2146,9 @@ function ProjectDetailsInner() {
 
       if (project.id && isRealBackendId(project.id)) {
         const urls: string[] = project.mediaUrls ?? []
-        const additional = urls.filter(
-          (u: string) => u && !u.startsWith("blob:")
+        // Map, don't filter — preserve position (see handleGalleryDelete).
+        const additional = urls.map((u: string) =>
+          u && !u.startsWith("blob:") ? u : ""
         )
         const hidden = Array.from(next)
           .map((i) => urls[i])
@@ -2003,7 +2207,10 @@ function ProjectDetailsInner() {
       if (prev.id && isRealBackendId(prev.id)) {
         ProjectAPI.UpdateGalleryImages(
           prev.id,
-          reordered.filter((u: string) => u && !u.startsWith("blob:"))
+          // Map, don't filter — preserve position (see handleGalleryDelete).
+          reordered.map((u: string) =>
+            u && !u.startsWith("blob:") ? u : ""
+          )
         ).catch((err: any) =>
           console.error("Failed to save gallery reorder:", err)
         )
@@ -2016,12 +2223,30 @@ function ProjectDetailsInner() {
 
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
+      const validationError = validateImageFileBeforeUpload(file)
+      if (validationError) {
+        // PMCM-256 follow-up: rejected-media errors (type/size/count) are
+        // inline under the dropzone, not toasts — Figma has no error
+        // state for Media, so this follows the existing video-URL inline
+        // error pattern already in this file.
+        setFeaturedImageError(validationError)
+        return
+      }
+      setFeaturedImageError(null)
       setHasChanges(true)
       setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
+        // PMCM-256: previously fell straight through to a local preview
+        // with no explanation — the image looked uploaded but wasn't
+        // persisted anywhere yet. Still show the preview (reasonable
+        // stand-in until the draft exists), but now say why.
         const localUrl = URL.createObjectURL(file)
         setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
         setFeaturedUploading(false)
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
       const formData = new FormData()
@@ -2032,6 +2257,7 @@ function ProjectDetailsInner() {
         const url = res?.data?.featuredImage || res?.data?.url
         if (url) {
           setProject((prev: any) => ({ ...prev, featuredImage: url }))
+          setFeaturedImageError(null)
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
@@ -2053,10 +2279,12 @@ function ProjectDetailsInner() {
           // file was never accepted. Previously this fell into the same
           // branch as the 503 case above and showed a local preview of
           // an image that was never actually uploaded.
-          toast({
-            title: backendErrorMessage(err) || "Failed to upload featured image. Please try again.",
-            variant: "destructive",
-          })
+          // PMCM-256 follow-up: inline, not a toast — this is a rejected-
+          // media error (the backend's own type/size validation), same
+          // category as the client-side validationError above.
+          setFeaturedImageError(
+            backendErrorMessage(err) || "Upload failed. Please try again."
+          )
         }
       } finally {
         setFeaturedUploading(false)
@@ -2831,6 +3059,18 @@ function ProjectDetailsInner() {
     ]
   )
 
+  // PMCM-255: explicit Save for the Project Description modal — commits
+  // descDraft to project.description and persists it, instead of the
+  // previous "always save whenever the editor closes, no matter how"
+  // behavior that had no real Cancel/discard path.
+  const handleSaveDescription = React.useCallback(() => {
+    if (descCharCount > FULL_DESCRIPTION_MAX_LENGTH) return
+    const savedDesc = descCharCount === 0 ? "" : descDraft
+    setProject((prev: any) => ({ ...prev, description: savedDesc }))
+    saveProjectFields({ fullDescription: savedDesc })
+    setDescFullscreenOpen(false)
+  }, [descCharCount, descDraft, saveProjectFields])
+
   const faqSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
   )
@@ -3079,7 +3319,15 @@ function ProjectDetailsInner() {
   }, [])
 
   // ── Budget & Duration computed from scope ──────────────────────────────────
-  const [budgetPeriod, setBudgetPeriod] = React.useState("week")
+  // PMCM-258: duration day-counting, the duration label, the available
+  // periods, and the cost-per-period math all now come from the shared
+  // frontend/lib/listing-pricing.ts module — this page no longer keeps
+  // its own copy. See that module for the exact rules (months factor,
+  // Yearly threshold, rounding).
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>(
+    "week"
+  )
+  const pricingPeriodHydratedRef = React.useRef(false)
 
   const isServiceListing =
     project?.listingType === "service" ||
@@ -3094,66 +3342,23 @@ function ProjectDetailsInner() {
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
+      const totalDays = scopeDurationDays(phases)
 
-      // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
-      // Matches the scope builder's getPhaseDurationInDays logic.
-      let totalDays = 0
-      for (const phase of phases) {
-        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
-          .map((row: any) => {
-            const dur = row.duration
-            // Object form { value, type }
-            if (dur && typeof dur === "object") {
-              const val = Number(dur.value) || 0
-              if (val > 0) {
-                if (dur.type === "weeks") return val * 7
-                if (dur.type === "months") return val * 30
-                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-                return val // days
-              }
-            }
-            // String form, e.g. "2 weeks" (relational scope stores it this way)
-            if (typeof dur === "string" && dur.trim()) {
-              const [rv, ru] = dur.trim().split(/\s+/)
-              const v = Number(rv) || 0
-              const u = (ru || "days").toLowerCase()
-              if (v > 0) {
-                if (u.startsWith("week")) return v * 7
-                if (u.startsWith("month")) return v * 30
-                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-                return v
-              }
-            }
-            // Fall back to estimatedHours at 40 hrs/week.
-            const hrs = Number(row.estimatedHours) || 0
-            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-          })
-          .filter((d: number) => d > 0)
-        if (taskDurations.length > 0) {
-          totalDays += Math.max(...taskDurations)
-        }
-      }
-
-      // Display rules from docs:
-      // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
-      let durationLabel = "—"
+      // durationValue/durationUnit feed the "Starting from a {value} {unit}
+      // duration" sentence elsewhere on this page — formatDuration() only
+      // returns the combined label, so these mirror its own bucketing.
       let durationValue = 0
       let durationUnit = ""
       if (totalDays > 0) {
         if (totalDays < 7) {
           durationValue = totalDays
           durationUnit = "day"
-          durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
         } else if (totalDays < 28) {
-          const weeks = Math.max(1, Math.ceil(totalDays / 7))
-          durationValue = weeks
+          durationValue = Math.max(1, Math.ceil(totalDays / 7))
           durationUnit = "week"
-          durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
         } else {
-          const months = Math.max(1, Math.ceil(totalDays / 30))
-          durationValue = months
+          durationValue = Math.max(1, Math.ceil(totalDays / 30))
           durationUnit = "month"
-          durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
         }
       }
 
@@ -3186,7 +3391,13 @@ function ProjectDetailsInner() {
           ? pricingCents
           : storedCents
 
-      return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
+      return {
+        budgetTotalCents,
+        durationLabel: formatDuration(totalDays),
+        durationValue,
+        durationUnit,
+        durationDays: totalDays,
+      }
     }, [
       project.scope,
       project.budgetUsdCents,
@@ -3194,23 +3405,62 @@ function ProjectDetailsInner() {
       project.budget,
     ])
 
+  // PMCM-258/AC5: hydrate the saved period preference once, the first
+  // time it's actually loaded (undefined = not hydrated yet; null = no
+  // preference was ever saved, so the existing "week" default stands).
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (project.pricingPeriod === undefined) return
+    pricingPeriodHydratedRef.current = true
+    if (project.pricingPeriod) {
+      setBudgetPeriodState(normalizePeriod(project.pricingPeriod))
+    }
+  }, [project.pricingPeriod])
+
+  // E2: if the selected period is no longer available (e.g. duration
+  // dropped under 52 weeks while Yearly was selected), fall back to
+  // biweek automatically.
+  React.useEffect(() => {
+    const resolved = resolvePeriod(
+      budgetPeriod,
+      durationDays,
+      isServiceListing,
+      budgetPeriod
+    )
+    if (resolved !== budgetPeriod) setBudgetPeriodState(resolved)
+  }, [budgetPeriod, durationDays, isServiceListing])
+
+  // PMCM-258/AC5: changing the period saves it through the same draft-save
+  // path as every other field on this page.
+  const setBudgetPeriod = React.useCallback(
+    (period: string) => {
+      const normalized = normalizePeriod(period)
+      setBudgetPeriodState(normalized)
+      if (project.id && isRealBackendId(project.id)) {
+        ProjectAPI.UpdateProjectDraft(project.id, {
+          pricingPeriod: normalized,
+        } as any).catch((err: any) =>
+          console.error("Failed to save pricing period:", err)
+        )
+      }
+    },
+    [project.id]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isServiceListing),
+    [durationDays, isServiceListing]
+  )
+
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      // Number of periods in the project duration
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
-      }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      const perPeriod = Math.round(total / numPeriods)
-      return `$${perPeriod.toLocaleString()}`
+      const perPeriod = costPerPeriod(
+        cents,
+        durationDays,
+        normalizePeriod(period)
+      )
+      return perPeriod > 0 ? `$${perPeriod.toLocaleString()}` : "$0"
     },
     [durationDays]
   )
@@ -3365,7 +3615,8 @@ function ProjectDetailsInner() {
               } catch {
                 /* ignore */
               }
-              return (d.scope ?? []).map((phase: any, phaseIdx: number) => {
+              const mappedScope = (d.scope ?? []).map(
+                (phase: any, phaseIdx: number) => {
                 const rawTasks = phase.rows || phase.task || []
                 return {
                   phaseName:
@@ -3441,7 +3692,9 @@ function ProjectDetailsInner() {
                                       ? "weeks"
                                       : unit.startsWith("hour")
                                         ? "hours"
-                                        : "days"
+                                        : unit.startsWith("month")
+                                          ? "months"
+                                          : "days"
                                     return { value, type }
                                   })(),
                             ...(assignedMember ? { assignedMember } : {}),
@@ -3450,11 +3703,20 @@ function ProjectDetailsInner() {
                       }
                     : {}),
                 }
-              })
+                }
+              )
+              // PMCM-257 follow-up 2: an older service draft saved before
+              // phaseType was required stays untyped on disk — normalize
+              // once on hydration so the header never falls back to
+              // "Phase One" (project scopes are returned as-is).
+              return d.listingType === "service"
+                ? ensureServicePhaseTypes(mappedScope)
+                : mappedScope
             })(),
             rating: 4.9,
             reviewCount: 14,
             listingType: d.listingType || "project",
+            pricingPeriod: d.pricingPeriod ?? null,
           })
           if (d.projectType || d.listingType)
             setInfoProjectType(d.projectType || d.listingType)
@@ -3983,6 +4245,45 @@ function ProjectDetailsInner() {
                               "pointer-events-none !opacity-0"
                           )}
                         >
+                          {/* PMCM-256: true edit (scale/rotate) via the
+                              catalogued ImageEditor, same pattern/component
+                              used inside rich-text-editor.tsx's image
+                              toolbar — Save re-uploads through the same
+                              handleFeaturedImageUpload path (moderation
+                              included), only swapping the stored URL on a
+                              successful response. */}
+                          <ImageEditor
+                            variant="image"
+                            defaultDataUrl={project.featuredImage}
+                            defaultFileName={
+                              project.featuredImage
+                                ?.split("?")[0]
+                                .split("/")
+                                .pop() || "image.jpg"
+                            }
+                            editDialogTitle="Edit Image"
+                            onSaveImage={(file) =>
+                              handleFeaturedImageUpload(file)
+                            }
+                            startingPoint={({ open, onEdit }) => (
+                              // PMCM-256 fix: ImageEditor's state machine
+                              // has no EDIT transition from "ideal" —
+                              // open() sends REMOVE first (ideal→removing,
+                              // dataUrl is set so no file picker opens),
+                              // then onEdit() sends EDIT (removing→editing).
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                className="size-8 rounded-full bg-white/20 hover:bg-white/40"
+                                onClick={() => {
+                                  open()
+                                  onEdit()
+                                }}
+                              >
+                                <Edit03 className="size-3.5 text-white" />
+                              </IconButton>
+                            )}
+                          />
                           <button
                             type="button"
                             className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
@@ -4000,7 +4301,7 @@ function ProjectDetailsInner() {
                               input.click()
                             }}
                           >
-                            <Edit03 className="size-3.5 text-white" />
+                            <Upload01 className="size-3.5 text-white" />
                           </button>
                           <button
                             type="button"
@@ -4064,6 +4365,11 @@ function ProjectDetailsInner() {
                       </>
                     )}
                   </div>
+                  {featuredImageError && (
+                    <ErrorMessage size="sm" className="mt-1.5">
+                      {featuredImageError}
+                    </ErrorMessage>
+                  )}
                   {SHOW_PUBLISH_VALIDATION &&
                     publishAttempted &&
                     !project.featuredImage &&
@@ -4660,6 +4966,7 @@ function ProjectDetailsInner() {
                                     setVideoUrlInput(
                                       project.featuredVideo || ""
                                     )
+                                    setVideoUrlError(null)
                                     setVideoDialogOpen(true)
                                   }}
                                 >
@@ -4752,6 +5059,12 @@ function ProjectDetailsInner() {
                   </div>
                 </DndContext>
 
+                {galleryError && (
+                  <ErrorMessage size="sm" className="mt-1.5">
+                    {galleryError}
+                  </ErrorMessage>
+                )}
+
                 {SHOW_PUBLISH_VALIDATION &&
                   publishAttempted &&
                   publishImageCount < 3 && (
@@ -4780,6 +5093,7 @@ function ProjectDetailsInner() {
                     <DropdownMenuItem
                       onSelect={() => {
                         setVideoUrlInput(project.featuredVideo || "")
+                        setVideoUrlError(null)
                         setVideoDialogOpen(true)
                       }}
                     >
@@ -4902,10 +5216,7 @@ function ProjectDetailsInner() {
                         {getRichTextCharacterCount(project.description || "") > 0 ? (
                           <DescriptionCard
                             descHtml={project.description}
-                            onEdit={() => {
-                              setDescDraft(project.description || "")
-                              setDescFullscreenOpen(true)
-                            }}
+                            onEdit={openDescriptionModal}
                           />
                         ) : (
                           <>
@@ -4951,10 +5262,7 @@ function ProjectDetailsInner() {
                                     publishAttempted &&
                                     "text-error-500 border-error-300"
                                 )}
-                                onClick={() => {
-                                  setDescDraft(project.description || "")
-                                  setDescFullscreenOpen(true)
-                                }}
+                                onClick={openDescriptionModal}
                               >
                                 <Plus className="size-[15px]" />
                                 Add Description
@@ -4975,43 +5283,135 @@ function ProjectDetailsInner() {
                             </p>
                           )}
 
-                        {descFullscreenOpen && (
-                          <RichTextEditor
-                            defaultValue={descDraft}
-                            placeholder="<p class='text-gray-400'>Enter a full description</p>"
-                            allowFullscreen
-                            fullscreenOpen={descFullscreenOpen}
-                            onFullscreenOpenChange={(open) => {
-                              if (!open) {
-                                // Auto-save on close
-                                const savedDesc =
-                                  getRichTextCharacterCount(descDraft) === 0
-                                    ? ""
-                                    : descDraft
-                                setProject((prev: any) => ({
-                                  ...prev,
-                                  description: savedDesc,
-                                }))
-                                saveProjectFields({
-                                  fullDescription: savedDesc,
-                                })
-                              }
-                              setDescFullscreenOpen(open)
-                            }}
-                            fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
-                            fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
-                            fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
-                            className="hidden"
-                            onUpdate={(html) => {
-                              if (descDraftTimerRef.current)
-                                clearTimeout(descDraftTimerRef.current)
-                              descDraftTimerRef.current = setTimeout(
-                                () => setDescDraft(html),
-                                250
-                              )
-                            }}
-                          />
-                        )}
+                        {/* Project Description Modal */}
+                        <Dialog
+                          open={descFullscreenOpen}
+                          onOpenChange={setDescFullscreenOpen}
+                        >
+                          <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+                            <div className="px-6 pt-6">
+                              <div className="flex items-start gap-x-2">
+                                <div className="flex-auto">
+                                  <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                                    Project Description
+                                  </h1>
+                                </div>
+                                <IconButton
+                                  type="button"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setDescFullscreenOpen(false)}
+                                >
+                                  <X className="size-5" />
+                                </IconButton>
+                              </div>
+                            </div>
+
+                            <div className="px-6 pt-4 pb-6 space-y-1.5">
+                              <div className="flex items-center justify-between gap-x-3">
+                                <HelperText className="flex-auto">
+                                  Provide a comprehensive description of this
+                                  project, including its purpose and features.
+                                </HelperText>
+                                <span
+                                  className={cn(
+                                    "shrink-0 text-xs",
+                                    descCharCount >= FULL_DESCRIPTION_MAX_LENGTH
+                                      ? "text-error-500"
+                                      : "text-gray-400"
+                                  )}
+                                >
+                                  {descCharCount.toLocaleString()}/
+                                  {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                                </span>
+                              </div>
+                              {descFullscreenOpen && (
+                                // PMCM-255 (follow-up): capture-phase guard
+                                // around the editor — fires before the event
+                                // reaches its contenteditable, blocking input
+                                // without touching the frozen component.
+                                <div
+                                  onBeforeInputCapture={(event) => {
+                                    const inputType =
+                                      event.nativeEvent.inputType
+                                    if (
+                                      inputType?.startsWith("insert") &&
+                                      descLiveCountRef.current >=
+                                        FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onPasteCapture={(event) => {
+                                    const pastedText =
+                                      event.clipboardData.getData("text")
+                                    if (
+                                      descLiveCountRef.current +
+                                        pastedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onDropCapture={(event) => {
+                                    const droppedText =
+                                      event.dataTransfer.getData("text/plain")
+                                    if (
+                                      descLiveCountRef.current +
+                                        droppedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                >
+                                  <RichTextEditor
+                                    defaultValue={descDraft}
+                                    placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                                    allowFullscreen
+                                    className="rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
+                                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                                    onUpdate={(html) => {
+                                      // PMCM-255 (follow-up): always commit
+                                      // the real HTML, even over the limit —
+                                      // state must reflect what the seller
+                                      // actually sees, so the counter/Save
+                                      // button are truthful and nothing
+                                      // typed is ever silently lost. Actual
+                                      // enforcement is the capture-phase
+                                      // wrapper above, not this commit.
+                                      descLiveCountRef.current =
+                                        getRichTextCharacterCount(html)
+                                      setDescDraft(html)
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                              <Button
+                                type="button"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => setDescFullscreenOpen(false)}
+                              >
+                                <X className="size-[15px]" />
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                disabled={
+                                  !isDescDirty ||
+                                  descCharCount > FULL_DESCRIPTION_MAX_LENGTH
+                                }
+                                onClick={handleSaveDescription}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
 
                         {/* Project Info Modal */}
                         <Dialog
@@ -5022,10 +5422,13 @@ function ProjectDetailsInner() {
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault()
+                                // PMCM-255: block saving while the short
+                                // description is over the limit — never
+                                // silently truncate an existing over-limit
+                                // value on save.
                                 if (
-                                  infoSummary.length > 0 &&
-                                  infoSummary.length <
-                                    SHORT_DESCRIPTION_MIN_LENGTH
+                                  infoSummary.length >
+                                  SHORT_DESCRIPTION_MAX_LENGTH
                                 )
                                   return
                                 const updatedCategories = infoCategories
@@ -5145,7 +5548,7 @@ function ProjectDetailsInner() {
                                           <span
                                             className={cn(
                                               "shrink-0 text-xs",
-                                              infoSummary.length >
+                                              infoSummary.length >=
                                                 SHORT_DESCRIPTION_MAX_LENGTH
                                                 ? "text-error-500"
                                                 : "text-gray-400"
@@ -5161,30 +5564,58 @@ function ProjectDetailsInner() {
                                           placeholder="Enter a description..."
                                           value={infoSummary}
                                           isInvalid={
-                                            infoSummary.length > 0 &&
-                                            (infoSummary.length <
-                                              SHORT_DESCRIPTION_MIN_LENGTH ||
-                                              infoSummary.length >
-                                                SHORT_DESCRIPTION_MAX_LENGTH)
+                                            infoSummary.length >
+                                            SHORT_DESCRIPTION_MAX_LENGTH
                                           }
+                                          // PMCM-255: never truncate an
+                                          // existing over-limit value —
+                                          // block further insertions instead
+                                          // of slicing the whole string on
+                                          // every keystroke. Deletions are
+                                          // always allowed (key.length !== 1
+                                          // for Backspace/Delete).
                                           onChange={(e) =>
-                                            setInfoSummary(
-                                              e.target.value.slice(
-                                                0,
-                                                SHORT_DESCRIPTION_MAX_LENGTH
-                                              )
-                                            )
+                                            setInfoSummary(e.target.value)
                                           }
+                                          onKeyDown={(e) => {
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              !e.ctrlKey &&
+                                              !e.metaKey &&
+                                              !e.altKey &&
+                                              e.key.length === 1 &&
+                                              currentLen - selLen >=
+                                                SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
+                                          onPaste={(e) => {
+                                            const pastedText =
+                                              e.clipboardData.getData("text")
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              currentLen -
+                                                selLen +
+                                                pastedText.length >
+                                              SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
                                         />
-                                        {infoSummary.length > 0 &&
-                                          infoSummary.length <
-                                            SHORT_DESCRIPTION_MIN_LENGTH && (
-                                            <p className="text-xs text-error-500">
-                                              Please enter at least{" "}
-                                              {SHORT_DESCRIPTION_MIN_LENGTH}{" "}
-                                              character(s)
-                                            </p>
-                                          )}
                                       </div>
 
                                       <div className="space-y-1.5">
@@ -9980,13 +10411,13 @@ function ProjectDetailsInner() {
                         </span>
                         <div className="mt-2 flex items-baseline gap-x-1.5">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {formatBudget(budgetTotalCents, "week")}
+                            {formatBudget(budgetTotalCents, budgetPeriod)}
                           </span>
                           <span className="text-sm text-dark-blue-400">
                             per
                           </span>
                           <Badge visual="gray" className="rounded-[5px]">
-                            week
+                            {PERIOD_WIDGET_LABELS[budgetPeriod]}
                           </Badge>
                         </div>
                       </div>
@@ -10105,15 +10536,9 @@ function ProjectDetailsInner() {
                           placeholder="Select"
                         />
                         <ListboxOptions className="w-[153px]">
-                          {[
-                            "week",
-                            "2-week",
-                            "month",
-                            "quarter",
-                            ...(durationDays >= 365 ? ["year"] : []),
-                          ].map((timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
+                          {availableBudgetPeriods.map((period) => (
+                            <ListboxOption key={period} value={period}>
+                              {PERIOD_WIDGET_LABELS[period]}
                             </ListboxOption>
                           ))}
                         </ListboxOptions>
@@ -10539,9 +10964,18 @@ function ProjectDetailsInner() {
                           <Input
                             placeholder="www.video.com"
                             value={videoUrlInput}
-                            onChange={(e) => setVideoUrlInput(e.target.value)}
+                            onChange={(e) => {
+                              setVideoUrlInput(e.target.value)
+                              if (videoUrlError) setVideoUrlError(null)
+                            }}
+                            isInvalid={Boolean(videoUrlError)}
                           />
                         </InputGroup>
+                        {videoUrlError && (
+                          <ErrorMessage size="sm" className="mt-1.5">
+                            {videoUrlError}
+                          </ErrorMessage>
+                        )}
                       </div>
                     </div>
 
@@ -10559,6 +10993,18 @@ function ProjectDetailsInner() {
                             const fullUrl = url.startsWith("http")
                               ? url
                               : `https://${url}`
+                            // PMCM-256: invalid URL gets an inline error and
+                            // nothing is saved — toEmbedUrl silently passes
+                            // through anything it doesn't recognize, so
+                            // without this gate a typo'd URL would still
+                            // autosave and render as a raw, unresolved
+                            // iframe src on the client view.
+                            if (!isValidVideoUrl(fullUrl)) {
+                              setVideoUrlError(
+                                "Please enter a valid YouTube or Vimeo URL."
+                              )
+                              return
+                            }
                             setProject((prev: any) => ({
                               ...prev,
                               featuredVideo: fullUrl,

@@ -14,6 +14,7 @@ export class ProjectMapper {
     project.budget = raw.budget;
     project.initialTeamBudget = raw.initialTeamBudget;
     project.durationMonths = raw.durationMonths;
+    project.pricingPeriod = raw.pricingPeriod ?? null;
     project.location = raw.location;
     project.timezone = raw.timezone;
     project.industries = raw.industries;
@@ -60,6 +61,7 @@ export class ProjectMapper {
     projectEntity.budget = project.budget!;
     projectEntity.initialTeamBudget = project.initialTeamBudget!;
     projectEntity.durationMonths = project.durationMonths!;
+    projectEntity.pricingPeriod = project.pricingPeriod ?? null;
     projectEntity.location = project.location!;
     projectEntity.timezone = project.timezone!;
     projectEntity.industries = project.industries!;

@@ -38,8 +38,13 @@ import { UserProfileModule } from '../shared/user-profile/user-profile.module';
       provide: ImageValidator,
       useFactory: () => {
         const validationOptions = {
-          maxSize: 5 * 1024 * 1024,
-          allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+          // PMCM-256: frontend now rejects >10MB before upload starts, so
+          // backend must agree or a file the client accepted would still
+          // 400. webp dropped from new uploads (ticket AC) — existing
+          // webp URLs already stored are untouched, nothing here
+          // re-validates mimetype on read.
+          maxSize: 10 * 1024 * 1024,
+          allowedMimeTypes: ['image/jpeg', 'image/png'],
         };
         return new ImageValidator(validationOptions);
       },
