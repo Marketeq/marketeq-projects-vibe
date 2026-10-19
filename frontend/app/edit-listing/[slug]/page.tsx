@@ -971,7 +971,7 @@ const Sidebar = ({
       <div className="mb-8">
         <Logo3 className="h-[19px] w-auto" />
       </div>
-      {stepsState.map(({ label, isValid }, index) => {
+      {stepsState.map(({ label, isValid, disabled }, index) => {
         const isActive = currentStep === index
         const isLast = index === stepsState.length - 1
         const hasError =
@@ -991,7 +991,10 @@ const Sidebar = ({
             )}
             <button
               type="button"
-              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
+              className={cn(
+                "group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none",
+                disabled && "opacity-50 cursor-not-allowed"
+              )}
               data-ui-state={
                 hasError
                   ? "error"
@@ -1001,7 +1004,16 @@ const Sidebar = ({
                       ? "complete"
                       : undefined
               }
-              onClick={() => setStep(index)}
+              // PMCM-254: stepsState.disabled already tracks "can't reach this
+              // step yet" (toggleStepValidation in utils/hooks.ts disables
+              // every later step the moment an earlier one goes invalid) —
+              // this sidebar just never read it, so any step was clickable
+              // regardless of whether Basic Info/Project Info was complete.
+              aria-disabled={disabled}
+              onClick={() => {
+                if (disabled) return
+                setStep(index)
+              }}
             >
               <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
                 {hasError ? (
@@ -1719,7 +1731,7 @@ const projectInfoSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Please enter a project title")
+    .min(1, "Title is required.")
     .regex(
       /^[A-Za-z0-9 -]+$/,
       "Title can only contain letters, numbers, spaces, and hyphens."
@@ -1733,7 +1745,7 @@ const projectInfoSchema = z.object({
           category: z.string().default(""),
           subCategories: z
             .array(z.string())
-            .max(5, "You can add a maximum of five (5) sub categories"),
+            .max(5, "You can add a maximum of five (5) sub-categories."),
         })
         .superRefine((value, ctx) => {
           const selectedCategory = value.category.trim()
@@ -1891,7 +1903,7 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 const SUBCATEGORY_LIMIT_ERROR =
-  "You can add a maximum of five (5) sub categories"
+  "You can add a maximum of five (5) sub-categories."
 
 const FALLBACK_SUBCATEGORY_OPTIONS = options.value
 const FALLBACK_INDUSTRY_OPTIONS = [
