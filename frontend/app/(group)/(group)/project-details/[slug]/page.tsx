@@ -1184,6 +1184,28 @@ const Chats = ({
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
   const { toast } = useToast()
+  // PMCM-260/X2: this component calls useAuth() directly rather than
+  // receiving promptSignIn as a prop from ProjectDetails, so it mirrors
+  // that same component's resume-on-login pattern (~1893-1915) locally —
+  // no auth-context change. Only wired for handleSend's text message
+  // below; sendAttachment/handleSendMedia's dialog-close-and-clear-state
+  // flow makes queuing the attachment itself unsafe to do the same way
+  // (reported, not fixed — see the PMCM-260 report).
+  const pendingChatActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignInToChat = React.useCallback(
+    (action: () => void) => {
+      pendingChatActionRef.current = action
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (myId && pendingChatActionRef.current) {
+      const action = pendingChatActionRef.current
+      pendingChatActionRef.current = null
+      action()
+    }
+  }, [myId])
 
   const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
@@ -1300,7 +1322,13 @@ const Chats = ({
     const text = (textareaValue ?? "").trim()
     if (!text) return
     if (!myId) {
-      openAuthModal("sign-in")
+      // PMCM-260/X2 + follow-up: queue so the typed message (left in the
+      // composer, not cleared yet) actually sends once login completes.
+      // Must go through the ref (below), not `handleSend` by name — that
+      // name resolves to this closure, captured while `myId` was still
+      // "", so resuming it post-login would re-run this same stale
+      // check and re-open the modal instead of sending.
+      promptSignInToChat(() => handleSendRef.current())
       return
     }
     setTextareaValue("")
@@ -1342,7 +1370,9 @@ const Chats = ({
         variant: "destructive",
       })
     }
-  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue, toast])
+  }, [textareaValue, myId, ensureThread, promptSignInToChat, setTextareaValue, toast])
+  const handleSendRef = React.useRef(handleSend)
+  handleSendRef.current = handleSend
 
   const handleEmojiSelect = React.useCallback(
     (emoji: DataEmoji) => {
@@ -1965,7 +1995,7 @@ export default function ProjectDetails({
       setClaimStep("blocked")
       return
     }
-    openClaimDialog()
+    setClaimStep("confirm")
   }, [])
 
   const handlePageClaim = React.useCallback(async () => {
@@ -2022,7 +2052,11 @@ export default function ProjectDetails({
   const openLiveChat = React.useCallback(
     (question?: string) => {
       if (!user?.id) {
-        promptSignIn(() => openLiveChat(question))
+        // PMCM-260 follow-up: queue through the ref (below), not
+        // `openLiveChat` directly — that name resolves to this closure,
+        // captured while `user` was still null, so resuming it post-login
+        // would re-run this same stale check and re-open the modal.
+        promptSignIn(() => openLiveChatRef.current(question))
         return
       }
       if (question !== undefined) setPendingQuestion(question)
@@ -2030,11 +2064,14 @@ export default function ProjectDetails({
     },
     [user?.id, promptSignIn]
   )
+  const openLiveChatRef = React.useRef(openLiveChat)
+  openLiveChatRef.current = openLiveChat
 
   const handleAsk = React.useCallback(() => {
     if (!user?.id) {
       setAskModalOpen(false)
-      promptSignIn(() => handleAsk())
+      // PMCM-260 follow-up: same stale-closure fix — queue through the ref.
+      promptSignIn(() => handleAskRef.current())
       return
     }
     if (pendingQuestion.trim()) {
@@ -2045,6 +2082,8 @@ export default function ProjectDetails({
       setShowAskErrorMsg(true)
     }
   }, [user?.id, pendingQuestion, openLiveChat, promptSignIn])
+  const handleAskRef = React.useRef(handleAsk)
+  handleAskRef.current = handleAsk
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -2286,7 +2325,12 @@ export default function ProjectDetails({
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
-      promptSignIn(() => handleFavoriteToggle(pressed))
+      // PMCM-260 follow-up: queue through the ref (assigned below, every
+      // render), not the `handleFavoriteToggle` name directly — that name
+      // resolves to THIS closure, captured while `user` was still null,
+      // so calling it post-login would re-run this same stale `!user?.id`
+      // check and re-open the modal instead of completing the toggle.
+      promptSignIn(() => handleFavoriteToggleRef.current(pressed))
       return
     }
     const previous = isFavorited
@@ -2316,6 +2360,8 @@ export default function ProjectDetails({
       })
     }
   }
+  const handleFavoriteToggleRef = React.useRef(handleFavoriteToggle)
+  handleFavoriteToggleRef.current = handleFavoriteToggle
 
   React.useEffect(() => {
     async function fetchProject() {
@@ -3803,7 +3849,12 @@ export default function ProjectDetails({
                                   visual="primary"
                                   onClick={() => {
                                     if (!user?.id) {
-                                      openAuthModal("sign-in")
+                                      // PMCM-260/X2: queue the action so it
+                                      // resumes automatically after login,
+                                      // matching the other "Claim this
+                                      // Project" button (~6824) which
+                                      // already uses promptSignIn.
+                                      promptSignIn(() => openClaimDialog())
                                       return
                                     }
                                     openClaimDialog()
@@ -7085,7 +7136,11 @@ export default function ProjectDetails({
                   className="inline-flex items-center gap-x-2 cursor-pointer"
                   onClick={() => {
                     if (!user?.id) {
-                      openAuthModal("sign-in")
+                      // PMCM-260/X2: queue the action so it resumes
+                      // automatically after login.
+                      promptSignIn(() =>
+                        toggleReportWindow(true, project.id, project.title)
+                      )
                       return
                     }
                     toggleReportWindow(true, project.id, project.title)
