@@ -2,7 +2,8 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
+import { DataSource, In, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
+import { isUUID } from 'class-validator';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -40,6 +41,7 @@ import {
   hashDocumentNumber,
 } from '../common/security/document-fingerprint';
 import { coarseFailureReason } from '../common/status/coarse-failure-reason';
+import { AccountGateBatchEntry, AccountGateDecision, computeGateState, deriveMissingRequirements } from '../common/gate/account-gate-decision';
 import {
   DocumentVerificationProvider,
   DOCUMENT_VERIFICATION_PROVIDER,
@@ -770,17 +772,8 @@ export class IdentityVerificationService {
     // Hosted Free KYC current-cycle count and the stable next action. The old
     // all-rows counter (every pipeline, never reset) is deliberately not used here.
     const summary = await this.verificationSummary.summarize(profile);
-    const isVerified =
-      profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
-      profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
-    // Grace is a renewal window: it holds through EXPIRED, IN_PROGRESS, PENDING
-    // and FAILED renewal states (TRVG2 §2.7/§2.8), but never for a currently
-    // VERIFIED identity, so a stale expired_at cannot keep a gate open.
-    const inGrace =
-      profile.expiredAt !== null &&
-      profile.identityVerificationStatus !== IdentityVerificationStatus.VERIFIED &&
-      Date.now() - profile.expiredAt.getTime() < 30 * 24 * 60 * 60 * 1000;
-    const gateOpen = isVerified || inGrace;
+    // gate_open has one definition (common/gate/account-gate-decision.ts).
+    const { isVerified, inGrace, gateOpen } = computeGateState(profile, Date.now());
 
     return {
       identityVerificationStatus: profile.identityVerificationStatus,
@@ -800,6 +793,72 @@ export class IdentityVerificationService {
       createdAt: profile.createdAt,
       updatedAt: profile.updatedAt,
     };
+  }
+
+  // Canonical gate decision for consuming services (RabbitMQ request/reply,
+  // see IdentityVerificationGateController). Delegates to
+  // getStatusForInternalCaller so gate_open/in_grace keep exactly one
+  // definition. An account with no profile has verified nothing: the gate is
+  // closed and both requirements are outstanding - it must never fall through
+  // to "open" the way a missing row could if this simply propagated the
+  // ProfileNotFoundException as an error.
+  async getAccountGateDecision(userId: string): Promise<AccountGateDecision> {
+    try {
+      const status = await this.getStatusForInternalCaller(userId);
+      // The raw statuses and inGrace stay in this service: they only feed the
+      // two fields that are sent.
+      return {
+        gateOpen: status.gateOpen,
+        missingRequirements: deriveMissingRequirements(
+          status.identityVerificationStatus,
+          status.locationVerificationStatus,
+          status.gateOpen,
+        ),
+      };
+    } catch (err) {
+      if (err instanceof ProfileNotFoundException) {
+        return { gateOpen: false, missingRequirements: 'both' };
+      }
+      throw err;
+    }
+  }
+
+  // Batch form of getAccountGateDecision (G5): one query for every requested
+  // account, with gate_open computed by the same computeGateState. An account
+  // with no profile has verified nothing and is reported closed, exactly as in
+  // the single check, so a missing row can never read as "open". Every
+  // requested id gets exactly one entry.
+  async getAccountGateDecisions(userIds: string[]): Promise<AccountGateBatchEntry[]> {
+    const unique = Array.from(new Set(userIds));
+    // user_id is a uuid column: a non-uuid id cannot match a profile, and must
+    // not make the whole query throw and take the other accounts down with it.
+    const queryable = unique.filter((id) => isUUID(id));
+    const profiles = queryable.length
+      ? await this.profileRepository.find({ where: { userId: In(queryable) } })
+      : [];
+    const byUser = new Map(profiles.map((p) => [p.userId, p]));
+    const nowMs = Date.now();
+
+    const decisions: AccountGateBatchEntry[] = [];
+    for (const userId of unique) {
+      const found = byUser.get(userId);
+      if (!found) {
+        decisions.push({ userId, gateOpen: false, missingRequirements: 'both' });
+        continue;
+      }
+      const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
+      const { gateOpen } = computeGateState(profile, nowMs);
+      decisions.push({
+        userId,
+        gateOpen,
+        missingRequirements: deriveMissingRequirements(
+          profile.identityVerificationStatus,
+          profile.locationVerificationStatus,
+          gateOpen,
+        ),
+      });
+    }
+    return decisions;
   }
 
   async handleDiditWebhook(

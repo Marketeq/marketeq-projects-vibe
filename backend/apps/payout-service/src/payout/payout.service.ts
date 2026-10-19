@@ -1,5 +1,6 @@
 // apps/payout-service/src/payout/payout.service.ts
 // PS-02 + PS-14 + PS-19: Payout service with rate limiting, dedup, execution re-checks
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -58,6 +59,7 @@ export class PayoutService {
     private readonly feeService: PayoutFeeService,
     private readonly pauseStatusService: PauseStatusService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
+    private readonly executionGate: PayoutExecutionGate,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
   }
@@ -614,6 +616,11 @@ export class PayoutService {
     if (request.status !== PayoutStatus.PENDING_VERIFICATION) {
       return { payoutRequestId: request.id, status: request.status };
     }
+
+    // G9: verification gate for the contractor stored on the payout, before
+    // the balance is held and before the token is consumed (it stays usable
+    // once the account is verified). Same check as the email-link path.
+    await this.executionGate.assertOpen(request.contractorId);
 
     // Instant hold: debit available_balance the moment the withdrawal is
     // confirmed, rather than waiting for the provider's completion webhook

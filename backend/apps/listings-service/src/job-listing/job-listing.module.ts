@@ -41,6 +41,8 @@ import { JobListingOwnerGuard } from './guards/job-listing-owner.guard';
 import { AlgoliaService } from '../algolia/algolia.service';
 import { UserProfileModule } from '../shared/user-profile/user-profile.module';
 
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
+
 @Module({
   imports: [
     // Required for @Cron() decorators used in JobListingDraftService.
@@ -67,6 +69,9 @@ import { UserProfileModule } from '../shared/user-profile/user-profile.module';
     // UserProfileClient.hydrateTeam() — resolves assignedUserId on role rows
     // into real name/avatar/skills for the frontend, same as publish/services.
     UserProfileModule,
+
+    // G5: RosterGateService (last known gate state) for the non-owner roster rule.
+    IdentityGateModule,
 
     // RabbitMQ client used by JobListingEventsPublisher to emit events.
     // Registered here (not in AppModule) so the RABBITMQ_CLIENT token

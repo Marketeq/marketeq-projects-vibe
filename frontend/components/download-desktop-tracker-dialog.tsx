@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Download, HelpCircle, X } from "@blend-metrics/icons"
 import {
   Button,
@@ -17,11 +18,14 @@ import {
   SelectValue,
   useToast,
 } from "@/components/ui"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
 import { getDesktopDownloadBaseUrl } from "@/lib/runtime-urls"
 import {
   getDesktopLaunchStatus,
   getHasDesktopDevice,
 } from "@/service/http/desktop-launch"
+import { checkTimeTrackerDownload } from "@/service/http/time-tracker-download"
+import { downloadBlockFor } from "@/src/lib/api/time-tracker-download"
 import { cn } from "@/utils/functions"
 
 // Shared by /time-tracking and /earnings so both Log Time buttons behave the
@@ -195,6 +199,10 @@ export function DownloadDesktopTrackerDialog({
   const { toast } = useToast()
   const [platform, setPlatform] = useState<DesktopPlatform>("mac-arm64")
   const [downloadStarted, setDownloadStarted] = useState(false)
+  const [verificationBlock, setVerificationBlock] = useState<
+    "verification_required" | "verification_unavailable" | null
+  >(null)
+  const router = useRouter()
 
   const selected = platformOptions[platform]
   const isMac = selected.os === "mac"
@@ -214,10 +222,30 @@ export function DownloadDesktopTrackerDialog({
     if (open) {
       setPlatform(detectPlatform())
       setDownloadStarted(false)
+      setVerificationBlock(null)
     }
   }, [open])
 
-  const triggerDownload = () => {
+  // G8: the backend's identity gate is asked before every download, from the
+  // Download button and from the "click here" retry alike. Only an allowed
+  // answer continues to the release URL; a block opens the existing
+  // AccountVerificationGate popup instead and nothing is downloaded.
+  const triggerDownload = async () => {
+    try {
+      await checkTimeTrackerDownload()
+    } catch (err) {
+      const block = downloadBlockFor(err)
+      if (block) {
+        setVerificationBlock(block)
+        return
+      }
+      toast({
+        title: "Download failed",
+        description: "Please try again.",
+        variant: "destructive",
+      })
+      return
+    }
     const a = document.createElement("a")
     a.href = selected.downloadUrl
     a.download = selected.fileName
@@ -236,7 +264,24 @@ export function DownloadDesktopTrackerDialog({
 
   const otherOsPlatform: DesktopPlatform = isMac ? "win-x64" : "mac-arm64"
 
+  // "Verify My Account" in the existing popup continues on the talent dashboard,
+  // where the existing verification banner starts verification.
+  const goVerify = () => {
+    setVerificationBlock(null)
+    onOpenChange(false)
+    router.push("/talent-dashboard")
+  }
+
   return (
+    <>
+    <AccountVerificationGate
+      open={open && verificationBlock !== null}
+      reason={verificationBlock === "verification_unavailable" ? "status_unavailable" : "unstarted"}
+      connectionCheckState="idle"
+      onVerify={goVerify}
+      onRetryConnectionCheck={goVerify}
+      onDismissConnectionError={() => setVerificationBlock(null)}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px] p-0 overflow-hidden">
         {/* Header */}
@@ -388,5 +433,6 @@ export function DownloadDesktopTrackerDialog({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

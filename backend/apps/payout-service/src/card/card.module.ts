@@ -10,11 +10,14 @@ import { PayoutRequest }              from '../entities/payout-request.entity';
 import { CommonModule }               from '../common/common.module';
 import { PublishersModule }           from '../publishers/publishers.module';
 
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([DepositMethod, PayoutRequest]),
     CommonModule,    // KycClient
     PublishersModule, // PayoutPublisher
+    IdentityGateModule, // G9 PayoutExecutionGate
   ],
   controllers: [CardController],
   providers: [CardIssuanceService, CardPayoutExecutorService],

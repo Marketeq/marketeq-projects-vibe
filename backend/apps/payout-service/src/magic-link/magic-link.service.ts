@@ -4,6 +4,7 @@
 // resend with rate limit, RabbitMQ event for notification-service delivery.
 // CRITICAL: Raw token is NEVER stored, logged, or persisted anywhere.
 
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -46,6 +47,7 @@ export class MagicLinkService {
     private readonly publisher: PayoutPublisher,
     private readonly brevoMail: BrevoMailService,
     private readonly earningsClient: EarningsClient,
+    private readonly executionGate: PayoutExecutionGate,
   ) {
     this.redis = new Redis(this.config.get<string>('REDIS_URL', 'redis://localhost:6379'));
     this.baseUrl = this.config.get('MAGIC_LINK_BASE_URL', 'http://localhost:3000/verify-withdrawal');
@@ -240,6 +242,30 @@ export class MagicLinkService {
         'Invalid verification link.',
         HttpStatus.UNPROCESSABLE_ENTITY, 'ERR_MAGIC_LINK_INVALID',
       );
+    }
+
+    // G9: the verification gate, for the contractor stored on the payout record
+    // (never anything from the request), BEFORE the token is consumed and BEFORE
+    // the balance is held. A closed or unanswered gate stops here: the link is
+    // still valid (it can be used once the account is verified), no balance was
+    // touched, and the response is the existing verification-required error.
+    const pending = await this.payoutRepo.findOne({ where: { id: payoutRequestId } });
+    if (pending && pending.status === PayoutStatus.PENDING_VERIFICATION) {
+      try {
+        await this.executionGate.assertOpen(pending.contractorId);
+      } catch (err) {
+        await this.auditService.log({
+          contractorId: pending.contractorId,
+          payoutRequestId,
+          actorType: 'service',
+          actorId: 'payout-service',
+          action: 'payout.verification_blocked',
+          previousStatus: pending.status,
+          newStatus: pending.status,
+          metadata: { stage: 'email_confirmation' },
+        });
+        throw err;
+      }
     }
 
     // 5. Consume token atomically — delete from Redis first

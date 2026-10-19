@@ -18,6 +18,15 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  idsToDrop,
+  isGateUnavailable,
+  notAdded,
+  readDraftMemberResults,
+  readSaveMembersResponse,
+  TEAM_SAVE_UNAVAILABLE_MESSAGE,
+  type MemberAddResult,
+} from "@/lib/member-add-results"
 import { TeamsAPI } from "@/service/http/teams"
 import {
   PROJECT_TYPE_OPTIONS,
@@ -2616,10 +2625,13 @@ function ProjectDetailsInner() {
     const persistRemoval = async () => {
       try {
         if (projectId) {
-          await ProjectAPI.UpdateProjectDraft(projectId, {
+          const draftRes = await ProjectAPI.UpdateProjectDraft(projectId, {
             teamMemberIds: nextIds,
           } as any)
-          await ProjectAPI.SaveProjectMembers(projectId, memberPayload)
+          const saveRes = await ProjectAPI.SaveProjectMembers(projectId, memberPayload)
+          // Removing someone adds nobody, but anything the server did not accept is still reported.
+          reportMemberResults(readDraftMemberResults(draftRes))
+          reportMemberResults(readSaveMembersResponse(saveRes).results)
         }
         toast({
           title: `${target.firstName} has been removed`,
@@ -2639,6 +2651,38 @@ function ProjectDetailsInner() {
       }
     }
     await persistRemoval()
+  }
+
+  // G7: the roster is saved through endpoints that gate every NEW person on
+  // verification and answer with one result per entry. Someone who is not added never
+  // fails the save, so each result is read, the owner is told who was left out (neutral
+  // wording, never why), and the person is taken back out of the roster on screen.
+  const memberLabel = (userId: string | null, index: number) => {
+    const m =
+      (Array.isArray((project as any)?.team) ? (project as any).team : []).find(
+        (x: any) => String(x.id || x.userId || "") === String(userId)
+      ) ?? null
+    return (
+      m?.firstName || m?.name || m?.username || (userId ? "this person" : `entry ${index + 1}`)
+    )
+  }
+  /** Tells the owner who was not added; returns how many were. */
+  const reportMemberResults = (
+    results: MemberAddResult[],
+    announceAlreadyMember: Set<string> = new Set()
+  ): number => {
+    const problems = notAdded(results, memberLabel, announceAlreadyMember)
+    const drop = idsToDrop(problems)
+    if (drop.size > 0) {
+      setProject((prev: any) => ({
+        ...prev,
+        teamMemberIds: (Array.isArray(prev?.teamMemberIds) ? prev.teamMemberIds : []).filter(
+          (id: any) => !drop.has(String(id))
+        ),
+      }))
+    }
+    for (const p of problems) toast({ title: p.message, variant: "destructive" })
+    return problems.length
   }
 
   const addableMembers = React.useMemo(() => {
@@ -2672,13 +2716,21 @@ function ProjectDetailsInner() {
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
     const projectId = (project as any)?.id
     const persistAdd = async () => {
+      let added = true
       try {
         if (projectId) {
-          await ProjectAPI.UpdateProjectDraft(projectId, {
+          const res = await ProjectAPI.UpdateProjectDraft(projectId, {
             teamMemberIds: nextIds,
           } as any)
+          // The person was added only if the server says so: a verification block, an
+          // invalid or a duplicate entry is reported instead of "added".
+          const results = readDraftMemberResults(res)
+          const mine = results.find((r) => r.userId === String(userId))
+          const reported = reportMemberResults(results, new Set([String(userId)]))
+          added = mine ? mine.added : reported === 0
+          if (mine && mine.status === "already_member") added = false
         }
-        toast({ title: "Team member added to project", variant: "success" })
+        if (added) toast({ title: "Team member added to project", variant: "success" })
       } catch (err) {
         // PMCM-261/E2: used to show the success toast unconditionally even
         // when persistence failed. Retry via this closure (not
@@ -2687,9 +2739,14 @@ function ProjectDetailsInner() {
         // return early without ever retrying) on 401.
         if (isUnauthorizedError(err)) {
           promptSignInToRetry(persistAdd)
-        } else {
-          toast({ title: toUserMessage(err), variant: "destructive" })
+          return
         }
+        // Nothing was added: put the roster back and say so; never claim the add.
+        setProject((prev: any) => ({ ...prev, teamMemberIds: ids }))
+        toast({
+          title: isGateUnavailable(err) ? TEAM_SAVE_UNAVAILABLE_MESSAGE : toUserMessage(err),
+          variant: "destructive",
+        })
       }
     }
     await persistAdd()
@@ -2714,9 +2771,13 @@ function ProjectDetailsInner() {
       }
     })
     try {
-      if ((project as any)?.id)
-        await ProjectAPI.SaveProjectMembers((project as any).id, members)
-      toast({ title: "Team settings saved", variant: "success" })
+      let notAddedCount = 0
+      if ((project as any)?.id) {
+        const res = await ProjectAPI.SaveProjectMembers((project as any).id, members)
+        // Successfully added members stay added; everyone else is reported by name.
+        notAddedCount = reportMemberResults(readSaveMembersResponse(res).results)
+      }
+      if (notAddedCount === 0) toast({ title: "Team settings saved", variant: "success" })
       setTeamDialogOpen(false)
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -2727,7 +2788,10 @@ function ProjectDetailsInner() {
         promptSignInToRetry(() => saveTeamSettings())
         return
       }
-      toast({ title: toUserMessage(err), variant: "destructive" })
+      toast({
+        title: isGateUnavailable(err) ? TEAM_SAVE_UNAVAILABLE_MESSAGE : toUserMessage(err),
+        variant: "destructive",
+      })
       setTeamDialogOpen(false)
     }
   }
@@ -4060,7 +4124,7 @@ function ProjectDetailsInner() {
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { credentials: "include" })
           if (r.ok) {
             res = r
             slug = candidate
@@ -4068,10 +4132,10 @@ function ProjectDetailsInner() {
           }
         }
         if (!res) {
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { credentials: "include" })
         }
         if (!res.ok) {
-          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, { credentials: "include" })
           if (!svcRes.ok) {
             // Not found anywhere — fall through to step 4 (auto-create draft)
             throw new Error("not-found")

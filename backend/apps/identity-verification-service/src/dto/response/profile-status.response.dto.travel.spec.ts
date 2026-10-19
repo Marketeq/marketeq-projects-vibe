@@ -25,6 +25,8 @@ describe('ProfileStatusResponseDto — Travel Mode fields', () => {
   const NEW_TRAVEL_KEYS = ['travelModeEndsAt', 'travelModeExpired', 'travelReminderDue', 'travelReminderAvailableAt'];
   // Appended after the Travel Mode fields: the returning-user new-location signal (always present, false unless /me computes it).
   const NEW_LOCATION_KEYS = ['locationMismatch'];
+  // Appended last (G3): gate_open for the screens that gate an action; true inside the 30-day grace window too.
+  const NEW_GATE_KEYS = ['gateOpen'];
 
   const profile = (over: Record<string, unknown> = {}) =>
     ({
@@ -57,7 +59,7 @@ describe('ProfileStatusResponseDto — Travel Mode fields', () => {
   describe('append-only: every existing field is unchanged', () => {
     it('the response is exactly the old keys plus the four new ones and the location signal', () => {
       const keys = Object.keys(dto({}, at(1).getTime())).sort();
-      expect(keys).toEqual([...EXISTING_KEYS, ...NEW_TRAVEL_KEYS, ...NEW_LOCATION_KEYS].sort());
+      expect(keys).toEqual([...EXISTING_KEYS, ...NEW_TRAVEL_KEYS, ...NEW_LOCATION_KEYS, ...NEW_GATE_KEYS].sort());
     });
 
     it('with a summary the seven summary fields are still added, and nothing else', () => {
@@ -75,7 +77,7 @@ describe('ProfileStatusResponseDto — Travel Mode fields', () => {
       });
       const keys = Object.keys(ProfileStatusResponseDto.fromEntity(profile(), summary, at(1).getTime())).sort();
       expect(keys).toEqual(
-        [...EXISTING_KEYS, ...NEW_TRAVEL_KEYS, ...NEW_LOCATION_KEYS, 'nextAction', 'attemptsUsed', 'attemptsRemaining', 'maxAttempts', 'canRetry', 'retryAvailableAt', 'hasActiveSession'].sort(),
+        [...EXISTING_KEYS, ...NEW_TRAVEL_KEYS, ...NEW_LOCATION_KEYS, ...NEW_GATE_KEYS, 'nextAction', 'attemptsUsed', 'attemptsRemaining', 'maxAttempts', 'canRetry', 'retryAvailableAt', 'hasActiveSession'].sort(),
       );
     });
 

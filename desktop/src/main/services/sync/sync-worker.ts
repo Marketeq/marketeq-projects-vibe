@@ -20,7 +20,7 @@ import axios from 'axios';
 import type { Logger } from 'pino';
 import type { ApiClient } from './api-client';
 import type { NetworkMonitor } from './network-monitor';
-import type { Outbox, OutboxRow } from './outbox';
+import { VERIFICATION_GATED_KINDS, type Outbox, type OutboxRow } from './outbox';
 
 export interface SyncProgress {
   total: number;
@@ -66,6 +66,34 @@ export interface SyncWorkerDeps {
 }
 
 export type SyncWorker = ReturnType<typeof createSyncWorker>;
+
+/** Error code time-tracking-service answers with when the gate cannot be evaluated. */
+export const GATE_UNAVAILABLE_CODE = 'IDENTITY_VERIFICATION_UNAVAILABLE';
+
+/** Error code time-tracking-service answers with when the talent is not verified. */
+export const VERIFICATION_REQUIRED_CODE = 'VERIFICATION_REQUIRED';
+
+/** True when a 503 body carries the gate-unavailable code, however the gateway wraps it. */
+export function isGateUnavailable(data: unknown): boolean {
+  return carriesCode(data, GATE_UNAVAILABLE_CODE);
+}
+
+/** True when a 403 body carries the verification-required code, however the gateway wraps it. */
+export function isVerificationRequired(data: unknown): boolean {
+  return carriesCode(data, VERIFICATION_REQUIRED_CODE);
+}
+
+function carriesCode(data: unknown, code: string): boolean {
+  const seen = new Set<unknown>();
+  const visit = (v: unknown, depth: number): boolean => {
+    if (v === code) return true;
+    if (!v || typeof v !== 'object' || depth > 3 || seen.has(v)) return false;
+    seen.add(v);
+    const o = v as Record<string, unknown>;
+    return visit(o.error, depth + 1) || visit(o.code, depth + 1) || visit(o.message, depth + 1);
+  };
+  return visit(data, 0);
+}
 
 export function createSyncWorker(deps: SyncWorkerDeps) {
   const log = deps.logger?.child({ svc: 'sync-worker' });
@@ -152,18 +180,41 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     const s = resp.status;
     const retryable = s === 408 || s === 429 || (s >= 500 && s <= 599);
     const msg = `HTTP ${s}`;
+    // The server could not confirm the talent's verification status
+    // (identity-verification-service restarting, slow or unreachable) and
+    // refused the write WITHOUT saving anything. Like an offline device, that
+    // is an outage rather than a verdict on this row, so it waits and tries
+    // again forever instead of spending one of its attempts. Otherwise a
+    // restart lasting about a minute would dead-letter every queued session,
+    // entry, break and idle. A closed gate (403 VERIFICATION_REQUIRED) is a
+    // real answer and is NOT handled here.
+    if (s === 503 && isGateUnavailable(resp.data)) {
+      deps.outbox.markFailed(row.id, `${msg} ${GATE_UNAVAILABLE_CODE}`, { retryable: true, transient: true });
+      throw new DispatchError(row.id, msg, true);
+    }
+    // The talent is not verified (403 VERIFICATION_REQUIRED). That is a state
+    // that ends when they verify again, not a verdict on this row: the work is
+    // kept as queued (same payload, same idempotency key), spends no attempt
+    // and is never dead-lettered, and retries slowly with jitter until the
+    // gate opens. Every other 403 is NOT handled here and keeps dead-lettering.
+    if (s === 403 && isVerificationRequired(resp.data)) {
+      deps.outbox.holdForVerification(row.id, `${msg} ${VERIFICATION_REQUIRED_CODE}`);
+      throw new DispatchError(row.id, msg, true, true);
+    }
     deps.outbox.markFailed(row.id, msg, { retryable });
     throw new DispatchError(row.id, msg, retryable);
   }
 
-  async function dispatchWithCatch(row: OutboxRow): Promise<'ok' | 'retry' | 'dead'> {
+  async function dispatchWithCatch(row: OutboxRow): Promise<'ok' | 'retry' | 'dead' | 'held'> {
     try {
       await dispatch(row);
+      if (VERIFICATION_GATED_KINDS.has(row.kind)) deps.outbox.clearVerificationHold();
       return 'ok';
     } catch (err) {
       if (err instanceof DispatchError) {
         bus.emit('sync:error', { id: row.id, message: err.message });
         lastError = err.message;
+        if (err.held) return 'held';
         return err.retryable ? 'retry' : 'dead';
       }
       // Network / timeout / unknown — always retryable. A request that never
@@ -207,11 +258,19 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
         }
         const batch = deps.outbox.claimNext(batchSize);
         if (batch.length === 0) break;
+        let gateHeld = false;
         for (const row of batch) {
+          // The gate just answered "not verified": the rest of the gated work
+          // in this batch waits with it, with no request. Un-gated kinds go on.
+          if (gateHeld && VERIFICATION_GATED_KINDS.has(row.kind)) {
+            deps.outbox.releaseToVerificationHold(row.id);
+            continue;
+          }
           const result = await dispatchWithCatch(row);
           processed++;
+          if (result === 'held') gateHeld = true;
           if (result === 'ok') succeeded++;
-          else if (result === 'retry') failed++;
+          else if (result === 'retry' || result === 'held') failed++;
           else if (result === 'dead') deadLettered++;
           const stats = deps.outbox.stats();
           bus.emit('sync:progress', {
@@ -308,11 +367,14 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
 class DispatchError extends Error {
   readonly id: string;
   readonly retryable: boolean;
-  constructor(id: string, message: string, retryable: boolean) {
+  /** The gate said "not verified": the row was held, not failed. */
+  readonly held: boolean;
+  constructor(id: string, message: string, retryable: boolean, held = false) {
     super(message);
     this.name = 'DispatchError';
     this.id = id;
     this.retryable = retryable;
+    this.held = held;
   }
 }
 

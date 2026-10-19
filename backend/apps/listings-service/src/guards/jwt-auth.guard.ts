@@ -11,7 +11,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 const normalizeKey = (value?: string) =>
 	value ? value.replace(/\\n/g, '\n') : value;
 
-const verifyAccessToken = (token: string) => {
+export const verifyAccessToken = (token: string) => {
 	const publicKey = normalizeKey(process.env.AUTH_JWT_PUBLIC_KEY);
 	if (publicKey) {
 		return jwt.verify(token, publicKey, {

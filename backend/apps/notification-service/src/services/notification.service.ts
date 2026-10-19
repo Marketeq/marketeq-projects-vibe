@@ -3,11 +3,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
+import { NotificationIdempotency } from '../entities/notification-idempotency.entity';
 import {
   CategoryPref,
   GlobalChannelPrefs,
@@ -62,6 +64,12 @@ export interface NotificationPayload {
   delivery?: { inApp?: boolean; email?: boolean; sms?: boolean };
   recipientEmail?: string;
   origin?: string;
+  /**
+   * Optional. A publisher that can emit the same notification more than once (retry,
+   * redelivery, concurrent workers) sets a key that is stable for that one notification;
+   * it is delivered once and every repeat is dropped.
+   */
+  idempotencyKey?: string;
 }
 
 /** PMCM-806: emitted by payout-service (WithdrawalNotifier) on
@@ -104,6 +112,35 @@ function normalizePositiveInt(
   return Math.min(Math.max(parsed, min), max);
 }
 
+/** How long one worker may hold a keyed notification before another may take it over. */
+export const CLAIM_LEASE_MS = 60_000;
+
+/**
+ * The key is being delivered by another worker right now. Not a failure of the notification:
+ * the delivery service retries it after its normal delay, by which time the other worker has
+ * finished (the repeat is then dropped) or died (its lease has expired and this delivery takes over).
+ */
+export class NotificationInProgressException extends ServiceUnavailableException {
+  constructor(key: string) {
+    super(`Notification ${key} is being delivered by another worker`);
+  }
+}
+
+/** A stable UUID for the in-app row of a key, so the same key can only ever be one stored row. */
+export function notificationIdForKey(key: string): string {
+  const h = createHash('sha256').update(`notification:${key}`).digest('hex');
+  const variant = ((parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, '0');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(18, 20)}-${h.slice(20, 32)}`;
+}
+
+/** What an earlier delivery of a keyed notification already did. */
+interface ChannelProgress {
+  key: string;
+  notificationId: string | null;
+  ablyDone: boolean;
+  emailDone: boolean;
+}
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -111,6 +148,7 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
+    @InjectRepository(NotificationIdempotency) private readonly idempotencyRepo: Repository<NotificationIdempotency>,
     private readonly ablyService: AblyNotificationsService,
     private readonly brevoService: BrevoService,
   ) {}
@@ -120,6 +158,69 @@ export class NotificationService {
    * mean there is nothing to store.
    */
   async dispatch(payload: NotificationPayload): Promise<Notification | null> {
+    const key = payload.idempotencyKey?.trim();
+    // No key: exactly the original single-shot behaviour. Nothing is claimed or recorded, and the
+    // caller does not retry it (a retry could repeat a channel that already went out).
+    if (!key) return this.deliver(payload, null);
+
+    const progress = await this.acquire(key);
+    if (!progress) {
+      this.logger.log(`Duplicate notification dropped (idempotency key ${key}, event ${payload.event}).`);
+      return null;
+    }
+    try {
+      const stored = await this.deliver(payload, progress);
+      await this.idempotencyRepo.update({ key }, { completedAt: new Date(), lockedUntil: null });
+      return stored;
+    } catch (err) {
+      // Keep what was delivered (the progress columns) and hand the key back at once, so the
+      // retry resumes at the unfinished channel instead of being mistaken for a repeat of a
+      // delivered notification - or repeating one that already went out.
+      await this.idempotencyRepo.update({ key }, { lockedUntil: new Date() }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /**
+   * Takes the key, or reports that it is finished / held by someone else.
+   *   - new key: this worker owns it (INSERT conflicts for everyone else);
+   *   - completed: returns null - a duplicate, drop it;
+   *   - held by a live lease: throws NotificationInProgressException;
+   *   - free or lease expired (the holder failed or died): this worker takes it over atomically
+   *     and resumes from the recorded progress.
+   */
+  private async acquire(key: string): Promise<ChannelProgress | null> {
+    for (let pass = 0; pass < 2; pass++) {
+      const now = new Date();
+      const lease = new Date(now.getTime() + CLAIM_LEASE_MS);
+      const claimed = await this.idempotencyRepo
+        .createQueryBuilder()
+        .insert()
+        .values({ key, lockedUntil: lease })
+        .orIgnore()
+        .returning('key')
+        .execute();
+      if (claimed.raw?.length) return { key, notificationId: null, ablyDone: false, emailDone: false };
+
+      const row = await this.idempotencyRepo.findOne({ where: { key } });
+      if (!row) continue; // removed between the two statements: claim it afresh
+      if (row.completedAt) return null;
+      if (row.lockedUntil && row.lockedUntil.getTime() > now.getTime()) throw new NotificationInProgressException(key);
+
+      // Free or expired: one UPDATE wins (the database serialises them and re-checks the lease).
+      const base = { key, completedAt: IsNull() };
+      for (const free of [IsNull(), LessThanOrEqual(now)]) {
+        const taken = await this.idempotencyRepo.update({ ...base, lockedUntil: free }, { lockedUntil: lease });
+        if (taken.affected) {
+          return { key, notificationId: row.notificationId, ablyDone: row.ablyDone, emailDone: row.emailDone };
+        }
+      }
+      throw new NotificationInProgressException(key);
+    }
+    throw new NotificationInProgressException(key);
+  }
+
+  private async deliver(payload: NotificationPayload, progress: ChannelProgress | null): Promise<Notification | null> {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
     const resolved = this.resolvePreferences(prefs);
 
@@ -182,9 +283,17 @@ export class NotificationService {
       );
     }
 
-    const saved = inAppAllowed
-      ? await this.notifRepo.save(
+    // A keyed notification's row has a deterministic id, so the same key can only ever be one
+    // stored row; if an earlier attempt already stored it, it is read back, not stored again.
+    let saved: Notification | null = null;
+    if (inAppAllowed) {
+      if (progress?.notificationId) {
+        saved = await this.notifRepo.findOne({ where: { id: progress.notificationId } });
+      }
+      if (!saved) {
+        saved = await this.notifRepo.save(
           this.notifRepo.create({
+            ...(progress ? { id: notificationIdForKey(progress.key) } : {}),
             userId: payload.recipientId,
             title: payload.title,
             body: payload.body,
@@ -194,10 +303,19 @@ export class NotificationService {
             metadata: payload.metadata,
             origin: payload.origin || 'system',
           }),
-        )
-      : null;
+        );
+        if (progress) {
+          await this.idempotencyRepo.update({ key: progress.key }, { notificationId: saved.id });
+          progress.notificationId = saved.id;
+        }
+      }
+    }
 
-    if (saved) {
+    // Channels are independent. Each one that succeeds is recorded at once, and a keyed retry
+    // skips the ones already done; a channel that fails is thrown at the end so it is retried.
+    const failures: unknown[] = [];
+
+    if (saved && !(progress?.ablyDone)) {
       if (this.ablyService.isEnabled()) {
         try {
           await this.ablyService.sendInApp(payload.recipientId, {
@@ -211,12 +329,22 @@ export class NotificationService {
           });
           const unreadCount = await this.getUnreadCount(payload.recipientId);
           await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
+          if (progress) {
+            await this.idempotencyRepo.update({ key: progress.key }, { ablyDone: true });
+            progress.ablyDone = true;
+          }
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          this.logger.warn(
-            `Ably realtime delivery failed for user ${payload.recipientId}; ` +
-              `the notification is stored and will appear in the panel. Error: ${errMsg}`,
-          );
+          if (progress) {
+            // Keyed: the row is stored, and the realtime push is retried on its own.
+            this.logger.warn(`Ably realtime delivery failed for user ${payload.recipientId}; it will be retried. Error: ${errMsg}`);
+            failures.push(err);
+          } else {
+            this.logger.warn(
+              `Ably realtime delivery failed for user ${payload.recipientId}; ` +
+                `the notification is stored and will appear in the panel. Error: ${errMsg}`,
+            );
+          }
         }
       } else {
         this.logger.warn(
@@ -240,20 +368,38 @@ export class NotificationService {
       resolved.channels.email.address ?? payload.recipientEmail;
     const shouldSendEmail = emailAllowed && !!recipientAddress;
 
-    if (shouldSendEmail && recipientAddress) {
+    if (shouldSendEmail && recipientAddress && !(progress?.emailDone)) {
       this.logger.log(
         `Dispatching email: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
       );
-      await this.sendEmailViaBrevo(
-        recipientAddress,
-        payload.title,
-        payload.body,
-        payload.link,
-      );
+      try {
+        await this.sendEmailViaBrevo(
+          recipientAddress,
+          payload.title,
+          payload.body,
+          payload.link,
+        );
+        if (progress) {
+          await this.idempotencyRepo.update({ key: progress.key }, { emailDone: true });
+          progress.emailDone = true;
+        }
+      } catch (err) {
+        // Keyed: retried on its own, without storing or pushing again. Unkeyed: as before.
+        if (!progress) throw err;
+        this.logger.warn(`Email for key ${progress.key} failed and will be retried: ${err instanceof Error ? err.message : String(err)}`);
+        failures.push(err);
+      }
+    } else if (progress?.emailDone) {
+      this.logger.log(`Email already sent for key ${progress.key}; not repeated.`);
     } else {
       this.logger.log(
         `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${recipientAddress ?? 'none'} event=${payload.event}`,
       );
+    }
+
+    if (failures.length) {
+      const first = failures[0];
+      throw first instanceof Error ? first : new ServiceUnavailableException(String(first));
     }
 
     return saved;

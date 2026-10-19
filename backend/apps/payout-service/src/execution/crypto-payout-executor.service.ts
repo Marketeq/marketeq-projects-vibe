@@ -18,11 +18,15 @@ import { CryptoPayoutProvider } from '../providers/crypto.provider';
 import { ConversionService } from '../crypto/conversion.service';
 import { AuditService } from '../audit/audit.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 import { PayoutError } from '../common/errors/payout.error';
 import { ChainalysisService } from './chainalysis.service';
 import { KycClient } from '../common/kyc.client';
 
 // PS-12 §9.1: OFAC blocked countries (same as PS-07)
+// G9: marker for a re-run stopped by the verification gate (not a failure).
+const GATE_HOLD_RERUN = 'VERIFICATION_REQUIRED_HOLD_ON_RERUN';
+
 const OFAC_BLOCKED_COUNTRIES = ['CU', 'IR', 'KP', 'SD', 'SY',
   'RU', 'BY', 'MM', 'VE', 'ZW', 'CF', 'CD', 'SO', 'LY', 'YE', 'NI'];
 
@@ -46,6 +50,7 @@ export class CryptoPayoutExecutorService {
     private readonly publisher: PayoutPublisher,
     private readonly chainalysis: ChainalysisService,
     private readonly kycClient: KycClient,
+    private readonly executionGate: PayoutExecutionGate,
   ) {}
 
   /**
@@ -74,6 +79,10 @@ export class CryptoPayoutExecutorService {
       await this.failPayout(payout, 'Deposit method is not a crypto wallet.', 'ERR_CRYPTO_TOKEN_NOT_SUPPORTED');
       return;
     }
+
+    // G9: verification gate before any status change or provider contact.
+    if (!(await this.executionGate.guardBeforeProvider(payout, 'crypto.start'))) return;
+    const rerun = payout.status === PayoutStatus.PROCESSING;
 
     // Mark as PROCESSING
     await this.payoutRepo.update(payoutRequestId, {
@@ -125,13 +134,21 @@ export class CryptoPayoutExecutorService {
 
       // ── Step 5: Execute via bridge/provider (PS-12 §2 step 4) ──
       const result = await this.retryService.executeWithRetry(
-        () => this.cryptoProvider.initiateWithdrawal(
+        async () => {
+          // G9: evaluated again on EVERY attempt (including the delayed retries),
+          // immediately before the provider is asked to send. A transient
+          // 'unavailable' is retried like any other 503; 'closed' is not.
+          if (!(await this.executionGate.allowProviderCall(payout, 'crypto.provider', rerun))) {
+            throw new PayoutError('Verification gate closed on re-run.', HttpStatus.FORBIDDEN, GATE_HOLD_RERUN);
+          }
+          return this.cryptoProvider.initiateWithdrawal(
           method.cryptoProvider!,
           method.cryptoAddress!,  // encrypted — provider stubs don't decrypt in dev
           method.cryptoNetwork!,
           method.cryptoCurrency!,
           parseFloat(payout.netAmountUsd),
-        ),
+          );
+        },
         { payoutRequestId, operation: 'bridge_execution' },
       );
 
@@ -172,6 +189,7 @@ export class CryptoPayoutExecutorService {
       this.logger.log(`Payout ${payoutRequestId} executed: txId=${result.providerTxId}, bridge=${bridge}, crypto=${cryptoAmount.toFixed(8)} ${method.cryptoCurrency}`);
 
     } catch (err: any) {
+      if (err?.errorCode === GATE_HOLD_RERUN) return; // re-run blocked by the gate: nothing changed, already audited
       this.logger.error(`Payout ${payoutRequestId} failed: ${err.message}`);
       await this.failPayout(payout, err.message, err.errorCode ?? 'ERR_BRIDGE_UNAVAILABLE');
     }

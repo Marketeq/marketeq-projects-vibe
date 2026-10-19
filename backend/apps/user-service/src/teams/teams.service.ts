@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { TeamMember } from './teams.entity';
 import { AddTeamMemberDto } from './dto/add-team-member.dto';
 import { User } from '../user/entities/user.entity';
+import { MemberAddGate } from '../identity-gate/member-add-gate';
 
 @Injectable()
 export class TeamsService {
@@ -12,6 +13,7 @@ export class TeamsService {
     private readonly teamMemberRepository: Repository<TeamMember>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   /**
@@ -38,6 +40,12 @@ export class TeamsService {
     if (existing) {
       return existing;
     }
+
+    // G7: a NEW membership needs the person being added (dto.userId - never the
+    // caller) to have an open verification gate, exactly like accepting an
+    // invitation. Checked before any row is created; an existing membership is
+    // returned above untouched, so nothing is created here either way.
+    await this.memberGate.assertMayJoin(dto.userId);
 
     const member = this.teamMemberRepository.create({
       teamId,

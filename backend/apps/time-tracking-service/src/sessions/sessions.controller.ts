@@ -3,6 +3,7 @@ import { SessionsService } from './sessions.service';
 import { CreateSessionDto } from './dto/create-session.dto';
 import { CloseSessionDto } from './dto/close-session.dto';
 import { BearerGuard } from '../common/guards/bearer.guard';
+import { TimeTrackerGate } from '../identity-gate/time-tracker-gate.guard';
 
 @Controller('sessions')
 @UseGuards(BearerGuard)
@@ -11,6 +12,7 @@ export class SessionsController {
 
   /** Desktop app: open a new session (idempotent) */
   @Post()
+  @TimeTrackerGate()
   async create(@Req() req: any, @Body() dto: CreateSessionDto) {
     const userId = req?.user?.sub ?? req?.headers?.['x-user-id'];
     if (!userId) throw new UnauthorizedException('Missing user identity');
@@ -19,6 +21,7 @@ export class SessionsController {
 
   /** Desktop app: close an existing session */
   @Post(':id/close')
+  @TimeTrackerGate({ session: 'id' })
   async close(@Param('id') id: string, @Req() req: any, @Body() dto: CloseSessionDto) {
     const userId = req?.user?.sub ?? req?.headers?.['x-user-id'];
     if (!userId) throw new UnauthorizedException('Missing user identity');

@@ -4,6 +4,7 @@ import { Not, In, Repository } from 'typeorm';
 import { RecentlyViewed } from './recently-viewed.entity';
 import { Project } from '../projects/entities/project.entity';
 import { ListingStatus } from '../shared/enums/listing.enum';
+import { RosterGateService } from '../identity-gate/roster-gate.service';
 
 @Injectable()
 export class RecentlyViewedService {
@@ -12,6 +13,7 @@ export class RecentlyViewedService {
     private readonly repo: Repository<RecentlyViewed>,
     @InjectRepository(Project)
     private readonly projectRepo: Repository<Project>,
+    private readonly rosterGate: RosterGateService,
   ) {}
 
   async trackView(userId: string, projectId: string): Promise<void> {
@@ -19,6 +21,14 @@ export class RecentlyViewedService {
       { userId, projectId, viewedAt: new Date() },
       { conflictPaths: ['userId', 'projectId'] },
     );
+  }
+
+  // G5: listings whose owner has no known open gate are withheld from these
+  // client-facing rails (no public owner exemption). Ownerless listings are not
+  // subject to it. Display only - nothing stored changes.
+  private async ownerShown<T extends Pick<Project, 'userId'>>(projects: T[]): Promise<T[]> {
+    const open = await this.rosterGate.visibleUserIds(projects.map((p) => (p.userId ? String(p.userId) : null)));
+    return projects.filter((p) => !p.userId || open.has(String(p.userId)));
   }
 
   async getRecentlyViewed(userId: string, limit = 9) {
@@ -37,7 +47,7 @@ export class RecentlyViewedService {
       .andWhere('p.status = :status', { status: ListingStatus.Published })
       .getMany();
 
-    const projectMap = new Map(projects.map((p) => [p.id, p]));
+    const projectMap = new Map((await this.ownerShown(projects)).map((p) => [p.id, p]));
 
     return views
       .map((v) => {
@@ -70,11 +80,16 @@ export class RecentlyViewedService {
 
     // If no history, return featured/popular projects
     if (viewedIds.length === 0) {
-      const popular = await this.projectRepo.find({
-        where: { status: ListingStatus.Published },
-        order: { featured: 'DESC', rating: 'DESC' },
-        take: limit,
-      });
+      // A wider window than `limit`, so withheld owners do not leave the rail short.
+      const popular = (
+        await this.ownerShown(
+          await this.projectRepo.find({
+            where: { status: ListingStatus.Published },
+            order: { featured: 'DESC', rating: 'DESC' },
+            take: Math.max(limit, 50),
+          }),
+        )
+      ).slice(0, limit);
       const avatars = await this.resolveTeamAvatars(popular);
       return popular.map((p) =>
         this.shapeRecommendation(p, avatars.get(String(p.id)) ?? []),
@@ -98,13 +113,15 @@ export class RecentlyViewedService {
     }
 
     // Score all published projects the user hasn't viewed
-    const candidates = await this.projectRepo.find({
-      where: {
-        status: ListingStatus.Published,
-        id: Not(In(viewedIds)),
-      },
-      take: 100,
-    });
+    const candidates = await this.ownerShown(
+      await this.projectRepo.find({
+        where: {
+          status: ListingStatus.Published,
+          id: Not(In(viewedIds)),
+        },
+        take: 100,
+      }),
+    );
 
     const scored = candidates.map((p) => {
       let score = 0;
@@ -161,6 +178,19 @@ export class RecentlyViewedService {
       memberIds.forEach((id) => allIds.add(id));
     }
     if (allIds.size === 0) return new Map();
+
+    // G5: members whose gate is closed are omitted (one batch request), before
+    // the 4-avatar cap so the cluster still shows up to 4 visible members.
+    const gateOpenIds = await this.rosterGate.visibleUserIds(allIds);
+    for (const [projectId, ids] of idsByProject) {
+      idsByProject.set(projectId, ids.filter((id) => gateOpenIds.has(id)));
+    }
+    allIds.forEach((id) => {
+      if (!gateOpenIds.has(id)) allIds.delete(id);
+    });
+    if (allIds.size === 0) {
+      return new Map(Array.from(idsByProject.keys()).map((projectId) => [projectId, [] as string[]]));
+    }
 
     const rows: Array<{ id: string; avatarUrl: string | null }> =
       await this.projectRepo.manager.query(

@@ -17,6 +17,11 @@ import { PayoutFeeService } from '../fees/payout-fee.service';
 import { isOfacBlockedCountry } from '../common/ofac-countries';
 import { OAuthService } from '../oauth/oauth.service';
 import { PayoutError } from '../common/errors/payout.error';
+import {
+  PayoutExecutionGate,
+  VERIFICATION_REQUIRED_AT_EXECUTION,
+  VERIFICATION_UNAVAILABLE_AT_EXECUTION,
+} from '../identity-gate/payout-execution-gate.service';
 
 @Injectable()
 export class BankPayoutExecutorService {
@@ -34,6 +39,7 @@ export class BankPayoutExecutorService {
     private readonly wisePlatformService: WisePlatformService,
     private readonly feeService: PayoutFeeService,
     private readonly oauthService: OAuthService,
+    private readonly executionGate: PayoutExecutionGate,
   ) {
     const key = this.config.get('STRIPE_SECRET_KEY', '');
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
@@ -66,6 +72,11 @@ export class BankPayoutExecutorService {
       this.logger.error(`Payout ${payoutRequestId} is not a bank-executed type`);
       return;
     }
+
+    // G9: verification gate, first thing - before any status change or provider
+    // contact (covers the Stripe and the Wise Platform paths). Every individual
+    // provider call below is checked again immediately before it is made.
+    if (!(await this.executionGate.guardBeforeProvider(payout, 'bank.start'))) return;
 
     if (method.verificationStatus !== VerificationStatus.VERIFIED) {
       await this.failPayout(payout, 'Bank account has not been verified.', 'ERR_BANK_NOT_VERIFIED');
@@ -213,6 +224,9 @@ export class BankPayoutExecutorService {
         // directly from platform balance" call for Connect.
         // PS-33 §6: transfer-{payoutRequestId} — a network-error retry of
         // this same payout job must not create a second Transfer.
+        // G9: re-check right before each irreversible Stripe call. A re-run
+        // (payout was already PROCESSING) that is now blocked stops quietly.
+        if (!(await this.executionGate.allowProviderCall(payout, 'bank.transfer', payout.status === PayoutStatus.PROCESSING))) return;
         const transfer = await this.stripe.transfers.create(
           {
             amount: amountCents,
@@ -234,6 +248,7 @@ export class BankPayoutExecutorService {
         // normal failPayout() rather than a silent fallback to standard.
         // PS-33 §6: payout-{payoutRequestId} — same dedup reasoning as the
         // transfer above, one step further down the pipeline.
+        if (!(await this.executionGate.allowProviderCall(payout, 'bank.payout', payout.status === PayoutStatus.PROCESSING))) return;
         const stripePayout = await this.stripe.payouts.create(
           {
             amount: amountCents,
@@ -290,9 +305,13 @@ export class BankPayoutExecutorService {
       // ("...creating Charges using the 4000000000000077 test card...")
       // that means nothing to a contractor. The real message is still
       // captured below in the audit log for support/engineering to see.
+      const gateBlocked =
+        err?.errorCode === VERIFICATION_REQUIRED_AT_EXECUTION || err?.errorCode === VERIFICATION_UNAVAILABLE_AT_EXECUTION;
       await this.failPayout(
         payout,
-        'This withdrawal could not be processed. Please try again or contact support if the issue persists.',
+        gateBlocked
+          ? err.message
+          : 'This withdrawal could not be processed. Please try again or contact support if the issue persists.',
         err.errorCode ?? 'ERR_BANK_PAYOUT_FAILED',
         err.message,
       );
@@ -372,6 +391,7 @@ export class BankPayoutExecutorService {
         return;
       }
 
+      if (!(await this.executionGate.allowProviderCall(payout, 'bank.wise_transfer', payout.status === PayoutStatus.PROCESSING))) return;
       const quote = await this.wisePlatformService.getQuote({
         sourceCurrency: 'USD',
         targetCurrency: method.bankCurrency ?? 'USD',

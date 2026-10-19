@@ -2417,6 +2417,7 @@ export default function ProjectDetails({
         for (const candidate of candidates) {
           const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, {
             cache: 'no-store',
+            credentials: 'include',
             signal: AbortSignal.timeout(30000),
           })
           if (r.ok) {
@@ -2430,6 +2431,7 @@ export default function ProjectDetails({
           // branches below can run against the last tried slug
           res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, {
             cache: 'no-store',
+            credentials: 'include',
             signal: AbortSignal.timeout(30000),
           })
         }
@@ -2441,7 +2443,7 @@ export default function ProjectDetails({
           for (const candidate of candidates) {
             const r = await fetch(
               `${apiBase}/v1/services/slug/${candidate}`,
-              { signal: AbortSignal.timeout(30000) }
+              { credentials: 'include', signal: AbortSignal.timeout(30000) }
             )
             if (r.ok) {
               svcRes = r
@@ -2450,6 +2452,7 @@ export default function ProjectDetails({
           }
           if (!svcRes) {
             svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, {
+              credentials: 'include',
               signal: AbortSignal.timeout(30000),
             })
           }

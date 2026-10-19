@@ -87,6 +87,24 @@ export const MAX_BACKOFF_MS = 5 * 60_000;
 // Retry delay (plus up to the same again as jitter) after a transient,
 // no-response failure. Attempts are not counted for these.
 export const TRANSIENT_RETRY_MS = 15_000;
+// G8: when the identity gate answers 403 VERIFICATION_REQUIRED the talent is
+// not verified, so queued time work waits for them to verify again. It retries
+// no sooner than this (plus up to the same again as jitter, so 5-10 minutes),
+// so an unverified account never produces continuous request traffic. Attempts
+// are not counted: the work is kept until the gate opens.
+export const VERIFICATION_RETRY_MS = 5 * 60_000;
+// The kinds time-tracking-service gates on verification (sessions, entries,
+// breaks, idles). Screenshots, activity, heartbeat and take-over are
+// un-gated server side, so a closed gate never holds them back.
+export const VERIFICATION_GATED_KINDS: ReadonlySet<OutboxKind> = new Set<OutboxKind>([
+  'session.start',
+  'session.close',
+  'time-entry.create',
+  'time-entry.patch',
+  'break.start',
+  'break.end',
+  'idle.create',
+]);
 
 // -----------------------------------------------------------------------------
 // Storage interface — the outbox can be backed by SQLite (prod) or an
@@ -343,6 +361,10 @@ export function createOutbox(deps: OutboxDeps) {
   const now = deps.now ?? Date.now;
   const rnd = deps.random ?? Math.random;
   const maxAttempts = deps.maxAttempts ?? MAX_ATTEMPTS;
+  // While the gate is known closed, gated work waits until this time. In
+  // memory only: after a restart the first gated row probes once and the hold
+  // is set again (persisted rows keep their own next_attempt_at meanwhile).
+  let verificationHoldUntil = 0;
 
   function newId(): string {
     const u = randomUUID().replace(/-/g, '');
@@ -378,6 +400,11 @@ export function createOutbox(deps: OutboxDeps) {
       createdAt: now(),
       completedAt: null,
     };
+    // New gated work queued while the gate is closed waits with the rest, so
+    // it neither probes the gate on its own nor overtakes older rows.
+    if (VERIFICATION_GATED_KINDS.has(input.kind) && verificationHoldUntil > now()) {
+      row.nextRetryAt = verificationHoldUntil;
+    }
     deps.store.insert(row);
     log?.debug({ id, kind: input.kind, path: input.path }, 'outbox: enqueued');
     return row;
@@ -486,6 +513,45 @@ export function createOutbox(deps: OutboxDeps) {
     return next;
   }
 
+  /**
+   * The gate answered 403 VERIFICATION_REQUIRED for this row. Keeps the row
+   * (payload and idempotency key untouched) as pending WITHOUT spending an
+   * attempt, and holds every waiting gated row until one shared retry time, so
+   * the queue produces a single probe per interval and keeps its order.
+   */
+  function holdForVerification(id: string, error: string): OutboxRow | null {
+    const row = deps.store.findById(id);
+    if (!row) return null;
+    const retryAt = now() + VERIFICATION_RETRY_MS + Math.floor(rnd() * VERIFICATION_RETRY_MS);
+    verificationHoldUntil = retryAt;
+    const next: OutboxRow = {
+      ...row,
+      status: 'pending',
+      lastError: error,
+      lastAttemptAt: now(),
+      nextRetryAt: retryAt,
+    };
+    deps.store.update(next);
+    for (const other of deps.store.findClaimable(now(), Number.MAX_SAFE_INTEGER)) {
+      if (!VERIFICATION_GATED_KINDS.has(other.kind)) continue;
+      deps.store.update({ ...other, nextRetryAt: retryAt });
+    }
+    log?.info({ id, kind: row.kind, retryAt }, 'outbox: verification required, holding gated work');
+    return next;
+  }
+
+  /** Puts a claimed-but-unsent gated row back under the current hold, without a request or an attempt. */
+  function releaseToVerificationHold(id: string): void {
+    const row = deps.store.findById(id);
+    if (!row || row.status !== 'inflight') return;
+    deps.store.update({ ...row, status: 'pending', nextRetryAt: verificationHoldUntil });
+  }
+
+  /** The gate answered for a gated row, so any hold on its kind is over. */
+  function clearVerificationHold(): void {
+    verificationHoldUntil = 0;
+  }
+
   /** Resets a dead-lettered row to pending (used by DiagnosticsScreen retry). */
   function requeueDeadLetter(id: string): OutboxRow | null {
     const row = deps.store.findById(id);
@@ -544,6 +610,9 @@ export function createOutbox(deps: OutboxDeps) {
     claimNext,
     markDone,
     markFailed,
+    holdForVerification,
+    releaseToVerificationHold,
+    clearVerificationHold,
     requeueDeadLetter,
     requeueNetworkDeadLetters,
     stats,

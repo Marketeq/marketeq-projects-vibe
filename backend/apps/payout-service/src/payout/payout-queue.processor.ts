@@ -15,6 +15,8 @@ import { CardPayoutExecutorService } from '../card/card-payout-executor.service'
 import { BankPayoutExecutorService } from '../bank/bank-payout-executor.service';
 import { PayoutPublisher } from '../publishers/payout.publisher';
 import { PayoutService } from './payout.service';
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
+import { IdentityVerificationUnavailableException } from '../identity-gate/identity-gate.exceptions';
 import { WithdrawalNotifier } from '../notifications/withdrawal-notifier.service';
 
 @Processor({ name: 'payout-processing' })
@@ -29,6 +31,7 @@ export class PayoutQueueProcessor {
     private readonly bankExecutor: BankPayoutExecutorService,
     private readonly publisher: PayoutPublisher,
     private readonly payoutService: PayoutService,
+    private readonly executionGate: PayoutExecutionGate,
     private readonly withdrawalNotifier: WithdrawalNotifier,
   ) {}
 
@@ -69,6 +72,23 @@ export class PayoutQueueProcessor {
     if (payout.status === PayoutStatus.COMPLETED || payout.status === PayoutStatus.FAILED) {
       this.logger.warn(`process-payout job for already-${payout.status} payout skipped: ${payoutRequestId}`);
       return;
+    }
+
+    // G9: the verification gate, re-evaluated for the contractor stored on the
+    // payout the moment it leaves the queue. Closed -> FAILED + reservation
+    // released, no executor runs. Unanswered -> the job is retried with the
+    // queue's own backoff (nothing changed); only when the last attempt is also
+    // unanswered is the payout failed and its reservation released.
+    try {
+      if (!(await this.executionGate.guardBeforeProvider(payout, 'dequeue'))) return;
+    } catch (err) {
+      if (!(err instanceof IdentityVerificationUnavailableException)) throw err;
+      const { opts, attemptsMade } = job as unknown as { opts?: { attempts?: number }; attemptsMade?: number };
+      if ((attemptsMade ?? 0) + 1 >= (opts?.attempts ?? 1)) {
+        await this.executionGate.failBeforeProvider(payout, 'unavailable', 'dequeue');
+        return;
+      }
+      throw err;
     }
 
     // PS-19 §3.3/§3.4: execution-time re-checks, run right before handing off

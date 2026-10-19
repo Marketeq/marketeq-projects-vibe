@@ -54,6 +54,18 @@ export class TalentProfileSyncConsumer {
     return this.syncService.reindexCategories(payload?.batchSize);
   }
 
+  /**
+   * Operator trigger for the G1 gate backfill/reconcile (also run on a
+   * schedule). Over RabbitMQ rather than HTTP, like the category backfill.
+   */
+  @MessagePattern('talent-profile.reindex_gate')
+  async onReindexGate(
+    @Payload() payload: { batchSize?: number },
+  ): Promise<{ processed: number; sent: number; unanswered: number; failedBatches: number }> {
+    this.logger.log('Received talent-profile.reindex_gate');
+    return this.syncService.reindexGate(payload?.batchSize);
+  }
+
   @EventPattern('talent-profile.deleted')
   async onTalentProfileDeleted(
     @Payload() event: TalentProfileDeletedEvent,

@@ -112,7 +112,8 @@ describe('queue processor re-check errors (PMCM-285 C)', () => {
     const processor = new PayoutQueueProcessor(
       { findOne: jest.fn().mockResolvedValue(queuedPayout()) } as any,
       {} as any, {} as any, bankExecutor as any, {} as any,
-      payoutService as any, notifier as any,
+      // G9: an open verification gate, so these specs exercise the PMCM-285 re-check path
+      payoutService as any, { guardBeforeProvider: jest.fn().mockResolvedValue(true), failBeforeProvider: jest.fn() } as any, notifier as any,
     );
     return { processor, payoutService, bankExecutor };
   }
