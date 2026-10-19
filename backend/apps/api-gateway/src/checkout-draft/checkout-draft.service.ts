@@ -87,6 +87,30 @@ export class CheckoutDraftGatewayService {
     return this.forward('get', `/session/${sessionId}`, clientId, `get checkout session ${sessionId}`);
   }
 
+  async getSessionPaymentMethods(
+    sessionId: string,
+    clientId: string,
+    balanceApplied?: string,
+  ) {
+    return this.forward('get', `/session/${sessionId}/payment-methods`, clientId, `get payment methods for checkout session ${sessionId}`, balanceApplied === undefined ? {} : { params: { balanceApplied } });
+  }
+
+  async applySessionCode(
+    sessionId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+  ) {
+    return this.forward('post', `/session/${sessionId}/apply-code`, clientId, `apply a code to checkout session ${sessionId}`, { body });
+  }
+
+  async removeSessionCode(
+    sessionId: string,
+    code: string,
+    clientId: string,
+  ) {
+    return this.forward('delete', `/session/${sessionId}/apply-code/${encodeURIComponent(code)}`, clientId, `remove a code from checkout session ${sessionId}`);
+  }
+
   async createDraftSession(
     draftId: string,
     body: Record<string, unknown>,

@@ -24,6 +24,7 @@ import { CheckoutDraftCodeService } from './checkout/checkout-draft-code.service
 import { CheckoutDraftPricingService } from './checkout/pricing/checkout-draft-pricing.service';
 import { CheckoutDraftValidationService } from './checkout/checkout-draft-validation.service';
 import { CheckoutDraftSessionService } from './checkout/checkout-draft-session.service';
+import { CheckoutPaymentMethodsService } from './checkout/checkout-payment-methods.service';
 import { PromoAdjustment } from './checkout/pricing/promo.adjustment';
 import { GiftCardAdjustment } from './checkout/pricing/gift-card.adjustment';
 import { DRAFT_PRICING_ADJUSTMENTS } from './checkout/pricing/pricing.types';
@@ -105,7 +106,7 @@ const requireRabbitmqUrl = (): string => {
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, CheckoutDraftService, CheckoutDraftCodeService, CheckoutDraftPricingService, CheckoutDraftValidationService, CheckoutDraftSessionService, PromoAdjustment, GiftCardAdjustment, {
+  providers: [CheckoutService, CheckoutDraftService, CheckoutDraftCodeService, CheckoutDraftPricingService, CheckoutDraftValidationService, CheckoutDraftSessionService, CheckoutPaymentMethodsService, PromoAdjustment, GiftCardAdjustment, {
       provide: DRAFT_PRICING_ADJUSTMENTS,
       useFactory: (promo: PromoAdjustment, giftCards: GiftCardAdjustment) => [promo, giftCards],
       inject: [PromoAdjustment, GiftCardAdjustment],

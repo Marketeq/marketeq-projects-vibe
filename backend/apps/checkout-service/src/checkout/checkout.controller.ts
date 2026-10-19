@@ -22,6 +22,7 @@ import { CheckoutDraftService } from "./checkout-draft.service";
 import { CheckoutDraftCodeService } from "./checkout-draft-code.service";
 import { CheckoutDraftPricingService } from "./pricing/checkout-draft-pricing.service";
 import { CheckoutDraftSessionService } from "./checkout-draft-session.service";
+import { CheckoutPaymentMethodsService } from "./checkout-payment-methods.service";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
@@ -67,6 +68,7 @@ export class CheckoutController {
     private readonly checkoutDraftCodeService: CheckoutDraftCodeService,
     private readonly checkoutDraftPricingService: CheckoutDraftPricingService,
     private readonly checkoutDraftSessionService: CheckoutDraftSessionService,
+    private readonly checkoutPaymentMethodsService: CheckoutPaymentMethodsService,
   ) {}
 
   @Post("listings/:listingId/draft")
@@ -130,6 +132,20 @@ export class CheckoutController {
     @ClientId() clientId: string,
   ) {
     return this.checkoutDraftSessionService.getSession(clientId, sessionId);
+  }
+
+  @Get("session/:sessionId/payment-methods")
+  @UseGuards(InternalTokenGuard)
+  getSessionPaymentMethods(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Query('balanceApplied') balanceApplied: string | undefined,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutPaymentMethodsService.getPaymentMethods(
+      clientId,
+      sessionId,
+      balanceApplied,
+    );
   }
 
   @Post("drafts/:draftId/create-session")

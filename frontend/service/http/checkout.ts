@@ -38,6 +38,30 @@ export type CheckoutRateEstimate = {
   }>
 }
 
+export type CheckoutPaymentMethodId =
+  | "card"
+  | "ach"
+  | "wire"
+  | "google_pay"
+  | "apple_pay"
+  | "klarna"
+
+export type CheckoutPaymentMethodOption = {
+  id: CheckoutPaymentMethodId
+  available: boolean
+  reason: string | null
+  feeLabel: string
+  processingTime: string | null
+  browserCheck: "google_pay" | "apple_pay" | null
+}
+
+export type CheckoutPaymentMethods = {
+  sessionId: string
+  amountDue: number
+  noPaymentNeeded: boolean
+  methods: CheckoutPaymentMethodOption[]
+}
+
 export const CheckoutAPI = {
   CreateSession: (data: {
     projectId: string
@@ -84,6 +108,12 @@ export const CheckoutAPI = {
 
   GetSession: (sessionId: string) =>
     AxiosRequest.get(`/v1/checkout/session/${sessionId}`, { timeout: 10000 }),
+
+  GetPaymentMethods: (sessionId: string, balanceApplied = 0) =>
+    AxiosRequest.get(`/v1/checkout/session/${sessionId}/payment-methods`, {
+      timeout: 4000,
+      params: balanceApplied > 0 ? { balanceApplied } : undefined,
+    }),
 
   CreateDraftSession: (
     draftId: string,

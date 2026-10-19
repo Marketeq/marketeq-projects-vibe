@@ -8,13 +8,21 @@ import {
 } from "next/navigation"
 import { MotionConfig } from "framer-motion"
 import { useCheckout } from "@/contexts/checkout"
-import { CheckoutAPI } from "@/service/http/checkout"
+import {
+  CheckoutAPI,
+  type CheckoutPaymentMethodOption,
+  type CheckoutPaymentMethods,
+} from "@/service/http/checkout"
 import { useAuth } from "@/contexts/auth"
 import { type CheckoutSession } from "@/lib/checkout/session"
 import {
   GIFT_CARD_ERROR_FALLBACK_MESSAGE,
   getGiftCardErrorMessage,
 } from "@/lib/checkout/validation-messages"
+import {
+  getWalletBrowserSupport,
+  type WalletBrowserSupport,
+} from "@/lib/checkout/wallet-support"
 import { GiftCard } from "@/components/icons"
 import { UserAPI } from "@/service/http/user"
 import { apiFetch } from "@/src/lib/api"
@@ -609,6 +617,20 @@ const PAYMENT_METHODS = [
     icons: [<Klarna key="klarna" />],
   },
 ]
+
+const PAYMENT_METHOD_SERVER_IDS: Record<string, string> = {
+  "item-0": "card",
+  "item-1": "ach",
+  "item-2": "wire",
+  "item-3": "google_pay",
+  "item-4": "apple_pay",
+  "item-5": "klarna",
+}
+
+const ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES = ["item-0", "item-1", "item-2"]
+
+const formatPaymentMethodFee = (feeLabel: string) =>
+  feeLabel.replace(/ per transaction$/, "\nper transaction")
 
 const BANK_OPTIONS = [
   {
@@ -1812,6 +1834,147 @@ export default function PaymentPage() {
     amountDueNow - appliedBalanceAmount - totalGiftCardAmount,
     0
   )
+  const [serverPaymentMethods, setServerPaymentMethods] = React.useState<
+    CheckoutPaymentMethodOption[] | null
+  >(null)
+  const [hasPaymentMethodsFailed, setHasPaymentMethodsFailed] =
+    React.useState(false)
+  const appliedBalanceCents = Math.round(appliedBalanceAmount * 100)
+
+  React.useEffect(() => {
+    if (isTalentCheckout || !checkout.sessionId) return
+
+    let isCancelled = false
+
+    CheckoutAPI.GetPaymentMethods(checkout.sessionId, appliedBalanceCents / 100)
+      .then((response) => {
+        if (isCancelled) return
+        const result = response.data as CheckoutPaymentMethods
+        if (Array.isArray(result?.methods)) {
+          setServerPaymentMethods(result.methods)
+          setHasPaymentMethodsFailed(false)
+          return
+        }
+        setHasPaymentMethodsFailed(true)
+      })
+      .catch((error) => {
+        if (isCancelled) return
+        const failure = error as {
+          response?: { status?: number; data?: { code?: string } }
+        }
+        if (
+          failure.response?.status === 401 ||
+          failure.response?.data?.code === "SESSION_NOT_ACTIVE"
+        ) {
+          setIsSessionExpiredDialogOpen(true)
+        }
+        setHasPaymentMethodsFailed(true)
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [
+    isTalentCheckout,
+    checkout.sessionId,
+    checkout.session,
+    appliedBalanceCents,
+  ])
+  const isPaymentMethodsLoading =
+    !isTalentCheckout &&
+    Boolean(checkout.sessionId) &&
+    serverPaymentMethods === null &&
+    !hasPaymentMethodsFailed
+
+  const [walletBrowserSupport, setWalletBrowserSupport] =
+    React.useState<WalletBrowserSupport | null>(null)
+
+  React.useEffect(() => {
+    setWalletBrowserSupport(getWalletBrowserSupport())
+  }, [])
+
+  const paymentMethodOptions = React.useMemo(() => {
+    const passesBrowserCheck = (browserCheck: string | null) =>
+      browserCheck === "google_pay"
+        ? walletBrowserSupport?.googlePay === true
+        : browserCheck === "apple_pay"
+          ? walletBrowserSupport?.applePay === true
+          : true
+
+    if (!serverPaymentMethods) {
+      return PAYMENT_METHODS.filter((option) => {
+        if (!isTalentCheckout) {
+          return ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES.includes(option.value)
+        }
+        const serverId = PAYMENT_METHOD_SERVER_IDS[option.value]
+        return passesBrowserCheck(
+          serverId === "google_pay" || serverId === "apple_pay"
+            ? serverId
+            : null
+        )
+      })
+    }
+
+    const serverOptions = serverPaymentMethods.flatMap((serverMethod) => {
+      if (!serverMethod.available) return []
+      if (!passesBrowserCheck(serverMethod.browserCheck)) return []
+      const method = PAYMENT_METHODS.find(
+        (option) => PAYMENT_METHOD_SERVER_IDS[option.value] === serverMethod.id
+      )
+      return method
+        ? [{ ...method, desc: formatPaymentMethodFee(serverMethod.feeLabel) }]
+        : []
+    })
+
+    return PAYMENT_METHODS.flatMap((method) => {
+      const serverOption = serverOptions.find(
+        (option) => option.value === method.value
+      )
+      if (serverOption) return [serverOption]
+      return ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES.includes(method.value)
+        ? [method]
+        : []
+    })
+  }, [isTalentCheckout, serverPaymentMethods, walletBrowserSupport])
+  const [isSelectedMethodUnavailable, setIsSelectedMethodUnavailable] =
+    React.useState(false)
+
+  React.useEffect(() => {
+    if (!serverPaymentMethods || !walletBrowserSupport) return
+
+    const isAvailable = (value: string) =>
+      paymentMethodOptions.some((option) => option.value === value)
+    const hasUnavailableSelection =
+      paymentMethod !== "" && !isAvailable(paymentMethod)
+    const hasUnavailableKlarna =
+      fullPaymentMethods.some((method) => method.method === "KLARNA") &&
+      !isAvailable("item-5")
+
+    if (!hasUnavailableSelection && !hasUnavailableKlarna) return
+
+    if (hasUnavailableSelection) setPaymentMethod("")
+    if (hasUnavailableKlarna) {
+      setFullPaymentMethods((current) =>
+        current.filter((method) => method.method !== "KLARNA")
+      )
+      setHasSplitFullPayment(false)
+      setShowFullPaymentMethods(false)
+      setSplitPaymentAllocations({})
+    }
+    setSplitPaymentError("")
+    if (totalAmountToBePaid > 0) setIsSelectedMethodUnavailable(true)
+  }, [
+    fullPaymentMethods,
+    paymentMethod,
+    paymentMethodOptions,
+    serverPaymentMethods,
+    totalAmountToBePaid,
+    walletBrowserSupport,
+  ])
+
+  React.useEffect(() => {
+    if (fullPaymentMethods.length > 0) setIsSelectedMethodUnavailable(false)
+  }, [fullPaymentMethods.length])
   const isSplitPaymentActive =
     pay === "AT_ONCE" && hasSplitFullPayment && fullPaymentMethods.length > 1
   const splitPaymentMethods = React.useMemo(
@@ -1823,11 +1986,11 @@ export default function PaymentPage() {
   )
   const availableSplitPaymentOptions = React.useMemo(
     () =>
-      PAYMENT_METHODS.filter((method) => {
+      paymentMethodOptions.filter((method) => {
         const methodType = getPaymentMethodTypeFromSelection(method.value)
         return Boolean(methodType)
       }),
-    []
+    [paymentMethodOptions]
   )
   const canAddAnotherSplitPaymentMethod =
     hasSplitFullPayment &&
@@ -5055,6 +5218,13 @@ export default function PaymentPage() {
     </HeadlessRadioGroupItem>
   )
 
+  const isPaymentMethodTilesHiddenAtZero =
+    pay === "AT_ONCE" &&
+    !hasSplitFullPayment &&
+    fullPaymentMethods.length < 1 &&
+    savedInstallmentPaymentMethods.length < 1 &&
+    totalAmountToBePaid <= 0
+
   if (!isTalentCheckout && !(projectCost > 0)) {
     return (
       <div className="bg-gray-50 pt-[64px]">
@@ -5663,7 +5833,12 @@ export default function PaymentPage() {
                 ) : null}
 
                 {/* Gift Cards */}
-                <div className="mt-6 border-y py-6 border-gray-200">
+                <div
+                  className={cn(
+                    "mt-6 py-6 border-gray-200",
+                    isPaymentMethodTilesHiddenAtZero ? "border-t" : "border-y"
+                  )}
+                >
                   {!isTalentCheckout &&
                   (sessionGiftCards.length > 0 || showGiftCard) ? (
                     <div className="max-w-[656px]">{redeemGiftCardPanel}</div>
@@ -5877,6 +6052,26 @@ export default function PaymentPage() {
                   )}
                 </div>
 
+                {isSelectedMethodUnavailable &&
+                paymentMethod === "" &&
+                fullPaymentMethods.length < 1 &&
+                totalAmountToBePaid > 0 ? (
+                  <Alert
+                    variant="error"
+                    className="mt-6 items-center rounded-[5px] p-4"
+                  >
+                    <AlertIcon className="shrink-0">
+                      <AlertCircle className="size-5" />
+                    </AlertIcon>
+                    <AlertContent>
+                      <AlertTitle className="text-sm leading-5 text-error-600">
+                        The selected payment method is no longer available.
+                        Please choose a different option.
+                      </AlertTitle>
+                    </AlertContent>
+                  </Alert>
+                ) : null}
+
                 {/* Select Payment Method */}
                 {pay === "AT_ONCE" &&
                   !hasSplitFullPayment &&
@@ -5922,15 +6117,22 @@ export default function PaymentPage() {
                 {pay === "AT_ONCE" &&
                   !hasSplitFullPayment &&
                   fullPaymentMethods.length < 1 &&
-                  savedInstallmentPaymentMethods.length < 1 && (
+                  savedInstallmentPaymentMethods.length < 1 &&
+                  totalAmountToBePaid > 0 && (
                     <div className="mt-6">
                       <h3 className="text-base leading-[.703] font-bold text-[#122A4B]">
                         Select payment method
                       </h3>
+                      {isPaymentMethodsLoading ? (
+                        <div className="mt-5">
+                          <Spinner size={24} strokeWidth={3} />
+                        </div>
+                      ) : (
                       <RadioGroup
                         value={paymentMethod}
                         onValueChange={(value) => {
                           setPaymentMethod(value)
+                          setIsSelectedMethodUnavailable(false)
                           if (value === "item-5") {
                             setHasSplitFullPayment(false)
                             setShowFullPaymentMethods(false)
@@ -5942,10 +6144,10 @@ export default function PaymentPage() {
                         )}
                       >
                         {(paymentMethod
-                          ? PAYMENT_METHODS.filter(
+                          ? paymentMethodOptions.filter(
                               (m) => m.value === paymentMethod
                             )
-                          : PAYMENT_METHODS
+                          : paymentMethodOptions
                         ).map((method) => (
                           <HeadlessRadioGroupItem
                             value={method.value}
@@ -5982,6 +6184,7 @@ export default function PaymentPage() {
                           </HeadlessRadioGroupItem>
                         )}
                       </RadioGroup>
+                      )}
                     </div>
                   )}
 

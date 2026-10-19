@@ -71,6 +71,37 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.getCheckoutSession(sessionId, clientId);
   }
 
+  @Get('session/:sessionId/payment-methods')
+  @UseGuards(JwtAuthGuard)
+  getSessionPaymentMethods(
+    @Param('sessionId') sessionId: string,
+    @Query('balanceApplied') balanceApplied: string | undefined,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.getSessionPaymentMethods(sessionId, clientId, balanceApplied);
+  }
+
+  @Post('session/:sessionId/apply-code')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  applySessionCode(
+    @Param('sessionId') sessionId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.applySessionCode(sessionId, body, clientId);
+  }
+
+  @Delete('session/:sessionId/apply-code/:code')
+  @UseGuards(JwtAuthGuard)
+  removeSessionCode(
+    @Param('sessionId') sessionId: string,
+    @Param('code') code: string,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.removeSessionCode(sessionId, code, clientId);
+  }
+
   @Post('drafts/:draftId/create-session')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
