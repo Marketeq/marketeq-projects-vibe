@@ -19,6 +19,7 @@ import {
 import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
+import { CheckoutAPI } from "@/service/http/checkout"
 import { UserAPI } from "@/service/http/user"
 import { persistActiveRole } from "@/src/lib/api/active-role"
 import { getContract, respondToContract } from "@/src/lib/api/contracts"
@@ -1754,6 +1755,29 @@ export const TopMostHeader = ({
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
 
+  // BTB-334: "My Balance" is the account wallet (what Add Funds tops up),
+  // read from checkout-service. Refetched on route change so a top-up or
+  // spend shows without a reload; "—" until it loads or if it fails.
+  const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    if (!user?.id) {
+      setWalletBalance(null)
+      return
+    }
+    let cancelled = false
+    CheckoutAPI.GetWalletBalance()
+      .then((res) => {
+        const balance = Number(res.data?.balance)
+        if (!cancelled) setWalletBalance(Number.isFinite(balance) ? balance : null)
+      })
+      .catch(() => {
+        if (!cancelled) setWalletBalance(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, pathname])
+
   // The secondary nav shell publishes `data-secondary-nav` on <html> while it is
   // mounted and removes it on unmount, so the DOM is the authority on whether a
   // route actually has one. The route list below is only a first-paint hint for
@@ -1827,7 +1851,12 @@ export const TopMostHeader = ({
                       size="md"
                     >
                       <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
-                        <span className="font-semibold">$ 1,540</span> USD
+                        <span className="font-semibold">
+                          {walletBalance === null
+                            ? "—"
+                            : `$ ${walletBalance.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
+                        </span>{" "}
+                        USD
                       </span>
                       <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
                     </Button>
