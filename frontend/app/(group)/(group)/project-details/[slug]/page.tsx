@@ -4,7 +4,12 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { claimProject, checkClaimLimit, recordClaim } from "@/src/lib/api/claim"
+import {
+  ClaimConflictError,
+  claimProject,
+  checkClaimLimit,
+  recordClaim,
+} from "@/src/lib/api/claim"
 import {
   type JoinRequestStatus,
   cancelJoinRequest,
@@ -27,6 +32,7 @@ import {
   scopeDurationDays,
   type PricingPeriod,
 } from "@/lib/listing-pricing"
+import { isUnauthorizedError, toUserMessage } from "@/lib/listing-errors"
 import {
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
@@ -1153,17 +1159,30 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 }
 
 // PMCM-402/QA-221: ApiError.body is the raw response text — pull the
-// Nest exception's own `message` out of it so a specific rejection (e.g.
-// "Project has no team members available to chat with") reaches the user
+// Nest exception's own `message` out of it so the one specific, known
+// rejection this was written for ("Project has no team members available
+// to chat with", messaging-service's threads.service.ts) reaches the user
 // instead of a generic string.
+// PMCM-261/X3: this used to pass through WHATEVER message the backend put
+// in that body, for any error on this call — only that one known, curated
+// string is safe to show verbatim; everything else now goes through the
+// shared generic/timeout copy instead of leaking a raw backend message.
+const KNOWN_CHAT_ERROR_MESSAGES = [
+  "Project has no team members available to chat with",
+]
 const extractApiErrorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof ApiError) {
     try {
       const parsed = JSON.parse(err.body)
-      if (typeof parsed?.message === "string") return parsed.message
+      if (
+        typeof parsed?.message === "string" &&
+        KNOWN_CHAT_ERROR_MESSAGES.includes(parsed.message)
+      ) {
+        return parsed.message
+      }
     } catch {}
   }
-  return fallback
+  return toUserMessage(err) || fallback
 }
 
 const Chats = ({
@@ -1184,6 +1203,28 @@ const Chats = ({
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
   const { toast } = useToast()
+  // PMCM-260/X2: this component calls useAuth() directly rather than
+  // receiving promptSignIn as a prop from ProjectDetails, so it mirrors
+  // that same component's resume-on-login pattern (~1893-1915) locally —
+  // no auth-context change. Only wired for handleSend's text message
+  // below; sendAttachment/handleSendMedia's dialog-close-and-clear-state
+  // flow makes queuing the attachment itself unsafe to do the same way
+  // (reported, not fixed — see the PMCM-260 report).
+  const pendingChatActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignInToChat = React.useCallback(
+    (action: () => void) => {
+      pendingChatActionRef.current = action
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (myId && pendingChatActionRef.current) {
+      const action = pendingChatActionRef.current
+      pendingChatActionRef.current = null
+      action()
+    }
+  }, [myId])
 
   const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
@@ -1300,7 +1341,13 @@ const Chats = ({
     const text = (textareaValue ?? "").trim()
     if (!text) return
     if (!myId) {
-      openAuthModal("sign-in")
+      // PMCM-260/X2 + follow-up: queue so the typed message (left in the
+      // composer, not cleared yet) actually sends once login completes.
+      // Must go through the ref (below), not `handleSend` by name — that
+      // name resolves to this closure, captured while `myId` was still
+      // "", so resuming it post-login would re-run this same stale
+      // check and re-open the modal instead of sending.
+      promptSignInToChat(() => handleSendRef.current())
       return
     }
     setTextareaValue("")
@@ -1342,7 +1389,9 @@ const Chats = ({
         variant: "destructive",
       })
     }
-  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue, toast])
+  }, [textareaValue, myId, ensureThread, promptSignInToChat, setTextareaValue, toast])
+  const handleSendRef = React.useRef(handleSend)
+  handleSendRef.current = handleSend
 
   const handleEmojiSelect = React.useCallback(
     (emoji: DataEmoji) => {
@@ -1965,7 +2014,7 @@ export default function ProjectDetails({
       setClaimStep("blocked")
       return
     }
-    openClaimDialog()
+    setClaimStep("confirm")
   }, [])
 
   const handlePageClaim = React.useCallback(async () => {
@@ -1979,7 +2028,16 @@ export default function ProjectDetails({
       setRefetchKey((k) => k + 1)
       setClaimStep("done")
     } catch (e: any) {
-      setClaimError(e?.message ?? "Could not claim this project right now")
+      // PMCM-261/X3: a 409 conflict's message ("already claimed by someone
+      // else") is a genuinely useful, curated-feeling detail worth keeping
+      // — everything else (a generic Error from claim.ts's catch-all
+      // `body?.message ?? fallback`, which could be anything the backend
+      // happened to say) goes through the shared generic copy instead.
+      setClaimError(
+        e instanceof ClaimConflictError
+          ? e.message
+          : toUserMessage(e)
+      )
     } finally {
       setClaimBusy(false)
     }
@@ -2022,7 +2080,11 @@ export default function ProjectDetails({
   const openLiveChat = React.useCallback(
     (question?: string) => {
       if (!user?.id) {
-        promptSignIn(() => openLiveChat(question))
+        // PMCM-260 follow-up: queue through the ref (below), not
+        // `openLiveChat` directly — that name resolves to this closure,
+        // captured while `user` was still null, so resuming it post-login
+        // would re-run this same stale check and re-open the modal.
+        promptSignIn(() => openLiveChatRef.current(question))
         return
       }
       if (question !== undefined) setPendingQuestion(question)
@@ -2030,11 +2092,14 @@ export default function ProjectDetails({
     },
     [user?.id, promptSignIn]
   )
+  const openLiveChatRef = React.useRef(openLiveChat)
+  openLiveChatRef.current = openLiveChat
 
   const handleAsk = React.useCallback(() => {
     if (!user?.id) {
       setAskModalOpen(false)
-      promptSignIn(() => handleAsk())
+      // PMCM-260 follow-up: same stale-closure fix — queue through the ref.
+      promptSignIn(() => handleAskRef.current())
       return
     }
     if (pendingQuestion.trim()) {
@@ -2045,6 +2110,8 @@ export default function ProjectDetails({
       setShowAskErrorMsg(true)
     }
   }, [user?.id, pendingQuestion, openLiveChat, promptSignIn])
+  const handleAskRef = React.useRef(handleAsk)
+  handleAskRef.current = handleAsk
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -2286,7 +2353,12 @@ export default function ProjectDetails({
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
-      promptSignIn(() => handleFavoriteToggle(pressed))
+      // PMCM-260 follow-up: queue through the ref (assigned below, every
+      // render), not the `handleFavoriteToggle` name directly — that name
+      // resolves to THIS closure, captured while `user` was still null,
+      // so calling it post-login would re-run this same stale `!user?.id`
+      // check and re-open the modal instead of completing the toggle.
+      promptSignIn(() => handleFavoriteToggleRef.current(pressed))
       return
     }
     const previous = isFavorited
@@ -2316,6 +2388,8 @@ export default function ProjectDetails({
       })
     }
   }
+  const handleFavoriteToggleRef = React.useRef(handleFavoriteToggle)
+  handleFavoriteToggleRef.current = handleFavoriteToggle
 
   React.useEffect(() => {
     async function fetchProject() {
@@ -2337,8 +2411,15 @@ export default function ProjectDetails({
         const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
+        // PMCM-261/AC5: these plain fetch() calls bypassed the shared axios
+        // instance's 30s default entirely — a hung connection would wait
+        // forever instead of ever reaching the loadError/Retry state below.
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store', credentials: 'include' })
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: AbortSignal.timeout(30000),
+          })
           if (r.ok) {
             res = r
             slug = candidate
@@ -2348,7 +2429,11 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store', credentials: 'include' })
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: AbortSignal.timeout(30000),
+          })
         }
         if (!res.ok) {
           if (res.status !== 404) sawServerError = true
@@ -2356,14 +2441,20 @@ export default function ProjectDetails({
           // `${slug}-${shortId}`, while the API expects the plain slug.
           let svcRes: Response | null = null
           for (const candidate of candidates) {
-            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`, { credentials: 'include' })
+            const r = await fetch(
+              `${apiBase}/v1/services/slug/${candidate}`,
+              { credentials: 'include', signal: AbortSignal.timeout(30000) }
+            )
             if (r.ok) {
               svcRes = r
               break
             }
           }
           if (!svcRes) {
-            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, { credentials: 'include' })
+            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, {
+              credentials: 'include',
+              signal: AbortSignal.timeout(30000),
+            })
           }
           if (!svcRes.ok) {
             if (svcRes.status !== 404) sawServerError = true
@@ -3803,7 +3894,12 @@ export default function ProjectDetails({
                                   visual="primary"
                                   onClick={() => {
                                     if (!user?.id) {
-                                      openAuthModal("sign-in")
+                                      // PMCM-260/X2: queue the action so it
+                                      // resumes automatically after login,
+                                      // matching the other "Claim this
+                                      // Project" button (~6824) which
+                                      // already uses promptSignIn.
+                                      promptSignIn(() => openClaimDialog())
                                       return
                                     }
                                     openClaimDialog()
@@ -7085,7 +7181,11 @@ export default function ProjectDetails({
                   className="inline-flex items-center gap-x-2 cursor-pointer"
                   onClick={() => {
                     if (!user?.id) {
-                      openAuthModal("sign-in")
+                      // PMCM-260/X2: queue the action so it resumes
+                      // automatically after login.
+                      promptSignIn(() =>
+                        toggleReportWindow(true, project.id, project.title)
+                      )
                       return
                     }
                     toggleReportWindow(true, project.id, project.title)

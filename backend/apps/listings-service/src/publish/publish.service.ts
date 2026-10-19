@@ -1719,11 +1719,13 @@ export class PublishService {
 
       return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
-      console.log('err', error);
+      // PMCM-261/X3: was `throw new InternalServerErrorException(error.message)`
+      // — any underlying driver/SDK error's raw message (DB error text,
+      // internal service detail) landed verbatim in the response body.
+      // Matches the generic-fallback pattern used elsewhere in this file
+      // (e.g. createProject/createProjectDraft) instead.
+      console.error('Failed to upload media:', error);
       this.throwIfHttpException(error);
-      if (error instanceof Error && error.message) {
-        throw new InternalServerErrorException(error.message);
-      }
       throw new InternalServerErrorException('Failed to upload media');
     }
   }
