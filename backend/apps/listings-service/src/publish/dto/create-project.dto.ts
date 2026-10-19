@@ -1,21 +1,26 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsArray,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { CreateProjectPhaseDto } from './create-phase.dto';
 import { ProjectCategorySelectionDto } from './project-category-selection.dto';
+import { PRICING_PERIODS } from './upsert-project-draft.dto';
 
 export class CreateProjectDto {
   @ApiProperty({ description: 'Project title', maxLength: 120 })
   @IsNotEmpty()
   @IsString()
+  @MaxLength(120, { message: 'Title cannot exceed 120 characters.' })
   title: string;
 
   @ApiProperty({
@@ -67,6 +72,13 @@ export class CreateProjectDto {
   @IsInt()
   durationMonths?: number;
 
+  // PMCM-258: display-only preference — never used to compute the total
+  // or the duration, only which slice of it is shown.
+  @ApiProperty({ required: false, enum: PRICING_PERIODS })
+  @IsOptional()
+  @IsIn(PRICING_PERIODS)
+  pricingPeriod?: string;
+
   @ApiProperty({ description: 'Location of the project', required: false })
   @IsOptional()
   @IsString()
@@ -85,6 +97,7 @@ export class CreateProjectDto {
     type: [String],
   })
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @IsString({ each: true })
   @IsOptional()
   categories?: string[];
@@ -104,6 +117,7 @@ export class CreateProjectDto {
     required: false,
   })
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @ValidateNested({ each: true })
   @Type(() => ProjectCategorySelectionDto)
   @IsOptional()

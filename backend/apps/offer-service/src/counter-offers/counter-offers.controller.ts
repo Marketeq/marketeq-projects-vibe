@@ -10,6 +10,7 @@ import { CounterOffersService } from './counter-offers.service';
 import { CreateCounterOfferDto } from './dto/create-counter-offer.dto';
 import { EditCounterOfferDto } from './dto/edit-counter-offer.dto';
 import { WithdrawCounterOfferDto } from './dto/withdraw-counter-offer.dto';
+import { DeclineCounterOfferDto } from './dto/decline-counter-offer.dto';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { TalentGateGuard } from '../guards/talent-gate.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
@@ -92,8 +93,9 @@ export class CounterOffersController {
     @Param('offerId', ParseUUIDPipe) offerId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
+    @Body() dto: DeclineCounterOfferDto,
   ) {
-    return this.counterOffersService.decline(offerId, id, user.id);
+    return this.counterOffersService.decline(offerId, id, user.id, dto);
   }
 
   // POST /v1/offers/:offerId/counter-offers/:id/withdraw

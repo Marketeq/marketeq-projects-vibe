@@ -502,21 +502,22 @@ export function CounterOfferDialog({
             <div className="pl-3">
               <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                 {showReview
-                  ? mode === "edit"
-                    ? reviewTitle || "Review your offer"
-                    : "Review Your Counter Offer"
-                  : mode === "edit"
-                    ? editTitle || "Edit your offer"
-                    : "Make a Counter Offer"}
+                  ? reviewTitle ||
+                    (mode === "edit"
+                      ? "Review your offer"
+                      : "Review Your Counter Offer")
+                  : editTitle ||
+                    (mode === "edit" ? "Edit your offer" : "Make a Counter Offer")}
               </DialogTitle>
               <p className="text-sm leading-[22px] text-gray-500">
                 {showReview
                   ? mode === "edit"
                     ? "Confirm the details before sending."
                     : "Confirm the details before sending to the client."
-                  : mode === "edit"
-                    ? editSubtitle || "Update the terms of your offer."
-                    : "Propose new terms that work for you."}
+                  : editSubtitle ||
+                    (mode === "edit"
+                      ? "Update the terms of your offer."
+                      : "Propose new terms that work for you.")}
               </p>
             </div>
 
@@ -1295,9 +1296,8 @@ export function CounterOfferDialog({
                   }
                   onClick={handleReview}
                 >
-                  {mode === "edit"
-                    ? reviewButtonLabel || "Review Edit"
-                    : "Review Counter Offer"}
+                  {reviewButtonLabel ||
+                    (mode === "edit" ? "Review Edit" : "Review Counter Offer")}
                 </Button>
               </div>
             </div>

@@ -20,6 +20,7 @@ import {
   getCheckoutScopeSummary,
   type CheckoutScopeSummary,
 } from "@/lib/checkout/scope-summary"
+import { PERIOD_FULL_LABELS, PERIODS, type PricingPeriod } from "@/lib/listing-pricing"
 import { cn } from "@/utils/functions"
 import { useControllableState } from "@/utils/hooks"
 import {
@@ -646,6 +647,27 @@ function CheckoutPageInner() {
   const checkoutProjectDateRange =
     projectSummary?.dateRangeLabel || "Timeline unavailable"
   const checkoutProjectDuration = projectSummary?.durationLabel || null
+  // PMCM-259/AC2: project-details' "Continue to Checkout" button appends
+  // these two params so the buyer's selected Budget Calculator period
+  // carries over — checkout had no existing mechanism to receive this.
+  // Purely additive display context: the authoritative project total
+  // (projectCheckoutCost below, from projectSummary.projectCost) is never
+  // overridden by it, so payment/confirmation/thank-you stay unaffected.
+  const checkoutPeriodParam = !isTalentCheckout
+    ? searchParams.get("period")
+    : null
+  const checkoutPeriodLabel =
+    checkoutPeriodParam &&
+    (PERIODS as readonly string[]).includes(checkoutPeriodParam)
+      ? PERIOD_FULL_LABELS[checkoutPeriodParam as PricingPeriod]
+      : null
+  const checkoutPeriodAmountParam = !isTalentCheckout
+    ? Number(searchParams.get("periodAmount"))
+    : NaN
+  const checkoutPeriodAmount =
+    Number.isFinite(checkoutPeriodAmountParam) && checkoutPeriodAmountParam > 0
+      ? checkoutPeriodAmountParam
+      : null
   const selectedRate =
     offerRates.find((rate) => rate.value === selectedRateValue) ||
     offerRates.find((rate) => rate.value === "web-development") ||
@@ -712,6 +734,8 @@ function CheckoutPageInner() {
           Math.max(0, projectCheckoutCost + projectCheckoutEstimatedTax)
         )
       : "Pricing unavailable"
+  const formattedCheckoutPeriodAmount =
+    checkoutPeriodAmount !== null ? formatter.format(checkoutPeriodAmount) : null
 
   const recommendations = [
     {
@@ -2282,6 +2306,16 @@ function CheckoutPageInner() {
                           </span>
                         )}
                       </li>
+                      {checkoutPeriodLabel && formattedCheckoutPeriodAmount && (
+                        <li className="flex items-center justify-between">
+                          <span className="text-xs font-light text-dark-blue-400">
+                            Billing period
+                          </span>
+                          <span className="text-xs text-dark-blue-400">
+                            {formattedCheckoutPeriodAmount} / {checkoutPeriodLabel}
+                          </span>
+                        </li>
+                      )}
                       <li className="flex items-center justify-between">
                         <span className="text-xs font-light text-dark-blue-400">
                           Estimated tax *

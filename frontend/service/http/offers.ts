@@ -4,6 +4,7 @@ import type {
   CreateOfferPayload,
   CreateCounterOfferPayload,
   CreateCounterOfferResult,
+  DeclineCounterOfferPayload,
   DeclineOfferPayload,
   EditCounterOfferPayload,
   ListOffersParams,
@@ -157,11 +158,12 @@ export const acceptCounterOffer = async (
 
 export const declineCounterOffer = async (
   offerId: string,
-  counterOfferId: string
+  counterOfferId: string,
+  payload: DeclineCounterOfferPayload
 ): Promise<CounterOffer> => {
   const res = await AxiosRequest.post(
     `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}/decline`,
-    {},
+    payload,
     idempotencyConfig()
   )
   return res.data

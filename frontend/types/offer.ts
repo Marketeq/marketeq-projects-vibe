@@ -273,6 +273,13 @@ export interface EditCounterOfferPayload {
   message?: string
 }
 
+// DeclineCounterOfferDto — same shape as DeclineOfferPayload above; BTB-287
+// follow-up, counter offers had no decline payload at all until now.
+export interface DeclineCounterOfferPayload {
+  reason: string
+  chip?: DeclineChip
+}
+
 // What counter-offers.service.ts's accept()/decline() actually return: the
 // bare CounterOffer entity (mapRawToCO), not the aspirational
 // AcceptCounterOfferResponse/DeclineCounterOfferResponse

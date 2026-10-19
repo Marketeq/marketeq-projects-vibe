@@ -37,6 +37,7 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 - [services/autocomplete-service.md](.claude/memory/services/autocomplete-service.md)
 - [services/content-moderation-service.md](.claude/memory/services/content-moderation-service.md)
 - [services/portfolio-service.md](.claude/memory/services/portfolio-service.md) — case-study builder, now fully wired to the frontend (was localStorage-only)
+- [services/offer-service.md](.claude/memory/services/offer-service.md) — offer/counter-offer lifecycle; 2026-10-19 QA retest fixes (counter decline reason/chip, safe 409 message)
 - [services/_TEMPLATE.md](.claude/memory/services/_TEMPLATE.md) — copy this for new services
 
 ### Frontend

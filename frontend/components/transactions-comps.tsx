@@ -1863,62 +1863,6 @@ const StatCard = ({
   )
 }
 
-// Figma promo-banner carousel — static placeholder copy only. None of these
-// offers exist as real features in this codebase yet (no Marketeq Visa Card
-// product, no cashback program, no referral program, no TurboTax
-// integration); this is UI shell for when those features ship, not live data.
-const PROMO_BANNERS: { id: string; emoji: string; content: React.ReactNode }[] =
-  [
-    {
-      id: "visa-card",
-      emoji: "💳",
-      content: (
-        <>
-          Get faster payouts and cashback with your{" "}
-          <span className="font-semibold text-success-600">
-            Marketeq Visa Card
-          </span>
-          . Activate today!
-        </>
-      ),
-    },
-    {
-      id: "cashback",
-      emoji: "☕",
-      content: (
-        <>
-          Earn{" "}
-          <span className="font-semibold text-success-600">
-            5% Cashback on Starbucks
-          </span>{" "}
-          purchases with your Marketeq Card.
-        </>
-      ),
-    },
-    {
-      id: "referral",
-      emoji: "🎉",
-      content: (
-        <>
-          <span className="font-semibold text-success-600">
-            Refer 2 more friends
-          </span>{" "}
-          to unlock a $15 gift card.
-        </>
-      ),
-    },
-    {
-      id: "turbotax",
-      emoji: "🧾",
-      content: (
-        <>
-          <span className="font-semibold text-success-600">Get 15% off</span>{" "}
-          TurboTax for freelancers, ends this month!
-        </>
-      ),
-    },
-  ]
-
 // "first...last" masking for plain IDs (no @) — used for Wise
 // account identifiers, the same masking style bank account numbers use
 // elsewhere in this list (e.g. "...4553").
@@ -2040,11 +1984,6 @@ export const OverviewTab = ({
   const router = useRouter()
   const { toast } = useToast()
   const { user } = useAuth()
-  // Figma's promo-banner carousel (Visa Card, cashback, referral, TurboTax) —
-  // no backing features exist yet for any of these (no card product, cashback
-  // program, referral program, or TurboTax integration in this codebase), so
-  // this is UI shell only: static placeholder copy, not wired to any real
-  // offer/eligibility data. Swap in real content once those features exist.
   const [withdrawOpen, setWithdrawOpen] = React.useState(false)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
@@ -2168,6 +2107,7 @@ export const OverviewTab = ({
   const [failedPayout, setFailedPayout] = React.useState<{
     id: string
     title: string
+    description: string
   } | null>(null)
   const loadFailedPayout = React.useCallback(async () => {
     try {
@@ -3488,52 +3428,29 @@ export const OverviewTab = ({
     return () => clearInterval(id)
   }, [isLive, loadRecentActivity, loadFailedPayout])
 
-  // Congrats + promo banners share one carousel slot, picked at random exactly
-  // once per page load — not re-randomized on every poll/re-render, and once
-  // dismissed it stays gone for the rest of the session. Persisted to
+  // Dismissing an alert hides it for the rest of the session. Persisted to
   // sessionStorage (not component state) because switching Overview/Earnings/
   // Payouts tabs unmounts this component entirely (Radix TabsContent doesn't
-  // keep inactive panels mounted) — plain useState was silently resetting on
-  // every tab switch, which isn't "dismissed for the session" at all.
+  // keep inactive panels mounted).
   const readSS = (key: string) =>
     typeof window === "undefined" ? null : window.sessionStorage.getItem(key)
   const writeSS = (key: string, value: string) => {
     if (typeof window !== "undefined") window.sessionStorage.setItem(key, value)
   }
-  const [failedBannerDismissed, setFailedBannerDismissedState] = React.useState(
-    () => readSS("overview_failed_banner_dismissed") === "1"
-  )
-  const setFailedBannerDismissed = (v: boolean) => {
-    setFailedBannerDismissedState(v)
-    writeSS("overview_failed_banner_dismissed", v ? "1" : "0")
+  // Keyed by payout id, so dismissing one failed withdrawal does not also
+  // hide the next one that fails.
+  const [dismissedFailedPayoutId, setDismissedFailedPayoutIdState] =
+    React.useState(() => readSS("overview_failed_banner_dismissed_id"))
+  const dismissFailedBanner = (id: string) => {
+    setDismissedFailedPayoutIdState(id)
+    writeSS("overview_failed_banner_dismissed_id", id)
   }
-  const carouselBanners = [
-    ...(balance && parseFloat(balance.totalEarnedUsd) > 0
-      ? [
-          {
-            id: "congrats",
-            emoji: "\u{1F929}",
-            content: (
-              <>
-                You&apos;ve earned{" "}
-                <span className="font-semibold text-success-600">
-                  {amountSign(balance.totalEarnedUsd)}$
-                  {formatWholeAmount(balance.totalEarnedUsd)}
-                </span>{" "}
-                total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...PROMO_BANNERS,
-  ]
-  const [selectedBannerId, setSelectedBannerIdState] = React.useState<
-    string | null
-  >(() => readSS("overview_banner_id"))
-  const [bannerPicked, setBannerPicked] = React.useState(
-    () => readSS("overview_banner_id") !== null
-  )
+  const showFailedBanner =
+    !!failedPayout && failedPayout.id !== dismissedFailedPayoutId
+  // The Figma alert slot also carried promo copy (Marketeq Visa Card, 5%
+  // cashback on Starbucks, referral gift card, TurboTax discount). None of
+  // those offers exist, so only the earnings banner, which is built from the
+  // contractor's real totals, is shown.
   const [bannerDismissed, setBannerDismissedState] = React.useState(
     () => readSS("overview_banner_dismissed") === "1"
   )
@@ -3541,21 +3458,23 @@ export const OverviewTab = ({
     setBannerDismissedState(v)
     writeSS("overview_banner_dismissed", v ? "1" : "0")
   }
-  React.useEffect(() => {
-    // Wait for the balance fetch to resolve (success or error) before picking,
-    // so "congrats" gets a fair chance to be in the draw instead of the pick
-    // always happening before it's known to be eligible.
-    if (bannerPicked || (!balance && !balanceError)) return
-    const pick =
-      carouselBanners[Math.floor(Math.random() * carouselBanners.length)].id
-    setSelectedBannerIdState(pick)
-    writeSS("overview_banner_id", pick)
-    setBannerPicked(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bannerPicked, balance, balanceError])
-  const currentBanner = bannerDismissed
-    ? null
-    : (carouselBanners.find((b) => b.id === selectedBannerId) ?? null)
+  const earningsBanner =
+    balance && parseFloat(balance.totalEarnedUsd) > 0
+      ? {
+          emoji: "\u{1F929}",
+          content: (
+            <>
+              You&apos;ve earned{" "}
+              <span className="font-semibold text-success-600">
+                {amountSign(balance.totalEarnedUsd)}$
+                {formatWholeAmount(balance.totalEarnedUsd)}
+              </span>{" "}
+              total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
+            </>
+          ),
+        }
+      : null
+  const currentBanner = bannerDismissed ? null : earningsBanner
 
   return (
     <>
@@ -3569,11 +3488,13 @@ export const OverviewTab = ({
           {/* Dismissible for the session — closing it doesn't resolve the
             underlying failed withdrawal, just stops repeating the nudge
             once the contractor has seen it. */}
-          {failedPayout && !failedBannerDismissed && (
+          {failedPayout && showFailedBanner && (
             <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm text-red-700">
-                <span className="mr-2">⚠️</span>A withdrawal could not be
-                completed — {failedPayout.title}.
+                <span className="mr-2">⚠️</span>
+                Your withdrawal of {failedPayout.description}{" "}
+                couldn&apos;t be completed. The money has been returned to
+                your available balance.
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -3588,7 +3509,7 @@ export const OverviewTab = ({
                   size="sm"
                   variant="ghost"
                   visual="gray"
-                  onClick={() => setFailedBannerDismissed(true)}
+                  onClick={() => dismissFailedBanner(failedPayout.id)}
                 >
                   <X className="size-4" />
                 </IconButton>
@@ -3596,9 +3517,6 @@ export const OverviewTab = ({
             </div>
           )}
 
-          {/* Congrats + promo banners share one carousel slot, randomly picked
-            (see carouselBanners/selectedBannerId above) — one at a time,
-            not stacked, and not always leading with the same one. */}
           {currentBanner && (
             <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
               <p className="text-sm text-dark-blue-400">

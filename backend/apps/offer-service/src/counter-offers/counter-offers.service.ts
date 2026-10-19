@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager, DataSource } from 'typeorm';
 import { CounterOffer } from './entities/counter-offer.entity';
 import { CounterOfferStatus } from './enums/counter-offer-status.enum';
+import { DeclineCounterOfferDto } from './dto/decline-counter-offer.dto';
 import { OfferStatus } from '../offers/enums/offer-status.enum';
 import { Offer } from '../offers/entities/offer.entity';
 import {
@@ -220,6 +221,7 @@ export class CounterOffersService {
     offerId: string,
     coId: string,
     requesterId: string,
+    dto?: DeclineCounterOfferDto,
   ): Promise<CounterOffer> {
     const offer = await this.offersService.findByIdOrThrow(offerId);
     const co = await this.findCOByIdOrThrow(coId, offerId);
@@ -273,7 +275,7 @@ export class CounterOffersService {
         eventType: OFFER_EVENTS.COUNTER_DECLINED,
         routingKey: OFFER_EVENTS.COUNTER_DECLINED,
         exchange: OFFER_EXCHANGE,
-        payload: buildOfferCounterDeclinedPayload(restoredOffer as any, this.mapRawToCO(coRows[0]), requesterId) as any,
+        payload: buildOfferCounterDeclinedPayload(restoredOffer as any, this.mapRawToCO(coRows[0]), requesterId, dto?.reason, dto?.chip) as any,
       }, em);
 
       return { declinedCO: this.mapRawToCO(coRows[0]), restoredOffer };

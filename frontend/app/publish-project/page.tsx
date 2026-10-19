@@ -6256,9 +6256,14 @@ function PublishProject({
               "featured-image.jpg"
             )
           : null
+        // PMCM-256 follow-up: additionalImages can contain "" placeholders
+        // for a cleared gallery slot — hydrateRemoteMediaFile("") would
+        // fetch("") and produce a bogus "file" instead of an empty slot.
+        // Map position to null so index alignment with the per-slot
+        // additionalImages.${index} fields below is preserved.
         const hydratedAdditionalImages = await Promise.all(
           (persistedMedia?.additionalImages ?? []).map((url: string) =>
-            hydrateRemoteMediaFile(url, "additional-image.jpg")
+            url ? hydrateRemoteMediaFile(url, "additional-image.jpg") : null
           )
         )
 
@@ -6272,13 +6277,9 @@ function PublishProject({
                 },
               ]
             : [],
-          additionalImages: hydratedAdditionalImages.map((file) => [
-            {
-              meta: file,
-              progress: 100,
-              hasError: false,
-            },
-          ]),
+          additionalImages: hydratedAdditionalImages.map((file) =>
+            file ? [{ meta: file, progress: 100, hasError: false }] : []
+          ),
           featuredVideo: persistedMedia?.featuredVideo ?? "",
         })
         lastMediaPayloadRef.current = JSON.stringify({
@@ -6490,14 +6491,23 @@ function PublishProject({
                 },
               ]
             : [],
+          // PMCM-256 follow-up: a blank slot resets to an empty array
+          // (SquareShapeDropzone's own "empty" shape), not a
+          // PersistedMediaFile wrapping an empty URL.
           additionalImages: (nextMedia.additionalImages ?? []).map(
-            (url: string) => [
-              {
-                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
-                progress: 100,
-                hasError: false,
-              },
-            ]
+            (url: string) =>
+              url
+                ? [
+                    {
+                      meta: buildPersistedMediaFile(
+                        url,
+                        "additional-image.jpg"
+                      ),
+                      progress: 100,
+                      hasError: false,
+                    },
+                  ]
+                : []
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
         })

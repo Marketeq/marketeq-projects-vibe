@@ -34,6 +34,7 @@ import { ActivityModule } from './activity/activity.module';
 import { DisputesModule } from './disputes/disputes.module';
 import { DevicesModule } from './devices/devices.module';
 import { DownloadsModule } from './downloads/downloads.module';
+import { DesktopLaunchModule } from './desktop-launch/desktop-launch.module';
 import { TimeEntry } from './entities/time-entry.entity';
 import { BreakEvent } from './entities/break-event.entity';
 import { IdleEvent } from './entities/idle-event.entity';
@@ -95,6 +96,7 @@ import { DeviceRegistration } from './entities/device-registration.entity';
     DisputesModule,
     DevicesModule,
     DownloadsModule,
+    DesktopLaunchModule,
   ],
   controllers: [TimeTrackingConsumer],
 })

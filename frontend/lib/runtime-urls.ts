@@ -92,6 +92,19 @@ export const getPublicBackendUrl = (): string =>
     )
   )
 
+// Where the Log Time download dialog fetches desktop tracker installers from.
+// Defaults to the latest GitHub release; NEXT_PUBLIC_DTT_DOWNLOAD_BASE_URL
+// points it elsewhere, e.g. "/desktop" to serve a locally built installer
+// from frontend/public/desktop before it is released.
+const DTT_RELEASES_BASE_URL =
+  "https://github.com/Marketeq/desktop-time-tracker/releases/latest/download"
+
+export const getDesktopDownloadBaseUrl = (): string =>
+  (
+    firstNonEmpty(process.env.NEXT_PUBLIC_DTT_DOWNLOAD_BASE_URL) ||
+    DTT_RELEASES_BASE_URL
+  ).replace(/\/+$/, "")
+
 export const getPublicHomepageUrl = (): string => {
   const homepageBase = firstNonEmpty(
     process.env.NEXT_PUBLIC_BACKEND_URL,

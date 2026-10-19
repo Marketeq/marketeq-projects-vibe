@@ -1,12 +1,25 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
+
+// PMCM-258: the five canonical period keys the Budget Calculator/buyer
+// page pricing module (frontend/lib/listing-pricing.ts) understands.
+export const PRICING_PERIODS = [
+  'week',
+  'biweek',
+  'month',
+  'quarter',
+  'year',
+] as const;
 import { Transform, Type } from 'class-transformer';
 import { ProjectCategorySelectionDto } from './project-category-selection.dto';
 
@@ -26,6 +39,7 @@ export class UpsertProjectDraftDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  @MaxLength(120, { message: 'Title cannot exceed 120 characters.' })
   title?: string;
 
   @ApiProperty({ required: false })
@@ -58,6 +72,14 @@ export class UpsertProjectDraftDto {
   @IsNumber()
   durationMonths?: number;
 
+  // PMCM-258: display-only preference — never used to compute the total
+  // or the duration, only which slice of it is shown. Null/omitted means
+  // "no preference saved yet."
+  @ApiProperty({ required: false, enum: PRICING_PERIODS })
+  @IsOptional()
+  @IsIn(PRICING_PERIODS)
+  pricingPeriod?: string;
+
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
@@ -71,6 +93,7 @@ export class UpsertProjectDraftDto {
   @ApiProperty({ type: [String], required: false })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @IsString({ each: true })
   categories?: string[];
 
@@ -86,6 +109,7 @@ export class UpsertProjectDraftDto {
   })
   @IsOptional()
   @IsArray()
+  @ArrayMaxSize(3, { message: 'You can add a maximum of 3 categories.' })
   @ValidateNested({ each: true })
   @Type(() => ProjectCategorySelectionDto)
   categorySelections?: ProjectCategorySelectionDto[];

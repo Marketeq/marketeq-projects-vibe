@@ -47,6 +47,7 @@ import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
 import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
+import sanitizeHtml = require('sanitize-html');
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -55,6 +56,61 @@ import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types
 import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
 import { FaqContext, FaqSuggestion } from './faq/faq.types';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
+
+// PMCM-255: fullDescription comes straight from the seller's own browser
+// (RichTextEditor, via createProjectDraft/updateProjectDraft below) and was
+// never sanitized server-side before being persisted. `sanitize-html` is
+// already a real dependency of this service (job-listing.service.ts's
+// `sanitiseRichText`) — reused here with an allow-list matching what
+// RichTextEditor actually produces (span[data-font-size] for headings, img
+// with data-align for inline images, blockquote) rather than job-listing's
+// narrower h2-h4/p/ul/ol/li set, which has no image/heading-mark support.
+// Mirrors the frontend's sanitizeProjectDescription allow-list
+// (frontend/lib/sanitize-html.ts) — no <a>, no custom fonts/CSS beyond
+// alignment.
+function sanitizeProjectFullDescription(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      'b',
+      'strong',
+      'i',
+      'em',
+      'u',
+      's',
+      'p',
+      'br',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'span',
+      'img',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+    ],
+    allowedAttributes: {
+      span: ['data-font-size'],
+      img: ['src', 'alt', 'data-align'],
+      p: ['style'],
+      h1: ['style'],
+      h2: ['style'],
+      h3: ['style'],
+      h4: ['style'],
+      h5: ['style'],
+      h6: ['style'],
+    },
+    allowedStyles: {
+      '*': {
+        'text-align': [/^left$|^center$|^right$|^justify$/],
+      },
+    },
+    allowedSchemes: ['https', 'http'],
+  });
+}
 
 type ProjectScopeReplacement = { scope: Phase[]; budgetUsdCents: number };
 
@@ -473,10 +529,21 @@ export class PublishService {
         slug: title ? slugify(title) : null,
         subtitle: dto.subtitle ?? null,
         shortDescription: dto.shortDescription ?? '',
-        fullDescription: dto.fullDescription ?? '',
-        budget: dto.budget ?? null,
+        fullDescription: dto.fullDescription
+          ? sanitizeProjectFullDescription(dto.fullDescription)
+          : '',
+        // PMCM-258/X1: budget and duration are seller-visible but
+        // server-computed — a client-sent value is never trusted, even
+        // on first create. `budget` gets its real value from the first
+        // scope save (writeProjectScope's updatePublishedSnapshot);
+        // `durationMonths` has no equivalent compute-and-write path today,
+        // so it's just left null rather than inventing one. The DTO still
+        // accepts both fields (backwards-compat for any client still
+        // sending them), they're just never persisted.
+        budget: null,
         initialTeamBudget: dto.initialTeamBudget ?? null,
-        durationMonths: dto.durationMonths ?? null,
+        durationMonths: null,
+        pricingPeriod: dto.pricingPeriod ?? null,
         location: dto.location ?? null,
         timezone: dto.timezone ?? null,
         categories: dto.categories ?? [],
@@ -558,7 +625,13 @@ export class PublishService {
     const unit = (rawUnit ?? 'days').toLowerCase();
     if (unit.startsWith('hour')) return value;
     if (unit.startsWith('week')) return value * 40;
-    if (unit.startsWith('month')) return value * 160;
+    // PMCM-258 follow-up: was a flat 4-week month (value * 160), disagreeing
+    // with the 30-day month used everywhere else (taskDurationDays below,
+    // frontend's listing-pricing.ts MONTH_DAYS and scope-builder's
+    // durationToHours/durationToDays) — 30/7 weeks/month * 40h/week, same
+    // full-time-week assumption this function already uses for the
+    // 'week'/else-days branches.
+    if (unit.startsWith('month')) return value * (30 / 7) * 40;
     return value * 8;
   }
 
@@ -807,21 +880,36 @@ export class PublishService {
 
     if (dto.title !== undefined) {
       payload.title = dto.title;
-      payload.slug = dto.title ? slugify(dto.title) : null;
+      // PMCM-254: slug is generated from the title on first save only —
+      // editing the title afterward must never change it. Previously this
+      // regenerated the slug from the title on every update with no check
+      // against the project's existing slug, so any title edit after the
+      // first save silently changed the published URL.
+      if (!existingProject.slug && dto.title) {
+        payload.slug = slugify(dto.title);
+      }
     }
     if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
     if (dto.shortDescription !== undefined) {
       payload.shortDescription = dto.shortDescription;
     }
     if (dto.fullDescription !== undefined) {
-      payload.fullDescription = dto.fullDescription;
+      payload.fullDescription = dto.fullDescription
+        ? sanitizeProjectFullDescription(dto.fullDescription)
+        : dto.fullDescription;
     }
-    if (dto.budget !== undefined) payload.budget = dto.budget;
+    // PMCM-258/X1: budget and duration are server-computed — a client-
+    // sent value is never persisted here, even on update. `budget` is
+    // kept current by every scope save instead (writeProjectScope's
+    // updatePublishedSnapshot); `durationMonths` has no equivalent
+    // compute-and-write path today, so dto.durationMonths is simply
+    // ignored rather than inventing one. Both DTO fields stay accepted
+    // (backwards-compat), just unused here.
     if (dto.initialTeamBudget !== undefined) {
       payload.initialTeamBudget = dto.initialTeamBudget;
     }
-    if (dto.durationMonths !== undefined) {
-      payload.durationMonths = dto.durationMonths;
+    if (dto.pricingPeriod !== undefined) {
+      payload.pricingPeriod = dto.pricingPeriod;
     }
     if (dto.location !== undefined) payload.location = dto.location;
     if (dto.timezone !== undefined) payload.timezone = dto.timezone;

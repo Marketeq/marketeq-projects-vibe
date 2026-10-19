@@ -3,6 +3,10 @@
 // Writes a 1024x1024 solid-color PNG to resources/icon.png so electron-builder
 // can derive .icns / .ico from it. Zero dependencies — emits a valid minimal
 // PNG using Node's zlib.
+//
+// resources/icon.png is the real Marketeq logo and is committed. This only
+// fills in a placeholder when that file is missing — it must never overwrite
+// the logo, or the installer, taskbar and tray all show a plain blue square.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,6 +14,11 @@ const zlib = require('node:zlib');
 
 const OUT = path.join(__dirname, '..', 'resources', 'icon.png');
 const SIZE = 1024;
+
+if (fs.existsSync(OUT)) {
+  console.log(`${OUT} already exists — keeping the app logo`);
+  process.exit(0);
+}
 
 function crc32(buf) {
   let c;

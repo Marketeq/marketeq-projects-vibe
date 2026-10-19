@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
@@ -12,7 +12,10 @@ import {
 } from "@blend-metrics/icons"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { LeftSidebar } from "@/components/talent-dashboard-comps"
-import { AddManualTimeDialog } from "@/components/add-manual-time-dialog"
+import {
+  DownloadDesktopTrackerDialog,
+  openDesktopTracker,
+} from "@/components/download-desktop-tracker-dialog"
 import {
   EarningsTab,
   type EarningsFilters,
@@ -69,9 +72,22 @@ export default function TransactionsPage() {
   }
   const [showPayoutSchedule, setShowPayoutSchedule] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
-  // US-75: Log Time is reachable in-place from the Earnings area, rather than
-  // only via navigating away to /time-tracking.
-  const [showLogTime, setShowLogTime] = useState(false)
+  // Log Time works as on /time-tracking: open the desktop tracker if it's
+  // installed, else offer its installer.
+  const [showDownloadTracker, setShowDownloadTracker] = useState(false)
+  const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
+  const handleLogTime = async () => {
+    setOpeningDesktopTracker(true)
+    try {
+      // Either opens the installed tracker or offers the installer.
+      await openDesktopTracker(() => {
+        setOpeningDesktopTracker(false)
+        setShowDownloadTracker(true)
+      })
+    } finally {
+      setOpeningDesktopTracker(false)
+    }
+  }
   const [depositStatus, setDepositStatus] = useState<PayoutDepositStatus | null>(null)
   // Bumped after a successful schedule save to remount OverviewTab — it fetches
   // schedule/balance/methods once on mount, and PayoutScheduleDialog is a sibling
@@ -89,23 +105,6 @@ export default function TransactionsPage() {
   // earningsFilters above, just for the Payouts tab's own filter set.
   const [payoutsFilters, setPayoutsFilters] = useState<PayoutsFilters>({ dateRange: "all_time", statusFilter: "", depositMethodId: "", search: "" })
   const [exporting, setExporting] = useState(false)
-
-  // US-80.03/80.05: the balance must NOT refresh immediately after a manual
-  // time submission — only the entry itself surfaces right away (handled by
-  // the Time Tracking screen's own immediate refetch). Without a real Ably
-  // balance.updated push in this codebase, a single delayed re-fetch — fired
-  // once, ~6s after a successful save — is the safety-net behavior AC-80.06
-  // describes, instead of the previous immediate remount-on-save.
-  const manualTimeRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const handleManualTimeSaved = useCallback(() => {
-    if (manualTimeRefreshTimer.current) clearTimeout(manualTimeRefreshTimer.current)
-    manualTimeRefreshTimer.current = setTimeout(() => {
-      setOverviewRefreshKey((k) => k + 1)
-    }, 6000)
-  }, [])
-  useEffect(() => () => {
-    if (manualTimeRefreshTimer.current) clearTimeout(manualTimeRefreshTimer.current)
-  }, [])
 
   const handleExport = useCallback(
     async (format: "csv" | "pdf") => {
@@ -207,7 +206,8 @@ export default function TransactionsPage() {
                         visual="primary"
                         size="sm"
                         leftIcon={<Calendar className="size-4" />}
-                        onClick={() => setShowLogTime(true)}
+                        loading={openingDesktopTracker}
+                        onClick={handleLogTime}
                       >
                         Log Time
                       </Button>
@@ -241,7 +241,8 @@ export default function TransactionsPage() {
                         visual="primary"
                         size="sm"
                         leftIcon={<Calendar className="size-4" />}
-                        onClick={() => setShowLogTime(true)}
+                        loading={openingDesktopTracker}
+                        onClick={handleLogTime}
                       >
                         Log Time
                       </Button>
@@ -354,10 +355,9 @@ export default function TransactionsPage() {
           onAddNewMethod={() => setOpenAddMethodSignal((k) => k + 1)}
         />
         <HelpSupportDialog open={showHelp} onOpenChange={setShowHelp} />
-        <AddManualTimeDialog
-          open={showLogTime}
-          onOpenChange={setShowLogTime}
-          onSaved={handleManualTimeSaved}
+        <DownloadDesktopTrackerDialog
+          open={showDownloadTracker}
+          onOpenChange={setShowDownloadTracker}
         />
       </div>
     </AuthenticatedRoute>

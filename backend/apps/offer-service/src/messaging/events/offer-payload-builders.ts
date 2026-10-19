@@ -3,6 +3,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Offer } from '../../offers/entities/offer.entity';
 import { CounterOffer } from '../../counter-offers/entities/counter-offer.entity';
+import { DeclineChip } from '../../offers/enums/decline-chip.enum';
 import { OFFER_EVENTS } from './offer-events';
 import {
   OfferCreatedPayload, OfferEditedPayload, OfferAcceptedPayload,
@@ -89,9 +90,9 @@ export function buildOfferCounterAcceptedPayload(offer: Offer, co: CounterOffer,
   return { ...base(offer, acceptedBy, acceptedById), eventType: OFFER_EVENTS.COUNTER_ACCEPTED, counterOfferId: co.id, submittedBy: co.submittedBy, acceptedBy, acceptedById, acceptedAt: (co.acceptedAt ?? new Date()).toISOString(), counterOfferTerms: termsFromCO(co), originalOfferTerms: termsFromOffer(offer) };
 }
 
-export function buildOfferCounterDeclinedPayload(offer: Offer, co: CounterOffer, declinedById: string): OfferCounterDeclinedPayload {
+export function buildOfferCounterDeclinedPayload(offer: Offer, co: CounterOffer, declinedById: string, declinedReason?: string, declinedChip?: DeclineChip): OfferCounterDeclinedPayload {
   const declinedBy = co.submittedBy === 'CLIENT' ? 'TALENT' : 'CLIENT';
-  return { ...base(offer, declinedBy, declinedById), eventType: OFFER_EVENTS.COUNTER_DECLINED, counterOfferId: co.id, declinedBy, declinedById, declinedAt: (co.declinedAt ?? new Date()).toISOString(), counterOfferTerms: termsFromCO(co), parentOfferStatus: offer.status === 'EXPIRED' ? 'EXPIRED' : 'PENDING' };
+  return { ...base(offer, declinedBy, declinedById), eventType: OFFER_EVENTS.COUNTER_DECLINED, counterOfferId: co.id, declinedBy, declinedById, declinedAt: (co.declinedAt ?? new Date()).toISOString(), counterOfferTerms: termsFromCO(co), parentOfferStatus: offer.status === 'EXPIRED' ? 'EXPIRED' : 'PENDING', declinedReason, declinedChip };
 }
 
 export function buildOfferCounterWithdrawnPayload(offer: Offer, co: CounterOffer): OfferCounterWithdrawnPayload {
