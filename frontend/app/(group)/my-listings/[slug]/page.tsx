@@ -1330,16 +1330,17 @@ function SortableGalleryItem({
                       onSaveImage={(file) => onUpload([file], index)}
                       startingPoint={({ open, onEdit }) => (
                         <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="size-9 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40"
                             onClick={() => {
                               open()
                               onEdit()
                             }}
                           >
                             <Edit03 className="size-4 text-white" />
-                          </button>
+                          </IconButton>
                         </TooltipTrigger>
                       )}
                     />
@@ -4270,16 +4271,17 @@ function ProjectDetailsInner() {
                               // open() sends REMOVE first (ideal→removing,
                               // dataUrl is set so no file picker opens),
                               // then onEdit() sends EDIT (removing→editing).
-                              <button
-                                type="button"
-                                className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                className="size-8 rounded-full bg-white/20 hover:bg-white/40"
                                 onClick={() => {
                                   open()
                                   onEdit()
                                 }}
                               >
                                 <Edit03 className="size-3.5 text-white" />
-                              </button>
+                              </IconButton>
                             )}
                           />
                           <button
