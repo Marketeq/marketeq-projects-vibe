@@ -73,6 +73,22 @@ import { createNotificationService } from './services/notifications/notification
 const isDev = !app.isPackaged;
 let windowManager: WindowManager | null = null;
 
+// The Marketeq logo ships next to the app (extraResources) when packaged and
+// lives in desktop/resources/ in dev. Windows prefers the multi-size .ico.
+const resourcesRoot = app.isPackaged
+  ? process.resourcesPath
+  : path.join(__dirname, '..', '..', '..', 'resources');
+const appIconPath = path.join(
+  resourcesRoot,
+  process.platform === 'win32' ? 'icon.ico' : 'icon.png',
+);
+
+// Must match electron-builder's appId so the taskbar groups the window under
+// the installed shortcut and shows its icon instead of a generic one.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.marketeq.time-tracker');
+}
+
 async function createMainWindow(): Promise<BrowserWindow> {
   const win = new BrowserWindow({
     width: 340,
@@ -81,6 +97,7 @@ async function createMainWindow(): Promise<BrowserWindow> {
     minHeight: 480,
     show: true,
     title: 'Marketeq',
+    icon: appIconPath,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
@@ -261,8 +278,72 @@ async function bootstrap(): Promise<void> {
     });
     // Attempt to resume a persisted session. If no session is found the
     // service emits `auth:needs-login` — the renderer picks that up.
-    void authService.tryResumeSession().catch((err) => {
+    const sessionResumed = authService.tryResumeSession().catch((err) => {
       logger.warn({ err }, 'auth: tryResumeSession failed');
+    });
+
+    // BTB-325: tell the web app this launch reached us, so its Log Time
+    // button stops waiting and doesn't offer the installer. Wired here, right
+    // after the stored session is restored, rather than after the sync
+    // stack, so a cold start acknowledges as early as possible.
+    const auth = authService;
+    const launchApiBase = `${(process.env.DTT_API_BASE_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/time-tracking/desktop-launch`;
+    const launchAckUrl = `${launchApiBase}/ack`;
+    acknowledgeLaunch = (launchId) => {
+      void (async () => {
+        await sessionResumed;
+        const token = auth.isAuthenticated() ? auth.getAccessToken() : null;
+        if (!token) {
+          logger.info('deep-link launch not acknowledged: not signed in');
+          return;
+        }
+        const resp = await fetch(launchAckUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ launchId }),
+        });
+        if (!resp.ok) {
+          logger.warn({ status: resp.status }, 'deep-link launch ack rejected');
+        }
+      })().catch((err) => logger.warn({ err }, 'deep-link launch ack failed'));
+    };
+    if (pendingLaunchId) {
+      acknowledgeLaunch(pendingLaunchId);
+      pendingLaunchId = null;
+    }
+
+    // BTB-325: record that this user has the tracker installed, so the web
+    // Log Time button offers the installer immediately only to users who
+    // don't — and never to users who do while Chrome's "Open Marketeq?"
+    // prompt is still up. Re-sent on each new token (sign-in, refresh); the
+    // backend upserts by installation id.
+    auth.onTokenChange((token) => {
+      const self = repos.device.findSelf();
+      if (!token || !self) return;
+      void fetch(`${launchApiBase}/installed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          id: self.id,
+          installationUuid: self.installation_uuid,
+          osName: self.os_name,
+          osVersion: self.os_version,
+          appVersion: app.getVersion(),
+          arch: self.arch,
+        }),
+      })
+        .then((resp) => {
+          if (!resp.ok) {
+            logger.warn({ status: resp.status }, 'install registration rejected');
+          }
+        })
+        .catch((err) => logger.warn({ err }, 'install registration failed'));
     });
     logger.info('phase 5 auth service wired');
   } catch (err) {
@@ -495,6 +576,7 @@ async function bootstrap(): Promise<void> {
     networkMonitor = network;
     syncWorker = worker;
 
+
     // Mirror the web "Screen Capture Settings" choice into local preferences,
     // where the screenshot service reads it at each capture.
     const syncCapturePreference = () => {
@@ -605,6 +687,7 @@ async function bootstrap(): Promise<void> {
       devServerUrl: process.env.VITE_DEV_SERVER_URL,
       preloadPath,
       rendererIndexPath,
+      iconPath: appIconPath,
       getTimerState: () =>
         timerService ? timerService.getCurrentState() : 'Idle',
     });
@@ -615,11 +698,7 @@ async function bootstrap(): Promise<void> {
       getPrefs: () => onboardingService.getNotificationPrefs(),
     });
 
-    // Resolve tray icon dir from packaged resources or dev tree.
-    const resourcesRoot = app.isPackaged
-      ? process.resourcesPath
-      : path.join(__dirname, '..', '..', '..', 'resources');
-    const fallbackIcon = path.join(resourcesRoot, 'icon.png');
+    const fallbackIcon = appIconPath;
 
     trayService = createTrayService({
       logger,
@@ -917,8 +996,83 @@ app.on('window-all-closed', () => {
 // bootstrap completes), causing a shutdown race where capture-supervisor
 // tries to persist permission-grant rows against an already-closed DB.
 
-void bootstrap().catch((err) => {
-  console.error('BOOTSTRAP FAILED:', err);
-  logger.error({ err }, 'bootstrap failed');
-  app.exit(1);
-});
+// The web app's Log Time button opens this app through `marketeq://open`
+// (BTB-325). A second launch — from that link or a shortcut — must focus the
+// running tracker rather than start another one against the same local DB.
+const DEEP_LINK_SCHEME = 'marketeq';
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// A launch id that arrived before bootstrap wired up the API client.
+let pendingLaunchId: string | null = null;
+let acknowledgeLaunch: ((launchId: string) => void) | null = null;
+
+/** The `launch` id from a marketeq://open?launch=<uuid> argument, if any. */
+function launchIdFrom(args: readonly string[]): string | null {
+  const link = args.find((a) => a.toLowerCase().startsWith(`${DEEP_LINK_SCHEME}://`));
+  if (!link) return null;
+  try {
+    const id = new URL(link).searchParams.get('launch');
+    return id && UUID_RE.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+function handleDeepLink(args: readonly string[]): void {
+  const launchId = launchIdFrom(args);
+  if (!launchId) return;
+  if (acknowledgeLaunch) acknowledgeLaunch(launchId);
+  else pendingLaunchId = launchId;
+}
+
+function focusFromDeepLink(): void {
+  if (!app.isReady()) return; // bootstrap shows the window itself
+  if (windowManager) {
+    void windowManager.showMainWindow();
+    return;
+  }
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  } else {
+    void createMainWindow();
+  }
+}
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  // In dev the app runs as `electron <script>`, so Windows needs the script
+  // path to relaunch it; packaged builds are also registered by the installer
+  // (electron-builder.yml `protocols`).
+  if (isDev && process.argv[1]) {
+    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [
+      path.resolve(process.argv[1]),
+    ]);
+  } else {
+    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+  }
+
+  // Windows passes the link on the command line: to this process on a cold
+  // start, to the running one via second-instance.
+  handleDeepLink(process.argv);
+  app.on('second-instance', (_evt, argv) => {
+    handleDeepLink(argv);
+    focusFromDeepLink();
+  });
+  // macOS delivers the link via open-url, on a cold start as well.
+  app.on('open-url', (evt, url) => {
+    evt.preventDefault();
+    handleDeepLink([url]);
+    focusFromDeepLink();
+  });
+
+  void bootstrap().catch((err) => {
+    console.error('BOOTSTRAP FAILED:', err);
+    logger.error({ err }, 'bootstrap failed');
+    app.exit(1);
+  });
+}

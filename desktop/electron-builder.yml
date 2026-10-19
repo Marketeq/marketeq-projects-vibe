@@ -36,6 +36,19 @@ extraResources:
       - '**/*.sql'
   - from: resources/activitywatch/${os}-${arch}
     to: activitywatch/${os}-${arch}
+  # App logo for the window/taskbar and tray at runtime (process.resourcesPath).
+  - from: resources/icon.png
+    to: icon.png
+  - from: resources/icon.ico
+    to: icon.ico
+
+# `marketeq://` lets the web app's Log Time button open the installed tracker
+# (BTB-325). This registers it in Info.plist on macOS; on Windows the NSIS
+# installer writes it in resources/installer.nsh.
+protocols:
+  - name: Marketeq Time Tracker
+    schemes:
+      - marketeq
 
 asar: true
 asarUnpack:
@@ -78,7 +91,7 @@ dmg:
       path: /Applications
 
 win:
-  icon: resources/icon.png
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch: [x64, arm64]

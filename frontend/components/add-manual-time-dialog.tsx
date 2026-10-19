@@ -112,7 +112,7 @@ export function AddManualTimeDialog({
       const today = new Date(); today.setHours(0, 0, 0, 0)
       const earliestAllowed = new Date(today); earliestAllowed.setDate(earliestAllowed.getDate() - MAX_PAST_DAYS)
       if (entryDate > today) {
-        errors.date = "Select a valid date within the allowed range."
+        errors.date = "Future dates cannot be selected."
       } else if (entryDate < earliestAllowed) {
         errors.date = "Select a valid date within the allowed range."
       }
