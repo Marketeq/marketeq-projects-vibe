@@ -1219,17 +1219,19 @@ const Sidebar = ({
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
                       const subItem = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
                           disabled={disabled}
-                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
                           onClick={() => {
                             if (disabled || !targetId) return
                             scrollToWizardField(targetId)
                           }}
                         >
                           {field.label}
-                        </button>
+                        </Button>
                       )
 
                       return (
@@ -1289,17 +1291,19 @@ const Sidebar = ({
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
                       const subItem = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
                           disabled={disabled}
-                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
                           onClick={() => {
                             if (disabled || !targetId) return
                             scrollToWizardField(targetId)
                           }}
                         >
                           {field.label}
-                        </button>
+                        </Button>
                       )
 
                       return (
@@ -1341,10 +1345,12 @@ const Sidebar = ({
                           ? null
                           : SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
                       const subItem = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
                           disabled={disabled}
-                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
                           onClick={() => {
                             if (disabled) return
                             if (field.label === "Task Name") {
@@ -1355,7 +1361,7 @@ const Sidebar = ({
                           }}
                         >
                           {field.label}
-                        </button>
+                        </Button>
                       )
                       return (
                         <div
@@ -1412,11 +1418,13 @@ const Sidebar = ({
                     meta.Team.map((field, i) => {
                       const isSubActive = teamSubTab === field.name
                       const subItem = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
                           disabled={disabled}
                           className={cn(
-                            "text-sm leading-6 transition duration-300 focus-visible:outline-none disabled:cursor-not-allowed",
+                            "text-sm leading-6 p-0 h-auto transition duration-300 disabled:cursor-not-allowed",
                             isSubActive
                               ? "text-primary-500"
                               : "text-gray-500 hover:text-dark-blue-400 disabled:hover:text-gray-500"
@@ -1427,7 +1435,7 @@ const Sidebar = ({
                           }}
                         >
                           {field.label}
-                        </button>
+                        </Button>
                       )
                       return (
                         <div
@@ -1464,17 +1472,19 @@ const Sidebar = ({
                         (faqError || faqModerationHasError)
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
                       const subItem = (
-                        <button
-                          type="button"
+                        <Button
+                          variant="link"
+                          visual="gray"
+                          size="sm"
                           disabled={disabled}
-                          className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none disabled:cursor-not-allowed disabled:hover:text-gray-500"
+                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
                           onClick={() => {
                             if (disabled || !targetId) return
                             scrollToWizardField(targetId)
                           }}
                         >
                           {field.label}
-                        </button>
+                        </Button>
                       )
                       return (
                         <div
