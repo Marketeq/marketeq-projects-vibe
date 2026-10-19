@@ -59,10 +59,10 @@ describe("banner: exact approved content and design-system reuse", () => {
 
 describe("banner: position above Welcome", () => {
   it("is the first child of the content column, directly before <Welcome>", () => {
-    const column = page.indexOf('<div className="flex-auto space-y-3 md:space-y-5 min-w-0">')
+    const column = page.indexOf('<div className="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">')
     const welcome = page.indexOf("<Welcome onToggle")
     assert.ok(column > -1 && bannerStart > column && bannerStart < welcome)
-    assert.ok(page.slice(column, bannerStart).replace(/\s+/g, "") === '<divclassName="flex-auto space-y-3 md:space-y-5 min-w-0">'.replace(/\s+/g, ""))
+    assert.ok(page.slice(column, bannerStart).replace(/\s+/g, "") === '<divclassName="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">'.replace(/\s+/g, ""))
     assert.ok(page.slice(bannerEnd, welcome).replace(/[\s)}]+/g, "") === "")
   })
 })
@@ -78,7 +78,7 @@ describe("banner: spacing above the Welcome row (Figma content column gap 32px)"
   it("the banner carries its own 32px bottom gap from md up, and nothing is added below md", () => {
     assert.ok(banner.includes('<Alert variant="warning" className="md:mb-8">'))
     // below md the wrapper is a normal box and keeps the column's own space-y-3 (12px)
-    assert.ok(page.includes('<div className="flex-auto space-y-3 md:space-y-5 min-w-0">'))
+    assert.ok(page.includes('<div className="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">'))
     assert.ok(!/(^|\s)mb-\d/.test(banner.match(/className="([^"]*)"/g)?.[0] ?? ""), "no unconditional bottom margin on the banner")
   })
 
