@@ -9,6 +9,7 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  Label,
   Select,
   SelectContent,
   SelectItem,
@@ -269,9 +270,9 @@ export function DownloadDesktopTrackerDialog({
 
           {/* Platform selector */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-gray-500">
+            <Label className="text-xs font-medium text-gray-500">
               Platform <span className="text-gray-400">(auto-detected)</span>
-            </label>
+            </Label>
             <Select
               value={platform}
               onValueChange={(v) => setPlatform(v as DesktopPlatform)}
@@ -324,13 +325,15 @@ export function DownloadDesktopTrackerDialog({
               <p className="text-xs text-primary-700 leading-5">
                 Your download should begin automatically. If it didn&apos;t
                 start,{" "}
-                <button
-                  type="button"
+                <Button
+                  variant="link"
+                  visual="primary"
+                  size="sm"
+                  className="inline p-0 h-auto font-semibold underline"
                   onClick={triggerDownload}
-                  className="font-semibold underline hover:text-primary-800"
                 >
                   click here
-                </button>
+                </Button>
                 .
               </p>
             </div>
@@ -368,13 +371,15 @@ export function DownloadDesktopTrackerDialog({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between bg-gray-25">
-          <button
-            type="button"
+          <Button
+            variant="link"
+            visual="primary"
+            size="sm"
+            className="p-0 h-auto text-xs font-medium"
             onClick={() => setPlatform(otherOsPlatform)}
-            className="text-xs text-primary-500 hover:text-primary-600 font-medium"
           >
             Need the {isMac ? "Windows" : "macOS"} version?
-          </button>
+          </Button>
           <DialogClose asChild>
             <Button variant="outlined" visual="gray" size="sm">
               Close
