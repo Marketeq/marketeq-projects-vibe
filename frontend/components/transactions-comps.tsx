@@ -1301,6 +1301,18 @@ const isValidClabe = (clabe: string) => {
   const sum = weights.reduce((acc, w, i) => acc + ((w * d[i]) % 10), 0)
   return (10 - (sum % 10)) % 10 === d[17]
 }
+// BTB-341: a micro-deposit is $0.01–$0.99 (PS-08) and the API takes cents.
+// Accepts what a bank statement shows ("0.32", ".32", "$0.32") as well as
+// whole cents ("32"); anything else (letters, negatives, symbols, out of
+// range) is null so the field shows an error and Submit stays disabled.
+const parseMicroDepositCents = (raw: string): number | null => {
+  const v = raw.trim().replace(/^\$/, "")
+  let cents: number
+  if (/^\d{1,2}$/.test(v)) cents = Number(v)
+  else if (/^0?\.\d{1,2}$/.test(v)) cents = Math.round(Number(v) * 100)
+  else return null
+  return cents >= 1 && cents <= 99 ? cents : null
+}
 const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
 const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
 const isValidBik = (v: string) => /^\d{9}$/.test(v)
@@ -3049,8 +3061,8 @@ export const OverviewTab = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount1Cents: parseInt(microAmounts.amount1),
-            amount2Cents: parseInt(microAmounts.amount2),
+            amount1Cents: parseMicroDepositCents(microAmounts.amount1),
+            amount2Cents: parseMicroDepositCents(microAmounts.amount2),
           }),
         }),
         new Promise((r) => setTimeout(r, 1200)),
@@ -4371,7 +4383,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 7 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount1}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4380,6 +4393,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount1.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount1) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                           <div className="flex-1">
                             <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
@@ -4387,7 +4407,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 39 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount2}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4396,6 +4417,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount2.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount2) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -4414,8 +4442,10 @@ export const OverviewTab = ({
                           size="sm"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
-                            !microAmounts.amount1.trim() ||
-                            !microAmounts.amount2.trim()
+                            parseMicroDepositCents(microAmounts.amount1) ===
+                              null ||
+                            parseMicroDepositCents(microAmounts.amount2) ===
+                              null
                           }
                         >
                           Submit
@@ -7769,6 +7799,17 @@ export const OverviewTab = ({
                       const belowMinimum =
                         withdrawableUsd !== null && withdrawableUsd < 50
                       const isLoading = withdrawableUsd === null
+                      // BTB-345: the dialog only offers verified methods
+                      // (withdraw-funds-dialog loadMethods), so with none the
+                      // user typed an amount only to hit a dead end on the
+                      // method step. Not applied while methods are loading
+                      // or failed to load — that is unknown, not "none".
+                      const noVerifiedMethod =
+                        !methodsLoading &&
+                        !methodsError &&
+                        !methods.some(
+                          (m) => m.verificationStatus === "verified"
+                        )
                       return (
                         <div className="flex items-center gap-4">
                           <TooltipProvider>
@@ -7780,20 +7821,33 @@ export const OverviewTab = ({
                                     visual="gray"
                                     size="sm"
                                     className="font-semibold text-[#22376B]"
-                                    disabled={belowMinimum || isLoading}
+                                    disabled={
+                                      belowMinimum ||
+                                      isLoading ||
+                                      noVerifiedMethod
+                                    }
                                     onClick={() => setWithdrawOpen(true)}
                                   >
                                     Withdraw Funds
                                   </Button>
                                 </span>
                               </TooltipTrigger>
-                              {belowMinimum && (
+                              {belowMinimum ? (
                                 <TooltipContent>
                                   <p>
                                     You don&apos;t have any earnings to withdraw
                                     yet.
                                   </p>
                                 </TooltipContent>
+                              ) : (
+                                noVerifiedMethod && (
+                                  <TooltipContent>
+                                    <p>
+                                      Add a verified deposit method to withdraw
+                                      funds.
+                                    </p>
+                                  </TooltipContent>
+                                )
                               )}
                             </Tooltip>
                           </TooltipProvider>
@@ -9364,29 +9418,27 @@ function toActivityItem(p: {
   const sortAt = new Date(at).getTime()
   const method = p.methodLabel ?? "your payout method"
   const amount = parseFloat(p.amountUsd).toFixed(2)
+  // BTB-343: Figma names the two withdrawal events "Deposit Initiated" (the
+  // withdrawal was started and is on its way) and "Deposit Sent" (it left).
+  // pending_verification and awaiting_edd used to fall through to "Payout
+  // Scheduled", so a just-started instant withdrawal never read as started.
   switch (p.status) {
     case "completed":
       return {
         id: p.id,
-        title: "Payout Completed",
+        title: "Deposit Sent",
         description: `$${amount} to ${method}`,
         time,
         kind: "sent" as const,
         sortAt,
       }
+    case "pending_verification":
+    case "awaiting_edd":
+    case "queued":
     case "processing":
       return {
         id: p.id,
-        title: "Payout Processing",
-        description: `$${amount} to ${method}`,
-        time,
-        kind: "processing" as const,
-        sortAt,
-      }
-    case "queued":
-      return {
-        id: p.id,
-        title: "Payout Queued",
+        title: "Deposit Initiated",
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
@@ -10005,7 +10057,13 @@ function FilterSearchMenu({
 
 export const EarningsTab = ({
   onFiltersChange,
-}: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
+  onTotalChange,
+}: {
+  onFiltersChange?: (filters: EarningsFilters) => void
+  // BTB-314: lets the parent-level Export button know when the current
+  // filters match nothing. null = not known yet (loading or failed).
+  onTotalChange?: (total: number | null) => void
+} = {}) => {
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -10246,6 +10304,12 @@ export const EarningsTab = ({
     setCurrentPage(1)
   }, [])
 
+  useEffect(() => {
+    onTotalChange?.(
+      earningsResult && !earningsError ? earningsResult.total : null
+    )
+  }, [onTotalChange, earningsResult, earningsError])
+
   // Export (parent-level Export button) reuses whatever filters are currently
   // applied to this table rather than always exporting the unfiltered dataset.
   useEffect(() => {
@@ -10452,7 +10516,11 @@ export const EarningsTab = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-auto border-0 bg-transparent p-0 shadow-none"
+                // BTB-333: the custom-range calendar is 464px tall and fits
+                // neither above nor below the filter on a 720px laptop
+                // screen, so it was cut off by ~110px. Cap it at the space
+                // Radix reports and let it scroll, as DatePicker does.
+                className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
                 align="start"
                 collisionPadding={16}
               >
@@ -10860,7 +10928,8 @@ export const EarningsTab = ({
               : "Unavailable"}{" "}
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              {/* BTB-322: the icon-only trigger had no accessible name. */}
+              <TooltipTrigger type="button" aria-label="What is manual time?">
                 <HelpCircle className="size-3.5 inline text-[#98A2B3]" />
               </TooltipTrigger>
               <TooltipContent>
@@ -11797,7 +11866,8 @@ export const PayoutsTab = ({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            // BTB-333: same height cap as the Earnings tab date filter.
+            className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
             align="start"
             collisionPadding={16}
           >
