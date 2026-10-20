@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useCheckoutTabLock } from "@/lib/checkout/use-checkout-tab-lock"
 import {
   usePathname,
   useRouter,
@@ -19,10 +20,6 @@ import {
   GIFT_CARD_ERROR_FALLBACK_MESSAGE,
   getGiftCardErrorMessage,
 } from "@/lib/checkout/validation-messages"
-import {
-  getWalletBrowserSupport,
-  type WalletBrowserSupport,
-} from "@/lib/checkout/wallet-support"
 import { GiftCard } from "@/components/icons"
 import { UserAPI } from "@/service/http/user"
 import { apiFetch } from "@/src/lib/api"
@@ -404,39 +401,6 @@ type CardField = "cardNumber" | "cardName" | "expirationDate" | "cvv"
 type BillingAddressMode = "summary" | "saved" | "new"
 type StripeLinkStep = "intro" | "select" | "login" | "account" | "success"
 
-type PaymentPageSnapshot = {
-  pay: "AT_ONCE" | "IN_INSTALLMENTS"
-  selectedTalentPaymentPlanId: string
-  useBalance: boolean
-  savedInstallmentPaymentMethods: InstallmentPaymentMethod[]
-  fullPaymentMethods: InstallmentPaymentMethod[]
-  hasSplitFullPayment: boolean
-  showFullPaymentMethods: boolean
-  isAutoSplitEnabled: boolean
-  splitPaymentAllocations: Record<string, string>
-  firstInstallmentMethods: InstallmentPaymentMethod[]
-  secondInstallmentMethods: InstallmentPaymentMethod[]
-  isWireTransfer: boolean
-  wireTransferDetails: WireTransferDetails | null
-  giftCards: AppliedGiftCard[]
-}
-
-const sanitizeBankPaymentMethod = (
-  method: InstallmentPaymentMethod
-): InstallmentPaymentMethod => {
-  if (method.method !== "BANK_ACCOUNT" || !method.accountNumber) {
-    return method
-  }
-
-  return {
-    ...method,
-    accountNumber: method.accountNumber.slice(-4),
-  }
-}
-
-const sanitizeBankPaymentMethods = (methods: InstallmentPaymentMethod[]) =>
-  methods.map(sanitizeBankPaymentMethod)
-
 const SPLIT_PAYMENT_MAX_METHODS = 3
 const SPLIT_ELIGIBLE_METHOD_TYPES: InstallmentPaymentMethodType[] = [
   "CREDIT_DEBIT_CARD",
@@ -626,6 +590,21 @@ const PAYMENT_METHOD_SERVER_IDS: Record<string, string> = {
   "item-4": "apple_pay",
   "item-5": "klarna",
 }
+
+const FULL_METHOD_TYPE_SERVER_IDS: Record<
+  InstallmentPaymentMethodType,
+  string
+> = {
+  CREDIT_DEBIT_CARD: "card",
+  BANK_ACCOUNT: "ach",
+  WIRE_TRANSFER: "wire",
+  GOOGLE_PAY: "google_pay",
+  APPLE_PAY: "apple_pay",
+  KLARNA: "klarna",
+}
+
+const getPaymentSelectionStorageKey = (sessionId: string) =>
+  `checkout-payment-selection:${sessionId}`
 
 const ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES = ["item-0", "item-1", "item-2"]
 
@@ -1019,6 +998,11 @@ export default function PaymentPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
   const checkout = useCheckout()
+  const {
+    isOtherTabOpen: isOtherCheckoutTabOpen,
+    setIsOtherTabOpen: setIsOtherCheckoutTabOpen,
+    continueHere: continueCheckoutHere,
+  } = useCheckoutTabLock()
   const slug = isTalentCheckout
     ? (searchParams.get(slugParamName) ?? "")
     : (checkout.slug ?? "")
@@ -1091,14 +1075,6 @@ export default function PaymentPage() {
   ).toLowerCase()
   const isOngoingTalentContract =
     isTalentCheckout && selectedDuration === "Ongoing"
-  const paymentStateStorageKey = React.useMemo(
-    () => `checkout-payment-state:${basePath}:${decodedSlug}`,
-    [basePath, decodedSlug]
-  )
-  const submittedOrderStorageKey = React.useMemo(
-    () => `checkout-order-submitted:${basePath}:${decodedSlug}`,
-    [basePath, decodedSlug]
-  )
   const installmentSubjectLabel = isTalentCheckout
     ? "contract"
     : checkoutTypeParam === "team"
@@ -1378,8 +1354,6 @@ export default function PaymentPage() {
     "Domestic Transfer" | "International Transfer"
   >("Domestic Transfer")
   const [isProcessing, setIsProcessing] = React.useState(false)
-  const [hasHydratedPaymentState, setHasHydratedPaymentState] =
-    React.useState(false)
 
   // Credit card form
   const [cardNumber, setCardNumber] = React.useState("")
@@ -1483,10 +1457,6 @@ export default function PaymentPage() {
   const [microDepositMessage, setMicroDepositMessage] = React.useState("")
   const [isSessionExpiredDialogOpen, setIsSessionExpiredDialogOpen] =
     React.useState(false)
-  const [isOtherCheckoutTabOpen, setIsOtherCheckoutTabOpen] =
-    React.useState(false)
-  const tabLockKeyRef = React.useRef("")
-  const tabLockIdRef = React.useRef("")
   const [bankSearch, setBankSearch] = React.useState("")
   const [selectedBankId, setSelectedBankId] = React.useState("chase")
   const [isStripeLinkDialogOpen, setIsStripeLinkDialogOpen] =
@@ -1526,44 +1496,6 @@ export default function PaymentPage() {
       setPay("IN_INSTALLMENTS")
     }
   }, [isOngoingTalentContract])
-
-  React.useEffect(() => {
-    const tabKey = `checkout-active-tab:${basePath}:${decodedSlug}`
-    const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    tabLockKeyRef.current = tabKey
-    tabLockIdRef.current = tabId
-
-    const existingTabId = window.localStorage.getItem(tabKey)
-    if (existingTabId && existingTabId !== tabId) {
-      setIsOtherCheckoutTabOpen(true)
-    }
-
-    window.localStorage.setItem(tabKey, tabId)
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (
-        event.key === tabKey &&
-        event.newValue &&
-        event.newValue !== tabLockIdRef.current
-      ) {
-        setIsOtherCheckoutTabOpen(true)
-      }
-    }
-    window.addEventListener("storage", handleStorageChange)
-
-    const releaseLock = () => {
-      if (window.localStorage.getItem(tabKey) === tabId) {
-        window.localStorage.removeItem(tabKey)
-      }
-    }
-    window.addEventListener("pagehide", releaseLock)
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange)
-      window.removeEventListener("pagehide", releaseLock)
-      releaseLock()
-    }
-  }, [basePath, decodedSlug])
 
   React.useEffect(() => {
     if (!isInstallmentServiceAvailable && pay === "IN_INSTALLMENTS") {
@@ -1606,156 +1538,11 @@ export default function PaymentPage() {
     }
   }, [isTalentCheckout, authUserId])
 
-  const hasSavedBalanceChoiceRef = React.useRef(false)
-
   React.useEffect(() => {
     if (isTalentCheckout || walletBalance === null || walletBalance <= 0) return
-    if (hasSavedBalanceChoiceRef.current) return
 
     setUseBalance(true)
   }, [isTalentCheckout, walletBalance])
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-
-    try {
-      window.sessionStorage.removeItem(submittedOrderStorageKey)
-
-      const rawSnapshot = window.sessionStorage.getItem(paymentStateStorageKey)
-
-      if (!rawSnapshot) {
-        setHasHydratedPaymentState(true)
-        return
-      }
-
-      const snapshot = JSON.parse(rawSnapshot) as Partial<PaymentPageSnapshot>
-
-      if (snapshot.pay === "AT_ONCE" || snapshot.pay === "IN_INSTALLMENTS") {
-        setPay(snapshot.pay)
-      }
-
-      if (typeof snapshot.selectedTalentPaymentPlanId === "string") {
-        setSelectedTalentPaymentPlanId(snapshot.selectedTalentPaymentPlanId)
-      }
-
-      if (typeof snapshot.useBalance === "boolean") {
-        hasSavedBalanceChoiceRef.current = true
-        setUseBalance(snapshot.useBalance)
-      }
-
-      if (Array.isArray(snapshot.savedInstallmentPaymentMethods)) {
-        setSavedInstallmentPaymentMethods(
-          sanitizeBankPaymentMethods(snapshot.savedInstallmentPaymentMethods)
-        )
-      }
-
-      if (Array.isArray(snapshot.fullPaymentMethods)) {
-        setFullPaymentMethods(
-          sanitizeBankPaymentMethods(snapshot.fullPaymentMethods)
-        )
-      }
-
-      if (typeof snapshot.hasSplitFullPayment === "boolean") {
-        setHasSplitFullPayment(snapshot.hasSplitFullPayment)
-      }
-
-      if (typeof snapshot.showFullPaymentMethods === "boolean") {
-        setShowFullPaymentMethods(snapshot.showFullPaymentMethods)
-      }
-
-      if (typeof snapshot.isAutoSplitEnabled === "boolean") {
-        setIsAutoSplitEnabled(snapshot.isAutoSplitEnabled)
-      }
-
-      if (
-        snapshot.splitPaymentAllocations &&
-        typeof snapshot.splitPaymentAllocations === "object"
-      ) {
-        setSplitPaymentAllocations(snapshot.splitPaymentAllocations)
-      }
-
-      if (Array.isArray(snapshot.firstInstallmentMethods)) {
-        setFirstInstallmentMethods(
-          sanitizeBankPaymentMethods(snapshot.firstInstallmentMethods)
-        )
-      }
-
-      if (Array.isArray(snapshot.secondInstallmentMethods)) {
-        setSecondInstallmentMethods(
-          sanitizeBankPaymentMethods(snapshot.secondInstallmentMethods)
-        )
-      }
-
-      if (typeof snapshot.isWireTransfer === "boolean") {
-        setIsWireTransfer(snapshot.isWireTransfer)
-      }
-
-      if (snapshot.wireTransferDetails) {
-        setWireTransferDetails(snapshot.wireTransferDetails)
-      }
-
-      if (Array.isArray(snapshot.giftCards)) {
-        setGiftCards(
-          snapshot.giftCards.filter(
-            (card): card is AppliedGiftCard =>
-              typeof card?.code === "string" && typeof card?.amount === "number"
-          )
-        )
-        if (snapshot.giftCards.length > 0) {
-          setShowGiftCard(true)
-        }
-      }
-    } catch {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem(paymentStateStorageKey)
-      }
-    } finally {
-      setHasHydratedPaymentState(true)
-    }
-  }, [paymentStateStorageKey, submittedOrderStorageKey])
-
-  React.useEffect(() => {
-    if (!hasHydratedPaymentState || typeof window === "undefined") return
-
-    const snapshot: PaymentPageSnapshot = {
-      pay,
-      selectedTalentPaymentPlanId,
-      useBalance,
-      savedInstallmentPaymentMethods,
-      fullPaymentMethods,
-      hasSplitFullPayment,
-      showFullPaymentMethods,
-      isAutoSplitEnabled,
-      splitPaymentAllocations,
-      firstInstallmentMethods,
-      secondInstallmentMethods,
-      isWireTransfer,
-      wireTransferDetails,
-      giftCards,
-    }
-
-    window.sessionStorage.setItem(
-      paymentStateStorageKey,
-      JSON.stringify(snapshot)
-    )
-  }, [
-    firstInstallmentMethods,
-    fullPaymentMethods,
-    giftCards,
-    hasHydratedPaymentState,
-    hasSplitFullPayment,
-    isAutoSplitEnabled,
-    isWireTransfer,
-    pay,
-    paymentStateStorageKey,
-    savedInstallmentPaymentMethods,
-    secondInstallmentMethods,
-    selectedTalentPaymentPlanId,
-    showFullPaymentMethods,
-    splitPaymentAllocations,
-    useBalance,
-    wireTransferDetails,
-  ])
 
   const projectCost = isTalentCheckout
     ? 94_000
@@ -1886,38 +1673,17 @@ export default function PaymentPage() {
     serverPaymentMethods === null &&
     !hasPaymentMethodsFailed
 
-  const [walletBrowserSupport, setWalletBrowserSupport] =
-    React.useState<WalletBrowserSupport | null>(null)
-
-  React.useEffect(() => {
-    setWalletBrowserSupport(getWalletBrowserSupport())
-  }, [])
-
   const paymentMethodOptions = React.useMemo(() => {
-    const passesBrowserCheck = (browserCheck: string | null) =>
-      browserCheck === "google_pay"
-        ? walletBrowserSupport?.googlePay === true
-        : browserCheck === "apple_pay"
-          ? walletBrowserSupport?.applePay === true
-          : true
-
     if (!serverPaymentMethods) {
-      return PAYMENT_METHODS.filter((option) => {
-        if (!isTalentCheckout) {
-          return ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES.includes(option.value)
-        }
-        const serverId = PAYMENT_METHOD_SERVER_IDS[option.value]
-        return passesBrowserCheck(
-          serverId === "google_pay" || serverId === "apple_pay"
-            ? serverId
-            : null
-        )
-      })
+      return PAYMENT_METHODS.filter(
+        (option) =>
+          isTalentCheckout ||
+          ALWAYS_AVAILABLE_PAYMENT_METHOD_VALUES.includes(option.value)
+      )
     }
 
     const serverOptions = serverPaymentMethods.flatMap((serverMethod) => {
       if (!serverMethod.available) return []
-      if (!passesBrowserCheck(serverMethod.browserCheck)) return []
       const method = PAYMENT_METHODS.find(
         (option) => PAYMENT_METHOD_SERVER_IDS[option.value] === serverMethod.id
       )
@@ -1935,12 +1701,12 @@ export default function PaymentPage() {
         ? [method]
         : []
     })
-  }, [isTalentCheckout, serverPaymentMethods, walletBrowserSupport])
+  }, [isTalentCheckout, serverPaymentMethods])
   const [isSelectedMethodUnavailable, setIsSelectedMethodUnavailable] =
     React.useState(false)
 
   React.useEffect(() => {
-    if (!serverPaymentMethods || !walletBrowserSupport) return
+    if (!serverPaymentMethods) return
 
     const isAvailable = (value: string) =>
       paymentMethodOptions.some((option) => option.value === value)
@@ -1969,12 +1735,56 @@ export default function PaymentPage() {
     paymentMethodOptions,
     serverPaymentMethods,
     totalAmountToBePaid,
-    walletBrowserSupport,
+  ])
+
+  const hasRestoredSelectionRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (hasRestoredSelectionRef.current || isTalentCheckout) return
+    if (!checkout.sessionId || !serverPaymentMethods) return
+
+    hasRestoredSelectionRef.current = true
+    const storageKey = getPaymentSelectionStorageKey(checkout.sessionId)
+
+    try {
+      const rawSelection = window.sessionStorage.getItem(storageKey)
+      if (!rawSelection) return
+
+      const savedSelection = JSON.parse(rawSelection) as { method?: string }
+      const savedValue = Object.keys(PAYMENT_METHOD_SERVER_IDS).find(
+        (value) => PAYMENT_METHOD_SERVER_IDS[value] === savedSelection.method
+      )
+
+      if (
+        savedValue &&
+        paymentMethodOptions.some((option) => option.value === savedValue)
+      ) {
+        setPaymentMethod(savedValue)
+      }
+    } catch {
+      window.sessionStorage.removeItem(storageKey)
+    }
+  }, [
+    checkout.sessionId,
+    isTalentCheckout,
+    paymentMethodOptions,
+    serverPaymentMethods,
   ])
 
   React.useEffect(() => {
     if (fullPaymentMethods.length > 0) setIsSelectedMethodUnavailable(false)
   }, [fullPaymentMethods.length])
+
+  React.useEffect(() => {
+    if (!(projectCost > 0) || totalAmountToBePaid > 0) return
+    if (paymentMethod === "" && !hasSplitFullPayment) return
+
+    setPaymentMethod("")
+    setHasSplitFullPayment(false)
+    setShowFullPaymentMethods(false)
+    setSplitPaymentAllocations({})
+    setSplitPaymentError("")
+  }, [hasSplitFullPayment, paymentMethod, projectCost, totalAmountToBePaid])
   const isSplitPaymentActive =
     pay === "AT_ONCE" && hasSplitFullPayment && fullPaymentMethods.length > 1
   const splitPaymentMethods = React.useMemo(
@@ -2337,6 +2147,21 @@ export default function PaymentPage() {
   }, [])
 
   const navigateToReview = () => {
+    if (checkout.sessionId) {
+      const selectedMethodId = paymentMethod
+        ? (PAYMENT_METHOD_SERVER_IDS[paymentMethod] ?? null)
+        : fullPaymentMethods[0]
+          ? FULL_METHOD_TYPE_SERVER_IDS[fullPaymentMethods[0].method]
+          : null
+      window.sessionStorage.setItem(
+        getPaymentSelectionStorageKey(checkout.sessionId),
+        JSON.stringify({
+          method: selectedMethodId,
+          amountDue: totalAmountToBePaid,
+        })
+      )
+    }
+
     const nextSearchParams = new URLSearchParams(searchParams.toString())
     const nextUrl = nextSearchParams.toString()
       ? `${basePath}/review?${nextSearchParams.toString()}`
@@ -2443,7 +2268,6 @@ export default function PaymentPage() {
 
   React.useEffect(() => {
     if (
-      hasHydratedPaymentState &&
       paymentMethod === "item-2" &&
       !isWireTransfer &&
       (!wireTransferDetails ||
@@ -2453,7 +2277,6 @@ export default function PaymentPage() {
       void loadWireTransferDetails()
     }
   }, [
-    hasHydratedPaymentState,
     isWireTransfer,
     isWireTransferLoading,
     paymentMethod,
@@ -5240,9 +5063,9 @@ export default function PaymentPage() {
                 <AlertCircle className="size-5" />
               </AlertIcon>
               <AlertContent>
-                <AlertTitle>We were unable to load your order amount</AlertTitle>
+                <AlertTitle>We could not retrieve your payment amount.</AlertTitle>
                 <AlertDescription className="mt-1">
-                  Please try again or contact support.
+                  Please return to the project page and try again.
                 </AlertDescription>
                 {checkout.listingId ? (
                   <Button
@@ -9532,19 +9355,7 @@ export default function PaymentPage() {
             session before continuing.
           </p>
           <div className="mt-6 flex justify-end">
-            <Button
-              onClick={() => {
-                if (tabLockKeyRef.current && tabLockIdRef.current) {
-                  window.localStorage.setItem(
-                    tabLockKeyRef.current,
-                    tabLockIdRef.current
-                  )
-                }
-                setIsOtherCheckoutTabOpen(false)
-              }}
-            >
-              Continue Here
-            </Button>
+            <Button onClick={continueCheckoutHere}>Continue Here</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -9558,8 +9369,7 @@ export default function PaymentPage() {
             Your session has expired
           </h2>
           <p className="mt-3 text-sm leading-5 text-gray-500">
-            Please log in again to continue. Your bank account details were
-            cleared for security.
+            Please log in again to continue.
           </p>
           <div className="mt-6 flex justify-end">
             <Button

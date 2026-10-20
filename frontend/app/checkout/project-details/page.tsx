@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useCheckoutTabLock } from "@/lib/checkout/use-checkout-tab-lock"
 import {
   notFound,
   useParams,
@@ -836,10 +837,6 @@ function CheckoutPageInner() {
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
   const slugQuery = `${slugParamName}=${safeSlugSegment}`
-  const addOnStateStorageKey = React.useMemo(
-    () => `checkout-addons:${basePath}:${decodedSlug}`,
-    [basePath, decodedSlug]
-  )
   const fallbackTalentName =
     decodedSlug.split("-")[0]?.replace(/^./, (char) => char.toUpperCase()) ||
     "Alex"
@@ -892,12 +889,13 @@ function CheckoutPageInner() {
   const [selectedDuration, setSelectedDuration] = React.useState(
     searchParams.get("duration") || "Ongoing"
   )
-  const [isOtherCheckoutTabOpen, setIsOtherCheckoutTabOpen] =
-    React.useState(false)
   const [isSessionExpiredDialogOpen, setIsSessionExpiredDialogOpen] =
     React.useState(false)
-  const tabLockKeyRef = React.useRef("")
-  const tabLockIdRef = React.useRef("")
+  const {
+    isOtherTabOpen: isOtherCheckoutTabOpen,
+    setIsOtherTabOpen: setIsOtherCheckoutTabOpen,
+    continueHere: continueCheckoutHere,
+  } = useCheckoutTabLock()
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [checkoutExitDialog, setCheckoutExitDialog] = React.useState<
     "edit-scope" | "add-task" | null
@@ -2267,30 +2265,6 @@ function CheckoutPageInner() {
     return options
   }, [dueTodayTotal, formatter, isOngoingTalentContract])
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-
-    try {
-      const rawSelectedAddOnIds =
-        window.sessionStorage.getItem(addOnStateStorageKey)
-      if (!rawSelectedAddOnIds) return
-
-      const nextSelectedAddOnIds = JSON.parse(rawSelectedAddOnIds) as string[]
-      if (Array.isArray(nextSelectedAddOnIds)) {
-        setSelectedAddOnIds(nextSelectedAddOnIds)
-      }
-    } catch {
-      window.sessionStorage.removeItem(addOnStateStorageKey)
-    }
-  }, [addOnStateStorageKey])
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-    window.sessionStorage.setItem(
-      addOnStateStorageKey,
-      JSON.stringify(selectedAddOnIds)
-    )
-  }, [addOnStateStorageKey, selectedAddOnIds])
   const defaultTalentPaymentPlanId =
     talentPaymentPlanOptions[Math.min(1, talentPaymentPlanOptions.length - 1)]
       ?.id ?? "bi-weekly"
@@ -2329,44 +2303,6 @@ function CheckoutPageInner() {
     selectedTalentPaymentPlanId,
     talentPaymentPlanOptions,
   ])
-
-  React.useEffect(() => {
-    const tabKey = `checkout-active-tab:${basePath}:${decodedSlug}`
-    const tabId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    tabLockKeyRef.current = tabKey
-    tabLockIdRef.current = tabId
-
-    const existingTabId = window.localStorage.getItem(tabKey)
-    if (existingTabId && existingTabId !== tabId) {
-      setIsOtherCheckoutTabOpen(true)
-    }
-
-    window.localStorage.setItem(tabKey, tabId)
-
-    const handleStorageChange = (event: StorageEvent) => {
-      if (
-        event.key === tabKey &&
-        event.newValue &&
-        event.newValue !== tabLockIdRef.current
-      ) {
-        setIsOtherCheckoutTabOpen(true)
-      }
-    }
-    window.addEventListener("storage", handleStorageChange)
-
-    const releaseLock = () => {
-      if (window.localStorage.getItem(tabKey) === tabId) {
-        window.localStorage.removeItem(tabKey)
-      }
-    }
-    window.addEventListener("pagehide", releaseLock)
-
-    return () => {
-      window.removeEventListener("storage", handleStorageChange)
-      window.removeEventListener("pagehide", releaseLock)
-      releaseLock()
-    }
-  }, [basePath, decodedSlug])
 
   const updateOfferInUrl = React.useCallback(
     (
@@ -6019,22 +5955,11 @@ function CheckoutPageInner() {
             session before continuing.
           </p>
           <div className="mt-6 flex justify-end">
-            <Button
-              onClick={() => {
-                if (tabLockKeyRef.current && tabLockIdRef.current) {
-                  window.localStorage.setItem(
-                    tabLockKeyRef.current,
-                    tabLockIdRef.current
-                  )
-                }
-                setIsOtherCheckoutTabOpen(false)
-              }}
-            >
-              Continue Here
-            </Button>
+            <Button onClick={continueCheckoutHere}>Continue Here</Button>
           </div>
         </DialogContent>
       </Dialog>
+
       <Dialog
         open={isSessionExpiredDialogOpen}
         onOpenChange={setIsSessionExpiredDialogOpen}

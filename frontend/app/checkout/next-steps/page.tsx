@@ -107,21 +107,8 @@ export default function NextStepsPage() {
     }, 10_000)
 
     const loadId = window.setTimeout(() => {
-      try {
-        setLoadState("ready")
-        window.localStorage.setItem(
-          `checkout-next-steps-audit:${slug}`,
-          JSON.stringify({
-            event: "NEXT_STEPS_VIEWED",
-            orderSlug: slug,
-            viewedAt: new Date().toISOString(),
-          })
-        )
-      } catch {
-        setLoadState("error")
-      } finally {
-        window.clearTimeout(timeoutId)
-      }
+      setLoadState("ready")
+      window.clearTimeout(timeoutId)
     }, 650)
 
     return () => {

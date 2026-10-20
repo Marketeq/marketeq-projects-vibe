@@ -155,7 +155,7 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
 
   if (sessionId && loadState.status === "unauthorized") {
     return (
-      <Dialog open onOpenChange={() => {}}>
+      <Dialog open>
         <DialogContent className="max-w-[480px] p-6">
           <h2 className="text-lg font-semibold text-dark-blue-400">
             Your session has expired

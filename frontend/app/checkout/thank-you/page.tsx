@@ -247,11 +247,8 @@ export default function ConfirmationPage() {
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
-  const [paymentSnapshot, setPaymentSnapshot] =
-    React.useState<PaymentPageSnapshot | null>(null)
-  const [hasHydratedPaymentState, setHasHydratedPaymentState] =
-    React.useState(false)
-  const [selectedAddOnIds, setSelectedAddOnIds] = React.useState<string[]>([])
+  const paymentSnapshot = null as PaymentPageSnapshot | null
+  const selectedAddOnIds: string[] = []
   React.useEffect(() => {
     if (!isTalentCheckout) return
 
@@ -276,41 +273,6 @@ export default function ConfirmationPage() {
       isActive = false
     }
   }, [decodedSlug, isTalentCheckout])
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-
-    const paymentStateStorageKey = `checkout-payment-state:${basePath}:${decodedSlug}`
-
-    try {
-      const rawSnapshot = window.sessionStorage.getItem(paymentStateStorageKey)
-      if (rawSnapshot) {
-        setPaymentSnapshot(JSON.parse(rawSnapshot) as PaymentPageSnapshot)
-      }
-    } catch {
-      window.sessionStorage.removeItem(paymentStateStorageKey)
-    } finally {
-      setHasHydratedPaymentState(true)
-    }
-  }, [basePath, decodedSlug])
-
-  React.useEffect(() => {
-    if (!isTalentCheckout || typeof window === "undefined") return
-
-    const addOnStateStorageKey = `checkout-addons:${basePath}:${decodedSlug}`
-
-    try {
-      const rawSelectedAddOnIds =
-        window.sessionStorage.getItem(addOnStateStorageKey)
-      if (!rawSelectedAddOnIds) return
-      const nextSelectedAddOnIds = JSON.parse(rawSelectedAddOnIds) as string[]
-      if (Array.isArray(nextSelectedAddOnIds)) {
-        setSelectedAddOnIds(nextSelectedAddOnIds)
-      }
-    } catch {
-      window.sessionStorage.removeItem(addOnStateStorageKey)
-    }
-  }, [basePath, decodedSlug, isTalentCheckout])
 
   const projectCost = 94_000
   const estimatedProjectTax = 0
@@ -1104,7 +1066,7 @@ export default function ConfirmationPage() {
       : []
 
   return (
-    <div className="bg-gray-50 pt-[64px]" aria-busy={!hasHydratedPaymentState}>
+    <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation currentStep={3} showSteps={false} logoHref="" />
 
       <div className="px-[150px] py-[50px]">

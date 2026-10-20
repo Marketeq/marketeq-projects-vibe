@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useCheckoutTabLock } from "@/lib/checkout/use-checkout-tab-lock"
 import {
   usePathname,
   useRouter,
@@ -233,6 +234,11 @@ export default function ConfirmationPage() {
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
   const checkout = useCheckout()
+  const {
+    isOtherTabOpen: isOtherCheckoutTabOpen,
+    setIsOtherTabOpen: setIsOtherCheckoutTabOpen,
+    continueHere: continueCheckoutHere,
+  } = useCheckoutTabLock()
   const slug = isTalentCheckout
     ? (searchParams.get(slugParamName) ?? "")
     : (checkout.slug ?? "")
@@ -253,24 +259,12 @@ export default function ConfirmationPage() {
   const [authorizationError, setAuthorizationError] = React.useState("")
   const [isSubmittingPayment, setIsSubmittingPayment] = React.useState(false)
   const [submitError, setSubmitError] = React.useState("")
-  const [paymentSnapshot, setPaymentSnapshot] =
-    React.useState<PaymentPageSnapshot | null>(null)
+  const paymentSnapshot = null as PaymentPageSnapshot | null
   const [legalDialog, setLegalDialog] = React.useState<
     "terms" | "privacy" | null
   >(null)
-  const [hasHydratedPaymentState, setHasHydratedPaymentState] =
-    React.useState(false)
-  const [hasSubmittedOrder, setHasSubmittedOrder] = React.useState(false)
   const hasAuthorizationError = authorizationError.length > 0
   const authorizationSectionRef = React.useRef<HTMLDivElement | null>(null)
-  const paymentStateStorageKey = React.useMemo(
-    () => `checkout-payment-state:${basePath}:${decodedSlug}`,
-    [basePath, decodedSlug]
-  )
-  const submittedOrderStorageKey = React.useMemo(
-    () => `checkout-order-submitted:${basePath}:${decodedSlug}`,
-    [basePath, decodedSlug]
-  )
 
   React.useEffect(() => {
     if (!isTalentCheckout) return
@@ -321,24 +315,6 @@ export default function ConfirmationPage() {
       isActive = false
     }
   }, [decodedSlug, isTalentCheckout])
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return
-
-    try {
-      const rawSnapshot = window.sessionStorage.getItem(paymentStateStorageKey)
-      if (rawSnapshot) {
-        setPaymentSnapshot(JSON.parse(rawSnapshot) as PaymentPageSnapshot)
-      }
-      setHasSubmittedOrder(
-        window.sessionStorage.getItem(submittedOrderStorageKey) === "true"
-      )
-    } catch {
-      setPaymentSnapshot(null)
-    } finally {
-      setHasHydratedPaymentState(true)
-    }
-  }, [paymentStateStorageKey, submittedOrderStorageKey])
 
   const selectedRateValue = searchParams.get("rate") || "web-development"
   const selectedSchedule = searchParams.get("schedule") || "full-time"
@@ -544,10 +520,6 @@ export default function ConfirmationPage() {
   }, [basePath, router, slugQuery, searchParams])
 
   const handleSubmitPayment = () => {
-    if (hasSubmittedOrder) return
-
-    if (!isTalentCheckout && !hasHydratedPaymentState) return
-
     if (!isTalentCheckout && !hasProjectPaymentRows) {
       setSubmitError(
         "Your payment method is no longer valid. Please go back and select a different payment method."
@@ -569,8 +541,6 @@ export default function ConfirmationPage() {
     setSubmitError("")
     setIsSubmittingPayment(true)
     window.setTimeout(() => {
-      window.sessionStorage.setItem(submittedOrderStorageKey, "true")
-      setHasSubmittedOrder(true)
       router.push(`${basePath}/confirmation?${slugQuery}`)
     }, 300)
   }
@@ -949,13 +919,7 @@ export default function ConfirmationPage() {
                     </Button>
                   </div>
                   <div className="p-6">
-                    {!hasHydratedPaymentState ? (
-                      <div className="space-y-3">
-                        <div className="h-14 rounded bg-gray-100" />
-                        <div className="h-14 rounded bg-gray-100" />
-                        <div className="h-14 rounded bg-gray-100" />
-                      </div>
-                    ) : hasProjectPaymentRows ? (
+                    {hasProjectPaymentRows ? (
                       <>
                         {paymentPlan === "IN_INSTALLMENTS" ? (
                           <>
@@ -1290,7 +1254,7 @@ export default function ConfirmationPage() {
 
                   <div className="mt-4">
                     <div className="mt-5 space-y-3">
-                      {hasHydratedPaymentState && hasProjectPaymentRows ? (
+                      {hasProjectPaymentRows ? (
                         projectPaymentRows.map(renderSidebarPaymentRow)
                       ) : (
                         <div className="rounded-md bg-gray-100 p-3 text-xs text-gray-500">
@@ -1312,32 +1276,21 @@ export default function ConfirmationPage() {
 
                     <div className="grid mt-2.5">
                       <Button
-                        disabled={
-                          isSubmittingPayment ||
-                          hasSubmittedOrder ||
-                          !hasHydratedPaymentState
-                        }
+                        disabled={isSubmittingPayment}
                         onClick={handleSubmitPayment}
                         visual={
                           /* hasAuthorizationError ? "error" : */ "primary"
                         }
                       >
-                        {hasSubmittedOrder
-                          ? "Order Submitted"
-                          : isSubmittingPayment
-                            ? "Submitting..."
-                            : "Submit Payment"}
+                        {isSubmittingPayment
+                          ? "Submitting..."
+                          : "Submit Payment"}
                       </Button>
                     </div>
                     {submitError ? (
                       <ErrorMessage className="mt-2 text-center" size="sm">
                         {submitError}
                       </ErrorMessage>
-                    ) : null}
-                    {hasSubmittedOrder ? (
-                      <p className="mt-2 text-center text-xs text-gray-500">
-                        Your order has already been submitted.
-                      </p>
                     ) : null}
 
                     <div className="mt-5">
@@ -1395,6 +1348,24 @@ export default function ConfirmationPage() {
           }}
         />
       ) : null}
+
+      <Dialog
+        open={isOtherCheckoutTabOpen}
+        onOpenChange={setIsOtherCheckoutTabOpen}
+      >
+        <DialogContent className="max-w-[480px] p-6">
+          <h2 className="text-lg font-semibold text-dark-blue-400">
+            Checkout open in another tab
+          </h2>
+          <p className="mt-3 text-sm leading-5 text-gray-500">
+            You have checkout open in another tab. Please complete or close that
+            session before continuing.
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button onClick={continueCheckoutHere}>Continue Here</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={legalDialog !== null}
