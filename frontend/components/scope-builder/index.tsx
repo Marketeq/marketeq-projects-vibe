@@ -24,10 +24,10 @@ import {
   ArrowDownLeft,
   ArrowUp,
   ArrowUpLeft,
+  Calendar,
   Check,
   ChevronDown,
   ChevronsDown,
-  Calendar,
   ChevronsUp,
   Clock,
   Copy,
@@ -80,6 +80,7 @@ import {
 import { useIsomorphicLayoutEffect, useUpdateEffect } from "react-use"
 import { z } from "zod"
 import { Prettify } from "@/types/core"
+import { taskWorkingDays } from "@/lib/checkout/working-days"
 import { GripVertical2 } from "@/components/icons/grip-vertical-2"
 import { Network } from "@/components/icons/network"
 import { Network1 } from "@/components/icons/network-1"
@@ -87,6 +88,11 @@ import { Network2 } from "@/components/icons/network-2"
 import { Network3 } from "@/components/icons/network-3"
 import { Network4 } from "@/components/icons/network-4"
 import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
   CountriesCombobox,
   OwnCombobox,
   getStaticFlagUrl,
@@ -109,6 +115,11 @@ import {
   AvatarFallback,
   AvatarImage,
   Button,
+  Combobox,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   Dialog,
   DialogClose,
   DialogContent,
@@ -122,6 +133,7 @@ import {
   Input,
   InputGroup,
   InputLeftElement,
+  InputRightAddon,
   Label,
   Listbox,
   ListboxButton,
@@ -174,6 +186,16 @@ const formatDurationUnit = (
   return type
 }
 
+const formatDurationTableUnit = (
+  value: number,
+  type: (typeof DURATION_TYPE)[number]
+) =>
+  type === "hours"
+    ? value === 1
+      ? "hr"
+      : "hrs"
+    : formatDurationUnit(value, type)
+
 const durationToDays = (
   value: number,
   type: (typeof DURATION_TYPE)[number]
@@ -193,7 +215,7 @@ const EXPERIENCE_LEVELS = [
 ] as const
 type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number]
 
-const taskFormSchema = z.object({
+const taskFormBaseSchema = z.object({
   task: z.string().min(1, "Please enter a task name"),
   role: z.string().min(1, "Please select a role"),
   // PMCM-257 fix: reverted to optional (matches dev-main) — the
@@ -207,6 +229,16 @@ const taskFormSchema = z.object({
     required_error: "Please select an experience level",
     invalid_type_error: "Please select an experience level",
   }),
+  workSchedule: z.string().optional(),
+  estimatedHours: z.preprocess(
+    (value) => {
+      if (value === "" || value === null || value === undefined) {
+        return undefined
+      }
+      return typeof value === "string" ? Number(value) : value
+    },
+    z.number({ invalid_type_error: "Please enter estimated hours" }).optional()
+  ),
   duration: z.object({
     value: z.coerce
       .number({
@@ -224,7 +256,31 @@ const taskFormSchema = z.object({
   }),
 })
 
-const rowSchema = taskFormSchema.merge(
+const taskFormSchema = taskFormBaseSchema
+  .extend({
+    workSchedule: z
+      .string({ required_error: "Please select an option." })
+      .min(1, "Please select an option."),
+  })
+  .superRefine(({ estimatedHours, workSchedule }, context) => {
+    if (workSchedule === "custom") {
+      if (estimatedHours === undefined) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please enter estimated hours",
+          path: ["estimatedHours"],
+        })
+      } else if (estimatedHours <= 0) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please enter estimated hours greater than 0",
+          path: ["estimatedHours"],
+        })
+      }
+    }
+  })
+
+const rowSchema = taskFormBaseSchema.merge(
   z.object({
     id: z.string().min(1, "Please enter a task ID"),
   })
@@ -263,7 +319,7 @@ type PhaseNameFormValues = z.infer<typeof phaseNameFormSchema>
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
-type TaskFormValues = z.infer<typeof taskFormSchema>
+export type TaskFormValues = z.infer<typeof taskFormSchema>
 
 export interface TeamMember {
   id: string
@@ -406,7 +462,7 @@ export type PhaseRow = Prettify<
     location?: string
     experience?: string
     assignedMember?: TeamMember | null
-  } & TaskFormValues
+  } & z.infer<typeof taskFormBaseSchema>
 >
 
 export type PhaseType = "setup" | "recurring" | "ongoing"
@@ -426,12 +482,26 @@ export interface Phase {
 declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
-    updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    updateData: (
+      rowIndex: number,
+      columnId: string,
+      value: unknown,
+      notifyTitle?: string
+    ) => void
     batchUpdateData?: (
       rowIndex: number,
-      updates: Record<string, unknown>
+      updates: Record<string, unknown>,
+      notifyTitle?: string
     ) => void
     openDurationDialog: (index: number) => void
+    moveTask?: (fromIndex: number, toIndex: number) => void
+    duplicateTask?: (index: number) => void
+    insertTask?: (
+      index: number,
+      placement: "above" | "below",
+      values: TaskFormValues
+    ) => void
+    deleteTask?: (index: number) => void
     roles: string[]
     teamMembers?: TeamMember[]
   }
@@ -454,12 +524,55 @@ const getPhaseDurationInDays = (phase?: Phase) => {
   return durations.length ? Math.max(...durations) : 0
 }
 
+const getTaskEditTitle = (
+  original: { task: string; duration: { value: number; type: string } },
+  title: string,
+  duration: { value: number; type: string }
+) => {
+  const renamed = title !== original.task
+  const retimed =
+    duration.value !== original.duration.value ||
+    duration.type !== original.duration.type
+
+  if (renamed && retimed) return "Task Updated"
+  if (renamed) return "Task Renamed"
+  if (retimed) return "Duration Changed"
+  return undefined
+}
+
+const getPhaseWorkingDays = (phase?: Phase) => {
+  const days = (phase?.rows ?? [])
+    .map((row) => {
+      const value = Number(row?.duration?.value)
+      const type = row?.duration?.type
+
+      if (!Number.isFinite(value) || value <= 0 || !type) return 0
+      return taskWorkingDays(
+        durationToHours(
+          value,
+          type,
+          row.workSchedule ?? row.assignedMember?.workSchedule,
+          row.workSchedule === "custom"
+            ? row.estimatedHours
+            : row.assignedMember?.customHoursPerWeek
+        ),
+        row.workSchedule ?? row.assignedMember?.workSchedule,
+        row.workSchedule === "custom"
+          ? row.estimatedHours
+          : row.assignedMember?.customHoursPerWeek
+      )
+    })
+    .filter((value) => value > 0)
+
+  return days.length ? Math.max(...days) : 0
+}
+
 const getPhaseDayRange = (phases: Phase[], phaseIndex: number) => {
   const priorDays = phases
     .slice(0, phaseIndex)
-    .reduce((sum, phase) => sum + getPhaseDurationInDays(phase), 0)
+    .reduce((sum, phase) => sum + getPhaseWorkingDays(phase), 0)
   const startDay = priorDays + 1
-  const duration = getPhaseDurationInDays(phases[phaseIndex])
+  const duration = getPhaseWorkingDays(phases[phaseIndex])
   const endDay = duration > 0 ? startDay + duration - 1 : undefined
 
   return { startDay, endDay }
@@ -620,7 +733,10 @@ const RecurrenceEditor = ({
           type="button"
           className="inline-flex items-center gap-x-1.5 whitespace-nowrap text-[13px] font-semibold text-dark-blue-400 focus-visible:outline-none"
         >
-          <RefreshCcw05 className="size-3.5 shrink-0" style={{ color: "#12B76A" }} />
+          <RefreshCcw05
+            className="size-3.5 shrink-0"
+            style={{ color: "#12B76A" }}
+          />
           {value ? (
             <>
               <span>Recurs:</span>
@@ -768,18 +884,20 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 
-// PMCM-257: matches a phase's own name OR any of its task rows' task/
-// role/location text against the normalized search query.
-const matchesPhaseSearch = (phase: Phase, normalizedQuery: string) => {
-  if (!normalizedQuery) return true
-  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
-    return true
-  }
-  return (phase.rows ?? []).some((row) =>
-    [row.task, row.role, row.location].some((value) =>
-      normalizeSearchText(value).includes(normalizedQuery)
-    )
+const getPhaseSearchMatch = (
+  phase: Phase | undefined,
+  query: string
+): { visible: boolean; showAllTasks: boolean } => {
+  if (!query) return { visible: true, showAllTasks: true }
+  if (!phase) return { visible: false, showAllTasks: false }
+  const phaseMatches = normalizeSearchText(phase.phaseName).includes(query)
+  const hasTaskMatch = (phase.rows ?? []).some((row) =>
+    normalizeSearchText(row.task).includes(query)
   )
+  return {
+    visible: phaseMatches || hasTaskMatch,
+    showAllTasks: phaseMatches,
+  }
 }
 
 const numberToWord = (num: number) => {
@@ -807,20 +925,106 @@ const numberToWord = (num: number) => {
 // "Georgia" is intentionally NOT treated as a US state — it collides with the
 // country of the same name, so we default the ambiguous case to the country.
 const US_STATES = new Set<string>([
-  "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga", "hi", "id",
-  "il", "in", "ia", "ks", "ky", "la", "me", "md", "ma", "mi", "mn", "ms",
-  "mo", "mt", "ne", "nv", "nh", "nj", "nm", "ny", "nc", "nd", "oh", "ok",
-  "or", "pa", "ri", "sc", "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv",
-  "wi", "wy", "dc",
-  "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-  "connecticut", "delaware", "florida", "hawaii", "idaho", "illinois",
-  "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine", "maryland",
-  "massachusetts", "michigan", "minnesota", "mississippi", "missouri",
-  "montana", "nebraska", "nevada", "new hampshire", "new jersey",
-  "new mexico", "new york", "north carolina", "north dakota", "ohio",
-  "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
-  "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
-  "washington", "west virginia", "wisconsin", "wyoming",
+  "al",
+  "ak",
+  "az",
+  "ar",
+  "ca",
+  "co",
+  "ct",
+  "de",
+  "fl",
+  "ga",
+  "hi",
+  "id",
+  "il",
+  "in",
+  "ia",
+  "ks",
+  "ky",
+  "la",
+  "me",
+  "md",
+  "ma",
+  "mi",
+  "mn",
+  "ms",
+  "mo",
+  "mt",
+  "ne",
+  "nv",
+  "nh",
+  "nj",
+  "nm",
+  "ny",
+  "nc",
+  "nd",
+  "oh",
+  "ok",
+  "or",
+  "pa",
+  "ri",
+  "sc",
+  "sd",
+  "tn",
+  "tx",
+  "ut",
+  "vt",
+  "va",
+  "wa",
+  "wv",
+  "wi",
+  "wy",
+  "dc",
+  "alabama",
+  "alaska",
+  "arizona",
+  "arkansas",
+  "california",
+  "colorado",
+  "connecticut",
+  "delaware",
+  "florida",
+  "hawaii",
+  "idaho",
+  "illinois",
+  "indiana",
+  "iowa",
+  "kansas",
+  "kentucky",
+  "louisiana",
+  "maine",
+  "maryland",
+  "massachusetts",
+  "michigan",
+  "minnesota",
+  "mississippi",
+  "missouri",
+  "montana",
+  "nebraska",
+  "nevada",
+  "new hampshire",
+  "new jersey",
+  "new mexico",
+  "new york",
+  "north carolina",
+  "north dakota",
+  "ohio",
+  "oklahoma",
+  "oregon",
+  "pennsylvania",
+  "rhode island",
+  "south carolina",
+  "south dakota",
+  "tennessee",
+  "texas",
+  "utah",
+  "vermont",
+  "virginia",
+  "washington",
+  "west virginia",
+  "wisconsin",
+  "wyoming",
 ])
 
 const COUNTRY_ALIASES: Record<string, string> = {
@@ -1248,7 +1452,7 @@ const PhaseNameDialog = ({
   )
 }
 
-const TaskDialog = ({
+export const TaskDialog = ({
   open,
   onOpenChange,
   onAddTask,
@@ -1274,10 +1478,12 @@ const TaskDialog = ({
       task: "",
       role: "",
       location: "",
-      experience: undefined,
+      experience: "Junior",
+      workSchedule: undefined,
+      estimatedHours: undefined,
       duration: {
-        type: "days",
-        value: 1,
+        type: "hours",
+        value: undefined as any,
       },
     },
   })
@@ -1288,8 +1494,10 @@ const TaskDialog = ({
         task: "",
         role: "",
         location: "",
-        experience: undefined,
-        duration: { type: undefined as any, value: undefined as any },
+        experience: "Junior",
+        workSchedule: undefined,
+        estimatedHours: undefined,
+        duration: { type: "hours", value: undefined as any },
       })
     }
   }, [isOpen, reset])
@@ -1299,6 +1507,20 @@ const TaskDialog = ({
     name: "duration.value",
     defaultValue: 1,
   })
+  const taskWorkSchedule = useWatch({
+    control,
+    name: "workSchedule",
+    defaultValue: undefined,
+  })
+  const taskRole = useWatch({
+    control,
+    name: "role",
+    defaultValue: "",
+  })
+  const roleSuggestions = useMemo(() => {
+    const query = taskRole.trim().toLowerCase()
+    return ROLES.filter((role) => !query || role.toLowerCase().includes(query))
+  }, [taskRole])
   const onSubmit: SubmitHandler<TaskFormValues> = (values) => {
     onAddTask(values)
     toggleIsOpen(false)
@@ -1306,115 +1528,217 @@ const TaskDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogContent className="sm:max-w-[400px]">
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="task-name" className="text-gray-700" size="sm">
-              Task Name
-            </Label>
-            <Input
-              id="task-name"
-              placeholder="Enter task name"
-              {...register("task")}
-              isInvalid={hookFormHasError({ errors, name: "task" })}
-            />
-            <HookFormErrorMessage
-              errors={errors}
-              name="task"
-              render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="duration" className="text-gray-700" size="sm">
-              Duration
-            </Label>
-            <div className="grid grid-cols-2 gap-x-3">
+      <DialogContent
+        accessibilityTitle="Create task"
+        className="w-[411px] max-w-[calc(100vw-32px)] rounded-xl p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]"
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
+          <div className="flex flex-col gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="task-name" className="text-gray-700" size="sm">
+                Task Name
+              </Label>
               <Input
-                id="duration"
-                type="number"
-                min={0}
-                placeholder="0"
-                {...register("duration.value")}
-                isInvalid={hookFormHasError({ errors, name: "duration.value" })}
+                id="task-name"
+                placeholder="Enter task name"
+                {...register("task")}
+                isInvalid={hookFormHasError({ errors, name: "task" })}
               />
+              <HookFormErrorMessage
+                errors={errors}
+                name="task"
+                render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 items-end gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="duration" className="text-gray-700" size="sm">
+                    Duration
+                  </Label>
+                  <Input
+                    id="duration"
+                    type="number"
+                    min={0}
+                    placeholder="0"
+                    {...register("duration.value")}
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
+                  />
+                </div>
+                <Controller
+                  control={control}
+                  name="duration.type"
+                  render={({ field: { value, onChange } }) => (
+                    <Select value={value} onValueChange={onChange}>
+                      <SelectTrigger className="text-base">
+                        <SelectValue placeholder="Hours" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DURATION_TYPE.map((format) => (
+                          <SelectItem key={format} value={format}>
+                            {formatDurationUnit(
+                              Number(taskDurationValue) || 0,
+                              format
+                            ).replace(/^./, (c) => c.toUpperCase())}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+              {(hookFormHasError({ errors, name: "duration.value" }) ||
+                hookFormHasError({ errors, name: "duration.type" })) && (
+                <ErrorMessage>
+                  {get(errors, "duration.value.message") ||
+                    get(errors, "duration.type.message")}
+                </ErrorMessage>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="role-name" className="text-gray-700" size="sm">
+                Role
+              </Label>
               <Controller
                 control={control}
-                name="duration.type"
+                name="role"
+                render={({ field }) => (
+                  <Combobox
+                    value={field.value}
+                    onChange={field.onChange}
+                    className="w-full"
+                  >
+                    <ComboboxTrigger>
+                      <ComboboxInput
+                        id="role-name"
+                        size="lg"
+                        className="px-3"
+                        placeholder="Enter role"
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        onBlur={field.onBlur}
+                        invalid={hookFormHasError({ errors, name: "role" })}
+                      />
+                    </ComboboxTrigger>
+                    <ComboboxOptions className="max-h-[176px] overflow-y-auto border border-gray-100 p-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)] scrollbar-thin scrollbar-track-transparent scrollbar-thumb-rounded-full scrollbar-thumb-gray-200">
+                      {roleSuggestions.map((role) => (
+                        <ComboboxOption key={role} value={role}>
+                          {role}
+                        </ComboboxOption>
+                      ))}
+                    </ComboboxOptions>
+                  </Combobox>
+                )}
+              />
+              <HookFormErrorMessage
+                errors={errors}
+                name="role"
+                render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="work-schedule"
+                className="text-gray-700"
+                size="sm"
+              >
+                Work Schedule
+              </Label>
+              <Controller
+                control={control}
+                name="workSchedule"
                 render={({ field: { value, onChange } }) => (
                   <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select" />
+                    <SelectTrigger
+                      className={cn(
+                        "w-full text-base",
+                        hookFormHasError({ errors, name: "workSchedule" }) &&
+                          "border-error-300"
+                      )}
+                    >
+                      <SelectValue placeholder="Select one" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DURATION_TYPE.map((format) => (
-                        <SelectItem key={format} value={format}>
-                          {formatDurationUnit(
-                            Number(taskDurationValue) || 0,
-                            format
-                          ).replace(/^./, (c) => c.toUpperCase())}
+                      {[
+                        ["full_time", "Full time"],
+                        ["part_time", "Part time"],
+                        ["custom", "Custom"],
+                      ].map(([schedule, label]) => (
+                        <SelectItem key={schedule} value={schedule}>
+                          {label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 )}
               />
+              <HookFormErrorMessage
+                errors={errors}
+                name="workSchedule"
+                render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
+              />
             </div>
-            {(hookFormHasError({ errors, name: "duration.value" }) ||
-              hookFormHasError({ errors, name: "duration.type" })) && (
-              <ErrorMessage size="sm">
-                {get(errors, "duration.value.message") ||
-                  get(errors, "duration.type.message")}
-              </ErrorMessage>
+
+            {taskWorkSchedule === "custom" && (
+              <>
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-2 items-end gap-3">
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="estimated-hours"
+                        className="text-gray-700"
+                        size="sm"
+                      >
+                        Estimated hours
+                      </Label>
+                      <InputGroup>
+                        <Input
+                          id="estimated-hours"
+                          type="number"
+                          min={0}
+                          placeholder="0"
+                          {...register("estimatedHours")}
+                          isInvalid={hookFormHasError({
+                            errors,
+                            name: "estimatedHours",
+                          })}
+                        />
+                        <InputRightAddon className="rounded-r-[5px] text-base shadow-xs">
+                          hours
+                        </InputRightAddon>
+                      </InputGroup>
+                    </div>
+                    <Select defaultValue="per-week">
+                      <SelectTrigger className="text-base">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="per-day">per day</SelectItem>
+                        <SelectItem value="per-week">per week</SelectItem>
+                        <SelectItem value="per-month">per month</SelectItem>
+                        <SelectItem value="per-quarter">per quarter</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <HookFormErrorMessage
+                    errors={errors}
+                    name="estimatedHours"
+                    render={({ message }) => (
+                      <ErrorMessage>{message}</ErrorMessage>
+                    )}
+                  />
+                </div>
+              </>
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="role-name" className="text-gray-700" size="sm">
-              Role
-            </Label>
-            <Input
-              id="role-name"
-              placeholder="Enter role"
-              {...register("role")}
-              isInvalid={hookFormHasError({ errors, name: "role" })}
-            />
-            <HookFormErrorMessage
-              errors={errors}
-              name="role"
-              render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="experience" className="text-gray-700" size="sm">
-              Experience
-            </Label>
-            {/* Reuses this file's own Dropdown (below) — already shows
-            the Network/Network1-4 icons per level for the table-cell
-            editor; this TaskDialog was the one place still rendering
-            text-only via the plain Select. Same icon-equipped component
-            edit-listing's and publish-project's own TaskDialogs already
-            use for this exact field. */}
-            <Controller
-              control={control}
-              name="experience"
-              render={({ field: { value, onChange } }) => (
-                <Dropdown
-                  value={value}
-                  onValueChange={onChange}
-                  placeholder="Select one"
-                />
-              )}
-            />
-            <HookFormErrorMessage
-              errors={errors}
-              name="experience"
-              render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
-            />
-          </div>
-
-          <DialogFooter className="grid grid-cols-2 gap-x-3 pt-2">
+          <DialogFooter className="grid grid-cols-2 gap-3">
             <DialogClose asChild>
               <Button variant="outlined" type="button" visual="gray">
                 Cancel
@@ -1534,8 +1858,8 @@ const Dropdown = ({
   })
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex items-center gap-x-1.5">
-        <span className="text-xs leading-[18px] font-medium text-gray-700">
+      <DropdownMenuTrigger className="bg-gray-100 focus-visible:outline-none px-2 py-[5px] border border-gray-300 border-dashed rounded-[5px] inline-flex min-w-0 max-w-full items-center gap-x-1.5">
+        <span className="min-w-0 truncate text-xs leading-[18px] font-medium text-gray-700">
           {state ? state : placeholder}
         </span>
         <ChevronDown className="size-[18px] shrink-0 text-gray-500" />
@@ -1597,10 +1921,14 @@ const DeletePhaseDialog = ({
   onOpenChange,
   open,
   onDeletePhase,
+  title = "Delete this phase?",
+  description = "This phase will be deleted permanently. You will not be able to recover it.",
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   onDeletePhase: () => void
+  title?: string
+  description?: React.ReactNode
 }) => {
   const [isOpen, toggleIsOpen] = useControllableState({
     defaultValue: false,
@@ -1609,15 +1937,17 @@ const DeletePhaseDialog = ({
   })
   return (
     <Dialog open={isOpen} onOpenChange={toggleIsOpen}>
-      <DialogContent className="px-5 w-full py-10 md:px-10 bg-transparent shadow-none rounded-none">
-        <div className="max-w-[371px] bg-white p-6 rounded-xl shadow-[0px_8px_8px_-4px_rgba(16,24,40,.03)_0px_20px_24px_-4px_rgba(16,24,40,.08)]">
-          <DialogTitle>Delete this phase</DialogTitle>
-          <DialogDescription>
-            This phase will be deleted permanently. You will not be able to
-            recover it.
-          </DialogDescription>
-
-          <DialogFooter className="mt-8 grid gap-x-3">
+      <DialogContent className="w-[411px] max-w-[calc(100vw-32px)] rounded-xl p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]">
+        <div className="flex flex-col gap-8">
+          <div className="space-y-2">
+            <DialogTitle className="text-lg font-semibold leading-7 text-gray-900">
+              {title}
+            </DialogTitle>
+            <DialogDescription className="text-sm leading-5 text-gray-500">
+              {description}
+            </DialogDescription>
+          </div>
+          <DialogFooter className="gap-3">
             <DialogClose asChild>
               <Button variant="outlined" visual="gray">
                 Cancel
@@ -1862,7 +2192,18 @@ const RowDragHandleCell = ({ rowId }: { rowId: string }) => {
 
 // ─── Role Picker (team member or vacant role) ───────────────────────────
 
-const WORK_SCHEDULES = ["Full-time", "Part-time", "Custom"] as const
+const WORK_SCHEDULES = [
+  { value: "full_time", label: "Full time" },
+  { value: "part_time", label: "Part time" },
+  { value: "custom", label: "Custom" },
+] as const
+
+const getWorkScheduleLabel = (schedule?: string | null) => {
+  if (schedule === "full_time") return "Full-time"
+  if (schedule === "part_time") return "Part-time"
+  if (schedule === "custom") return "Custom"
+  return null
+}
 const CUSTOM_PERIODS = [
   "per day",
   "per week",
@@ -1887,34 +2228,27 @@ export function AddRoleDialog({
   ) => void
 }) {
   const [roleValue, setRoleValue] = useState("")
-  const [roleSearch, setRoleSearch] = useState("")
-  const [roleDropdownOpen, setRoleDropdownOpen] = useState(false)
   const [schedule, setSchedule] = useState("")
   const [customHours, setCustomHours] = useState<number>(15)
   const [customPeriod, setCustomPeriod] = useState("per week")
 
-  const lowerSearch = roleSearch.toLowerCase()
-  const filteredRoles = roles.filter((r) =>
-    r.toLowerCase().includes(lowerSearch)
-  )
+  const filteredRoles = useMemo(() => {
+    const query = roleValue.trim().toLowerCase()
+    return Array.from(new Set([...ROLES, ...roles])).filter(
+      (role) => !query || role.toLowerCase().includes(query)
+    )
+  }, [roleValue, roles])
 
   const handleDone = () => {
     if (!roleValue || !schedule) return
-    const scheduleKey =
-      schedule === "Full-time"
-        ? "full_time"
-        : schedule === "Part-time"
-          ? "part_time"
-          : "custom"
     onDone(
       roleValue,
-      scheduleKey,
-      schedule === "Custom" ? customHours : undefined,
-      schedule === "Custom" ? customPeriod : undefined
+      schedule,
+      schedule === "custom" ? customHours : undefined,
+      schedule === "custom" ? customPeriod : undefined
     )
     // Reset
     setRoleValue("")
-    setRoleSearch("")
     setSchedule("")
     setCustomHours(15)
     setCustomPeriod("per week")
@@ -1926,54 +2260,28 @@ export function AddRoleDialog({
       <DialogContent className="sm:max-w-[360px] p-6 gap-0">
         <div>
           <Label className="text-sm font-medium text-gray-700">Role</Label>
-          <div className="mt-1.5 relative">
-            <Input
-              placeholder="Enter role"
-              value={roleValue}
-              onChange={(e) => {
-                setRoleValue(e.target.value)
-                setRoleSearch(e.target.value)
-                setRoleDropdownOpen(true)
-              }}
-              onFocus={() => setRoleDropdownOpen(true)}
-            />
-            {roleDropdownOpen &&
-              roleSearch.length > 0 &&
-              filteredRoles.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-[0px_12px_16px_-4px_rgba(16,24,40,.08)] overflow-hidden">
-                  <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
-                    <input
-                      className="flex h-8 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
-                      placeholder="Search"
-                      value={roleSearch}
-                      onChange={(e) => setRoleSearch(e.target.value)}
-                    />
-                    <SearchMd className="size-3.5 shrink-0 text-gray-400" />
-                  </div>
-                  <div className="max-h-[180px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 py-1">
-                    {filteredRoles.map((role) => (
-                      <button
-                        key={role}
-                        type="button"
-                        className={cn(
-                          "w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition duration-150 cursor-pointer",
-                          role === roleValue
-                            ? "font-semibold text-gray-900 bg-gray-50"
-                            : "text-gray-600"
-                        )}
-                        onClick={() => {
-                          setRoleValue(role)
-                          setRoleSearch(role)
-                          setRoleDropdownOpen(false)
-                        }}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-          </div>
+          <Combobox
+            value={roleValue}
+            onChange={setRoleValue}
+            className="mt-1.5 w-full"
+          >
+            <ComboboxTrigger>
+              <ComboboxInput
+                size="lg"
+                className="px-3"
+                placeholder="Enter role"
+                value={roleValue}
+                onChange={(event) => setRoleValue(event.target.value)}
+              />
+            </ComboboxTrigger>
+            <ComboboxOptions className="max-h-[176px] overflow-y-auto border border-gray-100 p-1 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08)] scrollbar-thin scrollbar-track-transparent scrollbar-thumb-rounded-full scrollbar-thumb-gray-200">
+              {filteredRoles.map((role) => (
+                <ComboboxOption key={role} value={role}>
+                  {role}
+                </ComboboxOption>
+              ))}
+            </ComboboxOptions>
+          </Combobox>
         </div>
 
         <div className="mt-4">
@@ -1981,51 +2289,50 @@ export function AddRoleDialog({
             Work Schedule
           </Label>
           <div className="mt-1.5">
-            <Listbox value={schedule} onChange={setSchedule}>
-              <ListboxButton
-                className="w-full h-[44px]"
-                placeholder="Select one"
-              />
-              <ListboxOptions className="w-full">
+            <Select value={schedule} onValueChange={setSchedule}>
+              <SelectTrigger className="w-full text-base">
+                <SelectValue placeholder="Select one" />
+              </SelectTrigger>
+              <SelectContent>
                 {WORK_SCHEDULES.map((ws) => (
-                  <ListboxOption key={ws} value={ws}>
-                    {ws}
-                  </ListboxOption>
+                  <SelectItem key={ws.value} value={ws.value}>
+                    {ws.label}
+                  </SelectItem>
                 ))}
-              </ListboxOptions>
-            </Listbox>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {schedule === "Custom" && (
+        {schedule === "custom" && (
           <div className="mt-4">
             <Label className="text-sm font-medium text-gray-700">
               Estimated hours
             </Label>
-            <div className="mt-1.5 flex items-center gap-x-2">
-              <div className="flex items-center gap-x-1.5">
+            <div className="mt-1.5 grid grid-cols-2 items-end gap-3">
+              <InputGroup>
                 <Input
                   type="number"
                   min={1}
-                  className="w-[60px] text-center"
                   value={customHours}
                   onChange={(e) => setCustomHours(Number(e.target.value) || 0)}
                 />
-                <span className="text-sm text-gray-500">hours</span>
-              </div>
-              <Listbox value={customPeriod} onChange={setCustomPeriod}>
-                <ListboxButton
-                  className="h-[44px] min-w-[120px]"
-                  placeholder="per week"
-                />
-                <ListboxOptions>
+                <InputRightAddon className="rounded-r-[5px] text-base shadow-xs">
+                  hours
+                </InputRightAddon>
+              </InputGroup>
+              <Select value={customPeriod} onValueChange={setCustomPeriod}>
+                <SelectTrigger className="text-base">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
                   {CUSTOM_PERIODS.map((p) => (
-                    <ListboxOption key={p} value={p}>
+                    <SelectItem key={p} value={p}>
                       {p}
-                    </ListboxOption>
+                    </SelectItem>
                   ))}
-                </ListboxOptions>
-              </Listbox>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         )}
@@ -2076,25 +2383,21 @@ export function RolePicker({
   )
 
   return (
-    <div>
-      <div className="flex items-center border-b border-gray-200 pl-3 px-2.5">
-        <input
-          className="flex h-9 w-full bg-transparent focus:ring-0 p-0 border-0 text-sm focus-visible:outline-none outline-none text-gray-900 placeholder:text-gray-500"
-          placeholder="Search team..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          autoFocus
-        />
-        <SearchMd className="size-4 shrink-0 text-gray-400" />
-      </div>
-      <div className="max-h-[232px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 pt-1">
+    <Command>
+      <CommandInput
+        placeholder="Search team..."
+        value={search}
+        onValueChange={setSearch}
+        autoFocus
+      />
+      <CommandList className="max-h-[232px] pt-1">
         {filteredMembers.length > 0 ? (
           filteredMembers.map((m) => (
-            <button
+            <CommandItem
               key={m.id}
-              type="button"
-              className="w-full flex items-center gap-x-2 px-3 py-2 text-left hover:bg-gray-50 transition duration-150 cursor-pointer"
-              onClick={() => onSelectMember(m)}
+              value={`${m.firstName} ${m.username} ${m.role}`}
+              className="w-full text-left"
+              onSelect={() => onSelectMember(m)}
             >
               <Avatar className="size-6 shrink-0">
                 {m.avatarUrl ? (
@@ -2115,14 +2418,14 @@ export function RolePicker({
                   {m.role}
                 </p>
               </div>
-            </button>
+            </CommandItem>
           ))
         ) : (
-          <p className="py-4 text-center text-sm text-gray-400">
+          <CommandEmpty className="py-4 text-gray-400">
             {search ? "No team members found." : "No team members yet."}
-          </p>
+          </CommandEmpty>
         )}
-      </div>
+      </CommandList>
       <div className="border-t border-gray-100 px-3 py-2">
         <button
           type="button"
@@ -2132,11 +2435,22 @@ export function RolePicker({
           + Add Role
         </button>
       </div>
-    </div>
+    </Command>
   )
 }
 
 const columnHelper = createColumnHelper<PhaseRow>()
+
+const taskMenuItems = [
+  { label: "Move Up", Icon: ArrowUp },
+  { label: "Move Down", Icon: ArrowDown, separatorAfter: true },
+  { label: "Duplicate Task", Icon: Copy, separatorAfter: true },
+  { label: "Insert Task Above", Icon: ArrowUpLeft },
+  { label: "Insert Task Below", Icon: ArrowDownLeft, separatorAfter: true },
+  { label: "Rename Task", Icon: Type },
+  { label: "Change Duration", Icon: Clock, separatorAfter: true },
+  { label: "Delete Task", Icon: Trash2, destructive: true },
+]
 
 const columns = [
   columnHelper.accessor("task", {
@@ -2146,20 +2460,30 @@ const columns = [
       // eslint-disable-next-line
       const [draft, setDraft] = useState(original.task)
       // eslint-disable-next-line
+      const [draftDuration, setDraftDuration] = useState(original.duration)
+      // eslint-disable-next-line
       const inputRef = useRef<HTMLInputElement>(null)
 
       // eslint-disable-next-line
       useEffect(() => {
         if (dialogOpen) {
           setDraft(original.task)
+          setDraftDuration(original.duration)
           setTimeout(() => inputRef.current?.focus(), 0)
         }
-      }, [dialogOpen, original.task])
+      }, [dialogOpen, original.task, original.duration])
 
       const commit = () => {
         const trimmed = draft.trim()
-        if (trimmed && trimmed !== original.task) {
-          table.options.meta?.updateData(index, column.id, trimmed)
+        if (trimmed) {
+          table.options.meta?.batchUpdateData?.(
+            index,
+            {
+              task: trimmed,
+              duration: draftDuration,
+            },
+            getTaskEditTitle(original, trimmed, draftDuration)
+          )
         }
         setDialogOpen(false)
       }
@@ -2177,45 +2501,92 @@ const columns = [
             </button>
           </span>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle className="text-lg font-semibold text-gray-900">
-                  Edit Task Name
-                </DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col gap-y-1.5 pt-2">
-                <Label size="sm" className="text-gray-700">
-                  Task Name
-                </Label>
-                <Input
-                  ref={inputRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      commit()
-                    }
-                  }}
-                  placeholder="Enter task name"
-                />
-              </div>
-              <DialogFooter className="gap-x-3 pt-4">
-                <DialogClose asChild>
-                  <Button type="button" variant="outlined" visual="gray">
-                    Cancel
-                  </Button>
-                </DialogClose>
-                <Button type="button" onClick={commit}>
-                  Save
-                </Button>
-              </DialogFooter>
+            <DialogContent
+              accessibilityTitle="Edit task"
+              className="w-[411px] max-w-[calc(100vw-32px)] rounded-xl p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]"
+            >
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  commit()
+                }}
+                className="flex flex-col gap-8"
+              >
+                <div className="flex flex-col gap-3">
+                  <div className="space-y-1.5">
+                    <Label size="sm" className="text-gray-700">
+                      Task Name
+                    </Label>
+                    <Input
+                      ref={inputRef}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder="Enter task name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-end gap-3">
+                    <div className="space-y-1.5">
+                      <Label size="sm" className="text-gray-700">
+                        Duration
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draftDuration.value}
+                        onChange={(event) =>
+                          setDraftDuration((previous) => ({
+                            ...previous,
+                            value: Number(event.target.value) || 0,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Select
+                      value={draftDuration.type}
+                      onValueChange={(
+                        type: DurationFormValues["duration"]["type"]
+                      ) =>
+                        setDraftDuration((previous) => ({ ...previous, type }))
+                      }
+                    >
+                      <SelectTrigger className="w-full text-base">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DURATION_TYPE.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {formatDurationUnit(
+                              draftDuration.value,
+                              type
+                            ).replace(/^./, (character) =>
+                              character.toUpperCase()
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter className="gap-3">
+                  <DialogClose asChild>
+                    <Button type="button" variant="outlined" visual="gray">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button type="submit">Done</Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
         </TableCell>
       )
     },
-    header: "Task Name",
+    header: () => (
+      <span className="inline-flex items-center gap-x-1.5">
+        <GripVertical2 className="invisible" aria-hidden="true" />
+        <span>Task Name</span>
+      </span>
+    ),
   }),
   columnHelper.accessor("role", {
     cell: ({ row: { index, original }, column: { id }, table }) => {
@@ -2230,21 +2601,37 @@ const columns = [
       const allRoles = table.options.meta?.roles ?? []
 
       const handleSelectMember = (tm: TeamMember) => {
-        table.options.meta?.batchUpdateData?.(index, {
-          role: tm.role,
-          assignedMember: tm,
-          location: tm.location ?? "",
-        })
+        table.options.meta?.batchUpdateData?.(
+          index,
+          {
+            role: tm.role,
+            assignedMember: tm,
+            location: tm.location ?? "",
+          },
+          member?.id === tm.id
+            ? undefined
+            : member
+              ? "Team Member Changed"
+              : "Team Member Assigned"
+        )
         setPopoverOpen(false)
       }
 
       const handleSelectVacantRole = (role: string) => {
-        table.options.meta?.batchUpdateData?.(index, {
-          role,
-          assignedMember: null,
-          location: "",
-          experience: "",
-        })
+        table.options.meta?.batchUpdateData?.(
+          index,
+          {
+            role,
+            assignedMember: null,
+            location: "",
+            experience: "",
+          },
+          member
+            ? "Team Member Unassigned"
+            : role !== value
+              ? "Role Updated"
+              : undefined
+        )
         setPopoverOpen(false)
       }
 
@@ -2259,14 +2646,18 @@ const columns = [
         customHours?: number,
         customPeriod?: string
       ) => {
-        table.options.meta?.batchUpdateData?.(index, {
-          role,
-          assignedMember: null,
-          location: "",
-          experience: "",
-          workSchedule: schedule,
-          ...(customHours != null ? { customHours, customPeriod } : {}),
-        })
+        table.options.meta?.batchUpdateData?.(
+          index,
+          {
+            role,
+            assignedMember: null,
+            location: "",
+            experience: "",
+            workSchedule: schedule,
+            ...(customHours != null ? { customHours, customPeriod } : {}),
+          },
+          "Role Added"
+        )
       }
 
       // eslint-disable-next-line
@@ -2300,11 +2691,11 @@ const columns = [
 
       if (member) {
         return (
-          <TableCell className="py-4 px-3">
+          <TableCell className="px-6 py-4">
             <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
               <PopoverTrigger asChild>
                 <button className="focus-visible:outline-none inline-flex items-center gap-x-2 max-w-full transition duration-300 hover:bg-gray-50 rounded-md px-1.5 py-1 -mx-1.5 -my-1">
-                  <Avatar className="size-6 shrink-0">
+                  <Avatar key={member.id} className="size-6 shrink-0">
                     {member.avatarUrl ? (
                       <AvatarImage
                         src={member.avatarUrl}
@@ -2335,16 +2726,30 @@ const columns = [
       }
 
       return (
-        <TableCell className="py-4 px-3">
+        <TableCell className="px-6 py-4">
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild>
               <button
                 className={cn(
-                  "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full",
-                  value ? "text-gray-600" : "text-gray-400"
+                  value
+                    ? "focus-visible:outline-none flex max-w-full flex-col items-start gap-[2px] text-left"
+                    : "focus-visible:outline-none transition duration-300 border border-transparent hover:border-gray-300 h-7 px-[8px] rounded-[5px] border-dashed hover:bg-gray-100 shrink-0 text-sm leading-[16.94px] truncate whitespace-nowrap max-w-full text-gray-400"
                 )}
               >
-                <span className="block truncate">{value || "Add Role"}</span>
+                {value ? (
+                  <>
+                    <span className="block max-w-full truncate text-sm font-normal leading-normal text-gray-600">
+                      {value}
+                    </span>
+                    {getWorkScheduleLabel(original.workSchedule) && (
+                      <span className="block max-w-full truncate text-xs font-normal leading-[18px] text-gray-400">
+                        {getWorkScheduleLabel(original.workSchedule)}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="block truncate">Add Role</span>
+                )}
               </button>
             </PopoverTrigger>
             {pickerPopover}
@@ -2363,7 +2768,7 @@ const columns = [
         const flagUrl = country ? getStaticFlagUrl(country) : null
         return (
           <TableCell className="px-3 py-4">
-            <span className="inline-flex items-center gap-x-1.5 px-2 py-[5px] border border-gray-300 rounded-[5px] bg-white text-xs leading-[18px] font-medium text-gray-700 cursor-default">
+            <span className="inline-flex max-w-full min-w-0 items-center gap-x-1.5 whitespace-nowrap rounded-[5px] border border-gray-300 bg-white px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 cursor-default">
               {flagUrl && (
                 <span className="inline-flex items-center justify-center w-[18px] h-[14px] shrink-0 rounded-sm overflow-hidden">
                   <img
@@ -2373,7 +2778,7 @@ const columns = [
                   />
                 </span>
               )}
-              {country || "—"}
+              <span className="truncate">{country || "—"}</span>
             </span>
           </TableCell>
         )
@@ -2388,11 +2793,19 @@ const columns = [
       return (
         <TableCell className="px-3 py-4">
           <CountriesCombobox
+            triggerClassName={cn(
+              "min-w-0 max-w-full justify-start whitespace-nowrap text-left [&>span:last-of-type]:min-w-0 [&>span:last-of-type]:max-w-full",
+              isMissing && "border-error-500"
+            )}
             placeholder="Location"
             value={currentValue}
-            triggerClassName={isMissing ? "border-error-500" : undefined}
             onValueChange={(v) => {
-              table.options.meta?.updateData(index, id, v)
+              table.options.meta?.updateData(
+                index,
+                id,
+                v,
+                v !== currentValue ? "Location Updated" : undefined
+              )
             }}
           />
           {isMissing && (
@@ -2427,7 +2840,12 @@ const columns = [
             value={currentValue || undefined}
             onValueChange={(nextValue) => {
               if (!nextValue) return
-              table.options.meta?.updateData(index, id, nextValue)
+              table.options.meta?.updateData(
+                index,
+                id,
+                nextValue,
+                nextValue !== currentValue ? "Experience Updated" : undefined
+              )
             }}
           />
         </TableCell>
@@ -2439,31 +2857,264 @@ const columns = [
     cell: ({ getValue, table, row: { index } }) => (
       <TableCell className="py-4 px-6">
         <button
-          className="focus-visible:outline-none"
+          className="block w-full truncate whitespace-nowrap text-left focus-visible:outline-none"
           type="button"
           onClick={() => table.options.meta?.openDurationDialog(index)}
         >
           {getValue().value}{" "}
-          {formatDurationUnit(getValue().value, getValue().type)}
+          {formatDurationTableUnit(getValue().value, getValue().type)}
         </button>
       </TableCell>
     ),
     header: "Duration",
+  }),
+  columnHelper.display({
+    id: "task-actions",
+    header: () => <span className="sr-only">Task actions</span>,
+    cell: ({ row: { index, original }, table }) => {
+      // eslint-disable-next-line
+      const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+      // eslint-disable-next-line
+      const [addTaskDialogOpen, setAddTaskDialogOpen] = useState(false)
+      // eslint-disable-next-line
+      const [renameDialogOpen, setRenameDialogOpen] = useState(false)
+      // eslint-disable-next-line
+      const [insertPlacement, setInsertPlacement] = useState<"above" | "below">(
+        "below"
+      )
+      // eslint-disable-next-line
+      const [draftTaskName, setDraftTaskName] = useState(original.task)
+      // eslint-disable-next-line
+      const [draftTaskDuration, setDraftTaskDuration] = useState(
+        original.duration
+      )
+
+      // eslint-disable-next-line
+      useEffect(() => {
+        if (renameDialogOpen) {
+          setDraftTaskName(original.task)
+          setDraftTaskDuration(original.duration)
+        }
+      }, [original.duration, original.task, renameDialogOpen])
+
+      const handleTaskMenuSelect = (label: string) => {
+        if (label === "Move Up") {
+          table.options.meta?.moveTask?.(index, index - 1)
+        }
+
+        if (label === "Move Down") {
+          table.options.meta?.moveTask?.(index, index + 1)
+        }
+
+        if (label === "Duplicate Task") {
+          table.options.meta?.duplicateTask?.(index)
+        }
+
+        if (label === "Change Duration") {
+          table.options.meta?.openDurationDialog(index)
+        }
+
+        if (label === "Insert Task Above") {
+          setInsertPlacement("above")
+          setAddTaskDialogOpen(true)
+        }
+
+        if (label === "Insert Task Below") {
+          setInsertPlacement("below")
+          setAddTaskDialogOpen(true)
+        }
+
+        if (label === "Rename Task") {
+          setRenameDialogOpen(true)
+        }
+
+        if (label === "Delete Task") {
+          setDeleteDialogOpen(true)
+        }
+      }
+
+      const commitRename = () => {
+        const title = draftTaskName.trim()
+        if (!title || draftTaskDuration.value <= 0) return
+        table.options.meta?.batchUpdateData?.(
+          index,
+          {
+            task: title,
+            duration: draftTaskDuration,
+          },
+          getTaskEditTitle(original, title, draftTaskDuration)
+        )
+        setRenameDialogOpen(false)
+      }
+
+      return (
+        <TableCell className="py-4 pl-[7px] pr-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                aria-label={`Task actions for ${original.task}`}
+                className="h-[23px] px-1.5 py-1 text-gray-500 hover:bg-gray-100 data-[state=open]:bg-gray-100"
+                variant="ghost"
+                visual="gray"
+              >
+                <MoreHorizontal className="h-[15px] w-[15px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={4}
+              className="flex w-[162px] flex-col gap-y-1 rounded-[5px] shadow-[0px_4px_19px_0px_rgba(0,0,0,0.04)]"
+            >
+              {taskMenuItems.map(
+                ({ label, Icon, destructive, separatorAfter }) => (
+                  <Fragment key={label}>
+                    <DropdownMenuItem
+                      disabled={
+                        (label === "Move Up" && index === 0) ||
+                        (label === "Move Down" &&
+                          index === table.getRowModel().rows.length - 1)
+                      }
+                      visual={destructive ? "destructive" : "default"}
+                      className={cn(
+                        "focus:bg-gray-50",
+                        destructive && "text-error-600"
+                      )}
+                      onSelect={() => handleTaskMenuSelect(label)}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      <span className="whitespace-nowrap">{label}</span>
+                    </DropdownMenuItem>
+                    {separatorAfter && (
+                      <DropdownMenuSeparator className="my-0" />
+                    )}
+                  </Fragment>
+                )
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DeletePhaseDialog
+            open={deleteDialogOpen}
+            onOpenChange={setDeleteDialogOpen}
+            title="Delete this task?"
+            description={
+              <>
+                This task will be deleted permanently.
+                <br />
+                You will not be able to recover it.
+              </>
+            }
+            onDeletePhase={() => table.options.meta?.deleteTask?.(index)}
+          />
+          <TaskDialog
+            open={addTaskDialogOpen}
+            onOpenChange={setAddTaskDialogOpen}
+            onAddTask={(values) =>
+              table.options.meta?.insertTask?.(index, insertPlacement, values)
+            }
+          />
+          <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+            <DialogContent
+              accessibilityTitle="Edit task"
+              className="w-[411px] max-w-[calc(100vw-32px)] rounded-xl p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]"
+            >
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  commitRename()
+                }}
+                className="flex flex-col gap-8"
+              >
+                <div className="flex flex-col gap-3">
+                  <div className="space-y-1.5">
+                    <Label size="sm" className="text-gray-700">
+                      Task Name
+                    </Label>
+                    <Input
+                      value={draftTaskName}
+                      onChange={(event) => setDraftTaskName(event.target.value)}
+                      placeholder="Enter task name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-end gap-3">
+                    <div className="space-y-1.5">
+                      <Label size="sm" className="text-gray-700">
+                        Duration
+                      </Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draftTaskDuration.value}
+                        onChange={(event) =>
+                          setDraftTaskDuration((previous) => ({
+                            ...previous,
+                            value: Number(event.target.value) || 0,
+                          }))
+                        }
+                      />
+                    </div>
+                    <Select
+                      value={draftTaskDuration.type}
+                      onValueChange={(
+                        type: DurationFormValues["duration"]["type"]
+                      ) =>
+                        setDraftTaskDuration((previous) => ({
+                          ...previous,
+                          type,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-full text-base">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DURATION_TYPE.map((type) => (
+                          <SelectItem key={type} value={type}>
+                            {formatDurationUnit(
+                              draftTaskDuration.value,
+                              type
+                            ).replace(/^./, (character) =>
+                              character.toUpperCase()
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter className="gap-3">
+                  <DialogClose asChild>
+                    <Button type="button" variant="outlined" visual="gray">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button type="submit">Done</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </TableCell>
+      )
+    },
   }),
 ]
 
 interface PhaseTableProps {
   rows: PhaseRow[]
   onRowsChange: (rows: PhaseRow[]) => void
+  onRowsAction?: (title: string, previousRows: PhaseRow[]) => void
   openDurationDialog: (index: number) => void
   teamMembers: TeamMember[]
+  searchQuery?: string
 }
 
 const PhaseTable = ({
   rows,
   onRowsChange,
+  onRowsAction,
   openDurationDialog,
   teamMembers,
+  searchQuery = "",
 }: PhaseTableProps) => {
   const [data, setData] = useControllableState({
     value: rows,
@@ -2479,7 +3130,7 @@ const PhaseTable = ({
     debugHeaders: true,
     debugColumns: true,
     meta: {
-      updateData: (rowIndex, columnId, value) => {
+      updateData: (rowIndex, columnId, value, notifyTitle) => {
         setData((prev) =>
           prev.map((row, index) => {
             if (index === rowIndex) {
@@ -2491,8 +3142,9 @@ const PhaseTable = ({
             return row
           })
         )
+        if (notifyTitle) onRowsAction?.(notifyTitle, data)
       },
-      batchUpdateData: (rowIndex, updates) => {
+      batchUpdateData: (rowIndex, updates, notifyTitle) => {
         setData((prev) =>
           prev.map((row, index) => {
             if (index === rowIndex) {
@@ -2501,8 +3153,49 @@ const PhaseTable = ({
             return row
           })
         )
+        if (notifyTitle) onRowsAction?.(notifyTitle, data)
       },
       openDurationDialog,
+      moveTask: (fromIndex, toIndex) => {
+        setData((current) => {
+          if (toIndex < 0 || toIndex >= current.length) return current
+          return arrayMove(current, fromIndex, toIndex)
+        })
+      },
+      duplicateTask: (index) => {
+        setData((current) => {
+          const source = current[index]
+          if (!source) return current
+          const next = [...current]
+          next.splice(index + 1, 0, {
+            ...source,
+            task: `${source.task} (Copy)`,
+            id: `${getId()}`,
+          })
+          return next
+        })
+        onRowsAction?.("Task Duplicated", data)
+      },
+      insertTask: (index, placement, values) => {
+        setData((current) => {
+          const next = [...current]
+          next.splice(index + (placement === "below" ? 1 : 0), 0, {
+            ...values,
+            id: `${getId()}`,
+          })
+          return next
+        })
+        onRowsAction?.(
+          placement === "below" ? "Task Added Below" : "Task Added Above",
+          data
+        )
+      },
+      deleteTask: (index) => {
+        setData((current) =>
+          current.filter((_, rowIndex) => rowIndex !== index)
+        )
+        onRowsAction?.("Task Deleted", data)
+      },
       roles: ROLES,
       teamMembers,
     },
@@ -2537,12 +3230,30 @@ const PhaseTable = ({
       onDragEnd={handleDragEnd}
       sensors={sensors}
     >
-      <Table>
+      <Table className="table-fixed">
+        <colgroup>
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "15%" }} />
+          <col style={{ width: "12%" }} />
+          <col style={{ width: "6%" }} />
+        </colgroup>
         <TableHeader className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
-                <TableHead key={header.id} colSpan={header.colSpan}>
+                <TableHead
+                  key={header.id}
+                  colSpan={header.colSpan}
+                  className={
+                    header.column.id === "location"
+                      ? "px-3"
+                      : header.column.id === "task-actions"
+                        ? "pl-[7px] pr-3"
+                        : undefined
+                  }
+                >
                   {header.isPlaceholder
                     ? null
                     : flexRender(
@@ -2559,9 +3270,16 @@ const PhaseTable = ({
             items={dataIds}
             strategy={verticalListSortingStrategy}
           >
-            {table.getRowModel().rows.map((row) => (
-              <PhaseTableRow key={row.id} row={row} />
-            ))}
+            {table
+              .getRowModel()
+              .rows.filter(
+                (row) =>
+                  !searchQuery ||
+                  normalizeSearchText(row.original.task).includes(searchQuery)
+              )
+              .map((row) => (
+                <PhaseTableRow key={row.id} row={row} />
+              ))}
           </SortableContext>
         </TableBody>
       </Table>
@@ -2610,24 +3328,16 @@ const DurationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-gray-900">
-            Edit Duration
-          </DialogTitle>
-          <DialogDescription className="text-sm text-gray-500">
-            Set the time estimate for this task.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="flex flex-col gap-y-5 pt-2"
-        >
-          <div className="flex flex-col gap-y-1.5">
+      <DialogContent
+        accessibilityTitle="Edit duration"
+        className="w-[411px] max-w-[calc(100vw-32px)] rounded-xl p-6 shadow-[0px_8px_8px_-4px_rgba(16,24,40,0.03),0px_20px_24px_-4px_rgba(16,24,40,0.08)]"
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-8">
+          <div className="space-y-1.5">
             <Label size="sm" className="text-gray-700">
               Duration
             </Label>
-            <div className="flex items-center gap-x-3">
+            <div className="grid grid-cols-2 gap-3">
               <Controller
                 name="duration.value"
                 control={control}
@@ -2636,7 +3346,7 @@ const DurationDialog = ({
                     {...field}
                     type="number"
                     min={1}
-                    className="w-[100px]"
+                    className="w-full"
                     placeholder="1"
                     isInvalid={hookFormHasError({
                       errors,
@@ -2650,7 +3360,7 @@ const DurationDialog = ({
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-[140px]">
+                    <SelectTrigger className="w-full text-base">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -2673,13 +3383,13 @@ const DurationDialog = ({
               </ErrorMessage>
             )}
           </div>
-          <DialogFooter className="gap-x-3">
+          <DialogFooter className="gap-3">
             <DialogClose asChild>
               <Button type="button" variant="outlined" visual="gray">
                 Cancel
               </Button>
             </DialogClose>
-            <Button type="submit">Save</Button>
+            <Button type="submit">Done</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -2702,6 +3412,9 @@ export interface ScopeBuilderProps {
   onScopeTypeChange?: (type: ScopeType) => void
   /** Team members available for task assignment */
   teamMembers?: TeamMember[]
+  /** Opens the task form for a phase when the embedded editor is shown. */
+  openTaskDialogForPhaseIndex?: number | null
+  onTaskDialogOpened?: () => void
 }
 
 export function ScopeBuilder({
@@ -2711,6 +3424,8 @@ export function ScopeBuilder({
   scopeType = "project",
   onScopeTypeChange,
   teamMembers = [],
+  openTaskDialogForPhaseIndex = null,
+  onTaskDialogOpened,
 }: ScopeBuilderProps) {
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
@@ -2735,12 +3450,6 @@ export function ScopeBuilder({
     null
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
-  // PMCM-257: this input previously had no value/onChange at all — a
-  // static placeholder with nothing wired up. getPhaseSearchTargetId/
-  // getTaskSearchTargetId below are unused dead code (confirmed via
-  // grep — no call sites), so there's no existing scroll-to-target
-  // behavior this filter could break.
-  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
 
   // Local state for phases — replaces useProjectScopeContext
   const [phases, setPhases] = useControllableState<Phase[]>({
@@ -2774,6 +3483,23 @@ export function ScopeBuilder({
 
   // Task search dialog state — managed internally
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
+  const [phaseSearch, setPhaseSearch] = useState("")
+  const phaseSearchQuery = normalizeSearchText(phaseSearch)
+
+  useEffect(() => {
+    if (!phaseSearchQuery) return
+    setAccordionState((prev) => {
+      const matching = phases
+        .map((phase, index) =>
+          getPhaseSearchMatch(phase, phaseSearchQuery).visible
+            ? `item-${index}`
+            : null
+        )
+        .filter((key): key is string => key !== null)
+      const next = Array.from(new Set([...prev, ...matching]))
+      return next.length === prev.length ? prev : next
+    })
+  }, [phaseSearchQuery, phases])
 
   const [deletePhaseDialogState, setDeletePhaseDialogState] =
     useState<DeletePhaseDialogState>({
@@ -2804,6 +3530,23 @@ export function ScopeBuilder({
     },
     [phases]
   )
+
+  useEffect(() => {
+    if (openTaskDialogForPhaseIndex === null) return
+    if (!phases[openTaskDialogForPhaseIndex]) return
+
+    const timer = window.setTimeout(() => {
+      handleOpenTaskDialog(openTaskDialogForPhaseIndex)
+      onTaskDialogOpened?.()
+    }, 220)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    handleOpenTaskDialog,
+    onTaskDialogOpened,
+    openTaskDialogForPhaseIndex,
+    phases,
+  ])
 
   const handleRowsChange = useCallback(
     (phaseIndex: number, rows: PhaseRow[]) => {
@@ -2851,7 +3594,7 @@ export function ScopeBuilder({
         action: (
           <ToastAction
             altText="Undo"
-            className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+            className="flex h-5 px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
             onClick={() => onUndo?.()}
           >
             Undo
@@ -2892,7 +3635,7 @@ export function ScopeBuilder({
             action: (
               <ToastAction
                 altText="Undo"
-                className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                className="flex h-5 px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                 onClick={() => {
                   lastUndo.current?.()
                   lastUndo.current = null
@@ -2980,7 +3723,7 @@ export function ScopeBuilder({
         action: (
           <ToastAction
             altText="Undo"
-            className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+            className="flex h-5 px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
             onClick={() => {
               lastUndo.current?.()
               lastUndo.current = null // clear after use
@@ -2994,11 +3737,26 @@ export function ScopeBuilder({
     [phaseDialogState, setPhases, toast]
   )
 
+  const restorePhaseRows = useCallback(
+    (phaseIndex: number, rows: PhaseRow[] | undefined) => {
+      setPhases((prev) =>
+        prev.map((phase, index) =>
+          index === phaseIndex ? { ...phase, rows } : phase
+        )
+      )
+    },
+    [setPhases]
+  )
+
   const onAddTask = useCallback(
     (values: TaskFormValues) => {
       const { editingPhaseIndex } = taskDialogState
 
       if (typeof editingPhaseIndex === "number") {
+        const previousRows = phases[editingPhaseIndex]?.rows
+        pushSuccess("Task Added", () =>
+          restorePhaseRows(editingPhaseIndex, previousRows)
+        )
         setPhases((prev) => {
           const newPhases = prev.map((phase, index) => {
             if (index === editingPhaseIndex) {
@@ -3017,7 +3775,7 @@ export function ScopeBuilder({
         })
       }
     },
-    [taskDialogState, setPhases]
+    [taskDialogState, phases, pushSuccess, restorePhaseRows, setPhases]
   )
 
   const onDurationFormValuesChange = useCallback(
@@ -3072,7 +3830,7 @@ export function ScopeBuilder({
           action: (
             <ToastAction
               altText="Undo"
-              className="px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+              className="flex h-5 px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
               onClick={() => {
                 lastUndo.current?.()
                 lastUndo.current = null
@@ -3162,7 +3920,12 @@ export function ScopeBuilder({
       setPhases((prev) => {
         const source = prev[idx]
         if (!source) return prev
-        const dup = { ...source } // add new id if you have ids
+        const dup = {
+          ...source,
+          phaseName: source.phaseName
+            ? `${source.phaseName} (Copy)`
+            : source.phaseName,
+        }
         const next = [...prev]
         next.splice(idx + 1, 0, dup)
 
@@ -3386,7 +4149,7 @@ export function ScopeBuilder({
                     action: (
                       <ToastAction
                         altText="Undo"
-                        className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+                        className="ml-auto flex h-5 px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
                         onClick={() => {
                           setPhases(previousPhases)
                           onScopeTypeChange?.(previousType)
@@ -3411,40 +4174,41 @@ export function ScopeBuilder({
         <Input
           type="text"
           placeholder="Find a phase or task"
-          value={phaseSearchQuery}
-          onChange={(event) => setPhaseSearchQuery(event.target.value)}
+          value={phaseSearch}
+          onChange={(event) => setPhaseSearch(event.target.value)}
         />
         <InputLeftElement>
           <SearchMd className="text-gray-500 h-5 w-5" />
         </InputLeftElement>
       </InputGroup>
 
-      {(() => {
-        const normalizedQuery = normalizeSearchText(phaseSearchQuery)
-        const hasVisiblePhase = phases.some((phase) =>
-          matchesPhaseSearch(phase, normalizedQuery)
-        )
-        if (normalizedQuery && !hasVisiblePhase) {
-          return (
-            <p className="py-6 text-center text-sm text-gray-500">
-              No phases found
-            </p>
-          )
-        }
-        return (
-          <Accordion
-            value={accordionState}
-            onValueChange={setAccordionState}
-            type="multiple"
-            className="flex-auto space-y-3"
+      {phases.length === 0 && (
+        <div className="flex min-h-[228px] flex-col items-center justify-center px-6 py-5 text-center">
+          <h2 className="text-base font-semibold leading-6 text-gray-800">
+            Create your first phase
+          </h2>
+          <p className="mt-1 max-w-[352px] text-sm leading-5 text-gray-800">
+            Start defining your project scope with a clear, actionable phase.
+          </p>
+          <Button
+            type="button"
+            className="mt-6"
+            variant="light"
+            onClick={() => dispatch({ type: "TOGGLE" })}
           >
-            {phases.map(({ phaseName, rows, phaseType }, index) => {
-              if (
-                !matchesPhaseSearch({ phaseName, rows, phaseType }, normalizedQuery)
-              ) {
-                return null
-              }
-              return (
+            <Plus className="size-[15px]" /> Add Phase
+          </Button>
+        </div>
+      )}
+
+      <Accordion
+        value={accordionState}
+        onValueChange={setAccordionState}
+        type="multiple"
+        className="flex-auto space-y-3"
+      >
+        {phases.map(({ phaseName, rows, phaseType }, index) =>
+          !getPhaseSearchMatch(phases[index], phaseSearchQuery).visible ? null : (
           <ArrayNavigator key={index} value={phases} index={index}>
             {rows ? (
               <AccordionItem value={`item-${index}`} asChild>
@@ -3562,7 +4326,18 @@ export function ScopeBuilder({
                   <DisclosureContent className="overflow-auto">
                     <PhaseTable
                       rows={rows}
+                      searchQuery={
+                        getPhaseSearchMatch(phases[index], phaseSearchQuery)
+                          .showAllTasks
+                          ? ""
+                          : phaseSearchQuery
+                      }
                       onRowsChange={(rows) => handleRowsChange(index, rows)}
+                      onRowsAction={(title, previousRows) =>
+                        pushSuccess(title, () =>
+                          restorePhaseRows(index, previousRows)
+                        )
+                      }
                       openDurationDialog={(editingPhaseRowIndex) =>
                         setDurationDialogState({
                           editingPhaseIndex: index,
@@ -3716,20 +4491,19 @@ export function ScopeBuilder({
               </AccordionItem>
             )}
           </ArrayNavigator>
-              )
-            })}
-          </Accordion>
-        )
-      })()}
+          )
+        )}
+      </Accordion>
 
-      <Button
-        className="mt-5"
-        variant="ghost"
-        visual="gray"
-        onClick={() => dispatch({ type: "TOGGLE" })}
-      >
-        <Plus className="size-[15px]" /> Add Phase
-      </Button>
+      {phaseSearchQuery &&
+      phases.length > 0 &&
+      !phases.some(
+        (phase) => getPhaseSearchMatch(phase, phaseSearchQuery).visible
+      ) ? (
+        <div className="px-6 py-5 text-center text-sm leading-5 text-gray-500">
+          No phase or task found.
+        </div>
+      ) : null}
 
       <PhaseNameDialog
         onOpenChange={(open) => dispatch({ type: "TOGGLE", payload: { open } })}
@@ -3739,11 +4513,9 @@ export function ScopeBuilder({
         showPhaseType={
           scopeType === "service" && phaseDialogState.action !== "EDIT"
         }
-        disabledTypes={
-          phases
-            .map((p) => p.phaseType)
-            .filter((t): t is PhaseType => !!t)
-        }
+        disabledTypes={phases
+          .map((p) => p.phaseType)
+          .filter((t): t is PhaseType => !!t)}
         placeholder={
           phaseDialogState.action === "EDIT"
             ? "Edit Phase name"
@@ -3797,12 +4569,7 @@ export function ScopeBuilder({
   )
 
   if (embedded) {
-    return (
-      <>
-        {coreContent}
-        <Toaster />
-      </>
-    )
+    return coreContent
   }
 
   return (
