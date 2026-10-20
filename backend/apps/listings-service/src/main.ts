@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Transport } from '@nestjs/microservices';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { LISTINGS_GATE_QUEUE } from './identity-gate/gate-state.consumer';
 import { AppModule } from './app.module';
 
@@ -40,6 +40,21 @@ async function bootstrap() {
     credentials: true,
   });
 
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (rabbitmqUrl) {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'listings_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+    logger.log('RabbitMQ microservice connected (queue: listings_service_queue)');
+  } else {
+    logger.warn('RABBITMQ_URL not set, listings RPC consumer disabled');
+  }
+
   try {
     app.connectMicroservice({
       transport: Transport.GRPC,
@@ -57,12 +72,12 @@ async function bootstrap() {
   // events, which keep the last known gate of every rostered account up to date.
   // Manual ack (GateStateConsumer acknowledges after the state is written).
   // Without a broker URL the service still starts and serves the last known state.
-  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
-  if (rabbitmqUrl) {
+  const gateRabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (gateRabbitmqUrl) {
     app.connectMicroservice({
       transport: Transport.RMQ,
       options: {
-        urls: [rabbitmqUrl],
+        urls: [gateRabbitmqUrl],
         queue: LISTINGS_GATE_QUEUE,
         queueOptions: { durable: true },
         noAck: false,

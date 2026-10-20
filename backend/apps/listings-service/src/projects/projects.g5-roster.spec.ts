@@ -103,7 +103,16 @@ describe('G5 - client-facing roster on project listings', () => {
       update: jest.fn(async () => void writes.push('update')),
       delete: jest.fn(async () => void writes.push('delete')),
     };
-    service = new ProjectsService(repo, {} as any, {} as any, {} as any, {} as any, new RosterGateService(state.asService));
+    service = new ProjectsService(
+      repo,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      new RosterGateService(state.asService),
+      {} as any,
+      { getRateUsdCents: jest.fn().mockResolvedValue(0) } as any,
+    );
     jest.spyOn(service as any, 'getProjectHistoryRatings').mockResolvedValue(null);
   };
 

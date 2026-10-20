@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { usePathname } from "next/navigation"
+import { useIsEmbeddedTalentProfile } from "./embedded-profile-gate"
 import { useAuth } from "@/contexts/auth"
 import { AuthModal } from "@/components/auth/auth-modal"
 
@@ -14,6 +15,7 @@ export function GroupLayoutInner({
 }) {
   const pathname = usePathname()
   const isOnboarding = pathname.startsWith("/onboarding")
+  const isEmbeddedProfile = useIsEmbeddedTalentProfile()
   const isReview = /^\/active-project\/[^/]+\/review\/?$/.test(pathname)
   const { authModalOpen, authModalView, closeAuthModal } = useAuth()
 
@@ -25,6 +27,10 @@ export function GroupLayoutInner({
     document.documentElement.scrollTop = 0
     document.body.scrollTop = 0
   }, [pathname])
+
+  if (isOnboarding || isEmbeddedProfile) {
+    return <>{children}</>
+  }
 
   if (isReview) {
     return (
