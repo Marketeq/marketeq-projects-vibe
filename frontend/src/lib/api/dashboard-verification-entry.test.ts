@@ -152,8 +152,8 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     const at = page.indexOf('setTravelPopup("expiry")')
     const guard = page.slice(page.lastIndexOf("shouldShowTravelExpiryPopup({", at), at)
     assert.ok(guard.includes("expired: travelSummary.travelModeExpired"))
-    assert.ok(guard.includes("sessionId: readSessionId()"))
-    const base = { expired: true, sessionId: "s1" }
+    assert.ok(guard.includes("loginSessionKey: travelSummary.loginSessionKey"))
+    const base = { expired: true, loginSessionKey: "k".repeat(64) }
     const store = new Map<string, string>()
     const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size } }
     assert.equal(shouldShowTravelExpiryPopup({ ...base, expired: false, storage }), false)
@@ -176,7 +176,7 @@ describe("Travel Mode popups: each appears only when its backend condition appli
   it("closing a reminder spends it; closing the expiry popup is remembered for this login only", () => {
     const close = page.slice(page.indexOf("const handleTravelPopupClose"), page.indexOf("const handleTravelUpdate"))
     assert.ok(close.includes('if (travelPopup === "expiry")'))
-    assert.ok(close.includes("dismissTravelExpiryPopup(readSessionId(), window.localStorage)"))
+    assert.ok(close.includes("dismissTravelExpiryPopup(travelSummary?.loginSessionKey ?? null, window.localStorage)"))
   })
 })
 

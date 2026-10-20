@@ -99,12 +99,21 @@ export interface IdentityVerificationSummaryView {
   // approval, exactly as the backend sent it (the key is omitted when there is none).
   // It only tells the screen that the next trip to Didit is a home-country change.
   pendingHomeCountry: string | null
+  // An opaque key for THIS login, derived by the backend from the verified token (the
+  // browser cannot read the HttpOnly session_id cookie and must never see the session
+  // id). Same for the whole login, different for a new login or another account. Used
+  // only to scope "already shown / dismissed in this login" markers. Null when the
+  // backend sent none (an older token) or anything but a 64-character hex digest: the
+  // popups then show and persist nothing.
+  loginSessionKey: string | null
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
 const count = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null
 // A string that is a real timestamp, else null (an unparseable value never schedules anything).
+const loginKey = (v: unknown): string | null =>
+  typeof v === "string" && /^[0-9a-f]{64}$/.test(v) ? v : null
 const isoTime = (v: unknown): string | null =>
   typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null
 
@@ -137,6 +146,7 @@ export function parseIdentityVerificationSummary(
       typeof body.pendingHomeCountry === "string" && body.pendingHomeCountry
         ? body.pendingHomeCountry
         : null,
+    loginSessionKey: loginKey(body.loginSessionKey),
   }
 }
 

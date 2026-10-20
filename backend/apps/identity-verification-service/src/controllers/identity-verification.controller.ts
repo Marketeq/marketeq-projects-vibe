@@ -19,6 +19,7 @@ import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto'
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { readLoginSession } from '../common/travel-mode/login-reminder';
+import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
@@ -79,7 +80,16 @@ export class IdentityVerificationController {
     const locationMismatch = await this.service.getLocationMismatch(profile, ip);
     const travelModeLocationMismatch = await this.service.getTravelModeLocationMismatch(profile, ip);
     const loginReminderAt = await this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
-    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt, travelModeLocationMismatch);
+    const loginSessionKey = readLoginSessionKey(req.user, req.userId);
+    return ProfileStatusResponseDto.fromEntity(
+      profile,
+      summary,
+      Date.now(),
+      locationMismatch,
+      loginReminderAt,
+      travelModeLocationMismatch,
+      loginSessionKey,
+    );
   }
 
   // Display-only location for the verification dialog. Uses the same

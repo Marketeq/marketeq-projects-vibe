@@ -1,15 +1,13 @@
 // Run like detected-location.test.ts (from the frontend/ directory).
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import { describe, it } from "node:test"
 import { shouldShowProfileBanner } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 import {
-  SESSION_COOKIE_NAME,
   TRAVEL_EXPIRY_DISMISSED_PREFIX,
   dismissTravelExpiryPopup,
-  readCookieValue,
-  readSessionId,
   shouldShowTravelExpiryPopup,
   travelExpiryDismissalKey,
   type DismissalStorage,
@@ -30,7 +28,7 @@ function memoryStorage(initial: Record<string, string> = {}): DismissalStorage &
 const SID_A = "7a1b2c3d-0000-4000-8000-00000000000a"
 const SID_B = "7a1b2c3d-0000-4000-8000-00000000000b"
 const show = (over: Partial<Parameters<typeof shouldShowTravelExpiryPopup>[0]> = {}) =>
-  shouldShowTravelExpiryPopup({ expired: true, sessionId: SID_A, storage: memoryStorage(), ...over })
+  shouldShowTravelExpiryPopup({ expired: true, loginSessionKey: SID_A, storage: memoryStorage(), ...over })
 
 describe("when the expiry popup is shown", () => {
   it("shown when Travel Mode expired, whatever the verification status", () => {
@@ -67,14 +65,14 @@ describe("when the expiry popup is shown", () => {
   it("a new Travel Mode period suppresses it, and it returns after that period's next expiry (a later login)", () => {
     const storage = memoryStorage()
     dismissTravelExpiryPopup(SID_A, storage) // closed during the first expiry
-    assert.equal(show({ expired: false, storage, sessionId: SID_B }), false) // new period active
-    assert.equal(show({ expired: true, storage, sessionId: SID_B }), true) // next expiry, new login
+    assert.equal(show({ expired: false, storage, loginSessionKey: SID_B }), false) // new period active
+    assert.equal(show({ expired: true, storage, loginSessionKey: SID_B }), true) // next expiry, new login
   })
 })
 
 describe("the logic never changes verification or gate values", () => {
   it("is a pure decision: the input is not modified and no status is returned", () => {
-    const input = Object.freeze({ expired: true, sessionId: SID_A, storage: memoryStorage() })
+    const input = Object.freeze({ expired: true, loginSessionKey: SID_A, storage: memoryStorage() })
     assert.equal(typeof shouldShowTravelExpiryPopup(input), "boolean")
   })
 
@@ -128,13 +126,13 @@ describe("dismissal is per login, keyed by the session id", () => {
   it("a refresh (same session id) does not show it again", () => {
     const storage = memoryStorage()
     dismissTravelExpiryPopup(SID_A, storage)
-    for (let reload = 0; reload < 3; reload += 1) assert.equal(show({ storage, sessionId: SID_A }), false)
+    for (let reload = 0; reload < 3; reload += 1) assert.equal(show({ storage, loginSessionKey: SID_A }), false)
   })
 
   it("a later login (a different session id) shows it again", () => {
     const storage = memoryStorage()
     dismissTravelExpiryPopup(SID_A, storage)
-    assert.equal(show({ storage, sessionId: SID_B }), true)
+    assert.equal(show({ storage, loginSessionKey: SID_B }), true)
   })
 
   it("closing it in the new login dismisses that login too, and only one marker is ever kept", () => {
@@ -142,7 +140,7 @@ describe("dismissal is per login, keyed by the session id", () => {
     dismissTravelExpiryPopup(SID_A, storage)
     dismissTravelExpiryPopup(SID_B, storage)
 
-    assert.equal(show({ storage, sessionId: SID_B }), false)
+    assert.equal(show({ storage, loginSessionKey: SID_B }), false)
     assert.deepEqual(storage.dump(), { [`travelExpiryDismissed:${SID_B}`]: "1", unrelated: "keep" })
   })
 
@@ -157,7 +155,7 @@ describe("dismissal is per login, keyed by the session id", () => {
 
 describe("a missing session id", () => {
   it("still shows the popup", () => {
-    for (const sessionId of [null, ""]) assert.equal(show({ sessionId }), true)
+    for (const loginSessionKey of [null, ""]) assert.equal(show({ loginSessionKey }), true)
   })
 
   it("never persists a dismissal that could leak across logins", () => {
@@ -165,13 +163,13 @@ describe("a missing session id", () => {
     dismissTravelExpiryPopup(null, storage)
     dismissTravelExpiryPopup("", storage)
     assert.deepEqual(storage.dump(), {})
-    assert.equal(show({ sessionId: null, storage }), true) // it may reappear after a refresh
+    assert.equal(show({ loginSessionKey: null, storage }), true) // it may reappear after a refresh
   })
 
   it("does not read a previous login's marker as this login's", () => {
     const storage = memoryStorage()
     dismissTravelExpiryPopup(SID_A, storage)
-    assert.equal(show({ sessionId: null, storage }), true)
+    assert.equal(show({ loginSessionKey: null, storage }), true)
   })
 })
 
@@ -193,29 +191,40 @@ describe("storage that is unavailable", () => {
   })
 })
 
-describe("reading the existing session_id cookie", () => {
-  it("reads the session id from document.cookie", () => {
-    assert.equal(SESSION_COOKIE_NAME, "session_id")
-    assert.equal(readSessionId(`theme=dark; session_id=${SID_A}; other=1`), SID_A)
+describe("the key comes from /me, never from the HttpOnly session_id cookie", () => {
+  const KEY_A = "a".repeat(64)
+  const KEY_B = "b".repeat(64)
+  const parse = (extra: Record<string, unknown>) => parseIdentityVerificationSummary({ nextAction: "complete", ...extra })
+
+  it("the summary carries the opaque key exactly as sent", () => {
+    assert.equal(parse({ loginSessionKey: KEY_A })?.loginSessionKey, KEY_A)
   })
-  it("matches the exact name only", () => {
-    assert.equal(readCookieValue("xsession_id=nope; session_id_old=nope2", "session_id"), null)
-    assert.equal(readCookieValue("session_id=abc", "session_id"), "abc")
+  it("a missing or malformed key is null, so the popup shows and nothing is persisted", () => {
+    for (const bad of [undefined, null, "", "short", 123, {}, "G".repeat(64), "a".repeat(65), `${KEY_A}\n`]) {
+      assert.equal(parse({ loginSessionKey: bad })?.loginSessionKey, null, String(bad))
+    }
   })
-  it("decodes an encoded value", () => {
-    assert.equal(readCookieValue("session_id=a%2Db", "session_id"), "a-b")
+  it("no cookie reader exists any more in the popup modules or the dashboard", () => {
+    const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
+    for (const file of [
+      read("src", "lib", "api", "travel-expiry-popup.ts"),
+      read("src", "lib", "api", "travel-location-prompt.ts"),
+      read("app", "(group)", "talent-dashboard", "page.tsx"),
+    ]) {
+      assert.ok(!/document\.cookie|readSessionId|readCookieValue|SESSION_COOKIE_NAME/.test(file))
+    }
   })
-  it("an absent or empty cookie is null", () => {
-    assert.equal(readSessionId(""), null)
-    assert.equal(readSessionId("a=1; b=2"), null)
-    assert.equal(readSessionId("session_id="), null)
-    assert.equal(readSessionId(undefined), null)
+  it("a refresh keeps the key and a new login changes it, so the dismissal follows the login", () => {
+    const storage = memoryStorage()
+    dismissTravelExpiryPopup(KEY_A, storage)
+    assert.equal(shouldShowTravelExpiryPopup({ expired: true, loginSessionKey: KEY_A, storage }), false) // refresh
+    assert.equal(shouldShowTravelExpiryPopup({ expired: true, loginSessionKey: KEY_B, storage }), true) // new login
+    dismissTravelExpiryPopup(KEY_B, storage)
+    assert.deepEqual(Object.keys(storage.dump()), [travelExpiryDismissalKey(KEY_B)]) // one marker only
   })
-  it("a refresh keeps the id and a new login changes it, so the same key logic holds", () => {
-    const before = readSessionId(`session_id=${SID_A}`)
-    const afterRefresh = readSessionId(`session_id=${SID_A}`)
-    const afterNewLogin = readSessionId(`session_id=${SID_B}`)
-    assert.equal(before, afterRefresh)
-    assert.notEqual(before, afterNewLogin)
+  it("another account's key never matches this login's marker", () => {
+    const storage = memoryStorage()
+    dismissTravelExpiryPopup(KEY_A, storage)
+    assert.equal(shouldShowTravelExpiryPopup({ expired: true, loginSessionKey: KEY_B, storage }), true)
   })
 })

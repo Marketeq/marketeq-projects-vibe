@@ -103,17 +103,17 @@ describe("a reminder is shown only after a claim", () => {
 })
 
 describe("the expiry popup", () => {
-  it("opens only through the shared decision, with the session id and localStorage", () => {
+  it("opens only through the shared decision, with the login key and localStorage", () => {
     assert.equal((page.match(/setTravelPopup\("expiry"\)/g) ?? []).length, 1)
     assert.match(
       page,
-      /shouldShowTravelExpiryPopup\(\{\s+expired: travelSummary\.travelModeExpired,\s+sessionId: readSessionId\(\),\s+storage: window\.localStorage,\s+\}\)/
+      /shouldShowTravelExpiryPopup\(\{\s+expired: travelSummary\.travelModeExpired,\s+loginSessionKey: travelSummary\.loginSessionKey,\s+storage: window\.localStorage,\s+\}\)/
     )
   })
 
   it("only closing the expiry popup writes a dismissal (a closed reminder is already spent)", () => {
     const close = page.slice(page.indexOf("const handleTravelPopupClose"), page.indexOf("// \"Update\": hide the popup"))
-    assert.match(close, /if \(travelPopup === "expiry"\) \{\s+dismissTravelExpiryPopup\(readSessionId\(\), window\.localStorage\)\s+\}\s+setTravelPopup\(null\)/)
+    assert.match(close, /if \(travelPopup === "expiry"\) \{\s+dismissTravelExpiryPopup\(travelSummary\?\.loginSessionKey \?\? null, window\.localStorage\)\s+\}\s+setTravelPopup\(null\)/)
   })
 
   it("Update remembers nothing", () => {

@@ -119,84 +119,46 @@ describe("RUNTIME: the traveler signal from GET /me", () => {
 
 // ---------------------------------------------------------------------------
 describe("RUNTIME: the prompt is offered once per login", () => {
-  const traveler = summary({ travelModeLocationMismatch: true })
+  // Opaque keys, as GET /me returns them (a one-way digest, never the session id).
+  const KEY_1 = "a".repeat(64)
+  const KEY_2 = "b".repeat(64)
+  const travelerOf = (loginSessionKey?: string) =>
+    summary({ travelModeLocationMismatch: true, ...(loginSessionKey ? { loginSessionKey } : {}) })
 
   it("a fresh login is offered the prompt, and marking it keeps a refresh in the same login quiet", () => {
     const storage = new FakeStorage()
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: traveler,
-        sessionId: "sid-1",
-        storage,
-      }),
-      true
-    )
-    markTravelerPromptShown("sid-1", storage)
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: traveler,
-        sessionId: "sid-1",
-        storage,
-      }),
-      false
-    )
+    assert.equal(shouldOfferTravelerPrompt({ summary: travelerOf(KEY_1), storage }), true)
+    markTravelerPromptShown(KEY_1, storage)
+    assert.equal(shouldOfferTravelerPrompt({ summary: travelerOf(KEY_1), storage }), false)
   })
 
-  it("a NEW login (new session id) is offered it again, and only one marker ever exists", () => {
+  it("a NEW login (a new key) is offered it again, and only one marker ever exists", () => {
     const storage = new FakeStorage()
-    markTravelerPromptShown("sid-1", storage)
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: traveler,
-        sessionId: "sid-2",
-        storage,
-      }),
-      true
-    )
-    markTravelerPromptShown("sid-2", storage)
+    markTravelerPromptShown(KEY_1, storage)
+    assert.equal(shouldOfferTravelerPrompt({ summary: travelerOf(KEY_2), storage }), true)
+    markTravelerPromptShown(KEY_2, storage)
     assert.equal(storage.length, 1)
-    assert.equal(storage.getItem(travelLocationPromptKey("sid-2")), "1")
-    assert.equal(storage.getItem(travelLocationPromptKey("sid-1")), null)
+    assert.equal(storage.getItem(travelLocationPromptKey(KEY_2)), "1")
+    assert.equal(storage.getItem(travelLocationPromptKey(KEY_1)), null)
   })
 
   it("never touches other keys (the expiry popup's marker is left alone)", () => {
     const storage = new FakeStorage()
-    storage.setItem("travelExpiryDismissed:sid-1", "1")
-    markTravelerPromptShown("sid-1", storage)
-    assert.equal(storage.getItem("travelExpiryDismissed:sid-1"), "1")
-    assert.ok(
-      travelLocationPromptKey("sid-1").startsWith(
-        TRAVEL_LOCATION_PROMPT_SHOWN_PREFIX
-      )
-    )
+    storage.setItem(`travelExpiryDismissed:${KEY_1}`, "1")
+    markTravelerPromptShown(KEY_1, storage)
+    assert.equal(storage.getItem(`travelExpiryDismissed:${KEY_1}`), "1")
+    assert.ok(travelLocationPromptKey(KEY_1).startsWith(TRAVEL_LOCATION_PROMPT_SHOWN_PREFIX))
   })
 
   it("is not offered at all without the backend signal, whatever the login", () => {
     const storage = new FakeStorage()
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: summary({}),
-        sessionId: "sid-1",
-        storage,
-      }),
-      false
-    )
-    assert.equal(
-      shouldOfferTravelerPrompt({ summary: null, sessionId: "sid-1", storage }),
-      false
-    )
+    assert.equal(shouldOfferTravelerPrompt({ summary: summary({ loginSessionKey: KEY_1 }), storage }), false)
+    assert.equal(shouldOfferTravelerPrompt({ summary: null, storage }), false)
   })
 
-  it("without a session id it is offered and nothing is persisted", () => {
+  it("without a key it is offered and nothing is persisted", () => {
     const storage = new FakeStorage()
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: traveler,
-        sessionId: null,
-        storage,
-      }),
-      true
-    )
+    assert.equal(shouldOfferTravelerPrompt({ summary: travelerOf(), storage }), true)
     markTravelerPromptShown(null, storage)
     assert.equal(storage.length, 0)
   })
@@ -213,15 +175,8 @@ describe("RUNTIME: the prompt is offered once per login", () => {
       },
       removeItem: () => undefined,
     }
-    assert.equal(
-      shouldOfferTravelerPrompt({
-        summary: traveler,
-        sessionId: "sid-1",
-        storage: broken,
-      }),
-      true
-    )
-    assert.doesNotThrow(() => markTravelerPromptShown("sid-1", broken))
+    assert.equal(shouldOfferTravelerPrompt({ summary: travelerOf(KEY_1), storage: broken }), true)
+    assert.doesNotThrow(() => markTravelerPromptShown(KEY_1, broken))
   })
 })
 
@@ -456,7 +411,7 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
       page.indexOf("setTravelerPromptOpen(true)") + 40
     )
     assert.ok(effect.includes("summary: travelSummary"))
-    assert.ok(effect.includes("sessionId"))
+    assert.ok(!effect.includes("readSessionId"))
     assert.ok(!effect.includes("markTravelerPromptShown"), "opening marks nothing")
   })
 

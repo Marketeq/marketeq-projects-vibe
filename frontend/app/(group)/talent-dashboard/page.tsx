@@ -96,7 +96,6 @@ import {
 } from "@/src/lib/api/travel-reminder"
 import {
   dismissTravelExpiryPopup,
-  readSessionId,
   shouldShowTravelExpiryPopup,
 } from "@/src/lib/api/travel-expiry-popup"
 import {
@@ -225,8 +224,8 @@ export default function TalentDashboard() {
   // The one path that completes at its click: write the per-login marker.
   const markTravelerPromptCompleted = useCallback(() => {
     travelerPromptHandledRef.current = true
-    markTravelerPromptShown(readSessionId(), window.localStorage)
-  }, [])
+    markTravelerPromptShown(travelSummary?.loginSessionKey ?? null, window.localStorage)
+  }, [travelSummary])
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
@@ -484,14 +483,14 @@ export default function TalentDashboard() {
   }, [runIdentityVerificationCheck])
 
   // Travel Mode expiry popup: when the backend says Travel Mode ended, show it (verified
-  // or not) unless it was closed in THIS login (the existing
-  // readable session_id cookie; a refresh keeps it, a new login changes it).
+  // or not) unless it was closed in THIS login (the opaque loginSessionKey from /me: a
+  // refresh keeps it, a new login changes it; the HttpOnly session_id is never read).
   useEffect(() => {
     if (!travelSummary) return
     if (
       shouldShowTravelExpiryPopup({
         expired: travelSummary.travelModeExpired,
-        sessionId: readSessionId(),
+        loginSessionKey: travelSummary.loginSessionKey,
         storage: window.localStorage,
       })
     ) {
@@ -501,15 +500,13 @@ export default function TalentDashboard() {
 
   // "Still traveling?" for an account whose Travel Mode is in force and that logged in
   // from a country other than its verified home country. The backend decides whether it
-  // applies; the once-per-login rule is the existing session_id marker, written when the
+  // applies; the once-per-login rule is the loginSessionKey marker, written when the
   // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
   useEffect(() => {
     if (!travelSummary || travelerPromptHandledRef.current) return
-    const sessionId = readSessionId()
     if (
       !shouldOfferTravelerPrompt({
         summary: travelSummary,
-        sessionId,
         storage: window.localStorage,
       })
     ) {
@@ -545,10 +542,10 @@ export default function TalentDashboard() {
   // was claimed when it opened. A closed expiry popup is remembered for this login only.
   const handleTravelPopupClose = useCallback(() => {
     if (travelPopup === "expiry") {
-      dismissTravelExpiryPopup(readSessionId(), window.localStorage)
+      dismissTravelExpiryPopup(travelSummary?.loginSessionKey ?? null, window.localStorage)
     }
     setTravelPopup(null)
-  }, [travelPopup])
+  }, [travelPopup, travelSummary])
 
   // "Update": hide the popup (nothing is remembered) and open the existing verification
   // flow at "Tell us more about your current location", which keeps its own

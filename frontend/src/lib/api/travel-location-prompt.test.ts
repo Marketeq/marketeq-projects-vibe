@@ -28,15 +28,18 @@ function memoryStorage(): DismissalStorage & { dump: () => Record<string, string
     dump: () => Object.fromEntries(map),
   }
 }
-const SID_A = "7a1b2c3d-0000-4000-8000-00000000000a"
-const SID_B = "7a1b2c3d-0000-4000-8000-00000000000b"
-const summary = parseIdentityVerificationSummary({
-  nextAction: "none",
-  status: "verified",
-  travelModeLocationMismatch: true,
-})
-const offered = (sessionId: string | null, storage: DismissalStorage) =>
-  shouldOfferTravelerPrompt({ summary, sessionId, storage })
+// Opaque per-login keys, as GET /me returns them (never the session id itself).
+const KEY_A = "a".repeat(64)
+const KEY_B = "b".repeat(64)
+const summaryFor = (loginSessionKey: string | null) =>
+  parseIdentityVerificationSummary({
+    nextAction: "none",
+    status: "verified",
+    travelModeLocationMismatch: true,
+    ...(loginSessionKey ? { loginSessionKey } : {}),
+  })
+const offered = (loginSessionKey: string | null, storage: DismissalStorage) =>
+  shouldOfferTravelerPrompt({ summary: summaryFor(loginSessionKey), storage })
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const page = read("app", "(group)", "talent-dashboard", "page.tsx")
@@ -73,21 +76,21 @@ describe("opening the prompt marks nothing (refresh, navigation and a new login)
   })
   it("a refresh or navigation back (same login) before any completed path offers it again", () => {
     const storage = memoryStorage()
-    assert.equal(offered(SID_A, storage), true) // opened, nothing marked
+    assert.equal(offered(KEY_A, storage), true) // opened, nothing marked
     assert.deepEqual(storage.dump(), {})
-    assert.equal(offered(SID_A, storage), true) // refresh / navigate away and back
+    assert.equal(offered(KEY_A, storage), true) // refresh / navigate away and back
   })
-  it("logout then a new login (new session id) offers it again, with at most one marker", () => {
+  it("logout then a new login (new key) offers it again, with at most one marker", () => {
     const storage = memoryStorage()
-    markTravelerPromptShown(SID_A, storage)
-    assert.equal(offered(SID_B, storage), true)
-    markTravelerPromptShown(SID_B, storage)
-    assert.deepEqual(Object.keys(storage.dump()), [travelLocationPromptKey(SID_B)])
+    markTravelerPromptShown(KEY_A, storage)
+    assert.equal(offered(KEY_B, storage), true)
+    markTravelerPromptShown(KEY_B, storage)
+    assert.deepEqual(Object.keys(storage.dump()), [travelLocationPromptKey(KEY_B)])
   })
   it("logout itself writes no travel marker and clears none", () => {
     assert.ok(!/travelLocationPromptShown|markTravelerPromptShown/.test(auth))
   })
-  it("no session id: offered, nothing persisted", () => {
+  it("no key: offered, nothing persisted", () => {
     const storage = memoryStorage()
     markTravelerPromptShown(null, storage)
     assert.deepEqual(storage.dump(), {})
@@ -103,11 +106,22 @@ describe("'I’m still traveling' on an active Travel Mode completes at the clic
   })
   it("a refresh after it does not reopen the prompt in the same login", () => {
     const storage = memoryStorage()
-    markTravelerPromptShown(SID_A, storage)
-    assert.equal(offered(SID_A, storage), false)
+    markTravelerPromptShown(KEY_A, storage)
+    assert.equal(offered(KEY_A, storage), false)
   })
-  it("the marker is written only by this path", () => {
+  it("the marker is written only by this path, and keyed by the /me loginSessionKey (not a cookie)", () => {
     assert.equal((page.match(/markTravelerPromptShown\(/g) ?? []).length, 1)
+    assert.ok(page.includes("markTravelerPromptShown(travelSummary?.loginSessionKey ?? null, window.localStorage)"))
+    assert.ok(!/document\.cookie|readSessionId/.test(page))
+  })
+  it("end to end: answered, then a refresh (same key) stays closed; a new login (new key) reopens", () => {
+    const storage = memoryStorage()
+    assert.equal(offered(KEY_A, storage), true)
+    markTravelerPromptShown(KEY_A, storage) // "I’m still traveling"
+    assert.equal(offered(KEY_A, storage), false) // refresh
+    assert.equal(offered(KEY_B, storage), true) // genuine new login
+    assert.equal(offered(null, storage), true) // no key: shown, and persists nothing
+    assert.deepEqual(Object.keys(storage.dump()), [travelLocationPromptKey(KEY_A)])
   })
 })
 
@@ -119,7 +133,7 @@ describe("'Change my home country' saves and marks nothing", () => {
   })
   it("closing the detected-country confirmation therefore changes nothing and the prompt returns on refresh", () => {
     const storage = memoryStorage()
-    assert.equal(offered(SID_A, storage), true)
+    assert.equal(offered(KEY_A, storage), true)
     assert.deepEqual(storage.dump(), {})
   })
   it("the lookup is the only thing it runs", async () => {

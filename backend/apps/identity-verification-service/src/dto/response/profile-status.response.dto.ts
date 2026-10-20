@@ -84,6 +84,15 @@ export class ProfileStatusResponseDto {
    */
   travelModeLocationMismatch?: boolean;
 
+  /**
+   * An opaque key for THIS login (a one-way digest of the verified token's session id,
+   * see common/travel-mode/login-session-key.ts), so the browser can remember per login
+   * that a popup was shown or dismissed without ever seeing the session id. Stable for a
+   * login across refreshes; different for every new login and every account. OMITTED when
+   * the token has no valid session id. GET /me only.
+   */
+  loginSessionKey?: string;
+
   static fromEntity(
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
@@ -91,6 +100,7 @@ export class ProfileStatusResponseDto {
     locationMismatch: boolean = false,
     loginReminderAt: Date | null = null,
     travelModeLocationMismatch: boolean = false,
+    loginSessionKey: string | null = null,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -122,6 +132,7 @@ export class ProfileStatusResponseDto {
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
     if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
     if (travelModeLocationMismatch === true) dto.travelModeLocationMismatch = true;
+    if (typeof loginSessionKey === 'string' && loginSessionKey.length > 0) dto.loginSessionKey = loginSessionKey;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;
