@@ -388,10 +388,6 @@ const getShortHandle = (handle?: string | null) => {
 const getFirstName = (name: string) => name.trim().split(/\s+/)[0] || name
 
 const renderRate = (rate?: string | null) => {
-  if (!rate || rate === "Rate not set") {
-    return (
-      <span className="inline-flex h-5 items-center whitespace-nowrap text-sm leading-5 font-normal text-[#475467]">
-        --
   // The backend (projects.service.ts resolveTeamMembers) already resolves a
   // missing profile rate through pricing-service before this ever renders —
   // a still-missing rate here means no data was available at all, so show
