@@ -96,6 +96,7 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       // the append-only returning-user new-location signal: absent from this body, so null
       locationMismatch: null,
       travelModeLocationMismatch: null,
+      pendingHomeCountry: null,
     })
   })
 

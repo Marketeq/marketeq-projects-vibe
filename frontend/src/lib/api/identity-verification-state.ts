@@ -95,6 +95,10 @@ export interface IdentityVerificationSummaryView {
   // (null otherwise); it is what offers the "still traveling?" prompt (once per
   // login, decided by the screen, see travel-location-prompt.ts).
   travelModeLocationMismatch: boolean | null
+  // The country the account has claimed it moved to and that still awaits Didit's
+  // approval, exactly as the backend sent it (the key is omitted when there is none).
+  // It only tells the screen that the next trip to Didit is a home-country change.
+  pendingHomeCountry: string | null
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
@@ -129,6 +133,10 @@ export function parseIdentityVerificationSummary(
     travelReminderAvailableAt: isoTime(body.travelReminderAvailableAt),
     locationMismatch: bool(body.locationMismatch),
     travelModeLocationMismatch: bool(body.travelModeLocationMismatch),
+    pendingHomeCountry:
+      typeof body.pendingHomeCountry === "string" && body.pendingHomeCountry
+        ? body.pendingHomeCountry
+        : null,
   }
 }
 

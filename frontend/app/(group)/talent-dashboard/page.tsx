@@ -1,6 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -10,6 +16,7 @@ import {
   ArrowRight,
   CheckCircle,
   ChevronRight,
+  MarkerPin01,
   Plane,
   RefreshCw,
   X,
@@ -96,6 +103,14 @@ import {
   markTravelerPromptShown,
   shouldOfferTravelerPrompt,
 } from "@/src/lib/api/travel-location-prompt"
+import {
+  clearHomeCountryChange,
+  consumeHomeCountryChange,
+  HOME_COUNTRY_UPDATED_ALERT,
+  markHomeCountryChange,
+  successAlertKindFor,
+  type SuccessAlertKind,
+} from "@/src/lib/api/home-country-change-result"
 import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
@@ -244,6 +259,22 @@ export default function TalentDashboard() {
   // Success alert (Figma node 13101-47566): shown only AFTER the user clicks the
   // success modal's own Done button, never while the modal is open.
   const [successAlertOpen, setSuccessAlertOpen] = useState(false)
+  // Which copy the success alert carries: the generic one, or the home-country one when
+  // this browser went to Didit to change the home country (home-country-change-result.ts).
+  const [successAlertKind, setSuccessAlertKind] =
+    useState<SuccessAlertKind>("verified")
+  // The location-specific notification (Figma node 13101-47577): the same alert, with
+  // the map pin and the home-country copy. Shown INSTEAD of the generic one.
+  const [homeCountryUpdatedOpen, setHomeCountryUpdatedOpen] = useState(false)
+  // The modal's own Done button opens the generic alert. For a home-country approval the
+  // location-specific one replaces it, in the same commit (before paint), so the
+  // generic alert is never seen and only one notification shows.
+  useLayoutEffect(() => {
+    if (successAlertOpen && successAlertKind === "home-country-updated") {
+      setSuccessAlertOpen(false)
+      setHomeCountryUpdatedOpen(true)
+    }
+  }, [successAlertOpen, successAlertKind])
   // "You've used all three attempts": the retry time (ISO) while the backend says to
   // wait for a retry window, else null. Closing it only hides it for this view; a
   // fresh backend answer shows it again.
@@ -274,12 +305,19 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        // Which success alert follows the modal. Read once: a repeat (duplicate
+        // webhook, reconcile, refresh) finds no flag, so it can never show twice.
+        setSuccessAlertKind(
+          successAlertKindFor(consumeHomeCountryChange(window.localStorage))
+        )
         return
       }
       // Back from Didit with the session in review: tell the user once. The result
       // arrives later as a notification, so this browser stops waiting for it.
       if (shouldShowPendingModal(summary)) {
         clearAwaitingResult(window.localStorage)
+        // The approval will arrive as a backend notification: no alert from here.
+        clearHomeCountryChange(window.localStorage)
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setPendingModalOpen(true)
@@ -382,6 +420,13 @@ export default function TalentDashboard() {
         return
       }
       if (action.kind === "didit") {
+        // This trip to Didit is a home-country change when a different country is
+        // pending (the backend hands the retry to the same session); recorded
+        // explicitly either way, so an ordinary trip clears a flag left by an earlier one.
+        markHomeCountryChange(
+          window.localStorage,
+          summary?.pendingHomeCountry != null
+        )
         const started = await startIdentityOnlyForDashboard()
         if (started === "redirected") return // the browser is leaving for Didit
         if (started === "not_startable") {
@@ -827,6 +872,39 @@ export default function TalentDashboard() {
             visual="gray"
             variant="ghost"
             onClick={handleTravelPopupClose}
+          >
+            <X className="size-5" />
+          </IconButton>
+        </Toast>
+
+        {/* Home country updated — the approved success alert (Figma node 13101-47577): the
+            same markup as the generic success alert, with the map pin and its own copy.
+            It shares this viewport; the generic alert is replaced by it, never stacked. */}
+        <Toast
+          open={homeCountryUpdatedOpen}
+          onOpenChange={setHomeCountryUpdatedOpen}
+          duration={5000}
+          className="relative w-[400px] max-w-full items-start gap-5 space-x-0 rounded-xl border border-gray-100 bg-white p-4 text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)] data-[state=open]:sm:slide-in-from-top-full"
+        >
+          <div className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+            <MarkerPin01 className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+            <ToastTitle className="text-sm font-semibold leading-5 text-gray-900">
+              {HOME_COUNTRY_UPDATED_ALERT.title}
+            </ToastTitle>
+            <ToastDescription className="text-sm font-normal leading-5 text-gray-600">
+              {HOME_COUNTRY_UPDATED_ALERT.description}
+            </ToastDescription>
+          </div>
+
+          <IconButton
+            className="absolute right-2 top-2 size-9 text-gray-500"
+            size="md"
+            visual="gray"
+            variant="ghost"
+            onClick={() => setHomeCountryUpdatedOpen(false)}
           >
             <X className="size-5" />
           </IconButton>

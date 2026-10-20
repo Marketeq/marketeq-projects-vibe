@@ -9,6 +9,7 @@
 // only ever re-reads authoritative status from our backend (GET /me).
 //
 // The travel branch ("No, I'm currently traveling") never calls any of this.
+import { markHomeCountryChange } from "./home-country-change-result"
 import {
   IDENTITY_STATUS_REFRESHED_EVENT,
   markAwaitingResult,
@@ -34,6 +35,10 @@ export interface FreeKycDeps {
   // Called just before the browser leaves for Didit, so the dashboard knows to
   // show a result when this browser comes back. Defaults to a localStorage flag.
   markAwaitingResult?: () => void
+  // Told whether the trip to Didit is a home-country change (true) or an ordinary
+  // verification (false), so the result can show the matching success alert. Defaults
+  // to a one-shot localStorage flag (see home-country-change-result.ts).
+  markHomeCountryChange?: (isChange: boolean) => void
 }
 
 const NOT_STARTABLE_CODE = "IDENTITY_VERIFICATION_NOT_STARTABLE"
@@ -79,6 +84,13 @@ async function defaultRefreshIdentityStatus(): Promise<string> {
   const { checkIdentityVerificationStatus } =
     await import("./identity-verification-status")
   return checkIdentityVerificationStatus()
+}
+
+function defaultMarkHomeCountryChange(isChange: boolean): void {
+  markHomeCountryChange(
+    typeof window === "undefined" ? undefined : window.localStorage,
+    isChange
+  )
 }
 
 function defaultMarkAwaitingResult(): void {
@@ -134,13 +146,17 @@ export async function confirmHomeCountryAndStartFreeKyc(
 ): Promise<FreeKycOutcome> {
   try {
     const confirmation = await deps.confirmHomeCountry()
-    const { data } = leftHomeCountryChangePending(confirmation)
+    const isHomeCountryChange = leftHomeCountryChangePending(confirmation)
+    const { data } = isHomeCountryChange
       ? await (deps.startHomeCountryChange ?? defaultStartHomeCountryChange)()
       : await deps.startFreeKyc()
     if (!isDiditHostedUrl(data?.url)) {
       throw new Error("Free KYC returned an invalid redirect URL.")
     }
     ;(deps.markAwaitingResult ?? defaultMarkAwaitingResult)()
+    ;(deps.markHomeCountryChange ?? defaultMarkHomeCountryChange)(
+      isHomeCountryChange
+    )
     deps.redirect(data.url)
     return "redirected"
   } catch (error) {
