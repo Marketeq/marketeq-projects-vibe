@@ -23,6 +23,7 @@ import type {
   CaptureHealth,
   IdleResolutionNeededPayload,
   IdleResolveArgs,
+  CrashRecoveryDTO,
   IpcErrorResult,
   NotificationPrefs,
   OnboardingMarkStepArgs,
@@ -121,6 +122,15 @@ const dtt = {
       unwrapIpcResult<TimerSnapshotDTO>(
         await ipcRenderer.invoke(IPC.idleResolve, args),
       ),
+    // Crash recovery prompt (DTT-US-131/132/133)
+    getCrashRecovery: async (): Promise<CrashRecoveryDTO | null> =>
+      unwrapIpcResult<CrashRecoveryDTO | null>(
+        await ipcRenderer.invoke(IPC.crashRecoveryGet),
+      ),
+    recoverCrash: async (): Promise<boolean> =>
+      unwrapIpcResult<boolean>(await ipcRenderer.invoke(IPC.crashRecoveryRecover)),
+    discardCrash: async (): Promise<boolean> =>
+      unwrapIpcResult<boolean>(await ipcRenderer.invoke(IPC.crashRecoveryDiscard)),
 
     onStateChanged: (cb: (snap: TimerSnapshotDTO) => void) => {
       const handler = (_evt: IpcRendererEvent, payload: TimerSnapshotDTO) =>

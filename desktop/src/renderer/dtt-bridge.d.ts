@@ -26,6 +26,7 @@ import type {
   CaptureHealth,
   IdleResolutionNeededPayload,
   IdleResolveArgs,
+  CrashRecoveryDTO,
   NotificationPrefs,
   OnboardingMarkStepArgs,
   OnboardingState,
@@ -58,6 +59,10 @@ export interface DttTimerBridge {
   breakEnd: () => Promise<TimerSnapshotDTO>;
   getState: () => Promise<TimerSnapshotDTO>;
   resolveIdle: (args: IdleResolveArgs) => Promise<TimerSnapshotDTO>;
+  /** Unfinished session from an unclean shutdown, or null (DTT-US-131). */
+  getCrashRecovery: () => Promise<CrashRecoveryDTO | null>;
+  recoverCrash: () => Promise<boolean>;
+  discardCrash: () => Promise<boolean>;
   onStateChanged: (cb: (snap: TimerSnapshotDTO) => void) => () => void;
   onTick: (cb: (p: TimerTickPayload) => void) => () => void;
   onError: (cb: (p: TimerErrorPayload) => void) => () => void;
