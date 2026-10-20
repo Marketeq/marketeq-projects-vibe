@@ -8,12 +8,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <OnlineUsersProvider>
       <InboxThreadsProvider>
-        <Suspense fallback={null}>
-          <TopMostHeader />
-        </Suspense>
         {/* Reserve space for the fixed primary header so page content starts
             below it instead of sliding underneath the pinned nav. */}
-        <GroupLayoutInner>{children}</GroupLayoutInner>
+        <GroupLayoutInner
+          header={
+            <Suspense fallback={null}>
+              <TopMostHeader />
+            </Suspense>
+          }
+        >
+          {children}
+        </GroupLayoutInner>
       </InboxThreadsProvider>
     </OnlineUsersProvider>
   )

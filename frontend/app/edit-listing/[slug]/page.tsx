@@ -52,6 +52,8 @@ import {
   scopeDurationDays,
   type PricingPeriod,
 } from "@/lib/listing-pricing"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
@@ -95,12 +97,15 @@ import {
   RefreshCcw05,
   Copy,
   Edit03,
+  ExternalLink,
   Eye,
+  FilterLines,
   HelpCircle,
   Home03,
   Info,
   Lightbulb05,
   Lock01,
+  Mail01,
   MoreHorizontal,
   PlayCircle,
   Plus,
@@ -192,6 +197,12 @@ import NextLink from "@/components/next-link"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import {
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -200,6 +211,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   ErrorMessage,
+  ScaleOutIn,
   SquareShapeDropzone,
   Step,
   StepControl,
@@ -909,9 +921,9 @@ const meta = {
     { label: "Duration", name: "duration" },
   ],
   Team: [
+    { label: "Members", name: "members" },
     { label: "Open Roles", name: "openRoles" },
     { label: "Application Questions", name: "applicationQuestions" },
-    { label: "Members", name: "members" },
     { label: "Requests", name: "requests" },
     { label: "Invites", name: "invites" },
   ] as { label: string; name: string }[],
@@ -8146,6 +8158,9 @@ const TEAM_SUB_TAB_LABELS: Record<TeamSubTab, string> = {
   invites: "Invites",
 }
 
+const TEAM_SUB_TAB_ENTRY_ANIMATION =
+  "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards"
+
 // ---------------------------------------------------------------------------
 // Open Roles sub-tab content (pixel-perfect from Figma node 13101:118765)
 // ---------------------------------------------------------------------------
@@ -8164,10 +8179,27 @@ const SAMPLE_SELECTED_ROLES = [
   "Product Manager",
 ]
 
-const SAMPLE_SUGGESTED_ROLES = [
+const ALL_ROLES_POOL = [
+  "Product Designer",
   "UX Researcher",
-  "Project Manager",
+  "Frontend Developer",
+  "iOS Developer",
+  "Android Developer",
+  "Backend Engineer",
+  "UX Writer",
+  "DevOps Engineer",
   "QA Engineer",
+  "React Native Dev",
+  "Full Stack Developer",
+  "Product Manager",
+  "Project Manager",
+  "Data Scientist",
+  "ML Engineer",
+  "Security Engineer",
+  "Cloud Architect",
+  "Technical Writer",
+  "Scrum Master",
+  "Solutions Architect",
 ]
 
 const SAMPLE_ROLE_OPTIONS = [
@@ -8184,6 +8216,14 @@ const SAMPLE_ROLE_QUESTIONS = [
 
 const OpenRolesContent = () => {
   const [selectedRoles, setSelectedRoles] = useState<string[]>(SAMPLE_SELECTED_ROLES)
+  const suggestedRoles = useMemo(
+    () => ALL_ROLES_POOL.filter((r) => !selectedRoles.includes(r)).slice(0, 3),
+    [selectedRoles]
+  )
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastRoleBadgeRef = useRef<HTMLDivElement>(null)
+  const questionLockRef = useRef<HTMLSpanElement>(null)
+  const [connector, setConnector] = useState<{ top: number; height: number } | null>(null)
   const MAX_ROLES = 15
 
   const removeRole = (role: string) => {
@@ -8196,13 +8236,70 @@ const OpenRolesContent = () => {
     }
   }
 
+  useEffect(() => {
+    const content = contentRef.current
+    const lastRoleBadge = lastRoleBadgeRef.current
+    const questionLock = questionLockRef.current
+
+    if (!content || !lastRoleBadge || !questionLock) {
+      setConnector(null)
+      return
+    }
+
+    const updateConnector = () => {
+      const contentRect = content.getBoundingClientRect()
+      const sourceRect = lastRoleBadge.getBoundingClientRect()
+      const targetRect = questionLock.getBoundingClientRect()
+      const sourceCenter = sourceRect.top + sourceRect.height / 2
+      const targetCenter = targetRect.top + targetRect.height / 2
+      const height = targetCenter - sourceCenter
+
+      setConnector(
+        height > 0
+          ? { top: sourceCenter - contentRect.top, height }
+          : null
+      )
+    }
+
+    updateConnector()
+
+    const observer = new ResizeObserver(updateConnector)
+    observer.observe(content)
+    observer.observe(lastRoleBadge)
+    observer.observe(questionLock)
+    window.addEventListener("resize", updateConnector)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateConnector)
+    }
+  }, [selectedRoles])
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]">
+      <div
+        ref={contentRef}
+        className="relative py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]"
+      >
+        {/* Dynamic connector between the last role badge and the default question card. */}
+        {connector && (
+          <div
+            aria-hidden="true"
+            className="absolute hidden min-[1024px]:block left-[57px] pointer-events-none w-[18px]"
+            style={{ top: connector.top, height: connector.height }}
+          >
+            <div className="absolute bg-gray-300 left-0 top-0 w-px [height:calc(100%-9px)]" />
+            <div className="absolute border-b border-l border-gray-300 bottom-0 h-[9px] left-0 rounded-bl-[9px] w-[9px]" />
+            <div className="absolute bg-gray-300 bottom-0 h-px left-[8px] w-[7px]" />
+            <div className="absolute border-r border-t border-gray-300 bottom-[-2px] right-0 rotate-45 size-[6px]" />
+          </div>
+        )}
+
         {/* Left column */}
         <div className="flex-auto min-w-0 flex flex-col">
           <div className="flex flex-col gap-[18px]">
@@ -8228,21 +8325,25 @@ const OpenRolesContent = () => {
 
                   {/* Roles input box */}
                   <div className={cn(
-                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-start",
+                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-center",
                     selectedRoles.length >= MAX_ROLES ? "border-warning-300" : "border-gray-300"
                   )}>
-                    {selectedRoles.map((role) => (
-                      <Badge
+                    {selectedRoles.map((role, index) => (
+                      <div
                         key={role}
-                        visual="primary"
-                        size="sm"
-                        className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                        ref={index === selectedRoles.length - 1 ? lastRoleBadgeRef : undefined}
                       >
-                        {role}
-                        <BadgeCloseButton onClick={() => removeRole(role)}>
-                          <X className="size-3" />
-                        </BadgeCloseButton>
-                      </Badge>
+                        <Badge
+                          visual="primary"
+                          size="sm"
+                          className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                        >
+                          {role}
+                          <BadgeCloseButton onClick={() => removeRole(role)}>
+                            <X className="size-3" />
+                          </BadgeCloseButton>
+                        </Badge>
+                      </div>
                     ))}
                     {selectedRoles.length < MAX_ROLES && (
                       <Badge
@@ -8262,26 +8363,28 @@ const OpenRolesContent = () => {
                   )}
                 </div>
 
-                {/* Suggested Roles */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-normal leading-5 text-dark-blue-400">
-                    Suggested Roles
-                  </span>
-                  <div className="flex flex-wrap content-start gap-3">
-                    {SAMPLE_SUGGESTED_ROLES.map((role) => (
-                      <Badge
-                        key={role}
-                        visual="gray"
-                        size="md"
-                        className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
-                        onClick={() => addRole(role)}
-                      >
-                        {role}
-                        <Plus className="size-3.5 text-gray-500" />
-                      </Badge>
-                    ))}
+                {/* Suggested Roles — hidden when max reached */}
+                {selectedRoles.length < MAX_ROLES && suggestedRoles.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                      Suggested Roles
+                    </span>
+                    <div className="flex flex-wrap content-start gap-3">
+                      {suggestedRoles.map((role) => (
+                        <Badge
+                          key={role}
+                          visual="gray"
+                          size="md"
+                          className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                          onClick={() => addRole(role)}
+                        >
+                          {role}
+                          <Plus className="size-3.5 text-gray-500" />
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Empty state — shown when all roles are removed */}
@@ -8319,7 +8422,9 @@ const OpenRolesContent = () => {
                   <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
                     <div className="flex gap-2.5 items-start">
                       <div className="shrink-0 w-[15px] pt-[3px]">
-                        <Lock01 className="size-[15px] text-gray-500" />
+                        <span ref={questionLockRef} className="block size-[15px]">
+                          <Lock01 className="size-[15px] text-gray-500" />
+                        </span>
                       </div>
 
                       <div className="flex-1 min-w-0 flex flex-col gap-3">
@@ -8359,10 +8464,10 @@ const OpenRolesContent = () => {
                             <Button
                               variant="link"
                               visual="primary"
-                              className="gap-1 text-xs font-bold leading-5 underline"
+                              className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
                             >
                               Edit Roles
-                              <ArrowUpRight className="size-[15px]" />
+                              <ExternalLink className="size-[15px]" />
                             </Button>
                           </div>
 
@@ -8505,6 +8610,1580 @@ const OpenRolesContent = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Application Questions sub-tab content (pixel-perfect from Figma node 13101:119062)
+// ---------------------------------------------------------------------------
+const SAMPLE_SELECTED_TASK_TYPES = [
+  "Affinity Mapping",
+  "Visual Design",
+  "Mobile Development",
+  "Frontend Development",
+  "QA Testing",
+  "Competitive Analysis",
+  "UX Auditing",
+  "Prototyping",
+  "User Research",
+  "iOS Development",
+  "Android Development",
+  "Card Sorting",
+]
+
+const ALL_TASK_TYPES_POOL = [
+  "Persona Creation",
+  "User Flow Design",
+  "Wireframing",
+  "Usability Testing",
+  "Information Architecture",
+  "Design System",
+  "Accessibility Auditing",
+  "Interaction Design",
+  "API Integration",
+  "Database Design",
+  "Performance Optimization",
+  "Code Review",
+  "Technical Writing",
+  "Data Modeling",
+  "Security Auditing",
+]
+
+const SAMPLE_TASK_TYPE_OPTIONS = [
+  "Affinity Mapping",
+  "Visual Design",
+  "Mobile Development",
+  "Frontend Development",
+]
+
+const ApplicationQuestionsContent = () => {
+  const { draftProjectId } = useProjectScopeContext()
+  const [selectedTaskTypes, setSelectedTaskTypes] = useState<string[]>(SAMPLE_SELECTED_TASK_TYPES)
+  const suggestedTaskTypes = useMemo(
+    () => ALL_TASK_TYPES_POOL.filter((t) => !selectedTaskTypes.includes(t)).slice(0, 3),
+    [selectedTaskTypes]
+  )
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastTaskTypeBadgeRef = useRef<HTMLDivElement>(null)
+  const questionLockRef = useRef<HTMLSpanElement>(null)
+  const [connector, setConnector] = useState<{ top: number; height: number } | null>(null)
+  const MAX_TASK_TYPES = 15
+
+  // AI FAQ generation state (copied from my-listings inline edit mode)
+  const [aiFaqDialogOpen, setAiFaqDialogOpen] = useState(false)
+  const [faqGenLoading, setFaqGenLoading] = useState(false)
+  const [faqGenError, setFaqGenError] = useState(false)
+  const [faqSuggestions, setFaqSuggestions] = useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+  const [faqItems, setFaqItems] = useState<Array<{ question: string; answer: string; is_ai_generated?: boolean }>>([])
+
+  const faqRemainingSlots = Math.max(0, 10 - faqItems.length)
+  const faqAddedCount = faqSuggestions.filter((s) => s.added).length
+
+  const runFaqGeneration = async () => {
+    if (!draftProjectId) return
+    setFaqGenError(false)
+    setFaqGenLoading(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(draftProjectId)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      const existing = new Set(
+        faqItems.map((f) => (f.question || "").trim().toLowerCase())
+      )
+      const deduped = data
+        .filter((s) => s?.question && !existing.has(s.question.trim().toLowerCase()))
+        .map((s) => ({ question: s.question, answer: s.answer, added: false }))
+      setFaqSuggestions(deduped)
+    } catch {
+      setFaqGenError(true)
+    } finally {
+      setFaqGenLoading(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiFaqDialogOpen(true)
+    void runFaqGeneration()
+  }
+
+  const insertFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s || s.added || faqItems.length >= 10) return
+    setFaqItems((prev) => [
+      ...prev,
+      { question: s.question, answer: s.answer, is_ai_generated: true },
+    ])
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s) return
+    const q = s.question.trim().toLowerCase()
+    setFaqItems((prev) =>
+      prev.filter((f) => (f.question || "").trim().toLowerCase() !== q)
+    )
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllFaqSuggestions = () => {
+    const slots = Math.max(0, 10 - faqItems.length)
+    const toAdd = faqSuggestions.filter((s) => !s.added).slice(0, slots)
+    if (toAdd.length === 0) return
+    setFaqItems((prev) => [
+      ...prev,
+      ...toAdd.map((s) => ({
+        question: s.question,
+        answer: s.answer,
+        is_ai_generated: true,
+      })),
+    ])
+    const addedSet = new Set(toAdd.map((s) => s.question))
+    setFaqSuggestions((prev) =>
+      prev.map((x) => (addedSet.has(x.question) ? { ...x, added: true } : x))
+    )
+  }
+
+  // Edit Skills dialog state
+  const MAX_SKILLS = 25
+  const [editSkillsOpen, setEditSkillsOpen] = useState(false)
+  const [editSkillsRole, setEditSkillsRole] = useState("")
+  const [editSkillsList, setEditSkillsList] = useState<{ id: string | number; name: string }[]>([])
+  const [editSkillsSaved, setEditSkillsSaved] = useState<{ id: string | number; name: string }[]>([])
+  const [skillQuery, setSkillQuery] = useState("")
+  const [skillResults, setSkillResults] = useState<{ id: string | number; name: string }[]>([])
+
+  const fetchSkillResults = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setSkillResults([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id?: string; label?: string; name?: string }[] =
+        Array.isArray(data) ? data : (data.entries ?? data.results ?? [])
+      setSkillResults(
+        entries
+          .map((e) => {
+            const name = e.label ?? e.name ?? ""
+            return { id: e.id ?? name, name }
+          })
+          .filter((e) => e.name)
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkillResults(skillQuery), 300)
+    return () => clearTimeout(timer)
+  }, [skillQuery, fetchSkillResults])
+
+  const editSkillsHasChanges = useMemo(() => {
+    const a = [...editSkillsList].map((s) => s.name.toLowerCase()).sort()
+    const b = [...editSkillsSaved].map((s) => s.name.toLowerCase()).sort()
+    if (a.length !== b.length) return true
+    return a.some((v, i) => v !== b[i])
+  }, [editSkillsList, editSkillsSaved])
+
+  const openEditSkills = (role: string) => {
+    setEditSkillsRole(role)
+    setEditSkillsList([...editSkillsSaved])
+    setSkillQuery("")
+    setSkillResults([])
+    setEditSkillsOpen(true)
+  }
+
+  const removeEditSkill = (index: number) => {
+    setEditSkillsList((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const saveEditSkills = () => {
+    setEditSkillsSaved([...editSkillsList])
+    setEditSkillsOpen(false)
+  }
+
+  const removeTaskType = (taskType: string) => {
+    setSelectedTaskTypes((prev) => prev.filter((t) => t !== taskType))
+  }
+
+  const addTaskType = (taskType: string) => {
+    if (selectedTaskTypes.length < MAX_TASK_TYPES && !selectedTaskTypes.includes(taskType)) {
+      setSelectedTaskTypes((prev) => [...prev, taskType])
+    }
+  }
+
+  useEffect(() => {
+    const content = contentRef.current
+    const lastTaskTypeBadge = lastTaskTypeBadgeRef.current
+    const questionLock = questionLockRef.current
+
+    if (!content || !lastTaskTypeBadge || !questionLock) {
+      setConnector(null)
+      return
+    }
+
+    const updateConnector = () => {
+      const contentRect = content.getBoundingClientRect()
+      const sourceRect = lastTaskTypeBadge.getBoundingClientRect()
+      const targetRect = questionLock.getBoundingClientRect()
+      const sourceCenter = sourceRect.top + sourceRect.height / 2
+      const targetCenter = targetRect.top + targetRect.height / 2
+      const height = targetCenter - sourceCenter
+
+      setConnector(
+        height > 0
+          ? { top: sourceCenter - contentRect.top, height }
+          : null
+      )
+    }
+
+    updateConnector()
+
+    const observer = new ResizeObserver(updateConnector)
+    observer.observe(content)
+    observer.observe(lastTaskTypeBadge)
+    observer.observe(questionLock)
+    window.addEventListener("resize", updateConnector)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateConnector)
+    }
+  }, [selectedTaskTypes])
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div
+        ref={contentRef}
+        className="relative py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]"
+      >
+        {/* Dynamic connector between the last task type badge and the default question card. */}
+        {connector && (
+          <div
+            aria-hidden="true"
+            className="absolute hidden min-[1024px]:block left-[57px] pointer-events-none w-[18px]"
+            style={{ top: connector.top, height: connector.height }}
+          >
+            <div className="absolute bg-gray-300 left-0 top-0 w-px [height:calc(100%-9px)]" />
+            <div className="absolute border-b border-l border-gray-300 bottom-0 h-[9px] left-0 rounded-bl-[9px] w-[9px]" />
+            <div className="absolute bg-gray-300 bottom-0 h-px left-[8px] w-[7px]" />
+            <div className="absolute border-r border-t border-gray-300 bottom-[-2px] right-0 rotate-45 size-[6px]" />
+          </div>
+        )}
+
+        {/* Left column */}
+        <div className="flex-auto min-w-0 flex flex-col">
+          <div className="flex flex-col gap-[18px]">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Application Questions
+            </h1>
+
+            {/* Tabs */}
+            <Tabs defaultValue="default-question">
+              <TabsList className="justify-start px-0 border-b-0">
+                <TabsTrigger value="default-question" className="pb-[11px]">Default Questions</TabsTrigger>
+                <TabsTrigger value="role-specific-questions" className="pb-[11px]">Role-Specific Questions</TabsTrigger>
+                <TabsTrigger value="general-questions" className="pb-[11px]">General Questions</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="default-question">
+                <div className="flex flex-col gap-6 pt-6">
+                  {/* Task types input section */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-3 items-end">
+                        <p className="flex-1 min-w-0 text-sm leading-5 font-normal text-gray-500">
+                          Select at least 3 task types that best fit your project scope for easier discovery.
+                        </p>
+                        <span className={cn(
+                          "shrink-0 text-xs font-normal text-right whitespace-nowrap",
+                          selectedTaskTypes.length >= MAX_TASK_TYPES ? "text-warning-500" : "text-gray-500"
+                        )}>
+                          {selectedTaskTypes.length}/{MAX_TASK_TYPES}
+                        </span>
+                      </div>
+
+                      {/* Task types input box */}
+                      <div className={cn(
+                        "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-center",
+                        selectedTaskTypes.length >= MAX_TASK_TYPES ? "border-warning-300" : "border-gray-300"
+                      )}>
+                        {selectedTaskTypes.map((taskType, index) => (
+                          <div
+                            key={taskType}
+                            ref={index === selectedTaskTypes.length - 1 ? lastTaskTypeBadgeRef : undefined}
+                          >
+                            <Badge
+                              visual="primary"
+                              size="sm"
+                              className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default"
+                            >
+                              {taskType}
+                              <BadgeCloseButton onClick={() => removeTaskType(taskType)}>
+                                <X className="size-3" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          </div>
+                        ))}
+                        {selectedTaskTypes.length < MAX_TASK_TYPES && (
+                          <Badge
+                            visual="gray"
+                            size="sm"
+                            className="pl-1.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200"
+                          >
+                            <Plus className="size-3" />
+                            Add Task Type
+                          </Badge>
+                        )}
+                      </div>
+                      {selectedTaskTypes.length >= MAX_TASK_TYPES && (
+                        <p className="text-sm leading-5 font-normal text-warning-500">
+                          You've reached the maximum of {MAX_TASK_TYPES} task types.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Suggested Task Types — hidden when max reached */}
+                    {selectedTaskTypes.length < MAX_TASK_TYPES && suggestedTaskTypes.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                          Suggested Task Types
+                        </span>
+                        <div className="flex flex-wrap content-start gap-3">
+                          {suggestedTaskTypes.map((taskType) => (
+                            <Badge
+                              key={taskType}
+                              visual="gray"
+                              size="md"
+                              className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                              onClick={() => addTaskType(taskType)}
+                            >
+                              {taskType}
+                              <Plus className="size-3.5 text-gray-500" />
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Empty state */}
+                  {selectedTaskTypes.length === 0 && (
+                    <div className="flex flex-col gap-3 items-center justify-center p-4 rounded-[5px]">
+                      <div className="flex flex-col gap-2 items-center text-center">
+                        <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                          No Task Types yet
+                        </h2>
+                        <p className="text-sm leading-5 font-light text-dark-blue-400">
+                          Start by adding task types to define the work for this project.
+                        </p>
+                      </div>
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white"
+                        onClick={() => {
+                          /* TODO: open task type picker */
+                        }}
+                      >
+                        <Plus className="size-[15px]" />
+                        Add Task Types
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Question preview card */}
+                  {selectedTaskTypes.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm leading-5 font-normal text-gray-500">
+                        This question appears when talent requests to join the project.
+                      </p>
+
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                        <div className="flex gap-2.5 items-start">
+                          <div className="shrink-0 w-[15px] pt-[3px]">
+                            <span ref={questionLockRef} className="block size-[15px]">
+                              <Lock01 className="size-[15px] text-gray-500" />
+                            </span>
+                          </div>
+
+                          <div className="flex-1 min-w-0 flex flex-col gap-3">
+                            {/* Question title + tags */}
+                            <div className="flex items-center">
+                              <div className="flex gap-6 items-center">
+                                <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
+                                  What types of tasks can you help with?
+                                </span>
+                                <div className="flex gap-2 items-center">
+                                  <Badge
+                                    visual="gray"
+                                    size="sm"
+                                    className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                                  >
+                                    Default
+                                  </Badge>
+                                  <Badge
+                                    visual="gray"
+                                    size="sm"
+                                    className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
+                                  >
+                                    Multi-Select
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="w-full h-px bg-gray-200" />
+
+                            {/* Available Options */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex gap-3 items-center">
+                                <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
+                                  Available Options
+                                </span>
+                                <Button
+                                  variant="link"
+                                  visual="primary"
+                                  className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
+                                >
+                                  Edit Task Types
+                                  <ExternalLink className="size-[15px]" />
+                                </Button>
+                              </div>
+
+                              <div className="flex flex-wrap content-center gap-2.5 items-center">
+                                {SAMPLE_TASK_TYPE_OPTIONS.map((taskType) => (
+                                  <Badge
+                                    key={taskType}
+                                    visual="gray"
+                                    size="sm"
+                                    className="h-[26px] pl-2 pr-1.5 py-0.5"
+                                  >
+                                    {taskType}
+                                  </Badge>
+                                ))}
+                                <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                                  + 8 more
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Task Type Source */}
+                  {selectedTaskTypes.length > 0 && (
+                    <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                          <span className="text-base font-semibold text-dark-blue-400">
+                            Task Type Source
+                          </span>
+                          <p className="text-sm font-normal leading-5 text-gray-600">
+                            Task types are derived from your project's categories and scope. Click "Edit Scope" to update phases and tasks.
+                          </p>
+                        </div>
+                        <Button
+                          visual="gray"
+                          variant="outlined"
+                          className="shrink-0 bg-white"
+                        >
+                          <Edit03 className="size-[15px]" />
+                          Edit Scope
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="role-specific-questions">
+                <div className="flex flex-col gap-[14px] pt-6">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    Tailored questions for each role appear when a user selects one. Keep up to 3 question per role.
+                  </p>
+
+                  {/* Editing questions for + actions */}
+                  <div className="flex items-end justify-end gap-5">
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <span className="text-sm font-medium leading-5 text-dark-blue-400">
+                        Editing questions for
+                      </span>
+                      <div className="flex items-center gap-4">
+                        <Listbox value="Android Developer" onChange={() => {}}>
+                          <ListboxButton
+                            placeholder="Select role"
+                            className="w-[246px] bg-gray-50 border border-gray-200 rounded-[5px] px-3 py-2"
+                          >
+                            {({ value }) => (
+                              <span className="truncate block text-sm leading-5 font-normal text-gray-700">
+                                {value || "Select role"}
+                              </span>
+                            )}
+                          </ListboxButton>
+                          <ListboxOptions>
+                            {["Android Developer", "iOS Developer", "Frontend Developer", "Backend Engineer", "Product Designer"].map((role) => (
+                              <ListboxOption key={role} value={role}>
+                                {role}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </Listbox>
+
+                        <Button
+                          variant="link"
+                          visual="primary"
+                          className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
+                          onClick={() => openEditSkills("Android Developer")}
+                        >
+                          Edit Skills
+                          <ExternalLink className="size-[15px]" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]"
+                        onClick={openAiFaqDialog}
+                        disabled={!draftProjectId}
+                      >
+                        <Stars02 className="size-[15px]" />
+                        Generate With AI
+                      </Button>
+
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)] opacity-50"
+                      >
+                        <RefreshCcw05 className="size-[15px]" />
+                        Reset To Defaults
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Question cards */}
+                  <div className="flex flex-col gap-[10px]">
+                    {[
+                      {
+                        q: "How do you typically start a mobile project?",
+                        role: "Android Developer",
+                        type: "Single-Select",
+                        options: ["Design-first (Figma/prototype)", "Code-first", "Research-first", "It depends"],
+                      },
+                      {
+                        q: "Which testing approaches do you use?",
+                        role: "Android Developer",
+                        type: "Multi-Select",
+                        options: ["Manual", "Automated", "AI-based", "Jira"],
+                      },
+                      {
+                        q: "Which mobile platforms have you shipped products on?",
+                        role: "Android Developer",
+                        type: "Multi-Select",
+                        optional: true,
+                        options: ["iOS", "Android", "Web"],
+                      },
+                    ].map((card) => (
+                      <div key={card.q} className="bg-white border border-gray-300 rounded-lg p-4 drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]">
+                        <div className="flex items-start gap-[10px]">
+                          <div className="shrink-0 w-[15px] py-[3px] cursor-grab">
+                            <GripVertical2 />
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col gap-3">
+                            <div className="flex items-center gap-6">
+                              <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                                <span className="text-base font-semibold leading-[1.3] text-dark-blue-400 overflow-hidden text-ellipsis whitespace-nowrap">
+                                  {card.q}
+                                </span>
+                                <div className="flex gap-[6px] items-center">
+                                  <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-50 border border-gray-300 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                    {card.role}
+                                  </Badge>
+                                  <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                    {card.type}
+                                  </Badge>
+                                  {card.optional && (
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      Optional
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0 h-6">
+                                <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                  <Edit03 className="size-[15px]" />
+                                </IconButton>
+                                <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                  <Trash01 className="size-[15px]" />
+                                </IconButton>
+                              </div>
+                            </div>
+                            <div className="w-full h-px bg-gray-200" />
+                            <div className="flex flex-col gap-2">
+                              <span className="text-[13px] font-normal leading-[21.4px] text-dark-blue-400">
+                                Available Options
+                              </span>
+                              <div className="flex flex-wrap gap-2 items-center">
+                                {card.options.map((opt) => (
+                                  <Badge key={opt} visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-gray-700">
+                                    {opt}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* + Add Question */}
+                    <div className="border border-dashed border-gray-300 rounded-[5px] py-[17px] flex items-center justify-center cursor-pointer transition duration-300 hover:border-gray-400 hover:bg-gray-50">
+                      <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 capitalize">
+                        <Plus className="size-[15px]" />
+                        Add Question
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="general-questions">
+                <div className="flex flex-col gap-[21px] pt-6">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    These questions appear for all applicants, regardless of their role. Keep it to 2-3 questions to avoid drop-off.
+                  </p>
+
+                  <div className="flex flex-col gap-5 pb-6">
+                    {/* Action buttons */}
+                    <div className="flex items-center justify-end gap-3">
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]"
+                        onClick={openAiFaqDialog}
+                        disabled={!draftProjectId}
+                      >
+                        <Stars02 className="size-[15px]" />
+                        Generate With AI
+                      </Button>
+
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)] opacity-50"
+                      >
+                        <RefreshCcw05 className="size-[15px]" />
+                        Reset To Defaults
+                      </Button>
+                    </div>
+
+                    {/* Question cards */}
+                    <div className="flex flex-col gap-[10px]">
+                      {[
+                        { q: "Why do you want to join this project?" },
+                        { q: "Briefly describe a relevant project you've worked on and your contribution." },
+                      ].map((card) => (
+                        <div key={card.q} className="bg-white border border-gray-300 rounded-lg p-4 drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]">
+                          <div className="flex items-start gap-[10px]">
+                            <div className="shrink-0 w-[15px] py-[3px] cursor-grab">
+                              <GripVertical2 />
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col gap-3">
+                              <div className="flex items-center gap-6">
+                                <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                                  <span className="text-base font-semibold leading-[1.3] text-dark-blue-400 overflow-hidden text-ellipsis whitespace-nowrap">
+                                    {card.q}
+                                  </span>
+                                  <div className="flex gap-[6px] items-center">
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-50 border border-gray-300 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      General
+                                    </Badge>
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      Long text
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 h-6">
+                                  <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                    <Edit03 className="size-[15px]" />
+                                  </IconButton>
+                                  <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                    <Trash01 className="size-[15px]" />
+                                  </IconButton>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* + Add Question */}
+                      <div className="border border-dashed border-gray-300 rounded-[5px] py-[17px] flex items-center justify-center cursor-pointer transition duration-300 hover:border-gray-400 hover:bg-gray-50">
+                        <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 capitalize">
+                          <Plus className="size-[15px]" />
+                          Add Question
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* Right column — Arrow + Tip sidebar */}
+        <div className="shrink-0 self-start sticky top-6 xs:max-[1024px]:hidden flex items-start pt-6">
+          {/* Connector arrow (same as Open Roles) */}
+          <div className="flex items-center justify-center mr-[-8px] shrink-0 w-[25.455px] h-[71px]">
+            <svg className="rotate-90" width="71" height="20" viewBox="0 0 182.364 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 19V20V20V19ZM167 19V18V18V19ZM1 1.00001H0V11H1H2V1.00001H1ZM9 19V20L167 20V19V18L9 18V19ZM175 11H176V1H175H174V11H175ZM167 19V20C171.971 20 176 15.9705 176 11H175H174C174 14.866 170.866 18 167 18V19ZM1 11H0C0 15.9706 4.02944 20 9 20V19V18C5.13401 18 2 14.866 2 11H1ZM175.707 0.292893C175.317 -0.0976311 174.683 -0.0976311 174.293 0.292893L167.929 6.65685C167.538 7.04738 167.538 7.68054 167.929 8.07107C168.319 8.46159 168.953 8.46159 169.343 8.07107L175 2.41421L180.657 8.07107C181.047 8.46159 181.681 8.46159 182.071 8.07107C182.462 7.68054 182.462 7.04738 182.071 6.65685L175.707 0.292893Z" fill="#D0D5DD"/>
+            </svg>
+          </div>
+
+          <div className="p-5 rounded-lg w-[269px] bg-primary-50 flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-x-2">
+                <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
+                <span className="text-base leading-[30px] font-semibold capitalize text-gray-800">
+                  Tip
+                </span>
+              </div>
+              <p className="text-xs leading-normal text-black/60 tracking-[0.12px]">
+                A great title gives your audience a reason to open your project
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {/* Video player */}
+              <div className="w-full h-[141px] rounded-lg relative overflow-hidden cursor-pointer group/video">
+                <div className="absolute inset-0 bg-black/56 rounded-lg z-[1]" />
+                <div className="absolute inset-0 bg-black/10 rounded-lg z-[2]" />
+                <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[58px] z-10 transition duration-300 group-hover/video:scale-110" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="24" fill="white" fillOpacity="0.3" />
+                  <circle cx="24" cy="24" r="18" fill="white" fillOpacity="0.4" />
+                  <path d="M20 16L32 24L20 32V16Z" fill="white" />
+                </svg>
+                <div className="absolute bottom-[9.2px] right-[9.5px] bg-gray-500 rounded-[3.22px] px-[4.6px] py-[4.6px] z-10">
+                  <span className="text-xs font-normal leading-[24.7px] text-white text-center">01:20</span>
+                </div>
+                <div className="absolute left-[12.4px] top-[47.6px] flex flex-col gap-1 z-10">
+                  <span className="text-xs font-medium leading-[27.6px] text-white/80">Part 1</span>
+                  <span className="text-[15.3px] font-medium leading-[36.8px] text-white">How to get started</span>
+                </div>
+              </div>
+
+              {/* Tip card 1 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Focus on purpose
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Use impactful keywords that communicate value and make it easy to identify in a list of projects.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tip card 2 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Keep it short and sweet
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Try to trim your project title to be less than 6 words
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* AI FAQ Generation Modal (copied from my-listings inline edit mode) */}
+      <Dialog
+        open={aiFaqDialogOpen}
+        onOpenChange={setAiFaqDialogOpen}
+      >
+        <DialogContent className="max-w-[640px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+            <div className="flex items-start gap-x-2">
+              <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <DialogTitle>
+                  AI Generated FAQ&apos;s
+                </DialogTitle>
+                <DialogDescription className="mt-1">
+                  Review and adjust your
+                  AI-generated FAQ&apos;s as needed
+                </DialogDescription>
+              </div>
+            </div>
+            <Badge
+              className="rounded-full bg-success-50 text-success-600 shrink-0"
+              visual="gray"
+            >
+              {faqAddedCount} of{" "}
+              {faqSuggestions.length} added
+            </Badge>
+          </div>
+
+          {faqRemainingSlots <
+            faqSuggestions.filter((s) => !s.added)
+              .length && (
+            <p className="px-6 pt-4 text-sm text-error-500">
+              You currently have{" "}
+              {faqItems.length} FAQ&apos;s
+              in total, so you can only add{" "}
+              {faqRemainingSlots} more
+            </p>
+          )}
+
+          <ScrollArea
+            scrollBar={
+              <ScrollBar className="w-4 p-1" />
+            }
+            viewportClassName="max-h-[420px]"
+          >
+          <div className="px-6 py-4 space-y-3">
+            {faqGenLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-12">
+                <Spinner
+                  size={32}
+                  strokeWidth={4}
+                />
+                <p className="text-sm text-gray-500">
+                  Generating suggestions…
+                </p>
+              </div>
+            ) : faqGenError ? (
+              <div className="py-8 text-center">
+                <p className="text-sm text-error-500">
+                  Suggestions couldn&apos;t be
+                  loaded. Try again.
+                </p>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  className="mt-3"
+                  onClick={runFaqGeneration}
+                >
+                  <Stars02 className="size-[15px]" />
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              faqSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "group/sfaq relative rounded-lg border p-4 transition",
+                    s.added
+                      ? "border-success-300 bg-success-25"
+                      : "border-gray-200 bg-white hover:bg-gray-50"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-x-3">
+                    <h3
+                      className={cn(
+                        "text-sm font-bold",
+                        s.added
+                          ? "text-success-700"
+                          : "text-dark-blue-400"
+                      )}
+                    >
+                      {s.question}
+                    </h3>
+                    {s.added ? (
+                      <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                        <Check className="size-4" />
+                        Added
+                      </span>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                        onClick={() =>
+                          insertFaqSuggestion(i)
+                        }
+                      >
+                        <Upload01 className="size-[15px]" />
+                        Insert
+                      </Button>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-1 text-sm font-light",
+                      s.added
+                        ? "text-success-700"
+                        : "text-dark-blue-400"
+                    )}
+                  >
+                    {s.answer}
+                  </p>
+                  {s.added && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeFaqSuggestion(i)
+                      }
+                      className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          </ScrollArea>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={runFaqGeneration}
+              disabled={faqGenLoading}
+            >
+              <Stars02 className="size-[15px]" />
+              Regenerate
+            </Button>
+            <Button
+              onClick={insertAllFaqSuggestions}
+              disabled={
+                faqGenLoading ||
+                faqRemainingSlots === 0 ||
+                faqSuggestions.every((s) => s.added)
+              }
+            >
+              Insert All ({faqSuggestions.length})
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Skills Modal (based on talent profile SkillsDialog, adapted for project roles) */}
+      <Dialog open={editSkillsOpen} onOpenChange={setEditSkillsOpen}>
+        <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+          <DialogTitle className="sr-only">Skills</DialogTitle>
+          <ScrollArea
+            scrollBar={<ScrollBar className="w-4 p-1" />}
+            className="p-6"
+            viewportClassName="max-h-[calc(100vh-10rem)]"
+          >
+            <div className="flex items-start gap-x-2">
+              <div className="flex-auto">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                    Skills
+                  </h1>
+                  {editSkillsRole && (
+                    <Badge
+                      className="bg-gray-50 border border-gray-300 rounded-[4px] px-[9px] py-[2px] h-[22px] text-xs font-medium text-gray-700"
+                    >
+                      {editSkillsRole}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm font-light text-dark-blue-400">
+                  Edit Skills to improve how users are matched to your project.
+                </p>
+              </div>
+
+              <DialogClose type="button" asChild>
+                <IconButton variant="ghost" visual="gray">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <Combobox
+              multiple
+              className="mt-8 w-auto"
+              value={editSkillsList}
+              onChange={(val: typeof editSkillsList) => {
+                const capped = val.slice(0, MAX_SKILLS)
+                const unique = capped.filter(
+                  (s, i, arr) =>
+                    arr.findIndex(
+                      (x) => x.name.toLowerCase() === s.name.toLowerCase()
+                    ) === i
+                )
+                setEditSkillsList(unique)
+                setSkillQuery("")
+              }}
+              disabled={editSkillsList.length >= MAX_SKILLS}
+            >
+              <ComboboxTrigger>
+                <ComboboxInput
+                  size="lg"
+                  displayValue={() => skillQuery}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSkillQuery(event.target.value)}
+                  placeholder="Search for skills"
+                  disabled={editSkillsList.length >= MAX_SKILLS}
+                />
+                <ComboboxButton>
+                  <SearchMd className="h-4 w-4" />
+                </ComboboxButton>
+              </ComboboxTrigger>
+              <ScaleOutIn afterLeave={() => setSkillQuery("")}>
+                <ComboboxOptions>
+                  <ScrollArea viewportClassName="max-h-[304px]">
+                    {skillResults
+                      .filter(
+                        (skill) =>
+                          !editSkillsList.some(
+                            (s) =>
+                              s.name.toLowerCase() === skill.name.toLowerCase()
+                          )
+                      )
+                      .map((skill) => (
+                        <ComboboxOption
+                          key={`${skill.id}-${skill.name}`}
+                          value={skill}
+                        >
+                          {skill.name}
+                        </ComboboxOption>
+                      ))}
+                    {(() => {
+                      const q = skillQuery.trim().toLowerCase()
+                      const alreadySelected = editSkillsList.some(
+                        (s) => s.name.toLowerCase() === q
+                      )
+                      const visibleOptions = skillResults.filter(
+                        (skill) =>
+                          !editSkillsList.some(
+                            (s) =>
+                              s.name.toLowerCase() === skill.name.toLowerCase()
+                          )
+                      )
+                      if (!q || alreadySelected || visibleOptions.length > 0)
+                        return null
+                      return (
+                        <ComboboxOption
+                          value={{
+                            id: `custom-${skillQuery.trim()}`,
+                            name: skillQuery.trim(),
+                          }}
+                        >
+                          Add &ldquo;{skillQuery.trim()}&rdquo;
+                        </ComboboxOption>
+                      )
+                    })()}
+                  </ScrollArea>
+                </ComboboxOptions>
+              </ScaleOutIn>
+            </Combobox>
+
+            {editSkillsList.length >= MAX_SKILLS && (
+              <p
+                role="status"
+                aria-live="assertive"
+                className="mt-1.5 text-sm font-medium text-error-500"
+              >
+                You have reached the maximum limit of {MAX_SKILLS} skills.
+              </p>
+            )}
+
+            <div className="mt-3 flex gap-3 flex-wrap">
+              {editSkillsList.map((skill, index) => (
+                <Badge visual="primary" key={skill.id ?? skill.name}>
+                  {skill.name}
+                  <BadgeCloseButton
+                    type="button"
+                    onClick={() => removeEditSkill(index)}
+                  />
+                </Badge>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="py-4 px-6 flex items-center justify-between border-t border-gray-200 bg-gray-25 rounded-b-[12px]">
+            <DialogClose asChild>
+              <Button variant="link" visual="gray" className="opacity-50" type="button">
+                <X className="size-[15px]" />
+                Cancel
+              </Button>
+            </DialogClose>
+
+            <Button
+              disabled={!editSkillsHasChanges || editSkillsList.length === 0}
+              onClick={saveEditSkills}
+              className={cn(!editSkillsHasChanges && "opacity-50")}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </ScrollArea>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Requests sub-tab content (pixel-perfect from Figma node 13101:119543)
+// ---------------------------------------------------------------------------
+const SAMPLE_REQUESTS = [
+  {
+    id: "1",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/kevinpark.fe.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "2",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/lucasf.pm.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "3",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/andresilva.be.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "4",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/dan.okoro.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+]
+
+const RequestsContent = () => {
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Manage Requests
+            </h1>
+            <p className="text-sm leading-5 font-normal text-gray-500">
+              Review join requests, approve contributors, and manage your project team.
+            </p>
+          </div>
+
+          {/* Requests container */}
+          <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,0.02)] overflow-clip isolate">
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-center border-b border-gray-200 rounded-t-lg">
+              <div className="flex flex-1 min-w-0 gap-4 items-center">
+                <p className="shrink-0 text-dark-blue-400 leading-9 whitespace-pre">
+                  <span className="text-base font-semibold">Requests</span>
+                  <span className="text-xs font-normal">  </span>
+                  <span className="text-xs font-normal">&bull; {SAMPLE_REQUESTS.length} people</span>
+                </p>
+
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="relative w-[284px]">
+                  <SearchMd className="absolute left-[10px] top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name or username"
+                    className="pl-[34px] pr-3 py-[10px] h-9 rounded-[5px] shadow-xs"
+                  />
+                </div>
+
+                <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                  <FilterLines className="size-[15px]" />
+                  Filters
+                </Button>
+
+                <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                  Newest First
+                  <ArrowDown className="size-4" />
+                </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Request rows */}
+            {SAMPLE_REQUESTS.map((req, idx) => (
+              <div
+                key={req.id + idx}
+                className={cn(
+                  "px-6 py-4 flex items-start gap-10",
+                  idx > 0 && "border-t border-gray-200"
+                )}
+              >
+                {/* Avatar + Content group */}
+                <div className="flex-1 min-w-0 flex items-start gap-3">
+                  {/* Avatar */}
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarImage src={req.avatar || undefined} alt={req.name} className="object-cover" />
+                      <AvatarFallback>{req.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-0.5 flex-wrap">
+                        <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                          {req.name}
+                        </span>
+                        <span className="text-sm font-light text-gray-500">
+                          @{req.username}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {req.roles.map((role) => (
+                            <Badge key={role} visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                              {role}
+                            </Badge>
+                          ))}
+                          <Badge visual="gray" size="sm" className="rounded-[16px] bg-success-50 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-success-700 mix-blend-multiply">
+                            {req.matchPercent}% Match
+                          </Badge>
+                          <span className="text-xs font-medium leading-[18px] text-gray-400">
+                            Requested {req.requestedAgo}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {req.skills.map((skill) => (
+                            <Badge key={skill} visual="gray" size="sm" className="rounded-[100px] bg-gray-100 border-0 px-[7px] py-1 text-xs font-medium text-gray-700 flex items-center gap-1">
+                              <Check className="size-[15px] text-primary-500" />
+                              {skill}
+                            </Badge>
+                          ))}
+                          {req.moreSkills > 0 && (
+                            <span className="text-xs font-semibold leading-[18px] text-dark-blue-400">
+                              + {req.moreSkills} more...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-normal leading-4 text-gray-500 not-italic">
+                      &ldquo;{req.quote}&rdquo;
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 shrink-0">
+                  <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                    View Request
+                  </Button>
+                  <IconButton variant="ghost" visual="gray" className="h-9 p-[10px] rounded-full opacity-50 hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="size-[15px]" />
+                  </IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invites sub-tab content (pixel-perfect from Figma nodes 13101:119745 + 13109:182550)
+// ---------------------------------------------------------------------------
+const SAMPLE_PENDING_INVITES = [
+  {
+    id: "1",
+    email: "david.park@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Pending" as const,
+    role: "Viewer",
+    sentAgo: "Sent 3 days ago",
+  },
+  {
+    id: "2",
+    email: "lisa.wang@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Pending" as const,
+    role: "Viewer",
+    sentAgo: "Sent 7 days ago",
+  },
+  {
+    id: "3",
+    email: "lisa.wang@example.com",
+    username: "jordan_dev",
+    name: "",
+    avatar: "/avatars/jamesokafor.png",
+    status: "Pending" as const,
+    role: "Member",
+    sentAgo: "Sent 7 days ago",
+    secondarySentAgo: "Sent 12 days ago",
+  },
+]
+
+const SAMPLE_INVITE_HISTORY = [
+  {
+    id: "1",
+    email: "james.miller@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Expired" as const,
+    role: "Viewer",
+    sentAgo: "Sent 2 months ago",
+  },
+  {
+    id: "2",
+    email: "",
+    username: "ux23isee",
+    name: "Sarah",
+    avatar: "/avatars/bella.ux.png",
+    status: "Accepted" as const,
+    role: "Member",
+    jobTitle: "Full Stack Designer",
+    sentAgo: "Sent 2 months ago",
+  },
+]
+
+const InvitesContent = () => {
+  const [inviteTab, setInviteTab] = useState("pending-invites")
+
+  const currentData = inviteTab === "pending-invites" ? SAMPLE_PENDING_INVITES : SAMPLE_INVITE_HISTORY
+  const description = inviteTab === "pending-invites"
+    ? "Manage and invite contributors to your project."
+    : "View and manage your team's invite history."
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Manage Invites
+            </h1>
+
+            {/* Tabs */}
+            <Tabs value={inviteTab} onValueChange={setInviteTab}>
+              <TabsList className="justify-start px-0 pt-0 gap-4 border-b-0">
+                <TabsTrigger value="pending-invites" className="px-1 pb-[11px] pt-px capitalize">Pending Invites</TabsTrigger>
+                <TabsTrigger value="invite-history" className="px-1 pb-[11px] pt-px capitalize">Invite History</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div
+            key={inviteTab}
+            className="flex flex-col gap-6"
+            style={{ animation: "editStepFadeIn 300ms linear forwards" }}
+          >
+          <div className="flex items-end justify-between gap-6">
+            <p className="flex-1 text-sm leading-5 font-normal text-gray-500">
+              {description}
+            </p>
+            <div className="relative shrink-0 w-[284px]">
+              <SearchMd className="absolute left-[10px] top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+              <Input
+                placeholder="Search by name or username"
+                className="pl-[34px] pr-3 py-[10px] h-9 rounded-[5px] shadow-xs"
+              />
+            </div>
+          </div>
+
+          {/* Invites container */}
+          <div className="bg-white border border-gray-200 rounded-lg drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)] overflow-clip">
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 rounded-t-lg">
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-semibold leading-5 text-dark-blue-400">
+                    {inviteTab === "pending-invites" ? "Pending Invites" : "Invite History"}
+                  </span>
+                  <div className="size-1 rounded-full bg-dark-blue-400" />
+                  <span className="text-xs font-normal text-dark-blue-400">
+                    {currentData.length} people
+                  </span>
+                </div>
+
+                <span className="flex items-center gap-2 px-[14px] py-2 rounded-[5px] text-sm font-semibold leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                  Newest First
+                  <ArrowDown className="size-4" />
+                </span>
+              </div>
+
+              <Button
+                className="h-9 px-[14px] py-2 rounded-[5px] bg-primary-500/15 text-primary-500 text-sm font-semibold leading-5 capitalize border-0 shadow-none hover:bg-primary-500/25"
+              >
+                <Plus className="size-[15px]" />
+                Invite Member
+              </Button>
+            </div>
+
+            {/* Invite rows */}
+            {currentData.map((invite, idx) => (
+              <div
+                key={invite.id + idx}
+                className={cn(
+                  "h-20 px-6 py-4 flex items-center gap-3 overflow-clip",
+                  idx > 0 && "border-t border-gray-200"
+                )}
+              >
+                {/* Avatar */}
+                {invite.avatar && invite.avatar.trim() !== "" ? (
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarImage src={invite.avatar} alt={invite.name || invite.email} className="object-cover" />
+                      <AvatarFallback>{(invite.name || invite.email).charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                ) : invite.name ? (
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarFallback>{invite.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                ) : (
+                  <div className="shrink-0 size-[46px] rounded-full border border-dashed border-gray-400 flex items-center justify-center px-[11px] py-px">
+                    <Mail01 className="size-[14px] text-gray-400" />
+                  </div>
+                )}
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                      {invite.name || invite.email}
+                    </span>
+                    {invite.username && (
+                      <span className="text-sm font-light text-gray-500">
+                        @{invite.username}
+                      </span>
+                    )}
+                    {invite.status === "Pending" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                        <Clock className="size-3" />
+                        Pending
+                      </Badge>
+                    )}
+                    {invite.status === "Expired" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                        <Clock className="size-3" />
+                        Expired
+                      </Badge>
+                    )}
+                    {invite.status === "Accepted" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-success-50 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-success-700 mix-blend-multiply">
+                        <Check className="size-3" />
+                        Accepted
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap gap-y-1.5">
+                    {(invite as any).jobTitle ? (
+                      <span className="text-sm font-normal leading-5 text-dark-blue-400">
+                        {(invite as any).jobTitle}
+                      </span>
+                    ) : (invite as any).secondarySentAgo ? (
+                      <span className="text-sm font-normal leading-5 text-dark-blue-400">
+                        {invite.sentAgo}
+                      </span>
+                    ) : null}
+                    <Badge
+                      visual="primary"
+                      size="sm"
+                      className="rounded-[16px] bg-primary-50 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-primary-500 mix-blend-multiply"
+                    >
+                      {invite.role}
+                    </Badge>
+                    <span className="text-xs font-medium leading-[18px] text-gray-400">
+                      {(invite as any).secondarySentAgo || invite.sentAgo}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-[9px] shrink-0">
+                  {invite.status !== "Accepted" && (
+                    <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                      Resend Invitation
+                    </Button>
+                  )}
+                  <IconButton variant="ghost" visual="gray" className="h-9 p-[10px] rounded-full opacity-50 hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="size-[15px]" />
+                  </IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
           </div>
         </div>
       </div>
@@ -8763,14 +10442,28 @@ const Team = () => {
   }
 
   if (teamSubTab === "openRoles") {
-    return <OpenRolesContent />
+    return <OpenRolesContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "applicationQuestions") {
+    return <ApplicationQuestionsContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "requests") {
+    return <RequestsContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "invites") {
+    return <InvitesContent key={teamSubTab} />
   }
 
   if (teamSubTab !== "members") {
     const subLabel = TEAM_SUB_TAB_LABELS[teamSubTab as TeamSubTab] ?? teamSubTab
     return (
       <ScrollArea
+        key={teamSubTab}
         className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+        style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
@@ -8803,7 +10496,9 @@ const Team = () => {
 
   return (
     <ScrollArea
+      key={teamSubTab}
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
@@ -9506,67 +11201,67 @@ const SortableFaqItem = ({
       value={id}
       className="rounded-lg border border-gray-200 bg-white"
     >
-      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
-        <button
-          type="button"
-          className="cursor-grab text-gray-400 hover:text-gray-600"
-          onClick={(e) => e.stopPropagation()}
+      <div className="flex items-center gap-3 p-4 [&:has([data-state=open])_.closed-icons]:hidden [&:has([data-state=closed])_.open-icons]:hidden [&:has([data-state=open])_.closed-text]:hidden [&:has([data-state=open])_.open-text]:inline">
+        <div
+          className="cursor-grab text-gray-400 hover:text-gray-600 shrink-0"
           {...attributes}
           {...listeners}
         >
           <GripVertical2 />
-        </button>
-        <div className="min-w-0 flex-1 text-left">
-          <span className="text-sm font-bold text-dark-blue-400">
-            Question {index + 1}
-            <span className="closed-text">:</span>
-          </span>
-          <span className="closed-text"> </span>
-          <span className="closed-text text-sm text-dark-blue-400">
-            {faq.q}
-          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="open-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Check className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <span className="closed-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Edit03 className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <IconButton
-            variant="ghost"
-            visual="gray"
-            size="sm"
-            className="rounded-full text-gray-500 hover:text-gray-800"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(id)
-            }}
-          >
-            <Trash2 className="size-4" />
-          </IconButton>
-        </div>
-      </AccordionTrigger>
+        <AccordionTrigger className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="min-w-0 flex-1 text-left">
+            <span className="text-sm font-bold text-dark-blue-400">
+              Question {index + 1}
+              <span className="closed-text">:</span>
+            </span>
+            <span className="closed-text"> </span>
+            <span className="closed-text text-sm text-dark-blue-400">
+              {faq.q}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="open-icons">
+              <IconButton
+                asChild
+                variant="ghost"
+                visual="gray"
+                size="sm"
+                className="rounded-full text-gray-500 hover:text-gray-800"
+              >
+                <span>
+                  <Check className="size-4" />
+                </span>
+              </IconButton>
+            </span>
+            <span className="closed-icons">
+              <IconButton
+                asChild
+                variant="ghost"
+                visual="gray"
+                size="sm"
+                className="rounded-full text-gray-500 hover:text-gray-800"
+              >
+                <span>
+                  <Edit03 className="size-4" />
+                </span>
+              </IconButton>
+            </span>
+          </div>
+        </AccordionTrigger>
+        <IconButton
+          variant="ghost"
+          visual="gray"
+          size="sm"
+          className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(id)
+          }}
+        >
+          <Trash2 className="size-4" />
+        </IconButton>
+      </div>
       <DisclosureContent className="px-4 pb-4">
         <p className="text-sm font-light text-dark-blue-400">
           Make this clear and concise, this is what customers will see first.
@@ -10121,7 +11816,6 @@ const Questions = ({
               <Tabs
                 value={recentQTab}
                 onValueChange={setRecentQTab}
-                unanimated
                 className="mt-4"
               >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
