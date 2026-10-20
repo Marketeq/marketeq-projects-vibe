@@ -1,4 +1,4 @@
-import { HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import { ConflictException, HttpStatus, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common'
 import { GlobalExceptionFilter } from './global-exception.filter'
 
 describe('GlobalExceptionFilter', () => {
@@ -77,6 +77,21 @@ describe('GlobalExceptionFilter', () => {
       statusCode: 500,
       code: 'INTERNAL_ERROR',
       message: process.env.NODE_ENV === 'production' ? 'An unexpected error occurred.' : 'Error: boom',
+      details: undefined,
+    })
+  })
+
+  it('passes extra fields from the upstream response through', () => {
+    const conflict = run(new ConflictException({ message: 'Draft already exists', draftId: 'd1' }), {
+      method: 'POST',
+      url: '/x',
+      originalUrl: '/x',
+    })
+    expect(conflict.json).toHaveBeenCalledWith({
+      draftId: 'd1',
+      statusCode: 409,
+      code: 'INTERNAL_ERROR',
+      message: 'Draft already exists',
       details: undefined,
     })
   })

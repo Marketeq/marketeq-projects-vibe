@@ -1,0 +1,189 @@
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
+import {
+  CheckoutDraftValidationService,
+  DraftPricing,
+} from './checkout-draft-validation.service';
+import { loadOwnedDraft } from './checkout-draft.util';
+import { CheckoutDraft } from './entities/checkout-draft.entity';
+import { CheckoutDraftPhaseEntity } from './entities/checkout-draft-phase.entity';
+import {
+  AppliedGiftCard,
+  CheckoutSession,
+} from './entities/checkout-session.entity';
+import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
+import { CheckoutSummaryService } from './checkout-summary.service';
+
+export const SESSION_EXPIRY_MINUTES = 30;
+
+const toCents = (dollars: number) => Math.round(dollars * 100);
+
+type FrozenCodes = {
+  appliedGiftCards: AppliedGiftCard[] | null;
+  appliedPromoCode: string | null;
+};
+
+@Injectable()
+export class CheckoutDraftSessionService {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly validationService: CheckoutDraftValidationService,
+    private readonly summaryService: CheckoutSummaryService,
+  ) {}
+
+  async getSession(clientId: string, sessionId: string) {
+    const session = await this.dataSource.manager.findOne(CheckoutSession, {
+      where: { id: sessionId, clientId },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+
+    const project = await this.summaryService.fetchProject(session.listingId);
+    const expired =
+      session.status === 'pending' &&
+      (await this.isPastExpiry(this.dataSource.manager, session.id));
+
+    return {
+      sessionId: session.id,
+      status: expired ? 'expired' : session.status,
+      listingId: session.listingId,
+      slug: (project?.slug as string | undefined) ?? null,
+      contractId: session.contractId,
+      totalAmount: Number(session.totalAmount),
+      appliedGiftCards: session.appliedGiftCards ?? [],
+      appliedPromoCode: session.appliedPromoCode,
+    };
+  }
+
+  async createSession(
+    clientId: string,
+    draftId: string,
+    dto: CreateDraftSessionDto,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const draft = await loadOwnedDraft(manager, clientId, draftId, {
+        lock: true,
+      });
+      this.validationService.assertCurrentVersion(draft, dto.version);
+
+      const phases = await manager.find(CheckoutDraftPhaseEntity, {
+        where: { draftId },
+        relations: { tasks: true },
+        order: { order: 'ASC', tasks: { order: 'ASC' } },
+      });
+      const { reasons, pricing } = await this.validationService.runChecks(
+        clientId,
+        draft,
+        phases,
+        dto.expectedTotal,
+      );
+      if (reasons.length > 0 || !pricing) {
+        throw new UnprocessableEntityException({
+          valid: false,
+          blockingReasons: reasons,
+        });
+      }
+
+      const sessionId = await this.resolveSession(
+        manager,
+        draft,
+        clientId,
+        pricing,
+      );
+      return { sessionId };
+    });
+  }
+
+  private async resolveSession(
+    manager: EntityManager,
+    draft: CheckoutDraft,
+    clientId: string,
+    pricing: DraftPricing,
+  ): Promise<string> {
+    const frozen = this.freezeCodes(pricing, draft);
+
+    if (draft.sessionId) {
+      const existing = await manager.findOne(CheckoutSession, {
+        where: { id: draft.sessionId },
+      });
+      if (existing?.status === 'success') {
+        throw new ConflictException({
+          code: 'SESSION_ALREADY_PAID',
+          message: 'This checkout has already been paid',
+        });
+      }
+      if (existing?.status === 'pending') {
+        if (await this.isPastExpiry(manager, existing.id)) {
+          await manager.update(CheckoutSession, existing.id, {
+            status: 'expired',
+          });
+        } else if (this.matchesFrozen(existing, pricing, frozen)) {
+          return existing.id;
+        } else {
+          await manager.update(CheckoutSession, existing.id, {
+            status: 'cancelled',
+          });
+        }
+      }
+    }
+
+    const created = await manager.save(
+      manager.create(CheckoutSession, {
+        clientId,
+        listingId: draft.listingId,
+        totalAmount: pricing.total,
+        status: 'pending',
+        appliedGiftCards: frozen.appliedGiftCards,
+        appliedPromoCode: frozen.appliedPromoCode,
+      }),
+    );
+    await manager.update(CheckoutDraft, draft.id, { sessionId: created.id });
+    return created.id;
+  }
+
+  private freezeCodes(
+    pricing: DraftPricing,
+    draft: CheckoutDraft,
+  ): FrozenCodes {
+    const detailsOf = (key: string) =>
+      pricing.lines.find((line) => line.key === key)?.details ?? [];
+    const giftCards = detailsOf('giftCards').map((detail) => ({
+      code: detail.code,
+      amountUsed: Math.abs(detail.amount),
+    }));
+    return {
+      appliedGiftCards: giftCards.length > 0 ? giftCards : null,
+      appliedPromoCode:
+        pricing.promoCode?.status === 'valid' ? draft.promoCode : null,
+    };
+  }
+
+  private matchesFrozen(
+    session: CheckoutSession,
+    pricing: DraftPricing,
+    frozen: FrozenCodes,
+  ): boolean {
+    return (
+      toCents(Number(session.totalAmount)) === toCents(pricing.total) &&
+      JSON.stringify(session.appliedGiftCards ?? null) ===
+        JSON.stringify(frozen.appliedGiftCards) &&
+      (session.appliedPromoCode ?? null) === frozen.appliedPromoCode
+    );
+  }
+
+  private async isPastExpiry(
+    manager: EntityManager,
+    sessionId: string,
+  ): Promise<boolean> {
+    const rows: { expired: boolean }[] = await manager.query(
+      `SELECT (now() - "createdAt") > make_interval(mins => $2) AS expired
+       FROM "checkout"."sessions" WHERE "id" = $1`,
+      [sessionId, SESSION_EXPIRY_MINUTES],
+    );
+    return rows[0]?.expired === true;
+  }
+}

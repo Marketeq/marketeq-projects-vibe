@@ -81,6 +81,9 @@ export class CheckoutService {
     successUrl?: string;
     cancelUrl?: string;
   }) {
+    if (!dto.projectId) {
+      throw new BadRequestException('listingId is required');
+    }
     let amount = dto.totalAmount;
     let giftCardAmountUsed = 0;
     const walletAmountUsed = dto.walletBalanceUsed || 0;
@@ -124,14 +127,15 @@ export class CheckoutService {
 
     const session = this.sessionRepo.create({
       clientId: dto.clientId,
-      projectId: dto.projectId,
+      listingId: dto.projectId,
       contractId: dto.contractId,
       stripeSessionId: stripeSession.id,
       paymentMethod: dto.paymentMethod as any,
       totalAmount: dto.totalAmount,
       walletAmountUsed,
-      giftCardAmountUsed,
-      giftCardCode: dto.giftCardCode,
+      appliedGiftCards: dto.giftCardCode
+        ? [{ code: dto.giftCardCode, amountUsed: giftCardAmountUsed }]
+        : null,
       splitPaymentEnabled: dto.splitPaymentEnabled,
       initialPaymentAmount: dto.initialPaymentAmount,
       installmentPlan: (dto.installmentPlanOption as any) || 'full',
@@ -140,14 +144,6 @@ export class CheckoutService {
     await this.sessionRepo.save(session);
 
     return { checkoutUrl: stripeSession.url };
-  }
-
-  async applyGiftCard(code: string) {
-    const giftCard = await this.giftCardRepo.findOne({
-      where: { code, isActive: true },
-    });
-    if (!giftCard) return { valid: false, amount: 0 };
-    return { valid: true, amount: giftCard.remainingAmount };
   }
 
   async useWallet(userId: string, amount: number) {
@@ -218,6 +214,9 @@ export class CheckoutService {
     if (dto.amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
+    if (!dto.projectId) {
+      throw new BadRequestException('listingId is required');
+    }
 
     const customerId =
       dto.customerId ||
@@ -267,7 +266,7 @@ export class CheckoutService {
 
     const sessionPayload: Partial<CheckoutSession> = {
       clientId: dto.clientId,
-      projectId: dto.projectId,
+      listingId: dto.projectId,
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
       paymentMethod,
@@ -597,7 +596,7 @@ export class CheckoutService {
 
       const session = this.sessionRepo.create({
         clientId: dto.clientId,
-        projectId: dto.projectId,
+        listingId: dto.projectId,
         contractId: dto.contractId,
         paymentMethod: 'card',
         totalAmount: dto.totalAmount,
@@ -702,7 +701,7 @@ export class CheckoutService {
 
     const session = this.sessionRepo.create({
       clientId: dto.clientId,
-      projectId: dto.projectId,
+      listingId: dto.projectId,
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
       paymentMethod: 'ach',
@@ -816,7 +815,7 @@ export class CheckoutService {
     const session = await this.sessionRepo.findOne({
       where: {
         clientId: dto.clientId,
-        projectId,
+        listingId: projectId,
         contractId: contractId || IsNull(),
         paymentMethod: 'wire',
         status: 'pending' as any,
@@ -837,7 +836,7 @@ export class CheckoutService {
       await this.sessionRepo.save(
         this.sessionRepo.create({
           clientId: dto.clientId,
-          projectId,
+          listingId: projectId,
           contractId: contractId || undefined,
           paymentMethod: 'wire',
           totalAmount: dto.amount,
@@ -972,7 +971,7 @@ export class CheckoutService {
     const session = await this.sessionRepo.findOne({
       where: {
         clientId: wireTransfer.clientId,
-        projectId: wireTransfer.projectId,
+        listingId: wireTransfer.projectId,
         paymentMethod: 'wire',
         status: 'pending' as any,
       },

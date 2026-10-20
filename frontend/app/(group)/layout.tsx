@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { InboxThreadsProvider } from "@/utils/useInboxThreads"
 import { OnlineUsersProvider } from "@/utils/useOnlineUsers"
-import { TopMostHeader } from "../top-most-header"
+import { TopMostHeaderGate } from "./embedded-profile-gate"
 import { GroupLayoutInner } from "./group-layout-inner"
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -13,7 +13,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <GroupLayoutInner
           header={
             <Suspense fallback={null}>
-              <TopMostHeader />
+              <TopMostHeaderGate />
             </Suspense>
           }
         >

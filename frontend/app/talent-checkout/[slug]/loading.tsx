@@ -6,7 +6,7 @@ import { CheckoutNavigation } from "@/components/checkout-navigation"
 // this copies rather than invents a second version of: a local Shimmer
 // (no shared components/ui version exists yet) laid inside the exact
 // wrapper classNames the real page uses, not a generic spinner. That
-// keeps nothing shifting once the real page (checkout/[slug]/page.tsx,
+// keeps nothing shifting once the real page (checkout/[slug]/project-details/page.tsx,
 // which this route re-exports) mounts over it.
 const Shimmer = ({ className }: { className?: string }) => (
   <div

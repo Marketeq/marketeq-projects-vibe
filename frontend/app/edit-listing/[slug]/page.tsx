@@ -303,10 +303,16 @@ const PROJECT_SCOPE_TIP_VIDEO_URL =
 declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
-    updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    updateData: (
+      rowIndex: number,
+      columnId: string,
+      value: unknown,
+      notifyTitle?: string
+    ) => void
     batchUpdateData?: (
       rowIndex: number,
-      updates: Record<string, unknown>
+      updates: Record<string, unknown>,
+      notifyTitle?: string
     ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
@@ -3416,7 +3422,6 @@ const ProjectInfo = ({
                                       }
                                       options={subCategoryOptions}
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px] "
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(0, value)
@@ -3556,7 +3561,6 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(1, value)
@@ -3697,7 +3701,6 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(2, value)
@@ -4086,7 +4089,6 @@ const ProjectInfo = ({
                                   options={tagOptions}
                                   placeholder="Add Tags"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "search_keywords",
@@ -4186,7 +4188,6 @@ const ProjectInfo = ({
                                   options={skills}
                                   placeholder="Add Skills"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "skills",
@@ -4328,7 +4329,6 @@ const ProjectInfo = ({
                                   options={industryOptions}
                                   placeholder="Add Industries"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "industries",

@@ -218,7 +218,12 @@ const PROJECT_SCOPE_TIP_VIDEO_URL =
 declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
-    updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    updateData: (
+      rowIndex: number,
+      columnId: string,
+      value: unknown,
+      notifyTitle?: string
+    ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
   }
