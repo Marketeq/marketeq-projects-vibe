@@ -337,6 +337,10 @@ export class IdentityVerificationService {
     }
 
     const existing = await this.profileRepository.findOne({ where: { userId } });
+    // A claim whose Didit session is running or in review is neither cleared nor replaced
+    // by any confirmation (same country or another): the linked session's approval must
+    // still be able to promote it. Rejected before anything is read or written below.
+    if (existing) this.assertNoUnfinishedRelocation(existing);
     // An already verified account (or one whose home-country change is already
     // in flight) never has its verified home country overwritten by an IP
     // reading, whatever route got here and whether or not a relocation was

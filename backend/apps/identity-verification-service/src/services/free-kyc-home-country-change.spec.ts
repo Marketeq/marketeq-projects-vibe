@@ -1,4 +1,5 @@
 import { FreeKycService } from './free-kyc.service';
+import { IdentityVerificationService } from './identity-verification.service';
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { computeDiditSignatureV2 } from '../providers/webhooks/didit-webhook-signature-v2';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
@@ -751,6 +752,67 @@ describe('Home-country change sessions (PMCM-650)', () => {
       expectCountryKept(w);
       expect(w.attempts).toHaveLength(attemptCount);
       expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('a rejected confirmation leaves the live claim intact for the linked approval', () => {
+    // The REAL account-side service over the same profile row the session service uses.
+    const accountService = (w: World) =>
+      new IdentityVerificationService(
+        { findOne: jest.fn(async () => w.profile), save: jest.fn(async (p: Row) => p), create: jest.fn((d: Row) => ({ ...d })), update: jest.fn() } as any,
+        {} as any, {} as any, {} as any, {} as any,
+        { getRepository: () => ({ exist: jest.fn().mockResolvedValue(false) }) } as any,
+        {} as any, {} as any, {} as any,
+        { resolve: jest.fn().mockResolvedValue({ countryCode: 'US', regionState: null, city: null }) } as any,
+        {} as any,
+        { publish: jest.fn() } as any,
+      );
+    const snapshot = (w: World) =>
+      JSON.stringify({
+        verifiedHomeCountry: w.profile.verifiedHomeCountry,
+        pendingHomeCountry: w.profile.pendingHomeCountry,
+        pendingRelocationSessionId: w.profile.pendingRelocationSessionId,
+        identity: w.profile.identityVerificationStatus,
+        travelModeActive: w.profile.travelModeActive,
+      });
+
+    it.each([
+      ['In Progress', undefined],
+      ['In Review', 'In Review'],
+    ])('same-country confirmation while the session is %s is rejected, then the linked approval promotes normally', async (_label, moveTo) => {
+      const w = world({ profile: { travelClassification: TravelClassification.TEMPORARILY_TRAVELING, travelModeActive: true, declaredDuration: DeclaredDuration.A_FEW_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 86_400_000) } });
+      const s1 = await w.startChange();
+      if (moveTo) await w.send(s1, moveTo);
+      const before = snapshot(w);
+
+      await expect(accountService(w).confirmHomeCountry('user-1', '198.51.100.9')).rejects.toMatchObject({
+        code: 'HOME_COUNTRY_CHANGE_IN_PROGRESS',
+      });
+
+      expect(snapshot(w)).toBe(before);
+      expect(w.profile.pendingHomeCountry).toBe('CA');
+      expect(w.profile.verifiedHomeCountry).toBe('US');
+
+      await w.send(s1, 'Approved');
+
+      expect(w.profile.verifiedHomeCountry).toBe('CA');
+      expect(w.profile.pendingHomeCountry).toBeNull();
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(w.profile.travelModeActive).toBe(false); // ended by the approval, as designed
+      expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(1);
+    });
+
+    it('an abandoned session no longer protects the claim: the existing restart behaviour applies', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'Abandoned');
+      expect(identity(w)).toBe(IdentityVerificationStatus.UNSTARTED);
+
+      const saved: any = await accountService(w).confirmHomeCountry('user-1', '198.51.100.9');
+
+      expect(saved.pendingHomeCountry).toBeNull(); // returned to the verified country: claim dropped, as before
+      expect(saved.verifiedHomeCountry).toBe('US');
     });
   });
 

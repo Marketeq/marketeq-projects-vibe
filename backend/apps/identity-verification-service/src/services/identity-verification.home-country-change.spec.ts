@@ -352,6 +352,108 @@ describe('home-country change — confirmation and classification', () => {
     });
   });
 
+  describe('a claim with a live Didit session is never cleared or replaced by a confirmation', () => {
+    const US = { countryCode: 'US', regionState: 'NY', city: 'New York' };
+    const claim = (status: IdentityVerificationStatus, over: Row = {}) =>
+      verifiedProfile({
+        identityVerificationStatus: status,
+        pendingHomeCountry: 'CA',
+        pendingHomeCountryConfirmedAt: new Date(Date.now() - 60_000),
+        pendingRelocationSessionId: 'session-row-1',
+        travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+        travelModeActive: true,
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+        travelModeActivatedAt: new Date(Date.now() - 86_400_000),
+        nextTravelReminderAt: new Date(Date.now() + 86_400_000),
+        ...over,
+      });
+
+    it.each([
+      ['running', IdentityVerificationStatus.IN_PROGRESS],
+      ['in review', IdentityVerificationStatus.PENDING],
+    ])('a same-country confirmation while the session is %s: 409 HOME_COUNTRY_CHANGE_IN_PROGRESS and NOTHING changes', async (_label, status) => {
+      const profile = claim(status);
+      const before = JSON.stringify(profile);
+      const { service, profileRepository, events } = build(profile, US);
+
+      await expect(service.confirmHomeCountry('u1', '198.51.100.9')).rejects.toMatchObject({
+        code: 'HOME_COUNTRY_CHANGE_IN_PROGRESS',
+        status: 409,
+      });
+
+      expect(profileRepository.save).not.toHaveBeenCalled();
+      expect(events.publish).not.toHaveBeenCalled();
+      expect(JSON.stringify(profile)).toBe(before);
+      expect(profile).toMatchObject({
+        verifiedHomeCountry: 'US',
+        pendingHomeCountry: 'CA',
+        pendingRelocationSessionId: 'session-row-1',
+        identityVerificationStatus: status,
+        travelModeActive: true,
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+      });
+    });
+
+    it.each([
+      ['running', IdentityVerificationStatus.IN_PROGRESS],
+      ['in review', IdentityVerificationStatus.PENDING],
+    ])('another country (even the pending one again) while the session is %s is refused the same way', async (_label, status) => {
+      for (const detected of [{ countryCode: 'MX', regionState: null, city: null }, { countryCode: 'CA', regionState: 'ON', city: 'Toronto' }]) {
+        const profile = claim(status);
+        const before = JSON.stringify(profile);
+        const { service, profileRepository } = build(profile, detected);
+
+        await expect(service.confirmHomeCountry('u1', '198.51.100.9')).rejects.toMatchObject({ code: 'HOME_COUNTRY_CHANGE_IN_PROGRESS' });
+
+        expect(profileRepository.save).not.toHaveBeenCalled();
+        expect(JSON.stringify(profile)).toBe(before);
+      }
+    });
+
+    it.each([
+      ['abandoned or expired (unstarted)', IdentityVerificationStatus.UNSTARTED],
+      ['declined (failed)', IdentityVerificationStatus.FAILED],
+    ])('a claim whose session is %s keeps the existing behaviour: a same-country confirmation drops it', async (_label, status) => {
+      const profile = claim(status);
+      const { service } = build(profile, US);
+
+      const saved: any = await service.confirmHomeCountry('u1', '198.51.100.9');
+
+      expect(saved.pendingHomeCountry).toBeNull();
+      expect(saved.pendingRelocationSessionId).toBeNull();
+      expect(saved.verifiedHomeCountry).toBe('US');
+      expect(saved.travelModeActive).toBe(false); // the ordinary same-country confirmation ends Travel Mode
+    });
+
+    it('a different country on an abandoned claim still replaces the claim and drops the old session link', async () => {
+      const profile = claim(IdentityVerificationStatus.UNSTARTED);
+      const { service } = build(profile, { countryCode: 'MX', regionState: null, city: null });
+
+      const saved: any = await service.confirmHomeCountry('u1', '198.51.100.9');
+
+      expect(saved.pendingHomeCountry).toBe('MX');
+      expect(saved.pendingRelocationSessionId).toBeNull();
+      expect(saved.verifiedHomeCountry).toBe('US');
+    });
+
+    it('an ordinary in-progress or in-review account with NO claim is not affected (first-time verification)', async () => {
+      for (const status of [IdentityVerificationStatus.IN_PROGRESS, IdentityVerificationStatus.PENDING]) {
+        const profile = verifiedProfile({
+          identityVerificationStatus: status,
+          locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED,
+          verifiedHomeCountry: null,
+          verifiedHomeCountryConfirmedAt: null,
+        });
+        const { service } = build(profile, CA);
+
+        const saved: any = await service.confirmHomeCountry('u1', '198.51.100.9');
+
+        expect(saved.verifiedHomeCountry).toBe('CA');
+        expect(saved.locationVerificationStatus).toBe(LocationVerificationStatus.VERIFIED);
+      }
+    });
+  });
+
   describe('confirmHomeCountry is unchanged for every other account', () => {
     it('a first-time account still has its home country set and verified immediately', async () => {
       const profile = verifiedProfile({
