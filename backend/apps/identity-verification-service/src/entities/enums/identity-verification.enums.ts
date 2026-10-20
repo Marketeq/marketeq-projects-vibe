@@ -89,6 +89,16 @@ export enum BiometricSessionStatus {
   EXPIRED = 'expired',
 }
 
+// Why a hosted Didit session was started. IDENTITY_VERIFICATION is every
+// ordinary session (and the default, so rows that exist before the column was
+// added keep their meaning). HOME_COUNTRY_CHANGE is an already fully verified
+// account re-verifying with Didit to move its home country: its approval
+// promotes the pending home country linked to THAT session and nothing else.
+export enum HostedKycSessionPurpose {
+  IDENTITY_VERIFICATION = 'identity_verification',
+  HOME_COUNTRY_CHANGE = 'home_country_change',
+}
+
 // Free KYC (Didit-hosted workflow) session lifecycle as tracked by this
 // service. Mapped from Didit's documented session statuses in
 // free-kyc.service.ts — an unrecognized Didit status never maps to APPROVED.

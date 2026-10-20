@@ -68,6 +68,13 @@ export class ProfileStatusResponseDto {
   retryAvailableAt?: string | null;
   hasActiveSession?: boolean;
 
+  // Home-country change (append-only, and OMITTED unless it applies, so every
+  // response for an account with no relocation claim keeps exactly its old keys).
+  // The country the account claimed it moved to, still awaiting Didit's approval;
+  // verifiedHomeCountry above is unchanged until an approval promotes it. Attempts
+  // and the cooldown are the ordinary fields (attemptsRemaining, retryAvailableAt).
+  pendingHomeCountry?: string;
+
   static fromEntity(
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
@@ -103,6 +110,7 @@ export class ProfileStatusResponseDto {
       profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
+    if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;

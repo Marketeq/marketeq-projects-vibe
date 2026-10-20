@@ -268,6 +268,19 @@ export class IdentityVerificationController {
     return this.freeKycService.startOrResume(req.userId);
   }
 
+  // Home-country change: the explicit, separate start for an already fully
+  // verified account that declared a permanent relocation and confirmed the
+  // detected country (it is then PENDING). Ordinary kyc-sessions still refuses a
+  // verified account. Same VPN/proxy guard and throttle as session start; reads no
+  // body, query, country or session id: everything comes from the stored claim.
+  @Post('kyc-sessions/home-country-change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(VpnProxyCheckGuard)
+  async startHomeCountryChangeSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startHomeCountryChange(req.userId);
+  }
+
   // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the
   // CALLER'S OWN stored unfinished session and applies the decision through the
   // same transition logic as the signed webhook (which stays the primary path).

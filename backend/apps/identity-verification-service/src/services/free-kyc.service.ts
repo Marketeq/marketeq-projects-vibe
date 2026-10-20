@@ -11,6 +11,7 @@ import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import { ProcessedWebhookEvent } from '../entities/processed-webhook-event.entity';
 import {
   AttemptOutcome,
+  HostedKycSessionPurpose,
   HostedKycSessionStatus,
   IdentityVerificationStatus,
   LocationVerificationStatus,
@@ -58,6 +59,7 @@ import {
 } from '../common/errors/domain-exceptions';
 import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
 import { expireTravelModeIfDue, travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
+import { clearPendingRelocation, hasPendingHomeCountryChange } from '../common/home-country-change/home-country-change';
 import {
   NOTIFICATION_EVENT_PUBLISHER,
   NotificationEventPublisher,
@@ -86,6 +88,9 @@ export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
 // already-verified profile never sets it).
 interface IdentityVerifiedSignal {
   verified?: { profileId: string; userId: string };
+  // Set only when an approved home-country-change session actually promoted the
+  // pending country (never for a replay, a stale session or any other outcome).
+  homeCountryUpdated?: { profileId: string; userId: string };
 }
 
 // Didit's documented session statuses (docs.didit.me/integration/
@@ -176,14 +181,26 @@ export class FreeKycService {
     // so the rules below never see a stale raw-active state.
     profile = await expireTravelModeIfDue(this.profileRepository, profile, Date.now(), this.logger);
 
+    // A home-country change is in flight (a different country is pending): the
+    // retry runs through the relocation start, which reuses everything below but
+    // links the session to the pending country. Never true for first-time or
+    // ordinary verification (no pending country).
+    if (hasPendingHomeCountryChange(profile)) return this.startHomeCountryChangeLocked(profileId);
+
     // Runs under the per-profile advisory lock held by startOrResume, so
     // concurrent starts cannot both leave failed_final or create two sessions.
     profile = await this.endElapsedFailedFinalCooldown(profile);
 
     this.assertStatusAllowsStart(profile);
 
+    // Ordinary sessions only: a home-country-change session is never resumed (or
+    // reconciled as one) by the ordinary start path.
     const active = await this.sessionRepository.findOne({
-      where: { profileId, status: In(ACTIVE_SESSION_STATUSES) },
+      where: {
+        profileId,
+        status: In(ACTIVE_SESSION_STATUSES),
+        purpose: HostedKycSessionPurpose.IDENTITY_VERIFICATION,
+      },
       order: { createdAt: 'DESC' },
     });
 
@@ -219,6 +236,122 @@ export class FreeKycService {
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
     return this.createNew(profile);
+  }
+
+  // ---------------------------------------------------------------------
+  // Home-country change (PMCM-650)
+  // ---------------------------------------------------------------------
+
+  /**
+   * Starts (or resumes) the Didit session for a home-country change. Explicit and
+   * separate from startOrResume (which still refuses a verified account, and hands
+   * a retry here while a claim is pending). Allowed only while a different country
+   * is PENDING for an account with a verified home country (see
+   * IdentityVerificationService.confirmHomeCountry). The session is stored with
+   * purpose HOME_COUNTRY_CHANGE and the pending country it was started for, and the
+   * profile is linked to it.
+   *
+   * It reuses the ordinary identity retry behaviour: the account moves to
+   * in_progress when the session is created, a decline makes it failed (third
+   * decline: failed_final with the 24-hour cooldown), the attempt cycle is the
+   * ordinary one, and the 15-minute confirmation rule applies to the pending
+   * confirmation. Approval returns it to verified and promotes the pending country.
+   */
+  async startHomeCountryChange(userId: string): Promise<{ url: string }> {
+    const profile = await this.profileRepository.findOne({ where: { userId } });
+    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
+    return this.withProfileLock(profile.id, () => this.startHomeCountryChangeLocked(profile.id));
+  }
+
+  private async startHomeCountryChangeLocked(profileId: string): Promise<{ url: string }> {
+    let profile = await this.profileRepository.findOne({ where: { id: profileId } });
+    if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
+
+    profile = await expireTravelModeIfDue(this.profileRepository, profile, Date.now(), this.logger);
+    profile = await this.endElapsedFailedFinalCooldown(profile);
+    this.assertHomeCountryChangeStartable(profile);
+
+    // The current relocation session, if any. Only the one the profile points
+    // at counts, and only while it was started for the country still pending.
+    const current = profile.pendingRelocationSessionId
+      ? await this.sessionRepository.findOne({ where: { id: profile.pendingRelocationSessionId } })
+      : null;
+    const linked =
+      current &&
+      current.purpose === HostedKycSessionPurpose.HOME_COUNTRY_CHANGE &&
+      current.pendingHomeCountry === profile.pendingHomeCountry
+        ? current
+        : null;
+
+    if (linked && RECONCILABLE_SESSION_STATUSES.includes(linked.status)) {
+      // Same fail-closed fallback as the ordinary path, before anything is resumed
+      // or replaced: it may find the session already decided at Didit.
+      await this.reconcileActiveSession(linked);
+      profile = (await this.profileRepository.findOne({ where: { id: profileId } })) ?? profile;
+      this.assertHomeCountryChangeStartable(profile);
+
+      if (linked.status === HostedKycSessionStatus.IN_REVIEW) {
+        // Waiting for Didit's decision: no second session.
+        throw new KycNotStartableException({ status: profile.identityVerificationStatus, reason: 'home_country_change_in_review' });
+      }
+      if (ACTIVE_SESSION_STATUSES.includes(linked.status)) return this.resume(linked);
+    }
+
+    this.assertHomeCountryChangeConfirmationFresh(profile);
+
+    const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
+    if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
+
+    return this.createHomeCountryChangeSession(profile);
+  }
+
+  // A pending country must exist, and the identity status must allow a start under
+  // the ordinary rules, except that an already verified account IS allowed here
+  // (that is the point of the relocation start). In review, blocked and the
+  // failed_final cooldown keep their ordinary answers.
+  private assertHomeCountryChangeStartable(profile: IdentityVerificationProfile): void {
+    if (!hasPendingHomeCountryChange(profile)) {
+      throw new KycNotStartableException({ status: profile.identityVerificationStatus, reason: 'no_home_country_change' });
+    }
+    if (profile.identityVerificationStatus !== IdentityVerificationStatus.VERIFIED) {
+      this.assertStatusAllowsStart(profile);
+    }
+  }
+
+  // The 15-minute rule, applied to the pending country's own confirmation.
+  private assertHomeCountryChangeConfirmationFresh(profile: IdentityVerificationProfile): void {
+    const fail = (reason: HomeCountryConfirmationReason): never => {
+      throw new HomeCountryConfirmationRequiredException({ reason });
+    };
+    const confirmedAt = profile.pendingHomeCountryConfirmedAt;
+    if (!(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) fail('confirmation_missing');
+    if (travelModeBlocksNewSession(profile, Date.now())) fail('travel_mode_active');
+    if (Date.now() - (confirmedAt as Date).getTime() > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
+  }
+
+  private async createHomeCountryChangeSession(profile: IdentityVerificationProfile): Promise<{ url: string }> {
+    const vendorReference = randomUUID();
+    const created = await this.callProvider(vendorReference);
+    const url = this.validatedUrl(created.url);
+
+    const saved = await this.sessionRepository.save(
+      this.sessionRepository.create({
+        profileId: profile.id,
+        diditSessionId: created.sessionId,
+        vendorReference,
+        status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
+        purpose: HostedKycSessionPurpose.HOME_COUNTRY_CHANGE,
+        pendingHomeCountry: profile.pendingHomeCountry,
+      }),
+    );
+    // Link the claim to THIS session, and move the account into the ordinary
+    // in-progress identity state (as createNew does for any session).
+    profile.pendingRelocationSessionId = saved.id;
+    if (profile.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
+      profile.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
+    }
+    await this.profileRepository.save(profile);
+    return { url };
   }
 
   /**
@@ -329,16 +462,30 @@ export class FreeKycService {
   // with fixed text only. There is no outbox, so a crash between commit and
   // publish can lose the event.
   private async publishIdentityVerified(signal: IdentityVerifiedSignal): Promise<void> {
-    if (!signal.verified || !this.events) return;
-    try {
-      await this.events.publish({
-        eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
-        profileId: signal.verified.profileId,
-        userId: signal.verified.userId,
-        occurredAt: new Date().toISOString(),
-      });
-    } catch {
-      this.logger.warn('identity_verified event publish failed.');
+    if (!this.events) return;
+    if (signal.verified) {
+      try {
+        await this.events.publish({
+          eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
+          profileId: signal.verified.profileId,
+          userId: signal.verified.userId,
+          occurredAt: new Date().toISOString(),
+        });
+      } catch {
+        this.logger.warn('identity_verified event publish failed.');
+      }
+    }
+    if (signal.homeCountryUpdated) {
+      try {
+        await this.events.publish({
+          eventType: IdentityVerificationEventType.HOME_COUNTRY_UPDATED,
+          profileId: signal.homeCountryUpdated.profileId,
+          userId: signal.homeCountryUpdated.userId,
+          occurredAt: new Date().toISOString(),
+        });
+      } catch {
+        this.logger.warn('home_country_updated event publish failed.');
+      }
     }
   }
 
@@ -710,6 +857,28 @@ export class FreeKycService {
       lock: { mode: 'pessimistic_write' },
     });
     if (!profile) return;
+
+    // Approval is the only outcome with a country attached. While a home-country
+    // claim is pending, ONLY an approval of the session linked to it (started for
+    // that country) counts: it promotes the pending country and then restores
+    // verified through the ordinary rules below. An older session, an unrelated
+    // ordinary session, a replay after the promotion, or a withdrawn claim
+    // changes nothing at all: neither the country nor the verification status.
+    // Every other outcome (declines, in progress, in review, abandoned, expired)
+    // follows the ordinary identity rules, whatever the session was for.
+    if (status === HostedKycSessionStatus.APPROVED) {
+      const isRelocation = session.purpose === HostedKycSessionPurpose.HOME_COUNTRY_CHANGE;
+      if (hasPendingHomeCountryChange(profile) || isRelocation) {
+        if (!this.promoteApprovedHomeCountryChange(profile, session, signal)) {
+          this.logger.debug('Approval did not match the pending home-country claim — nothing changed.');
+          return;
+        }
+        // Saved now: the ordinary rules below may return early for a profile that
+        // is already verified.
+        await profileRepository.save(profile);
+      }
+    }
+
     const current = profile.identityVerificationStatus;
 
     // Once verified, only a KYC-expiry can change the profile; a stale or
@@ -788,5 +957,31 @@ export class FreeKycService {
         break;
     }
     await profileRepository.save(profile);
+  }
+  // True only for the approval of the CURRENT home-country-change session, started
+  // for the country that is still pending, on an account whose verification is not
+  // blocked. Promotes exactly that country and clears the claim.
+  private promoteApprovedHomeCountryChange(
+    profile: IdentityVerificationProfile,
+    session: HostedKycSession,
+    signal: IdentityVerifiedSignal,
+  ): boolean {
+    const blocked =
+      profile.identityVerificationStatus === IdentityVerificationStatus.BLOCKED_DUPLICATE ||
+      profile.identityVerificationStatus === IdentityVerificationStatus.BLOCKED_AGE ||
+      profile.identityVerificationStatus === IdentityVerificationStatus.FAILED_FINAL;
+    const promotable =
+      session.purpose === HostedKycSessionPurpose.HOME_COUNTRY_CHANGE &&
+      hasPendingHomeCountryChange(profile) &&
+      profile.pendingRelocationSessionId === session.id &&
+      profile.pendingHomeCountry === session.pendingHomeCountry &&
+      !blocked;
+    if (!promotable) return false;
+    profile.verifiedHomeCountry = profile.pendingHomeCountry;
+    profile.verifiedHomeCountryConfirmedAt = new Date();
+    profile.travelClassification = null;
+    clearPendingRelocation(profile);
+    signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId };
+    return true;
   }
 }

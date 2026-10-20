@@ -54,6 +54,8 @@ export class VerificationSummaryService {
       travelClassification: profile.travelClassification,
       travelModeActivatedAt: profile.travelModeActivatedAt,
       declaredDuration: profile.declaredDuration,
+      pendingHomeCountry: profile.pendingHomeCountry,
+      pendingHomeCountryConfirmedAt: profile.pendingHomeCountryConfirmedAt,
       nowMs,
     });
   }

@@ -73,6 +73,10 @@ import { IdentityVerificationEventType } from '../events/identity-verification-e
 import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit/account-wide-attempt-count';
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { NextAction } from '../common/status/verification-summary';
+import {
+  clearPendingRelocation,
+  shouldHoldNewCountryAsPending,
+} from '../common/home-country-change/home-country-change';
 import { VerificationSummaryService } from './verification-summary.service';
 import {
   deriveTravelModeState,
@@ -296,6 +300,19 @@ export class IdentityVerificationService {
     }
 
     const existing = await this.profileRepository.findOne({ where: { userId } });
+    // An already verified account (or one whose home-country change is already
+    // in flight) never has its verified home country overwritten by an IP
+    // reading, whatever route got here and whether or not a relocation was
+    // declared first: a DIFFERENT detected country becomes PENDING, and only a
+    // Didit approval replaces the verified one. Re-confirming the SAME country
+    // moves nothing: it falls through to the ordinary refresh below, which also
+    // drops any claim for another country.
+    if (existing && shouldHoldNewCountryAsPending(existing)) {
+      if (detected.countryCode !== existing.verifiedHomeCountry) {
+        return this.confirmPendingHomeCountry(existing, detected);
+      }
+      clearPendingRelocation(existing);
+    }
     const profile = existing ?? this.profileRepository.create({ userId });
     const previousCountry = profile.verifiedHomeCountry;
     const isFirstConfirmation = profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED;
@@ -336,6 +353,42 @@ export class IdentityVerificationService {
     return saved;
   }
 
+  /**
+   * Confirming a DIFFERENT country for an account that already has a verified home
+   * country. The detected country was resolved server-side from the request IP just
+   * now and the user explicitly confirmed it. verifiedHomeCountry and the location
+   * status are NOT touched: the claim is stored as pending and only a Didit approval
+   * of the session linked to it promotes it. The account is marked as having
+   * declared a permanent relocation, so the claim is coherent even when the
+   * classification step was skipped.
+   *
+   * Re-confirming the SAME pending country refreshes the 15-minute basis and keeps
+   * its session link, so valid retries continue; a DIFFERENT country is a new claim
+   * and unlinks the old session. The identity status, its attempt cycle and its
+   * cooldown are never touched here. Travel Mode ends, as in any confirmation.
+   */
+  private async confirmPendingHomeCountry(
+    profile: IdentityVerificationProfile,
+    detected: { countryCode: string; regionState?: string | null; city?: string | null },
+  ): Promise<IdentityVerificationProfile> {
+    profile.travelModeActive = false;
+    profile.declaredDuration = null;
+    profile.travelModeActivatedAt = null;
+    profile.nextTravelReminderAt = null;
+
+    profile.detectedCountry = detected.countryCode;
+    profile.detectedRegionState = (detected.regionState ?? null) as string | null;
+    profile.detectedCity = (detected.city ?? null) as string | null;
+
+    profile.travelClassification = TravelClassification.PERMANENTLY_RELOCATED;
+    if (profile.pendingHomeCountry !== detected.countryCode) {
+      profile.pendingHomeCountry = detected.countryCode;
+      profile.pendingRelocationSessionId = null;
+    }
+    profile.pendingHomeCountryConfirmedAt = new Date();
+    return this.profileRepository.save(profile);
+  }
+
   // --- Travel / Relocation ---
 
   async recordTravelClassification(
@@ -352,7 +405,17 @@ export class IdentityVerificationService {
     // forces the existing home-country-confirm -> document flow to run
     // again; Temporarily Traveling is unaffected.
     if (classification === TravelClassification.PERMANENTLY_RELOCATED) {
-      profile.locationVerificationStatus = LocationVerificationStatus.NOT_VERIFIED;
+      // An account that already has a verified home country keeps it (and its
+      // location status) while the claim is pending: nothing is replaced until
+      // Didit approves the change. The reset below is for any other account,
+      // which has no verified home country to protect.
+      if (!shouldHoldNewCountryAsPending(profile)) {
+        profile.locationVerificationStatus = LocationVerificationStatus.NOT_VERIFIED;
+      }
+    } else if (classification === TravelClassification.TEMPORARILY_TRAVELING) {
+      // Choosing "traveling" withdraws any pending relocation claim, so an old
+      // home-country-change session can never promote it afterwards.
+      clearPendingRelocation(profile);
     }
 
     return this.profileRepository.save(profile);
