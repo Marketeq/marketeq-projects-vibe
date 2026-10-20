@@ -1301,6 +1301,18 @@ const isValidClabe = (clabe: string) => {
   const sum = weights.reduce((acc, w, i) => acc + ((w * d[i]) % 10), 0)
   return (10 - (sum % 10)) % 10 === d[17]
 }
+// BTB-341: a micro-deposit is $0.01–$0.99 (PS-08) and the API takes cents.
+// Accepts what a bank statement shows ("0.32", ".32", "$0.32") as well as
+// whole cents ("32"); anything else (letters, negatives, symbols, out of
+// range) is null so the field shows an error and Submit stays disabled.
+const parseMicroDepositCents = (raw: string): number | null => {
+  const v = raw.trim().replace(/^\$/, "")
+  let cents: number
+  if (/^\d{1,2}$/.test(v)) cents = Number(v)
+  else if (/^0?\.\d{1,2}$/.test(v)) cents = Math.round(Number(v) * 100)
+  else return null
+  return cents >= 1 && cents <= 99 ? cents : null
+}
 const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
 const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
 const isValidBik = (v: string) => /^\d{9}$/.test(v)
@@ -3049,8 +3061,8 @@ export const OverviewTab = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount1Cents: parseInt(microAmounts.amount1),
-            amount2Cents: parseInt(microAmounts.amount2),
+            amount1Cents: parseMicroDepositCents(microAmounts.amount1),
+            amount2Cents: parseMicroDepositCents(microAmounts.amount2),
           }),
         }),
         new Promise((r) => setTimeout(r, 1200)),
@@ -4371,7 +4383,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 7 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount1}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4380,6 +4393,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount1.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount1) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                           <div className="flex-1">
                             <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
@@ -4387,7 +4407,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 39 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount2}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4396,6 +4417,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount2.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount2) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -4414,8 +4442,10 @@ export const OverviewTab = ({
                           size="sm"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
-                            !microAmounts.amount1.trim() ||
-                            !microAmounts.amount2.trim()
+                            parseMicroDepositCents(microAmounts.amount1) ===
+                              null ||
+                            parseMicroDepositCents(microAmounts.amount2) ===
+                              null
                           }
                         >
                           Submit
