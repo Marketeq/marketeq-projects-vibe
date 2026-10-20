@@ -83,13 +83,17 @@ export default function NotificationCategoriesList({
             />
             {search && (
               <InputRightElement>
-                <button
+                <IconButton
                   type="button"
+                  variant="ghost"
+                  visual="gray"
+                  size="xs"
+                  aria-label="Clear search"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setSearch("")}
                 >
                   <XCircle className="size-4 text-gray-500 opacity-50 hover:opacity-100" />
-                </button>
+                </IconButton>
               </InputRightElement>
             )}
           </InputGroup>
