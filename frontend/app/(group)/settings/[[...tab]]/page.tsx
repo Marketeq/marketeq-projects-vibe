@@ -33,7 +33,7 @@ import {
   removeCompanyMember,
 } from "@/service/http/companies"
 import type { CompanyMember } from "@/types/company"
-import { cn, convertToKbOrMb, getIsNotEmpty } from "@/utils/functions"
+import { cn, convertToKbOrMb } from "@/utils/functions"
 import languagesMock from "@/public/mock/languages.json"
 import ActiveSessionsModal from "@/components/active-sessions-modal"
 import NotificationPreferences from "@/components/notification-preferences"
@@ -94,7 +94,6 @@ import {
   Zap,
   UploadCloud02,
   X,
-  X2,
   XCircle,
   FilterLines,
   ArrowRight,
@@ -1060,6 +1059,8 @@ export default function SettingsPage() {
     lastActiveAt: string
     createdAt: string
     ipAddress?: string | null
+    /** Resolved from the session's IP by auth-service; null when unplaceable. */
+    location?: string | null
     osVersion?: string | null
     isCurrent: boolean
   }
@@ -2208,23 +2209,28 @@ export default function SettingsPage() {
 
                   <div className="mt-6 flex items-center gap-x-6">
                     <div className="relative">
-                      <Avatar className="size-24 border-4 border-white">
+                      <Avatar className="size-24 border-4 border-white hover:ring-0 active:ring-0 [&_span]:bg-gray-100 [&_span]:text-4xl [&_span]:font-medium [&_span]:uppercase [&_span]:leading-[44px] [&_span]:tracking-[-0.02em] [&_span]:text-gray-300 [&_span]:hover:bg-gray-100">
                         <AvatarImage
                           src={avatarSrc}
                           alt={user?.firstName ?? "User"}
                         />
-                        <AvatarFallback className="text-4xl font-medium tracking-tight text-gray-300">
+                        {/* No className here: AvatarFallback discards it (avatar.tsx:187).
+                            Its styling is applied from Avatar above. */}
+                        <AvatarFallback>
                           {(user?.firstName?.[0] ?? "").toUpperCase()}
                           {(user?.lastName?.[0] ?? "").toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <button
+                      <Button
                         type="button"
+                        visual="gray"
+                        variant="outlined"
+                        size="sm"
                         onClick={() => setShowAvatarModal(true)}
-                        className="absolute -bottom-1 -right-1 size-[30px] rounded-full bg-white border border-gray-300 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] flex items-center justify-center hover:bg-gray-50 transition-colors"
+                        className="absolute -bottom-1 -right-1 size-[30px] rounded-full bg-white p-[3px]"
                       >
                         <Edit01 className="size-4 text-gray-400" />
-                      </button>
+                      </Button>
                     </div>
                     <div>
                       <div className="flex items-center gap-x-3">
@@ -2346,6 +2352,11 @@ export default function SettingsPage() {
                         defaultCountry="us"
                         placeholder="+1 (555) 000-0000"
                         disableDialCodePrefill
+                        /* globals.css pins every phone control to size.10 (40px)
+                           while Input is h-11 (44px), so the two sat 4px apart in
+                           the same row. Raised for this field only — editing the
+                           global would resize every phone input in the app. */
+                        className="[--react-international-phone-height:theme(size.11)]"
                         value={profileForm.phone}
                         onChange={(v) => handleProfileChange("phone", v)}
                       />
@@ -2366,7 +2377,13 @@ export default function SettingsPage() {
                           placeholder="Select Team"
                           displayValue={(val) =>
                             Array.isArray(val) && val.length ? (
-                              val.join(", ")
+                              // min-w-0 is what lets this shrink: a flex child
+                              // defaults to min-width:auto and refuses to go below
+                              // its content, so truncate alone does nothing and a
+                              // long list pushes the chevron out of the field.
+                              <span className="min-w-0 flex-1 truncate text-left">
+                                {val.join(", ")}
+                              </span>
                             ) : (
                               <span className="text-gray-500">Select Team</span>
                             )
@@ -2393,67 +2410,38 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-1.5">
                       <Label size="sm">Language</Label>
-                      <div className="flex flex-col gap-y-1.5">
-                        <Listbox
-                          value={profileForm.languages}
-                          onChange={(values) =>
-                            setProfileForm((prev) => ({
-                              ...prev,
-                              languages: values as string[],
-                            }))
+                      <Listbox
+                        value={profileForm.languages}
+                        onChange={(values) =>
+                          setProfileForm((prev) => ({
+                            ...prev,
+                            languages: values as string[],
+                          }))
+                        }
+                        multiple
+                      >
+                        <ListboxButton
+                          placeholder="Select Language"
+                          displayValue={(val) =>
+                            Array.isArray(val) && val.length ? (
+                              <span className="min-w-0 flex-1 truncate text-left">
+                                {val.join(", ")}
+                              </span>
+                            ) : (
+                              <span className="text-gray-500">
+                                Select Language
+                              </span>
+                            )
                           }
-                          multiple
-                        >
-                          <ListboxButton
-                            placeholder="Select Language"
-                            displayValue={(val) =>
-                              Array.isArray(val) && val.length ? (
-                                val.join(", ")
-                              ) : (
-                                <span className="text-gray-500">
-                                  Select Language
-                                </span>
-                              )
-                            }
-                          />
-                          <ListboxOptions>
-                            {languageOptions.map((item) => (
-                              <ListboxOption key={item} value={item}>
-                                {item}
-                              </ListboxOption>
-                            ))}
-                          </ListboxOptions>
-                        </Listbox>
-
-                        {getIsNotEmpty(profileForm.languages) && (
-                          <div className="flex flex-wrap gap-2">
-                            {profileForm.languages.map((lang) => (
-                              <Badge
-                                key={lang}
-                                visual="primary"
-                                size="sm"
-                                variant="rounded"
-                              >
-                                {lang}
-                                <button
-                                  className="focus-visible:outline-none"
-                                  onClick={() =>
-                                    setProfileForm((prev) => ({
-                                      ...prev,
-                                      languages: prev.languages.filter(
-                                        (l) => l !== lang
-                                      ),
-                                    }))
-                                  }
-                                  type="button"
-                                >
-                                  <X2 className="h-3 w-3" />
-                                </button>
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        />
+                        <ListboxOptions>
+                          {languageOptions.map((item) => (
+                            <ListboxOption key={item} value={item}>
+                              {item}
+                            </ListboxOption>
+                          ))}
+                        </ListboxOptions>
+                      </Listbox>
                     </div>
                   </div>
 
@@ -2714,6 +2702,11 @@ export default function SettingsPage() {
                       <Label size="sm">Company Phone Number</Label>
                       <PhoneNumberInput
                         defaultCountry="us"
+                        /* Same 40px-vs-44px mismatch as Personal Info: globals.css
+                           pins phone controls to size.10 while Input, InputLeftAddon
+                           and ListboxButton are all h-11, so this was the only short
+                           field on the page. */
+                        className="[--react-international-phone-height:theme(size.11)]"
                         value={companyForm.phone}
                         onChange={(v) => handleCompanyChange("phone", v)}
                       />
@@ -2852,7 +2845,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={() => setIsUpdatePasswordOpen(true)}
-                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -2872,7 +2865,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={() => setIsFingerprintOpen(true)}
-                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[658px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -3075,6 +3068,13 @@ export default function SettingsPage() {
                       </span>
                       <Button
                         variant="link"
+                        /* Was inert — no handler at all. /forgot-password is
+                           the real recovery flow (identity verification via
+                           security questions or authenticator, then a reset),
+                           which is what "request a new one" means here. The
+                           Account Recovery settings tab only manages the
+                           factors; it cannot issue a new password. */
+                        onClick={() => router.push("/forgot-password")}
                         className="inline h-auto p-0 text-sm font-medium leading-[17px] text-primary-500 underline"
                       >
                         Request a new one
@@ -3477,7 +3477,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={() => setIsPhoneVerificationOpen(true)}
-                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -3507,7 +3507,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={() => setIsSecurityQuestionsOpen(true)}
-                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -3536,7 +3536,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={() => setIsRecoveryEmailOpen(true)}
-                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -3568,7 +3568,7 @@ export default function SettingsPage() {
                       visual="gray"
                       size="sm"
                       onClick={openAuthenticator}
-                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)]"
+                      className="flex h-auto w-[550px] items-center justify-between gap-x-5 rounded-lg border border-gray-200 bg-white p-3 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] hover:border-2 hover:border-gray-300 hover:bg-white hover:p-[11px]"
                     >
                       <span className="flex items-center gap-x-3">
                         <span className="flex size-11 items-center justify-center rounded-lg border-[1.5px] border-gray-200">
@@ -4809,24 +4809,9 @@ export default function SettingsPage() {
                               Name
                             </span>
                           </TableHead>
-                          <TableHead>
-                            <span className="flex items-center gap-x-1">
-                              Device Type
-                              <ArrowDown className="size-4" />
-                            </span>
-                          </TableHead>
-                          <TableHead>
-                            <span className="flex items-center gap-x-1">
-                              Status
-                              <ArrowDown className="size-4" />
-                            </span>
-                          </TableHead>
-                          <TableHead>
-                            <span className="flex items-center gap-x-1">
-                              Most Recent Activity
-                              <ArrowDown className="size-4" />
-                            </span>
-                          </TableHead>
+                          <TableHead>Device Type</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Most Recent Activity</TableHead>
                           <TableHead className="w-16" />
                         </TableRow>
                       </TableHeader>
@@ -4845,7 +4830,10 @@ export default function SettingsPage() {
                         )}
                       >
                         {deviceSessions.map((device) => (
-                          <TableRow key={device.id} className="h-[72px]">
+                          <TableRow
+                            key={device.id}
+                            className="h-[72px] hover:bg-transparent"
+                          >
                             <TableCell className="py-4">
                               <span className="flex items-center gap-x-3">
                                 <Checkbox
@@ -4958,16 +4946,10 @@ export default function SettingsPage() {
                       <TableHeader className="bg-gray-50 [&_tr]:border-0">
                         <TableRow className="hover:bg-transparent">
                           <TableHead className="w-[111px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
-                            <span className="flex items-center gap-x-1">
-                              Status
-                              <ArrowDown className="size-4" />
-                            </span>
+                            Status
                           </TableHead>
                           <TableHead className="w-[188px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
-                            <span className="flex items-center gap-x-1">
-                              Most Recent Activity
-                              <HelpCircle className="size-4 text-gray-400" />
-                            </span>
+                            Most Recent Activity
                           </TableHead>
                           <TableHead className="w-[129px] whitespace-nowrap border-b border-gray-200 hover:text-gray-600">
                             First Activity
@@ -5053,7 +5035,9 @@ export default function SettingsPage() {
                               .filter(Boolean)
                               .join(" ") || "—"}
                           </TableCell>
-                          <TableCell>—</TableCell>
+                          <TableCell className="truncate">
+                            {deviceDetail.location || "—"}
+                          </TableCell>
                           <TableCell className="truncate">
                             {deviceDetail.ipAddress || "—"}
                           </TableCell>

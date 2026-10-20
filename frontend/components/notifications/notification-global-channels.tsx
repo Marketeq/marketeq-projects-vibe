@@ -140,7 +140,7 @@ export default function NotificationGlobalChannels({
       variant="outlined"
       size="sm"
       onClick={() => setBrowserMode("disable")}
-      className="hidden group-hover:inline-flex"
+      className="absolute right-0 hidden group-hover:inline-flex"
     >
       Disable Browser Alerts
     </Button>
@@ -151,7 +151,7 @@ export default function NotificationGlobalChannels({
       variant="outlined"
       size="sm"
       onClick={() => setBrowserMode("enable")}
-      className="hidden group-hover:inline-flex"
+      className="absolute right-0 hidden group-hover:inline-flex"
     >
       Enable Browser Alerts
     </Button>
@@ -177,22 +177,29 @@ export default function NotificationGlobalChannels({
               {channelLabels.inApp}
             </span>
             <span className="flex-1" />
-            <span
-              className={cn(
-                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
-                !channels.inApp.enabled && "opacity-50"
-              )}
-            >
-              {inAppDetail.map((part, i) => (
-                <span key={part.text}>
-                  <span className={part.strike ? "line-through" : ""}>
-                    {part.text}
+            {/* The detail text keeps its box on hover (invisible, not hidden)
+                and the button sits over it, so the swap cannot move the row.
+                Before this the text left the layout while the button was only
+                mounted when the channel was on — hovering a row, or toggling
+                one while hovering, shifted everything to its right. */}
+            <span className="relative flex items-center justify-end">
+              <span
+                className={cn(
+                  "text-xs leading-[15px] text-gray-500 group-hover:invisible",
+                  !channels.inApp.enabled && "opacity-50"
+                )}
+              >
+                {inAppDetail.map((part, i) => (
+                  <span key={part.text}>
+                    <span className={part.strike ? "line-through" : ""}>
+                      {part.text}
+                    </span>
+                    {i < inAppDetail.length - 1 ? ", " : ""}
                   </span>
-                  {i < inAppDetail.length - 1 ? ", " : ""}
-                </span>
-              ))}
+                ))}
+              </span>
+              {channels.inApp.enabled && inAppBrowserBtn}
             </span>
-            {channels.inApp.enabled && inAppBrowserBtn}
             <Switch
               checked={channels.inApp.enabled}
               onCheckedChange={(v) => onToggleChannel("inApp", v)}
@@ -207,27 +214,29 @@ export default function NotificationGlobalChannels({
               {channelLabels.email}
             </span>
             <span className="flex-1" />
-            <span
-              className={cn(
-                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
-                !channels.email.enabled && "opacity-50"
-              )}
-            >
-              {channels.email.address ?? accountEmail}
-            </span>
-            {channels.email.enabled && (
-              <Button
-                type="button"
-                visual="gray"
-                variant="outlined"
-                size="sm"
-                leftIcon={<Edit01 className="size-3.5" />}
-                onClick={() => setEditEmailOpen(true)}
-                className="hidden group-hover:inline-flex"
+            <span className="relative flex items-center justify-end">
+              <span
+                className={cn(
+                  "text-xs leading-[15px] text-gray-500 group-hover:invisible",
+                  !channels.email.enabled && "opacity-50"
+                )}
               >
-                Edit Email
-              </Button>
-            )}
+                {channels.email.address ?? accountEmail}
+              </span>
+              {channels.email.enabled && (
+                <Button
+                  type="button"
+                  visual="gray"
+                  variant="outlined"
+                  size="sm"
+                  leftIcon={<Edit01 className="size-3.5" />}
+                  onClick={() => setEditEmailOpen(true)}
+                  className="absolute right-0 hidden group-hover:inline-flex"
+                >
+                  Edit Email
+                </Button>
+              )}
+            </span>
             <Switch
               checked={channels.email.enabled}
               onCheckedChange={(v) => onToggleChannel("email", v)}
@@ -242,16 +251,17 @@ export default function NotificationGlobalChannels({
               {channelLabels.sms}
             </span>
             <span className="flex-1" />
-            <span
-              className={cn(
-                "text-xs leading-[15px] text-gray-500 group-hover:hidden",
-                !channels.sms.enabled && "opacity-50"
-              )}
-            >
-              {accountPhone
-                ? formatPhoneForDisplay(accountPhone)
-                : "Missing Phone Number"}
-            </span>
+            <span className="relative flex items-center justify-end">
+              <span
+                className={cn(
+                  "text-xs leading-[15px] text-gray-500 group-hover:invisible",
+                  !channels.sms.enabled && "opacity-50"
+                )}
+              >
+                {accountPhone
+                  ? formatPhoneForDisplay(accountPhone)
+                  : "Missing Phone Number"}
+              </span>
             {/* Shown whether or not the channel is on: adding a number is the
                 prerequisite for switching it on, so it cannot be gated behind
                 the toggle the way Edit Email is. */}
@@ -268,10 +278,11 @@ export default function NotificationGlobalChannels({
                 )
               }
               onClick={() => setEditPhoneOpen(true)}
-              className="hidden group-hover:inline-flex"
+              className="absolute right-0 hidden group-hover:inline-flex"
             >
               {accountPhone ? "Edit Phone Number" : "Add Phone Number"}
             </Button>
+            </span>
             {/* Not gated on having a number: the design shows the channel on
                 alongside "Missing Phone Number", and the row's own hover
                 button is how a number gets added. */}
