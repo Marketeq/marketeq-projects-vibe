@@ -10057,7 +10057,13 @@ function FilterSearchMenu({
 
 export const EarningsTab = ({
   onFiltersChange,
-}: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
+  onTotalChange,
+}: {
+  onFiltersChange?: (filters: EarningsFilters) => void
+  // BTB-314: lets the parent-level Export button know when the current
+  // filters match nothing. null = not known yet (loading or failed).
+  onTotalChange?: (total: number | null) => void
+} = {}) => {
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -10297,6 +10303,12 @@ export const EarningsTab = ({
     setSearchQuery("")
     setCurrentPage(1)
   }, [])
+
+  useEffect(() => {
+    onTotalChange?.(
+      earningsResult && !earningsError ? earningsResult.total : null
+    )
+  }, [onTotalChange, earningsResult, earningsError])
 
   // Export (parent-level Export button) reuses whatever filters are currently
   // applied to this table rather than always exporting the unfiltered dataset.
@@ -10916,7 +10928,8 @@ export const EarningsTab = ({
               : "Unavailable"}{" "}
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              {/* BTB-322: the icon-only trigger had no accessible name. */}
+              <TooltipTrigger type="button" aria-label="What is manual time?">
                 <HelpCircle className="size-3.5 inline text-[#98A2B3]" />
               </TooltipTrigger>
               <TooltipContent>

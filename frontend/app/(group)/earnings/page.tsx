@@ -38,6 +38,10 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -105,6 +109,10 @@ export default function TransactionsPage() {
   // earningsFilters above, just for the Payouts tab's own filter set.
   const [payoutsFilters, setPayoutsFilters] = useState<PayoutsFilters>({ dateRange: "all_time", statusFilter: "", depositMethodId: "", search: "" })
   const [exporting, setExporting] = useState(false)
+  // BTB-314 (AC-39.01): Earnings total for the current filters, from
+  // EarningsTab. Export is disabled only on a known 0, never while unknown.
+  const [earningsTotal, setEarningsTotal] = useState<number | null>(null)
+  const nothingToExport = activeTab === "earnings" && earningsTotal === 0
 
   const handleExport = useCallback(
     async (format: "csv" | "pdf") => {
@@ -290,6 +298,32 @@ export default function TransactionsPage() {
                   {/* Export — earnings-service and payout-service (v1/payouts/export)
                       each expose their own real export endpoint; handleExport
                       picks the right one based on activeTab. */}
+                  {nothingToExport ? (
+                    // BTB-314 AC-39.02/03: stays visible, not interactive, and
+                    // explains why on hover or focus. A disabled button gets
+                    // no pointer/focus events, so the span carries them.
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={0} aria-label="Export (no data to export for the selected range)">
+                            <Button
+                              className="h-9 bg-white px-5 text-sm font-semibold text-[#1F2937]"
+                              variant="outlined"
+                              visual="gray"
+                              size="sm"
+                              disabled
+                              rightIcon={<ChevronDown className="size-4 text-[#667085]" />}
+                            >
+                              Export
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>No data to export for the selected range.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -312,6 +346,7 @@ export default function TransactionsPage() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  )}
 
                   {/* Settings gear */}
                   <IconButton
@@ -338,7 +373,7 @@ export default function TransactionsPage() {
               </TabsContent>
 
               <TabsContent value="earnings" className="mt-5">
-                <EarningsTab onFiltersChange={setEarningsFilters} />
+                <EarningsTab onFiltersChange={setEarningsFilters} onTotalChange={setEarningsTotal} />
               </TabsContent>
 
               <TabsContent value="payouts" className="mt-5">
