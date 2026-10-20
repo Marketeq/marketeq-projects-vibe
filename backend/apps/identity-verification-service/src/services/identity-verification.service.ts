@@ -213,6 +213,35 @@ export class IdentityVerificationService {
   }
 
   /**
+   * The active-traveler counterpart of getLocationMismatch: true only while Travel
+   * Mode is in force (a valid activation that has not ended, still flagged active),
+   * a verified home country exists, and the request's live IP country is known and
+   * DIFFERENT from it. getLocationMismatch deliberately stays false during Travel
+   * Mode, so a traveler is only ever offered the "still traveling?" prompt through
+   * this separate signal. It says nothing about WHEN to show it: the screen shows
+   * it once per login. Read-only, the same free local IP lookup, and an
+   * unavailable lookup, a missing IP or an unknown country is simply false.
+   */
+  async getTravelModeLocationMismatch(
+    profile: IdentityVerificationProfile,
+    ipAddress?: string | null,
+    nowMs: number = Date.now(),
+  ): Promise<boolean> {
+    const home = profile.verifiedHomeCountry;
+    if (!home || !ipAddress) return false;
+    if (!profile.travelModeActive || deriveTravelModeState(profile, nowMs).state !== 'active') return false;
+    try {
+      const live = await this.locationProvider.resolve({ ipAddress });
+      const liveCountry = live?.countryCode;
+      if (!liveCountry) return false;
+      return liveCountry.toUpperCase() !== home.toUpperCase();
+    } catch (err) {
+      if (err instanceof LocationLookupUnavailableException) return false;
+      throw err;
+    }
+  }
+
+  /**
    * Display-only lookup for the location dialog. Takes the SAME effective
    * client IP the controller hands to confirmHomeCountry, so what the user is
    * shown and what gets confirmed come from one server-side IP decision.

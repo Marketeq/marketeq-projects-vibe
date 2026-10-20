@@ -77,8 +77,9 @@ export class IdentityVerificationController {
     const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
     const locationMismatch = await this.service.getLocationMismatch(profile, ip);
+    const travelModeLocationMismatch = await this.service.getTravelModeLocationMismatch(profile, ip);
     const loginReminderAt = await this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
-    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt);
+    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt, travelModeLocationMismatch);
   }
 
   // Display-only location for the verification dialog. Uses the same

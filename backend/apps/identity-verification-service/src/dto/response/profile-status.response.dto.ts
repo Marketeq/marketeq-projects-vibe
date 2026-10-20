@@ -75,12 +75,22 @@ export class ProfileStatusResponseDto {
   // and the cooldown are the ordinary fields (attemptsRemaining, retryAvailableAt).
   pendingHomeCountry?: string;
 
+  /**
+   * An account in Travel Mode is detected in a country different from its verified
+   * home country (the "still traveling?" prompt's signal). OMITTED unless true, so
+   * every other response keeps exactly its old keys. Never stored; computed on GET
+   * /me only. Unlike locationMismatch it is only ever true while Travel Mode is in
+   * force.
+   */
+  travelModeLocationMismatch?: boolean;
+
   static fromEntity(
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
     nowMs: number = Date.now(),
     locationMismatch: boolean = false,
     loginReminderAt: Date | null = null,
+    travelModeLocationMismatch: boolean = false,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -111,6 +121,7 @@ export class ProfileStatusResponseDto {
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
     if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
+    if (travelModeLocationMismatch === true) dto.travelModeLocationMismatch = true;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;
