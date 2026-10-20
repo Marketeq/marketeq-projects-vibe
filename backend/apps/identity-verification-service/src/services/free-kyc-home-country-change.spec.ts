@@ -57,7 +57,7 @@ describe('Home-country change sessions (PMCM-650)', () => {
 
   type Row = Record<string, any>;
 
-  function world(init: { profile?: Row; sessions?: Row[] } = {}) {
+  function world(init: { profile?: Row; sessions?: Row[]; noEvents?: boolean } = {}) {
     const profile: Row = {
       id: 'profile-1',
       userId: 'user-1',
@@ -180,6 +180,8 @@ describe('Home-country change sessions (PMCM-650)', () => {
       }),
     };
     const events = { publish: jest.fn(async () => undefined) };
+    // The in-app notification hand-off (notification-service's notification.send).
+    const notifications = { homeCountryUpdated: jest.fn(async (_n: { userId: string; hostedKycSessionId: string }) => true) };
     const service = new FreeKycService(
       profileRepository as any,
       sessionRepository as any,
@@ -189,7 +191,8 @@ describe('Home-country change sessions (PMCM-650)', () => {
       empty as any,
       dataSource as any,
       provider as any,
-      events as any,
+      (init.noEvents ? undefined : events) as any,
+      notifications as any,
     );
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
@@ -230,7 +233,7 @@ describe('Home-country change sessions (PMCM-650)', () => {
       return sessions[sessions.length - 1].diditSessionId as string;
     };
 
-    return { service, profile, sessions, attempts, provider, events, decisions, advance, reconfirmPending, send, startChange };
+    return { service, profile, sessions, attempts, provider, events, notifications, dataSource, decisions, advance, reconfirmPending, send, startChange };
   }
 
   type World = ReturnType<typeof world>;
@@ -797,6 +800,239 @@ describe('Home-country change sessions (PMCM-650)', () => {
       await w.service.startOrResume('user-1');
       await w.send(w.sessions[0].diditSessionId, 'Approved');
       expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+    });
+  });
+  // ------------------------------------------------------------------
+  describe('the in-app notification: sent once, only for a promoted home-country change', () => {
+    const notified = (w: World) => w.notifications.homeCountryUpdated.mock.calls.map((c) => c[0]);
+
+    it('an approved linked session notifies the account holder once, keyed by the session row, with the change already applied', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      const row = w.sessions[0].id;
+      // What was true when the hand-off ran: the change was already applied and saved.
+      let seen: { country: string; status: string } | undefined;
+      w.notifications.homeCountryUpdated.mockImplementationOnce(async () => {
+        seen = { country: w.profile.verifiedHomeCountry, status: w.sessions[0].status };
+        return true;
+      });
+      await w.send(s1, 'Approved');
+
+      expect(notified(w)).toEqual([{ userId: 'user-1', hostedKycSessionId: row }]);
+      expect(seen).toEqual({ country: 'CA', status: HostedKycSessionStatus.APPROVED });
+    });
+
+    it('is handed over only AFTER the transaction that applied the change has completed', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      const order: string[] = [];
+      const realTransaction = w.dataSource.transaction;
+      w.dataSource.transaction = jest.fn(async (cb: any) => {
+        const result = await realTransaction(cb);
+        order.push('transaction completed');
+        return result;
+      });
+      w.notifications.homeCountryUpdated.mockImplementationOnce(async () => {
+        order.push('notified');
+        return true;
+      });
+
+      await w.send(s1, 'Approved');
+
+      expect(order).toEqual(['transaction completed', 'notified']);
+    });
+
+    it('approval after an in-review result notifies exactly once, on the approval and not on the review', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'In Review');
+      expect(notified(w)).toHaveLength(0);
+
+      await w.send(s1, 'Approved', { timestamp: NOW_S - 1 });
+      expect(notified(w)).toHaveLength(1);
+      expect(w.profile.verifiedHomeCountry).toBe('CA');
+    });
+
+    it('a duplicate delivery, and a later replay with a new event id, never notify again', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'Approved', { eventId: 'evt-approved' });
+      await w.send(s1, 'Approved', { eventId: 'evt-approved' });
+      await w.send(s1, 'Approved', { eventId: 'evt-replay' });
+
+      expect(notified(w)).toHaveLength(1);
+    });
+
+    it('a reconciliation-driven approval at start notifies once, and a webhook that arrives afterwards does not repeat it', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.decisions.set(s1, 'Approved');
+
+      await expect(w.service.startHomeCountryChange('user-1')).rejects.toBeInstanceOf(KycNotStartableException);
+      expect(notified(w)).toHaveLength(1);
+
+      await w.send(s1, 'Approved');
+      expect(notified(w)).toHaveLength(1);
+    });
+
+    it('the explicit reconcile action notifies once as well', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.decisions.set(s1, 'Approved');
+
+      await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'updated' });
+      await w.service.reconcileForUser('user-1');
+      await w.send(s1, 'Approved');
+
+      expect(notified(w)).toEqual([{ userId: 'user-1', hostedKycSessionId: w.sessions[0].id }]);
+    });
+
+    it('is never sent for an ordinary identity approval', async () => {
+      const w = world({
+        profile: {
+          identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+          travelClassification: null,
+          pendingHomeCountry: null,
+          pendingHomeCountryConfirmedAt: null,
+          verifiedHomeCountryConfirmedAt: new Date(),
+        },
+      });
+      await w.service.startOrResume('user-1');
+      await w.send(w.sessions[0].diditSessionId, 'Approved');
+
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(notified(w)).toHaveLength(0);
+    });
+
+    it('is never sent for an unrelated ordinary session approved while a claim is pending', async () => {
+      const w = world({
+        sessions: [
+          {
+            id: 'row-ordinary',
+            profileId: 'profile-1',
+            diditSessionId: 'didit-ordinary',
+            vendorReference: 'bbbbbbbb-0000-4000-8000-000000000002',
+            status: HostedKycSessionStatus.CREATED,
+            createdAt: new Date(T0.getTime() - 86_400_000),
+          },
+        ],
+      });
+      await w.startChange();
+      await w.send('didit-ordinary', 'Approved');
+
+      expect(notified(w)).toHaveLength(0);
+      expect(w.profile.verifiedHomeCountry).toBe('US');
+    });
+
+    it('is never sent for a stale session approved after a newer one was started; the current one still notifies, once', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'Abandoned');
+      const s2 = await w.startChange();
+
+      await w.send(s1, 'Approved', { timestamp: NOW_S - 1 });
+      expect(notified(w)).toHaveLength(0);
+
+      await w.send(s2, 'Approved');
+      expect(notified(w)).toEqual([{ userId: 'user-1', hostedKycSessionId: w.sessions[1].id }]);
+    });
+
+    it('is never sent for a session started for a country that is no longer the pending one', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.profile.pendingHomeCountry = 'MX';
+      w.profile.pendingRelocationSessionId = null;
+
+      await w.send(s1, 'Approved');
+      expect(notified(w)).toHaveLength(0);
+    });
+
+    it('is never sent for a withdrawn claim', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.profile.travelClassification = TravelClassification.TEMPORARILY_TRAVELING;
+      w.profile.pendingHomeCountry = null;
+      w.profile.pendingHomeCountryConfirmedAt = null;
+      w.profile.pendingRelocationSessionId = null;
+
+      await w.send(s1, 'Approved');
+      expect(notified(w)).toHaveLength(0);
+    });
+
+    it.each([
+      ['Declined'],
+      ['Abandoned'],
+      ['Expired'],
+      ['In Review'],
+      ['In Progress'],
+    ])('is never sent for %s', async (didit) => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, didit);
+      expect(notified(w)).toHaveLength(0);
+    });
+
+    it('a later "Kyc Expired" on the approved session does not notify again', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'Approved');
+      await w.send(s1, 'Kyc Expired');
+      expect(notified(w)).toHaveLength(1);
+    });
+
+    describe('a notification problem never undoes or fails the approved change', () => {
+      it('the broker refusing the hand-off (it resolves false): the change stays applied, nothing is raised', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        w.notifications.homeCountryUpdated.mockResolvedValue(false);
+
+        await expect(w.send(s1, 'Approved')).resolves.toBeUndefined();
+
+        expect(w.profile.verifiedHomeCountry).toBe('CA');
+        expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+        expect(w.profile.pendingHomeCountry).toBeNull();
+        expect(w.sessions[0].status).toBe(HostedKycSessionStatus.APPROVED);
+      });
+
+      it('even a publisher that throws cannot fail the webhook or undo the change', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        w.notifications.homeCountryUpdated.mockRejectedValue(new Error('amqp down'));
+
+        await expect(w.send(s1, 'Approved')).resolves.toBeUndefined();
+
+        expect(w.profile.verifiedHomeCountry).toBe('CA');
+        expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+        // The identity and country events still went out.
+        expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(1);
+      });
+
+      it('a throwing publisher during reconciliation does not fail it either', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        w.decisions.set(s1, 'Approved');
+        w.notifications.homeCountryUpdated.mockRejectedValue(new Error('amqp down'));
+
+        await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'updated' });
+        expect(w.profile.verifiedHomeCountry).toBe('CA');
+      });
+
+      it('the event publisher failing does not stop the notification, and vice versa', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        w.events.publish.mockRejectedValue(new Error('exchange down'));
+
+        await expect(w.send(s1, 'Approved')).resolves.toBeUndefined();
+        expect(notified(w)).toHaveLength(1);
+        expect(w.profile.verifiedHomeCountry).toBe('CA');
+      });
+
+      it('without an event publisher configured the notification is still sent', async () => {
+        const w = world({ noEvents: true });
+        const s1 = await w.startChange();
+        await w.send(s1, 'Approved');
+        expect(notified(w)).toHaveLength(1);
+      });
     });
   });
 });

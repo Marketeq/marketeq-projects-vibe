@@ -65,6 +65,7 @@ import {
   NotificationEventPublisher,
 } from '../events/notification-event-publisher.interface';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
+import { HomeCountryUpdatedNotificationPublisher } from '../events/home-country-updated-notification.publisher';
 
 // A NEW hosted session requires verified location, travel mode off and a
 // home-country confirmation no older than this. Resuming an already-created
@@ -90,7 +91,9 @@ interface IdentityVerifiedSignal {
   verified?: { profileId: string; userId: string };
   // Set only when an approved home-country-change session actually promoted the
   // pending country (never for a replay, a stale session or any other outcome).
-  homeCountryUpdated?: { profileId: string; userId: string };
+  // hostedKycSessionId: the hosted_kyc_sessions row that was promoted (it keys the
+  // in-app notification, so one promotion can only ever notify once).
+  homeCountryUpdated?: { profileId: string; userId: string; hostedKycSessionId: string };
 }
 
 // Didit's documented session statuses (docs.didit.me/integration/
@@ -154,6 +157,11 @@ export class FreeKycService {
     @Optional()
     @Inject(NOTIFICATION_EVENT_PUBLISHER)
     private readonly events?: NotificationEventPublisher,
+    // Appended after `events` for the same reason: no earlier position moves, and a missing
+    // publisher can never break an approval. Tells the account holder, in-app, that an
+    // approved home-country change was applied.
+    @Optional()
+    private readonly homeCountryNotifications?: HomeCountryUpdatedNotificationPublisher,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -462,8 +470,7 @@ export class FreeKycService {
   // with fixed text only. There is no outbox, so a crash between commit and
   // publish can lose the event.
   private async publishIdentityVerified(signal: IdentityVerifiedSignal): Promise<void> {
-    if (!this.events) return;
-    if (signal.verified) {
+    if (this.events && signal.verified) {
       try {
         await this.events.publish({
           eventType: IdentityVerificationEventType.IDENTITY_VERIFIED,
@@ -476,15 +483,31 @@ export class FreeKycService {
       }
     }
     if (signal.homeCountryUpdated) {
-      try {
-        await this.events.publish({
-          eventType: IdentityVerificationEventType.HOME_COUNTRY_UPDATED,
-          profileId: signal.homeCountryUpdated.profileId,
-          userId: signal.homeCountryUpdated.userId,
-          occurredAt: new Date().toISOString(),
-        });
-      } catch {
-        this.logger.warn('home_country_updated event publish failed.');
+      const promoted = signal.homeCountryUpdated;
+      if (this.events) {
+        try {
+          await this.events.publish({
+            eventType: IdentityVerificationEventType.HOME_COUNTRY_UPDATED,
+            profileId: promoted.profileId,
+            userId: promoted.userId,
+            occurredAt: new Date().toISOString(),
+          });
+        } catch {
+          this.logger.warn('home_country_updated event publish failed.');
+        }
+      }
+      // The in-app notification for the account holder, independent of the event above.
+      // Set only by promoteApprovedHomeCountryChange, so it is sent for a linked,
+      // matching, still-pending approval and nothing else; the key is the session row.
+      if (this.homeCountryNotifications) {
+        try {
+          await this.homeCountryNotifications.homeCountryUpdated({
+            userId: promoted.userId,
+            hostedKycSessionId: promoted.hostedKycSessionId,
+          });
+        } catch {
+          this.logger.warn('home_country_updated notification hand-off failed.');
+        }
       }
     }
   }
@@ -981,7 +1004,7 @@ export class FreeKycService {
     profile.verifiedHomeCountryConfirmedAt = new Date();
     profile.travelClassification = null;
     clearPendingRelocation(profile);
-    signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId };
+    signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId, hostedKycSessionId: session.id };
     return true;
   }
 }
