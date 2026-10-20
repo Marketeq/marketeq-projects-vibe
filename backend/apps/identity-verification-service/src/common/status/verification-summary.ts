@@ -109,7 +109,9 @@ export function newSessionRequirementsMet(input: VerificationSummaryInput): bool
     ? input.pendingHomeCountryConfirmedAt
     : input.verifiedHomeCountryConfirmedAt;
   if (!(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) return false;
-  if (travelModeBlocksNewSession(input, input.nowMs)) return false;
+  // Travel Mode does not stand in the way of the claim itself: the account keeps it
+  // through the whole re-verification and only an approval ends it.
+  if (!input.pendingHomeCountry && travelModeBlocksNewSession(input, input.nowMs)) return false;
   return input.nowMs - confirmedAt.getTime() <= HOME_COUNTRY_CONFIRMATION_WINDOW_MS;
 }
 

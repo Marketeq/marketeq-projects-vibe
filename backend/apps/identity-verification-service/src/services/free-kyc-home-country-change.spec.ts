@@ -9,6 +9,7 @@ import { IdentityDocument } from '../entities/identity-document.entity';
 import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import { ProcessedWebhookEvent } from '../entities/processed-webhook-event.entity';
 import {
+  DeclaredDuration,
   HostedKycSessionPurpose,
   HostedKycSessionStatus,
   IdentityVerificationStatus,
@@ -750,6 +751,117 @@ describe('Home-country change sessions (PMCM-650)', () => {
       expectCountryKept(w);
       expect(w.attempts).toHaveLength(attemptCount);
       expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('Travel Mode is kept through the whole change and ended only by the linked approval', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const traveler = () => ({
+      travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+      travelModeActive: true,
+      declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS,
+      travelModeActivatedAt: new Date(T0.getTime() - DAY),
+      nextTravelReminderAt: new Date(T0.getTime() + 2 * DAY),
+      lastTravelReminderSentAt: null,
+    });
+    const expectTravelKept = (w: World) => {
+      expect(w.profile.travelModeActive).toBe(true);
+      expect(w.profile.travelClassification).toBe(TravelClassification.TEMPORARILY_TRAVELING);
+      expect(w.profile.declaredDuration).toBe(DeclaredDuration.ONE_TO_TWO_WEEKS);
+      expect(w.profile.travelModeActivatedAt).toEqual(new Date(T0.getTime() - DAY));
+      expect(w.profile.nextTravelReminderAt).toEqual(new Date(T0.getTime() + 2 * DAY));
+    };
+
+    it('an active traveler can start the change session (Travel Mode does not block the claim)', async () => {
+      const w = world({ profile: traveler() });
+
+      const s1 = await w.startChange();
+
+      expect(w.sessions).toHaveLength(1);
+      expect(w.profile.pendingRelocationSessionId).toBe(w.sessions[0].id);
+      expect(s1).toBeTruthy();
+      expectTravelKept(w);
+    });
+
+    it.each([
+      ['In Progress', IdentityVerificationStatus.IN_PROGRESS],
+      ['In Review', IdentityVerificationStatus.PENDING],
+      ['Declined', IdentityVerificationStatus.FAILED],
+      ['Abandoned', IdentityVerificationStatus.UNSTARTED],
+      ['Expired', IdentityVerificationStatus.UNSTARTED],
+    ])('%s: Travel Mode and the verified country are untouched', async (didit, expected) => {
+      const w = world({ profile: traveler() });
+      const s1 = await w.startChange();
+      await w.send(s1, didit);
+
+      expect(identity(w)).toBe(expected);
+      expectCountryKept(w);
+      expectTravelKept(w);
+    });
+
+    it('the third decline (cooldown) keeps Travel Mode too', async () => {
+      const w = world({ profile: traveler() });
+      for (let i = 0; i < 3; i += 1) {
+        const id = await w.startChange();
+        await w.send(id, 'Declined');
+        if (i < 2) w.reconfirmPending();
+      }
+
+      expect(identity(w)).toBe(IdentityVerificationStatus.FAILED_FINAL);
+      expectCountryKept(w);
+      expectTravelKept(w);
+    });
+
+    it('an abandoned session can be restarted and the traveler still has Travel Mode', async () => {
+      const w = world({ profile: traveler() });
+      const s1 = await w.startChange();
+      await w.send(s1, 'Abandoned');
+      w.reconfirmPending();
+
+      await w.startChange();
+
+      expect(w.sessions).toHaveLength(2);
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+      expectTravelKept(w);
+    });
+
+    it('an unrelated approval of an ordinary session ends nothing', async () => {
+      const w = world({
+        profile: traveler(),
+        sessions: [
+          {
+            id: 'row-ordinary',
+            profileId: 'profile-1',
+            diditSessionId: 'didit-ordinary',
+            vendorReference: 'bbbbbbbb-0000-4000-8000-000000000003',
+            status: HostedKycSessionStatus.CREATED,
+            createdAt: new Date(T0.getTime() - DAY),
+          },
+        ],
+      });
+      await w.startChange();
+
+      await w.send('didit-ordinary', 'Approved');
+
+      expectCountryKept(w);
+      expectTravelKept(w);
+    });
+
+    it('only the approval of the linked session promotes the country AND ends Travel Mode', async () => {
+      const w = world({ profile: traveler() });
+      const s1 = await w.startChange();
+
+      await w.send(s1, 'Approved');
+
+      expect(w.profile.verifiedHomeCountry).toBe('CA');
+      expect(w.profile.pendingHomeCountry).toBeNull();
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(w.profile.travelModeActive).toBe(false);
+      expect(w.profile.travelClassification).toBeNull();
+      expect(w.profile.declaredDuration).toBeNull();
+      expect(w.profile.travelModeActivatedAt).toBeNull();
+      expect(w.profile.nextTravelReminderAt).toBeNull();
     });
   });
 

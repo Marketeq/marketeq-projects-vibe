@@ -8,16 +8,15 @@
 //   shown      locationMismatch === true, and no other verification surface owns the
 //              screen (the first-time gate or the "three attempts" dialog). The
 //              first-time flow is never touched by this prompt.
-//   "I'm still traveling" (returning user, no Travel Mode in force) records Temporarily
-//              traveling, then opens the EXISTING flow on
-//              its "How long are you traveling?" screen. If recording fails the flow opens
-//              on "Tell us more about your current location", whose own Temporarily
-//              traveling button records it again, so the duration step never runs without
-//              a classification.
-//   "Change my home country"  records Permanently relocated (which the backend answers by
-//              resetting location verification), then opens the EXISTING flow from the top
-//              so the home country is confirmed again. A failed record is only logged: the
-//              flow's own confirmation is the real work.
+//   "I'm still traveling" (returning user, no Travel Mode in force) opens the EXISTING
+//              flow on its "How long are you traveling?" screen and SAVES NOTHING. The
+//              duration screen's Confirm/Skip is what saves: the backend sets the
+//              classification and the whole Travel Mode activation in one atomic write,
+//              so closing the screen leaves the account exactly as it was.
+//   "Change my home country"  opens the EXISTING flow from the top so the home country
+//              is confirmed again, and SAVES NOTHING either. Closing the confirmation
+//              changes no account state; the pending claim is created only by the
+//              explicit "Yes, this is my home country" confirmation.
 // The location behind the flow is the server's (no browser location permission here).
 import { type DetectedLocation, getDetectedLocation } from "./detected-location"
 import { cooldownRetryAt, shouldOpenFirstTimeGate } from "./identity-next-step"
@@ -34,22 +33,10 @@ export interface MismatchLaunch {
 }
 
 export interface MismatchDeps {
-  recordTravelClassification: (
-    classification: "temporarily_traveling" | "permanently_relocated"
-  ) => Promise<unknown>
   getDetectedLocation: () => Promise<DetectedLocation>
 }
 
-async function defaultRecord(
-  classification: "temporarily_traveling" | "permanently_relocated"
-): Promise<unknown> {
-  const { IdentityVerificationAPI } =
-    await import("@/service/http/identity-verification")
-  return IdentityVerificationAPI.recordTravelClassification(classification)
-}
-
 const defaultDeps: MismatchDeps = {
-  recordTravelClassification: defaultRecord,
   getDetectedLocation: () => getDetectedLocation(),
 }
 
@@ -77,29 +64,14 @@ export function shouldShowTravelerLocationPrompt(
 export async function startStillTraveling(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  let recorded = true
-  try {
-    await deps.recordTravelClassification("temporarily_traveling")
-  } catch {
-    recorded = false
-  }
-  const location = await deps.getDetectedLocation()
   return {
-    location,
-    initialState: recorded ? "traveling-showcase" : "current-location-showcase",
+    location: await deps.getDetectedLocation(),
+    initialState: "traveling-showcase",
   }
 }
 
 export async function startChangeHomeCountry(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  try {
-    await deps.recordTravelClassification("permanently_relocated")
-  } catch (error) {
-    console.error(
-      "[identity-verification] relocation classification failed",
-      error
-    )
-  }
   return { location: await deps.getDetectedLocation() }
 }

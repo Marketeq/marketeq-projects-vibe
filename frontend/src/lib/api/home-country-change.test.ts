@@ -358,13 +358,10 @@ describe("RUNTIME: after the detected-location confirmation the right session is
 
 // ---------------------------------------------------------------------------
 describe("RUNTIME: 'Change my home country' opens the existing detected-location confirmation", () => {
-  it("records the relocation, then launches the flow from its first screen (the detected-location confirmation)", async () => {
-    const seen: string[] = []
+  it("launches the flow from its first screen (the detected-location confirmation) without saving anything", async () => {
     const launch = await startChangeHomeCountry({
-      recordTravelClassification: async (c) => void seen.push(c),
       getDetectedLocation: async () => ({ country: "CA" }) as never,
     })
-    assert.deepEqual(seen, ["permanently_relocated"])
     assert.equal(launch.initialState, undefined) // the flow's own first screen
   })
 })

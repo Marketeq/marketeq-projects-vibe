@@ -51,8 +51,41 @@ export function hasPendingHomeCountryChange(profile: HomeCountryChangeFields): b
  * existing behaviour: there is no verified identity at stake, so the
  * confirmation sets the country.
  */
-export function shouldHoldNewCountryAsPending(profile: HomeCountryChangeFields): boolean {
-  return canChangeHomeCountry(profile) || hasPendingHomeCountryChange(profile);
+export function shouldHoldNewCountryAsPending(
+  profile: HomeCountryChangeFields,
+  options: { everApproved?: boolean } = {},
+): boolean {
+  return canChangeHomeCountry(profile) || hasPendingHomeCountryChange(profile) || hasBeenIdentityVerified(profile, options);
+}
+
+/**
+ * A verified home country on an account whose identity WAS verified before (its
+ * verification expired, or Didit approved a session for it) but is not verified
+ * right now: after an abandoned or withdrawn relocation, or an expiry. Its home
+ * country is still the one Didit vouched for, so an IP reading cannot overwrite
+ * it either. `everApproved` is the caller's lookup of an approved Didit session;
+ * a never-verified account (first-time verification) is not held.
+ */
+export function hasBeenIdentityVerified(
+  profile: HomeCountryChangeFields,
+  options: { everApproved?: boolean } = {},
+): boolean {
+  if (!hasVerifiedHomeCountry(profile)) return false;
+  return profile.identityVerificationStatus === IdentityVerificationStatus.EXPIRED || options.everApproved === true;
+}
+
+/**
+ * A home-country claim or its Didit session is unfinished: the claim exists, or the
+ * identity status says a session is running (in progress) or waiting for a decision
+ * (pending review). Location prompts stay quiet and the travel duration save is
+ * refused while this holds.
+ */
+export function isRelocationUnfinished(profile: HomeCountryChangeFields): boolean {
+  return (
+    hasPendingHomeCountryChange(profile) ||
+    profile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS ||
+    profile.identityVerificationStatus === IdentityVerificationStatus.PENDING
+  );
 }
 
 export interface PendingRelocationFields {

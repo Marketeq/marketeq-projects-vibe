@@ -9,11 +9,13 @@
 // the prompt appears once per login, never on every page load.
 //
 //   offered  the backend signal is true AND it was not already offered in this login.
-//   marking  localStorage["travelLocationPromptShown:<sid>"] is set only once the user
-//            has ANSWERED the prompt (one of its two buttons; it cannot be dismissed
-//            any other way), and the marker of every other session is removed, so at
-//            most ONE marker ever exists. Opening it marks nothing, so an unanswered
-//            prompt comes back after a refresh.
+//   marking  localStorage["travelLocationPromptShown:<sid>"] is set only when a path
+//            has COMPLETED, which today is only "I'm still traveling" on an active
+//            Travel Mode (it changes nothing, so it completes at the click). Opening
+//            the prompt, or starting "Change my home country", marks nothing: that
+//            claim is made by the explicit country confirmation and the backend then
+//            keeps the prompt quiet. The marker of every other session is removed, so
+//            at most ONE marker ever exists.
 //   no session id  the prompt is offered and nothing is persisted (it may reappear after
 //            a refresh); a marker never leaks across logins.
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
@@ -75,25 +77,6 @@ export function markTravelerPromptShown(
     storage.setItem(current, "1")
   } catch {
     // storage unavailable: it simply reappears after a refresh
-  }
-}
-
-/**
- * Runs the action behind one of the prompt's two buttons. The prompt counts as answered
- * (markAnswered) only after `start` succeeds; if it throws, nothing is marked and the
- * prompt stays available for another try.
- */
-export async function answerTravelerPrompt<T>(
-  start: () => Promise<T>,
-  markAnswered: () => void
-): Promise<{ ok: true; value: T } | { ok: false }> {
-  try {
-    const value = await start()
-    markAnswered()
-    return { ok: true, value }
-  } catch (error) {
-    console.error("[identity-verification] location prompt action failed", error)
-    return { ok: false }
   }
 }
 

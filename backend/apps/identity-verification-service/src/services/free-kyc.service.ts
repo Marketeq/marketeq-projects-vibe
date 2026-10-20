@@ -333,7 +333,8 @@ export class FreeKycService {
     };
     const confirmedAt = profile.pendingHomeCountryConfirmedAt;
     if (!(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) fail('confirmation_missing');
-    if (travelModeBlocksNewSession(profile, Date.now())) fail('travel_mode_active');
+    // Travel Mode is deliberately not checked: the account keeps it until an approval
+    // of this claim's session ends it, so it cannot stand in the way of the claim.
     if (Date.now() - (confirmedAt as Date).getTime() > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
   }
 
@@ -575,8 +576,8 @@ export class FreeKycService {
   }
 
   // A current, server-recorded home-country confirmation, with no Travel
-  // Mode in force (active, or pending a duration; an expired one is
-  // ignored). POST /home-country/confirm sets verifiedHomeCountry, its
+  // Mode in force (an expired one, or a leftover classification with no
+  // duration, is ignored). POST /home-country/confirm sets verifiedHomeCountry, its
   // timestamp and the verified status from a live server-side IP lookup
   // (never a country sent by the frontend).
   private assertHomeCountryConfirmed(
@@ -1002,7 +1003,14 @@ export class FreeKycService {
     if (!promotable) return false;
     profile.verifiedHomeCountry = profile.pendingHomeCountry;
     profile.verifiedHomeCountryConfirmedAt = new Date();
+    // The approved change ends Travel Mode (and only an approved change does): the
+    // account's new home country is where the user now is.
     profile.travelClassification = null;
+    profile.travelModeActive = false;
+    profile.declaredDuration = null;
+    profile.travelModeActivatedAt = null;
+    profile.nextTravelReminderAt = null;
+    profile.lastTravelReminderSentAt = null;
     clearPendingRelocation(profile);
     signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId, hostedKycSessionId: session.id };
     return true;

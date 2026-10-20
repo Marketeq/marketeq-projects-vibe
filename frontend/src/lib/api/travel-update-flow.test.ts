@@ -28,7 +28,7 @@ function run(body: string, activeTravelModeUpdate: boolean | undefined) {
   new Function(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }
-const temporarily = handlerBefore('persistTravelClassification("temporarily_traveling")')
+const temporarily = handlerBefore('Nothing is saved here: closing before a duration is chosen')
 const relocated = handlerBefore('persistTravelClassification("permanently_relocated")')
 
 describe("active reminder → Temporarily traveling", () => {
@@ -50,14 +50,14 @@ describe("active reminder → Temporarily traveling", () => {
   })
 
   it("introduces no copy or UI: the new code is only the branch", () => {
-    assert.ok(!/["'`>][A-Z][a-z]+ [a-z]+/.test(temporarily.split("persistTravelClassification")[0].replace(/\/\/.*$/gm, "")))
+    assert.ok(!/["'`>][A-Z][a-z]+ [a-z]+/.test(temporarily.replace(/\/\/.*$/gm, "")))
   })
 })
 
 describe("expired popup and first-time → Temporarily traveling: unchanged", () => {
   for (const [label, flag] of [["flag unset (first-time)", undefined], ["flag false (expired)", false]] as const) {
-    it(`${label}: records the classification and goes on to the duration screen`, () => {
-      assert.deepEqual(run(temporarily, flag), ["persist:temporarily_traveling", "send:NEXT"])
+    it(`${label}: saves nothing and goes on to the duration screen`, () => {
+      assert.deepEqual(run(temporarily, flag), ["send:NEXT"])
     })
   }
 
@@ -68,12 +68,12 @@ describe("expired popup and first-time → Temporarily traveling: unchanged", ()
     assert.equal((flow.match(/recordTravelDuration\(deps,/g) ?? []).length, 1)
     assert.equal((flow.match(/IdentityVerificationAPI\.recordTravelDuration\(/g) ?? []).length, 1)
     const activate = flow.slice(flow.indexOf("const activateTravelMode"), flow.indexOf("const capturingRef"))
-    assert.ok(activate.includes("recordTravelDuration(deps, travelDuration, travelClassificationRef.current)"))
-    assert.equal((flow.match(/onClick=\{activateTravelMode\}/g) ?? []).length, 2) // Skip and Confirm
+    assert.ok(activate.includes("recordTravelDuration(deps, travelDuration)"))
+    assert.equal((flow.match(/onClick=\{\(\) => void activateTravelMode\(\)\}/g) ?? []).length, 2) // Skip and Confirm
   })
 
   it("the active branch can never reach activateTravelMode", () => {
-    const branch = temporarily.slice(0, temporarily.indexOf('persistTravelClassification("temporarily_traveling")'))
+    const branch = temporarily
     assert.ok(!branch.includes("activateTravelMode"))
     assert.ok(!branch.includes("recordTravelDuration"))
   })

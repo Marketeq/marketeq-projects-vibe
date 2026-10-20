@@ -137,7 +137,7 @@ describe("Update opens the existing flow at the location-update screen", () => {
     const screen = flow.slice(flow.indexOf('{state === "current-location-showcase"'), flow.indexOf('{state === "traveling-showcase"'))
     assert.ok(screen.includes("Temporarily traveling"))
     assert.ok(screen.includes("Permanently relocated"))
-    assert.ok(screen.includes('persistTravelClassification("temporarily_traveling")'))
+    assert.ok(!screen.includes('persistTravelClassification("temporarily_traveling")'))
     assert.ok(screen.includes('persistTravelClassification("permanently_relocated")'))
   })
 

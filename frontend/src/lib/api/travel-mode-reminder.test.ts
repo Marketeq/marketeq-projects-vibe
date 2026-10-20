@@ -38,11 +38,14 @@ describe("15-second reminder mock is removed", () => {
 
 describe("what must stay unchanged in the flow", () => {
   it("activation still records the duration, shows the immediate confirmation and closes the flow", () => {
-    const start = flow.indexOf("const activateTravelMode = () => {")
+    const start = flow.indexOf("const activateTravelMode = async () => {")
     const body = flow.slice(start, flow.indexOf("\n  }\n", start))
-    assert.ok(body.includes("recordTravelDuration(deps, travelDuration, travelClassificationRef.current)"))
+    assert.ok(body.includes("recordTravelDuration(deps, travelDuration)"))
     assert.ok(body.includes("setTravelModeNotificationOpen(true)"))
     assert.ok(body.includes("onOpenChange(false)"))
+    // The confirmation and the close wait for the saved duration.
+    assert.ok(body.indexOf("await travelModeDeps()") < body.indexOf("setTravelModeNotificationOpen(true)"))
+    assert.ok(body.indexOf("if (!saved) return") < body.indexOf("setTravelModeNotificationOpen(true)"))
   })
 
   it("the immediate 'Travel mode is on.' confirmation is intact", () => {

@@ -201,25 +201,20 @@ describe("Travel Mode and location actions route correctly", () => {
     assert.equal(shouldShowLocationMismatchPrompt(null), false)
   })
 
-  it("'I’m still traveling' (Storybook ChangeLocation) records temporarily_traveling and opens the duration screen", async () => {
+  it("'I’m still traveling' (Storybook ChangeLocation) opens the duration screen and saves nothing", async () => {
     assert.ok(page.includes("I’m still traveling"))
     assert.ok(!page.includes("I’m currently traveling"))
-    assert.ok(page.includes("answerTravelerPrompt(startStillTraveling, () => {})"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+    assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startStillTraveling(deps)
-    assert.deepEqual(seen, ["temporarily_traveling"])
     assert.equal(launch.initialState, "traveling-showcase")
   })
 
-  it("'Change my home country' records permanently_relocated and starts from the top", async () => {
+  it("'Change my home country' starts from the top and saves nothing", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes("answerTravelerPrompt(\n        startChangeHomeCountry,"))
-    assert.ok(page.includes("if (result.ok) openFlowFromMismatch(result.value)"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+    assert.ok(page.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)
-    assert.deepEqual(seen, ["permanently_relocated"])
     assert.equal(launch.initialState, undefined)
   })
 

@@ -100,7 +100,6 @@ import {
   shouldShowTravelExpiryPopup,
 } from "@/src/lib/api/travel-expiry-popup"
 import {
-  answerTravelerPrompt,
   markTravelerPromptShown,
   shouldOfferTravelerPrompt,
 } from "@/src/lib/api/travel-location-prompt"
@@ -219,12 +218,13 @@ export default function TalentDashboard() {
   // travel-location-prompt.ts. The login is marked only when a button is chosen.
   // "I'm still traveling" only closes it.
   const [travelerPromptOpen, setTravelerPromptOpen] = useState(false)
-  // Answered during this page load: a later summary read must not reopen it even when
-  // no session id exists to remember the answer.
-  const travelerPromptAnsweredRef = useRef(false)
-  // Records that the traveler prompt was answered in this login (button chosen).
-  const markTravelerPromptAnswered = useCallback(() => {
-    travelerPromptAnsweredRef.current = true
+  // Handled during this page load (a button was chosen and its path started): a later
+  // summary read must not reopen it behind the flow. Memory only, nothing is persisted
+  // here; the per-login marker is written only when the path has completed.
+  const travelerPromptHandledRef = useRef(false)
+  // The one path that completes at its click: write the per-login marker.
+  const markTravelerPromptCompleted = useCallback(() => {
+    travelerPromptHandledRef.current = true
     markTravelerPromptShown(readSessionId(), window.localStorage)
   }, [])
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
@@ -504,7 +504,7 @@ export default function TalentDashboard() {
   // applies; the once-per-login rule is the existing session_id marker, written when the
   // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
   useEffect(() => {
-    if (!travelSummary || travelerPromptAnsweredRef.current) return
+    if (!travelSummary || travelerPromptHandledRef.current) return
     const sessionId = readSessionId()
     if (
       !shouldOfferTravelerPrompt({
@@ -578,6 +578,7 @@ export default function TalentDashboard() {
   // existing verification flow: "currently traveling" on its duration screen, "change my
   // home country" from the top so the home country is confirmed again.
   const openFlowFromMismatch = useCallback((launch: MismatchLaunch) => {
+    travelerPromptHandledRef.current = true
     setDetectedLocation(launch.location)
     setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
     setLocationMismatchOpen(false)
@@ -588,33 +589,37 @@ export default function TalentDashboard() {
   const handleStillTraveling = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      const result = await answerTravelerPrompt(startStillTraveling, () => {})
-      if (result.ok) openFlowFromMismatch(result.value)
+      // Saves nothing: the duration screen's Confirm/Skip is what activates Travel Mode.
+      openFlowFromMismatch(await startStillTraveling())
+    } catch (error) {
+      // Nothing was started: the prompt stays open to try again.
+      console.error("[identity-verification] could not open the flow", error)
     } finally {
       setLocationMismatchBusy(false)
     }
   }, [openFlowFromMismatch])
 
   // "I'm still traveling" for an active traveler: nothing changes. Travel Mode and the
-  // verified home country stay exactly as they are; the prompt just closes.
+  // verified home country stay exactly as they are; the prompt just closes. This is the
+  // one path that completes at the click, so it is the one that marks this login.
   const handleTravelerStillTraveling = useCallback(() => {
-    markTravelerPromptAnswered()
+    markTravelerPromptCompleted()
     setTravelerPromptOpen(false)
-  }, [markTravelerPromptAnswered])
+  }, [markTravelerPromptCompleted])
 
   const handleChangeHomeCountry = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      // A failed start marks nothing and leaves the prompt open to try again.
-      const result = await answerTravelerPrompt(
-        startChangeHomeCountry,
-        travelerPromptOpen ? markTravelerPromptAnswered : () => {}
-      )
-      if (result.ok) openFlowFromMismatch(result.value)
+      // Saves nothing and marks nothing: the claim is created only by the flow's own
+      // explicit country confirmation, and the backend then keeps the prompt quiet.
+      openFlowFromMismatch(await startChangeHomeCountry())
+    } catch (error) {
+      // Nothing was started: the prompt stays open to try again.
+      console.error("[identity-verification] could not open the flow", error)
     } finally {
       setLocationMismatchBusy(false)
     }
-  }, [openFlowFromMismatch, markTravelerPromptAnswered, travelerPromptOpen])
+  }, [openFlowFromMismatch])
 
   const vpnProxyModalCopy =
     vpnProxyResult === "vpn_detected"
