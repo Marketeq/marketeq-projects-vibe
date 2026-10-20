@@ -7271,6 +7271,7 @@ export default function ProjectDetails({
                           if (amount != null && amount > 0) {
                             qs.set("periodAmount", String(Math.round(amount)))
                           }
+                          qs.set("listingId", String(project?.id ?? ""))
                           router.push(
                             `/checkout/project-details?${qs.toString()}`
                           )

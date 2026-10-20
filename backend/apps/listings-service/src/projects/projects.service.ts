@@ -20,6 +20,7 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
+import { RoleRateService } from '../shared/pricing/role-rate.service';
 import { RelatedTermsService } from './related-terms.service';
 import { taxonomyChildren } from './related-taxonomy';
 import { ReportProjectDto } from './dto/report-project.dto';
@@ -270,32 +271,38 @@ export class ProjectsService {
     project: Project,
     ownerView = false,
   ): Promise<{ team: any[]; notShownToClients: string[] }> {
-    const rawRows: Array<{ teamMemberIds: string[]; userId: string | null }> = await this.repo.manager.query(
+    const rawRows: Array<{ teamMemberIds: string[] | null; userId: string | null }> = await this.repo.manager.query(
       `SELECT "teamMemberIds", "userId"::text FROM listings.project WHERE id = $1`,
       [project.id],
     );
     const row = rawRows[0];
-    const memberIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
+    const rosterIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
       ? row.teamMemberIds
       : row?.userId ? [row.userId] : [];
-    if (!memberIds.length) return { team: [], notShownToClients: [] };
 
     const statusRows: Array<{ userId: string; status: string }> = await this.repo.manager.query(
       `SELECT "userId"::text, "status" FROM listings.project_members WHERE "projectId" = $1`,
       [project.id],
     );
-    const inactiveIds = new Set(
-      statusRows.filter((r) => r.status === 'Inactive').map((r) => r.userId),
+
+    const hiddenIds = new Set(
+      statusRows
+        .filter((r) => r.status === 'Inactive' || r.status === 'Declined')
+        .map((r) => r.userId),
     );
+    const activeIds = Array.from(
+      new Set([...rosterIds, ...statusRows.map((r) => r.userId)]),
+    ).filter((id) => !hiddenIds.has(id));
     // G5: a member whose gate is closed is omitted from the client-facing roster
     // (one batch request for the whole roster). Unknown reads as omitted.
-    const activeIds = memberIds.filter((id) => !inactiveIds.has(id));
     // The owner's own view lists every member (and marks the ones clients do not
     // see); every other view lists only members with a known open gate.
     const gateOpenIds = await this.rosterGate.visibleUserIds(activeIds);
     const notShownToClients = ownerView ? activeIds.filter((id) => !gateOpenIds.has(id)) : [];
     const visibleIds = ownerView ? activeIds : activeIds.filter((id) => gateOpenIds.has(id));
     if (!visibleIds.length) return { team: [], notShownToClients };
+
+    const statusByUser = new Map(statusRows.map((r) => [r.userId, r.status]));
 
     const [profileUsers, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
@@ -373,58 +380,77 @@ export class ProjectsService {
     });
 
     const ownerUserId = String(project.userId ?? '');
-    const team = users
-      .map((u) => ({
-        id: u.id,
-        firstName: u.firstName ?? '',
-        lastName: u.lastName ?? '',
-        name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
-        username: u.username ?? u.id,
-        avatarUrl: u.avatarUrl ?? null,
-        role: u.recentJobTitle ?? 'Team Member',
-        location: u.location ?? null,
+    const members = await Promise.all(
+      users.map(async (u) => {
+        const experienceLevel = experienceLevelByUser.get(u.id) ?? null;
+        const role = u.recentJobTitle ?? 'Team Member';
         // `rate` is a Postgres `numeric` column — node-postgres returns those
         // as strings (not numbers) to avoid precision loss, so coerce here
         // rather than leaking that quirk to callers expecting a real number.
-        rate: u.rate != null ? Number(u.rate) : (u.rateMin ?? null),
-        experienceLevel: experienceLevelByUser.get(u.id) ?? null,
-        isLead: u.id === String(project.userId),
-        isOnline: false,
-        skills: skillsByUser.get(u.id) ?? [],
-        languages: langsByUser.get(u.id) ?? [],
-      }))
-      .sort((a, b) => {
-        if (a.id === ownerUserId) return -1;
-        if (b.id === ownerUserId) return 1;
-        return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
-      });
+        let rate = u.rate != null ? Number(u.rate) : (u.rateMin ?? null);
+        // No profile rate on file — ask pricing-service for a role-based
+        // estimate instead of leaving the checkout page to invent one.
+        if (rate == null) {
+          const rateUsdCents = await this.roleRateService.getRateUsdCents(
+            role,
+            u.location,
+            experienceLevel,
+          );
+          rate = Math.round(rateUsdCents) / 100;
+        }
+        return {
+          id: u.id,
+          firstName: u.firstName ?? '',
+          lastName: u.lastName ?? '',
+          name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+          username: u.username ?? u.id,
+          avatarUrl: u.avatarUrl ?? null,
+          role,
+          location: u.location ?? null,
+          rate,
+          experienceLevel,
+          isLead: u.id === String(project.userId),
+          isOnline: false,
+          skills: skillsByUser.get(u.id) ?? [],
+          languages: langsByUser.get(u.id) ?? [],
+          status: statusByUser.get(u.id) ?? 'Active',
+        };
+      }),
+    );
+
+    const team = members.sort((a, b) => {
+      if (a.id === ownerUserId) return -1;
+      if (b.id === ownerUserId) return 1;
+      return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
+    });
     return { team, notShownToClients };
   }
 
-  // Sum of actual work durations across a user's experience rows, bucketed
-  // into the same Student/Junior/Mediator/Senior/Guru brackets the
+  // Total actual time-worked across a user's real work-experience rows
+  // (each entry's own duration summed, not the span from earliest start to
+  // latest end — overlapping/gapped entries must not inflate the total),
+  // bucketed into the same Student/Junior/Mediator/Senior/Guru brackets the
   // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
-  // years). Each entry contributes its own (end - start) individually so
-  // career gaps don't inflate the total.
+  // years) — see the Dropdown component in
+  // frontend/app/checkout/[slug]/page.tsx.
   private resolveExperienceLevel(
     entries: Array<{ startDate: string | null; endDate: string | null }>,
   ): string | null {
-    const MS_PER_YEAR = 1000 * 60 * 60 * 24 * 365.25;
+    const msPerYear = 1000 * 60 * 60 * 24 * 365.25;
     let totalMs = 0;
-    let validEntries = 0;
-
+    let hasEntry = false;
     for (const entry of entries) {
       const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
       if (Number.isNaN(start)) continue;
-      const end = entry.endDate ? Date.parse(entry.endDate) : Date.now();
-      if (end > start) {
-        totalMs += end - start;
-        validEntries++;
-      }
+      const end = entry.endDate ? Date.parse(entry.endDate) : NaN;
+      const resolvedEnd = Number.isNaN(end) ? Date.now() : end;
+      if (resolvedEnd <= start) continue;
+      hasEntry = true;
+      totalMs += resolvedEnd - start;
     }
-    if (!validEntries) return null;
+    if (!hasEntry) return null;
 
-    const years = totalMs / MS_PER_YEAR;
+    const years = totalMs / msPerYear;
 
     if (years < 2) return 'Student';
     if (years < 3) return 'Junior';
