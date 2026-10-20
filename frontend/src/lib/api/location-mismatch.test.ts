@@ -132,7 +132,7 @@ describe("when the prompt shows", () => {
   })
 })
 
-describe("I’m currently traveling", () => {
+describe("I’m still traveling (returning user, no Travel Mode in force)", () => {
   it("records Temporarily traveling, then opens the existing duration screen", async () => {
     const { d, calls } = deps()
     const launch = await startStillTraveling(d)
@@ -173,7 +173,7 @@ describe("Change my home country", () => {
 })
 
 describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
-  const start = page.indexOf("open={locationMismatchOpen}")
+  const start = page.indexOf("open={locationMismatchOpen || travelerPromptOpen}")
   const dialog = page.slice(
     page.lastIndexOf("<Dialog", start),
     page.indexOf("</Dialog>", start)
@@ -188,7 +188,7 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
     assert.ok(dialog.includes("checking if you’re still away."))
     assert.match(
       dialog,
-      /onClick=\{\(\) => void handleStillTraveling\(\)\}[\s\S]*I’m currently traveling/
+      /void handleStillTraveling\(\)[\s\S]*I’m still traveling/
     )
     assert.match(
       dialog,

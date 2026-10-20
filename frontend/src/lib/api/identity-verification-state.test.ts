@@ -95,6 +95,7 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       travelReminderAvailableAt: null,
       // the append-only returning-user new-location signal: absent from this body, so null
       locationMismatch: null,
+      travelModeLocationMismatch: null,
     })
   })
 

@@ -8,7 +8,8 @@
 //   shown      locationMismatch === true, and no other verification surface owns the
 //              screen (the first-time gate or the "three attempts" dialog). The
 //              first-time flow is never touched by this prompt.
-//   "I'm currently traveling" records Temporarily traveling, then opens the EXISTING flow on
+//   "I'm still traveling" (returning user, no Travel Mode in force) records Temporarily
+//              traveling, then opens the EXISTING flow on
 //              its "How long are you traveling?" screen. If recording fails the flow opens
 //              on "Tell us more about your current location", whose own Temporarily
 //              traveling button records it again, so the duration step never runs without
@@ -56,6 +57,20 @@ export function shouldShowLocationMismatchPrompt(
   summary: IdentityVerificationSummaryView | null
 ): boolean {
   if (summary?.locationMismatch !== true) return false
+  return !shouldOpenFirstTimeGate(summary) && cooldownRetryAt(summary) === null
+}
+
+/**
+ * The "still traveling?" prompt for an account whose Travel Mode is in force: the
+ * backend says it was detected in a country other than its verified home country
+ * (travelModeLocationMismatch). It uses the same ChangeLocation dialog and the same
+ * exclusions as the returning-user prompt (no other verification surface owns the
+ * screen). WHEN to show it (once per login) is decided in travel-location-prompt.ts.
+ */
+export function shouldShowTravelerLocationPrompt(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  if (summary?.travelModeLocationMismatch !== true) return false
   return !shouldOpenFirstTimeGate(summary) && cooldownRetryAt(summary) === null
 }
 

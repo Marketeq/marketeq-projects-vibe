@@ -75,6 +75,7 @@ import {
 import {
   createReturnReconciler,
   fetchIdentityVerificationSummary,
+  shouldShowPendingModal,
   shouldShowSuccessModal,
   type IdentityVerificationSummaryView,
 } from "@/src/lib/api/identity-verification-state"
@@ -91,6 +92,10 @@ import {
   readSessionId,
   shouldShowTravelExpiryPopup,
 } from "@/src/lib/api/travel-expiry-popup"
+import {
+  markTravelerPromptShown,
+  shouldOfferTravelerPrompt,
+} from "@/src/lib/api/travel-location-prompt"
 import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
@@ -192,6 +197,10 @@ export default function TalentDashboard() {
   // locationMismatch decides; closing it unanswered only hides it for this page load.
   const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
   const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
+  // The same dialog for an account whose Travel Mode is in force and that was detected
+  // in another country (travelModeLocationMismatch). Offered once per login: see
+  // travel-location-prompt.ts. "I'm still traveling" only closes it.
+  const [travelerPromptOpen, setTravelerPromptOpen] = useState(false)
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
@@ -229,6 +238,9 @@ export default function TalentDashboard() {
   // refresh remain as fallbacks (GET only — never another reconcile). Nothing is read
   // from the URL Didit returns to, and no attempt/cooldown/status rule lives here.
   const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
+  // "Your verification has been submitted": shown once when this browser comes back
+  // from Didit and the backend says the session is in review. Done only closes it.
+  const [pendingModalOpen, setPendingModalOpen] = useState(false)
   // Success alert (Figma node 13101-47566): shown only AFTER the user clicks the
   // success modal's own Done button, never while the modal is open.
   const [successAlertOpen, setSuccessAlertOpen] = useState(false)
@@ -262,6 +274,15 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        return
+      }
+      // Back from Didit with the session in review: tell the user once. The result
+      // arrives later as a notification, so this browser stops waiting for it.
+      if (shouldShowPendingModal(summary)) {
+        clearAwaitingResult(window.localStorage)
+        setVerificationGateOpen(false)
+        setProfileBannerShown(false)
+        setPendingModalOpen(true)
         return
       }
       // The banner or gate may have opened from an earlier read, before this result
@@ -422,6 +443,26 @@ export default function TalentDashboard() {
     }
   }, [travelSummary])
 
+  // "Still traveling?" for an account whose Travel Mode is in force and that logged in
+  // from a country other than its verified home country. The backend decides whether it
+  // applies; the once-per-login rule is the existing session_id marker. Opening it marks
+  // this login, so a refresh or a later read never repeats it.
+  useEffect(() => {
+    if (!travelSummary) return
+    const sessionId = readSessionId()
+    if (
+      !shouldOfferTravelerPrompt({
+        summary: travelSummary,
+        sessionId,
+        storage: window.localStorage,
+      })
+    ) {
+      return
+    }
+    markTravelerPromptShown(sessionId, window.localStorage)
+    setTravelerPromptOpen(true)
+  }, [travelSummary])
+
   // Travel Mode day-3 / day-7 reminders. If /me says one is due it is CLAIMED first and
   // shown only when the backend answers { claimed: true } (so of several tabs only the
   // winner shows it); if it is in the future one timer is set for that time. No polling.
@@ -485,6 +526,7 @@ export default function TalentDashboard() {
     setDetectedLocation(launch.location)
     setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
     setLocationMismatchOpen(false)
+    setTravelerPromptOpen(false)
     setIdentityFlowOpen(true)
   }, [])
 
@@ -496,6 +538,12 @@ export default function TalentDashboard() {
       setLocationMismatchBusy(false)
     }
   }, [openFlowFromMismatch])
+
+  // "I'm still traveling" for an active traveler: nothing changes. Travel Mode and the
+  // verified home country stay exactly as they are; the prompt just closes.
+  const handleTravelerStillTraveling = useCallback(() => {
+    setTravelerPromptOpen(false)
+  }, [])
 
   const handleChangeHomeCountry = useCallback(async () => {
     setLocationMismatchBusy(true)
@@ -609,6 +657,29 @@ export default function TalentDashboard() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={pendingModalOpen} onOpenChange={setPendingModalOpen}>
+        <DialogContent className="max-w-[456px] pt-[50px]">
+          <div className="flex items-center justify-center">
+            <div className="size-12 rounded-full border-[8px] inline-flex items-center justify-center text-success-600 border-success-50 bg-success-100">
+              <CheckCircle className="size-6" />
+            </div>
+          </div>
+
+          <h1 className="text-lg text-center text-dark-blue-400 mt-5 font-semibold leading-7">
+            Your verification has been submitted
+          </h1>
+          <DialogDescription className="text-sm text-center text-dark-blue-400 leading-5 mt-2">
+            Once approved, your new location will be confirmed and your profile
+            will be updated. You’ll receive a notification when the verification
+            is complete.
+          </DialogDescription>
+
+          <div className="mt-[50px] grid">
+            <Button onClick={() => setPendingModalOpen(false)}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={cooldownRetryTime !== null}
         onOpenChange={(open) => {
@@ -633,7 +704,14 @@ export default function TalentDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={locationMismatchOpen} onOpenChange={setLocationMismatchOpen}>
+      <Dialog
+        open={locationMismatchOpen || travelerPromptOpen}
+        onOpenChange={(open) => {
+          if (open) return
+          setLocationMismatchOpen(false)
+          setTravelerPromptOpen(false)
+        }}
+      >
         <DialogContent className="w-[456px]">
           <div className="flex items-center justify-center">
             <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
@@ -651,9 +729,13 @@ export default function TalentDashboard() {
               variant="outlined"
               size="md"
               disabled={locationMismatchBusy}
-              onClick={() => void handleStillTraveling()}
+              onClick={() =>
+                travelerPromptOpen
+                  ? handleTravelerStillTraveling()
+                  : void handleStillTraveling()
+              }
             >
-              I’m currently traveling
+              I’m still traveling
             </Button>
             <Button
               size="md"

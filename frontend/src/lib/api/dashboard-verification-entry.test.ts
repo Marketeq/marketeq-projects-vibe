@@ -201,8 +201,9 @@ describe("Travel Mode and location actions route correctly", () => {
     assert.equal(shouldShowLocationMismatchPrompt(null), false)
   })
 
-  it("'I’m currently traveling' records temporarily_traveling and opens the duration screen", async () => {
-    assert.ok(page.includes("I’m currently traveling"))
+  it("'I’m still traveling' (Storybook ChangeLocation) records temporarily_traveling and opens the duration screen", async () => {
+    assert.ok(page.includes("I’m still traveling"))
+    assert.ok(!page.includes("I’m currently traveling"))
     assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
     const seen: string[] = []
     const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
