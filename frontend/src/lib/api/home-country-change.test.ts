@@ -453,17 +453,14 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
     assert.ok(open.includes("setIdentityFlowOpen(true)"))
   })
 
-  it("the traveler prompt is offered only through the per-login rule, and marked when opened", () => {
+  it("the traveler prompt is offered only through the per-login rule, and marked only when answered", () => {
     const effect = page.slice(
       page.indexOf("shouldOfferTravelerPrompt({"),
       page.indexOf("setTravelerPromptOpen(true)") + 40
     )
     assert.ok(effect.includes("summary: travelSummary"))
     assert.ok(effect.includes("sessionId"))
-    assert.ok(
-      effect.indexOf("markTravelerPromptShown") <
-        effect.indexOf("setTravelerPromptOpen(true)")
-    )
+    assert.ok(!effect.includes("markTravelerPromptShown"), "opening marks nothing")
   })
 
   it("the pending modal uses the approved Storybook copy and a single Done button that only closes it", () => {

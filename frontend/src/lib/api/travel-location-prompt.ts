@@ -9,9 +9,11 @@
 // the prompt appears once per login, never on every page load.
 //
 //   offered  the backend signal is true AND it was not already offered in this login.
-//   marking  localStorage["travelLocationPromptShown:<sid>"] is set when the prompt is
-//            opened, and the marker of every other session is removed, so at most ONE
-//            marker ever exists.
+//   marking  localStorage["travelLocationPromptShown:<sid>"] is set only once the user
+//            has ANSWERED the prompt (one of its two buttons; it cannot be dismissed
+//            any other way), and the marker of every other session is removed, so at
+//            most ONE marker ever exists. Opening it marks nothing, so an unanswered
+//            prompt comes back after a refresh.
 //   no session id  the prompt is offered and nothing is persisted (it may reappear after
 //            a refresh); a marker never leaks across logins.
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
@@ -48,7 +50,7 @@ export function shouldOfferTravelerPrompt(input: TravelerPromptInput): boolean {
 }
 
 /**
- * Remembers that the prompt was offered in this login. Keeps exactly one marker:
+ * Remembers that the prompt was answered in this login. Keeps exactly one marker:
  * every marker for another session id is removed first. A no-op without a session id.
  */
 export function markTravelerPromptShown(
@@ -73,6 +75,25 @@ export function markTravelerPromptShown(
     storage.setItem(current, "1")
   } catch {
     // storage unavailable: it simply reappears after a refresh
+  }
+}
+
+/**
+ * Runs the action behind one of the prompt's two buttons. The prompt counts as answered
+ * (markAnswered) only after `start` succeeds; if it throws, nothing is marked and the
+ * prompt stays available for another try.
+ */
+export async function answerTravelerPrompt<T>(
+  start: () => Promise<T>,
+  markAnswered: () => void
+): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    const value = await start()
+    markAnswered()
+    return { ok: true, value }
+  } catch (error) {
+    console.error("[identity-verification] location prompt action failed", error)
+    return { ok: false }
   }
 }
 

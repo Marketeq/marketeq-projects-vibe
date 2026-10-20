@@ -204,7 +204,7 @@ describe("Travel Mode and location actions route correctly", () => {
   it("'I’m still traveling' (Storybook ChangeLocation) records temporarily_traveling and opens the duration screen", async () => {
     assert.ok(page.includes("I’m still traveling"))
     assert.ok(!page.includes("I’m currently traveling"))
-    assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
+    assert.ok(page.includes("answerTravelerPrompt(startStillTraveling, () => {})"))
     const seen: string[] = []
     const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startStillTraveling(deps)
@@ -214,7 +214,8 @@ describe("Travel Mode and location actions route correctly", () => {
 
   it("'Change my home country' records permanently_relocated and starts from the top", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
+    assert.ok(page.includes("answerTravelerPrompt(\n        startChangeHomeCountry,"))
+    assert.ok(page.includes("if (result.ok) openFlowFromMismatch(result.value)"))
     const seen: string[] = []
     const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)

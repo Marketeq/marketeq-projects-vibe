@@ -100,6 +100,7 @@ import {
   shouldShowTravelExpiryPopup,
 } from "@/src/lib/api/travel-expiry-popup"
 import {
+  answerTravelerPrompt,
   markTravelerPromptShown,
   shouldOfferTravelerPrompt,
 } from "@/src/lib/api/travel-location-prompt"
@@ -209,13 +210,23 @@ export default function TalentDashboard() {
     activeTravelModeUpdate?: boolean
   }>({ key: 0 })
   // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
-  // locationMismatch decides; closing it unanswered only hides it for this page load.
+  // locationMismatch decides. It has only its two buttons: no outside click, no Escape,
+  // no X, so it is closed only by answering it.
   const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
   const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
   // The same dialog for an account whose Travel Mode is in force and that was detected
   // in another country (travelModeLocationMismatch). Offered once per login: see
-  // travel-location-prompt.ts. "I'm still traveling" only closes it.
+  // travel-location-prompt.ts. The login is marked only when a button is chosen.
+  // "I'm still traveling" only closes it.
   const [travelerPromptOpen, setTravelerPromptOpen] = useState(false)
+  // Answered during this page load: a later summary read must not reopen it even when
+  // no session id exists to remember the answer.
+  const travelerPromptAnsweredRef = useRef(false)
+  // Records that the traveler prompt was answered in this login (button chosen).
+  const markTravelerPromptAnswered = useCallback(() => {
+    travelerPromptAnsweredRef.current = true
+    markTravelerPromptShown(readSessionId(), window.localStorage)
+  }, [])
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
@@ -490,10 +501,10 @@ export default function TalentDashboard() {
 
   // "Still traveling?" for an account whose Travel Mode is in force and that logged in
   // from a country other than its verified home country. The backend decides whether it
-  // applies; the once-per-login rule is the existing session_id marker. Opening it marks
-  // this login, so a refresh or a later read never repeats it.
+  // applies; the once-per-login rule is the existing session_id marker, written when the
+  // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
   useEffect(() => {
-    if (!travelSummary) return
+    if (!travelSummary || travelerPromptAnsweredRef.current) return
     const sessionId = readSessionId()
     if (
       !shouldOfferTravelerPrompt({
@@ -504,7 +515,6 @@ export default function TalentDashboard() {
     ) {
       return
     }
-    markTravelerPromptShown(sessionId, window.localStorage)
     setTravelerPromptOpen(true)
   }, [travelSummary])
 
@@ -578,7 +588,8 @@ export default function TalentDashboard() {
   const handleStillTraveling = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      openFlowFromMismatch(await startStillTraveling())
+      const result = await answerTravelerPrompt(startStillTraveling, () => {})
+      if (result.ok) openFlowFromMismatch(result.value)
     } finally {
       setLocationMismatchBusy(false)
     }
@@ -587,17 +598,23 @@ export default function TalentDashboard() {
   // "I'm still traveling" for an active traveler: nothing changes. Travel Mode and the
   // verified home country stay exactly as they are; the prompt just closes.
   const handleTravelerStillTraveling = useCallback(() => {
+    markTravelerPromptAnswered()
     setTravelerPromptOpen(false)
-  }, [])
+  }, [markTravelerPromptAnswered])
 
   const handleChangeHomeCountry = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      openFlowFromMismatch(await startChangeHomeCountry())
+      // A failed start marks nothing and leaves the prompt open to try again.
+      const result = await answerTravelerPrompt(
+        startChangeHomeCountry,
+        travelerPromptOpen ? markTravelerPromptAnswered : () => {}
+      )
+      if (result.ok) openFlowFromMismatch(result.value)
     } finally {
       setLocationMismatchBusy(false)
     }
-  }, [openFlowFromMismatch])
+  }, [openFlowFromMismatch, markTravelerPromptAnswered, travelerPromptOpen])
 
   const vpnProxyModalCopy =
     vpnProxyResult === "vpn_detected"
@@ -751,13 +768,12 @@ export default function TalentDashboard() {
 
       <Dialog
         open={locationMismatchOpen || travelerPromptOpen}
-        onOpenChange={(open) => {
-          if (open) return
-          setLocationMismatchOpen(false)
-          setTravelerPromptOpen(false)
-        }}
       >
-        <DialogContent className="w-[456px]">
+        <DialogContent
+          className="w-[456px]"
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <div className="flex items-center justify-center">
             <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
               <AlertTriangle className="size-6" />
