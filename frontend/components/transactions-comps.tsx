@@ -7769,6 +7769,17 @@ export const OverviewTab = ({
                       const belowMinimum =
                         withdrawableUsd !== null && withdrawableUsd < 50
                       const isLoading = withdrawableUsd === null
+                      // BTB-345: the dialog only offers verified methods
+                      // (withdraw-funds-dialog loadMethods), so with none the
+                      // user typed an amount only to hit a dead end on the
+                      // method step. Not applied while methods are loading
+                      // or failed to load — that is unknown, not "none".
+                      const noVerifiedMethod =
+                        !methodsLoading &&
+                        !methodsError &&
+                        !methods.some(
+                          (m) => m.verificationStatus === "verified"
+                        )
                       return (
                         <div className="flex items-center gap-4">
                           <TooltipProvider>
@@ -7780,20 +7791,33 @@ export const OverviewTab = ({
                                     visual="gray"
                                     size="sm"
                                     className="font-semibold text-[#22376B]"
-                                    disabled={belowMinimum || isLoading}
+                                    disabled={
+                                      belowMinimum ||
+                                      isLoading ||
+                                      noVerifiedMethod
+                                    }
                                     onClick={() => setWithdrawOpen(true)}
                                   >
                                     Withdraw Funds
                                   </Button>
                                 </span>
                               </TooltipTrigger>
-                              {belowMinimum && (
+                              {belowMinimum ? (
                                 <TooltipContent>
                                   <p>
                                     You don&apos;t have any earnings to withdraw
                                     yet.
                                   </p>
                                 </TooltipContent>
+                              ) : (
+                                noVerifiedMethod && (
+                                  <TooltipContent>
+                                    <p>
+                                      Add a verified deposit method to withdraw
+                                      funds.
+                                    </p>
+                                  </TooltipContent>
+                                )
                               )}
                             </Tooltip>
                           </TooltipProvider>
@@ -9364,29 +9388,27 @@ function toActivityItem(p: {
   const sortAt = new Date(at).getTime()
   const method = p.methodLabel ?? "your payout method"
   const amount = parseFloat(p.amountUsd).toFixed(2)
+  // BTB-343: Figma names the two withdrawal events "Deposit Initiated" (the
+  // withdrawal was started and is on its way) and "Deposit Sent" (it left).
+  // pending_verification and awaiting_edd used to fall through to "Payout
+  // Scheduled", so a just-started instant withdrawal never read as started.
   switch (p.status) {
     case "completed":
       return {
         id: p.id,
-        title: "Payout Completed",
+        title: "Deposit Sent",
         description: `$${amount} to ${method}`,
         time,
         kind: "sent" as const,
         sortAt,
       }
+    case "pending_verification":
+    case "awaiting_edd":
+    case "queued":
     case "processing":
       return {
         id: p.id,
-        title: "Payout Processing",
-        description: `$${amount} to ${method}`,
-        time,
-        kind: "processing" as const,
-        sortAt,
-      }
-    case "queued":
-      return {
-        id: p.id,
-        title: "Payout Queued",
+        title: "Deposit Initiated",
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
