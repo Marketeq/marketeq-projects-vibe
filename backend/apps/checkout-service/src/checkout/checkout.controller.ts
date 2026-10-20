@@ -213,6 +213,35 @@ export class CheckoutController {
     return this.checkoutDraftPricingService.getCodes(clientId, draftId);
   }
 
+  @Post("session/:sessionId/apply-code")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  async applySessionCode(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @ClientId() clientId: string,
+    @Body() dto: ApplyDraftCodeDto,
+  ) {
+    return this.checkoutDraftSessionService.applySessionCode(
+      clientId,
+      sessionId,
+      dto,
+    );
+  }
+
+  @Delete("session/:sessionId/apply-code/:code")
+  @UseGuards(InternalTokenGuard)
+  async removeSessionCode(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Param('code') code: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.removeSessionCode(
+      clientId,
+      sessionId,
+      code,
+    );
+  }
+
   @Delete("drafts/:draftId/apply-code/:code")
   @UseGuards(InternalTokenGuard)
   async removeDraftCode(

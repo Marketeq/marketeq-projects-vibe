@@ -63,6 +63,12 @@ export const PROMO_ALREADY_APPLIED_MESSAGE =
 export const PROMO_UNAVAILABLE_MESSAGE =
   'We were unable to validate your promo code at this time. Please try again.';
 
+const GIFT_CARD_REJECTION_CODES: Record<string, string> = {
+  not_found: 'GIFT_CARD_NOT_FOUND',
+  expired: 'GIFT_CARD_EXPIRED',
+  used_up: 'GIFT_CARD_USED_UP',
+};
+
 const REJECTION_MESSAGES: Record<DraftCodeType, Record<string, string>> = {
   gift_card: {
     not_found: 'This gift card code is not valid',
@@ -102,21 +108,26 @@ export class CheckoutDraftCodeService {
     return { giftCards, promo };
   }
 
-  async applyCode(clientId: string, draftId: string, dto: ApplyDraftCodeDto) {
+  async applyCode(
+    clientId: string,
+    draftId: string,
+    dto: ApplyDraftCodeDto,
+    options: { keepSession?: boolean } = {},
+  ) {
     const { type, code } = dto;
     return this.dataSource.transaction(async (manager) => {
       const draft = await loadOwnedDraft(manager, clientId, draftId, {
         lock: true,
       });
       if (type === 'promo') {
-        await this.applyPromo(manager, draft, code);
+        await this.applyPromo(manager, draft, code, options);
         return;
       }
       const current = this.codesOf(draft, type);
 
       if (!current.some((item) => sameCode(type, item, code))) {
         if (type === 'gift_card') await this.assertGiftCardsUnlocked(clientId);
-        await releaseSession(manager, draft);
+        if (!options.keepSession) await releaseSession(manager, draft);
         const [entry] = await this.verifyCodes(
           type,
           [code],
@@ -124,21 +135,26 @@ export class CheckoutDraftCodeService {
           manager,
         );
         if (entry.status === 'unverified') {
-          throw new BadGatewayException('Could not verify the code right now');
+          throw new BadGatewayException({
+            code: 'GIFT_CARD_UNAVAILABLE',
+            message: 'Could not verify the code right now',
+          });
         }
         if (type === 'gift_card' && entry.status === 'not_found') {
           const lockedUntil = await this.recordFailedGiftCardAttempt(clientId);
           if (lockedUntil) throw this.giftCardLockedError(lockedUntil);
         }
         if (entry.status !== 'valid') {
-          throw new BadRequestException(
-            REJECTION_MESSAGES[type][entry.status],
-          );
+          throw new BadRequestException({
+            code: GIFT_CARD_REJECTION_CODES[entry.status],
+            message: REJECTION_MESSAGES[type][entry.status],
+          });
         }
         if (type === 'gift_card' && current.length >= MAX_GIFT_CARDS) {
-          throw new BadRequestException(
-            `You can apply up to ${MAX_GIFT_CARDS} gift cards`,
-          );
+          throw new BadRequestException({
+            code: 'GIFT_CARD_LIMIT',
+            message: `You can apply up to ${MAX_GIFT_CARDS} gift cards`,
+          });
         }
         const next = [...current, code];
         await manager.update(
@@ -217,7 +233,12 @@ export class CheckoutDraftCodeService {
     }
   }
 
-  async removeCode(clientId: string, draftId: string, rawCode: string) {
+  async removeCode(
+    clientId: string,
+    draftId: string,
+    rawCode: string,
+    options: { keepSession?: boolean } = {},
+  ) {
     const code = rawCode.trim().toUpperCase();
     return this.dataSource.transaction(async (manager) => {
       const draft = await loadOwnedDraft(manager, clientId, draftId, {
@@ -227,7 +248,7 @@ export class CheckoutDraftCodeService {
         ? await manager.findOne(PromoCode, { where: { id: draft.promoCode } })
         : null;
       if (promoRow && promoRow.code.trim().toUpperCase() === code) {
-        await releaseSession(manager, draft);
+        if (!options.keepSession) await releaseSession(manager, draft);
         await manager.update(CheckoutDraft, draft.id, { promoCode: null });
         Object.assign(draft, { promoCode: null });
       }
@@ -235,7 +256,7 @@ export class CheckoutDraftCodeService {
       const current = this.codesOf(draft, 'gift_card');
 
       if (current.some((item) => sameCode('gift_card', item, code))) {
-        await releaseSession(manager, draft);
+        if (!options.keepSession) await releaseSession(manager, draft);
         const next = current.filter(
           (item) => !sameCode('gift_card', item, code),
         );
@@ -253,6 +274,7 @@ export class CheckoutDraftCodeService {
     manager: EntityManager,
     draft: CheckoutDraft,
     code: string,
+    options: { keepSession?: boolean } = {},
   ) {
     let row: PromoCode | null;
     try {
@@ -289,7 +311,7 @@ export class CheckoutDraftCodeService {
       });
     }
 
-    await releaseSession(manager, draft);
+    if (!options.keepSession) await releaseSession(manager, draft);
     await manager.update(CheckoutDraft, draft.id, { promoCode: row.id });
   }
 

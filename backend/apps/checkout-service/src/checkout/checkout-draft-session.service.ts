@@ -20,6 +20,8 @@ import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
 import { CheckoutDraftService } from './checkout-draft.service';
 import { CheckoutDraftCodeService } from './checkout-draft-code.service';
+import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.service';
+import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
 export const SESSION_EXPIRY_MINUTES = 30;
@@ -39,6 +41,7 @@ export class CheckoutDraftSessionService {
     private readonly summaryService: CheckoutSummaryService,
     private readonly draftService: CheckoutDraftService,
     private readonly codeService: CheckoutDraftCodeService,
+    private readonly pricingService: CheckoutDraftPricingService,
   ) {}
 
   async getSession(clientId: string, sessionId: string) {
@@ -58,6 +61,7 @@ export class CheckoutDraftSessionService {
       giftCardCodes: [],
       promoCode: session.appliedPromoCode,
     });
+    const giftCardLock = await this.codeService.getGiftCardLock(clientId);
 
     return {
       sessionId: session.id,
@@ -84,7 +88,74 @@ export class CheckoutDraftSessionService {
                 : 0,
           }
         : null,
+      giftCardLockedUntil: giftCardLock.lockedUntil
+        ? giftCardLock.lockedUntil.toISOString()
+        : null,
     };
+  }
+
+  async applySessionCode(
+    clientId: string,
+    sessionId: string,
+    dto: ApplyDraftCodeDto,
+  ) {
+    const draft = await this.loadActiveSessionDraft(clientId, sessionId);
+    await this.codeService.applyCode(clientId, draft.id, dto, {
+      keepSession: true,
+    });
+    return this.refreshSessionCodes(clientId, sessionId, draft.id);
+  }
+
+  async removeSessionCode(clientId: string, sessionId: string, code: string) {
+    const draft = await this.loadActiveSessionDraft(clientId, sessionId);
+    await this.codeService.removeCode(clientId, draft.id, code, {
+      keepSession: true,
+    });
+    return this.refreshSessionCodes(clientId, sessionId, draft.id);
+  }
+
+  private async loadActiveSessionDraft(clientId: string, sessionId: string) {
+    const session = await this.dataSource.manager.findOne(CheckoutSession, {
+      where: { id: sessionId, clientId },
+    });
+    if (!session) throw new NotFoundException('Session not found');
+    if (session.status === 'success') {
+      throw new ConflictException({
+        code: 'SESSION_ALREADY_PAID',
+        message: 'This checkout has already been paid',
+      });
+    }
+    if (
+      session.status !== 'pending' ||
+      (await this.isPastExpiry(this.dataSource.manager, session.id))
+    ) {
+      throw new ConflictException({
+        code: 'SESSION_NOT_ACTIVE',
+        message: 'This checkout session is no longer active',
+      });
+    }
+    const draft = await this.dataSource.manager.findOne(CheckoutDraft, {
+      where: { sessionId, clientId },
+    });
+    if (!draft) throw new NotFoundException('Draft not found');
+    return draft;
+  }
+
+  private async refreshSessionCodes(
+    clientId: string,
+    sessionId: string,
+    draftId: string,
+  ) {
+    const pricing = await this.pricingService.getPricing(clientId, draftId);
+    const draft = await this.dataSource.manager.findOneOrFail(CheckoutDraft, {
+      where: { id: draftId },
+    });
+    const frozen = this.freezeCodes(pricing, draft);
+    await this.dataSource.manager.update(CheckoutSession, sessionId, {
+      appliedGiftCards: frozen.appliedGiftCards,
+      appliedPromoCode: frozen.appliedPromoCode,
+    });
+    return this.getSession(clientId, sessionId);
   }
 
   async createSession(

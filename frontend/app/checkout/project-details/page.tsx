@@ -72,7 +72,11 @@ import {
   findDuplicatedPhase,
   syncScopeChanges,
 } from "@/lib/checkout/scope-sync"
-import { getCheckoutValidationMessage } from "@/lib/checkout/validation-messages"
+import {
+  GIFT_CARD_ERROR_FALLBACK_MESSAGE,
+  getCheckoutValidationMessage,
+  getGiftCardErrorMessage,
+} from "@/lib/checkout/validation-messages"
 import {
   taskWorkingDays,
   workingDaysToCalendarDays,
@@ -118,6 +122,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -664,6 +669,7 @@ const isCompleteGiftCardCode = (value: string) =>
 const getGiftCardEnding = (code: string) =>
   `*${code.replace(/-/g, "").slice(-4)}`
 
+
 const REJECTED_CODE_REASONS: Record<string, string> = {
   expired: "has expired",
   used_up: "has no balance left",
@@ -856,9 +862,9 @@ function CheckoutPageInner() {
   const [isValidating, setIsValidating] = React.useState(false)
   const [pricingRefreshKey, setPricingRefreshKey] = React.useState(0)
   const refreshPricing = React.useCallback(
-    (kind: "cost" | "credits" = "cost") => {
+    (kind: "cost" | "credits" | "silent" = "cost") => {
       if (kind === "cost") setIsCostFetching(true)
-      else setIsCreditsFetching(true)
+      else if (kind === "credits") setIsCreditsFetching(true)
       setPricingRefreshKey((count) => count + 1)
     },
     []
@@ -959,6 +965,10 @@ function CheckoutPageInner() {
     "gift-card" | "promo-code"
   >("gift-card")
   const [giftCardCode, setGiftCardCode] = React.useState("")
+  const [giftCardMessage, setGiftCardMessage] = React.useState(
+    GIFT_CARD_ERROR_FALLBACK_MESSAGE
+  )
+  const [duplicateGiftCard, setDuplicateGiftCard] = React.useState("")
   const [giftCardStatus, setGiftCardStatus] = React.useState<
     "idle" | "applying" | "invalid"
   >("idle")
@@ -981,6 +991,12 @@ function CheckoutPageInner() {
   const [lastAppliedGiftCardCode, setLastAppliedGiftCardCode] =
     React.useState("")
   const [showAllGiftCards, setShowAllGiftCards] = React.useState(false)
+  const [giftCardRemoval, setGiftCardRemoval] = React.useState<{
+    code: string
+    amount: number
+  } | null>(null)
+  const [isGiftCardRemovalOpen, setIsGiftCardRemovalOpen] =
+    React.useState(false)
   const [appliedPromoAmount, setAppliedPromoAmount] = React.useState(50)
   const [appliedPromoText, setAppliedPromoText] = React.useState("")
   const [appliedPromoDiscount, setAppliedPromoDiscount] = React.useState<{
@@ -988,6 +1004,8 @@ function CheckoutPageInner() {
     discountValue: number
   } | null>(null)
   const codeRequestInFlightRef = React.useRef(false)
+  const pendingGiftCardRemovalsRef = React.useRef(new Set<string>())
+  const giftCardRemovalQueueRef = React.useRef<Promise<void>>(Promise.resolve())
   const codesHydratedForRef = React.useRef<string | null>(null)
   const [teamMemberDialog, setTeamMemberDialog] = React.useState<{
     action: "replace" | "remove"
@@ -1424,7 +1442,9 @@ function CheckoutPageInner() {
         )
       } else setPricingError(true)
       setIsCostFetching(false)
-      setIsCreditsFetching(false)
+      if (pendingGiftCardRemovalsRef.current.size === 0) {
+        setIsCreditsFetching(false)
+      }
     })
 
     return () => {
@@ -1857,7 +1877,11 @@ function CheckoutPageInner() {
   const setSavedGiftCards = (giftCards: CheckoutDraftGiftCard[]) => {
     setAppliedGiftCards(
       giftCards
-        .filter((item) => item.status === "valid")
+        .filter(
+          (item) =>
+            item.status === "valid" &&
+            !pendingGiftCardRemovalsRef.current.has(item.code)
+        )
         .map((item) => ({ code: item.code, amount: item.amount }))
     )
   }
@@ -1894,8 +1918,8 @@ function CheckoutPageInner() {
       if (
         appliedGiftCards.some((giftCard) => giftCard.code === normalizedCode)
       ) {
-        setLastAppliedGiftCardCode(normalizedCode)
-        setGiftCardCode("")
+        setLastAppliedGiftCardCode("")
+        setDuplicateGiftCard(normalizedCode)
         setGiftCardStatus("idle")
         return
       }
@@ -1936,7 +1960,14 @@ function CheckoutPageInner() {
             Number.isFinite(lockedUntil) ? lockedUntil : Date.now() + 3600000
           )
           setGiftCardStatus("idle")
+        } else if (
+          failure.response?.status === 401 ||
+          lockCode === "SESSION_NOT_ACTIVE"
+        ) {
+          setIsSessionExpiredDialogOpen(true)
+          setGiftCardStatus("idle")
         } else {
+          setGiftCardMessage(getGiftCardErrorMessage(lockCode))
           setGiftCardStatus("invalid")
         }
       } finally {
@@ -1964,26 +1995,55 @@ function CheckoutPageInner() {
     setGiftCardStatus("idle")
   }
 
+  const hideGiftCards = (codes: string[]) => {
+    codes.forEach((code) => pendingGiftCardRemovalsRef.current.add(code))
+    setAppliedGiftCards((current) =>
+      current.filter((giftCard) => !codes.includes(giftCard.code))
+    )
+    setDuplicateGiftCard("")
+    setIsCreditsFetching(true)
+  }
+
+  const sendGiftCardRemoval = (
+    draftId: string,
+    giftCard: { code: string; amount: number }
+  ) => {
+    giftCardRemovalQueueRef.current = giftCardRemovalQueueRef.current.then(
+      async () => {
+        try {
+          const response = await CheckoutAPI.RemoveDraftCode(
+            draftId,
+            giftCard.code
+          )
+          pendingGiftCardRemovalsRef.current.delete(giftCard.code)
+          setSavedGiftCards(response.data.giftCards)
+        } catch {
+          pendingGiftCardRemovalsRef.current.delete(giftCard.code)
+          setAppliedGiftCards((current) =>
+            current.some((item) => item.code === giftCard.code)
+              ? current
+              : [...current, giftCard]
+          )
+          toast({
+            variant: "destructive",
+            title: "The gift card could not be removed. Please try again.",
+          })
+        }
+        if (pendingGiftCardRemovalsRef.current.size === 0) {
+          refreshPricing("silent")
+        }
+      }
+    )
+  }
+
   const removeGiftCard = async (code: string) => {
     const draftId = draftSummary?.draftId
     if (draftId) {
-      if (codeRequestInFlightRef.current) return
-      codeRequestInFlightRef.current = true
-      try {
-        const response = await CheckoutAPI.RemoveDraftCode(draftId, code)
-        setSavedGiftCards(response.data.giftCards)
-        refreshPricing("credits")
-        setLastAppliedGiftCardCode((current) =>
-          current === code ? "" : current
-        )
-      } catch {
-        toast({
-          variant: "destructive",
-          title: "The gift card could not be removed. Please try again.",
-        })
-      } finally {
-        codeRequestInFlightRef.current = false
-      }
+      const giftCard = appliedGiftCards.find((item) => item.code === code)
+      if (!giftCard) return
+      hideGiftCards([code])
+      setLastAppliedGiftCardCode((current) => (current === code ? "" : current))
+      sendGiftCardRemoval(draftId, giftCard)
       return
     }
     setAppliedGiftCards((current) =>
@@ -1995,33 +2055,48 @@ function CheckoutPageInner() {
   const removeAllGiftCards = async () => {
     const draftId = draftSummary?.draftId
     if (draftId) {
-      if (codeRequestInFlightRef.current) return
-      codeRequestInFlightRef.current = true
-      try {
-        for (const giftCard of appliedGiftCards) {
-          const response = await CheckoutAPI.RemoveDraftCode(
-            draftId,
-            giftCard.code
-          )
-          setSavedGiftCards(response.data.giftCards)
-        }
-        refreshPricing("credits")
-        setLastAppliedGiftCardCode("")
-        setShowAllGiftCards(false)
-      } catch {
-        refreshPricing("credits")
-        toast({
-          variant: "destructive",
-          title: "The gift cards could not be removed. Please try again.",
-        })
-      } finally {
-        codeRequestInFlightRef.current = false
-      }
+      if (appliedGiftCards.length === 0) return
+      const giftCards = [...appliedGiftCards]
+      hideGiftCards(giftCards.map((giftCard) => giftCard.code))
+      setLastAppliedGiftCardCode("")
+      setShowAllGiftCards(false)
+      giftCards.forEach((giftCard) => sendGiftCardRemoval(draftId, giftCard))
       return
     }
     setAppliedGiftCards([])
     setLastAppliedGiftCardCode("")
     setShowAllGiftCards(false)
+  }
+
+  const formatGiftCardRemovalAmount = (amount: number) =>
+    Number.isInteger(amount)
+      ? formatter.format(amount)
+      : centsFormatter.format(amount)
+
+  const askRemoveGiftCard = (code: string, amount: number) => {
+    setGiftCardRemoval({ code, amount })
+    setIsGiftCardRemovalOpen(true)
+  }
+
+  const askRemoveAllGiftCards = () => {
+    setGiftCardRemoval(
+      appliedGiftCards.length === 1
+        ? {
+            code: appliedGiftCards[0].code,
+            amount: appliedGiftCards[0].amount,
+          }
+        : null
+    )
+    setIsGiftCardRemovalOpen(true)
+  }
+
+  const confirmGiftCardRemoval = () => {
+    setIsGiftCardRemovalOpen(false)
+    if (giftCardRemoval) {
+      removeGiftCard(giftCardRemoval.code)
+      return
+    }
+    removeAllGiftCards()
   }
 
   const applyPromoCode = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -4813,8 +4888,8 @@ function CheckoutPageInner() {
                   {appliedGiftCards.length > 0 ? (
                     <Button
                       type="button"
-                      className="rounded-none text-xs leading-5 hover:text-gray-600 hover:no-underline focus:text-gray-500 focus-visible:ring-2 focus-visible:ring-primary-100"
-                      onClick={removeAllGiftCards}
+                      className="rounded-none text-xs leading-5 hover:text-error-500 hover:no-underline focus:text-gray-500 focus-visible:ring-2 focus-visible:ring-primary-100"
+                      onClick={askRemoveAllGiftCards}
                       variant="link"
                       visual="gray"
                     >
@@ -4844,6 +4919,7 @@ function CheckoutPageInner() {
                           )
                           setGiftCardStatus("idle")
                           setLastAppliedGiftCardCode("")
+                          setDuplicateGiftCard("")
                         }}
                       />
                       {giftCardStatus === "invalid" ? (
@@ -4882,7 +4958,7 @@ function CheckoutPageInner() {
                 {giftCardStatus === "invalid" &&
                 giftCardLockedUntil === null ? (
                   <p className="text-sm leading-5 text-error-500">
-                    You have entered an invalid gift card. Please try again.
+                    {giftCardMessage}
                   </p>
                 ) : null}
 
@@ -4898,6 +4974,23 @@ function CheckoutPageInner() {
                       <AlertTitle className="text-sm leading-5 text-success-600">
                         Gift Card &ldquo;{lastAppliedGiftCardCode}&rdquo; has
                         been applied.
+                      </AlertTitle>
+                    </AlertContent>
+                  </Alert>
+                ) : null}
+
+                {duplicateGiftCard ? (
+                  <Alert
+                    variant="error"
+                    className="w-fit max-w-full items-center rounded-[5px] p-4"
+                  >
+                    <AlertIcon className="shrink-0">
+                      <AlertCircle className="size-5" />
+                    </AlertIcon>
+                    <AlertContent>
+                      <AlertTitle className="text-sm leading-5 text-error-600">
+                        Gift Card &ldquo;{duplicateGiftCard}&rdquo; has already
+                        been redeemed.
                       </AlertTitle>
                     </AlertContent>
                   </Alert>
@@ -4961,7 +5054,12 @@ function CheckoutPageInner() {
                               type="button"
                               aria-label={`Remove gift card ending in ${getGiftCardEnding(giftCard.code)}`}
                               className="flex rounded-[4px] text-gray-400 hover:bg-transparent hover:text-error-500 focus:bg-transparent focus:text-gray-400 focus-visible:ring-2 focus-visible:ring-primary-100"
-                              onClick={() => removeGiftCard(giftCard.code)}
+                              onClick={() =>
+                                askRemoveGiftCard(
+                                  giftCard.code,
+                                  giftCard.amount
+                                )
+                              }
                               size="md"
                               variant="ghost"
                               visual="gray"
@@ -5090,6 +5188,44 @@ function CheckoutPageInner() {
               </div>
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={isGiftCardRemovalOpen}
+        onOpenChange={setIsGiftCardRemovalOpen}
+      >
+        <DialogContent
+          onInteractOutside={() => setIsGiftCardRemovalOpen(false)}
+        >
+          <DialogHeader>
+            <div className="flex flex-col gap-y-2">
+              <DialogTitle>
+                {giftCardRemoval
+                  ? "Remove Gift Card?"
+                  : "Remove All Gift Cards?"}
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to remove{" "}
+                <span className="font-bold">
+                  {giftCardRemoval
+                    ? `gift card ending in ${getGiftCardEnding(giftCardRemoval.code)} for the amount of ${formatGiftCardRemovalAmount(giftCardRemoval.amount)}`
+                    : `all added gift cards for the amount of ${formatGiftCardRemovalAmount(totalGiftCardAmount)}`}
+                </span>
+                ?
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+
+          <DialogFooter className="mt-8 gap-x-3">
+            <DialogClose asChild>
+              <Button variant="outlined" visual="gray">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button visual="error" onClick={confirmGiftCardRemoval}>
+              Yes, Remove
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {!isTalentCheckout ? (

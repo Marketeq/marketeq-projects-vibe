@@ -19,3 +19,36 @@ export const CHECKOUT_VALIDATION_FALLBACK_MESSAGE =
 
 export const getCheckoutValidationMessage = (code: string) =>
   CHECKOUT_VALIDATION_MESSAGES[code] ?? CHECKOUT_VALIDATION_FALLBACK_MESSAGE
+
+export const GIFT_CARD_ERROR_MESSAGES: Record<string, string> = {
+  GIFT_CARD_NOT_FOUND:
+    "This gift card code is not valid. Please check the code and try again",
+  GIFT_CARD_EXPIRED: "This code has expired and can no longer be applied.",
+  GIFT_CARD_USED_UP:
+    "This code has already been redeemed and cannot be applied again.",
+  GIFT_CARD_LIMIT: "You can apply up to 5 gift cards",
+  GIFT_CARD_UNAVAILABLE:
+    "We were unable to apply your gift card at this time. Please try again",
+  SESSION_ALREADY_PAID: CHECKOUT_VALIDATION_MESSAGES.SESSION_ALREADY_PAID,
+}
+
+export const GIFT_CARD_ERROR_FALLBACK_MESSAGE =
+  GIFT_CARD_ERROR_MESSAGES.GIFT_CARD_UNAVAILABLE
+
+export const GIFT_CARD_LOCKED_MESSAGE =
+  "Too many invalid gift card attempts. Please try again in 1 hour."
+
+export const getGiftCardErrorMessage = (code?: string) =>
+  (code && GIFT_CARD_ERROR_MESSAGES[code]) || GIFT_CARD_ERROR_FALLBACK_MESSAGE
+
+export const getGiftCardErrorCode = (error: unknown): string | undefined => {
+  const data = (
+    error as {
+      response?: {
+        data?: { code?: string; message?: { code?: string } | string }
+      }
+    } | null
+  )?.response?.data
+  const nested = typeof data?.message === "object" ? data.message : null
+  return data?.code ?? nested?.code
+}

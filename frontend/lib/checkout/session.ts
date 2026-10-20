@@ -20,6 +20,7 @@ export type CheckoutSession = {
     discountValue: number
     amount: number
   } | null
+  giftCardLockedUntil: string | null
 }
 
 export const getCheckoutSession = async (

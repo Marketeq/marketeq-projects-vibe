@@ -2,6 +2,7 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -36,6 +37,7 @@ type CheckoutContextValue = {
   session: CheckoutSession | null
   slug: string | null
   listingId: string | null
+  updateSession: (session: CheckoutSession) => void
 }
 
 const CheckoutContext = createContext<CheckoutContextValue>({
@@ -43,6 +45,7 @@ const CheckoutContext = createContext<CheckoutContextValue>({
   session: null,
   slug: null,
   listingId: null,
+  updateSession: () => undefined,
 })
 
 type LoadState = {
@@ -99,14 +102,24 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   }, [sessionId, retryKey])
 
   const session = loadState.sessionId === sessionId ? loadState.session : null
+  const updateSession = useCallback(
+    (nextSession: CheckoutSession) =>
+      setLoadState((current) =>
+        current.sessionId === sessionId
+          ? { ...current, session: nextSession }
+          : current
+      ),
+    [sessionId]
+  )
   const value = useMemo<CheckoutContextValue>(
     () => ({
       sessionId,
       session,
       slug: session?.slug ?? null,
       listingId: session?.listingId ?? null,
+      updateSession,
     }),
-    [sessionId, session]
+    [sessionId, session, updateSession]
   )
 
   if (isListingStep && !(searchParams.get("listingId") ?? "").trim()) {

@@ -184,6 +184,16 @@ export const CheckoutAPI = {
       `/v1/checkout/drafts/${draftId}/apply-code/${encodeURIComponent(code)}`
     ),
 
+  ApplySessionCode: (
+    sessionId: string,
+    data: { type: "gift_card" | "promo"; code: string }
+  ) => AxiosRequest.post(`/v1/checkout/session/${sessionId}/apply-code`, data),
+
+  RemoveSessionCode: (sessionId: string, code: string) =>
+    AxiosRequest.del(
+      `/v1/checkout/session/${sessionId}/apply-code/${encodeURIComponent(code)}`
+    ),
+
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
 
