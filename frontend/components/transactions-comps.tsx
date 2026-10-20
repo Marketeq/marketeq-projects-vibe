@@ -10504,7 +10504,11 @@ export const EarningsTab = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-auto border-0 bg-transparent p-0 shadow-none"
+                // BTB-333: the custom-range calendar is 464px tall and fits
+                // neither above nor below the filter on a 720px laptop
+                // screen, so it was cut off by ~110px. Cap it at the space
+                // Radix reports and let it scroll, as DatePicker does.
+                className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
                 align="start"
                 collisionPadding={16}
               >
@@ -11849,7 +11853,8 @@ export const PayoutsTab = ({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            // BTB-333: same height cap as the Earnings tab date filter.
+            className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
             align="start"
             collisionPadding={16}
           >
