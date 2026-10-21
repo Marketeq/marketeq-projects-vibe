@@ -1457,6 +1457,10 @@ export default function PaymentPage() {
   const [microDepositMessage, setMicroDepositMessage] = React.useState("")
   const [isSessionExpiredDialogOpen, setIsSessionExpiredDialogOpen] =
     React.useState(false)
+  const [
+    isCheckoutSessionInactiveDialogOpen,
+    setIsCheckoutSessionInactiveDialogOpen,
+  ] = React.useState(false)
   const [bankSearch, setBankSearch] = React.useState("")
   const [selectedBankId, setSelectedBankId] = React.useState("chase")
   const [isStripeLinkDialogOpen, setIsStripeLinkDialogOpen] =
@@ -1649,11 +1653,10 @@ export default function PaymentPage() {
         const failure = error as {
           response?: { status?: number; data?: { code?: string } }
         }
-        if (
-          failure.response?.status === 401 ||
-          failure.response?.data?.code === "SESSION_NOT_ACTIVE"
-        ) {
+        if (failure.response?.status === 401) {
           setIsSessionExpiredDialogOpen(true)
+        } else if (failure.response?.data?.code === "SESSION_NOT_ACTIVE") {
+          setIsCheckoutSessionInactiveDialogOpen(true)
         }
         setHasPaymentMethodsFailed(true)
       })
@@ -2853,8 +2856,11 @@ export default function PaymentPage() {
           Number.isFinite(lockedUntil) ? lockedUntil : Date.now() + 3600000
         )
         setRedeemGiftCardStatus("idle")
-      } else if (failure.response?.status === 401 || lockCode === "SESSION_NOT_ACTIVE") {
+      } else if (failure.response?.status === 401) {
         setIsSessionExpiredDialogOpen(true)
+        setRedeemGiftCardStatus("idle")
+      } else if (lockCode === "SESSION_NOT_ACTIVE") {
+        setIsCheckoutSessionInactiveDialogOpen(true)
         setRedeemGiftCardStatus("idle")
       } else {
         setRedeemGiftCardMessage(getGiftCardErrorMessage(lockCode))
@@ -9382,6 +9388,26 @@ export default function PaymentPage() {
               }
             >
               Log In
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isCheckoutSessionInactiveDialogOpen}
+        onOpenChange={setIsCheckoutSessionInactiveDialogOpen}
+      >
+        <DialogContent className="max-w-[480px] p-6">
+          <h2 className="text-lg font-semibold text-dark-blue-400">
+            Your checkout session has ended
+          </h2>
+          <p className="mt-3 text-sm leading-5 text-gray-500">
+            This checkout session is no longer active. Please try again to
+            continue.
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button onClick={() => router.push(projectDetailsHref)}>
+              Try Again
             </Button>
           </div>
         </DialogContent>
