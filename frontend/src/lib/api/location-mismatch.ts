@@ -86,8 +86,27 @@ export async function startStillTraveling(
   }
 }
 
+/**
+ * The returning user must SEE the country they are being asked to confirm. The server's
+ * live lookup often knows only the country (no city, region or map pin): the shared
+ * location view then keeps the country but marks it not "detected", and the confirmation
+ * screen shows "We couldn't detect your current location" with no country at all. For this
+ * launch only, a country-only result is shown as detected, so the screen reads
+ * "We detected your current location as: <country>". The country itself is unchanged
+ * (it is the server's live request lookup, never /me's stored detectedCountry), and what
+ * the confirmation records is resolved by the backend again, never taken from this view.
+ * A failed or conflicting (GPS mismatch) lookup is left exactly as it was, and the
+ * first-time flow does not use this function.
+ */
+export function showCountryOnlyAsDetected(location: DetectedLocation): DetectedLocation {
+  if (location.detected || location.serviceUnavailable) return location
+  if (location.locationMismatch === true) return location
+  if (!location.countryCode) return location
+  return { ...location, detected: true }
+}
+
 export async function startChangeHomeCountry(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  return { location: await deps.getDetectedLocation() }
+  return { location: showCountryOnlyAsDetected(await deps.getDetectedLocation()) }
 }
