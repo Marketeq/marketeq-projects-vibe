@@ -1978,7 +1978,7 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
-  const { user, openAuthModal } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal } = useAuth()
   const { toast } = useToast()
   // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
   // expose a callback/promise for "and then do X on success". The signal
@@ -2105,6 +2105,14 @@ export default function ProjectDetails({
       ),
     [project, isOnline]
   )
+  // PMCM-402/AC4: Live Chat and both Ask a Question entry points only show
+  // while a team member is online. Presence is only observable once signed
+  // in (useOnlineUsers joins the presence channel for a logged-in user
+  // only), so for a signed-out visitor it is unknown, not "nobody online":
+  // they keep the entry points, which open the login modal and resume after
+  // login (AC2/AC3). Once signed in, the online rule applies.
+  const showAskEntryPoints =
+    (!user?.id && !isAuthLoading) || onlineTeam.length > 0
 
   const mediaItems = React.useMemo(() => {
     const items: { type: "video" | "image"; url: string }[] = []
@@ -3187,7 +3195,7 @@ export default function ProjectDetails({
                 </Button>
               </div>
 
-              {onlineTeam.length > 0 && (
+              {showAskEntryPoints && (
                 <Button
                   variant="link"
                   className="!text-primary-500 shrink-0"
@@ -4033,7 +4041,7 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
-                        {!isOwnerViewing && onlineTeam.length > 0 && (
+                        {!isOwnerViewing && showAskEntryPoints && (
                         <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           {!isPreview && onlineTeam.length > 0 && (
                           <div
@@ -4383,7 +4391,7 @@ export default function ProjectDetails({
                             </TabsContent>
                           </Tabs>
 
-                          {!isOwnerViewing && onlineTeam.length > 0 && (
+                          {!isOwnerViewing && showAskEntryPoints && (
                             <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
                               <h1 className="text-base font-semibold text-dark-blue-400 text-center">
                                 Can’t find what you’re looking for?
