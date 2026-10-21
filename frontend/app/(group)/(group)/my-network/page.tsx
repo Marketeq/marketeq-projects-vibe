@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import type { TalentNetworkStatus } from "@/service/http/contracts"
+import { logHireFlowInitiated } from "@/service/http/contracts"
 import { UserAPI } from "@/service/http/user"
 import {
   useCompanyMemberPermissions,
@@ -26,9 +27,13 @@ import {
 import { capitalizeWords, getFirstItem } from "@/utils/functions"
 import { cn } from "@/utils/functions"
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
+  Briefcase01,
   Edit03,
+  FileText,
+  Globe01,
   MapPin,
   MoreHorizontal,
   Plus,
@@ -38,6 +43,7 @@ import {
   Trash2,
   User01,
   X,
+  XClose,
 } from "@blend-metrics/icons"
 import {
   SortingState,
@@ -67,6 +73,10 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuCheckItem,
   DropdownMenuContent,
@@ -782,19 +792,392 @@ const ExternalTeamCard = ({
 // Shared Controls
 // ========================
 
-const InviteWindowButton = () => (
-  <InviteWindowTrigger asChild>
+const TALENT_NETWORK_TAB = "Talent Network"
+
+/**
+ * Add Team Member. One button in the shared header serves both tabs, so it
+ * branches on the active one (US-25 / PMCM-731, AC-25.1): External Team opens
+ * the invite flow, Talent Network opens the "How do you want to add this team
+ * member?" chooser. Passing `onClick` selects the chooser; without it the
+ * button keeps its original InviteWindowTrigger behaviour.
+ */
+const InviteWindowButton = ({ onClick }: { onClick?: () => void }) => {
+  const button = (
     <Button
       className="bg-white w-[170px] h-10 px-[14px] py-2 gap-2 text-[13px] leading-6 capitalize border-2 border-primary-500 text-primary-500 shadow-[0px_1px_4px_rgba(0,0,0,0.03)] hover:bg-primary-500 hover:text-white xs:max-lg:w-auto xs:max-lg:h-8 xs:max-lg:px-[11px] xs:max-lg:py-1.5 xs:max-lg:gap-x-1.5 xs:max-lg:text-[10px] xs:max-lg:leading-[18.63px]"
       variant="outlined"
       visual="gray"
       size="md"
+      onClick={onClick}
     >
       <Plus className="size-[11.64px] lg:size-[15px] [&_path]:stroke-[1.25]" />{" "}
       Add Team Member
     </Button>
-  </InviteWindowTrigger>
-)
+  )
+
+  return onClick ? (
+    button
+  ) : (
+    <InviteWindowTrigger asChild>{button}</InviteWindowTrigger>
+  )
+}
+
+// ========================
+// Add Team Member (Talent Network) — S16 chooser + S17 recipient picker
+// US-25 / PMCM-731 and US-26 / PMCM-732.
+// ========================
+
+type AddTalentOptionId = "post-job" | "send-offer" | "browse"
+
+const ADD_TALENT_OPTIONS: {
+  id: AddTalentOptionId
+  Icon: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  /** Figma sticky note for this option's destination; "send-offer" has none
+   *  because it opens the recipient picker rather than leaving the modal. */
+  href?: string
+}[] = [
+  {
+    id: "post-job",
+    Icon: Briefcase01,
+    title: "Post a job",
+    description:
+      "Create a job post and let qualified talent apply. Best when you want to compare applicants before hiring.",
+    // "The user is sent to the job creation flow"
+    href: "/my-jobs",
+  },
+  {
+    id: "send-offer",
+    Icon: FileText,
+    title: "Send an offer",
+    description:
+      "Search for a specific talent and send them a contract offer directly. Best when you already know who you want to hire.",
+  },
+  {
+    id: "browse",
+    Icon: Globe01,
+    title: "Browse the Marketplace",
+    description:
+      "Explore available talent, compare profiles, and send an offer when you find the right fit.",
+    // "The user is sent to the Marketplace page"
+    href: "/projects",
+  },
+]
+
+/** The picker only offers talent with no live engagement. Designer's rule:
+ *  direct offers go to people who are not already under contract (active) and
+ *  do not already have an offer out (pending). */
+const isOfferEligible = (member: TalentMember) => member.status === "past"
+
+const looksLikeEmail = (value: string) => /\S+@\S+\.\S+/.test(value.trim())
+
+const AddTalentMemberModal = ({
+  open,
+  onClose,
+  talentMembers,
+}: {
+  open: boolean
+  onClose: () => void
+  talentMembers: TalentMember[]
+}) => {
+  const router = useRouter()
+  const [step, setStep] = useState<"choose" | "recipient">("choose")
+  const [selectedOption, setSelectedOption] =
+    useState<AddTalentOptionId | null>(null)
+  const [query, setQuery] = useState("")
+  const [recipient, setRecipient] = useState<TalentMember | null>(null)
+  const [staleRecipient, setStaleRecipient] = useState(false)
+
+  // Reopening must not inherit the previous run's selection.
+  useEffect(() => {
+    if (open) return
+    setStep("choose")
+    setSelectedOption(null)
+    setQuery("")
+    setRecipient(null)
+    setStaleRecipient(false)
+  }, [open])
+
+  const eligible = useMemo(
+    () => talentMembers.filter(isOfferEligible),
+    [talentMembers]
+  )
+
+  // "The system does not support email-based recipients in this modal because
+  // direct offers can only be sent to existing Marketeq profiles."
+  const queryIsEmail = looksLikeEmail(query)
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q || queryIsEmail) return []
+    return eligible
+      .filter(
+        (m) =>
+          m.name.toLowerCase().includes(q) ||
+          m.username.toLowerCase().includes(q) ||
+          m.handle.toLowerCase().includes(q)
+      )
+      .slice(0, 8)
+  }, [eligible, query, queryIsEmail])
+
+  const showNoResults = Boolean(query.trim()) && matches.length === 0
+
+  const handleOptionContinue = () => {
+    const option = ADD_TALENT_OPTIONS.find((o) => o.id === selectedOption)
+    if (!option) return
+    if (option.id === "send-offer") {
+      setStep("recipient")
+      return
+    }
+    onClose()
+    if (option.href) router.push(option.href)
+  }
+
+  // "If the selected profile is deactivated, unavailable, or no longer
+  // eligible before the user clicks Continue, the system revalidates the
+  // selected profile and blocks continuation."
+  const handleRecipientContinue = () => {
+    if (!recipient) return
+    const current = talentMembers.find((m) => m.id === recipient.id)
+    if (!current || !isOfferEligible(current)) {
+      setStaleRecipient(true)
+      return
+    }
+    onClose()
+    logHireFlowInitiated(recipient.id).catch(() => {
+      // Audit only — never block the hand-off on it.
+    })
+    router.push(`/talent-checkout/${encodeURIComponent(recipient.username)}`)
+  }
+
+  const chooseRecipient = (member: TalentMember) => {
+    setRecipient(member)
+    setStaleRecipient(false)
+    setQuery("")
+  }
+
+  const clearRecipient = () => {
+    setRecipient(null)
+    setStaleRecipient(false)
+    setQuery("")
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) onClose()
+      }}
+    >
+      <DialogContent className="p-0 gap-0 max-w-[582px] w-[582px] overflow-hidden rounded-xl">
+        <div className="flex items-center gap-4 px-5 py-5">
+          <DialogTitle className="flex-1 text-[20px] font-bold leading-normal text-dark-blue-400">
+            {step === "choose"
+              ? "How do you want to add this team member?"
+              : "Who do you want to send this offer to?"}
+          </DialogTitle>
+          <DialogClose asChild>
+            <IconButton
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className="shrink-0 rounded-[8px]"
+            >
+              <XClose className="size-5" />
+            </IconButton>
+          </DialogClose>
+        </div>
+
+        {step === "choose" ? (
+          <>
+            <div className="flex flex-col gap-[10px] px-5 pb-[6px] pt-[6px]">
+              {ADD_TALENT_OPTIONS.map(({ id, Icon, title, description }) => {
+                const isSelected = selectedOption === id
+                return (
+                  <Button
+                    key={id}
+                    variant="ghost"
+                    visual="gray"
+                    aria-pressed={isSelected}
+                    className={cn(
+                      "flex h-auto w-full items-start justify-start gap-x-4 rounded-[8px] p-6 text-left",
+                      "shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]",
+                      isSelected
+                        ? "border-2 border-primary-500 bg-transparent hover:bg-transparent"
+                        : "border border-gray-200 bg-transparent hover:border-gray-300 hover:bg-transparent"
+                    )}
+                    onClick={() => setSelectedOption(id)}
+                  >
+                    <Icon
+                      className={cn(
+                        "size-6 shrink-0",
+                        isSelected ? "text-primary-500" : "text-dark-blue-400"
+                      )}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+                      <span
+                        className={cn(
+                          "whitespace-normal text-[16px] font-semibold leading-normal",
+                          isSelected ? "text-primary-500" : "text-dark-blue-400"
+                        )}
+                      >
+                        {title}
+                      </span>
+                      <span className="whitespace-normal text-[15px] font-normal leading-5 text-gray-500">
+                        {description}
+                      </span>
+                    </div>
+                  </Button>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center justify-end gap-7 px-5 py-[14px]">
+              <Button variant="link" visual="gray" size="sm" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                className="h-auto w-[108px] px-4 py-[10px]"
+                disabled={!selectedOption}
+                onClick={handleOptionContinue}
+              >
+                Continue
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col gap-6 px-5 pb-2 pt-[6px]">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="offer-recipient"
+                  className="text-[14px] font-semibold leading-5 text-dark-blue-400"
+                >
+                  Select recipient
+                </label>
+
+                {recipient ? (
+                  <div className="flex min-h-[44px] flex-wrap items-center gap-2 rounded-[8px] border border-primary-500 px-3 py-2">
+                    <span className="inline-flex items-center gap-x-2 rounded-[6px] bg-primary-50 px-2 py-1">
+                      <span className="text-[14px] font-semibold leading-5 text-primary-500">
+                        {recipient.name}
+                      </span>
+                      {/* "The username is clickable in for the client to view
+                          the profile if they want" */}
+                      <NextLink
+                        href={`/talent-profile?username=${encodeURIComponent(recipient.username)}`}
+                        className="text-[14px] font-normal leading-5 text-primary-500 underline-offset-2 hover:underline"
+                      >
+                        @{recipient.username}
+                      </NextLink>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${recipient.name}`}
+                        className="text-primary-500 hover:opacity-70"
+                        onClick={clearRecipient}
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div
+                      className={cn(
+                        "flex min-h-[44px] items-center gap-2 rounded-[8px] border px-3 py-2",
+                        showNoResults
+                          ? "border-error-500"
+                          : "border-gray-300 focus-within:border-primary-500"
+                      )}
+                    >
+                      <input
+                        id="offer-recipient"
+                        autoComplete="off"
+                        className="h-5 min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] leading-5 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-0"
+                        placeholder="Search by name or username"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                      />
+                      {showNoResults && (
+                        <AlertCircle className="size-[18px] shrink-0 text-error-500" />
+                      )}
+                    </div>
+
+                    {showNoResults && (
+                      <p className="mt-1.5 text-[13px] leading-5 text-gray-500">
+                        No results. Try searching by name or username.
+                      </p>
+                    )}
+
+                    {matches.length > 0 && (
+                      <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-[308px] overflow-y-auto rounded-[8px] border border-gray-200 bg-white py-1 shadow-lg">
+                        {matches.map((member) => (
+                          <button
+                            key={member.id}
+                            type="button"
+                            className="flex w-full items-center gap-x-3 px-3 py-2.5 text-left hover:bg-gray-50"
+                            onClick={() => chooseRecipient(member)}
+                          >
+                            <Avatar className="size-9 flex-none">
+                              <AvatarImage
+                                src={member.avatarSrc}
+                                alt={member.name}
+                              />
+                              <AvatarFallback>
+                                {member.name.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate text-[15px] font-semibold leading-5 text-dark-blue-400">
+                              {member.name}
+                            </span>
+                            <span className="truncate text-[15px] font-normal leading-5 text-gray-500">
+                              @{member.username}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {staleRecipient && (
+                  <p className="text-[13px] leading-5 text-error-500">
+                    This person is no longer available to receive an offer.
+                    Remove them and choose someone else.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between px-5 py-[14px]">
+              <Button
+                variant="link"
+                visual="gray"
+                size="sm"
+                onClick={() => {
+                  setStep("choose")
+                  clearRecipient()
+                }}
+              >
+                <ArrowDown className="size-4 rotate-90" /> Back
+              </Button>
+              <Button
+                size="sm"
+                className="h-auto w-[108px] px-4 py-[10px]"
+                disabled={!recipient || staleRecipient}
+                onClick={handleRecipientContinue}
+              >
+                Continue
+              </Button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 const SortDropdown = () => (
   <DropdownMenu>
@@ -899,6 +1282,8 @@ export default function MyTeam() {
   const searchParams = useSearchParams()
   const [value, setValue] = useState([GRID_LAYOUT])
   const isGrid = getFirstItem(value) === GRID_LAYOUT
+  const [activeTab, setActiveTab] = useState(TALENT_NETWORK_TAB)
+  const [isAddTalentOpen, setIsAddTalentOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [talentMembers, setTalentMembers] = useState<TalentMember[]>([])
@@ -1236,14 +1621,24 @@ export default function MyTeam() {
             </ToggleGroupItem>
           </ToggleGroupRoot>
         </div>
-        <InviteWindowButton />
+        <InviteWindowButton
+          onClick={
+            activeTab === TALENT_NETWORK_TAB
+              ? () => setIsAddTalentOpen(true)
+              : undefined
+          }
+        />
       </div>
 
       <h1 className="text-lg leading-[21.78px] lg:text-[28px] lg:leading-[33.89px] font-bold text-dark-blue-400 xs:max-md:mt-6">
         My Network
       </h1>
 
-      <Tabs className="mt-7 lg:mt-[19px]" defaultValue="Talent Network">
+      <Tabs
+        className="mt-7 lg:mt-[19px]"
+        value={activeTab}
+        onValueChange={setActiveTab}
+      >
         <div className="border-b h-10 lg:h-[60px] flex items-end justify-between border-gray-200">
           <div className={cn("items-end inline-flex gap-x-3 lg:gap-x-3.5", isSearchOpen && "min-w-0 flex-1")}>
             {isSearchOpen ? (
@@ -1311,7 +1706,13 @@ export default function MyTeam() {
                 </ToggleGroupItem>
               </ToggleGroupRoot>
             </div>
-            <InviteWindowButton />
+            <InviteWindowButton
+          onClick={
+            activeTab === TALENT_NETWORK_TAB
+              ? () => setIsAddTalentOpen(true)
+              : undefined
+          }
+        />
           </div>
         </div>
 
@@ -1576,6 +1977,12 @@ export default function MyTeam() {
           onDismiss={() => setShowAcceptedNotice(false)}
         />
       )}
+
+      <AddTalentMemberModal
+        open={isAddTalentOpen}
+        onClose={() => setIsAddTalentOpen(false)}
+        talentMembers={talentMembers}
+      />
     </div>
   )
 }
