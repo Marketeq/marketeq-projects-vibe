@@ -31,6 +31,7 @@ import {
   Check,
   CheckCircle,
   ChevronDown,
+  CreditCard,
   DivideSquare,
   Download02,
   Edit03,
@@ -42,6 +43,12 @@ import {
   Trash03,
   X,
 } from "@blend-metrics/icons"
+import {
+  DinersClubDefault,
+  Jcbdefault,
+  MastercardDefault,
+  UnionPayDefault,
+} from "@blend-metrics/icons/payment-methods"
 import { loadStripe } from "@stripe/stripe-js"
 import type {
   PaymentRequest,
@@ -51,7 +58,6 @@ import type {
   StripeCardCvcElement,
   StripeCardExpiryElement,
   StripeCardNumberElement,
-  StripeElements,
 } from "@stripe/stripe-js"
 import CurrencyInput from "react-currency-input-field"
 import type { UserProfile } from "@/types/user"
@@ -64,10 +70,19 @@ import CreditDebitCardArticle1, {
 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
 import { HelperText } from "@/components/ui/helper-text"
 import { inputVariants } from "@/components/ui/input"
-import { InputRightElement } from "@/components/ui/input/input-element"
+import {
+  InputLeftElement,
+  InputRightElement,
+} from "@/components/ui/input/input-element"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
 import UserGroup from "@/components/icons/user-group"
-import { CreditCardInput, getCardType } from "@/components/credit-card-input"
+import {
+  Amex,
+  CreditCardInput,
+  Discover,
+  Visa,
+  getCardType,
+} from "@/components/credit-card-input"
 import { getDefaultJobTitle, offerRates } from "@/components/hire-me-button"
 import {
   ACH,
@@ -157,19 +172,25 @@ const isStripePublishableKeyConfigured = Boolean(
 )
 const stripeElementStyle = {
   base: {
-    color: "#0F172A",
+    color: "#101828",
     fontFamily: "Inter, system-ui, sans-serif",
-    fontSize: "14px",
+    fontSize: "16px",
+    lineHeight: "24px",
     "::placeholder": {
-      color: "#98A2B3",
+      color: "#667085",
     },
   },
   invalid: {
-    color: "#D92D20",
+    color: "#101828",
   },
 }
 
 type StripeCardField = "cardNumber" | "expirationDate" | "cvv"
+type StripeCardFieldState = {
+  empty: boolean
+  complete: boolean
+  errorCode?: string
+}
 type BankField =
   | "accountType"
   | "accountHolderName"
@@ -794,15 +815,16 @@ const isValidLuhn = (value: string) => {
 const getCardNumberError = (value: string) => {
   const digits = getCardDigits(value)
   const cardType = getCardType(digits)
-  const expectedLength = cardType === "amex" ? 15 : 16
+  const hasValidLength =
+    cardType === "amex"
+      ? digits.length === 15
+      : cardType === "unknown"
+        ? digits.length >= 12 && digits.length <= 19
+        : digits.length === 16
 
   if (digits.length === 0) return "Please enter your credit card number"
-  if (
-    cardType === "unknown" ||
-    digits.length !== expectedLength ||
-    !isValidLuhn(digits)
-  ) {
-    return "Please enter a valid card number."
+  if (!hasValidLength || !isValidLuhn(digits)) {
+    return "Please enter a valid card number"
   }
 
   return ""
@@ -811,6 +833,7 @@ const getCardNumberError = (value: string) => {
 const getCardNameError = (value: string) => {
   const normalized = value.trim().replace(/\s+/g, " ")
 
+  if (normalized.length === 0) return "Please enter the name on your card."
   if (normalized.length < 2 || !/^[A-Za-z ]+$/.test(normalized)) {
     return "Please enter the full name as it appears on your card."
   }
@@ -819,6 +842,8 @@ const getCardNameError = (value: string) => {
 }
 
 const getExpiryError = (value: string) => {
+  if (value.length === 0) return "Please enter the expiration date."
+
   const match = value.match(/^(\d{2})\/(\d{2}|\d{4})$/)
 
   if (!match) return "Please enter a valid expiry date in MM/YY format."
@@ -833,7 +858,7 @@ const getExpiryError = (value: string) => {
 
   const expiryDate = new Date(year, month, 0, 23, 59, 59)
   if (expiryDate < new Date()) {
-    return "This card has expired. Please use a different card."
+    return "Your card has expired. Please use a different card"
   }
 
   return ""
@@ -844,8 +869,55 @@ const getCvvError = (value: string, cardNumber: string) => {
   const cardType = getCardType(getCardDigits(cardNumber))
   const expectedLength = cardType === "amex" ? 4 : 3
 
-  if (digits.length !== expectedLength) return "Please enter a valid CVV."
+  if (digits.length === 0) return "Please enter the CVV / CVC code."
+  if (digits.length !== expectedLength) return "Please enter a valid CVV"
 
+  return ""
+}
+
+const STRIPE_CARD_BRAND_ICONS: Record<
+  string,
+  React.ComponentType<React.SVGProps<SVGSVGElement>>
+> = {
+  visa: Visa,
+  mastercard: MastercardDefault,
+  amex: Amex,
+  discover: Discover,
+  diners: DinersClubDefault,
+  jcb: Jcbdefault,
+  unionpay: UnionPayDefault,
+}
+
+const getStripeCardFieldError = (
+  field: StripeCardField,
+  fieldState: StripeCardFieldState
+) => {
+  if (field === "cardNumber") {
+    if (fieldState.empty) return "Please enter your credit card number"
+    if (fieldState.errorCode || !fieldState.complete) {
+      return "Please enter a valid card number"
+    }
+    return ""
+  }
+
+  if (field === "expirationDate") {
+    if (fieldState.empty) return "Please enter the expiration date."
+    if (
+      fieldState.errorCode === "invalid_expiry_year_past" ||
+      fieldState.errorCode === "invalid_expiry_month_past"
+    ) {
+      return "Your card has expired. Please use a different card"
+    }
+    if (fieldState.errorCode || !fieldState.complete) {
+      return "Please enter a valid expiry date in MM/YY format."
+    }
+    return ""
+  }
+
+  if (fieldState.empty) return "Please enter the CVV / CVC code."
+  if (fieldState.errorCode || !fieldState.complete) {
+    return "Please enter a valid CVV"
+  }
   return ""
 }
 
@@ -1368,7 +1440,6 @@ export default function PaymentPage() {
     cvv: false,
   })
   const stripeRef = React.useRef<Stripe | null>(null)
-  const stripeElementsRef = React.useRef<StripeElements | null>(null)
   const stripeCardNumberElementRef =
     React.useRef<StripeCardNumberElement | null>(null)
   const stripeCardExpiryElementRef =
@@ -1379,6 +1450,16 @@ export default function PaymentPage() {
   const stripeCardNumberMountRef = React.useRef<HTMLDivElement | null>(null)
   const stripeCardExpiryMountRef = React.useRef<HTMLDivElement | null>(null)
   const stripeCardCvcMountRef = React.useRef<HTMLDivElement | null>(null)
+  const [stripeCardBrand, setStripeCardBrand] = React.useState("unknown")
+  const [stripeFocusedField, setStripeFocusedField] =
+    React.useState<StripeCardField | null>(null)
+  const [stripeCardFieldStates, setStripeCardFieldStates] = React.useState<
+    Record<StripeCardField, StripeCardFieldState>
+  >({
+    cardNumber: { empty: true, complete: false },
+    expirationDate: { empty: true, complete: false },
+    cvv: { empty: true, complete: false },
+  })
   const [isStripeReady, setIsStripeReady] = React.useState(false)
   // Stripe.js is fetched from js.stripe.com at runtime. That request can fail
   // for reasons that have nothing to do with our code — an ad blocker or
@@ -1390,16 +1471,6 @@ export default function PaymentPage() {
   // Bumping this re-runs the init effect so Retry actually re-attempts the
   // script fetch. Safe because stripe-js nulls its cached promise on error.
   const [stripeLoadAttempt, setStripeLoadAttempt] = React.useState(0)
-  const [stripeCardFieldErrors, setStripeCardFieldErrors] = React.useState<
-    Partial<Record<StripeCardField, string>>
-  >({})
-  const [stripeCardFieldComplete, setStripeCardFieldComplete] = React.useState<
-    Record<StripeCardField, boolean>
-  >({
-    cardNumber: false,
-    expirationDate: false,
-    cvv: false,
-  })
   const [paymentError, setPaymentError] = React.useState("")
   const [hasAttemptedCardSubmit, setHasAttemptedCardSubmit] =
     React.useState(false)
@@ -2293,124 +2364,6 @@ export default function PaymentPage() {
     ) {
       setHasAttemptedCardSubmit(true)
       if (!isFullPaymentCardFormValid) return
-
-      if (!isStripePublishableKeyConfigured) {
-        setPaymentError(
-          "Stripe is not configured for this environment. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to enable real card payments."
-        )
-        return
-      }
-
-      const stripe = stripeRef.current
-      const card = stripeCardNumberElementRef.current
-
-      if (!stripe || !card) {
-        setPaymentError(
-          stripeLoadFailed
-            ? "Secure card entry couldn't load. An ad blocker or privacy extension is the usual cause — allow js.stripe.com and try again, or use another payment method."
-            : "Secure card entry is still loading. Please wait a moment and try again."
-        )
-        return
-      }
-
-      setIsProcessing(true)
-      try {
-        const intent = await apiFetch<CheckoutPaymentIntentResponse>(
-          "/checkout/v1/checkout/payment-intent",
-          {
-            method: "POST",
-            body: {
-              amount: totalAmountToBePaid,
-              currency: "usd",
-              paymentMethod: "card",
-              projectId:
-                searchParams.get("projectId") ||
-                checkout.listingId ||
-                decodedSlug,
-              contractId: searchParams.get("contractId") || undefined,
-              savePaymentMethod: saveCard,
-              metadata: {
-                checkoutSlug: decodedSlug,
-                checkoutType: isTalentCheckout ? "talent" : "project",
-                pay,
-              },
-            },
-          }
-        )
-
-        const { error, paymentIntent } = await stripe.confirmCardPayment(
-          intent.clientSecret,
-          {
-            payment_method: {
-              card,
-              billing_details: {
-                name: cardName,
-                address: {
-                  line1: billingAddressSummary.addressLine1,
-                  city: city || selectedBillingAddress.cityStateZip,
-                  postal_code: zipcode || undefined,
-                  country: "US",
-                },
-                phone: billingAddressSummary.phoneNumber,
-              },
-            },
-          }
-        )
-
-        if (error || !paymentIntent) {
-          setPaymentError(
-            error?.message || "Stripe could not confirm this payment."
-          )
-          return
-        }
-
-        const confirmation =
-          await apiFetch<CheckoutConfirmPaymentIntentResponse>(
-            "/checkout/v1/checkout/payment-intent/confirm",
-            {
-              method: "POST",
-              body: {
-                paymentIntentId: paymentIntent.id,
-              },
-            }
-          )
-
-        if (!confirmation.verified) {
-          setPaymentError(
-            "Payment is not complete yet. Please finish any bank or card authentication and try again."
-          )
-          return
-        }
-
-        if (confirmation.paymentMethod?.last4) {
-          const brand = confirmation.paymentMethod.brand || "card"
-          const title =
-            brand === "amex"
-              ? "American Express"
-              : brand.charAt(0).toUpperCase() + brand.slice(1)
-          setFullPaymentMethods([
-            {
-              id: confirmation.paymentMethod.id,
-              method: "CREDIT_DEBIT_CARD",
-              title,
-              subtitle: `Credit ****${confirmation.paymentMethod.last4}`,
-              cardNumber: confirmation.paymentMethod.last4,
-              saveDefaultPaymentMethod: saveCard,
-            },
-          ])
-        }
-
-        navigateToReview()
-      } catch (error) {
-        setPaymentError(
-          error instanceof Error
-            ? error.message
-            : "Unable to process this payment. Please try again."
-        )
-      } finally {
-        setIsProcessing(false)
-      }
-      return
     }
 
     setIsProcessing(true)
@@ -3323,74 +3276,70 @@ export default function PaymentPage() {
       const elements = stripe.elements()
       const cardNumberElement = elements.create("cardNumber", {
         style: stripeElementStyle,
-        placeholder: "1234 1234 1234 1234",
+        placeholder: "0000 0000 0000 0000",
+        disableLink: true,
       })
       const cardExpiryElement = elements.create("cardExpiry", {
         style: stripeElementStyle,
-        placeholder: "MM / YY",
+        placeholder: "MM/YY",
       })
       const cardCvcElement = elements.create("cardCvc", {
         style: stripeElementStyle,
-        placeholder: "CVC",
+        placeholder: "3 or 4 digits",
       })
 
-      cardNumberElement.mount(stripeCardNumberMountRef.current!)
-      cardExpiryElement.mount(stripeCardExpiryMountRef.current!)
-      cardCvcElement.mount(stripeCardCvcMountRef.current!)
+      cardNumberElement.mount(stripeCardNumberMountRef.current)
+      cardExpiryElement.mount(stripeCardExpiryMountRef.current)
+      cardCvcElement.mount(stripeCardCvcMountRef.current)
 
-      stripeElementsRef.current = elements
       stripeCardNumberElementRef.current = cardNumberElement
       stripeCardExpiryElementRef.current = cardExpiryElement
       stripeCardCvcElementRef.current = cardCvcElement
+      setStripeCardBrand("unknown")
+      setStripeCardFieldStates({
+        cardNumber: { empty: true, complete: false },
+        expirationDate: { empty: true, complete: false },
+        cvv: { empty: true, complete: false },
+      })
+
+      const handleChange =
+        (field: StripeCardField) =>
+        (event: {
+          empty: boolean
+          complete: boolean
+          error?: { code?: string }
+        }) => {
+          setPaymentError("")
+          setStripeCardFieldStates((current) => ({
+            ...current,
+            [field]: {
+              empty: event.empty,
+              complete: event.complete,
+              errorCode: event.error?.code,
+            },
+          }))
+        }
+      const handleFocus = (field: StripeCardField) => () => {
+        setActiveCardField(field)
+        setStripeFocusedField(field)
+      }
+      const handleBlur = (field: StripeCardField) => () => {
+        setStripeFocusedField((current) => (current === field ? null : current))
+        setCardFieldTouched((current) => ({ ...current, [field]: true }))
+      }
 
       cardNumberElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          cardNumber: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          cardNumber: event.complete,
-        }))
+        handleChange("cardNumber")(event)
+        setStripeCardBrand(event.brand)
       })
-      cardExpiryElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          expirationDate: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          expirationDate: event.complete,
-        }))
-      })
-      cardCvcElement.on("change", (event) => {
-        setPaymentError("")
-        setStripeCardFieldErrors((current) => ({
-          ...current,
-          cvv: event.error?.message,
-        }))
-        setStripeCardFieldComplete((current) => ({
-          ...current,
-          cvv: event.complete,
-        }))
-      })
-      cardNumberElement.on("focus", () => setActiveCardField("cardNumber"))
-      cardExpiryElement.on("focus", () => setActiveCardField("expirationDate"))
-      cardCvcElement.on("focus", () => setActiveCardField("cvv"))
-      cardNumberElement.on("blur", () =>
-        setCardFieldTouched((current) => ({ ...current, cardNumber: true }))
-      )
-      cardExpiryElement.on("blur", () =>
-        setCardFieldTouched((current) => ({
-          ...current,
-          expirationDate: true,
-        }))
-      )
-      cardCvcElement.on("blur", () =>
-        setCardFieldTouched((current) => ({ ...current, cvv: true }))
-      )
+      cardExpiryElement.on("change", handleChange("expirationDate"))
+      cardCvcElement.on("change", handleChange("cvv"))
+      cardNumberElement.on("focus", handleFocus("cardNumber"))
+      cardExpiryElement.on("focus", handleFocus("expirationDate"))
+      cardCvcElement.on("focus", handleFocus("cvv"))
+      cardNumberElement.on("blur", handleBlur("cardNumber"))
+      cardExpiryElement.on("blur", handleBlur("expirationDate"))
+      cardCvcElement.on("blur", handleBlur("cvv"))
     }
 
     // loadStripe rejects with "Failed to load Stripe.js" when the
@@ -3411,7 +3360,6 @@ export default function PaymentPage() {
       stripeCardNumberElementRef.current = null
       stripeCardExpiryElementRef.current = null
       stripeCardCvcElementRef.current = null
-      stripeElementsRef.current = null
       setIsStripeReady(false)
       if (!isStripePublishableKeyConfigured) {
         stripeRef.current = null
@@ -3446,32 +3394,49 @@ export default function PaymentPage() {
         : selectedBillingAddress.cityStateZip,
     phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
   }
-  const cardNumberError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.cardNumber ||
-      (stripeCardFieldComplete.cardNumber
-        ? ""
-        : "Please enter your credit card number")
-    : getCardNumberError(cardNumber)
+  const cardNumberError = getCardNumberError(cardNumber)
   const cardNameError = getCardNameError(cardName)
-  const expirationDateError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.expirationDate ||
-      (stripeCardFieldComplete.expirationDate
-        ? ""
-        : "Please enter a valid expiry date.")
-    : getExpiryError(expirationDate)
-  const cvvError = isStripePublishableKeyConfigured
-    ? stripeCardFieldErrors.cvv ||
-      (stripeCardFieldComplete.cvv ? "" : "Please enter a valid CVV.")
-    : getCvvError(cvv, cardNumber)
+  const expirationDateError = getExpiryError(expirationDate)
+  const cvvError = getCvvError(cvv, cardNumber)
+  const stripeCardNumberError = getStripeCardFieldError(
+    "cardNumber",
+    stripeCardFieldStates.cardNumber
+  )
+  const stripeExpirationDateError = getStripeCardFieldError(
+    "expirationDate",
+    stripeCardFieldStates.expirationDate
+  )
+  const stripeCvvError = getStripeCardFieldError(
+    "cvv",
+    stripeCardFieldStates.cvv
+  )
+  const StripeCardBrandIcon = STRIPE_CARD_BRAND_ICONS[stripeCardBrand]
   const cardFieldErrors: Record<CardField, string> = {
-    cardNumber: cardNumberError,
+    cardNumber: stripeCardNumberError,
     cardName: cardNameError,
-    expirationDate: expirationDateError,
-    cvv: cvvError,
+    expirationDate: stripeExpirationDateError,
+    cvv: stripeCvvError,
   }
   const shouldShowCardFieldError = (field: CardField) =>
     (hasAttemptedCardSubmit || cardFieldTouched[field]) &&
     Boolean(cardFieldErrors[field])
+  const getStripeFieldClassName = (
+    field: StripeCardField,
+    className?: string
+  ) => {
+    const hasError = shouldShowCardFieldError(field)
+
+    return cn(
+      inputVariants({
+        variant: hasError ? "error" : undefined,
+        className: cn("items-center [&>div]:w-full", className),
+      }),
+      stripeFocusedField === field &&
+        (hasError
+          ? "ring-2 ring-error-100"
+          : "border-primary-500 ring-2 ring-primary-50")
+    )
+  }
   const isBillingAddressValid =
     billingAddressMode !== "new" ||
     (fullName.trim().length >= 2 &&
@@ -3481,10 +3446,10 @@ export default function PaymentPage() {
       /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
       getUsPhoneDigits(phoneNumber).length === 10)
   const isFullPaymentCardFormValid =
-    !cardNumberError &&
+    !stripeCardNumberError &&
     !cardNameError &&
-    !expirationDateError &&
-    !cvvError &&
+    !stripeExpirationDateError &&
+    !stripeCvvError &&
     isBillingAddressValid
   const showCardBackPreview = activeCardField === "cvv"
   const recurringPaymentFrequencyMeasureRef =
@@ -3626,12 +3591,6 @@ export default function PaymentPage() {
     stripeCardNumberElementRef.current?.clear()
     stripeCardExpiryElementRef.current?.clear()
     stripeCardCvcElementRef.current?.clear()
-    setStripeCardFieldErrors({})
-    setStripeCardFieldComplete({
-      cardNumber: false,
-      expirationDate: false,
-      cvv: false,
-    })
     setPaymentError("")
     setSaveCard(false)
     setCardFieldTouched({
@@ -6955,7 +6914,7 @@ export default function PaymentPage() {
                 {/* Credit / Debit Card Form */}
                 {shouldShowFullPaymentCardForm && (
                   <div className="mt-[50px]">
-                    <h1 className="text-lg leading-none font-bold text-dark-blue-400">
+                    <h1 className="text-lg leading-[22px] font-bold text-dark-blue-400">
                       Add Your Credit / Debit Card
                     </h1>
                     <p className="mt-3 text-gray-500 text-xs leading-none flex items-center gap-x-1">
@@ -6963,85 +6922,78 @@ export default function PaymentPage() {
                       card details will not be shared.
                     </p>
 
-                    {stripeLoadFailed && (
-                      <div
-                        role="alert"
-                        className="mt-4 rounded-md border border-error-200 bg-error-50 px-3 py-2 text-sm text-error-500"
-                      >
-                        <p className="font-medium">
-                          Secure card entry couldn&apos;t load.
-                        </p>
-                        <p className="mt-1 font-normal">
-                          We couldn&apos;t reach Stripe to load the card form.
-                          An ad blocker or privacy extension is the usual cause
-                          — allow js.stripe.com and try again, or use another
-                          payment method below.
-                        </p>
-                        <Button
-                          type="button"
-                          variant="link"
-                          className="mt-2 h-auto p-0 text-sm"
-                          onClick={() =>
-                            setStripeLoadAttempt((attempt) => attempt + 1)
-                          }
-                        >
-                          Try again
-                        </Button>
-                      </div>
-                    )}
+                    {stripeLoadFailed || !isStripePublishableKeyConfigured ? (
+                      <Alert className="mt-4 border-error-200 bg-error-50">
+                        <AlertIcon>
+                          <AlertCircle className="size-5" />
+                        </AlertIcon>
+                        <AlertContent>
+                          <AlertTitle>
+                            Secure card entry couldn&apos;t load.
+                          </AlertTitle>
+                          <AlertDescription>
+                            {isStripePublishableKeyConfigured
+                              ? "We couldn't reach Stripe to load the card form. An ad blocker or privacy extension is the usual cause. Allow js.stripe.com and try again, or use another payment method below."
+                              : "Stripe is not configured for this environment. Add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY to enable card entry."}
+                          </AlertDescription>
+                          {isStripePublishableKeyConfigured ? (
+                            <Button
+                              type="button"
+                              variant="link"
+                              className="mt-2 h-auto p-0 text-sm"
+                              onClick={() =>
+                                setStripeLoadAttempt((attempt) => attempt + 1)
+                              }
+                            >
+                              Try again
+                            </Button>
+                          ) : null}
+                        </AlertContent>
+                      </Alert>
+                    ) : null}
 
                     <div className="mt-6 space-y-3">
                       <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="card-number">
+                        <Label
+                          size="sm"
+                          htmlFor="card-number"
+                          className="text-gray-700"
+                        >
                           Card Number
                         </Label>
-                        {isStripePublishableKeyConfigured ? (
+                        <InputGroup>
                           <div
                             id="card-number"
                             ref={stripeCardNumberMountRef}
-                            aria-invalid={shouldShowCardFieldError(
-                              "cardNumber"
-                            )}
-                            className={cn(
-                              inputVariants({
-                                className:
-                                  "flex h-[43px] items-center px-3 py-2",
-                              }),
-                              shouldShowCardFieldError("cardNumber") &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
+                            aria-invalid={shouldShowCardFieldError("cardNumber")}
+                            className={getStripeFieldClassName(
+                              "cardNumber",
+                              "pl-[52px]"
                             )}
                           />
-                        ) : (
-                          <CreditCardInput
-                            id="card-number"
-                            value={cardNumber}
-                            onValueChange={setCardNumber}
-                            onFocus={() => setActiveCardField("cardNumber")}
-                            onBlur={() =>
-                              setCardFieldTouched((current) => ({
-                                ...current,
-                                cardNumber: true,
-                              }))
-                            }
-                            aria-invalid={shouldShowCardFieldError(
-                              "cardNumber"
+                          <InputLeftElement className="w-[52px]">
+                            {StripeCardBrandIcon ? (
+                              <StripeCardBrandIcon />
+                            ) : (
+                              <div className="inline-flex h-6 w-[34px] shrink-0 items-center justify-center rounded border border-gray-100 bg-white text-gray-500">
+                                <CreditCard className="size-4" />
+                              </div>
                             )}
-                            className={cn(
-                              "h-[43px]",
-                              shouldShowCardFieldError("cardNumber") &&
-                                "border-error-300 focus:border-error-300 focus:ring-error-100"
-                            )}
-                          />
-                        )}
+                          </InputLeftElement>
+                        </InputGroup>
                         {shouldShowCardFieldError("cardNumber") ? (
                           <span className="block text-xs leading-5 text-error-500">
-                            {cardNumberError}
+                            {stripeCardNumberError}
                           </span>
                         ) : null}
                       </div>
 
                       <div className="space-y-1.5">
-                        <Label size="sm" htmlFor="name-on-card">
+                        <Label
+                          size="sm"
+                          htmlFor="name-on-card"
+                          className="text-gray-700"
+                        >
                           Name On Card
                         </Label>
                         <Input
@@ -7062,11 +7014,7 @@ export default function PaymentPage() {
                             }))
                           }
                           aria-invalid={shouldShowCardFieldError("cardName")}
-                          className={cn(
-                            "h-[43px]",
-                            shouldShowCardFieldError("cardName") &&
-                              "border-error-300 focus:border-error-300 focus:ring-error-100"
-                          )}
+                          isInvalid={shouldShowCardFieldError("cardName")}
                         />
                         {shouldShowCardFieldError("cardName") ? (
                           <span className="block text-xs leading-5 text-error-500">
@@ -7077,109 +7025,46 @@ export default function PaymentPage() {
 
                       <div className="grid grid-cols-2 gap-x-3">
                         <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="expiration-date">
+                          <Label
+                            size="sm"
+                            htmlFor="expiration-date"
+                            className="text-gray-700"
+                          >
                             Expiration Date
                           </Label>
-                          {isStripePublishableKeyConfigured ? (
-                            <div
-                              id="expiration-date"
-                              ref={stripeCardExpiryMountRef}
-                              aria-invalid={shouldShowCardFieldError(
-                                "expirationDate"
-                              )}
-                              className={cn(
-                                inputVariants({
-                                  className:
-                                    "flex h-[43px] items-center px-3 py-2",
-                                }),
-                                shouldShowCardFieldError("expirationDate") &&
-                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
-                              )}
-                            />
-                          ) : (
-                            <Input
-                              id="expiration-date"
-                              type="text"
-                              placeholder="MM/YYYY"
-                              value={expirationDate}
-                              onFocus={() =>
-                                setActiveCardField("expirationDate")
-                              }
-                              onChange={(e) =>
-                                setExpirationDate(
-                                  formatExpiryInput(e.target.value)
-                                )
-                              }
-                              onBlur={() =>
-                                setCardFieldTouched((current) => ({
-                                  ...current,
-                                  expirationDate: true,
-                                }))
-                              }
-                              aria-invalid={shouldShowCardFieldError(
-                                "expirationDate"
-                              )}
-                              className={cn(
-                                "h-[43px]",
-                                shouldShowCardFieldError("expirationDate") &&
-                                  "border-error-300 focus:border-error-300 focus:ring-error-100"
-                              )}
-                            />
-                          )}
+                          <div
+                            id="expiration-date"
+                            ref={stripeCardExpiryMountRef}
+                            aria-invalid={shouldShowCardFieldError(
+                              "expirationDate"
+                            )}
+                            className={getStripeFieldClassName("expirationDate")}
+                          />
                           {shouldShowCardFieldError("expirationDate") ? (
                             <span className="block text-xs leading-5 text-error-500">
-                              {expirationDateError}
+                              {stripeExpirationDateError}
                             </span>
                           ) : null}
                         </div>
 
                         <div className="space-y-1.5">
-                          <Label size="sm" htmlFor="cvv-cvc">
+                          <Label
+                            size="sm"
+                            htmlFor="cvv-cvc"
+                            className="text-gray-700"
+                          >
                             CVV / CVC
                           </Label>
                           <InputGroup>
-                            {isStripePublishableKeyConfigured ? (
-                              <div
-                                id="cvv-cvc"
-                                ref={stripeCardCvcMountRef}
-                                aria-invalid={shouldShowCardFieldError("cvv")}
-                                className={cn(
-                                  inputVariants({
-                                    className:
-                                      "flex h-[43px] items-center px-3 py-2 pr-10",
-                                  }),
-                                  shouldShowCardFieldError("cvv") &&
-                                    "border-error-300 focus:border-error-300 focus:ring-error-100"
-                                )}
-                              />
-                            ) : (
-                              <Input
-                                id="cvv-cvc"
-                                type="text"
-                                placeholder="3 or 4 digits"
-                                value={cvv}
-                                onFocus={() => setActiveCardField("cvv")}
-                                onChange={(e) => {
-                                  setCvv(
-                                    e.target.value
-                                      .replace(/\D/g, "")
-                                      .slice(0, 4)
-                                  )
-                                }}
-                                onBlur={() => {
-                                  setCardFieldTouched((current) => ({
-                                    ...current,
-                                    cvv: true,
-                                  }))
-                                }}
-                                aria-invalid={shouldShowCardFieldError("cvv")}
-                                className={cn(
-                                  "h-[43px]",
-                                  shouldShowCardFieldError("cvv") &&
-                                    "border-error-300 focus:border-error-300 focus:ring-error-100"
-                                )}
-                              />
-                            )}
+                            <div
+                              id="cvv-cvc"
+                              ref={stripeCardCvcMountRef}
+                              aria-invalid={shouldShowCardFieldError("cvv")}
+                              className={getStripeFieldClassName(
+                                "cvv",
+                                "pr-[38px]"
+                              )}
+                            />
                             <InputRightElement>
                               <TooltipProvider delayDuration={75}>
                                 <Tooltip>
@@ -7187,7 +7072,7 @@ export default function PaymentPage() {
                                     <HelpCircle className="text-gray-500 h-4 w-4" />
                                   </TooltipTrigger>
                                   <TooltipContent
-                                    className="max-w-[139px]"
+                                    className="max-w-[139px] font-semibold"
                                     visual="gray"
                                   >
                                     3-4 digit code on the back of your card
@@ -7198,14 +7083,14 @@ export default function PaymentPage() {
                           </InputGroup>
                           {shouldShowCardFieldError("cvv") ? (
                             <span className="block text-xs leading-5 text-error-500">
-                              {cvvError}
+                              {stripeCvvError}
                             </span>
                           ) : null}
                         </div>
                       </div>
                     </div>
 
-                    <div className="mt-[22px] flex items-center gap-x-3">
+                    <div className="mt-[22px] flex items-center gap-x-3 px-2.5">
                       <Checkbox
                         size="md"
                         id="save-default-payment-method"
