@@ -1280,16 +1280,18 @@ const Sidebar = ({
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
                             onClick={() => {
                               if (!targetId) return
                               scrollToWizardField(targetId)
                             }}
                           >
                             {field.label}
-                          </button>
+                          </Button>
 
                           {shouldShowStatus &&
                             (hasError ? (
@@ -1331,16 +1333,18 @@ const Sidebar = ({
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
                             onClick={() => {
                               if (!targetId) return
                               scrollToWizardField(targetId)
                             }}
                           >
                             {field.label}
-                          </button>
+                          </Button>
 
                           {shouldShowStatus &&
                             (hasError ? (
@@ -1364,9 +1368,11 @@ const Sidebar = ({
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
                             onClick={() => {
                               if (field.label === "Task Name") {
                                 setTaskSearchDialogOpen(true)
@@ -1376,7 +1382,7 @@ const Sidebar = ({
                             }}
                           >
                             {field.label}
-                          </button>
+                          </Button>
 
                           {hasStartedScope ? (
                             (field.label === "Task Name" &&
@@ -1417,10 +1423,12 @@ const Sidebar = ({
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <button
-                            type="button"
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
                             className={cn(
-                              "text-sm leading-6 transition duration-300 focus-visible:outline-none",
+                              "text-sm leading-6 p-0 h-auto transition duration-300",
                               isSubActive
                                 ? "text-primary-500"
                                 : "text-gray-500 hover:text-dark-blue-400"
@@ -1428,7 +1436,7 @@ const Sidebar = ({
                             onClick={() => setTeamSubTab(field.name)}
                           >
                             {field.label}
-                          </button>
+                          </Button>
                         </div>
                       )
                     })}
@@ -1449,16 +1457,18 @@ const Sidebar = ({
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
                             onClick={() => {
                               if (!targetId) return
                               scrollToWizardField(targetId)
                             }}
                           >
                             {field.label}
-                          </button>
+                          </Button>
 
                           {hasError ? (
                             <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
