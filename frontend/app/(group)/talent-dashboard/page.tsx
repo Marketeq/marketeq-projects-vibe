@@ -106,6 +106,13 @@ import {
   type MismatchFlowKind,
 } from "@/src/lib/api/travel-location-prompt"
 import {
+  clearReviewedResult,
+  markReviewedResult,
+  reconcileReviewedSession,
+  resolveReviewedResult,
+  shouldMarkReviewedResult,
+} from "@/src/lib/api/reviewed-approval-result"
+import {
   clearHomeCountryChange,
   consumeHomeCountryChange,
   HOME_COUNTRY_UPDATED_ALERT,
@@ -325,6 +332,8 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        // The immediate result is handled by the modal: no review alert may follow it.
+        clearReviewedResult(window.localStorage, user.id)
         // Which success alert follows the modal. Read once: a repeat (duplicate
         // webhook, reconcile, refresh) finds no flag, so it can never show twice.
         setSuccessAlertKind(
@@ -336,8 +345,14 @@ export default function TalentDashboard() {
       // arrives later as a notification, so this browser stops waiting for it.
       if (shouldShowPendingModal(summary)) {
         clearAwaitingResult(window.localStorage)
-        // The approval will arrive as a backend notification: no alert from here.
+        // A home-country approval arrives as a backend notification: no alert from here.
         clearHomeCountryChange(window.localStorage)
+        // A first-time verification instead remembers it is under review, so the
+        // approved result can be shown (see reviewed-approval-result.ts). A pending
+        // home-country claim on the backend marks the other kind.
+        if (shouldMarkReviewedResult(summary)) {
+          markReviewedResult(window.localStorage, user.id)
+        }
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setPendingModalOpen(true)
@@ -388,6 +403,44 @@ export default function TalentDashboard() {
       if (timer) clearTimeout(timer)
       document.removeEventListener("visibilitychange", onVisible)
     }
+  }, [user])
+
+  // PMCM-653: a first-time verification that was shown as submitted and is approved
+  // later shows the existing success alert once. The marker only says this browser is
+  // waiting; the backend summary (nextAction complete AND fullyVerified) decides. It is
+  // rechecked on load (one reconcile, then GET /me) and whenever the tab becomes
+  // visible (GET only), with no timer: a review can take days. Nothing is shown while
+  // the review continues, and the marker is consumed in the same step that shows it.
+  const reviewedCheckStartedRef = useRef(false)
+  useEffect(() => {
+    if (!user) return
+    if (resolveDashboardRole(user) !== ROLE.TALENT) return
+
+    const check = async (withReconcile: boolean) => {
+      const outcome = await resolveReviewedResult({
+        storage: window.localStorage,
+        userId: user.id,
+        fetchSummary: fetchIdentityVerificationSummary,
+        reconcile: withReconcile ? reconcileReviewedSession : undefined,
+      })
+      if (outcome !== "approved") return
+      setVerificationGateOpen(false)
+      setProfileBannerShown(false)
+      setSuccessAlertKind("verified")
+      setSuccessAlertOpen(true)
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void check(false)
+    }
+
+    // StrictMode runs this effect twice; the load check (and its reconcile) runs once.
+    if (!reviewedCheckStartedRef.current) {
+      reviewedCheckStartedRef.current = true
+      void check(true)
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
   }, [user])
 
   // The Identity Verification check (which may open AccountVerificationGate) waits
