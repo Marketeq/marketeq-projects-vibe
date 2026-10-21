@@ -977,6 +977,46 @@ describe('Home-country change sessions (PMCM-650)', () => {
     });
   });
   // ------------------------------------------------------------------
+  describe('Didit finishes in review and no webhook arrives (the hosted page does not redirect)', () => {
+    it('the dashboard\'s reconcile moves the claim\'s session to in_review and the profile to pending, changing nothing else', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+      w.decisions.set(s1, 'In Review');
+
+      await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'updated' });
+
+      expect(w.sessions[0].status).toBe(HostedKycSessionStatus.IN_REVIEW);
+      expect(identity(w)).toBe(IdentityVerificationStatus.PENDING);
+      expectCountryKept(w); // the old home country stays verified; the claim is retained
+      expect(w.attempts).toHaveLength(0);
+      expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(0);
+    });
+
+    it('a repeated reconcile, or the webhook arriving later, changes nothing further and the later approval still promotes once', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.decisions.set(s1, 'In Review');
+      await w.service.reconcileForUser('user-1');
+      await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'unchanged' });
+      await w.send(s1, 'In Review');
+      expect(identity(w)).toBe(IdentityVerificationStatus.PENDING);
+
+      await w.send(s1, 'Approved');
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(w.profile.pendingHomeCountry).toBeNull();
+      expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(1);
+    });
+
+    it('a decision that is not an In Review result (still In Progress) leaves the session as it was', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      w.decisions.set(s1, 'In Progress');
+      await expect(w.service.reconcileForUser('user-1')).resolves.toEqual({ outcome: 'unchanged' });
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+    });
+  });
+
   describe('the in-app notification: sent once, only for a promoted home-country change', () => {
     const notified = (w: World) => w.notifications.homeCountryUpdated.mock.calls.map((c) => c[0]);
 

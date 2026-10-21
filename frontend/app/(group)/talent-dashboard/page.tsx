@@ -397,11 +397,29 @@ export default function TalentDashboard() {
       })
       void returnReconcilerRef.current.run().then((result) => apply(result.summary))
     }
+    // Coming back from the provider with Back can restore this page from the browser's
+    // back/forward cache without running anything again (no mount, no visibility change):
+    // a restored page rechecks exactly like a tab that became visible.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted || !hasAwaitingResult(window.localStorage)) return
+      attempts = 0
+      if (timer) clearTimeout(timer)
+      // Nothing reconciled this trip while the page was frozen, and without the webhook
+      // the server still has the session as started: reconcile (once per return, the
+      // shared reconciler dedupes) and then read /me, exactly as a fresh load does.
+      returnReconcilerRef.current ??= createReturnReconciler({
+        awaitingStorage: window.localStorage,
+        markerStorage: window.sessionStorage,
+      })
+      void returnReconcilerRef.current.run().then((result) => apply(result.summary))
+    }
     document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("pageshow", onPageShow)
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
       document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("pageshow", onPageShow)
     }
   }, [user])
 

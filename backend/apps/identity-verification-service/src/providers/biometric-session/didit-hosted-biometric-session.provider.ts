@@ -66,6 +66,11 @@ export class DiditHostedBiometricSessionProvider implements HostedBiometricSessi
       workflow_id: input.workflowId,
       vendor_data: input.vendorData,
       callback: input.callbackUrl,
+      // Didit's documented default is "initiator" (only the device that started the flow
+      // is redirected) and its own guidance for a callback that does not trigger reliably
+      // is "both". The redirect stays a UI hint: the outcome is only ever taken from the
+      // signed webhook or the server-side decision lookup.
+      callback_method: 'both',
     });
   }
 
