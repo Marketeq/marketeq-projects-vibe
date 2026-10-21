@@ -465,26 +465,22 @@ function createAutosaveLoop(
   return { run, dispose }
 }
 
-// PMCM-253: the wizard's six-state section model (AC1). One pure, exported,
-// unit-testable function — every input is an explicit boolean, nothing here
-// closes over component state. `isActive` takes top priority so the current
-// section always has a visually distinct icon (N1) even while it also has
-// an error or warning underneath; callers that need that underlying status
+// PMCM-253 (locking removed per follow-up product direction: this is an
+// edit system, not a step-by-step wizard — every section is always open):
+// the five-state section model (AC1). One pure, exported, unit-testable
+// function — every input is an explicit boolean, nothing here closes over
+// component state. `isActive` takes top priority so the current section
+// always has a visually distinct icon (N1) even while it also has an
+// error or warning underneath; callers that need that underlying status
 // (the publish gate, and the secondary badge shown next to an active
 // section's icon) call this again with `isActive: false` to bypass it.
-export type SectionStatus =
-  | "locked"
-  | "incomplete"
-  | "complete"
-  | "warning"
-  | "error"
+// `SectionStatus`/`SectionState` are local to this file (confirmed via
+// repo-wide grep — nothing else imports them), so "locked" was removed
+// from the union entirely rather than just never being returned.
+export type SectionStatus = "incomplete" | "complete" | "warning" | "error"
 export type SectionState = SectionStatus | "active"
 
 export type DeriveSectionStateInput = {
-  // The step this section would become the moment its prerequisite is met —
-  // once true, stays true for the rest of the session (X2): the wizard
-  // never re-locks a section that was already reachable.
-  isUnlocked: boolean
   // Live validity for this section's required fields (the same schema/count
   // check already driving stepsState[index].isValid) — recalculated from
   // current form values on every render, never a stale save result (AC3).
@@ -511,7 +507,6 @@ export function deriveSectionState(
   input: DeriveSectionStateInput
 ): SectionState {
   if (input.isActive) return "active"
-  if (!input.isUnlocked) return "locked"
 
   const hasBlockingError =
     input.hasBlockingFieldError ||
@@ -1195,21 +1190,14 @@ const Sidebar = ({
       <div className="mb-8">
         <Logo3 className="h-[19px] w-auto" />
       </div>
-      {stepsState.map(({ label, isValid, disabled }, index) => {
+      {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
         const isLast = index === stepsState.length - 1
-        // PMCM-253/AC4: `disabled` here is the WIZARD's own "unlocked" set
-        // (PublishProject overrides stepsState.disabled with it, see the
-        // deriveSectionState block near createAutosaveLoop) — never
-        // re-locks a once-reachable section (X2), unlike the shared
-        // useStepper hook's own disabled cascade.
-        const isUnlocked = !disabled
         const hasBlockingFieldError =
           (label === "Questions" && faqModerationHasError) ||
           (label === "Project Info" && projectInfoModerationHasError) ||
           (label === "Media" && mediaModerationHasError)
         const commonStateInput = {
-          isUnlocked,
           isValid: Boolean(isValid),
           everCompleted: everCompletedSteps[index] ?? false,
           hasBlockingFieldError,
@@ -1243,16 +1231,9 @@ const Sidebar = ({
             )}
             <button
               type="button"
-              className={cn(
-                "group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none",
-                disabled && "opacity-50 cursor-not-allowed"
-              )}
+              className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
               data-ui-state={displayState}
-              aria-disabled={disabled}
-              onClick={() => {
-                if (disabled) return
-                setStep(index)
-              }}
+              onClick={() => setStep(index)}
             >
               <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=warning]:border-primary-500 group-data-[ui-state=warning]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
                 {displayState === "error" ? (
@@ -1261,8 +1242,6 @@ const Sidebar = ({
                   <span className="size-2 rounded-full bg-primary-500" />
                 ) : displayState === "complete" || displayState === "warning" ? (
                   <Check className="size-3.5 text-white" />
-                ) : displayState === "locked" ? (
-                  <Lock01 className="size-3.5 text-gray-400" />
                 ) : (
                   <Plus className="size-3.5 text-gray-400" />
                 )}
@@ -1284,19 +1263,11 @@ const Sidebar = ({
             <div
               className={cn(
                 "grid transition-[grid-template-rows] duration-300 ease-in-out",
-                // PMCM-252/N2: a locked section's sub-items now also
-                // expand (blurred/disabled below) instead of staying
-                // collapsed — otherwise "locked sub-items are blurred"
-                // would never be observable, since a locked step can
-                // never become active. Every other inactive-but-reachable
-                // step keeps the existing collapsed-unless-active pattern.
-                isActive || disabled ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                isActive ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
               )}
             >
               <div className="overflow-hidden">
-              <div
-                className={cn("mt-1 pl-9", disabled && "opacity-50")}
-              >
+              <div className="mt-1 pl-9">
                   {label === "Project Info" &&
                     meta[label].map((field, i) => {
                       const hasError = hasProjectInfoFieldError(field.name)
@@ -1304,52 +1275,25 @@ const Sidebar = ({
                       const shouldShowStatus = hasError || hasValue
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
-                      const subItem = (
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          disabled={disabled}
-                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
-                          onClick={() => {
-                            if (disabled || !targetId) return
-                            scrollToWizardField(targetId)
-                          }}
-                        >
-                          {field.label}
-                        </Button>
-                      )
-
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          {disabled ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {/* PMCM-253 follow-up: subItem is a
-                                  disabled <button>, which doesn't fire
-                                  pointer events — wrap it in a focusable
-                                  span so the tooltip actually opens on
-                                  hover/keyboard focus, same fix as the
-                                  Publish button above. */}
-                                  <span className="inline-block" tabIndex={0}>
-                                    {subItem}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Complete the previous section first
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ) : (
-                            subItem
-                          )}
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
+                            {field.label}
+                          </Button>
 
-                          {!disabled &&
-                            shouldShowStatus &&
+                          {shouldShowStatus &&
                             (hasError ? (
                               <AlertCircle className="size-[22px] text-warning-500 shrink-0" />
                             ) : (
@@ -1384,52 +1328,25 @@ const Sidebar = ({
                       const shouldShowStatus = hasError || hasValue
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
-                      const subItem = (
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          disabled={disabled}
-                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
-                          onClick={() => {
-                            if (disabled || !targetId) return
-                            scrollToWizardField(targetId)
-                          }}
-                        >
-                          {field.label}
-                        </Button>
-                      )
-
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          {disabled ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {/* PMCM-253 follow-up: subItem is a
-                                  disabled <button>, which doesn't fire
-                                  pointer events — wrap it in a focusable
-                                  span so the tooltip actually opens on
-                                  hover/keyboard focus, same fix as the
-                                  Publish button above. */}
-                                  <span className="inline-block" tabIndex={0}>
-                                    {subItem}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Complete the previous section first
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ) : (
-                            subItem
-                          )}
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
+                            {field.label}
+                          </Button>
 
-                          {!disabled &&
-                            shouldShowStatus &&
+                          {shouldShowStatus &&
                             (hasError ? (
                               <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
                             ) : (
@@ -1446,54 +1363,28 @@ const Sidebar = ({
                         field.label === "Task Name"
                           ? null
                           : SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
-                      const subItem = (
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          disabled={disabled}
-                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
-                          onClick={() => {
-                            if (disabled) return
-                            if (field.label === "Task Name") {
-                              setTaskSearchDialogOpen(true)
-                            } else if (targetId) {
-                              scrollToWizardField(targetId)
-                            }
-                          }}
-                        >
-                          {field.label}
-                        </Button>
-                      )
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          {disabled ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {/* PMCM-253 follow-up: subItem is a
-                                  disabled <button>, which doesn't fire
-                                  pointer events — wrap it in a focusable
-                                  span so the tooltip actually opens on
-                                  hover/keyboard focus, same fix as the
-                                  Publish button above. */}
-                                  <span className="inline-block" tabIndex={0}>
-                                    {subItem}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Complete the previous section first
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ) : (
-                            subItem
-                          )}
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (field.label === "Task Name") {
+                                setTaskSearchDialogOpen(true)
+                              } else if (targetId) {
+                                scrollToWizardField(targetId)
+                              }
+                            }}
+                          >
+                            {field.label}
+                          </Button>
 
-                          {!disabled && hasStartedScope ? (
+                          {hasStartedScope ? (
                             (field.label === "Task Name" &&
                               pickFromProjectScopeSchema({
                                 task: true,
@@ -1527,53 +1418,25 @@ const Sidebar = ({
                   {label === "Team" &&
                     meta.Team.map((field, i) => {
                       const isSubActive = teamSubTab === field.name
-                      const subItem = (
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          disabled={disabled}
-                          className={cn(
-                            "text-sm leading-6 p-0 h-auto transition duration-300 disabled:cursor-not-allowed",
-                            isSubActive
-                              ? "text-primary-500"
-                              : "text-gray-500 hover:text-dark-blue-400 disabled:hover:text-gray-500"
-                          )}
-                          onClick={() => {
-                            if (disabled) return
-                            setTeamSubTab(field.name)
-                          }}
-                        >
-                          {field.label}
-                        </Button>
-                      )
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          {disabled ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {/* PMCM-253 follow-up: subItem is a
-                                  disabled <button>, which doesn't fire
-                                  pointer events — wrap it in a focusable
-                                  span so the tooltip actually opens on
-                                  hover/keyboard focus, same fix as the
-                                  Publish button above. */}
-                                  <span className="inline-block" tabIndex={0}>
-                                    {subItem}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Complete the previous section first
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ) : (
-                            subItem
-                          )}
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className={cn(
+                              "text-sm leading-6 p-0 h-auto transition duration-300",
+                              isSubActive
+                                ? "text-primary-500"
+                                : "text-gray-500 hover:text-dark-blue-400"
+                            )}
+                            onClick={() => setTeamSubTab(field.name)}
+                          >
+                            {field.label}
+                          </Button>
                         </div>
                       )
                     })}
@@ -1589,57 +1452,31 @@ const Sidebar = ({
                         field.name === "faqs" &&
                         (faqError || faqModerationHasError)
                       const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
-                      const subItem = (
-                        <Button
-                          variant="link"
-                          visual="gray"
-                          size="sm"
-                          disabled={disabled}
-                          className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400 disabled:cursor-not-allowed disabled:hover:text-gray-500"
-                          onClick={() => {
-                            if (disabled || !targetId) return
-                            scrollToWizardField(targetId)
-                          }}
-                        >
-                          {field.label}
-                        </Button>
-                      )
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          {disabled ? (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  {/* PMCM-253 follow-up: subItem is a
-                                  disabled <button>, which doesn't fire
-                                  pointer events — wrap it in a focusable
-                                  span so the tooltip actually opens on
-                                  hover/keyboard focus, same fix as the
-                                  Publish button above. */}
-                                  <span className="inline-block" tabIndex={0}>
-                                    {subItem}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  Complete the previous section first
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          ) : (
-                            subItem
-                          )}
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
+                            {field.label}
+                          </Button>
 
-                          {!disabled &&
-                            (hasError ? (
-                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                            ) : hasValue ? (
-                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                                <Check className="size-3 text-white" />
-                              </div>
-                            ) : null)}
+                          {hasError ? (
+                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                          ) : hasValue ? (
+                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                              <Check className="size-3 text-white" />
+                            </div>
+                          ) : null}
                         </div>
                       )
                     })}
@@ -1661,8 +1498,6 @@ const Header = ({
   publishing,
   saveStatus,
   isOffline,
-  publishDisabled,
-  blockedSectionLabels,
 }: {
   onClose?: () => void
   slug?: string
@@ -1671,12 +1506,6 @@ const Header = ({
   publishing?: boolean
   saveStatus?: "idle" | "saving" | "saved" | "error"
   isOffline?: boolean
-  // PMCM-253/AC4/E2/X1: true while any section is error/incomplete/locked.
-  // Disables Publish directly instead of the previous always-clickable
-  // block-and-reveal — the names below are how a seller still discovers
-  // what's left without clicking a dead button.
-  publishDisabled?: boolean
-  blockedSectionLabels?: string[]
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1732,34 +1561,9 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {publishDisabled &&
-        !publishing &&
-        blockedSectionLabels &&
-        blockedSectionLabels.length > 0 ? (
-          // PMCM-253 follow-up: a disabled <button> doesn't fire pointer
-          // events, so a TooltipTrigger placed directly on it never opens —
-          // wrap it in a focusable span instead (same pattern as
-          // project-details/[slug]'s Favorite icon tooltip) so the Button
-          // itself stays disabled while the wrapper still receives hover
-          // and keyboard focus.
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-block" tabIndex={0}>
-                  <Button disabled>Publish</Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Complete these sections to publish:{" "}
-                {blockedSectionLabels.join(", ")}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <Button onClick={onPublish} disabled={publishing || publishDisabled}>
-            {publishing ? "Publishing…" : "Publish"}
-          </Button>
-        )}
+        <Button onClick={onPublish} disabled={publishing}>
+          {publishing ? "Publishing…" : "Publish"}
+        </Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2314,38 +2118,99 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "skills",
 ]
 
+// PMCM-253 follow-up: which of the three Project Info tabs each field lives
+// on — TabsContent (components/ui/tabs) unmounts inactive tab panels
+// entirely (not just display:none), so a field's own targetId div doesn't
+// exist in the DOM at all until its tab is the active one. `tab` lets the
+// publish-validation jump below switch tabs before it scrolls/focuses.
+type ProjectInfoTab = "basic-info" | "description" | "project-details"
+
 const PROJECT_INFO_VALIDATION_TARGETS: Array<{
   name: FieldPath<ProjectInfoFormValues>
   targetId: string
+  tab: ProjectInfoTab
 }> = [
-  { name: "title", targetId: "publish-project-title-field" },
-  { name: "category.0.category", targetId: "publish-project-category-field" },
+  { name: "title", targetId: "publish-project-title-field", tab: "basic-info" },
+  {
+    name: "category.0.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.0.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.1.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.1.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.1.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.2.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.2.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.2.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "industry", targetId: "publish-project-industry-field" },
+  {
+    name: "industry",
+    targetId: "publish-project-industry-field",
+    tab: "project-details",
+  },
   {
     name: "shortDescription",
     targetId: "publish-project-short-description-field",
+    tab: "description",
   },
   {
     name: "fullDescription",
     targetId: "publish-project-full-description-field",
+    tab: "description",
   },
-  { name: "tags", targetId: "publish-project-tags-field" },
-  { name: "skills", targetId: "publish-project-skills-field" },
+  { name: "tags", targetId: "publish-project-tags-field", tab: "project-details" },
+  {
+    name: "skills",
+    targetId: "publish-project-skills-field",
+    tab: "project-details",
+  },
 ]
+
+const PROJECT_INFO_TAB_TRIGGER_IDS: Record<ProjectInfoTab, string> = {
+  "basic-info": "publish-project-info-tab-basic-info",
+  description: "publish-project-info-tab-description",
+  "project-details": "publish-project-info-tab-project-details",
+}
+
+// PMCM-253 follow-up: switches to the field's own tab first (a plain
+// .click() — Tabs' useControllableState picks it up like any other click,
+// no prop drilling needed since this only ever runs from an effect, not
+// render), then waits a frame for that tab's content to mount before
+// focusing/scrolling the field itself. A single rAF is what
+// scrollToWizardField already relies on elsewhere in this file for the
+// same click-then-render sequencing.
+const focusAndScrollProjectInfoField = (
+  methods: UseFormReturn<ProjectInfoFormValues>,
+  target: { name: FieldPath<ProjectInfoFormValues>; targetId: string; tab: ProjectInfoTab }
+) => {
+  if (typeof window === "undefined") return
+  document.getElementById(PROJECT_INFO_TAB_TRIGGER_IDS[target.tab])?.click()
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
 
 const scrollToPublishField = (targetId: string) => {
   if (typeof window === "undefined") return
@@ -3166,9 +3031,16 @@ const ProjectInfo = ({
           <div className="flex-auto min-w-0">
             <Tabs defaultValue="basic-info">
               <TabsList className="px-0 pt-0 gap-6">
-                <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
-                <TabsTrigger value="description">Description</TabsTrigger>
-                <TabsTrigger value="project-details">
+                <TabsTrigger id="publish-project-info-tab-basic-info" value="basic-info">
+                  Basic Info
+                </TabsTrigger>
+                <TabsTrigger id="publish-project-info-tab-description" value="description">
+                  Description
+                </TabsTrigger>
+                <TabsTrigger
+                  id="publish-project-info-tab-project-details"
+                  value="project-details"
+                >
                   Project Details
                 </TabsTrigger>
               </TabsList>
@@ -4560,6 +4432,23 @@ const MEDIA_VALIDATION_TARGETS: Array<{
   },
   { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
 ]
+
+// PMCM-253 follow-up: Media has no sub-tabs — a single rAF after the step
+// itself is active is enough for the field's targetId div to be in the DOM.
+const focusAndScrollMediaField = (
+  methods: UseFormReturn<MediaFormValues>,
+  target: { name: FieldPath<MediaFormValues>; targetId: string }
+) => {
+  if (typeof window === "undefined") return
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 type MediaProps = {
   setProgress?: (val: number) => void
 }
@@ -6672,6 +6561,7 @@ const ProjectScope = ({
     setScopeType,
     draftProjectId,
     initialPricingPeriod,
+    publishAttempted,
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
@@ -7507,6 +7397,16 @@ const ProjectScope = ({
             className="space-y-6 flex-auto min-w-0"
             id="publish-project-scope-table-field"
           >
+            {/* PMCM-253 follow-up: Project Scope has no RHF form to show
+            a field-level error — `success` just above is the same live
+            projectScopeSchema check Step's own toggleValidation already
+            uses, so this reacts to the live phases/tasks state exactly
+            like every other section's inline errors do. */}
+            {!success && publishAttempted ? (
+              <ErrorMessage size="sm">
+                Add at least 1 phase with 1 task to publish.
+              </ErrorMessage>
+            ) : null}
             {/* Budget Calculator & Duration cards */}
             <div className="grid grid-cols-2 gap-x-4">
               <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
@@ -8143,6 +8043,12 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
   teamSubTab: string
   setTeamSubTab: React.Dispatch<React.SetStateAction<string>>
+  // PMCM-253 follow-up: Project Scope and Team have no RHF form to drive
+  // an inline error off of — their own live validity already exists
+  // (projectScopeSchema.safeParse(phases), the team-member count check),
+  // this just lets their inline error copy show only once Publish has
+  // actually been clicked, same gating every other section already uses.
+  publishAttempted: boolean
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
@@ -10224,6 +10130,7 @@ const Team = () => {
     draftProjectId,
     projectScopeMethods,
     teamSubTab,
+    publishAttempted,
   } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
@@ -10502,7 +10409,10 @@ const Team = () => {
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+      <div
+        className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]"
+        id="publish-project-team-members-field"
+      >
         <div className="flex-auto min-w-0">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
             Members
@@ -10512,6 +10422,17 @@ const Team = () => {
             permissions for Project Title. Only an existing team member can be
             made the project lead. Read more about roles and permissions.
           </p>
+
+          {/* PMCM-253 follow-up: practically unreachable (the account
+          owner always satisfies this check once signed in — see
+          sectionValidity's identical condition), kept for defensiveness
+          since Team has no RHF form to otherwise surface this on. */}
+          {!(teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)) &&
+          publishAttempted ? (
+            <ErrorMessage size="sm" className="mt-2">
+              Add at least 1 team member to publish.
+            </ErrorMessage>
+          ) : null}
 
           {/* Project Owner */}
           <div className="mt-6">
@@ -12108,26 +12029,34 @@ function PublishProject({
     })
   }, [pathname, router, searchParams, setStep])
 
+  // PMCM-253 follow-up: setStep(n) unmounts the previous step's whole
+  // subtree and mounts the new one (Step in components/ui/stepper renders
+  // `active ? children : null`) — any trigger()/setFocus/scrollIntoView
+  // aimed at the new step's fields has to run AFTER that mount, not in the
+  // same tick as setStep. pendingStepFocusRef holds what to run once
+  // currentStep catches up; stepFocusToken always changes on every publish
+  // attempt (even re-clicking Publish while already sitting on the target
+  // step, where currentStep itself never changes) so the effect below
+  // reliably fires on the very first click, not just the second.
+  const pendingStepFocusRef = useRef<{ step: number; run: () => void } | null>(
+    null
+  )
+  const [stepFocusToken, setStepFocusToken] = useState(0)
+  const scheduleStepFocus = useCallback((step: number, run: () => void) => {
+    pendingStepFocusRef.current = { step, run }
+    setStepFocusToken((token) => token + 1)
+  }, [])
+  useEffect(() => {
+    const pending = pendingStepFocusRef.current
+    if (!pending || pending.step !== currentStep) return
+    pendingStepFocusRef.current = null
+    pending.run()
+  }, [currentStep, stepFocusToken])
+
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
     [nextStep, prevStep, setStep, toggleStepValidation]
   )
-  // PMCM-253/X2: the wizard's own "unlocked" set, layered on top of the
-  // shared useStepper hook instead of changing it (that hook is shared by
-  // onboarding/client, onboarding/talent, job-listing, publish-project, and
-  // security-settings.tsx — its own disabled cascade re-locks every later
-  // step the instant an earlier one goes invalid, which is exactly the
-  // behavior this ticket must NOT have here). Index 0 starts unlocked;
-  // every other index flips to true the first time its prerequisite is
-  // valid and then never flips back — see the cascading effect below,
-  // once every section's live validity is available.
-  const [unlockedSteps, setUnlockedSteps] = useState<boolean[]>([
-    true,
-    false,
-    false,
-    false,
-    false,
-  ])
   // PMCM-253/E1: true forever once a section has been valid at least once
   // this session — lets a since-cleared required field in an
   // already-finished section drop straight to "error" instead of quietly
@@ -12139,31 +12068,28 @@ function PublishProject({
     false,
     false,
   ])
+  // PMCM-253 follow-up (product direction): this is an edit system, not a
+  // step-by-step wizard — every section is always open, nothing is ever
+  // locked. The shared useStepper hook (utils/hooks.ts, shared by
+  // onboarding/client, onboarding/talent, job-listing, publish-project, and
+  // security-settings.tsx) still runs its own disabled cascade internally
+  // on an invalid step — left untouched since other flows depend on it —
+  // so `disabled` is hardcoded false here on every step before it reaches
+  // context, instead of changing the hook itself. Every existing reader of
+  // stepsState[index].disabled (this sidebar's click handling, the
+  // PMCM-252 sub-items) now always sees an unlocked section.
   const stepperRootValue = useMemo(
     () => ({
       currentStep,
       hasNextStep,
       hasPreviousStep,
       totalSteps,
-      // PMCM-253/N2: override the shared hook's own `disabled` with the
-      // wizard-local unlocked set computed above — every existing reader
-      // of stepsState[index].disabled (this sidebar's click guard/opacity,
-      // the PMCM-252 sub-item lock/tooltip) picks this up for free via
-      // context, with no change to useStepper itself or to the frozen
-      // Stepper component.
-      stepsState: stepsState.map((step, index) => ({
+      stepsState: stepsState.map((step) => ({
         ...step,
-        disabled: !unlockedSteps[index],
+        disabled: false,
       })),
     }),
-    [
-      currentStep,
-      hasNextStep,
-      hasPreviousStep,
-      totalSteps,
-      stepsState,
-      unlockedSteps,
-    ]
+    [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
@@ -12214,6 +12140,68 @@ function PublishProject({
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishAttempted, setPublishAttempted] = useState(false)
 
+  // PMCM-253 follow-up (product decision): Publish with an incomplete
+  // section no longer toasts — it opens that section (and, for Project
+  // Info/Questions, the sub-tab the first invalid field actually lives
+  // on), shows every inline field error in it (RHF trigger()), and
+  // scrolls/focuses the first invalid field. Runs once the target step is
+  // confirmed mounted (see scheduleStepFocus above).
+  const runPublishValidationJump = async (step: number) => {
+    if (step === 0) {
+      await projectInfoMethods.trigger()
+      const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
+        ({ name }) => projectInfoMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollProjectInfoField(projectInfoMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 1) {
+      await mediaMethods.trigger()
+      const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
+        ({ name }) => mediaMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollMediaField(mediaMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 2) {
+      // Project Scope isn't RHF — its own inline error (gated on
+      // publishAttempted, same as every other non-RHF section here) is
+      // already reactive to the live phases/tasks state; just bring it
+      // into view.
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-scope-table-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 3) {
+      // Team's validity (teamMemberIds.length > 0 || currentUser id) is
+      // effectively always true once signed in — practically unreachable,
+      // but handled defensively. "members" is the one sub-tab the
+      // member-count error can actually render on.
+      setTeamSubTab("members")
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-team-members-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 4) {
+      // Questions' own inline error ("Please add at least 3 FAQs before
+      // publishing.") is already reactive to publishAttempted — just
+      // switch to the FAQ tab (scrollToWizardField clicks the trigger
+      // since it's a real <button>, same as every other sidebar sub-item
+      // target) and scroll to it.
+      scrollToWizardField("publish-project-faqs-field")
+    }
+  }
+
   const handlePublish = async () => {
     if (!draftProjectId || isPublishing) return
     setPublishAttempted(true)
@@ -12221,12 +12209,10 @@ function PublishProject({
     setProjectInfoModerationError(null)
     setMediaModerationError(null)
     if (firstInvalidStep !== null) {
-      setStep(firstInvalidStep)
-      if (firstInvalidStep === 0) await projectInfoMethods.trigger()
-      else if (firstInvalidStep === 1) await mediaMethods.trigger()
-      toast({
-        title: "Please complete all required sections before publishing.",
-        variant: "destructive",
+      const invalidStep = firstInvalidStep
+      setStep(invalidStep)
+      scheduleStepFocus(invalidStep, () => {
+        void runPublishValidationJump(invalidStep)
       })
       return
     }
@@ -12265,55 +12251,70 @@ function PublishProject({
         "tags",
         "skills",
       ]
+      // PMCM-253 follow-up: a curated, field-tagged rejection already has
+      // an inline home (the setError calls above/below) — scroll to it
+      // and drop the toast instead of showing both. Only a genuinely
+      // generic/infra error (no field, no moderation category) still has
+      // nowhere inline to live, so it keeps the toast.
       if (field && projectInfoFields.includes(field)) {
         projectInfoMethods.setError(field as any, { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === field || t.name.startsWith(`${field}.`)
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
       } else if (field === "faqs") {
         setFaqModerationError(errorMessage)
         setStep(4)
+        scheduleStepFocus(4, () =>
+          scrollToWizardField("publish-project-faqs-field")
+        )
       } else if (errorType === "video_rejection") {
         mediaMethods.setError("featuredVideo", { message: errorMessage })
         setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredVideo",
+            targetId: "publish-project-featured-video-field",
+          })
+        )
       } else if (errorType === "image_rejection") {
         mediaMethods.setError("featuredImages", { message: errorMessage })
         setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredImages",
+            targetId: "publish-project-featured-images-field",
+          })
+        )
       } else if (errorType === "content_rejection") {
         projectInfoMethods.setError("fullDescription", { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === "fullDescription"
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
+      } else {
+        // PMCM-261/X3: no field tag, no moderation category — a generic
+        // or infra failure with no inline home. toUserMessage keeps the
+        // raw backend message off the screen either way.
+        toast({
+          title: toUserMessage(error),
+          variant: "destructive",
+        })
       }
-
-      // PMCM-261/X3: the backend only tags a message with `field`, or
-      // categorizes it as a video/image/content moderation rejection, for
-      // its own deliberate, curated copy (matching PMCM-254's client-side
-      // field copy, and the moderation-rejection exception this ticket
-      // keeps) — safe to show verbatim. Everything else (temporary_
-      // unavailable, "other" — infra errors, unexpected 4xx/5xx) goes
-      // through the shared generic/timeout copy instead of the raw
-      // backend message.
-      const isCuratedMessage =
-        Boolean(field) ||
-        errorType === "video_rejection" ||
-        errorType === "image_rejection" ||
-        errorType === "content_rejection"
-      const safeMessage = isCuratedMessage
-        ? errorMessage
-        : toUserMessage(error)
-
-      toast({
-        title:
-          errorType === "video_rejection"
-            ? `Project rejected: video violated moderation policy. ${safeMessage}`
-            : errorType === "image_rejection"
-              ? `Project rejected: image violated moderation policy. ${safeMessage}`
-              : errorType === "content_rejection"
-                ? `Project rejected: content did not meet community guidelines. ${safeMessage}`
-                : safeMessage,
-        variant: "destructive",
-      })
     } finally {
       setIsPublishing(false)
     }
@@ -12524,9 +12525,9 @@ function PublishProject({
   // PMCM-253: the one canonical per-section validity record — PMCM-261
   // flagged `firstInvalidStep` as a second, independently-reimplemented copy
   // of the exact same five checks `setStepValid` above already runs; this
-  // extracts it once so firstInvalidStep, the unlock cascade, and the
-  // publish-gate state machine below all read the SAME values instead of
-  // three separately-maintained copies that could drift apart.
+  // extracts it once so firstInvalidStep, the "ever completed" tracking,
+  // and the publish-gate state machine below all read the SAME values
+  // instead of separately-maintained copies that could drift apart.
   const sectionValidity = useMemo<Record<number, boolean>>(
     () => ({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
@@ -12554,25 +12555,6 @@ function PublishProject({
     [sectionValidity]
   )
 
-  // PMCM-253/AC2/X2: unlock section i+1 the first time section i is valid —
-  // never removed, even if section i later goes back to invalid (X2). A
-  // single increasing pass so an already-complete multi-section draft
-  // (e.g. reopening a published listing, X1) unlocks every reachable
-  // section in one go on load, not one render per step.
-  useEffect(() => {
-    setUnlockedSteps((prev) => {
-      const next = [...prev]
-      let changed = false
-      for (let i = 0; i < next.length - 1; i++) {
-        if (next[i] && sectionValidity[i] && !next[i + 1]) {
-          next[i + 1] = true
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [sectionValidity])
-
   // PMCM-253/E1: mark a section "ever completed" the first time it's valid
   // — stays true even if a required field is cleared afterward, which is
   // exactly the signal deriveSectionState uses to drop that section to
@@ -12591,57 +12573,6 @@ function PublishProject({
       return changed ? next : prev
     })
   }, [sectionValidity])
-
-  // PMCM-253/AC4/E2/X1: the publish gate. Every section must resolve to
-  // "complete" or "warning" — a non-blocking advisory never blocks
-  // publish (X1); "error", "incomplete", or "locked" all do. A locked
-  // section's own prerequisite is, by construction, itself still
-  // incomplete/error, so it never needs to be named separately below —
-  // fixing the one blocking section ahead of it is what actually unlocks
-  // it, which is why only error/incomplete sections are listed by name.
-  const sectionStatuses = useMemo<SectionState[]>(
-    () =>
-      steps.map((_, index) => {
-        const hasBlockingFieldError =
-          (index === 0 && Boolean(projectInfoModerationError)) ||
-          (index === 1 && Boolean(mediaModerationError)) ||
-          (index === 4 && Boolean(faqModerationError))
-        return deriveSectionState({
-          isUnlocked: unlockedSteps[index],
-          isValid: Boolean(sectionValidity[index]),
-          everCompleted: everCompletedSteps[index],
-          hasBlockingFieldError,
-          publishAttempted,
-          hasWarning: false,
-          isActive: false,
-        })
-      }),
-    [
-      unlockedSteps,
-      sectionValidity,
-      everCompletedSteps,
-      publishAttempted,
-      projectInfoModerationError,
-      mediaModerationError,
-      faqModerationError,
-    ]
-  )
-
-  const canPublish = sectionStatuses.every(
-    (status) => status === "complete" || status === "warning"
-  )
-
-  const blockedSectionLabels = useMemo(
-    () =>
-      steps
-        .filter((_, index) =>
-          (["error", "incomplete"] as SectionState[]).includes(
-            sectionStatuses[index]
-          )
-        )
-        .map((step) => step.label),
-    [sectionStatuses]
-  )
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -13534,6 +13465,7 @@ function PublishProject({
       setScopeType,
       teamSubTab,
       setTeamSubTab,
+      publishAttempted,
     }),
     [
       projectScopeMethods,
@@ -13553,6 +13485,7 @@ function PublishProject({
       initialPricingPeriod,
       scopeType,
       setScopeType,
+      publishAttempted,
       teamSubTab,
       setTeamSubTab,
     ]
@@ -13694,8 +13627,6 @@ function PublishProject({
                     publishing={isPublishing}
                     saveStatus={saveStatus}
                     isOffline={isOffline}
-                    publishDisabled={!canPublish}
-                    blockedSectionLabels={blockedSectionLabels}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
