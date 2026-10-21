@@ -1488,8 +1488,6 @@ const Header = ({
   publishing,
   saveStatus,
   isOffline,
-  publishDisabled,
-  blockedSectionLabels,
 }: {
   onClose?: () => void
   slug?: string
@@ -1498,12 +1496,6 @@ const Header = ({
   publishing?: boolean
   saveStatus?: "idle" | "saving" | "saved" | "error"
   isOffline?: boolean
-  // PMCM-253/AC4/E2/X1: true while any section is error or incomplete.
-  // Disables Publish directly instead of the previous always-clickable
-  // block-and-reveal — the names below are how a seller still discovers
-  // what's left without clicking a dead button.
-  publishDisabled?: boolean
-  blockedSectionLabels?: string[]
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1559,34 +1551,9 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {publishDisabled &&
-        !publishing &&
-        blockedSectionLabels &&
-        blockedSectionLabels.length > 0 ? (
-          // PMCM-253 follow-up: a disabled <button> doesn't fire pointer
-          // events, so a TooltipTrigger placed directly on it never opens —
-          // wrap it in a focusable span instead (same pattern as
-          // project-details/[slug]'s Favorite icon tooltip) so the Button
-          // itself stays disabled while the wrapper still receives hover
-          // and keyboard focus.
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-block" tabIndex={0}>
-                  <Button disabled>Publish</Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Complete these sections to publish:{" "}
-                {blockedSectionLabels.join(", ")}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        ) : (
-          <Button onClick={onPublish} disabled={publishing || publishDisabled}>
-            {publishing ? "Publishing…" : "Publish"}
-          </Button>
-        )}
+        <Button onClick={onPublish} disabled={publishing}>
+          {publishing ? "Publishing…" : "Publish"}
+        </Button>
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2141,38 +2108,99 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "skills",
 ]
 
+// PMCM-253 follow-up: which of the three Project Info tabs each field lives
+// on — TabsContent (components/ui/tabs) unmounts inactive tab panels
+// entirely (not just display:none), so a field's own targetId div doesn't
+// exist in the DOM at all until its tab is the active one. `tab` lets the
+// publish-validation jump below switch tabs before it scrolls/focuses.
+type ProjectInfoTab = "basic-info" | "description" | "project-details"
+
 const PROJECT_INFO_VALIDATION_TARGETS: Array<{
   name: FieldPath<ProjectInfoFormValues>
   targetId: string
+  tab: ProjectInfoTab
 }> = [
-  { name: "title", targetId: "publish-project-title-field" },
-  { name: "category.0.category", targetId: "publish-project-category-field" },
+  { name: "title", targetId: "publish-project-title-field", tab: "basic-info" },
+  {
+    name: "category.0.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.0.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.1.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.1.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.1.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.2.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.2.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.2.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "industry", targetId: "publish-project-industry-field" },
+  {
+    name: "industry",
+    targetId: "publish-project-industry-field",
+    tab: "project-details",
+  },
   {
     name: "shortDescription",
     targetId: "publish-project-short-description-field",
+    tab: "description",
   },
   {
     name: "fullDescription",
     targetId: "publish-project-full-description-field",
+    tab: "description",
   },
-  { name: "tags", targetId: "publish-project-tags-field" },
-  { name: "skills", targetId: "publish-project-skills-field" },
+  { name: "tags", targetId: "publish-project-tags-field", tab: "project-details" },
+  {
+    name: "skills",
+    targetId: "publish-project-skills-field",
+    tab: "project-details",
+  },
 ]
+
+const PROJECT_INFO_TAB_TRIGGER_IDS: Record<ProjectInfoTab, string> = {
+  "basic-info": "publish-project-info-tab-basic-info",
+  description: "publish-project-info-tab-description",
+  "project-details": "publish-project-info-tab-project-details",
+}
+
+// PMCM-253 follow-up: switches to the field's own tab first (a plain
+// .click() — Tabs' useControllableState picks it up like any other click,
+// no prop drilling needed since this only ever runs from an effect, not
+// render), then waits a frame for that tab's content to mount before
+// focusing/scrolling the field itself. A single rAF is what
+// scrollToWizardField already relies on elsewhere in this file for the
+// same click-then-render sequencing.
+const focusAndScrollProjectInfoField = (
+  methods: UseFormReturn<ProjectInfoFormValues>,
+  target: { name: FieldPath<ProjectInfoFormValues>; targetId: string; tab: ProjectInfoTab }
+) => {
+  if (typeof window === "undefined") return
+  document.getElementById(PROJECT_INFO_TAB_TRIGGER_IDS[target.tab])?.click()
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
 
 const scrollToPublishField = (targetId: string) => {
   if (typeof window === "undefined") return
@@ -2993,9 +3021,16 @@ const ProjectInfo = ({
           <div className="flex-auto min-w-0">
             <Tabs defaultValue="basic-info">
               <TabsList className="px-0 pt-0 gap-6">
-                <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
-                <TabsTrigger value="description">Description</TabsTrigger>
-                <TabsTrigger value="project-details">
+                <TabsTrigger id="publish-project-info-tab-basic-info" value="basic-info">
+                  Basic Info
+                </TabsTrigger>
+                <TabsTrigger id="publish-project-info-tab-description" value="description">
+                  Description
+                </TabsTrigger>
+                <TabsTrigger
+                  id="publish-project-info-tab-project-details"
+                  value="project-details"
+                >
                   Project Details
                 </TabsTrigger>
               </TabsList>
@@ -4387,6 +4422,23 @@ const MEDIA_VALIDATION_TARGETS: Array<{
   },
   { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
 ]
+
+// PMCM-253 follow-up: Media has no sub-tabs — a single rAF after the step
+// itself is active is enough for the field's targetId div to be in the DOM.
+const focusAndScrollMediaField = (
+  methods: UseFormReturn<MediaFormValues>,
+  target: { name: FieldPath<MediaFormValues>; targetId: string }
+) => {
+  if (typeof window === "undefined") return
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 type MediaProps = {
   setProgress?: (val: number) => void
 }
@@ -6499,6 +6551,7 @@ const ProjectScope = ({
     setScopeType,
     draftProjectId,
     initialPricingPeriod,
+    publishAttempted,
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
@@ -7334,6 +7387,16 @@ const ProjectScope = ({
             className="space-y-6 flex-auto min-w-0"
             id="publish-project-scope-table-field"
           >
+            {/* PMCM-253 follow-up: Project Scope has no RHF form to show
+            a field-level error — `success` just above is the same live
+            projectScopeSchema check Step's own toggleValidation already
+            uses, so this reacts to the live phases/tasks state exactly
+            like every other section's inline errors do. */}
+            {!success && publishAttempted ? (
+              <ErrorMessage size="sm">
+                Add at least 1 phase with 1 task to publish.
+              </ErrorMessage>
+            ) : null}
             {/* Budget Calculator & Duration cards */}
             <div className="grid grid-cols-2 gap-x-4">
               <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
@@ -7970,6 +8033,12 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
   teamSubTab: string
   setTeamSubTab: React.Dispatch<React.SetStateAction<string>>
+  // PMCM-253 follow-up: Project Scope and Team have no RHF form to drive
+  // an inline error off of — their own live validity already exists
+  // (projectScopeSchema.safeParse(phases), the team-member count check),
+  // this just lets their inline error copy show only once Publish has
+  // actually been clicked, same gating every other section already uses.
+  publishAttempted: boolean
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
@@ -10051,6 +10120,7 @@ const Team = () => {
     draftProjectId,
     projectScopeMethods,
     teamSubTab,
+    publishAttempted,
   } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
@@ -10329,7 +10399,10 @@ const Team = () => {
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+      <div
+        className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]"
+        id="publish-project-team-members-field"
+      >
         <div className="flex-auto min-w-0">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
             Members
@@ -10339,6 +10412,17 @@ const Team = () => {
             permissions for Project Title. Only an existing team member can be
             made the project lead. Read more about roles and permissions.
           </p>
+
+          {/* PMCM-253 follow-up: practically unreachable (the account
+          owner always satisfies this check once signed in — see
+          sectionValidity's identical condition), kept for defensiveness
+          since Team has no RHF form to otherwise surface this on. */}
+          {!(teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)) &&
+          publishAttempted ? (
+            <ErrorMessage size="sm" className="mt-2">
+              Add at least 1 team member to publish.
+            </ErrorMessage>
+          ) : null}
 
           {/* Project Owner */}
           <div className="mt-6">
@@ -11935,6 +12019,30 @@ function PublishProject({
     })
   }, [pathname, router, searchParams, setStep])
 
+  // PMCM-253 follow-up: setStep(n) unmounts the previous step's whole
+  // subtree and mounts the new one (Step in components/ui/stepper renders
+  // `active ? children : null`) — any trigger()/setFocus/scrollIntoView
+  // aimed at the new step's fields has to run AFTER that mount, not in the
+  // same tick as setStep. pendingStepFocusRef holds what to run once
+  // currentStep catches up; stepFocusToken always changes on every publish
+  // attempt (even re-clicking Publish while already sitting on the target
+  // step, where currentStep itself never changes) so the effect below
+  // reliably fires on the very first click, not just the second.
+  const pendingStepFocusRef = useRef<{ step: number; run: () => void } | null>(
+    null
+  )
+  const [stepFocusToken, setStepFocusToken] = useState(0)
+  const scheduleStepFocus = useCallback((step: number, run: () => void) => {
+    pendingStepFocusRef.current = { step, run }
+    setStepFocusToken((token) => token + 1)
+  }, [])
+  useEffect(() => {
+    const pending = pendingStepFocusRef.current
+    if (!pending || pending.step !== currentStep) return
+    pendingStepFocusRef.current = null
+    pending.run()
+  }, [currentStep, stepFocusToken])
+
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
     [nextStep, prevStep, setStep, toggleStepValidation]
@@ -12022,6 +12130,68 @@ function PublishProject({
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishAttempted, setPublishAttempted] = useState(false)
 
+  // PMCM-253 follow-up (product decision): Publish with an incomplete
+  // section no longer toasts — it opens that section (and, for Project
+  // Info/Questions, the sub-tab the first invalid field actually lives
+  // on), shows every inline field error in it (RHF trigger()), and
+  // scrolls/focuses the first invalid field. Runs once the target step is
+  // confirmed mounted (see scheduleStepFocus above).
+  const runPublishValidationJump = async (step: number) => {
+    if (step === 0) {
+      await projectInfoMethods.trigger()
+      const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
+        ({ name }) => projectInfoMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollProjectInfoField(projectInfoMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 1) {
+      await mediaMethods.trigger()
+      const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
+        ({ name }) => mediaMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollMediaField(mediaMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 2) {
+      // Project Scope isn't RHF — its own inline error (gated on
+      // publishAttempted, same as every other non-RHF section here) is
+      // already reactive to the live phases/tasks state; just bring it
+      // into view.
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-scope-table-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 3) {
+      // Team's validity (teamMemberIds.length > 0 || currentUser id) is
+      // effectively always true once signed in — practically unreachable,
+      // but handled defensively. "members" is the one sub-tab the
+      // member-count error can actually render on.
+      setTeamSubTab("members")
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-team-members-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 4) {
+      // Questions' own inline error ("Please add at least 3 FAQs before
+      // publishing.") is already reactive to publishAttempted — just
+      // switch to the FAQ tab (scrollToWizardField clicks the trigger
+      // since it's a real <button>, same as every other sidebar sub-item
+      // target) and scroll to it.
+      scrollToWizardField("publish-project-faqs-field")
+    }
+  }
+
   const handlePublish = async () => {
     if (!draftProjectId || isPublishing) return
     setPublishAttempted(true)
@@ -12029,12 +12199,10 @@ function PublishProject({
     setProjectInfoModerationError(null)
     setMediaModerationError(null)
     if (firstInvalidStep !== null) {
-      setStep(firstInvalidStep)
-      if (firstInvalidStep === 0) await projectInfoMethods.trigger()
-      else if (firstInvalidStep === 1) await mediaMethods.trigger()
-      toast({
-        title: "Please complete all required sections before publishing.",
-        variant: "destructive",
+      const invalidStep = firstInvalidStep
+      setStep(invalidStep)
+      scheduleStepFocus(invalidStep, () => {
+        void runPublishValidationJump(invalidStep)
       })
       return
     }
@@ -12073,55 +12241,70 @@ function PublishProject({
         "tags",
         "skills",
       ]
+      // PMCM-253 follow-up: a curated, field-tagged rejection already has
+      // an inline home (the setError calls above/below) — scroll to it
+      // and drop the toast instead of showing both. Only a genuinely
+      // generic/infra error (no field, no moderation category) still has
+      // nowhere inline to live, so it keeps the toast.
       if (field && projectInfoFields.includes(field)) {
         projectInfoMethods.setError(field as any, { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === field || t.name.startsWith(`${field}.`)
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
       } else if (field === "faqs") {
         setFaqModerationError(errorMessage)
         setStep(4)
+        scheduleStepFocus(4, () =>
+          scrollToWizardField("publish-project-faqs-field")
+        )
       } else if (errorType === "video_rejection") {
         mediaMethods.setError("featuredVideo", { message: errorMessage })
         setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredVideo",
+            targetId: "publish-project-featured-video-field",
+          })
+        )
       } else if (errorType === "image_rejection") {
         mediaMethods.setError("featuredImages", { message: errorMessage })
         setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredImages",
+            targetId: "publish-project-featured-images-field",
+          })
+        )
       } else if (errorType === "content_rejection") {
         projectInfoMethods.setError("fullDescription", { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === "fullDescription"
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
+      } else {
+        // PMCM-261/X3: no field tag, no moderation category — a generic
+        // or infra failure with no inline home. toUserMessage keeps the
+        // raw backend message off the screen either way.
+        toast({
+          title: toUserMessage(error),
+          variant: "destructive",
+        })
       }
-
-      // PMCM-261/X3: the backend only tags a message with `field`, or
-      // categorizes it as a video/image/content moderation rejection, for
-      // its own deliberate, curated copy (matching PMCM-254's client-side
-      // field copy, and the moderation-rejection exception this ticket
-      // keeps) — safe to show verbatim. Everything else (temporary_
-      // unavailable, "other" — infra errors, unexpected 4xx/5xx) goes
-      // through the shared generic/timeout copy instead of the raw
-      // backend message.
-      const isCuratedMessage =
-        Boolean(field) ||
-        errorType === "video_rejection" ||
-        errorType === "image_rejection" ||
-        errorType === "content_rejection"
-      const safeMessage = isCuratedMessage
-        ? errorMessage
-        : toUserMessage(error)
-
-      toast({
-        title:
-          errorType === "video_rejection"
-            ? `Project rejected: video violated moderation policy. ${safeMessage}`
-            : errorType === "image_rejection"
-              ? `Project rejected: image violated moderation policy. ${safeMessage}`
-              : errorType === "content_rejection"
-                ? `Project rejected: content did not meet community guidelines. ${safeMessage}`
-                : safeMessage,
-        variant: "destructive",
-      })
     } finally {
       setIsPublishing(false)
     }
@@ -12380,53 +12563,6 @@ function PublishProject({
       return changed ? next : prev
     })
   }, [sectionValidity])
-
-  // PMCM-253/AC4/E2/X1: the publish gate. Every section must resolve to
-  // "complete" or "warning" — a non-blocking advisory never blocks
-  // publish (X1); "error" or "incomplete" both do. With locking removed,
-  // every section is always reachable, so a new listing's gate lists all
-  // five by name in wizard order until each is filled in.
-  const sectionStatuses = useMemo<SectionState[]>(
-    () =>
-      steps.map((_, index) => {
-        const hasBlockingFieldError =
-          (index === 0 && Boolean(projectInfoModerationError)) ||
-          (index === 1 && Boolean(mediaModerationError)) ||
-          (index === 4 && Boolean(faqModerationError))
-        return deriveSectionState({
-          isValid: Boolean(sectionValidity[index]),
-          everCompleted: everCompletedSteps[index],
-          hasBlockingFieldError,
-          publishAttempted,
-          hasWarning: false,
-          isActive: false,
-        })
-      }),
-    [
-      sectionValidity,
-      everCompletedSteps,
-      publishAttempted,
-      projectInfoModerationError,
-      mediaModerationError,
-      faqModerationError,
-    ]
-  )
-
-  const canPublish = sectionStatuses.every(
-    (status) => status === "complete" || status === "warning"
-  )
-
-  const blockedSectionLabels = useMemo(
-    () =>
-      steps
-        .filter((_, index) =>
-          (["error", "incomplete"] as SectionState[]).includes(
-            sectionStatuses[index]
-          )
-        )
-        .map((step) => step.label),
-    [sectionStatuses]
-  )
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -13319,6 +13455,7 @@ function PublishProject({
       setScopeType,
       teamSubTab,
       setTeamSubTab,
+      publishAttempted,
     }),
     [
       projectScopeMethods,
@@ -13338,6 +13475,7 @@ function PublishProject({
       initialPricingPeriod,
       scopeType,
       setScopeType,
+      publishAttempted,
       teamSubTab,
       setTeamSubTab,
     ]
@@ -13479,8 +13617,6 @@ function PublishProject({
                     publishing={isPublishing}
                     saveStatus={saveStatus}
                     isOffline={isOffline}
-                    publishDisabled={!canPublish}
-                    blockedSectionLabels={blockedSectionLabels}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
