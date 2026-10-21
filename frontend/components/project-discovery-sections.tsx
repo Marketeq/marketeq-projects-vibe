@@ -5,6 +5,8 @@ import { Check } from "@blend-metrics/icons"
 import * as RadixTabs from "@radix-ui/react-tabs"
 import { cn } from "@/utils/functions"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { useAuth } from "@/contexts/auth"
+import { getGuestRecentlyViewed } from "@/lib/guest-recently-viewed"
 import { projectDetailsUrl } from "@/src/lib/listing-urls"
 import { ListingCard } from "@/components/listing-card"
 import NextImage from "@/components/next-image"
@@ -142,6 +144,7 @@ const listingCollaborators = (item: any): string[] => {
 }
 
 export function ProjectDiscoverySections({ project }: { project: any }) {
+  const { user } = useAuth()
   const [data, setData] = React.useState<any>(project)
   const [recommendedProjects, setRecommendedProjects] = React.useState<any[]>(
     []
@@ -222,13 +225,22 @@ export function ProjectDiscoverySections({ project }: { project: any }) {
       .catch(() => {})
       .finally(() => setRecommendedReady(true))
 
+    // PMCM-402/X2: GET /v1/recently-viewed is JwtAuthGuard'd — a signed-out
+    // visitor's history lives in localStorage only (written by
+    // project-details' view-tracking effect), so read it from there
+    // instead of hitting an endpoint that would just 401.
     setRecentlyViewedReady(false)
-    fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((x) => setRecentlyViewed(Array.isArray(x) ? x : []))
-      .catch(() => {})
-      .finally(() => setRecentlyViewedReady(true))
-  }, [project?.id])
+    if (!user?.id) {
+      setRecentlyViewed(getGuestRecentlyViewed())
+      setRecentlyViewedReady(true)
+    } else {
+      fetch(`${apiBase}/v1/recently-viewed`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((x) => setRecentlyViewed(Array.isArray(x) ? x : []))
+        .catch(() => {})
+        .finally(() => setRecentlyViewedReady(true))
+    }
+  }, [project?.id, user?.id])
 
   const relatedCloud = React.useMemo(() => {
     const seen = new Set<string>()

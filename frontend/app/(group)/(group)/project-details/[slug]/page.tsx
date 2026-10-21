@@ -34,6 +34,11 @@ import {
 } from "@/lib/listing-pricing"
 import { isUnauthorizedError, toUserMessage } from "@/lib/listing-errors"
 import {
+  addGuestRecentlyViewed,
+  clearGuestRecentlyViewed,
+  getGuestRecentlyViewed,
+} from "@/lib/guest-recently-viewed"
+import {
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
 } from "@/components/scope-builder"
@@ -168,6 +173,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   Favorite,
   FavoriteRoot,
   IconButton,
@@ -1185,6 +1191,25 @@ const extractApiErrorMessage = (err: unknown, fallback: string): string => {
   return toUserMessage(err) || fallback
 }
 
+// PMCM-402/E2: the one curated chat error (no team to chat with) still gets
+// its own specific copy; every other question-submission failure shows the
+// ticket's exact inline copy below, not the generic toUserMessage() fallback.
+const extractKnownChatError = (err: unknown): string | null => {
+  if (err instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(err.body)
+      if (
+        typeof parsed?.message === "string" &&
+        KNOWN_CHAT_ERROR_MESSAGES.includes(parsed.message)
+      ) {
+        return parsed.message
+      }
+    } catch {}
+  }
+  return null
+}
+const UNABLE_TO_SUBMIT_QUESTION = "Unable to submit your question. Please try again."
+
 const Chats = ({
   projectId,
   teamMemberIds = [],
@@ -1203,6 +1228,11 @@ const Chats = ({
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
   const { toast } = useToast()
+  // PMCM-402/E2: isSending disables the composer's Send control for the
+  // duration of the request (re-enabled in every exit path below);
+  // sendError is the inline, non-toast failure message shown under it.
+  const [isSending, setIsSending] = React.useState(false)
+  const [sendError, setSendError] = React.useState<string | null>(null)
   // PMCM-260/X2: this component calls useAuth() directly rather than
   // receiving promptSignIn as a prop from ProjectDetails, so it mirrors
   // that same component's resume-on-login pattern (~1893-1915) locally —
@@ -1351,6 +1381,8 @@ const Chats = ({
       return
     }
     setTextareaValue("")
+    setSendError(null)
+    setIsSending(true)
     let tid: string | null
     try {
       tid = await ensureThread()
@@ -1361,14 +1393,18 @@ const Chats = ({
       // self-excluded team list is empty and thread creation 400s) — the
       // composer had already been cleared above, so the message just
       // silently vanished with nothing sent and no feedback at all.
+      // PMCM-402/E2: inline error (not a toast), submit re-enabled so the
+      // visitor can retry — the known "no team to chat with" case keeps
+      // its own specific copy, everything else gets the ticket's exact text.
       setTextareaValue(text)
-      toast({
-        title: extractApiErrorMessage(err, "Failed to send message. Please try again."),
-        variant: "destructive",
-      })
+      setSendError(extractKnownChatError(err) ?? UNABLE_TO_SUBMIT_QUESTION)
+      setIsSending(false)
       return
     }
-    if (!tid) return
+    if (!tid) {
+      setIsSending(false)
+      return
+    }
     const saved = await apiFetch<{
       id: string
       senderId: string
@@ -1378,18 +1414,16 @@ const Chats = ({
       method: "POST",
       body: { threadId: tid, content: text, messageType: "text" },
     }).catch(() => null)
+    setIsSending(false)
     if (saved?.id) {
       setMessages((prev) =>
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
     } else {
       setTextareaValue(text)
-      toast({
-        title: "Failed to send message. Please try again.",
-        variant: "destructive",
-      })
+      setSendError(UNABLE_TO_SUBMIT_QUESTION)
     }
-  }, [textareaValue, myId, ensureThread, promptSignInToChat, setTextareaValue, toast])
+  }, [textareaValue, myId, ensureThread, promptSignInToChat, setTextareaValue])
   const handleSendRef = React.useRef(handleSend)
   handleSendRef.current = handleSend
 
@@ -1670,37 +1704,43 @@ const Chats = ({
           </DropdownMenu>
         </div>
 
-        <InputGroup className="flex-auto w-[calc(theme(size.full)-164px)]">
-          <Textarea
-            placeholder="Send message..."
-            className="[field-sizing:content] h-auto pr-11 w-full"
-            value={textareaValue}
-            onChange={onChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                if (textareaValue) handleSend()
-              }
-            }}
-          />
-          <InputRightElement className="items-end pb-[13px]">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
-                  onClick={() => textareaValue && handleSend()}
-                  disabled={!textareaValue}
-                >
-                  <Send className="size-[18px]" />
-                </TooltipTrigger>
+        <div className="flex-auto w-[calc(theme(size.full)-164px)] flex flex-col gap-y-1">
+          <InputGroup className="w-full">
+            <Textarea
+              placeholder="Send message..."
+              className="[field-sizing:content] h-auto pr-11 w-full"
+              value={textareaValue}
+              onChange={(e) => {
+                setSendError(null)
+                onChange(e)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  if (textareaValue && !isSending) handleSend()
+                }
+              }}
+            />
+            <InputRightElement className="items-end pb-[13px]">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
+                    onClick={() => textareaValue && !isSending && handleSend()}
+                    disabled={!textareaValue || isSending}
+                  >
+                    <Send className="size-[18px]" />
+                  </TooltipTrigger>
 
-                <TooltipContent>
-                  {textareaValue ? "Send" : "Edit"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </InputRightElement>
-        </InputGroup>
+                  <TooltipContent>
+                    {textareaValue ? "Send" : "Edit"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </InputRightElement>
+          </InputGroup>
+          {sendError && <ErrorMessage size="sm">{sendError}</ErrorMessage>}
+        </div>
       </div>
     </div>
   )
@@ -1938,7 +1978,7 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
-  const { user, openAuthModal } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal } = useAuth()
   const { toast } = useToast()
   // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
   // expose a callback/promise for "and then do X on success". The signal
@@ -1964,9 +2004,10 @@ export default function ProjectDetails({
   }, [user?.id])
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
-  // PMCM-259/E1: a real 404 (nothing matched) keeps the existing "Project
-  // not found" state below; this is only set on a network/5xx failure, so
-  // Retry (bumping refetchKey) shows a distinct full-page error instead.
+  // PMCM-259/E1: a real 404 (nothing matched) keeps the existing "This
+  // listing isn't available" state below (PMCM-402/X3); this is only set on
+  // a network/5xx failure, so Retry (bumping refetchKey) shows a distinct
+  // full-page error instead.
   const [loadError, setLoadError] = React.useState(false)
   const [refetchKey, setRefetchKey] = React.useState(0)
   const [claimed, setClaimed] = React.useState(false)
@@ -2064,6 +2105,14 @@ export default function ProjectDetails({
       ),
     [project, isOnline]
   )
+  // PMCM-402/AC4: Live Chat and both Ask a Question entry points only show
+  // while a team member is online. Presence is only observable once signed
+  // in (useOnlineUsers joins the presence channel for a logged-in user
+  // only), so for a signed-out visitor it is unknown, not "nobody online":
+  // they keep the entry points, which open the login modal and resume after
+  // login (AC2/AC3). Once signed in, the online rule applies.
+  const showAskEntryPoints =
+    (!user?.id && !isAuthLoading) || onlineTeam.length > 0
 
   const mediaItems = React.useMemo(() => {
     const items: { type: "video" | "image"; url: string }[] = []
@@ -2731,16 +2780,60 @@ export default function ProjectDetails({
     }
   }, [project?.id, joinBusy])
 
-  // Track view when project loads — skip in owner preview
+  // Track view when project loads — skip in owner preview.
+  // PMCM-402/X2: signed-in buyers sync to their account (existing endpoint,
+  // JwtAuthGuard'd); signed-out visitors can't call that endpoint at all, so
+  // their view is recorded client-side only, merged into their account on
+  // the next successful login (see the effect below).
   React.useEffect(() => {
     if (!project?.id || isPreview) return
+    if (!user?.id) {
+      addGuestRecentlyViewed({
+        id: String(project.id),
+        slug: project.slug,
+        title: project.title,
+        shortDescription:
+          project.shortDescription ?? project.description?.slice(0, 120) ?? null,
+        thumbnail: project.mediaUrls?.[0] ?? null,
+        budget: project.budget != null ? Number(project.budget) : null,
+        duration: project.duration ?? null,
+        viewedAt: new Date().toISOString(),
+      })
+      return
+    }
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
       headers: csrfHeader("POST"),
     }).catch(() => {})
-  }, [project?.id, isPreview])
+  }, [project?.id, isPreview, user?.id])
+
+  // PMCM-402/X2: merge the guest's localStorage history into their account
+  // the moment they sign in — no batch endpoint exists (verified against
+  // recently-viewed.controller.ts), so this POSTs each guest id individually
+  // through the same per-id endpoint above, oldest-viewed first so the most
+  // recently viewed guest listing ends up with the latest viewedAt (newest
+  // first) once merged with any pre-existing account history, then clears
+  // the local copy so it never re-merges.
+  const guestHistoryMergedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!user?.id || guestHistoryMergedRef.current) return
+    guestHistoryMergedRef.current = true
+    const guestHistory = getGuestRecentlyViewed()
+    if (guestHistory.length === 0) return
+    const apiBase = getPublicApiUrl() || "http://localhost:4000"
+    ;(async () => {
+      for (const entry of [...guestHistory].reverse()) {
+        await fetch(`${apiBase}/v1/recently-viewed/${entry.id}`, {
+          method: "POST",
+          credentials: "include",
+          headers: csrfHeader("POST"),
+        }).catch(() => {})
+      }
+      clearGuestRecentlyViewed()
+    })()
+  }, [user?.id])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -2820,10 +2913,11 @@ export default function ProjectDetails({
   }
 
   // PMCM-259/E1: a network/5xx failure gets a distinct full-page error
-  // with Retry, separate from the "Project not found" state below (a real
-  // 404). Retry just bumps refetchKey to re-run the same fetch in place —
-  // no page reload, same pattern used by the owner-preview "View as
-  // Client" retry below and by verify-withdrawal/page.tsx's error state.
+  // with Retry (+ Refresh page), separate from the "This listing isn't
+  // available" state below (PMCM-402/X3 — a real 404/archived/removed
+  // listing). Retry just bumps refetchKey to re-run the same fetch in
+  // place — no page reload, same pattern used by the owner-preview "View
+  // as Client" retry below and by verify-withdrawal/page.tsx's error state.
   if (loadError) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-6">
@@ -2838,9 +2932,16 @@ export default function ProjectDetails({
             We couldn&apos;t load this listing. Please check your connection
             and try again.
           </p>
-          <div className="mt-6">
+          <div className="mt-6 flex items-center justify-center gap-x-3">
             <Button onClick={() => setRefetchKey((k) => k + 1)}>
               Retry
+            </Button>
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={() => window.location.reload()}
+            >
+              Refresh page
             </Button>
           </div>
         </div>
@@ -2848,6 +2949,10 @@ export default function ProjectDetails({
     )
   }
 
+  // PMCM-402/X3: any case where no project/service/draft was ever
+  // resolved (true 404, archived listing, archived service per #716,
+  // slug changed) lands here with this copy — distinct from the E1
+  // network-error state above, which only fires on a real 5xx/exception.
   if (!project) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-6">
@@ -2856,11 +2961,11 @@ export default function ProjectDetails({
             <AlertCircle className="size-6 text-gray-400" />
           </div>
           <h1 className="text-xl font-semibold text-dark-blue-400">
-            Project not found
+            This listing isn&apos;t available
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            We couldn&apos;t find the project you&apos;re looking for. It may
-            have been removed or the link is broken.
+            It may have been removed, archived, or the link may be out of
+            date.
           </p>
           <div className="mt-6">
             {isPreview && onEdit ? (
@@ -3090,17 +3195,19 @@ export default function ProjectDetails({
                 </Button>
               </div>
 
-              <Button
-                variant="link"
-                className="!text-primary-500 shrink-0"
-                onClick={() => {
-                  if (selected === "Live Chat") setSelected("Details")
-                  else openLiveChat()
-                }}
-              >
-                <MessageTextCircle01 className="size-5" />
-                {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
-              </Button>
+              {showAskEntryPoints && (
+                <Button
+                  variant="link"
+                  className="!text-primary-500 shrink-0"
+                  onClick={() => {
+                    if (selected === "Live Chat") setSelected("Details")
+                    else openLiveChat()
+                  }}
+                >
+                  <MessageTextCircle01 className="size-5" />
+                  {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
+                </Button>
+              )}
 
               <div className="flex-1 flex justify-end">
                 <Button
@@ -3446,6 +3553,16 @@ export default function ProjectDetails({
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={() => {
+                            if (!user?.id) {
+                              // PMCM-402/AC2-AC3: Share is gated behind
+                              // sign-in like Save, and resumes automatically
+                              // post-login via the same promptSignIn queue.
+                              promptSignIn(() => toggleShareWindow(true, project.title))
+                              return
+                            }
+                            toggleShareWindow(true, project.title)
+                          }}
                         >
                           <Share className="size-[20px]" />
                         </IconButton>
@@ -3755,7 +3872,8 @@ export default function ProjectDetails({
                             const visibleSkills = allSkills.slice(0, 5)
                             const extraSkillCount =
                               allSkills.length - visibleSkills.length
-                            const headerLabel = "Current Team"
+                            const headerLabel =
+                              members.length === 1 ? "Created By" : "Current Team"
                             return (
                               <div className="p-6">
                                 <h3 className="text-base leading-none font-semibold text-dark-blue-400">
@@ -3923,7 +4041,7 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
-                        {!isOwnerViewing && (
+                        {!isOwnerViewing && showAskEntryPoints && (
                         <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           {!isPreview && onlineTeam.length > 0 && (
                           <div
@@ -4273,7 +4391,7 @@ export default function ProjectDetails({
                             </TabsContent>
                           </Tabs>
 
-                          {!isOwnerViewing && (
+                          {!isOwnerViewing && showAskEntryPoints && (
                             <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
                               <h1 className="text-base font-semibold text-dark-blue-400 text-center">
                                 Can’t find what you’re looking for?
@@ -6745,7 +6863,9 @@ export default function ProjectDetails({
               isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  Current Team
+                  {Array.isArray(currentTeam) && currentTeam.length === 1
+                    ? "Created By"
+                    : "Current Team"}
                 </span>
 
                 {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
