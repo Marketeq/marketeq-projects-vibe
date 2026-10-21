@@ -1,17 +1,21 @@
 // Run like detected-location.test.ts (from the frontend/ directory).
 //
-// A verified CA traveler whose current request lookup is US (country only, no pin) clicks
-// "Change my home country": the confirmation screen must show the US, from the live lookup
-// and never from /me's stale stored detectedCountry.
+// A verified CA traveler whose request resolves to the US clicks "Change my home country".
+// The confirmation must be the SAME detected-location screen the first-time flow shows,
+// loaded the same way (browser position -> server reverse geocode -> city, region, country
+// and the real map), and must never take the recorded country from the browser.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { describeDetectedLocation, getDetectedLocation } from "./detected-location"
+import {
+  getDetectedLocation,
+  type GetDetectedLocationOptions,
+} from "./detected-location"
 import {
   shouldShowTravelerLocationPrompt,
-  showCountryOnlyAsDetected,
   startChangeHomeCountry,
+  startStillTraveling,
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
@@ -19,10 +23,10 @@ const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const page = read("app", "(group)", "talent-dashboard", "page.tsx")
 const flow = read("components", "identity-verification-flow.tsx")
 const http = read("service", "http", "identity-verification.ts")
+const mismatchSource = read("src", "lib", "api", "location-mismatch.ts")
 
-// What the live request lookup returns for a US caller with only a country-level result:
-// the server sends the country and no city, region or coordinates.
-const COUNTRY_ONLY_US = {
+// The configured test IP resolves to the US at COUNTRY precision only: no city, region or pin.
+const IP_COUNTRY_ONLY_US = {
   countryCode: "US",
   countryName: "United States",
   city: null,
@@ -31,11 +35,34 @@ const COUNTRY_ONLY_US = {
   latitude: null,
   longitude: null,
 }
-const liveLookup = (body: unknown) => () =>
-  getDetectedLocation({ fetchLocation: async () => body })
+// The server's reverse geocode of the browser's position, accepted only when its country
+// equals the request's country (here US == US).
+const GPS_RESOLVED_US = {
+  status: "resolved",
+  countryCode: "US",
+  countryName: "United States",
+  city: "Austin",
+  regionCode: "TX",
+  regionName: "Texas",
+  latitude: 30.27,
+  longitude: -97.74,
+}
 
-// The contradictory live state: stored detectedCountry CA (never refreshed), verified home
-// CA, Travel Mode on, and the backend's own live comparison says the caller is elsewhere.
+// The same seams for both entry points, so any difference is a difference of path, not data.
+const seams = (gps: unknown, position: unknown = { status: "ok", latitude: 30.2672, longitude: -97.7431 }) =>
+  ({
+    fetchLocation: async () => IP_COUNTRY_ONLY_US,
+    getPosition: async () => position,
+    fetchGpsLocation: async () => gps,
+  }) as unknown as GetDetectedLocationOptions
+const returningPath = (options: GetDetectedLocationOptions) =>
+  startChangeHomeCountry({
+    getDetectedLocation: (o) => getDetectedLocation({ ...o, ...options }),
+  })
+// What Verify My Account does (page.tsx): getDetectedLocation({ useBrowserLocation: true }).
+const originalPath = (options: GetDetectedLocationOptions) =>
+  getDetectedLocation({ useBrowserLocation: true, ...options })
+
 const meForVerifiedCaTraveler = () =>
   parseIdentityVerificationSummary({
     nextAction: "complete",
@@ -57,63 +84,92 @@ describe("the contradictory /me state still qualifies for the traveler prompt", 
   })
 })
 
-describe("Change my home country shows the live country on the confirmation screen", () => {
-  it("a country-only live lookup (US) is shown as detected, with the US as the country", async () => {
-    const launch = await startChangeHomeCountry({ getDetectedLocation: liveLookup(COUNTRY_ONLY_US) })
-    assert.equal(launch.location.countryCode, "US")
-    assert.equal(launch.location.countryName, "United States")
-    assert.equal(launch.location.detected, true)
-    assert.equal(launch.location.serviceUnavailable, false)
-    assert.equal(launch.initialState, undefined, "from the top: the detected-country confirmation")
+describe("Change my home country loads the location exactly like the original flow", () => {
+  it("asks for the browser position, like Verify My Account", async () => {
+    const seen: Array<GetDetectedLocationOptions | undefined> = []
+    await startChangeHomeCountry({
+      getDetectedLocation: async (o) => {
+        seen.push(o)
+        return getDetectedLocation(seams(GPS_RESOLVED_US))
+      },
+    })
+    assert.deepEqual(seen, [{ useBrowserLocation: true }])
+    assert.ok(/getDetectedLocation\(\{ useBrowserLocation: true \}\)/.test(page), "the original entry still does")
   })
 
-  it("the screen prints heading 'We detected your current location as:' and the country (no city or region)", async () => {
-    const { location } = await startChangeHomeCountry({ getDetectedLocation: liveLookup(COUNTRY_ONLY_US) })
-    // The screen's heading and label come from this one function (see the flow's use below).
-    const { heading, label } = describeDetectedLocation(location)
-    assert.equal(heading, "We detected your current location as:")
-    assert.equal(label, "United States")
-    assert.ok(flow.includes("describeDetectedLocation(detectedLocation)"))
+  it("a country-only IP result plus a resolved browser position gives city, region, country and coordinates", async () => {
+    const { location } = await returningPath(seams(GPS_RESOLVED_US))
+    assert.equal(location.city, "Austin")
+    assert.equal(location.region, "TX")
+    assert.equal(location.countryName, "United States")
+    assert.equal(location.countryCode, "US")
+    assert.equal(location.latitude, 30.27)
+    assert.equal(location.longitude, -97.74)
+    assert.equal(location.detected, true)
+    assert.equal(location.serviceUnavailable, false)
   })
 
-  it("the shared lookup is unchanged: the first-time flow still gets a country-only result as not detected", async () => {
-    const shared = await liveLookup(COUNTRY_ONLY_US)()
-    assert.equal(shared.detected, false) // exactly as before, so "couldn't detect" stays for first-time users
-    assert.equal(shared.countryCode, "US")
+  it("is identical to what the original flow gets from the same data", async () => {
+    const options = seams(GPS_RESOLVED_US)
+    assert.deepEqual((await returningPath(options)).location, await originalPath(options))
   })
 
-  it("only the returning-user launch applies it; Verify My Account does not", () => {
-    assert.ok(!/showCountryOnlyAsDetected/.test(page))
-    const verify = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("const handleVerifyMyAccount") + 4000)
-    assert.ok(verify.includes("getDetectedLocation({ useBrowserLocation: true })"))
-  })
-
-  it("a rich result (with a pin) is returned as it was", async () => {
-    const rich = {
-      ...COUNTRY_ONLY_US,
-      city: "Austin",
-      regionCode: "TX",
-      latitude: 30.27,
-      longitude: -97.74,
+  it("every shortfall behaves as it does for a first-time user (denied, unavailable, timeout, failed server call)", async () => {
+    for (const position of [{ status: "denied" }, { status: "unavailable" }, { status: "timeout" }]) {
+      const options = seams(GPS_RESOLVED_US, position)
+      assert.deepEqual((await returningPath(options)).location, await originalPath(options), String(position.status))
     }
-    const loc = await liveLookup(rich)()
-    assert.deepEqual(showCountryOnlyAsDetected(loc), loc)
+    const failing = {
+      ...seams(GPS_RESOLVED_US),
+      fetchGpsLocation: async () => { throw new Error("down") },
+    } as unknown as GetDetectedLocationOptions
+    assert.deepEqual((await returningPath(failing)).location, await originalPath(failing))
   })
 
-  it("failures and conflicts are left alone: unavailable service, GPS mismatch, no country", async () => {
-    const down = await getDetectedLocation({ fetchLocation: async () => { throw new Error("down") } })
-    assert.deepEqual(showCountryOnlyAsDetected(down), down)
-    assert.equal(showCountryOnlyAsDetected(down).detected, false)
+  it("a browser position in another country than the request is a conflict, handled as in the original flow", async () => {
+    const conflict = { ...GPS_RESOLVED_US, status: "country_mismatch", city: null, regionCode: null, regionName: null }
+    const options = seams(conflict)
+    const { location } = await returningPath(options)
+    assert.deepEqual(location, await originalPath(options))
+    assert.equal(location.locationMismatch, true)
+    assert.equal(location.detected, false)
+    assert.ok(flow.includes("startingFreeKyc || detectedLocation.locationMismatch === true"), "Yes stays disabled on a conflict")
+  })
 
-    const conflict = { ...(await liveLookup(COUNTRY_ONLY_US)()), locationMismatch: true }
-    assert.equal(showCountryOnlyAsDetected(conflict).detected, false)
-
-    const none = await liveLookup({ ...COUNTRY_ONLY_US, countryCode: null, countryName: null })()
-    assert.equal(showCountryOnlyAsDetected(none).detected, false)
+  it("the screen draws the pin and map from the loaded coordinates and prints city, region and country", () => {
+    assert.ok(/<DetectedLocationMap\s+latitude=\{detectedLocation\.latitude\}\s+longitude=\{detectedLocation\.longitude\}/.test(flow))
+    assert.ok(flow.includes("detectedLocation.city,"))
+    assert.ok(flow.includes("detectedLocation.region,"))
+    assert.ok(flow.includes("detectedLocation.countryName,"))
+    assert.ok(!flow.includes("country-only"), "no separate country-only presentation")
+    assert.ok(!mismatchSource.includes("showCountryOnlyAsDetected"))
   })
 })
 
-describe("what is recorded is never taken from the screen", () => {
+describe("the first-time flow is unchanged", () => {
+  it("Verify My Account still asks for the browser position and uses the shared lookup", () => {
+    const verify = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("const handleVerifyMyAccount") + 4000)
+    assert.ok(verify.includes("getDetectedLocation({ useBrowserLocation: true })"))
+  })
+  it("a country-only IP result with no browser position is still 'couldn't detect' (country kept, not shown)", async () => {
+    const shared = await getDetectedLocation({ fetchLocation: async () => IP_COUNTRY_ONLY_US })
+    assert.equal(shared.detected, false)
+    assert.equal(shared.countryCode, "US")
+  })
+  it("'I’m still traveling' still opens the duration screen without asking for the position", async () => {
+    let options: GetDetectedLocationOptions | undefined | "unset" = "unset"
+    const launch = await startStillTraveling({
+      getDetectedLocation: async (o) => {
+        options = o
+        return getDetectedLocation({ fetchLocation: async () => IP_COUNTRY_ONLY_US })
+      },
+    })
+    assert.equal(launch.initialState, "traveling-showcase")
+    assert.equal(options, undefined)
+  })
+})
+
+describe("what is recorded is never taken from the screen, and opening it records nothing", () => {
   it("the confirmation request carries no body, so no client-supplied country can reach the backend", () => {
     assert.ok(
       /confirmHomeCountry: \(\) =>\s*AxiosRequest\.post\("\/v1\/identity-verification\/home-country\/confirm", null\)/.test(http)
@@ -121,5 +177,8 @@ describe("what is recorded is never taken from the screen", () => {
     const yes = flow.slice(flow.indexOf("const handleHomeCountryYes"), flow.indexOf("// Travel branch"))
     assert.ok(yes.includes("confirmHomeCountry: () => IdentityVerificationAPI.confirmHomeCountry()"))
     assert.ok(!/countryCode/.test(yes), "the screen's country is not sent")
+  })
+  it("loading the location only reads: no confirm, claim or session call is made", () => {
+    assert.ok(!/confirmHomeCountry|startHomeCountryChange|startFreeKyc|recordTravel/.test(mismatchSource))
   })
 })

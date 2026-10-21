@@ -17,8 +17,14 @@
 //              is confirmed again, and SAVES NOTHING either. Closing the confirmation
 //              changes no account state; the pending claim is created only by the
 //              explicit "Yes, this is my home country" confirmation.
-// The location behind the flow is the server's (no browser location permission here).
-import { type DetectedLocation, getDetectedLocation } from "./detected-location"
+// The location behind "Change my home country" is loaded exactly as the first-time flow
+// loads it (the browser's position on that explicit click, reverse-geocoded and checked by
+// the server against the request country); "I'm still traveling" shows no location.
+import {
+  type DetectedLocation,
+  type GetDetectedLocationOptions,
+  getDetectedLocation,
+} from "./detected-location"
 import { cooldownRetryAt, shouldOpenFirstTimeGate } from "./identity-next-step"
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
 
@@ -33,11 +39,13 @@ export interface MismatchLaunch {
 }
 
 export interface MismatchDeps {
-  getDetectedLocation: () => Promise<DetectedLocation>
+  getDetectedLocation: (
+    options?: GetDetectedLocationOptions
+  ) => Promise<DetectedLocation>
 }
 
 const defaultDeps: MismatchDeps = {
-  getDetectedLocation: () => getDetectedLocation(),
+  getDetectedLocation: (options) => getDetectedLocation(options),
 }
 
 /**
@@ -87,26 +95,19 @@ export async function startStillTraveling(
 }
 
 /**
- * The returning user must SEE the country they are being asked to confirm. The server's
- * live lookup often knows only the country (no city, region or map pin): the shared
- * location view then keeps the country but marks it not "detected", and the confirmation
- * screen shows "We couldn't detect your current location" with no country at all. For this
- * launch only, a country-only result is shown as detected, so the screen reads
- * "We detected your current location as: <country>". The country itself is unchanged
- * (it is the server's live request lookup, never /me's stored detectedCountry), and what
- * the confirmation records is resolved by the backend again, never taken from this view.
- * A failed or conflicting (GPS mismatch) lookup is left exactly as it was, and the
- * first-time flow does not use this function.
+ * "Change my home country" opens the SAME detected-location confirmation the first-time
+ * flow does, loaded the same way: Verify My Account asks for the browser's position (an
+ * explicit user action, and so is this click), the backend reverse-geocodes it, accepts it
+ * only if its country matches the server-derived request country, and the screen shows the
+ * city, region and country with the real map. Anything short of that (denied, unavailable,
+ * a country-only IP result) falls back exactly as it does for a first-time user. The
+ * country that is eventually recorded is resolved by the backend from the request again,
+ * never taken from this view.
  */
-export function showCountryOnlyAsDetected(location: DetectedLocation): DetectedLocation {
-  if (location.detected || location.serviceUnavailable) return location
-  if (location.locationMismatch === true) return location
-  if (!location.countryCode) return location
-  return { ...location, detected: true }
-}
-
 export async function startChangeHomeCountry(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  return { location: showCountryOnlyAsDetected(await deps.getDetectedLocation()) }
+  return {
+    location: await deps.getDetectedLocation({ useBrowserLocation: true }),
+  }
 }

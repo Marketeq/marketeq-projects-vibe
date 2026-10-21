@@ -206,10 +206,15 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
       )
     )
     assert.ok(page.includes("setDetectedLocation(launch.location)"))
-    assert.ok(
-      !helper.includes("useBrowserLocation"),
-      "no browser location permission is requested"
+    // Only "Change my home country" asks for the browser position (an explicit click, the
+    // same load as Verify My Account); "still traveling" shows no location and asks nothing.
+    const stillTraveling = helper.slice(
+      helper.indexOf("export async function startStillTraveling"),
+      helper.indexOf("export async function startChangeHomeCountry")
     )
+    const changeCountry = helper.slice(helper.indexOf("export async function startChangeHomeCountry"))
+    assert.ok(!stillTraveling.includes("useBrowserLocation"))
+    assert.ok(changeCountry.includes("useBrowserLocation: true"))
   })
 })
 
