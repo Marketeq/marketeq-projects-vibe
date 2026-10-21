@@ -104,6 +104,23 @@ export function mismatchFlowCompleted(
 }
 
 /**
+ * The whole "open the traveler prompt now?" decision, in one call: the in-memory hold is
+ * read FOR THE SUMMARY'S OWN loginSessionKey (a key that differs from the one the hold was
+ * taken under drops it first), then the backend signal and the per-login marker decide.
+ * Because the hold is reconciled here, at read time, no separate reset step has to run
+ * before it, and a summary for a new login is judged on its own key in the same update.
+ */
+export function shouldOpenTravelerPrompt(input: {
+  summary: IdentityVerificationSummaryView | null
+  storage?: DismissalStorage
+  handled: TravelerPromptHandled
+}): boolean {
+  if (!input.summary) return false
+  if (input.handled.isHandled(input.summary.loginSessionKey)) return false
+  return shouldOfferTravelerPrompt({ summary: input.summary, storage: input.storage })
+}
+
+/**
  * In-memory "handled" flag for the traveler prompt, scoped to ONE login: it holds while
  * a flow opened by the popup is on screen (so a summary read behind it cannot reopen the
  * popup), is cleared when that flow closes unfinished, and is dropped whenever the

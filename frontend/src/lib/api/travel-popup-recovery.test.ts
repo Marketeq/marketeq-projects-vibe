@@ -13,6 +13,7 @@ import {
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 import {
   createTravelerPromptHandled,
+  shouldOpenTravelerPrompt,
   markTravelerPromptShown,
   mismatchFlowCompleted,
   shouldOfferTravelerPrompt,
@@ -125,8 +126,10 @@ describe("the in-memory hold never crosses a login", () => {
     assert.equal(handled.isHandled(null), true)
     assert.equal(handled.isHandled(KEY_A), false)
   })
-  it("the page asks the holder with the CURRENT summary's key", () => {
-    assert.ok(page.includes("travelerPromptHandledRef.current.isHandled(travelSummary.loginSessionKey)"))
+  it("the page decides through the single function that reads the hold for the summary's own key", () => {
+    const effect = between(page, "shouldOpenTravelerPrompt({", "setTravelerPromptOpen(true)")
+    assert.ok(effect.includes("summary: travelSummary"))
+    assert.ok(effect.includes("handled: travelerPromptHandledRef.current"))
     assert.ok(!/document\.cookie|readSessionId/.test(page))
   })
 })
@@ -206,5 +209,64 @@ describe("a home-country claim without a live session no longer locks the user o
     })
     assert.equal(shouldShowLocationMismatchPrompt(cooling), false)
     assert.equal(shouldShowTravelerLocationPrompt(cooling), false)
+  })
+})
+
+describe("a new login on a page that stays mounted (the real update ordering)", () => {
+  // One component instance, one hold, one storage, driven the way the page's effect is:
+  // every new summary goes through shouldOpenTravelerPrompt and nothing else runs first.
+  const qualifying = (loginSessionKey: string) =>
+    summary({ travelModeActive: true, travelModeLocationMismatch: true, loginSessionKey })
+
+  it("the previous login's hold does not hide the new login's prompt, in the same update", () => {
+    const handled = createTravelerPromptHandled()
+    const storage = memoryStorage()
+    // Previous login: the prompt opened a flow (hold taken) and it completed (marker written).
+    handled.markHandled(KEY_A)
+    markTravelerPromptShown(KEY_A, storage)
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_A), storage, handled }), false)
+    // The authenticated user / loginSessionKey changes; the new summary qualifies; no marker for it.
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), true)
+  })
+
+  it("holds across accounts too: another account's hold never applies", () => {
+    const handled = createTravelerPromptHandled()
+    handled.markHandled(KEY_A)
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage: memoryStorage(), handled }), true)
+  })
+
+  it("the new login, once answered, is quiet on a same-login refresh and keeps only its own marker", () => {
+    const handled = createTravelerPromptHandled()
+    const storage = memoryStorage()
+    markTravelerPromptShown(KEY_A, storage)
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), true)
+    markTravelerPromptShown(KEY_B, storage) // answered
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), false)
+    assert.deepEqual(Object.keys(storage.dump()), [travelLocationPromptKey(KEY_B)])
+  })
+
+  it("an unfinished flow in the new login releases the hold; a completed one keeps it quiet", () => {
+    const handled = createTravelerPromptHandled()
+    const storage = memoryStorage()
+    handled.markHandled(KEY_B) // flow opened by the popup
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), false)
+    handled.reset() // closed unfinished
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), true)
+    markTravelerPromptShown(KEY_B, storage) // completed activation
+    handled.markHandled(KEY_B)
+    assert.equal(shouldOpenTravelerPrompt({ summary: qualifying(KEY_B), storage, handled }), false)
+  })
+
+  it("an active or in-review relocation (not offered by the backend) is never opened", () => {
+    const handled = createTravelerPromptHandled()
+    const suppressed = summary({ travelModeActive: true, loginSessionKey: KEY_B }) // the backend omits the signal
+    assert.equal(shouldOpenTravelerPrompt({ summary: suppressed, storage: memoryStorage(), handled }), false)
+  })
+
+  it("no summary, or no key, fails safely", () => {
+    const handled = createTravelerPromptHandled()
+    assert.equal(shouldOpenTravelerPrompt({ summary: null, storage: memoryStorage(), handled }), false)
+    const noKey = summary({ travelModeLocationMismatch: true })
+    assert.equal(shouldOpenTravelerPrompt({ summary: noKey, storage: memoryStorage(), handled }), true)
   })
 })

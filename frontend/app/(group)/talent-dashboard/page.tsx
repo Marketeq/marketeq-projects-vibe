@@ -102,7 +102,7 @@ import {
   createTravelerPromptHandled,
   markTravelerPromptShown,
   mismatchFlowCompleted,
-  shouldOfferTravelerPrompt,
+  shouldOpenTravelerPrompt,
   type MismatchFlowKind,
 } from "@/src/lib/api/travel-location-prompt"
 import {
@@ -513,12 +513,11 @@ export default function TalentDashboard() {
   // applies; the once-per-login rule is the loginSessionKey marker, written when the
   // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
   useEffect(() => {
-    if (!travelSummary) return
-    if (travelerPromptHandledRef.current.isHandled(travelSummary.loginSessionKey)) return
     if (
-      !shouldOfferTravelerPrompt({
+      !shouldOpenTravelerPrompt({
         summary: travelSummary,
         storage: window.localStorage,
+        handled: travelerPromptHandledRef.current,
       })
     ) {
       return

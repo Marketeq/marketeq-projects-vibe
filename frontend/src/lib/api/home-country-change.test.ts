@@ -414,7 +414,7 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
 
   it("the traveler prompt is offered only through the per-login rule, and marked only when answered", () => {
     const effect = page.slice(
-      page.indexOf("shouldOfferTravelerPrompt({"),
+      page.indexOf("shouldOpenTravelerPrompt({"),
       page.indexOf("setTravelerPromptOpen(true)") + 40
     )
     assert.ok(effect.includes("summary: travelSummary"))
