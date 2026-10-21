@@ -115,17 +115,42 @@ describe('IdentityVerificationService — getLocationMismatch', () => {
 
   describe('stays quiet while a home-country change is unfinished', () => {
     it.each([
-      ['a pending claim', { pendingHomeCountry: 'DE', identityVerificationStatus: IdentityVerificationStatus.UNSTARTED }],
       ['a running Didit session', { identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS }],
       ['a Didit session in review', { identityVerificationStatus: IdentityVerificationStatus.PENDING }],
       ['a claim after a decline', { pendingHomeCountry: 'DE', identityVerificationStatus: IdentityVerificationStatus.FAILED }],
+      ['a claim in the decline cooldown', { pendingHomeCountry: 'DE', identityVerificationStatus: IdentityVerificationStatus.FAILED_FINAL }],
     ])('%s: no new-location prompt', async (_label, over) => {
       const { service, locationProvider } = buildService(liveCountry('DE'));
       await expect(service.getLocationMismatch(profile(over), '203.0.113.5', NOW)).resolves.toBe(false);
       expect(locationProvider.resolve).not.toHaveBeenCalled();
     });
 
-    it('the active-traveler prompt is quiet too', async () => {
+    describe('a claim with no live session does not lock the user out', () => {
+    it.each([
+      ['abandoned or expired (unstarted)', IdentityVerificationStatus.UNSTARTED],
+      ['confirmed but the session never started (verified)', IdentityVerificationStatus.VERIFIED],
+      ['confirmed on an expired verification', IdentityVerificationStatus.EXPIRED],
+    ])('%s: the prompt is offered again', async (_label, identityVerificationStatus) => {
+      const { service } = buildService(liveCountry('DE'));
+      const stranded = profile({ pendingHomeCountry: 'DE', identityVerificationStatus });
+      await expect(service.getLocationMismatch(stranded, '203.0.113.5', NOW)).resolves.toBe(true);
+    });
+
+    it('the active-traveler prompt is offered again too', async () => {
+      const { service } = buildService(liveCountry('DE'));
+      const traveler = profile({
+        pendingHomeCountry: 'DE',
+        identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+        travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+        travelModeActive: true,
+        travelModeActivatedAt: new Date(NOW - DAY_MS),
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+      });
+      await expect(service.getTravelModeLocationMismatch(traveler, '203.0.113.5', NOW)).resolves.toBe(true);
+    });
+  });
+
+  it('the active-traveler prompt is quiet too', async () => {
       const { service } = buildService(liveCountry('DE'));
       const traveler = profile({
         travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
@@ -135,7 +160,7 @@ describe('IdentityVerificationService — getLocationMismatch', () => {
       });
       await expect(service.getTravelModeLocationMismatch(traveler, '203.0.113.5', NOW)).resolves.toBe(true);
       for (const over of [
-        { pendingHomeCountry: 'DE' },
+        { pendingHomeCountry: 'DE', identityVerificationStatus: IdentityVerificationStatus.FAILED },
         { identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS },
         { identityVerificationStatus: IdentityVerificationStatus.PENDING },
       ]) {

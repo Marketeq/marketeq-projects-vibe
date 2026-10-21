@@ -378,20 +378,27 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
     assert.ok(!page.includes("I’m currently traveling"))
   })
 
-  it("'I’m still traveling' for a traveler only closes the prompt: no request, no Travel Mode or country change", () => {
+  it("'I’m still traveling' for a traveler only closes the prompt: no Travel Mode, duration or country change (at most it drops a claim with no live session)", () => {
     const handler = page.slice(
       page.indexOf("const handleTravelerStillTraveling"),
       page.indexOf("const handleChangeHomeCountry")
     )
     assert.ok(/setTravelerPromptOpen\(false\)/.test(handler))
     assert.ok(
-      !/await|IdentityVerificationAPI|recordTravel|confirmHomeCountry|startFreeKyc/.test(
+      !/recordTravelDuration|confirmHomeCountry|startFreeKyc|startHomeCountryChange/.test(
         handler
       )
     )
+    // The one request it may make is dropping a claim, and only when there is one.
+    assert.ok(
+      /if \(travelSummary\?\.pendingHomeCountry\) \{[\s\S]*recordTravelClassification\(\s*"temporarily_traveling"\s*\)/.test(
+        handler
+      )
+    )
+    assert.equal((handler.match(/IdentityVerificationAPI\./g) ?? []).length, 1)
     assert.match(
       dialog,
-      /travelerPromptOpen\s*\?\s*handleTravelerStillTraveling\(\)\s*:\s*void handleStillTraveling\(\)/
+      /travelerPromptOpen\s*\?\s*void handleTravelerStillTraveling\(\)\s*:\s*void handleStillTraveling\(\)/
     )
   })
 

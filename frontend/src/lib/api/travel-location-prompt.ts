@@ -11,12 +11,13 @@
 //
 //   offered  the backend signal is true AND it was not already offered in this login.
 //   marking  localStorage["travelLocationPromptShown:<key>"] is set only when a path
-//            has COMPLETED, which today is only "I'm still traveling" on an active
-//            Travel Mode (it changes nothing, so it completes at the click). Opening
-//            the prompt, or starting "Change my home country", marks nothing: that
-//            claim is made by the explicit country confirmation and the backend then
-//            keeps the prompt quiet. The marker of every other login is removed, so
-//            at most ONE marker ever exists.
+//            has COMPLETED: "I'm still traveling" on an active Travel Mode (it changes
+//            nothing, so it completes at the click, after dropping any claim without a
+//            live session), or a Travel Mode activation whose duration save succeeded.
+//            Opening the prompt, opening the duration flow, or starting "Change my home
+//            country" marks nothing: that claim is made by the explicit country
+//            confirmation and the backend then keeps the prompt quiet. The marker of
+//            every other login is removed, so at most ONE marker ever exists.
 //   no key   the prompt is offered and nothing is persisted (it may reappear after a
 //            refresh); a marker never leaks across logins.
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
@@ -78,5 +79,63 @@ export function markTravelerPromptShown(
     storage.setItem(current, "1")
   } catch {
     // storage unavailable: it simply reappears after a refresh
+  }
+}
+
+/**
+ * Which popup answer opened the verification flow ("traveling": the duration screen;
+ * "change-country": the country confirmation). Null when the flow was opened by anything
+ * else, which this file never touches.
+ */
+export type MismatchFlowKind = "traveling" | "change-country" | null
+
+/**
+ * Whether the flow that was just closed COMPLETED its popup answer. Only the duration
+ * save does: the backend then reports Travel Mode in force at a foreign country
+ * (travelModeLocationMismatch), which cannot be true unless the save succeeded because
+ * the popup was only offered while Travel Mode was off. Closing the duration screen, or
+ * the country confirmation, before confirming leaves the backend as it was.
+ */
+export function mismatchFlowCompleted(
+  kind: MismatchFlowKind,
+  fresh: IdentityVerificationSummaryView | null
+): boolean {
+  return kind === "traveling" && fresh?.travelModeLocationMismatch === true
+}
+
+/**
+ * In-memory "handled" flag for the traveler prompt, scoped to ONE login: it holds while
+ * a flow opened by the popup is on screen (so a summary read behind it cannot reopen the
+ * popup), is cleared when that flow closes unfinished, and is dropped whenever the
+ * loginSessionKey changes (a logout and login that keeps the page mounted never inherits
+ * the previous login's state). Nothing is persisted here.
+ */
+export interface TravelerPromptHandled {
+  isHandled(loginSessionKey: string | null): boolean
+  markHandled(loginSessionKey: string | null): void
+  reset(): void
+}
+
+export function createTravelerPromptHandled(): TravelerPromptHandled {
+  let seenKey: string | null | undefined
+  let handled = false
+  const follow = (loginSessionKey: string | null) => {
+    if (seenKey !== loginSessionKey) {
+      seenKey = loginSessionKey
+      handled = false
+    }
+  }
+  return {
+    isHandled(loginSessionKey) {
+      follow(loginSessionKey)
+      return handled
+    },
+    markHandled(loginSessionKey) {
+      follow(loginSessionKey)
+      handled = true
+    },
+    reset() {
+      handled = false
+    },
   }
 }

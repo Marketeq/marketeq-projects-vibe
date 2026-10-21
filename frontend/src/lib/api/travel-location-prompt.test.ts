@@ -98,11 +98,14 @@ describe("opening the prompt marks nothing (refresh, navigation and a new login)
   })
 })
 
-describe("'I’m still traveling' on an active Travel Mode completes at the click", () => {
+describe("'I’m still traveling' on an active Travel Mode completes when its action has finished", () => {
   const handler = between(page, "const handleTravelerStillTraveling", "const handleChangeHomeCountry")
-  it("marks the login and closes, with no request", () => {
-    assert.ok(handler.indexOf("markTravelerPromptCompleted()") < handler.indexOf("setTravelerPromptOpen(false)"))
-    assert.ok(!/await|IdentityVerificationAPI|recordTravel/.test(handler))
+  it("marks the login and closes, after any claim has been dropped, and never asks for a duration", () => {
+    assert.ok(handler.indexOf("recordTravelClassification(") < handler.indexOf("markTravelerPromptCompleted("))
+    assert.ok(handler.indexOf("markTravelerPromptCompleted(") < handler.indexOf("setTravelerPromptOpen(false)"))
+    assert.ok(!/recordTravelDuration|setIdentityFlowOpen|openFlowFromMismatch/.test(handler))
+    // A failed request marks nothing and leaves the prompt open.
+    assert.ok(handler.indexOf("catch (error)") > handler.indexOf("setTravelerPromptOpen(false)"))
   })
   it("a refresh after it does not reopen the prompt in the same login", () => {
     const storage = memoryStorage()
@@ -111,7 +114,7 @@ describe("'I’m still traveling' on an active Travel Mode completes at the clic
   })
   it("the marker is written only by this path, and keyed by the /me loginSessionKey (not a cookie)", () => {
     assert.equal((page.match(/markTravelerPromptShown\(/g) ?? []).length, 1)
-    assert.ok(page.includes("markTravelerPromptShown(travelSummary?.loginSessionKey ?? null, window.localStorage)"))
+    assert.ok(page.includes("markTravelerPromptShown(loginSessionKey, window.localStorage)"))
     assert.ok(!/document\.cookie|readSessionId/.test(page))
   })
   it("end to end: answered, then a refresh (same key) stays closed; a new login (new key) reopens", () => {
@@ -129,7 +132,7 @@ describe("'Change my home country' saves and marks nothing", () => {
   const handler = between(page, "const handleChangeHomeCountry", "const vpnProxyModalCopy")
   it("only opens the flow: no marker, no classification request", () => {
     assert.ok(!/markTravelerPrompt|localStorage|recordTravel|IdentityVerificationAPI/.test(handler))
-    assert.ok(handler.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
+    assert.ok(handler.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
   })
   it("closing the detected-country confirmation therefore changes nothing and the prompt returns on refresh", () => {
     const storage = memoryStorage()

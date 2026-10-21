@@ -49,7 +49,9 @@ describe("dashboard verification entry: nothing opens on page load", () => {
       "const openFlowFromMismatch = useCallback(",
     ]) {
       const from = page.indexOf(owner)
-      const next = page.indexOf("\n  }, [", from)
+      const next = owner.includes("openFlowFromMismatch")
+        ? page.indexOf("const handleIdentityFlowOpenChange", from)
+        : page.indexOf("\n  }, [", from)
       assert.ok(from > -1 && page.slice(from, next).includes("setIdentityFlowOpen(true)"), owner)
     }
   })
@@ -204,7 +206,7 @@ describe("Travel Mode and location actions route correctly", () => {
   it("'I’m still traveling' (Storybook ChangeLocation) opens the duration screen and saves nothing", async () => {
     assert.ok(page.includes("I’m still traveling"))
     assert.ok(!page.includes("I’m currently traveling"))
-    assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
+    assert.ok(page.includes('openFlowFromMismatch(await startStillTraveling(), "traveling")'))
     const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startStillTraveling(deps)
     assert.equal(launch.initialState, "traveling-showcase")
@@ -212,7 +214,7 @@ describe("Travel Mode and location actions route correctly", () => {
 
   it("'Change my home country' starts from the top and saves nothing", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
+    assert.ok(page.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
     const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)
     assert.equal(launch.initialState, undefined)

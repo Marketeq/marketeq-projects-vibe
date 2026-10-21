@@ -75,16 +75,24 @@ export function hasBeenIdentityVerified(
 }
 
 /**
- * A home-country claim or its Didit session is unfinished: the claim exists, or the
- * identity status says a session is running (in progress) or waiting for a decision
- * (pending review). Location prompts stay quiet and the travel duration save is
- * refused while this holds.
+ * A home-country change is unfinished and owns the screen: its Didit session is running
+ * (in progress) or waiting for a decision (pending review), or the claim is held through
+ * a decline (retries left, cooling down) or a block. Location prompts stay quiet and the
+ * travel duration save is refused while a session is running or in review.
+ *
+ * A claim with NO live session (unstarted after an abandoned or expired session, still
+ * verified or expired because the session never started) is recoverable, not unfinished:
+ * the prompts are offered again so the user can drop it ("still traveling") or restart it
+ * ("change my home country"). Abandonment consumes no attempt.
  */
 export function isRelocationUnfinished(profile: HomeCountryChangeFields): boolean {
+  const status = profile.identityVerificationStatus;
+  if (status === IdentityVerificationStatus.IN_PROGRESS || status === IdentityVerificationStatus.PENDING) return true;
+  if (!hasPendingHomeCountryChange(profile)) return false;
   return (
-    hasPendingHomeCountryChange(profile) ||
-    profile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS ||
-    profile.identityVerificationStatus === IdentityVerificationStatus.PENDING
+    status !== IdentityVerificationStatus.UNSTARTED &&
+    status !== IdentityVerificationStatus.VERIFIED &&
+    status !== IdentityVerificationStatus.EXPIRED
   );
 }
 

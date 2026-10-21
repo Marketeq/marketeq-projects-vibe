@@ -40,11 +40,27 @@ const defaultDeps: MismatchDeps = {
   getDetectedLocation: () => getDetectedLocation(),
 }
 
+/**
+ * Whether another verification surface owns the screen. The first-time gate does, except
+ * for a returning user whose home-country claim has no live session: the backend sends
+ * pendingHomeCountry for that claim, which a first-time user never has, and it only
+ * reaches the prompts when nothing is running or in review (an abandoned or expired
+ * session). That user is offered the decision again instead of being locked behind the
+ * gate. The "three attempts" dialog always owns the screen.
+ */
+function otherSurfaceOwnsScreen(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  if (cooldownRetryAt(summary) !== null) return true
+  if (summary?.pendingHomeCountry) return false
+  return shouldOpenFirstTimeGate(summary)
+}
+
 export function shouldShowLocationMismatchPrompt(
   summary: IdentityVerificationSummaryView | null
 ): boolean {
   if (summary?.locationMismatch !== true) return false
-  return !shouldOpenFirstTimeGate(summary) && cooldownRetryAt(summary) === null
+  return !otherSurfaceOwnsScreen(summary)
 }
 
 /**
@@ -58,7 +74,7 @@ export function shouldShowTravelerLocationPrompt(
   summary: IdentityVerificationSummaryView | null
 ): boolean {
   if (summary?.travelModeLocationMismatch !== true) return false
-  return !shouldOpenFirstTimeGate(summary) && cooldownRetryAt(summary) === null
+  return !otherSurfaceOwnsScreen(summary)
 }
 
 export async function startStillTraveling(
