@@ -69,6 +69,8 @@ import CreditDebitCardArticle1, {
   CreditDebitCardArticle3,
 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
 import { HelperText } from "@/components/ui/helper-text"
+import { PhoneNumberInput } from "@/components/phone-number-input"
+import { defaultCountries } from "react-international-phone"
 import { inputVariants } from "@/components/ui/input"
 import {
   InputLeftElement,
@@ -129,6 +131,11 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   RadioGroup,
   RadioGroupItemSelector,
   RmDialog,
@@ -191,6 +198,13 @@ type StripeCardFieldState = {
   complete: boolean
   errorCode?: string
 }
+type BillingField =
+  | "fullName"
+  | "addressLine1"
+  | "city"
+  | "state"
+  | "zipcode"
+  | "phone"
 type BankField =
   | "accountType"
   | "accountHolderName"
@@ -265,10 +279,68 @@ const formatUsPhoneNumber = (value: string) => {
   const lineNumber = digits.slice(6, 10)
 
   if (digits.length <= 3) return areaCode ? `(${areaCode}` : ""
-  if (digits.length <= 6) return `(${areaCode}) ${prefix}`
+  if (digits.length <= 6) return `(${areaCode})-${prefix}`
 
-  return `(${areaCode}) ${prefix}-${lineNumber}`
+  return `(${areaCode})-${prefix}-${lineNumber}`
 }
+
+const US_STATES: [string, string][] = [
+  ["AL", "Alabama"],
+  ["AK", "Alaska"],
+  ["AZ", "Arizona"],
+  ["AR", "Arkansas"],
+  ["CA", "California"],
+  ["CO", "Colorado"],
+  ["CT", "Connecticut"],
+  ["DE", "Delaware"],
+  ["DC", "District of Columbia"],
+  ["FL", "Florida"],
+  ["GA", "Georgia"],
+  ["HI", "Hawaii"],
+  ["ID", "Idaho"],
+  ["IL", "Illinois"],
+  ["IN", "Indiana"],
+  ["IA", "Iowa"],
+  ["KS", "Kansas"],
+  ["KY", "Kentucky"],
+  ["LA", "Louisiana"],
+  ["ME", "Maine"],
+  ["MD", "Maryland"],
+  ["MA", "Massachusetts"],
+  ["MI", "Michigan"],
+  ["MN", "Minnesota"],
+  ["MS", "Mississippi"],
+  ["MO", "Missouri"],
+  ["MT", "Montana"],
+  ["NE", "Nebraska"],
+  ["NV", "Nevada"],
+  ["NH", "New Hampshire"],
+  ["NJ", "New Jersey"],
+  ["NM", "New Mexico"],
+  ["NY", "New York"],
+  ["NC", "North Carolina"],
+  ["ND", "North Dakota"],
+  ["OH", "Ohio"],
+  ["OK", "Oklahoma"],
+  ["OR", "Oregon"],
+  ["PA", "Pennsylvania"],
+  ["RI", "Rhode Island"],
+  ["SC", "South Carolina"],
+  ["SD", "South Dakota"],
+  ["TN", "Tennessee"],
+  ["TX", "Texas"],
+  ["UT", "Utah"],
+  ["VT", "Vermont"],
+  ["VA", "Virginia"],
+  ["WA", "Washington"],
+  ["WV", "West Virginia"],
+  ["WI", "Wisconsin"],
+  ["WY", "Wyoming"],
+]
+
+const BILLING_PHONE_COUNTRIES: typeof defaultCountries = [
+  ["United States", "us", "1", "(...)-...-....", 0],
+]
 
 const isValidAbaRoutingNumber = (value: string) => {
   if (!/^\d{9}$/.test(value)) return false
@@ -833,27 +905,27 @@ const getCardNumberError = (value: string) => {
 const getCardNameError = (value: string) => {
   const normalized = value.trim().replace(/\s+/g, " ")
 
-  if (normalized.length === 0) return "Please enter the name on your card."
+  if (normalized.length === 0) return "Please enter the name on your card"
   if (normalized.length < 2 || !/^[A-Za-z ]+$/.test(normalized)) {
-    return "Please enter the full name as it appears on your card."
+    return "Please enter the full name as it appears on your card"
   }
 
   return ""
 }
 
 const getExpiryError = (value: string) => {
-  if (value.length === 0) return "Please enter the expiration date."
+  if (value.length === 0) return "Please enter the expiration date"
 
   const match = value.match(/^(\d{2})\/(\d{2}|\d{4})$/)
 
-  if (!match) return "Please enter a valid expiry date in MM/YY format."
+  if (!match) return "Please enter a valid expiry date in MM/YY format"
 
   const month = Number(match[1])
   const rawYear = Number(match[2])
   const year = match[2].length === 2 ? 2000 + rawYear : rawYear
 
   if (month < 1 || month > 12) {
-    return "Please enter a valid expiry date in MM/YY format."
+    return "Please enter a valid expiry date in MM/YY format"
   }
 
   const expiryDate = new Date(year, month, 0, 23, 59, 59)
@@ -869,7 +941,7 @@ const getCvvError = (value: string, cardNumber: string) => {
   const cardType = getCardType(getCardDigits(cardNumber))
   const expectedLength = cardType === "amex" ? 4 : 3
 
-  if (digits.length === 0) return "Please enter the CVV / CVC code."
+  if (digits.length === 0) return "Please enter the CVV / CVC code"
   if (digits.length !== expectedLength) return "Please enter a valid CVV"
 
   return ""
@@ -901,7 +973,7 @@ const getStripeCardFieldError = (
   }
 
   if (field === "expirationDate") {
-    if (fieldState.empty) return "Please enter the expiration date."
+    if (fieldState.empty) return "Please enter the expiration date"
     if (
       fieldState.errorCode === "invalid_expiry_year_past" ||
       fieldState.errorCode === "invalid_expiry_month_past"
@@ -909,12 +981,12 @@ const getStripeCardFieldError = (
       return "Your card has expired. Please use a different card"
     }
     if (fieldState.errorCode || !fieldState.complete) {
-      return "Please enter a valid expiry date in MM/YY format."
+      return "Please enter a valid expiry date in MM/YY format"
     }
     return ""
   }
 
-  if (fieldState.empty) return "Please enter the CVV / CVC code."
+  if (fieldState.empty) return "Please enter the CVV / CVC code"
   if (fieldState.errorCode || !fieldState.complete) {
     return "Please enter a valid CVV"
   }
@@ -1488,6 +1560,16 @@ export default function PaymentPage() {
   const [billingState, setBillingState] = React.useState("")
   const [zipcode, setZipcode] = React.useState("")
   const [phoneNumber, setPhoneNumber] = React.useState("")
+  const [billingFieldTouched, setBillingFieldTouched] = React.useState<
+    Record<BillingField, boolean>
+  >({
+    fullName: false,
+    addressLine1: false,
+    city: false,
+    state: false,
+    zipcode: false,
+    phone: false,
+  })
   const [billingAddressMode, setBillingAddressMode] =
     React.useState<BillingAddressMode>(
       hasSavedBillingAddresses ? "summary" : "new"
@@ -3445,6 +3527,28 @@ export default function PaymentPage() {
       billingState.trim().length > 0 &&
       /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
       getUsPhoneDigits(phoneNumber).length === 10)
+  const billingFieldErrors: Record<BillingField, string> = {
+    fullName:
+      fullName.trim().length >= 2 ? "" : "Please enter your full name",
+    addressLine1: addressLine1.trim() ? "" : "Please enter your address",
+    city: city.trim() ? "" : "Please enter your city",
+    state: billingState.trim() ? "" : "Please select your state",
+    zipcode: !zipcode.trim()
+      ? "Please enter your zip code"
+      : /^\d{5}(?:-\d{4})?$/.test(zipcode.trim())
+        ? ""
+        : "Please enter a valid zip code",
+    phone: !phoneNumber.trim()
+      ? "Please enter your phone number"
+      : getUsPhoneDigits(phoneNumber).length === 10
+        ? ""
+        : "Please enter a valid US phone number",
+  }
+  const shouldShowBillingFieldError = (field: BillingField) =>
+    (hasAttemptedCardSubmit || billingFieldTouched[field]) &&
+    Boolean(billingFieldErrors[field])
+  const touchBillingField = (field: BillingField) =>
+    setBillingFieldTouched((current) => ({ ...current, [field]: true }))
   const isFullPaymentCardFormValid =
     !stripeCardNumberError &&
     !cardNameError &&
@@ -3789,6 +3893,14 @@ export default function PaymentPage() {
     setBillingState("")
     setZipcode("")
     setPhoneNumber("")
+    setBillingFieldTouched({
+      fullName: false,
+      addressLine1: false,
+      city: false,
+      state: false,
+      zipcode: false,
+      phone: false,
+    })
     setBillingAddressMode(hasSavedBillingAddresses ? "summary" : "new")
   }
 
@@ -7090,7 +7202,7 @@ export default function PaymentPage() {
                       </div>
                     </div>
 
-                    <div className="mt-[22px] flex items-center gap-x-3 px-2.5">
+                    <div className="mt-3 flex items-center gap-x-3 p-2.5">
                       <Checkbox
                         size="md"
                         id="save-default-payment-method"
@@ -7118,14 +7230,14 @@ export default function PaymentPage() {
 
                     {/* Billing Address */}
                     <div className="mt-[50px]">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg leading-none font-bold text-dark-blue-400">
+                      <div className="flex items-end justify-between">
+                        <h3 className="text-lg leading-[22px] font-bold text-dark-blue-400">
                           Billing Address
                         </h3>
                         {billingAddressMode === "new" &&
                         hasSavedBillingAddresses ? (
                           <Button
-                            className="underline"
+                            className="text-xs leading-5 underline"
                             variant="link"
                             onClick={() => setBillingAddressMode("saved")}
                           >
@@ -7215,134 +7327,225 @@ export default function PaymentPage() {
                       ) : null}
 
                       {billingAddressMode === "new" ? (
-                        <div className="mt-6 space-y-3">
+                        <form
+                          className="mt-6 space-y-3"
+                          onSubmit={(e) => e.preventDefault()}
+                        >
                           <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="full-name">
+                            <Label
+                              size="sm"
+                              htmlFor="full-name"
+                              className="text-gray-700"
+                            >
                               Full Name
                             </Label>
                             <Input
                               placeholder="John Doe"
                               id="full-name"
+                              name="name"
+                              autoComplete="name"
                               value={fullName}
                               onChange={(e) => setFullName(e.target.value)}
+                              onBlur={() => touchBillingField("fullName")}
+                              isInvalid={shouldShowBillingFieldError("fullName")}
                             />
+                            {shouldShowBillingFieldError("fullName") ? (
+                              <span className="block text-xs leading-5 text-error-500">
+                                {billingFieldErrors.fullName}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="address-line-1">
+                            <Label
+                              size="sm"
+                              htmlFor="address-line-1"
+                              className="text-gray-700"
+                            >
                               Address Line 1
                             </Label>
                             <Input
                               placeholder="Street Address or P.O. Box"
                               id="address-line-1"
+                              name="address-line1"
+                              autoComplete="address-line1"
                               value={addressLine1}
                               onChange={(e) => setAddressLine1(e.target.value)}
+                              onBlur={() => touchBillingField("addressLine1")}
+                              isInvalid={shouldShowBillingFieldError(
+                                "addressLine1"
+                              )}
                             />
+                            {shouldShowBillingFieldError("addressLine1") ? (
+                              <span className="block text-xs leading-5 text-error-500">
+                                {billingFieldErrors.addressLine1}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="address-line-2">
+                            <Label
+                              size="sm"
+                              htmlFor="address-line-2"
+                              className="text-gray-700"
+                            >
                               Address Line 2
                             </Label>
                             <Input
                               placeholder="Apt, Suite, Unit, or Building #"
                               id="address-line-2"
+                              name="address-line2"
+                              autoComplete="address-line2"
                               value={addressLine2}
                               onChange={(e) => setAddressLine2(e.target.value)}
                             />
                           </div>
                           <div className="gap-x-3 grid grid-cols-3">
                             <div className="space-y-1.5">
-                              <Label size="sm" htmlFor="city">
+                              <Label
+                                size="sm"
+                                htmlFor="city"
+                                className="text-gray-700"
+                              >
                                 City
                               </Label>
                               <Input
                                 placeholder="Marketown"
                                 id="city"
+                                name="city"
+                                autoComplete="address-level2"
                                 value={city}
                                 onChange={(e) => setCity(e.target.value)}
+                                onBlur={() => touchBillingField("city")}
+                                isInvalid={shouldShowBillingFieldError("city")}
                               />
-                            </div>
-                            <div className="space-y-1.5">
-                              <Label size="sm" htmlFor="state">
-                                State
-                              </Label>
-                              <Listbox
-                                value={billingState}
-                                onChange={setBillingState}
-                              >
-                                <ListboxButton placeholder="Select" />
-                                <ListboxOptions>
-                                  {[
-                                    "New York",
-                                    "Florida",
-                                    "Alaska",
-                                    "Arizona",
-                                    "Georgia",
-                                    "Hawaii",
-                                    "California",
-                                  ].map((s) => (
-                                    <ListboxOption key={s} value={s}>
-                                      {s}
-                                    </ListboxOption>
-                                  ))}
-                                </ListboxOptions>
-                              </Listbox>
-                              {shouldShowBankFieldError("accountType") ? (
+                              {shouldShowBillingFieldError("city") ? (
                                 <span className="block text-xs leading-5 text-error-500">
-                                  {bankFieldErrors.accountType}
+                                  {billingFieldErrors.city}
                                 </span>
                               ) : null}
                             </div>
                             <div className="space-y-1.5">
-                              <Label size="sm" htmlFor="zipcode">
+                              <Label
+                                size="sm"
+                                htmlFor="state"
+                                className="text-gray-700"
+                              >
+                                State
+                              </Label>
+                              <Select
+                                name="state"
+                                autoComplete="address-level1"
+                                value={billingState}
+                                onValueChange={setBillingState}
+                                onOpenChange={(open) => {
+                                  if (!open) touchBillingField("state")
+                                }}
+                              >
+                                <SelectTrigger
+                                  id="state"
+                                  invalid={shouldShowBillingFieldError("state")}
+                                  className={cn(
+                                    "w-full text-base shadow-xs",
+                                    shouldShowBillingFieldError("state") &&
+                                      "border-error-300"
+                                  )}
+                                >
+                                  <SelectValue placeholder="Select" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {US_STATES.map(([code, name]) => (
+                                    <SelectItem key={code} value={code}>
+                                      {name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {shouldShowBillingFieldError("state") ? (
+                                <span className="block text-xs leading-5 text-error-500">
+                                  {billingFieldErrors.state}
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label
+                                size="sm"
+                                htmlFor="zipcode"
+                                className="text-gray-700"
+                              >
                                 Zipcode
                               </Label>
                               <Input
                                 placeholder="12345"
                                 id="zipcode"
+                                name="zipcode"
+                                autoComplete="postal-code"
                                 value={zipcode}
                                 onChange={(e) =>
                                   setZipcode(
                                     e.target.value.replace(/[^\d-]/g, "")
                                   )
                                 }
+                                onBlur={() => touchBillingField("zipcode")}
+                                isInvalid={shouldShowBillingFieldError("zipcode")}
                               />
+                              {shouldShowBillingFieldError("zipcode") ? (
+                                <span className="block text-xs leading-5 text-error-500">
+                                  {billingFieldErrors.zipcode}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                           <div className="space-y-1.5">
-                            <Label size="sm" htmlFor="phone-number">
+                            <Label
+                              size="sm"
+                              htmlFor="phone-number"
+                              className="text-gray-700"
+                            >
                               Phone Number
                             </Label>
-                            <InputGroup>
-                              <Input
-                                className="pl-[68px]"
-                                placeholder="(555) 000-0000"
-                                id="phone-number"
-                                inputMode="numeric"
-                                autoComplete="tel-national"
+                            <div className="[--react-international-phone-height:theme(size.11)]">
+                              <PhoneNumberInput
+                                defaultCountry="us"
+                                countries={BILLING_PHONE_COUNTRIES}
+                                placeholder="(555)-000-0000"
+                                disableDialCodeAndPrefix
+                                showDisabledDialCodeAndPrefix
+                                hideDropdown
+                                inputClassName="!text-base"
+                                invalid={shouldShowBillingFieldError("phone")}
+                                onBlur={() => touchBillingField("phone")}
+                                inputProps={{
+                                  id: "phone-number",
+                                  inputMode: "numeric",
+                                  autoComplete: "tel-national",
+                                }}
                                 value={phoneNumber}
-                                onChange={(e) =>
+                                onChange={(value) =>
                                   setPhoneNumber(
-                                    formatUsPhoneNumber(e.target.value)
+                                    formatUsPhoneNumber(
+                                      value.replace(/^\+1/, "")
+                                    )
                                   )
                                 }
                               />
-                              <div className="absolute inset-y-0 left-0 my-auto flex w-[58px] items-center justify-center gap-x-1 rounded-l-[5px] border-r border-gray-200 text-sm text-dark-blue-400">
-                                🇺🇸 +1
-                              </div>
-                            </InputGroup>
+                            </div>
+                            {shouldShowBillingFieldError("phone") ? (
+                              <span className="block text-xs leading-5 text-error-500">
+                                {billingFieldErrors.phone}
+                              </span>
+                            ) : null}
                           </div>
                           {hasAttemptedCardSubmit && !isBillingAddressValid ? (
                             <span className="block text-xs leading-5 text-error-500">
                               {!/^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
                               zipcode.trim()
-                                ? "Please enter a valid zip code."
+                                ? "Please enter a valid zip code"
                                 : phoneNumber.trim() &&
                                     getUsPhoneDigits(phoneNumber).length !== 10
-                                  ? "Please enter a valid US phone number."
-                                  : "Please complete all required billing address fields."}
+                                  ? "Please enter a valid US phone number"
+                                  : "Please complete all required billing address fields"}
                             </span>
                           ) : null}
-                        </div>
+                        </form>
                       ) : null}
 
                       <div className="flex mt-[50px] justify-end">
@@ -7353,15 +7556,10 @@ export default function PaymentPage() {
                             }
                           >
                             <TooltipTrigger asChild>
-                              <span
-                                onClick={() => {
-                                  if (!isFullPaymentCardFormValid) {
-                                    setHasAttemptedCardSubmit(true)
-                                  }
-                                }}
-                              >
+                              <span>
                                 <Button
                                   className={cn(
+                                    "text-xs",
                                     !isFullPaymentCardFormValid &&
                                       "pointer-events-none"
                                   )}
