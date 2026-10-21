@@ -1,12 +1,12 @@
 // frontend/src/lib/api/reviewed-approval-result.ts
 //
-// PMCM-653: a FIRST-TIME verification that came back from Didit "in review" shows the
-// "Your verification has been submitted" modal. When that same verification is later
-// approved, this browser shows the existing success alert ("All set! Your identity and
-// location are verified.") once.
+// PMCM-653: a verification (first-time, or a home-country change) that came back from
+// Didit "in review" shows the "Your verification has been submitted" modal. When that
+// same verification is later approved, this browser shows the existing success alert
+// ("All set! Your identity and location are verified.") once. The backend's own
+// "Your home country was updated" notification is a separate surface and is untouched.
 //
-//   marker      written only when the submitted modal is shown for a first-time
-//               verification, per account (the key carries the user id), so another
+//   marker      written when the submitted modal is shown (for either kind), per account (the key carries the user id), so another
 //               account on the same browser can never read or consume it. It only says
 //               "this browser told this user their verification is under review"; it
 //               never decides that anything was approved.
@@ -17,8 +17,10 @@
 //   not shown   still in review, unreadable or unknown answers keep the marker and show
 //               nothing; a decline, an abandoned or expired session or any other
 //               non-review answer ends the wait quietly.
-//   home-country  never marked (the caller passes only first-time verifications); a
-//               home-country approval keeps its own outcome.
+//   home-country  marked like any other submitted verification. It is approved only
+//               once the claim has RESOLVED: the summary must be complete and fully
+//               verified with no pending home country and no session still running; the
+//               backend never reports complete while a claim is pending.
 //   expiry      a marker older than a week (or from the future) is ignored and removed.
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
 
@@ -37,19 +39,19 @@ export const reviewedResultKey = (userId: string): string =>
   `${REVIEWED_RESULT_KEY_PREFIX}${userId}`
 
 /**
- * Whether the "submitted" modal being shown is for a FIRST-TIME verification, which is
- * the only kind this alert follows. A home-country change (the backend still holds a
- * pending home country) keeps its own outcome and is never marked.
+ * Whether the "submitted" modal being shown is for a verification waiting on review: a
+ * first-time one, or a home-country change (the backend then also holds a pending home
+ * country). Both are followed by the success alert once approved.
  */
 export function shouldMarkReviewedResult(
   summary: IdentityVerificationSummaryView | null
 ): boolean {
-  return summary?.flowState === "await-review" && summary.pendingHomeCountry === null
+  return summary?.flowState === "await-review"
 }
 
 export type ReviewedResultDecision = "approved" | "waiting" | "ended"
 
-/** Records that THIS user was told their first-time verification is under review. */
+/** Records that THIS user was told their verification is under review. */
 export function markReviewedResult(
   storage: ReviewedResultStorage | undefined,
   userId: string | null | undefined,
@@ -124,7 +126,12 @@ export function decideReviewedResult(
   switch (summary.flowState) {
     case "complete":
       // "complete" without the matching fullyVerified is not trusted as approval.
-      return summary.fullyVerified === true ? "approved" : "waiting"
+      if (summary.fullyVerified !== true) return "waiting"
+      // A home-country change is not over while its claim exists or its session runs.
+      if (summary.pendingHomeCountry !== null || summary.hasActiveSession === true) {
+        return "waiting"
+      }
+      return "approved"
     case "await-review":
     case "unknown":
       return "waiting"

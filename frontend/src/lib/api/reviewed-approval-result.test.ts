@@ -70,13 +70,13 @@ function backend(initial: Record<string, unknown>) {
   }
 }
 
-describe("when the submitted modal is for a first-time verification", () => {
-  it("marks only an in-review result that has no pending home-country claim", () => {
+describe("when the submitted modal is shown", () => {
+  it("marks an in-review result of either kind: first-time, or a home-country change", () => {
     assert.equal(shouldMarkReviewedResult(summary(REVIEW)), true)
     assert.equal(
       shouldMarkReviewedResult(summary({ ...REVIEW, pendingHomeCountry: "CA" })),
-      false,
-      "a home-country change keeps its own outcome"
+      true,
+      "a submitted home-country change is followed by the same alert once approved"
     )
     assert.equal(shouldMarkReviewedResult(summary(APPROVED)), false)
     assert.equal(shouldMarkReviewedResult(summary({ nextAction: "retry_identity" })), false)
@@ -93,6 +93,13 @@ describe("the decision comes from the backend summary alone", () => {
     assert.equal(decide({ nextAction: "complete", fullyVerified: false }), "waiting")
     assert.equal(decide({ nextAction: "complete" }), "waiting")
     assert.equal(decide({ fullyVerified: true }), "waiting", "fullyVerified alone is not enough")
+  })
+
+  it("does not approve while a home-country claim exists or a session is still running", () => {
+    assert.equal(decide({ ...APPROVED, pendingHomeCountry: "CA" }), "waiting")
+    assert.equal(decide({ ...APPROVED, hasActiveSession: true }), "waiting")
+    assert.equal(decide({ ...APPROVED, pendingHomeCountry: "CA", hasActiveSession: true }), "waiting")
+    assert.equal(decide({ ...APPROVED, hasActiveSession: false }), "approved")
   })
 
   it("keeps waiting while the review continues or the answer is unreadable or unknown", () => {
@@ -149,6 +156,111 @@ describe("pending → approved shows the success alert once", () => {
     markReviewedResult(storage, A)
     await resolveReviewedResult(b.deps(storage, A, true))
     assert.equal(storage.data.has(reviewedResultKey(A)), true)
+  })
+})
+
+describe("home-country change: in review → approved", () => {
+  const HC_REVIEW = { ...REVIEW, pendingHomeCountry: "CA", hasActiveSession: true }
+  const HC_LANDED_BUT_CLAIM_OPEN = { ...APPROVED, pendingHomeCountry: "CA" }
+  const HC_APPROVED = { ...APPROVED, verifiedHomeCountry: "CA" } // the claim is gone
+
+  it("the submitted modal's marker, then silence while it is pending, then the alert once on approval", async () => {
+    const storage = memoryStorage()
+    const be = backend(HC_REVIEW)
+    // The submitted modal is shown for this home-country change: the marker is written.
+    assert.equal(shouldMarkReviewedResult(summary(HC_REVIEW)), true)
+    markReviewedResult(storage, A)
+
+    assert.equal(await resolveReviewedResult(be.deps(storage, A)), "waiting")
+    assert.equal(await resolveReviewedResult(be.deps(storage, A, true)), "waiting")
+    assert.equal(hasReviewedResult(storage, A), true)
+
+    be.set(HC_APPROVED)
+    assert.equal(await resolveReviewedResult(be.deps(storage, A)), "approved")
+    assert.equal(hasReviewedResult(storage, A), false)
+  })
+
+  it("a complete-looking answer with the pending claim still open shows nothing and keeps the wait", async () => {
+    const storage = memoryStorage()
+    markReviewedResult(storage, A)
+    const be = backend(HC_LANDED_BUT_CLAIM_OPEN)
+    assert.equal(await resolveReviewedResult(be.deps(storage, A)), "waiting")
+    assert.equal(hasReviewedResult(storage, A), true)
+    be.set({ ...APPROVED, hasActiveSession: true })
+    assert.equal(await resolveReviewedResult(be.deps(storage, A)), "waiting")
+    be.set(HC_APPROVED)
+    assert.equal(await resolveReviewedResult(be.deps(storage, A)), "approved")
+  })
+
+  it("once granted, a refresh, a second tab or a later check shows nothing", async () => {
+    const storage = memoryStorage()
+    markReviewedResult(storage, A)
+    const be = backend(HC_APPROVED)
+    assert.equal(await resolveReviewedResult(be.deps(storage, A, true)), "approved")
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal(await resolveReviewedResult(be.deps(storage, A, true)), "none")
+    }
+    assert.equal(be.calls.fetch, 1, "after the grant the backend is not even asked")
+  })
+
+  it("two concurrent checks of the same approval show it once", async () => {
+    const storage = memoryStorage()
+    markReviewedResult(storage, A)
+    const be = backend(HC_APPROVED)
+    const [one, two] = await Promise.all([
+      resolveReviewedResult(be.deps(storage, A)),
+      resolveReviewedResult(be.deps(storage, A)),
+    ])
+    assert.deepEqual([one, two].sort(), ["approved", "none"])
+  })
+
+  it("decline, abandonment or expiry of the claim's session ends the wait with no success", async () => {
+    for (const body of [
+      { nextAction: "retry_identity", pendingHomeCountry: "CA" }, // declined, attempts left
+      { nextAction: "wait_for_retry", pendingHomeCountry: "CA" }, // declined, cooling down
+      { nextAction: "start_identity", pendingHomeCountry: "CA" }, // abandoned or expired
+      { nextAction: "reverify_identity", pendingHomeCountry: "CA" }, // verification expired
+      { nextAction: "confirm_location", pendingHomeCountry: "CA" },
+    ]) {
+      const storage = memoryStorage()
+      markReviewedResult(storage, A)
+      assert.equal(await resolveReviewedResult(backend(body).deps(storage, A)), "ended", body.nextAction)
+      assert.equal(hasReviewedResult(storage, A), false)
+    }
+  })
+
+  it("an immediate approval shows only the success modal: its summary never leaves a marker", async () => {
+    const storage = memoryStorage()
+    // The immediate result is the success modal, never the submitted one, so nothing is marked...
+    assert.equal(shouldMarkReviewedResult(summary(HC_APPROVED)), false)
+    assert.equal(await resolveReviewedResult(backend(HC_APPROVED).deps(storage, A)), "none")
+    // ...and a stale marker is cleared by the handler (pinned below), so no second alert follows.
+    markReviewedResult(storage, A)
+    clearReviewedResult(storage, A)
+    assert.equal(await resolveReviewedResult(backend(HC_APPROVED).deps(storage, A)), "none")
+  })
+
+  it("an unrelated already-verified account, or another account's marker, gets nothing", async () => {
+    const storage = memoryStorage()
+    markReviewedResult(storage, A)
+    const be = backend(HC_APPROVED)
+    assert.equal(await resolveReviewedResult(be.deps(storage, B)), "none")
+    assert.equal(hasReviewedResult(storage, A), true, "B cannot consume A's marker")
+    assert.equal(await resolveReviewedResult(backend(APPROVED).deps(memoryStorage(), B)), "none")
+  })
+
+  it("a marker older than seven days is ignored and removed even when the claim is approved", async () => {
+    const storage = memoryStorage()
+    const t0 = 1_000_000_000_000
+    markReviewedResult(storage, A, t0)
+    const later = t0 + REVIEWED_RESULT_TTL_MS + 1
+    const be = backend(HC_APPROVED)
+    assert.equal(await resolveReviewedResult({ ...be.deps(storage, A), now: later }), "none")
+    assert.equal(storage.data.size, 0)
+    assert.equal(be.calls.fetch, 0)
+    // At exactly seven days it is still valid.
+    markReviewedResult(storage, A, t0)
+    assert.equal(await resolveReviewedResult({ ...be.deps(storage, A), now: t0 + REVIEWED_RESULT_TTL_MS }), "approved")
   })
 })
 
@@ -331,7 +443,7 @@ describe("dashboard wiring (source-pinned)", () => {
     page.indexOf("// The Identity Verification check (which may open AccountVerificationGate)")
   )
 
-  it("the submitted modal marks the wait for a first-time verification only, and keeps clearing the home-country flag", () => {
+  it("the submitted modal marks the wait for either kind, and keeps clearing the home-country flag", () => {
     const pending = page.slice(
       page.indexOf("if (shouldShowPendingModal(summary))"),
       page.indexOf("// The banner or gate may have opened")

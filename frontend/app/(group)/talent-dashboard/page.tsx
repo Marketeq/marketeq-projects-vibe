@@ -347,9 +347,9 @@ export default function TalentDashboard() {
         clearAwaitingResult(window.localStorage)
         // A home-country approval arrives as a backend notification: no alert from here.
         clearHomeCountryChange(window.localStorage)
-        // A first-time verification instead remembers it is under review, so the
-        // approved result can be shown (see reviewed-approval-result.ts). A pending
-        // home-country claim on the backend marks the other kind.
+        // Either kind (first-time or a home-country change) remembers it is under review,
+        // so the approved result can be shown (see reviewed-approval-result.ts); the
+        // backend's own "home country was updated" notification is separate.
         if (shouldMarkReviewedResult(summary)) {
           markReviewedResult(window.localStorage, user.id)
         }
