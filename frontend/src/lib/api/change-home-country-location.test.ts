@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { getDetectedLocation } from "./detected-location"
+import { describeDetectedLocation, getDetectedLocation } from "./detected-location"
 import {
   shouldShowTravelerLocationPrompt,
   showCountryOnlyAsDetected,
@@ -69,13 +69,11 @@ describe("Change my home country shows the live country on the confirmation scre
 
   it("the screen prints heading 'We detected your current location as:' and the country (no city or region)", async () => {
     const { location } = await startChangeHomeCountry({ getDetectedLocation: liveLookup(COUNTRY_ONLY_US) })
-    // The flow's own expressions, pinned below, applied to this location:
-    const label = [location.city, location.region, location.countryName].filter(Boolean).join(", ")
+    // The screen's heading and label come from this one function (see the flow's use below).
+    const { heading, label } = describeDetectedLocation(location)
+    assert.equal(heading, "We detected your current location as:")
     assert.equal(label, "United States")
-    assert.equal(location.detected, true) // -> "We detected your current location as:" + the label
-    assert.ok(flow.includes("We detected your current location as:"))
-    assert.ok(flow.includes("detectedLocation.detected && ("))
-    assert.ok(flow.includes("{detectedLocationLabel}"))
+    assert.ok(flow.includes("describeDetectedLocation(detectedLocation)"))
   })
 
   it("the shared lookup is unchanged: the first-time flow still gets a country-only result as not detected", async () => {

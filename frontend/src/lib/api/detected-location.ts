@@ -288,3 +288,41 @@ export async function getDetectedLocation(
 
   return toDetectedLocation(data)
 }
+
+/**
+ * What the confirmation screen prints for a location: its heading, and the label under it
+ * (null when there is nothing to name). city/region can be honestly empty, so the label is
+ * built from what exists; a country-only result that the caller marked detected reads
+ * "We detected your current location as: <country>".
+ */
+export function describeDetectedLocation(location: DetectedLocation): {
+  heading: string
+  label: string | null
+} {
+  const heading = location.serviceUnavailable
+    ? "Location service temporarily unavailable."
+    : location.detected
+      ? "We detected your current location as:"
+      : "We couldn’t detect your current location"
+  const label = [location.city, location.region, location.countryName]
+    .filter(Boolean)
+    .join(", ")
+  return { heading, label: location.detected && label ? label : null }
+}
+
+/**
+ * The map panel's starting state, from props alone: a service failure, a result with no
+ * coordinates (a named country, or nothing at all), or "loading" while a real map is built.
+ */
+export function locationMapStateFor(input: {
+  latitude: number | null
+  longitude: number | null
+  serviceUnavailable: boolean
+  countryName: string | null
+}): "service-unavailable" | "country-only" | "no-location" | "loading" {
+  if (input.serviceUnavailable) return "service-unavailable"
+  if (input.latitude == null || input.longitude == null) {
+    return input.countryName ? "country-only" : "no-location"
+  }
+  return "loading"
+}

@@ -112,7 +112,11 @@ import {
 } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { useStateMachine } from "@/utils/hooks"
-import type { DetectedLocation } from "@/src/lib/api/detected-location"
+import {
+  describeDetectedLocation,
+  locationMapStateFor,
+  type DetectedLocation,
+} from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
 import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-kyc"
 import {
@@ -251,20 +255,29 @@ type LocationMapState =
   | "error"
   | "no-key"
   | "no-location"
+  | "country-only"
   | "service-unavailable"
 
-const DetectedLocationMap = ({
+export const DetectedLocationMap = ({
   latitude,
   longitude,
   serviceUnavailable,
+  countryName = null,
 }: {
   latitude: number | null
   longitude: number | null
   serviceUnavailable: boolean
+  /** Set only for a country-level result (a country, no coordinates): the panel then
+   *  names the country instead of claiming nothing was detected. */
+  countryName?: string | null
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<LeafletMap | null>(null)
-  const [state, setState] = useState<LocationMapState>("loading")
+  // The states that need no map are known from the props, so they are also what a
+  // server render shows.
+  const [state, setState] = useState<LocationMapState>(() =>
+    locationMapStateFor({ latitude, longitude, serviceUnavailable, countryName })
+  )
 
   useEffect(() => {
     if (serviceUnavailable) {
@@ -273,7 +286,7 @@ const DetectedLocationMap = ({
     }
 
     if (latitude == null || longitude == null) {
-      setState("no-location")
+      setState(countryName ? "country-only" : "no-location")
       return
     }
 
@@ -332,7 +345,7 @@ const DetectedLocationMap = ({
       mapRef.current?.remove()
       mapRef.current = null
     }
-  }, [latitude, longitude, serviceUnavailable])
+  }, [latitude, longitude, serviceUnavailable, countryName])
 
   return (
     <div className="mt-6">
@@ -353,6 +366,11 @@ const DetectedLocationMap = ({
             {state === "no-location" && (
               <span className="text-xs text-center text-gray-500">
                 We couldn&rsquo;t detect your location
+              </span>
+            )}
+            {state === "country-only" && (
+              <span className="text-sm text-center text-gray-500">
+                {countryName}
               </span>
             )}
             {state === "no-key" && (
@@ -951,17 +969,10 @@ export function IdentityVerificationFlow({
     return () => clearTimeout(timer)
   }, [state, send])
 
-  // city/region can be honestly empty (see detected-location.ts's header —
-  // location-service's resolve-ip response has no region/city fields today,
-  // so these are left unset rather than guessed) — filtered out here rather
-  // than rendered as stray leading/double commas.
-  const detectedLocationLabel = [
-    detectedLocation.city,
-    detectedLocation.region,
-    detectedLocation.countryName,
-  ]
-    .filter(Boolean)
-    .join(", ")
+  // city/region can be honestly empty (see detected-location.ts's header), so the
+  // heading and label come from one place that filters them out.
+  const { heading: detectedHeading, label: detectedLocationLabel } =
+    describeDetectedLocation(detectedLocation)
 
   return (
     <>
@@ -971,13 +982,9 @@ export function IdentityVerificationFlow({
           <div className="flex items-start justify-between gap-x-3">
             <div className="space-y-2 flex-auto">
               <h1 className="text-lg leading-5 text-dark-blue-400">
-                {detectedLocation.serviceUnavailable
-                  ? "Location service temporarily unavailable."
-                  : detectedLocation.detected
-                    ? "We detected your current location as:"
-                    : "We couldn’t detect your current location"}
+                {detectedHeading}
               </h1>
-              {detectedLocation.detected && (
+              {detectedLocationLabel && (
                 <p className="text-lg font-bold leading-5 text-dark-blue-400">
                   {detectedLocationLabel}
                 </p>
@@ -1000,6 +1007,13 @@ export function IdentityVerificationFlow({
             latitude={detectedLocation.latitude}
             longitude={detectedLocation.longitude}
             serviceUnavailable={detectedLocation.serviceUnavailable}
+            countryName={
+              detectedLocation.detected &&
+              detectedLocation.latitude == null &&
+              detectedLocation.longitude == null
+                ? detectedLocation.countryName || null
+                : null
+            }
           />
 
           <div className="mt-[50px]">
