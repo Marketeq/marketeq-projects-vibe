@@ -9,7 +9,7 @@
 //   still failing after MAX_DELIVERY_ATTEMPTS, or malformed (can never succeed) -> dead-letter
 //        queue, error log, monitor counter, health signal, then ack the original
 //   the retry / dead-letter publish itself fails -> the original is NOT acked: nack with requeue
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { RmqContext } from '@nestjs/microservices';
 import { NotificationPayload, NotificationService } from '../services/notification.service';
 import { NotificationDeliveryMonitor } from './notification-delivery-monitor';
@@ -54,7 +54,7 @@ export class NotificationDeliveryService {
   constructor(
     private readonly notifications: NotificationService,
     private readonly monitor: NotificationDeliveryMonitor,
-    private readonly statusAlerts?: PersistentStatusAlertService,
+    private readonly statusAlerts: PersistentStatusAlertService,
   ) {}
 
   /** Declares the retry and dead-letter queues on this channel (idempotent; new channel after a reconnect). */
@@ -137,13 +137,13 @@ export class NotificationDeliveryService {
     }
 
     try {
-      if (!this.statusAlerts) {
-        throw new Error('PersistentStatusAlertService is unavailable');
-      }
       await this.statusAlerts.upsert(payload);
     } catch (error) {
       const reason = describe(error);
-      if (attempt + 1 >= MAX_DELIVERY_ATTEMPTS) {
+      // A rejected payload will be rejected again: retrying only delays the dead letter.
+      if (error instanceof BadRequestException) {
+        await this.deadLetter(channel, message, attempt + 1, `malformed: ${reason}`, payload, key);
+      } else if (attempt + 1 >= MAX_DELIVERY_ATTEMPTS) {
         await this.deadLetter(
           channel,
           message,

@@ -36,7 +36,7 @@ export class PersistentStatusAlert {
   @Column()
   userId: string;
 
-  @Column({ length: 64 })
+  @Column({ type: 'varchar', length: 64 })
   type: PersistentStatusAlertType;
 
   @Column({ length: 200 })
@@ -48,7 +48,7 @@ export class PersistentStatusAlert {
   @Column({ type: 'text' })
   body: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   link: string | null;
 
   @Column({ type: 'jsonb', nullable: true })

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -44,7 +45,7 @@ export class NotificationController {
 
   @Post('status-alerts/:id/dismiss')
   @HttpCode(HttpStatus.OK)
-  dismissStatusAlert(@Req() req: any, @Param('id') id: string) {
+  dismissStatusAlert(@Req() req: any, @Param('id', new ParseUUIDPipe()) id: string) {
     return this.statusAlerts.dismiss(req.user?.sub ?? req.user?.id, id);
   }
 

@@ -4,7 +4,10 @@ import {
   PersistentStatusAlert,
   PersistentStatusAlertType,
 } from '../entities/persistent-status-alert.entity';
-import { PersistentStatusAlertService } from './persistent-status-alert.service';
+import {
+  ACTIVE_STATUS_ALERT_LIMIT,
+  PersistentStatusAlertService,
+} from './persistent-status-alert.service';
 
 const row = (
   over: Partial<PersistentStatusAlert> = {},
@@ -164,6 +167,39 @@ describe('PersistentStatusAlertService', () => {
     const { service } = setup();
     await expect(service.upsert(invalid as any)).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+  });
+
+  it.each(['javascript:alert(1)', '//evil.example', 'data:text/html,x', '/ok path'])(
+    'rejects an unsafe link (%s)',
+    async (link) => {
+      const { service, repo } = setup();
+      await expect(service.upsert({ ...payload(), link })).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts an in-app path and an https link', async () => {
+    const { service } = setup();
+    await expect(
+      service.upsert({ ...payload(), link: '/talent-dashboard' }),
+    ).resolves.toMatchObject({ link: '/talent-dashboard' });
+  });
+
+  it('rejects oversized metadata', async () => {
+    const { service } = setup();
+    await expect(
+      service.upsert({ ...payload(), metadata: { blob: 'x'.repeat(5000) } }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('caps the active list', async () => {
+    const { service, repo } = setup();
+    await service.listActive('user-1');
+    expect(repo.find).toHaveBeenCalledWith(
+      expect.objectContaining({ take: ACTIVE_STATUS_ALERT_LIMIT }),
     );
   });
 });

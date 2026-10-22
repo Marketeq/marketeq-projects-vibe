@@ -33,6 +33,12 @@ export interface PersistentStatusAlertView {
 
 const allowedTypes = new Set<string>(PERSISTENT_STATUS_ALERT_TYPES);
 
+/** An alert is a status banner, not an inbox: the dashboard shows a short stack. */
+export const ACTIVE_STATUS_ALERT_LIMIT = 20;
+const MAX_METADATA_BYTES = 4096;
+// The link becomes an href: an in-app path or an http(s) URL, never another scheme.
+const SAFE_LINK = /^(\/(?!\/)|https?:\/\/)\S*$/i;
+
 export function persistentStatusAlertPayloadProblem(
   payload: Partial<PersistentStatusAlertPayload> | null | undefined,
 ): string | null {
@@ -77,6 +83,7 @@ export class PersistentStatusAlertService {
         dismissedAt: IsNull(),
       },
       order: { createdAt: 'DESC' },
+      take: ACTIVE_STATUS_ALERT_LIMIT,
     });
     return rows.map((row) => this.present(row));
   }
@@ -104,12 +111,21 @@ export class PersistentStatusAlertService {
         throw new BadRequestException('link is invalid');
       }
       link = payload.link.trim() || null;
+      if (link && !SAFE_LINK.test(link)) {
+        throw new BadRequestException('link is invalid');
+      }
     }
     if (
       payload.metadata != null &&
       (typeof payload.metadata !== 'object' || Array.isArray(payload.metadata))
     ) {
       throw new BadRequestException('metadata is invalid');
+    }
+    if (
+      payload.metadata != null &&
+      Buffer.byteLength(JSON.stringify(payload.metadata)) > MAX_METADATA_BYTES
+    ) {
+      throw new BadRequestException('metadata is too large');
     }
 
     const identity = {
