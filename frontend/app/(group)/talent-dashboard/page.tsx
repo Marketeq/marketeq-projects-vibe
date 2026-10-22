@@ -108,6 +108,7 @@ import {
   durationCopyFor,
   reconcileCheckIn,
   recordCheckInAnswerOutcome,
+  shouldShowCheckInConfirmation,
   shouldRecheckOnVisibility,
 } from "@/src/lib/api/travel-check-in"
 import {
@@ -287,9 +288,12 @@ export default function TalentDashboard() {
   )
   // The check-in wins while it is due or open: the traveler location prompt and the small
   // Travel Mode alert wait, and come back once it is resolved.
+  // The "Travel Mode is now active!" confirmation after a saved answer is part of the
+  // check-in: it keeps holding them back until Done or X.
+  const [checkInConfirmationOpen, setCheckInConfirmationOpen] = useState(false)
   const checkInHasPriorityNow = checkInHasPriority(
     travelSummary,
-    checkIn !== null
+    checkIn !== null || checkInConfirmationOpen
   )
 
 
@@ -886,6 +890,9 @@ export default function TalentDashboard() {
           occurrence,
           dismissals: checkInDismissalsRef.current,
         })
+        // Opened in the same batch that closes the question, so the small alert and the
+        // location-mismatch popup never get a gap to appear in.
+        if (shouldShowCheckInConfirmation(outcome)) setCheckInConfirmationOpen(true)
         setCheckIn(null)
         if (outcome === "in_progress") {
           // A home-country change owns the account now: follow the state /me returns.
@@ -901,6 +908,14 @@ export default function TalentDashboard() {
     },
     [checkIn, checkInScopeKey, readTravelSummary, runIdentityVerificationCheck]
   )
+
+  // Done or X on the confirmation. Releasing the check-in's priority lets the traveler
+  // prompt effect run again; the location-mismatch prompt is evaluated against the
+  // summary read after the answer was saved.
+  const handleCheckInConfirmationClose = useCallback(() => {
+    setCheckInConfirmationOpen(false)
+    setLocationMismatchOpen(shouldShowLocationMismatchPrompt(travelSummary))
+  }, [travelSummary])
 
   // "Update my home country" enters the existing home-country flow: the current location
   // (city, region, country and map), "Is this your home country?", then Didit. Starting
@@ -1172,6 +1187,66 @@ export default function TalentDashboard() {
             </div>
           </DialogContent>
         )}
+      </Dialog>
+
+      {/* "Travel Mode is now active!": the Storybook TravelMode design (stories/
+          identity-verfication.stories.tsx), shown once after a saved duration answer.
+          Done and X close it; nothing is persisted, so a refresh never shows it again. */}
+      <Dialog
+        open={checkInConfirmationOpen}
+        onOpenChange={(open) => {
+          if (!open) handleCheckInConfirmationClose()
+        }}
+      >
+        <DialogContent className="max-w-[650px]">
+          <div className="flex items-center justify-between">
+            {/* The answer is already saved, so the story's back arrow can only close. */}
+            <IconButton
+              size="md"
+              visual="gray"
+              variant="ghost"
+              onClick={handleCheckInConfirmationClose}
+            >
+              <ArrowLeft className="size-5" />
+            </IconButton>
+
+            <IconButton
+              className="text-gray-500/50 hover:text-gray-500"
+              size="md"
+              visual="gray"
+              variant="ghost"
+              onClick={handleCheckInConfirmationClose}
+            >
+              <X className="size-5" />
+            </IconButton>
+          </div>
+
+          <div className="mt-3 pt-[9px]">
+            <DialogTitle className="text-lg font-medium text-dark-blue-400">
+              {CHECK_IN_COPY.confirmation.title}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm font-light text-dark-blue-400">
+              {CHECK_IN_COPY.confirmation.body}
+            </DialogDescription>
+          </div>
+
+          <div className="mt-6 space-y-6">
+            <Alert>
+              <AlertIcon>
+                <Info className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>{CHECK_IN_COPY.confirmation.alert}</AlertTitle>
+              </AlertContent>
+            </Alert>
+
+            <div className="grid">
+              <Button onClick={handleCheckInConfirmationClose}>
+                {CHECK_IN_COPY.confirmation.done}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Not rendered while the check-in is due or open: it goes first. */}

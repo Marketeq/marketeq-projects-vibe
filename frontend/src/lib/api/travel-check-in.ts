@@ -45,6 +45,14 @@ export const CHECK_IN_COPY = {
     alert: "You won’t be asked again for a while based on your selection.",
   },
   skip: "Skip",
+  // Shown right after a duration answer was saved: the existing Storybook TravelMode copy.
+  confirmation: {
+    title: "Travel Mode is now active!",
+    body: "You’re marked as temporarily traveling. You can now use the platform without restrictions.",
+    alert:
+      "You’ll remain in Travel Mode until you return to your home country or update your location.",
+    done: "Done",
+  },
 } as const
 
 /** The four duration answers, in display order. "Not sure" is an answer like the others. */
@@ -209,6 +217,18 @@ export function isCheckInStale(
   summary: DueFields | null
 ): boolean {
   return dueCheckInOccurrence(summary) !== open
+}
+
+/**
+ * The "Travel Mode is now active!" confirmation opens only when the server saved the answer
+ * (POST /travel-duration/update returned 200): never for Skip, a close, a failed request, a
+ * 409 (stale / in progress) or "Update my home country". It is an immediate success message
+ * held in page memory only, so a refresh never shows it again.
+ */
+export function shouldShowCheckInConfirmation(
+  outcome: CheckInAnswerOutcome
+): boolean {
+  return outcome === "saved"
 }
 
 // --- priority ---------------------------------------------------------------
