@@ -95,6 +95,7 @@ import {
   Plus,
   Plus2,
   RefreshCcw05,
+  RefreshCw,
   SearchMd,
   Send,
   Trash01,
@@ -4381,7 +4382,7 @@ const ProjectInfo = ({
         formatContractPhaseLabel(contract.phase),
         statusBadge,
       ].filter(Boolean),
-      icon: <Copy className="size-5" />,
+      icon: <MdOutlineAssignment className="size-6" />,
       avatars:
         overflowAvatarCount > 0
           ? [...avatarUrls, `+${overflowAvatarCount}`]
@@ -4649,7 +4650,7 @@ const ProjectInfo = ({
                                     >
                                       {badge === "Service" ? (
                                         <span className="inline-flex items-center gap-x-1">
-                                          <MdAutorenew className="size-3.5 shrink-0 text-primary-500" />
+                                          <RefreshCw className="size-[14px] shrink-0 text-primary-500" />
                                           <span>Service</span>
                                         </span>
                                       ) : (
@@ -4676,7 +4677,7 @@ const ProjectInfo = ({
                                     </Avatar>
                                   ))}
                                 {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
-                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[10px] leading-none font-semibold text-primary-500">
+                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[11px] leading-none font-medium text-primary-500">
                                     {option.avatars.find((avatar) =>
                                       avatar.startsWith("+"),
                                     )}
