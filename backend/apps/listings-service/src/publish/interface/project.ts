@@ -13,6 +13,7 @@ export class Project {
   budget?: number | null;
   initialTeamBudget?: number | null;
   durationMonths?: number | null;
+  pricingPeriod?: string | null;
   teamSize?: number | null;
   location?: string | null;
   timezone?: string | null;

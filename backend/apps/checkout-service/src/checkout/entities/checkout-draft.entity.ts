@@ -5,30 +5,14 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Unique,
+  Index,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+import { CheckoutSession } from './checkout-session.entity';
+import { DraftMembers } from '../checkout-draft-schedule.util';
 
-export type CheckoutDraftTask = {
-  id: string;
-  title: string;
-  description: string | null;
-  roleName: string | null;
-  location: string[] | null;
-  experienceLevel: string | null;
-  estimatedHours: number | null;
-};
-
-export type CheckoutDraftPhase = {
-  id: string;
-  phaseName: string;
-  order: number;
-  tasks: CheckoutDraftTask[];
-};
-
-// Seeded once from the listing's scope at first checkout visit and never
-// re-synced automatically — see docs/md/Checkout Service/Front-end/
-// "Project Scope / Team Members + Payment Summary (Checkout Step).md".
-// Read-only for now: no endpoints mutate `phases` yet.
-@Entity('checkout_drafts')
+@Entity('drafts')
 @Unique(['clientId', 'listingId'])
 export class CheckoutDraft {
   @PrimaryGeneratedColumn('uuid')
@@ -40,15 +24,38 @@ export class CheckoutDraft {
   @Column()
   listingId: string;
 
-  @Column({ type: 'jsonb', default: [] })
-  phases: CheckoutDraftPhase[];
+  @Column({ type: 'int', default: 1 })
+  version: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  projectCost: number | null;
+  @Column({ type: 'varchar', nullable: true })
+  title: string | null;
 
-  @CreateDateColumn()
+  @Column({ type: 'text', nullable: true })
+  mediaUrl: string | null;
+
+  @Column({ type: 'jsonb', default: () => "'{}'" })
+  members: DraftMembers;
+
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  giftCardCodes: string[];
+
+  @Column({ type: 'uuid', nullable: true })
+  promoCode: string | null;
+
+  @Index('IDX_drafts_sessionId')
+  @Column({ type: 'uuid', nullable: true })
+  sessionId: string | null;
+
+  @ManyToOne(() => CheckoutSession, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'sessionId', foreignKeyConstraintName: 'FK_drafts_session' })
+  session: CheckoutSession | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
+
+  @Column({ type: 'timestamptz', default: () => 'now()' })
+  lastOpenedAt: Date;
 }

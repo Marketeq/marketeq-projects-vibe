@@ -1,10 +1,13 @@
 /**
- * PMCM-806: the three withdrawal notifications. Each has a push (the in-app
+ * PMCM-806: the four withdrawal notifications. Each has a push (the in-app
  * notification's title and body) and a branded email.
  *
  *   N-01 submitted  — the payout started processing (informational)
  *   N-02 completed  — the money landed (informational, closing)
  *   N-03 failed     — the money is back in the balance (recovery)
+ *   N-04 cancelled  — the provider cancelled it; the money is back (recovery).
+ *                     Added in PM review: mirrors N-03, with "cancelled" in
+ *                     place of the failure reason.
  *
  * The copy follows the ticket as written. Each push line splits into title and
  * body at its em dash, which is how the bell renders a notification.
@@ -32,7 +35,7 @@ import {
   safeUrl,
 } from './email-primitives';
 
-export type WithdrawalKind = 'submitted' | 'completed' | 'failed';
+export type WithdrawalKind = 'submitted' | 'completed' | 'failed' | 'cancelled';
 
 /** The only reason lines a contractor may see (PMCM-806 "Failure reason copy"). */
 export const WITHDRAWAL_FAILURE_REASONS = [
@@ -71,9 +74,9 @@ export type WithdrawalEmailParams = {
   reference: string;
   /** "Track withdrawal" / "View receipt" destination. */
   transactionUrl: string;
-  /** N-03 primary CTA: where the failed method can be edited or replaced. */
+  /** N-03/N-04 primary CTA: where the method can be edited or replaced. */
   reviewMethodUrl: string;
-  /** N-03 secondary CTA: the withdrawal screen. */
+  /** N-03/N-04 secondary CTA: the withdrawal screen. */
   tryAgainUrl: string;
   logoUrl?: string;
   supportEmail: string;
@@ -145,6 +148,13 @@ export function buildWithdrawalPush(params: {
       // "Withdrawal couldn’t be completed — {{amount}} has been returned to your balance."
       return {
         title: 'Withdrawal couldn’t be completed',
+        body: `${amount} has been returned to your balance.`,
+      };
+    case 'cancelled':
+      // N-04, mirrors N-03: "Withdrawal cancelled — {{amount}} has been
+      // returned to your balance."
+      return {
+        title: 'Withdrawal cancelled',
         body: `${amount} has been returned to your balance.`,
       };
   }
@@ -219,6 +229,51 @@ function heading(text: string): string {
   return `<tr><td style="font-family:${FONT};font-size:20px;line-height:24px;font-weight:800;color:${INK};">
     ${escapeHtml(text)}
   </td></tr>`;
+}
+
+const NEXT_STEPS = [
+  '1. Review your payout method. Check its details are up to date, or add a different method.',
+  '2. Try your withdrawal again. Your balance is ready whenever you are.',
+];
+
+/** N-03 and N-04 share everything after the opening paragraph: the details,
+ * "What to do next" and the two CTAs. */
+function recoveryRows(
+  title: string,
+  openingHtml: string,
+  details: DetailRow[],
+  reviewMethodUrl: string,
+  tryAgainUrl: string,
+): string {
+  return panel(
+    heading(title) +
+      paragraph(openingHtml) +
+      detailsTable(details) +
+      `<tr><td style="padding:24px 0 0 0;font-family:${FONT};font-size:14px;line-height:17px;font-weight:700;color:${INK};">
+            What to do next
+          </td></tr>` +
+      paragraph(NEXT_STEPS.join('<br />'), '12px 0 0 0') +
+      ctaRow([
+        primaryButton('Review payout method', reviewMethodUrl),
+        secondaryButton('Try again', tryAgainUrl),
+      ]),
+  );
+}
+
+function recoveryText(
+  title: string,
+  opening: string,
+  details: DetailRow[],
+  reviewMethodUrl: string,
+  tryAgainUrl: string,
+): string[] {
+  return [
+    title,
+    opening,
+    details.map((d) => `${d.label}: ${d.value}`).join('\n'),
+    ['What to do next', ...NEXT_STEPS].join('\n'),
+    `Review payout method: ${reviewMethodUrl}\nTry again: ${tryAgainUrl}`,
+  ];
 }
 
 export function buildWithdrawalEmail(
@@ -326,38 +381,47 @@ export function buildWithdrawalEmail(
       subject = `We couldn’t complete your ${amount} withdrawal`;
       // Leads with the money being safe, ahead of what went wrong.
       title = `${amount} is back in your balance`;
-      rows = panel(
-        heading(title) +
-          paragraph(
-            `${escapeHtml(greeting)} your money is safe. We couldn’t complete your withdrawal to ` +
-              `<strong>${escapeHtml(method)}</strong>, so the full <strong>${escapeHtml(amount)}</strong> ` +
-              'has been returned to your available balance. No funds have been lost.',
-          ) +
-          detailsTable(details) +
-          `<tr><td style="padding:24px 0 0 0;font-family:${FONT};font-size:14px;line-height:17px;font-weight:700;color:${INK};">
-            What to do next
-          </td></tr>` +
-          paragraph(
-            '1. Review your payout method. Check its details are up to date, or add a different method.<br />' +
-              '2. Try your withdrawal again. Your balance is ready whenever you are.',
-            '12px 0 0 0',
-          ) +
-          ctaRow([
-            primaryButton('Review payout method', reviewMethodUrl),
-            secondaryButton('Try again', tryAgainUrl),
-          ]),
-      );
-      textBlocks = [
+      const opening =
+        `${greeting} your money is safe. We couldn’t complete your withdrawal to ${method}, ` +
+        `so the full ${amount} has been returned to your available balance. No funds have been lost.`;
+      rows = recoveryRows(
         title,
-        `${greeting} your money is safe. We couldn’t complete your withdrawal to ${method}, so the full ${amount} has been returned to your available balance. No funds have been lost.`,
-        details.map((d) => `${d.label}: ${d.value}`).join('\n'),
-        [
-          'What to do next',
-          '1. Review your payout method. Check its details are up to date, or add a different method.',
-          '2. Try your withdrawal again. Your balance is ready whenever you are.',
-        ].join('\n'),
-        `Review payout method: ${params.reviewMethodUrl}\nTry again: ${params.tryAgainUrl}`,
+        `${escapeHtml(greeting)} your money is safe. We couldn’t complete your withdrawal to ` +
+          `<strong>${escapeHtml(method)}</strong>, so the full <strong>${escapeHtml(amount)}</strong> ` +
+          'has been returned to your available balance. No funds have been lost.',
+        details,
+        reviewMethodUrl,
+        tryAgainUrl,
+      );
+      textBlocks = recoveryText(title, opening, details, params.reviewMethodUrl, params.tryAgainUrl);
+      break;
+    }
+
+    case 'cancelled': {
+      // N-04: no reason row. Neither Stripe nor Wise gives a contractor-facing
+      // reason for a cancellation, and the status says what happened.
+      const details: DetailRow[] = [
+        { label: 'Amount', value: amount },
+        { label: 'Method', value: method },
+        { label: 'Status', value: 'Cancelled' },
+        { label: 'Reference', value: reference },
       ];
+
+      subject = `Your ${amount} withdrawal was cancelled`;
+      title = `${amount} is back in your balance`;
+      const opening =
+        `${greeting} your money is safe. Your withdrawal to ${method} was cancelled before it ` +
+        `was completed, so the full ${amount} has been returned to your available balance. No funds have been lost.`;
+      rows = recoveryRows(
+        title,
+        `${escapeHtml(greeting)} your money is safe. Your withdrawal to ` +
+          `<strong>${escapeHtml(method)}</strong> was cancelled before it was completed, so the full ` +
+          `<strong>${escapeHtml(amount)}</strong> has been returned to your available balance. No funds have been lost.`,
+        details,
+        reviewMethodUrl,
+        tryAgainUrl,
+      );
+      textBlocks = recoveryText(title, opening, details, params.reviewMethodUrl, params.tryAgainUrl);
       break;
     }
   }

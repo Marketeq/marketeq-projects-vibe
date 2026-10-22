@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -6,6 +6,8 @@ import { Repository } from 'typeorm';
 import { TalentProfile } from './entities/talent-profile.entity';
 import { TalentProfileSavedEvent } from './interfaces/talent-profile-events';
 import { User } from '../user/entities/user.entity';
+import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
+import { TalentGateStateService } from '../identity-gate/talent-gate-state.service';
 
 // Mirrors TalentEventPayload in algolia-service — keep the two in step, since
 // SyncService.syncTalent reads these exact names off the event. Note the rate
@@ -39,6 +41,18 @@ interface AlgoliaTalentPayload {
   reviewsCount: number | null;
   clientSuccessRate: number | null;
   yearsOfExperience: number | null;
+  // G1 discovery gate - see TalentEventPayload in algolia-service. `accountId`
+  // is the platform account the profile belongs to; `gateOpen` is identity's
+  // decision at `gateCheckedAt`, omitted when it could not be obtained.
+  accountId: string | null;
+  gateOpen?: boolean;
+  gateCheckedAt?: string;
+}
+
+/** What identity said about the profile's account, or nothing if it could not be asked. */
+interface GateStamp {
+  gateOpen?: boolean;
+  gateCheckedAt?: string;
 }
 
 /**
@@ -58,8 +72,13 @@ interface DerivedCategories {
  */
 const CATEGORY_MATCH_TIMEOUT_MS = 10_000;
 
+const DEFAULT_GATE_RECONCILE_INTERVAL_MS = 60 * 60 * 1000;
+const GATE_RECONCILE_FIRST_RUN_DELAY_MS = 60 * 1000;
+const GATE_BACKFILL_BATCH = 100;
+const GATE_BACKFILL_TIMEOUT_MS = 30_000;
+
 @Injectable()
-export class TalentProfileSyncService {
+export class TalentProfileSyncService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TalentProfileSyncService.name);
 
   constructor(
@@ -73,8 +92,61 @@ export class TalentProfileSyncService {
     private readonly client: ClientProxy,
     @Inject('CATEGORY_CLIENT')
     private readonly categoryClient: ClientProxy,
+    private readonly gateClient: IdentityVerificationGateClient,
+    private readonly gateState: TalentGateStateService,
   ) {
     this.logger.log('TalentProfileSyncService initialized');
+  }
+
+  private gateTimers: NodeJS.Timeout[] = [];
+
+  /**
+   * G1: records that are not yet backfilled stay hidden from marketplace
+   * search, so a backfill runs shortly after boot and then on an interval as
+   * the reconciliation backstop for any gate change the index missed
+   * (TALENT_GATE_RECONCILE_INTERVAL_MS, default 1h; 0 turns the schedule off -
+   * `talent-profile.reindex_gate` can still be sent by an operator).
+   */
+  onModuleInit(): void {
+    const every = process.env.TALENT_GATE_RECONCILE_INTERVAL_MS === undefined
+      ? DEFAULT_GATE_RECONCILE_INTERVAL_MS
+      : Number(process.env.TALENT_GATE_RECONCILE_INTERVAL_MS);
+    if (!Number.isFinite(every) || every <= 0) return;
+    const run = () =>
+      void this.reindexGate().catch((err) =>
+        this.logger.warn(`Scheduled talent gate reconcile failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+    const first = setTimeout(run, GATE_RECONCILE_FIRST_RUN_DELAY_MS);
+    const repeat = setInterval(run, every);
+    first.unref?.();
+    repeat.unref?.();
+    this.gateTimers.push(first, repeat);
+  }
+
+  onModuleDestroy(): void {
+    this.gateTimers.forEach((t) => {
+      clearTimeout(t);
+      clearInterval(t);
+    });
+    this.gateTimers = [];
+  }
+
+  /**
+   * The gate decision for one profile's account, stamped with when it was
+   * asked. Never throws and never guesses: if identity cannot answer, nothing
+   * is sent and the index keeps whatever `gate_open` the record already has
+   * (hidden, if it has none).
+   */
+  private async gateStampFor(profile: TalentProfile): Promise<GateStamp> {
+    if (!profile.sourceId) return {};
+    try {
+      const checkedAt = new Date().toISOString();
+      const decisions = await this.gateClient.checkGateBatch([profile.sourceId]);
+      const decision = decisions.get(profile.sourceId);
+      return decision ? { gateOpen: decision.gateOpen === true, gateCheckedAt: checkedAt } : {};
+    } catch {
+      return {};
+    }
   }
 
   async upsert(event: TalentProfileSavedEvent): Promise<TalentProfile> {
@@ -131,6 +203,7 @@ export class TalentProfileSyncService {
     const emitTalentUpdated = async (
       profile: TalentProfile,
       derived: DerivedCategories,
+      gate: GateStamp,
     ) => {
       try {
         await this.client.emit('talent.updated', {
@@ -179,6 +252,8 @@ export class TalentProfileSyncService {
           clientSuccessRate:
             profile.repeatHireRate != null ? Number(profile.repeatHireRate) : null,
           yearsOfExperience: this.yearsOfExperience(profile),
+          accountId: profile.sourceId ?? null,
+          ...gate,
         });
       } catch (err) {
         this.logger.warn(
@@ -192,9 +267,10 @@ export class TalentProfileSyncService {
     // categories this profile has.
     const publish = async (saved: TalentProfile) => {
       const derived = await this.deriveCategories(saved);
-      this.emitAlgoliaUpdate(saved, derived);
+      const gate = await this.gateStampFor(saved);
+      this.emitAlgoliaUpdate(saved, derived, gate);
       await this.syncUserRow(event, sourceId);
-      await emitTalentUpdated(saved, derived);
+      await emitTalentUpdated(saved, derived, gate);
     };
 
     if (existing) {
@@ -264,7 +340,7 @@ export class TalentProfileSyncService {
 
       for (const profile of batch) {
         const derived = await this.deriveCategories(profile);
-        this.emitAlgoliaUpdate(profile, derived);
+        this.emitAlgoliaUpdate(profile, derived, await this.gateStampFor(profile));
         processed++;
         if (derived.categories.length || derived.subcategories.length) {
           categorised++;
@@ -282,6 +358,153 @@ export class TalentProfileSyncService {
     );
     return { processed, categorised };
   }
+
+  /** Writes decisions identity gave us into the local table; a failure is logged, never thrown. */
+  private async recordLocalGateState(
+    decisions: Array<{ userId: string; gateOpen: boolean }>,
+    decidedAtIso: string,
+  ): Promise<void> {
+    if (!decisions.length) return;
+    try {
+      await this.gateState.applyMany(decisions, new Date(decidedAtIso));
+    } catch (err) {
+      this.logger.warn(`Local gate state not updated: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Asks identity (batches of `batchSize`, never per account) for every talent USER account and
+   * records the answers locally, so the browse list - which reads users, not profiles - has a
+   * decision for each. Keyset-paged by id, so it never offsets through the table. An account
+   * identity cannot answer keeps whatever state it has (none = hidden); the next pass retries it.
+   */
+  async reconcileUserGateState(batchSize = GATE_BACKFILL_BATCH): Promise<{ processed: number; recorded: number }> {
+    let processed = 0;
+    let recorded = 0;
+    let after: string | null = null;
+    for (;;) {
+      const qb = this.userRepo
+        .createQueryBuilder('u')
+        .select(['u.id'])
+        .where('u.userType = :userType', { userType: 'talent' })
+        .orderBy('u.id', 'ASC')
+        .take(batchSize);
+      if (after) qb.andWhere('u.id > :after', { after });
+      const batch = await qb.getMany();
+      if (!batch.length) break;
+      processed += batch.length;
+      after = batch[batch.length - 1].id;
+
+      const checkedAt = new Date().toISOString();
+      try {
+        const decisions = await this.gateClient.checkGateBatch(batch.map((u) => u.id));
+        const answered = batch.flatMap((u) => {
+          const decision = decisions.get(u.id);
+          return decision ? [{ userId: u.id, gateOpen: decision.gateOpen === true }] : [];
+        });
+        await this.recordLocalGateState(answered, checkedAt);
+        recorded += answered.length;
+      } catch {
+        // identity could not answer this batch: those accounts keep their current state
+      }
+      if (batch.length < batchSize) break;
+    }
+    return { processed, recorded };
+  }
+
+  /**
+   * G1: backfill / reconcile `gate_open` on every talent record. Repeatable and
+   * idempotent - each pass asks identity for the current decision of every
+   * profile's account (one request per 100) and sends it to algolia-service,
+   * which applies it as a PARTIAL update (never a delete/recreate, never
+   * creating a record). It heals missed or failed gate updates, and is how
+   * records indexed before the gate existed (which stay hidden until they have
+   * `gate_open:true`) become visible.
+   *
+   * A batch identity cannot answer, or that algolia-service cannot apply, is
+   * skipped and counted - the records keep their previous flag and the next
+   * pass retries it.
+   */
+  async reindexGate(batchSize = GATE_BACKFILL_BATCH): Promise<{
+    processed: number;
+    sent: number;
+    unanswered: number;
+    failedBatches: number;
+  }> {
+    if (this.gateReindexRunning) {
+      return { processed: 0, sent: 0, unanswered: 0, failedBatches: 0 };
+    }
+    this.gateReindexRunning = true;
+    let processed = 0;
+    let sent = 0;
+    let unanswered = 0;
+    let failedBatches = 0;
+    try {
+      for (let skip = 0; ; skip += batchSize) {
+        const batch = await this.repo.find({ order: { id: 'ASC' }, take: batchSize, skip });
+        if (!batch.length) break;
+        processed += batch.length;
+
+        const withAccount = batch.filter((p) => !!p.sourceId);
+        unanswered += batch.length - withAccount.length;
+        if (!withAccount.length) continue;
+
+        const checkedAt = new Date().toISOString();
+        let decisions: Awaited<ReturnType<IdentityVerificationGateClient['checkGateBatch']>>;
+        try {
+          decisions = await this.gateClient.checkGateBatch(withAccount.map((p) => p.sourceId as string));
+        } catch {
+          failedBatches++;
+          continue;
+        }
+
+        // The same decisions also refresh the local last-known gate state the PostgreSQL discovery
+        // paths filter by (independent of whether the index accepts them below).
+        await this.recordLocalGateState(
+          withAccount.flatMap((p) => {
+            const decision = decisions.get(p.sourceId as string);
+            return decision ? [{ userId: p.sourceId as string, gateOpen: decision.gateOpen === true }] : [];
+          }),
+          checkedAt,
+        );
+
+        const entries = withAccount.flatMap((p) => {
+          const decision = decisions.get(p.sourceId as string);
+          if (!decision) {
+            unanswered++;
+            return [];
+          }
+          return [{ id: p.externalId, accountId: p.sourceId as string, gateOpen: decision.gateOpen === true }];
+        });
+        if (!entries.length) continue;
+
+        try {
+          await firstValueFrom(
+            this.algoliaClient
+              .send('talent.gate_backfill', { entries, checkedAt })
+              .pipe(timeout(GATE_BACKFILL_TIMEOUT_MS)),
+          );
+          sent += entries.length;
+        } catch (err) {
+          failedBatches++;
+          this.logger.warn(
+            `Talent gate backfill batch not applied: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      await this.reconcileUserGateState(batchSize).catch((err) =>
+        this.logger.warn(`User gate-state reconcile failed: ${err instanceof Error ? err.message : String(err)}`),
+      );
+      this.logger.log(
+        `Talent gate reindex complete: ${processed} profiles, ${sent} sent, ${unanswered} unanswered, ${failedBatches} failed batches`,
+      );
+      return { processed, sent, unanswered, failedBatches };
+    } finally {
+      this.gateReindexRunning = false;
+    }
+  }
+
+  private gateReindexRunning = false;
 
   async delete(externalId: string): Promise<void> {
     const result = await this.repo.delete({ externalId });
@@ -340,8 +563,9 @@ export class TalentProfileSyncService {
   private emitAlgoliaUpdate(
     profile: TalentProfile,
     derived: DerivedCategories,
+    gate: GateStamp = {},
   ): void {
-    const payload = this.buildAlgoliaPayload(profile, derived);
+    const payload = { ...this.buildAlgoliaPayload(profile, derived), ...gate };
     this.algoliaClient.emit<void>('talent.updated', payload).subscribe({
       error: (err: Error) =>
         this.logger.warn(`Failed to emit talent.updated for ${profile.externalId}: ${err.message}`),
@@ -386,6 +610,7 @@ export class TalentProfileSyncService {
       clientSuccessRate:
         profile.repeatHireRate != null ? Number(profile.repeatHireRate) : null,
       yearsOfExperience: this.yearsOfExperience(profile),
+      accountId: profile.sourceId ?? null,
     };
   }
 

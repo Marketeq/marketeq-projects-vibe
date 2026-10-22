@@ -3,6 +3,8 @@
 import React, { useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import NextImage from "@/components/next-image"
+import { TalentReview } from "@/stories/reviews.stories"
 import {
   Avatar,
   AvatarFallback,
@@ -11,8 +13,12 @@ import {
   Checkbox,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
   DialogTitle,
   IconButton,
+  Label,
   Table,
   TableHeader,
   TableBody,
@@ -31,7 +37,6 @@ import {
 import {
   ArrowLeft,
   Download02,
-  Home,
   HelpCircle,
   MessageSquare01,
 } from "@blend-metrics/icons"
@@ -43,6 +48,7 @@ export default function EndContractPage() {
   const [agreed, setAgreed] = useState(false)
   const [activeTab, setActiveTab] = useState("transactions")
   const [successOpen, setSuccessOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   const talent = {
     name: "Chris",
@@ -428,7 +434,7 @@ export default function EndContractPage() {
                                     <IconButton
                                       variant="ghost"
                                       visual="gray"
-                                      className="size-8 opacity-50 hover:opacity-100 rounded-[5px] p-2.5"
+                                      className="size-8 opacity-50 hover:opacity-100 rounded-[5px] p-2.5 transition duration-300"
                                     >
                                       <Download02 className="size-4" />
                                     </IconButton>
@@ -450,16 +456,20 @@ export default function EndContractPage() {
               {/* Checkbox acknowledgment */}
               <div className="flex items-start gap-3">
                 <Checkbox
+                  id="confirm-end-contract-acknowledgment"
                   checked={agreed}
                   onCheckedChange={(v) => setAgreed(v === true)}
-                  className="size-5 rounded-[5px] shrink-0"
+                  className="size-5 rounded-[5px] shrink-0 transition duration-300"
                 />
-                <p className="flex-1 min-w-0 text-sm font-normal leading-normal text-dark-blue-400">
+                <Label
+                  htmlFor="confirm-end-contract-acknowledgment"
+                  className="flex-1 min-w-0 cursor-pointer text-sm font-normal leading-normal text-dark-blue-400"
+                >
                   By clicking &apos;Confirm &amp; End Contract&apos;, you
                   acknowledge that the funds have been correctly allocated,
                   services have been rendered and approved, and you authorize the
                   final payment of any remaining balance.
-                </p>
+                </Label>
               </div>
 
               {/* Confirm button */}
@@ -477,38 +487,62 @@ export default function EndContractPage() {
 
       {/* Contract Successfully Ended modal */}
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
-        <DialogContent className="max-w-[421px] p-6 gap-8 rounded-xl">
-          <div className="flex flex-col gap-2 w-[373px]">
+        <DialogContent className="max-w-[421px] flex flex-col items-center gap-8 overflow-hidden shadow-[0px_20px_24px_-4px_rgba(16,24,40,0.08),0px_8px_8px_-4px_rgba(16,24,40,0.03)]">
+          <DialogHeader className="w-full gap-y-2">
             <DialogTitle className="text-lg font-semibold leading-7 text-gray-900">
               Contract Successfully Ended
             </DialogTitle>
-            <p className="text-sm font-normal leading-5 text-gray-500">
+            <DialogDescription className="font-normal leading-5">
               Leave feedback for {talent.name} {talent.username}
-            </p>
-          </div>
-          <div className="flex items-start gap-3">
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex w-full items-start gap-3">
             <Button
+              size="lg"
               variant="outlined"
               visual="gray"
-              className="border border-gray-300 rounded-[5px] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] px-[18px] py-2.5 text-base font-semibold leading-6 text-gray-800 gap-2"
+              className="flex-1 bg-white shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]"
               onClick={() => {
                 setSuccessOpen(false)
                 router.push("/my-contracts")
               }}
             >
-              <Home className="size-[15px]" />
+              <NextImage
+                src="/contracts/dashboard-home.svg"
+                alt=""
+                width={15}
+                height={15}
+              />
               Back to Dashboard
             </Button>
             <Button
-              className="bg-primary-500 rounded-[5px] shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] px-[18px] py-2.5 text-base font-semibold leading-6"
+              size="lg"
+              className="shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]"
               onClick={() => {
                 setSuccessOpen(false)
-                router.push("/my-contracts")
+                setReviewOpen(true)
               }}
             >
               Leave a Review
             </Button>
-          </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent
+          className="h-dvh w-screen max-w-none overflow-hidden rounded-none bg-gray-25 p-0"
+          accessibilityTitle="Review your contractor"
+          aria-describedby={undefined}
+        >
+          <TalentReview
+            revieweeName={talent.name}
+            projectTitle={contract.role}
+            imageSrc={talent.avatar}
+            amount={`$${contract.totalBilled}`}
+            hoursLogged={contract.hoursLogged}
+            onClose={() => setReviewOpen(false)}
+          />
         </DialogContent>
       </Dialog>
     </AuthenticatedRoute>

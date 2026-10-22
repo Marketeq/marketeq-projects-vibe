@@ -16,6 +16,7 @@ import {
   HireRequestRole,
 } from './dtos/find-hire-requests-query.dto';
 import { UpdateHireStatusDto } from './dtos/update-hire-status.dto';
+import { HireRequestGate } from './hire-request-gate';
 
 @Injectable()
 export class HireRequestsService {
@@ -24,6 +25,7 @@ export class HireRequestsService {
     private readonly hireRequestsRepository: Repository<HireRequests>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly gate: HireRequestGate,
   ) {}
 
   async create(dto: CreateHireRequestDto) {
@@ -58,6 +60,10 @@ export class HireRequestsService {
         `User with ID ${dto.talentUserId} is not a talent`,
       );
     }
+    // G4: the talent must pass the verification gate. Only the talent is
+    // evaluated (never clientUser), after the existing existence/role
+    // validation and before anything is created or saved.
+    await this.gate.assertTalentGateOpen(talentUser.id, false);
     const hireRequest = this.hireRequestsRepository.create(dto);
     return this.hireRequestsRepository.save(hireRequest);
   }
@@ -69,6 +75,10 @@ export class HireRequestsService {
     if (!hireRequest) {
       throw new NotFoundException(`Hire request not found`);
     }
+    // G4: editing a hire request is a client action on that talent (the
+    // controller only lets the requesting client through) - gated on the
+    // stored talent, before anything changes.
+    await this.gate.assertTalentGateOpen(hireRequest.talentUserId, false);
     Object.assign(hireRequest, dto);
     return this.hireRequestsRepository.save(hireRequest);
   }
@@ -124,12 +134,23 @@ export class HireRequestsService {
     });
   }
 
-  async updateStatus(id: string, dto: UpdateHireStatusDto) {
+  async updateStatus(id: string, dto: UpdateHireStatusDto, actorUserId?: string) {
     const hireRequest = await this.hireRequestsRepository.findOne({
       where: { id },
     });
     if (!hireRequest) {
       throw new NotFoundException(`Hire request not found`);
+    }
+    // G4: moving a hire request to ACCEPTED (commit) or back to PENDING
+    // (re-open) is gated on the talent; DECLINED stays open to both parties,
+    // like decline/withdraw on offers. The acting party is derived from the
+    // stored talent id, so a talent is told their own requirement and a client
+    // only that the hire is unavailable.
+    if (dto.status !== HireStatus.DECLINED) {
+      await this.gate.assertTalentGateOpen(
+        hireRequest.talentUserId,
+        actorUserId !== undefined && actorUserId === hireRequest.talentUserId,
+      );
     }
     hireRequest.status = dto.status;
     await this.hireRequestsRepository.save(hireRequest);

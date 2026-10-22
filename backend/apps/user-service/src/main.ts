@@ -66,6 +66,21 @@ async function bootstrap() {
       },
     });
     logger.log('RabbitMQ microservice connected (queue: user_service_queue)');
+
+    // G1: identity-verification-service's identity.gate_changed event, on this service's own
+    // durable queue (the declaration must match the publisher's: durable, no arguments).
+    // Manual ack: a decision is acknowledged only after it was written.
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'user_service_gate_queue',
+        queueOptions: { durable: true },
+        noAck: false,
+        prefetchCount: 20,
+      },
+    });
+    logger.log('RabbitMQ microservice connected (queue: user_service_gate_queue)');
   } else {
     logger.warn('RABBITMQ_URL not set — talent-profile sync consumer disabled');
   }

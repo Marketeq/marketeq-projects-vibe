@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { SVGProps, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import {
   type BalanceResponse,
@@ -1301,6 +1301,18 @@ const isValidClabe = (clabe: string) => {
   const sum = weights.reduce((acc, w, i) => acc + ((w * d[i]) % 10), 0)
   return (10 - (sum % 10)) % 10 === d[17]
 }
+// BTB-341: a micro-deposit is $0.01–$0.99 (PS-08) and the API takes cents.
+// Accepts what a bank statement shows ("0.32", ".32", "$0.32") as well as
+// whole cents ("32"); anything else (letters, negatives, symbols, out of
+// range) is null so the field shows an error and Submit stays disabled.
+const parseMicroDepositCents = (raw: string): number | null => {
+  const v = raw.trim().replace(/^\$/, "")
+  let cents: number
+  if (/^\d{1,2}$/.test(v)) cents = Number(v)
+  else if (/^0?\.\d{1,2}$/.test(v)) cents = Math.round(Number(v) * 100)
+  else return null
+  return cents >= 1 && cents <= 99 ? cents : null
+}
 const isValidCnaps = (v: string) => /^\d{12}$/.test(v)
 const isValidCnAccountNumber = (v: string) => /^\d{16,19}$/.test(v)
 const isValidBik = (v: string) => /^\d{9}$/.test(v)
@@ -1863,62 +1875,6 @@ const StatCard = ({
   )
 }
 
-// Figma promo-banner carousel — static placeholder copy only. None of these
-// offers exist as real features in this codebase yet (no Marketeq Visa Card
-// product, no cashback program, no referral program, no TurboTax
-// integration); this is UI shell for when those features ship, not live data.
-const PROMO_BANNERS: { id: string; emoji: string; content: React.ReactNode }[] =
-  [
-    {
-      id: "visa-card",
-      emoji: "💳",
-      content: (
-        <>
-          Get faster payouts and cashback with your{" "}
-          <span className="font-semibold text-success-600">
-            Marketeq Visa Card
-          </span>
-          . Activate today!
-        </>
-      ),
-    },
-    {
-      id: "cashback",
-      emoji: "☕",
-      content: (
-        <>
-          Earn{" "}
-          <span className="font-semibold text-success-600">
-            5% Cashback on Starbucks
-          </span>{" "}
-          purchases with your Marketeq Card.
-        </>
-      ),
-    },
-    {
-      id: "referral",
-      emoji: "🎉",
-      content: (
-        <>
-          <span className="font-semibold text-success-600">
-            Refer 2 more friends
-          </span>{" "}
-          to unlock a $15 gift card.
-        </>
-      ),
-    },
-    {
-      id: "turbotax",
-      emoji: "🧾",
-      content: (
-        <>
-          <span className="font-semibold text-success-600">Get 15% off</span>{" "}
-          TurboTax for freelancers, ends this month!
-        </>
-      ),
-    },
-  ]
-
 // "first...last" masking for plain IDs (no @) — used for Wise
 // account identifiers, the same masking style bank account numbers use
 // elsewhere in this list (e.g. "...4553").
@@ -2040,11 +1996,6 @@ export const OverviewTab = ({
   const router = useRouter()
   const { toast } = useToast()
   const { user } = useAuth()
-  // Figma's promo-banner carousel (Visa Card, cashback, referral, TurboTax) —
-  // no backing features exist yet for any of these (no card product, cashback
-  // program, referral program, or TurboTax integration in this codebase), so
-  // this is UI shell only: static placeholder copy, not wired to any real
-  // offer/eligibility data. Swap in real content once those features exist.
   const [withdrawOpen, setWithdrawOpen] = React.useState(false)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
@@ -2168,6 +2119,7 @@ export const OverviewTab = ({
   const [failedPayout, setFailedPayout] = React.useState<{
     id: string
     title: string
+    description: string
   } | null>(null)
   const loadFailedPayout = React.useCallback(async () => {
     try {
@@ -3109,8 +3061,8 @@ export const OverviewTab = ({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount1Cents: parseInt(microAmounts.amount1),
-            amount2Cents: parseInt(microAmounts.amount2),
+            amount1Cents: parseMicroDepositCents(microAmounts.amount1),
+            amount2Cents: parseMicroDepositCents(microAmounts.amount2),
           }),
         }),
         new Promise((r) => setTimeout(r, 1200)),
@@ -3488,52 +3440,29 @@ export const OverviewTab = ({
     return () => clearInterval(id)
   }, [isLive, loadRecentActivity, loadFailedPayout])
 
-  // Congrats + promo banners share one carousel slot, picked at random exactly
-  // once per page load — not re-randomized on every poll/re-render, and once
-  // dismissed it stays gone for the rest of the session. Persisted to
+  // Dismissing an alert hides it for the rest of the session. Persisted to
   // sessionStorage (not component state) because switching Overview/Earnings/
   // Payouts tabs unmounts this component entirely (Radix TabsContent doesn't
-  // keep inactive panels mounted) — plain useState was silently resetting on
-  // every tab switch, which isn't "dismissed for the session" at all.
+  // keep inactive panels mounted).
   const readSS = (key: string) =>
     typeof window === "undefined" ? null : window.sessionStorage.getItem(key)
   const writeSS = (key: string, value: string) => {
     if (typeof window !== "undefined") window.sessionStorage.setItem(key, value)
   }
-  const [failedBannerDismissed, setFailedBannerDismissedState] = React.useState(
-    () => readSS("overview_failed_banner_dismissed") === "1"
-  )
-  const setFailedBannerDismissed = (v: boolean) => {
-    setFailedBannerDismissedState(v)
-    writeSS("overview_failed_banner_dismissed", v ? "1" : "0")
+  // Keyed by payout id, so dismissing one failed withdrawal does not also
+  // hide the next one that fails.
+  const [dismissedFailedPayoutId, setDismissedFailedPayoutIdState] =
+    React.useState(() => readSS("overview_failed_banner_dismissed_id"))
+  const dismissFailedBanner = (id: string) => {
+    setDismissedFailedPayoutIdState(id)
+    writeSS("overview_failed_banner_dismissed_id", id)
   }
-  const carouselBanners = [
-    ...(balance && parseFloat(balance.totalEarnedUsd) > 0
-      ? [
-          {
-            id: "congrats",
-            emoji: "\u{1F929}",
-            content: (
-              <>
-                You&apos;ve earned{" "}
-                <span className="font-semibold text-success-600">
-                  {amountSign(balance.totalEarnedUsd)}$
-                  {formatWholeAmount(balance.totalEarnedUsd)}
-                </span>{" "}
-                total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...PROMO_BANNERS,
-  ]
-  const [selectedBannerId, setSelectedBannerIdState] = React.useState<
-    string | null
-  >(() => readSS("overview_banner_id"))
-  const [bannerPicked, setBannerPicked] = React.useState(
-    () => readSS("overview_banner_id") !== null
-  )
+  const showFailedBanner =
+    !!failedPayout && failedPayout.id !== dismissedFailedPayoutId
+  // The Figma alert slot also carried promo copy (Marketeq Visa Card, 5%
+  // cashback on Starbucks, referral gift card, TurboTax discount). None of
+  // those offers exist, so only the earnings banner, which is built from the
+  // contractor's real totals, is shown.
   const [bannerDismissed, setBannerDismissedState] = React.useState(
     () => readSS("overview_banner_dismissed") === "1"
   )
@@ -3541,21 +3470,23 @@ export const OverviewTab = ({
     setBannerDismissedState(v)
     writeSS("overview_banner_dismissed", v ? "1" : "0")
   }
-  React.useEffect(() => {
-    // Wait for the balance fetch to resolve (success or error) before picking,
-    // so "congrats" gets a fair chance to be in the draw instead of the pick
-    // always happening before it's known to be eligible.
-    if (bannerPicked || (!balance && !balanceError)) return
-    const pick =
-      carouselBanners[Math.floor(Math.random() * carouselBanners.length)].id
-    setSelectedBannerIdState(pick)
-    writeSS("overview_banner_id", pick)
-    setBannerPicked(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bannerPicked, balance, balanceError])
-  const currentBanner = bannerDismissed
-    ? null
-    : (carouselBanners.find((b) => b.id === selectedBannerId) ?? null)
+  const earningsBanner =
+    balance && parseFloat(balance.totalEarnedUsd) > 0
+      ? {
+          emoji: "\u{1F929}",
+          content: (
+            <>
+              You&apos;ve earned{" "}
+              <span className="font-semibold text-success-600">
+                {amountSign(balance.totalEarnedUsd)}$
+                {formatWholeAmount(balance.totalEarnedUsd)}
+              </span>{" "}
+              total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
+            </>
+          ),
+        }
+      : null
+  const currentBanner = bannerDismissed ? null : earningsBanner
 
   return (
     <>
@@ -3569,11 +3500,13 @@ export const OverviewTab = ({
           {/* Dismissible for the session — closing it doesn't resolve the
             underlying failed withdrawal, just stops repeating the nudge
             once the contractor has seen it. */}
-          {failedPayout && !failedBannerDismissed && (
+          {failedPayout && showFailedBanner && (
             <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
               <p className="text-sm text-red-700">
-                <span className="mr-2">⚠️</span>A withdrawal could not be
-                completed — {failedPayout.title}.
+                <span className="mr-2">⚠️</span>
+                Your withdrawal of {failedPayout.description}{" "}
+                couldn&apos;t be completed. The money has been returned to
+                your available balance.
               </p>
               <div className="flex items-center gap-1">
                 <Button
@@ -3588,7 +3521,7 @@ export const OverviewTab = ({
                   size="sm"
                   variant="ghost"
                   visual="gray"
-                  onClick={() => setFailedBannerDismissed(true)}
+                  onClick={() => dismissFailedBanner(failedPayout.id)}
                 >
                   <X className="size-4" />
                 </IconButton>
@@ -3596,9 +3529,6 @@ export const OverviewTab = ({
             </div>
           )}
 
-          {/* Congrats + promo banners share one carousel slot, randomly picked
-            (see carouselBanners/selectedBannerId above) — one at a time,
-            not stacked, and not always leading with the same one. */}
           {currentBanner && (
             <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
               <p className="text-sm text-dark-blue-400">
@@ -4453,7 +4383,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 7 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount1}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4462,6 +4393,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount1.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount1) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                           <div className="flex-1">
                             <label className="text-sm font-medium text-dark-blue-400 mb-1.5 block">
@@ -4469,7 +4407,8 @@ export const OverviewTab = ({
                             </label>
                             <input
                               className="w-full border border-gray-300 rounded-[5px] px-3.5 py-2.5 text-base shadow-xs"
-                              placeholder="e.g. 39 (cents)"
+                              placeholder="Enter amount"
+                              inputMode="decimal"
                               value={microAmounts.amount2}
                               onChange={(e) =>
                                 setMicroAmounts((a) => ({
@@ -4478,6 +4417,13 @@ export const OverviewTab = ({
                                 }))
                               }
                             />
+                            {microAmounts.amount2.trim() !== "" &&
+                              parseMicroDepositCents(microAmounts.amount2) ===
+                                null && (
+                                <p className="mt-1.5 text-xs text-red-500">
+                                  Please enter a valid dollar amount
+                                </p>
+                              )}
                           </div>
                         </div>
                       </div>
@@ -4496,8 +4442,10 @@ export const OverviewTab = ({
                           size="sm"
                           onClick={handleVerifyMicroDeposits}
                           disabled={
-                            !microAmounts.amount1.trim() ||
-                            !microAmounts.amount2.trim()
+                            parseMicroDepositCents(microAmounts.amount1) ===
+                              null ||
+                            parseMicroDepositCents(microAmounts.amount2) ===
+                              null
                           }
                         >
                           Submit
@@ -7851,6 +7799,17 @@ export const OverviewTab = ({
                       const belowMinimum =
                         withdrawableUsd !== null && withdrawableUsd < 50
                       const isLoading = withdrawableUsd === null
+                      // BTB-345: the dialog only offers verified methods
+                      // (withdraw-funds-dialog loadMethods), so with none the
+                      // user typed an amount only to hit a dead end on the
+                      // method step. Not applied while methods are loading
+                      // or failed to load — that is unknown, not "none".
+                      const noVerifiedMethod =
+                        !methodsLoading &&
+                        !methodsError &&
+                        !methods.some(
+                          (m) => m.verificationStatus === "verified"
+                        )
                       return (
                         <div className="flex items-center gap-4">
                           <TooltipProvider>
@@ -7862,20 +7821,33 @@ export const OverviewTab = ({
                                     visual="gray"
                                     size="sm"
                                     className="font-semibold text-[#22376B]"
-                                    disabled={belowMinimum || isLoading}
+                                    disabled={
+                                      belowMinimum ||
+                                      isLoading ||
+                                      noVerifiedMethod
+                                    }
                                     onClick={() => setWithdrawOpen(true)}
                                   >
                                     Withdraw Funds
                                   </Button>
                                 </span>
                               </TooltipTrigger>
-                              {belowMinimum && (
+                              {belowMinimum ? (
                                 <TooltipContent>
                                   <p>
                                     You don&apos;t have any earnings to withdraw
                                     yet.
                                   </p>
                                 </TooltipContent>
+                              ) : (
+                                noVerifiedMethod && (
+                                  <TooltipContent>
+                                    <p>
+                                      Add a verified deposit method to withdraw
+                                      funds.
+                                    </p>
+                                  </TooltipContent>
+                                )
                               )}
                             </Tooltip>
                           </TooltipProvider>
@@ -9446,29 +9418,27 @@ function toActivityItem(p: {
   const sortAt = new Date(at).getTime()
   const method = p.methodLabel ?? "your payout method"
   const amount = parseFloat(p.amountUsd).toFixed(2)
+  // BTB-343: Figma names the two withdrawal events "Deposit Initiated" (the
+  // withdrawal was started and is on its way) and "Deposit Sent" (it left).
+  // pending_verification and awaiting_edd used to fall through to "Payout
+  // Scheduled", so a just-started instant withdrawal never read as started.
   switch (p.status) {
     case "completed":
       return {
         id: p.id,
-        title: "Payout Completed",
+        title: "Deposit Sent",
         description: `$${amount} to ${method}`,
         time,
         kind: "sent" as const,
         sortAt,
       }
+    case "pending_verification":
+    case "awaiting_edd":
+    case "queued":
     case "processing":
       return {
         id: p.id,
-        title: "Payout Processing",
-        description: `$${amount} to ${method}`,
-        time,
-        kind: "processing" as const,
-        sortAt,
-      }
-    case "queued":
-      return {
-        id: p.id,
-        title: "Payout Queued",
+        title: "Deposit Initiated",
         description: `$${amount} to ${method}`,
         time,
         kind: "processing" as const,
@@ -10087,7 +10057,13 @@ function FilterSearchMenu({
 
 export const EarningsTab = ({
   onFiltersChange,
-}: { onFiltersChange?: (filters: EarningsFilters) => void } = {}) => {
+  onTotalChange,
+}: {
+  onFiltersChange?: (filters: EarningsFilters) => void
+  // BTB-314: lets the parent-level Export button know when the current
+  // filters match nothing. null = not known yet (loading or failed).
+  onTotalChange?: (total: number | null) => void
+} = {}) => {
   const [viewMode, setViewMode] = useState("daily")
   const [searchQuery, setSearchQuery] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
@@ -10328,6 +10304,12 @@ export const EarningsTab = ({
     setCurrentPage(1)
   }, [])
 
+  useEffect(() => {
+    onTotalChange?.(
+      earningsResult && !earningsError ? earningsResult.total : null
+    )
+  }, [onTotalChange, earningsResult, earningsError])
+
   // Export (parent-level Export button) reuses whatever filters are currently
   // applied to this table rather than always exporting the unfiltered dataset.
   useEffect(() => {
@@ -10534,7 +10516,11 @@ export const EarningsTab = ({
                 </Button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-auto border-0 bg-transparent p-0 shadow-none"
+                // BTB-333: the custom-range calendar is 464px tall and fits
+                // neither above nor below the filter on a 720px laptop
+                // screen, so it was cut off by ~110px. Cap it at the space
+                // Radix reports and let it scroll, as DatePicker does.
+                className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
                 align="start"
                 collisionPadding={16}
               >
@@ -10942,7 +10928,8 @@ export const EarningsTab = ({
               : "Unavailable"}{" "}
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              {/* BTB-322: the icon-only trigger had no accessible name. */}
+              <TooltipTrigger type="button" aria-label="What is manual time?">
                 <HelpCircle className="size-3.5 inline text-[#98A2B3]" />
               </TooltipTrigger>
               <TooltipContent>
@@ -11495,6 +11482,30 @@ export const PayoutsTab = ({
   const [loadError, setLoadError] = useState("")
   const [detailId, setDetailId] = useState<string | null>(null)
 
+  // PMCM-806: withdrawal notifications and emails link to
+  // /earnings?tab=payouts&payout=<id>, which opens that payout's detail view
+  // (PMCM-280) directly. Closing the dialog drops the param so a refresh
+  // doesn't reopen it.
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const linkedPayoutId = searchParams.get("payout")
+  useEffect(() => {
+    if (
+      linkedPayoutId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        linkedPayoutId
+      )
+    ) {
+      setDetailId(linkedPayoutId)
+    }
+  }, [linkedPayoutId])
+  const closeDetail = () => {
+    setDetailId(null)
+    if (linkedPayoutId) {
+      router.replace("/earnings?tab=payouts", { scroll: false })
+    }
+  }
+
   // Stat cards — sourced from real data, not the Figma mock's static "$832.00 /
   // Tuesday, Aug 20th / Chase Bank ...4553" etc.
   const [monthlySummary, setMonthlySummary] = useState<{
@@ -11855,7 +11866,8 @@ export const PayoutsTab = ({
             </Button>
           </PopoverTrigger>
           <PopoverContent
-            className="w-auto border-0 bg-transparent p-0 shadow-none"
+            // BTB-333: same height cap as the Earnings tab date filter.
+            className="w-auto max-h-[var(--radix-popover-content-available-height)] overflow-y-auto border-0 bg-transparent p-0 shadow-none"
             align="start"
             collisionPadding={16}
           >
@@ -12145,7 +12157,7 @@ export const PayoutsTab = ({
 
       <PayoutDetailDialog
         payoutId={detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
+        onOpenChange={(open) => !open && closeDetail()}
       />
     </div>
   )

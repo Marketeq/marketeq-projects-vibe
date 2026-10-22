@@ -12,6 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { TimeTrackerGate } from '../identity-gate/time-tracker-gate.guard';
 import { actorOf } from '../contracts/contract-access.service';
 import { ManualTimeService } from '../services/manual-time.service';
 import { EventsService } from '../services/events.service';
@@ -30,6 +31,7 @@ export class ManualTimeController {
   ) {}
 
   @Post()
+  @TimeTrackerGate()
   async create(@Req() req: any, @Body() dto: CreateManualTimeDto) {
     const entry = await this.manualTimeService.create(req.user.sub, dto);
     const hours = (entry.endTime.getTime() - entry.startTime.getTime()) / (1000 * 60 * 60);

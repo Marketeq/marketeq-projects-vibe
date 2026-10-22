@@ -226,6 +226,26 @@ body {
   @apply scrollbar-thumb-rounded-lg scrollbar-thumb-gray-200 scrollbar-w-2 scrollbar;
 }
 
+.checkout-profile-scrollbar {
+  scrollbar-color: #eaecf0 transparent;
+  scrollbar-width: thin;
+}
+
+.checkout-profile-scrollbar::-webkit-scrollbar {
+  width: 16px;
+}
+
+.checkout-profile-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.checkout-profile-scrollbar::-webkit-scrollbar-thumb {
+  background: #eaecf0;
+  background-clip: content-box;
+  border: 4px solid transparent;
+  border-radius: 9999px;
+}
+
 .react-international-phone-country-selector-dropdown {
   @apply focus-visible:outline-none;
 }

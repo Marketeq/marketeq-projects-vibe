@@ -1,6 +1,7 @@
 // apps/payout-service/src/notifications/withdrawal-notifier.service.ts
 // PMCM-806: tells the contractor when a withdrawal starts processing (N-01),
-// lands (N-02) or fails (N-03). Each one is a push and an email.
+// lands (N-02), fails (N-03) or is cancelled by the provider (N-04). Each one
+// is a push and an email.
 //
 // Delivery belongs to notification-service. This class only gathers the facts
 // it needs (amounts, method label, arrival estimate, plain-language failure
@@ -21,7 +22,7 @@ import { UserClient } from '../common/user.client';
 import { PayoutService } from '../payout/payout.service';
 import { toWithdrawalFailureReason } from './withdrawal-failure-reason';
 
-export type WithdrawalNotificationKind = 'submitted' | 'completed' | 'failed';
+export type WithdrawalNotificationKind = 'submitted' | 'completed' | 'failed' | 'cancelled';
 
 /** Wire contract with notification-service's `notification.payout.withdrawal`. */
 export interface WithdrawalNotificationEvent {
@@ -56,6 +57,7 @@ const EXPECTED_STATUS: Record<WithdrawalNotificationKind, PayoutStatus> = {
   submitted: PayoutStatus.PROCESSING,
   completed: PayoutStatus.COMPLETED,
   failed: PayoutStatus.FAILED,
+  cancelled: PayoutStatus.CANCELLED,
 };
 
 @Injectable()
@@ -85,6 +87,14 @@ export class WithdrawalNotifier {
    * withdrawal-failure-reason.ts for why the free-text reason is not used. */
   async notifyFailed(payoutRequestId: string, failureCode?: string | null): Promise<void> {
     await this.notify('failed', payoutRequestId, failureCode);
+  }
+
+  /** N-04: Stripe or Wise cancelled a payout in flight and its hold has been
+   * released. Contractor-initiated cancels and expired confirmation links do
+   * not come here: the contractor either did it themselves or never confirmed,
+   * so no money left their balance. */
+  async notifyCancelled(payoutRequestId: string): Promise<void> {
+    await this.notify('cancelled', payoutRequestId);
   }
 
   private async notify(

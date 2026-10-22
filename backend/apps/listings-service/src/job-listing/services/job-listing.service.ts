@@ -39,6 +39,7 @@ import { JobListingScopeService } from "./job-listing-scope.service";
 import { JobListingBudgetService } from "./job-listing-budget.service";
 import { JobListingEventsPublisher } from "../events/job-listing-events.publisher";
 import { UserProfileClient } from "../../shared/user-profile/user-profile.client";
+import { RosterGateService } from '../../identity-gate/roster-gate.service';
 
 // ── Rich text helpers (exported so publish service can reuse wordCount) ───────
 
@@ -82,6 +83,7 @@ export class JobListingService {
     private readonly scopeService: JobListingScopeService,
     private readonly budgetService: JobListingBudgetService,
     private readonly userProfileClient: UserProfileClient,
+    private readonly rosterGate: RosterGateService,
   ) {}
 
   // Resolves each row's assignedUserId into a real profile (name/avatar/
@@ -102,6 +104,24 @@ export class JobListingService {
       row.assignedMember = member;
       row.assignedUsername = member?.username ?? row.assignedUsername;
     }
+  }
+
+  // G5: role rows as a client (non-owner) sees them. A role whose assignee has no
+  // known open gate (closed, never received, or no platform account) is shown as
+  // an unassigned role: every field that identifies the assignee is cleared in a
+  // COPY. The stored row (its assignment, rate and status) is never touched, and
+  // the role itself stays - only the person is not shown.
+  private async presentAssigneesToClients(rows: TeamMemberRow[]): Promise<TeamMemberRow[]> {
+    const open = await this.rosterGate.visibleUserIds(rows.map((r) => r.assignedUserId));
+    return rows.map((row) => {
+      if (!row.assignedUserId || open.has(row.assignedUserId)) return row;
+      return Object.assign(Object.create(Object.getPrototypeOf(row)), row, {
+        assignedUserId: null,
+        assignedUsername: null,
+        assignedUserDeactivated: false,
+        assignedMember: null,
+      });
+    });
   }
 
   private inferListingType(input: {
@@ -312,7 +332,7 @@ export class JobListingService {
     });
   }
 
-  async findOne(_userId: string, listingId: string): Promise<JobListing> {
+  async findOne(userId: string, listingId: string): Promise<JobListing> {
     const listing = await this.repo.findOne({
       where: { id: listingId },
       relations: [
@@ -333,6 +353,15 @@ export class JobListingService {
 
     if (listing.teamMemberRows?.length) {
       await this.hydrateAssignees(listing.teamMemberRows);
+    }
+
+    // G5: the listing's owner (the client who created it) sees every role and
+    // assignee. Any other viewer - the viewer is the authenticated caller - gets
+    // the same rule as every client-facing roster: an assignee is shown only when
+    // their linked platform account has a known open gate.
+    if (userId !== listing.clientUserId && listing.teamMemberRows?.length) {
+      const shown = await this.presentAssigneesToClients(listing.teamMemberRows);
+      return this.attachInheritedScope(Object.assign(Object.create(Object.getPrototypeOf(listing)), listing, { teamMemberRows: shown }));
     }
 
     return this.attachInheritedScope(listing);

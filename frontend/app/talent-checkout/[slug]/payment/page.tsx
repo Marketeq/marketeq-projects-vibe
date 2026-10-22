@@ -1,1 +1,1 @@
-export { default } from "../../../checkout/[slug]/payment/page"
+export { default } from "../../../checkout/payment/page"

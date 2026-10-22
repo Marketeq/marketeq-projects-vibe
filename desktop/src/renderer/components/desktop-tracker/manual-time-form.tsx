@@ -115,9 +115,12 @@ export function ManualTimeForm({
     }
   }
 
-  // Local wall-clock → real instants (the backend stores UTC).
+  // Local wall-clock → real instants (the backend stores UTC). An end time
+  // earlier than the start is an overnight shift (10 PM – 2 AM), so the end
+  // falls on the next day; the 12-hour cap below still applies.
   const start = new Date(`${date}T${startTime}:00`)
   const end = new Date(`${date}T${endTime}:00`)
+  if (endTime < startTime) end.setDate(end.getDate() + 1)
   const totalMinutes = Math.round((end.getTime() - start.getTime()) / 60000)
   const durationText = totalMinutes > 0
     ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m`

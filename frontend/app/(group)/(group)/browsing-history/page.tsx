@@ -491,9 +491,9 @@ export default function BrowsingHistoryPage() {
     isLoading && (activeTab === "Recent Talent" || activeTab === "Show All")
 
   return (
-    <div className="p-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
+    <div className="pt-3 px-3.5 pb-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
       <div className="md:hidden items-center flex flex-row-reverse justify-between">
-        <div className="flex items-center gap-x-1.5 lg:gap-x-6">
+        <div className="flex items-center gap-x-1.5">
           <SortDropdown value={sortBy} onChange={setSortBy} />
           <ToggleGroupRoot
             value={value}
@@ -502,32 +502,32 @@ export default function BrowsingHistoryPage() {
             }}
           >
             <ToggleGroupItem value={GRID_LAYOUT}>
-              <Grid className="size-4 lg:size-6" />
+              <Grid className="size-4" />
             </ToggleGroupItem>
             <ToggleGroupItem value={LIST_LAYOUT}>
-              <List className="size-4 lg:size-6" />
+              <List className="size-4" />
             </ToggleGroupItem>
           </ToggleGroupRoot>
         </div>
       </div>
 
-      <h1 className="flex items-center text-lg leading-[21.78px] lg:text-[28px] lg:leading-[34px] font-bold text-dark-blue-400 xs:max-md:mt-6">
+      <h1 className="flex items-center text-lg leading-[21.78px] lg:text-[28px] lg:leading-[34px] font-bold text-dark-blue-400 xs:max-md:mt-3">
         Your Browsing History
       </h1>
 
       <Tabs
-        className="mt-7 lg:mt-[19px]"
+        className="mt-3 md:mt-7 lg:mt-[19px]"
         value={activeTab}
         onValueChange={(next) => setActiveTab(next as TabValue)}
       >
-        <div className="border-b flex items-end justify-between border-gray-200">
-          <div className="items-end inline-flex">
+        <div className="border-b flex items-end justify-between border-gray-200 overflow-hidden">
+          <div className="items-end flex min-w-0 flex-1">
             {/* Search bar — slides open from icon-only to full input */}
             <div
               className={cn(
-                "flex items-center h-[40px] overflow-clip border-b-2 transition-all ease-in-out",
+                "flex items-center h-[40px] overflow-clip border-b-2 transition-all ease-in-out shrink-0",
                 isSearchOpen
-                  ? "w-[385px] border-primary-500 pr-[12px] duration-150"
+                  ? "w-full max-w-[385px] border-primary-500 pr-[12px] duration-150"
                   : "w-[40px] border-transparent duration-300"
               )}
               onBlur={(e) => {
@@ -582,10 +582,10 @@ export default function BrowsingHistoryPage() {
             {/* Tabs — fade out and collapse when search opens */}
             <div
               className={cn(
-                "overflow-hidden transition-all ease-in-out",
+                "transition-all ease-in-out min-w-0",
                 isSearchOpen
-                  ? "max-w-0 opacity-0 pointer-events-none duration-150"
-                  : "max-w-[800px] opacity-100 duration-300"
+                  ? "max-w-0 overflow-hidden opacity-0 pointer-events-none duration-150"
+                  : "overflow-x-auto max-w-[800px] opacity-100 duration-300"
               )}
             >
               <TabsList className="flex justify-start border-b-0 px-0 whitespace-nowrap">
@@ -630,7 +630,7 @@ export default function BrowsingHistoryPage() {
         {TABS.map((tab) => (
           <TabsContent key={tab} value={tab}>
             {showTalentLoading ? (
-              <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
+              <div className="columns-1 md:columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3 md:pt-3.5 lg:pt-6">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div
                     key={i}
@@ -657,7 +657,7 @@ export default function BrowsingHistoryPage() {
 
                 if (visibleItems.length === 0 && normalizedQuery) {
                   return (
-                    <div className="py-16 text-center">
+                    <div className="py-8 md:py-16 text-center">
                       <p className="text-sm font-semibold text-dark-blue-400">
                         0 Results for &quot;{searchQuery}&quot;
                       </p>
@@ -683,7 +683,7 @@ export default function BrowsingHistoryPage() {
 
                 if (visibleItems.length === 0) {
                   return (
-                    <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-16 px-6 flex flex-col items-center justify-center text-center">
+                    <div className="mt-4 md:mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-10 px-4 md:py-16 md:px-6 flex flex-col items-center justify-center text-center">
                       <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
                         <User01 className="size-6 text-gray-400" />
                       </div>
@@ -707,18 +707,18 @@ export default function BrowsingHistoryPage() {
                 }
 
                 return isGrid ? (
-                  <div className="columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3.5 lg:pt-6">
+                  <div className="columns-1 md:columns-2 lg:columns-3 gap-x-3 lg:gap-x-6 pt-3 md:pt-3.5 lg:pt-6">
                     {visibleItems.map((item, index) => (
                         <div
                           key={`${item.type}-${item.data.id}`}
-                          className={`mb-3 break-inside-avoid lg:mb-5 animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
+                          className={`mb-3 break-inside-avoid md:mb-3 lg:mb-5 animate-in fade-in slide-in-from-bottom-6 duration-700 ease-out fill-mode-backwards ${cascadeDelay(index)}`}
                         >
                           {renderGridItem(item, handleFavoriteToggle, favoritedItems)}
                         </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3 lg:gap-6 pt-3.5 lg:pt-6">
+                  <div className="flex flex-col gap-3 lg:gap-6 pt-3 md:pt-3.5 lg:pt-6">
                     {visibleItems.map((item, index) => (
                       <div
                         key={`${item.type}-${item.type === "talent" ? item.data.id : item.data.id}`}

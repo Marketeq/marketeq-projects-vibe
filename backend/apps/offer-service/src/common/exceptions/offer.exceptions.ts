@@ -227,3 +227,45 @@ export class InternalOfferException extends OfferServiceException {
     );
   }
 }
+// =============================================================================
+// Account-verification gate G4 (offer creation / acceptance by a gated talent)
+// =============================================================================
+
+/**
+ * The talent on this offer has not satisfied gate_open. Returned to the CLIENT
+ * acting on that talent (create, edit, resend, counter, counter-accept):
+ * deliberately generic. TRVG2 section 6 lets a client learn only that the hire
+ * action is closed - never a verification status, a reason or what is missing.
+ */
+export class TalentNotHireableException extends OfferServiceException {
+  constructor() {
+    super('TALENT_NOT_HIREABLE', 'This freelancer isn’t available to hire right now', HttpStatus.FORBIDDEN);
+  }
+}
+
+/**
+ * The acting TALENT has not satisfied gate_open (accept, counter, counter-
+ * accept on their own offer). Carries only the talent's OWN outstanding
+ * requirement so the existing "Verify My Account" entry can open - never a
+ * status value, failure reason, document or vendor detail.
+ */
+export class VerificationRequiredException extends OfferServiceException {
+  constructor(public readonly missingRequirements: 'identity' | 'location' | 'both') {
+    super('VERIFICATION_REQUIRED', 'Verify your account to continue.', HttpStatus.FORBIDDEN);
+  }
+}
+
+/**
+ * The gate could not be evaluated (identity-verification-service unreachable,
+ * timed out, not configured, or answered with something unusable). The action
+ * is refused with no side effects: an unanswered gate is a closed gate.
+ */
+export class IdentityVerificationUnavailableException extends OfferServiceException {
+  constructor() {
+    super(
+      'IDENTITY_VERIFICATION_UNAVAILABLE',
+      "We couldn't complete this action right now. Please try again shortly.",
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
+}

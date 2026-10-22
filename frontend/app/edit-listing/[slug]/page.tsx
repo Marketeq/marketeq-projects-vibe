@@ -21,6 +21,10 @@ import {
 } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
+import {
+  isUnauthorizedError,
+  toUserMessage,
+} from "@/lib/listing-errors"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -29,6 +33,27 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  idsToDrop,
+  isGateUnavailable,
+  notAdded,
+  readDraftMemberResults,
+  readSaveMembersResponse,
+  TEAM_SAVE_UNAVAILABLE_MESSAGE,
+  type MemberAddResult,
+} from "@/lib/member-add-results"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
+import { Spinner } from "@/components/ui/spinner/spinner"
+import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
@@ -72,12 +97,15 @@ import {
   RefreshCcw05,
   Copy,
   Edit03,
+  ExternalLink,
   Eye,
+  FilterLines,
   HelpCircle,
   Home03,
   Info,
   Lightbulb05,
   Lock01,
+  Mail01,
   MoreHorizontal,
   PlayCircle,
   Plus,
@@ -90,6 +118,7 @@ import {
   Trash2,
   Type,
   Upload01,
+  WifiOff,
   X,
   X2,
 } from "@blend-metrics/icons"
@@ -118,7 +147,9 @@ import * as RadixTabs from "@radix-ui/react-tabs"
 import { createColumnHelper, noop } from "@tanstack/react-table"
 import {
   AddRoleDialog,
+  convertPhasesForScopeType,
   countryFromLocation,
+  ensureServicePhaseTypes,
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
   PhaseHeaderMeta,
@@ -166,6 +197,12 @@ import NextLink from "@/components/next-link"
 import { CountriesCombobox, OwnCombobox } from "@/components/own-combobox"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import {
+  Combobox,
+  ComboboxButton,
+  ComboboxInput,
+  ComboboxOption,
+  ComboboxOptions,
+  ComboboxTrigger,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -174,6 +211,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   ErrorMessage,
+  ScaleOutIn,
   SquareShapeDropzone,
   Step,
   StepControl,
@@ -215,6 +253,7 @@ import {
   Dropzone,
   HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -225,6 +264,7 @@ import {
   ListboxButton,
   ListboxOption,
   ListboxOptions,
+  ONE_MB,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -263,10 +303,16 @@ const PROJECT_SCOPE_TIP_VIDEO_URL =
 declare module "@tanstack/react-table" {
   // @ts-expect-error
   interface TableMeta<TData extends PhaseRow> {
-    updateData: (rowIndex: number, columnId: string, value: unknown) => void
+    updateData: (
+      rowIndex: number,
+      columnId: string,
+      value: unknown,
+      notifyTitle?: string
+    ) => void
     batchUpdateData?: (
       rowIndex: number,
-      updates: Record<string, unknown>
+      updates: Record<string, unknown>,
+      notifyTitle?: string
     ) => void
     openDurationDialog: (index: number) => void
     roles: string[]
@@ -342,6 +388,136 @@ function classifyPublishError(input: {
   return "other"
 }
 
+// PMCM-252 follow-up: each autosave's recursive setTimeout loop is re-entered
+// from multiple places — the timer itself, the online-reconnect flush, and
+// promptSignInToRetry's post-login resume — and a bare `let timeoutId` with
+// no guard let two of those overlap into a second concurrent loop (doubling
+// requests, outliving the effect that scheduled it). This factory is the one
+// place that enforces: at most one pending timer, at most one in-flight
+// `save()` call, and a `disposed` flag that permanently stops rescheduling
+// once the owning effect's cleanup runs.
+type AutosaveLoop = {
+  // Entry point for every caller (the timer, the online flush, a retry
+  // resume). Resolves once THIS invocation's save (plus any rerun folded
+  // into it, see below) has actually completed — callers that `await` it
+  // (the online flush's sequential ordering) keep working unchanged.
+  run: () => Promise<void>
+  // Permanently stops the loop: no further reschedule, no new run() actually
+  // executes a save. Call once from the effect's cleanup.
+  dispose: () => void
+}
+
+function createAutosaveLoop(
+  save: () => Promise<boolean>,
+  nextDelayMs: () => number
+): AutosaveLoop {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let inFlight: Promise<void> | null = null
+  // Set when run() is called while a save is already in flight — instead of
+  // starting a second concurrent save, the current one is asked to go again
+  // once it finishes, so the latest data still goes out exactly once more.
+  let rerunRequested = false
+  let disposed = false
+
+  const clearPendingTimer = () => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+  }
+
+  const scheduleNext = () => {
+    clearPendingTimer()
+    if (disposed) return
+    timeoutId = setTimeout(() => void run(), nextDelayMs())
+  }
+
+  const runOnce = async (): Promise<void> => {
+    do {
+      rerunRequested = false
+      const paused = await save()
+      if (disposed || paused) return
+    } while (rerunRequested)
+    scheduleNext()
+  }
+
+  const run = (): Promise<void> => {
+    // Whoever calls run() — timer fire, online flush, retry resume — first
+    // cancels any timer still pending, so a stale scheduled tick can never
+    // kick off a second loop alongside this call.
+    clearPendingTimer()
+    if (disposed) return Promise.resolve()
+    if (inFlight) {
+      rerunRequested = true
+      return inFlight
+    }
+    inFlight = runOnce().finally(() => {
+      inFlight = null
+    })
+    return inFlight
+  }
+
+  const dispose = () => {
+    disposed = true
+    clearPendingTimer()
+  }
+
+  return { run, dispose }
+}
+
+// PMCM-253 (locking removed per follow-up product direction: this is an
+// edit system, not a step-by-step wizard — every section is always open):
+// the five-state section model (AC1). One pure, exported, unit-testable
+// function — every input is an explicit boolean, nothing here closes over
+// component state. `isActive` takes top priority so the current section
+// always has a visually distinct icon (N1) even while it also has an
+// error or warning underneath; callers that need that underlying status
+// (the publish gate, and the secondary badge shown next to an active
+// section's icon) call this again with `isActive: false` to bypass it.
+// `SectionStatus`/`SectionState` are local to this file (confirmed via
+// repo-wide grep — nothing else imports them), so "locked" was removed
+// from the union entirely rather than just never being returned.
+export type SectionStatus = "incomplete" | "complete" | "warning" | "error"
+export type SectionState = SectionStatus | "active"
+
+export type DeriveSectionStateInput = {
+  // Live validity for this section's required fields (the same schema/count
+  // check already driving stepsState[index].isValid) — recalculated from
+  // current form values on every render, never a stale save result (AC3).
+  isValid: boolean
+  // True forever once isValid has been true at least once this session —
+  // lets a since-cleared required field in an already-finished section
+  // drop straight to "error" (E1) instead of silently back to "incomplete".
+  everCompleted: boolean
+  // A field-level RHF error or a backend moderation rejection tied to this
+  // section specifically (independent of the plain schema check above).
+  hasBlockingFieldError: boolean
+  // Publish was clicked at least once while this section was still invalid
+  // — the existing AC4/E2 signal, forces every remaining gap into view.
+  publishAttempted: boolean
+  // A non-blocking advisory on an otherwise-valid section (X1). No trigger
+  // is cataloged in this wizard today — see the PMCM-253 progress.md entry
+  // — so every caller currently passes `false`; the state/icon/publish rule
+  // below are fully implemented and ready for one.
+  hasWarning: boolean
+  isActive: boolean
+}
+
+export function deriveSectionState(
+  input: DeriveSectionStateInput
+): SectionState {
+  if (input.isActive) return "active"
+
+  const hasBlockingError =
+    input.hasBlockingFieldError ||
+    (input.everCompleted && !input.isValid) ||
+    (input.publishAttempted && !input.isValid)
+
+  if (hasBlockingError) return "error"
+  if (input.isValid) return input.hasWarning ? "warning" : "complete"
+  return "incomplete"
+}
+
 function makeUniqueFile(
   file: File | Blob | undefined
 ): File | Blob | undefined {
@@ -362,6 +538,46 @@ const UUID_PATTERN =
 
 type PersistedMediaFile = File & {
   __persistedUrl?: string
+}
+
+// PMCM-256: Dropzone/SquareShapeDropzone (catalogued, frozen) generate
+// their own error text — "Must be in .png .jpg .jpeg format(s)" for a
+// rejected extension, and react-dropzone's own "File is larger than N
+// bytes" for maxSize — neither matches the ticket's exact required copy.
+// Both only ever surface through the page-level onError prop, so remap
+// here instead of touching the frozen component.
+const MEDIA_FILE_TYPE_ERROR = "Only JPG and PNG files are supported."
+const MEDIA_FILE_SIZE_ERROR = "File size must be 10 MB or less."
+const MEDIA_MAX_SIZE_BYTES = 10 * ONE_MB
+
+const mapDropzoneErrorMessage = (message?: string): string | undefined => {
+  if (!message) return message
+  if (/larger than/i.test(message)) return MEDIA_FILE_SIZE_ERROR
+  if (/must be in/i.test(message)) return MEDIA_FILE_TYPE_ERROR
+  return message
+}
+
+// PMCM-256: mirrors mediaFormSchema's featuredVideo .refine() check below —
+// used by the saveVideo autosave effect so an invalid URL is never
+// persisted even though it's already blocked from reaching backend-submit
+// via the form's own validation. Not derived from the schema object
+// directly since mediaFormSchema is wrapped in a trailing object-level
+// .refine(), which doesn't expose .shape.
+const isValidFeaturedVideoUrl = (value: string): boolean => {
+  const rawValue = value?.trim()
+  if (!rawValue) return true // empty is allowed — video is optional
+  const normalized = /^https?:\/\//i.test(rawValue)
+    ? rawValue
+    : `https://${rawValue.replace(/^\/+/, "")}`
+  try {
+    const parsed = new URL(normalized)
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.includes(".")
+    )
+  } catch {
+    return false
+  }
 }
 
 const isPersistedMediaFile = (file: unknown): file is PersistedMediaFile =>
@@ -706,9 +922,9 @@ const meta = {
     { label: "Duration", name: "duration" },
   ],
   Team: [
+    { label: "Members", name: "members" },
     { label: "Open Roles", name: "openRoles" },
     { label: "Application Questions", name: "applicationQuestions" },
-    { label: "Members", name: "members" },
     { label: "Requests", name: "requests" },
     { label: "Invites", name: "invites" },
   ] as { label: string; name: string }[],
@@ -785,9 +1001,14 @@ const taskFormSchema = z.object({
     invalid_type_error: "Please enter/select at least 1 experience level",
   }),
   duration: z.object({
-    value: z.coerce.number({
-      invalid_type_error: "Please enter a valid number",
-    }),
+    value: z.coerce
+      .number({
+        invalid_type_error: "Please enter a valid number",
+      })
+      // PMCM-257: "Task with 0 hours → inline 'Minimum 1 hour per task.'
+      // on that row." Checked on the raw entered value/unit — the
+      // concrete, named failure case is literally 0, regardless of unit.
+      .min(1, "Minimum 1 hour per task."),
     type: z.enum(DURATION_TYPE, {
       invalid_type_error: "Please select an option",
       required_error: "Please select an option",
@@ -826,7 +1047,21 @@ const pickFromProjectScopeSchema = (
   }
 }
 
-const projectScopeSchema = pickFromProjectScopeSchema()
+// PMCM-257: called with no options before, so rowSchema.pick({}) picked
+// zero fields — any object (even `{}`) satisfied every row, so "at least
+// one phase with at least one valid task" (AC5) was actually just "at
+// least one phase with at least one row of any shape." Picking the
+// fields that make a task real enforces role/location/experience/
+// duration (which now includes the min-1-hour check above) for section
+// completeness, matching the per-field TaskDialog validation used when
+// adding a task.
+const projectScopeSchema = pickFromProjectScopeSchema({
+  task: true,
+  role: true,
+  location: true,
+  experience: true,
+  duration: true,
+})
 
 const Sidebar = ({
   hasFaqs = false,
@@ -834,16 +1069,22 @@ const Sidebar = ({
   faqError = false,
   faqModerationHasError = false,
   projectInfoModerationHasError = false,
+  mediaModerationHasError = false,
   publishAttempted = false,
   questionsStarted = false,
+  everCompletedSteps = [false, false, false, false, false],
 }: {
   hasFaqs?: boolean
   hasRecentQuestions?: boolean
   faqError?: boolean
   faqModerationHasError?: boolean
   projectInfoModerationHasError?: boolean
+  mediaModerationHasError?: boolean
   publishAttempted?: boolean
   questionsStarted?: boolean
+  // PMCM-253/E1: true forever, per section, once it has been valid at
+  // least once this session — see deriveSectionState's `everCompleted`.
+  everCompletedSteps?: boolean[]
 }) => {
   const { currentStep, stepsState } = useStepRootContext()
   const { setStep } = useStepperContext()
@@ -944,28 +1185,6 @@ const Sidebar = ({
     [mediaValues]
   )
 
-  const stepHasStarted = (index: number): boolean => {
-    if (index === 0)
-      return Boolean(
-        projectInfoValues.title?.trim() ||
-          projectInfoValues.shortDescription?.trim() ||
-          projectInfoValues.fullDescription?.trim() ||
-          projectInfoValues.category?.some((c) => c?.category?.trim()) ||
-          projectInfoValues.tags?.length ||
-          projectInfoValues.skills?.length ||
-          projectInfoValues.industry?.length
-      )
-    if (index === 1)
-      return Boolean(
-        mediaValues.featuredImages?.length ||
-          mediaValues.additionalImages?.flat().length ||
-          mediaValues.featuredVideo?.trim()
-      )
-    if (index === 2) return hasStartedScope
-    if (index === 4) return questionsStarted
-    return false
-  }
-
   return (
     <div className="sticky top-0 py-6 px-6 flex h-screen flex-col shrink-0 overflow-y-auto xs:max-[1024px]:hidden w-[260px] border-r border-gray-200 bg-gray-50">
       <div className="mb-8">
@@ -974,13 +1193,34 @@ const Sidebar = ({
       {stepsState.map(({ label, isValid }, index) => {
         const isActive = currentStep === index
         const isLast = index === stepsState.length - 1
-        const hasError =
-          (publishAttempted && !isValid) ||
+        const hasBlockingFieldError =
           (label === "Questions" && faqModerationHasError) ||
-          (label === "Project Info" && projectInfoModerationHasError)
-        const showErrorBadge = hasError
-        const showWarningBadge =
-          !hasError && !isValid && !isActive && stepHasStarted(index)
+          (label === "Project Info" && projectInfoModerationHasError) ||
+          (label === "Media" && mediaModerationHasError)
+        const commonStateInput = {
+          isValid: Boolean(isValid),
+          everCompleted: everCompletedSteps[index] ?? false,
+          hasBlockingFieldError,
+          publishAttempted,
+          // No non-blocking advisory is cataloged in this wizard today —
+          // see deriveSectionState's own comment. Always false until one
+          // exists; the state/icon/publish rule below are fully wired for
+          // it regardless.
+          hasWarning: false,
+        }
+        const displayState = deriveSectionState({
+          ...commonStateInput,
+          isActive,
+        })
+        // The active section's icon always wins (N1), but the publish gate
+        // and the secondary badge both need the status UNDER that — a
+        // section can be actively open and still flagged error/warning.
+        const underlyingStatus = deriveSectionState({
+          ...commonStateInput,
+          isActive: false,
+        })
+        const showErrorBadge = underlyingStatus === "error"
+        const showWarningBadge = underlyingStatus === "warning"
         return (
           <div key={index} className="relative pb-6 last:pb-0">
             {!isLast && (
@@ -992,23 +1232,15 @@ const Sidebar = ({
             <button
               type="button"
               className="group relative z-[1] flex w-full items-center gap-x-3 focus-visible:outline-none"
-              data-ui-state={
-                hasError
-                  ? "error"
-                  : isActive
-                    ? "active"
-                    : isValid
-                      ? "complete"
-                      : undefined
-              }
+              data-ui-state={displayState}
               onClick={() => setStep(index)}
             >
-              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
-                {hasError ? (
+              <span className="size-6 shrink-0 rounded-full inline-flex justify-center items-center border-2 border-gray-300 bg-gray-50 group-data-[ui-state=complete]:border-primary-500 group-data-[ui-state=complete]:bg-primary-500 group-data-[ui-state=warning]:border-primary-500 group-data-[ui-state=warning]:bg-primary-500 group-data-[ui-state=active]:border-primary-500 group-data-[ui-state=error]:border-error-500">
+                {displayState === "error" ? (
                   <Plus className="size-3.5 text-error-500" />
-                ) : isActive ? (
+                ) : displayState === "active" ? (
                   <span className="size-2 rounded-full bg-primary-500" />
-                ) : isValid ? (
+                ) : displayState === "complete" || displayState === "warning" ? (
                   <Check className="size-3.5 text-white" />
                 ) : (
                   <Plus className="size-3.5 text-gray-400" />
@@ -1041,15 +1273,25 @@ const Sidebar = ({
                       const hasError = hasProjectInfoFieldError(field.name)
                       const hasValue = hasProjectInfoFieldValue(field.name)
                       const shouldShowStatus = hasError || hasValue
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
                             {field.label}
-                          </span>
+                          </Button>
 
                           {shouldShowStatus &&
                             (hasError ? (
@@ -1084,15 +1326,25 @@ const Sidebar = ({
                         ? additionalCount >= requiredAdditional
                         : hasMediaFieldValue(field.name)
                       const shouldShowStatus = hasError || hasValue
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
 
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
                             {field.label}
-                          </span>
+                          </Button>
 
                           {shouldShowStatus &&
                             (hasError ? (
@@ -1106,74 +1358,85 @@ const Sidebar = ({
                       )
                     })}
                   {label === "Project Scope" &&
-                    meta[label].map((field, i) => (
-                      <div
-                        className="py-1.5 flex items-center justify-between pr-3"
-                        key={i}
-                      >
-                        {field.label === "Task Name" ? (
-                          <button
-                            type="button"
-                            className="text-sm leading-6 text-gray-500 hover:text-dark-blue-400 focus-visible:outline-none"
-                            onClick={() => setTaskSearchDialogOpen(true)}
+                    meta[label].map((field, i) => {
+                      const targetId =
+                        field.label === "Task Name"
+                          ? null
+                          : SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
+                      return (
+                        <div
+                          className="py-1.5 flex items-center justify-between pr-3"
+                          key={i}
+                        >
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (field.label === "Task Name") {
+                                setTaskSearchDialogOpen(true)
+                              } else if (targetId) {
+                                scrollToWizardField(targetId)
+                              }
+                            }}
                           >
                             {field.label}
-                          </button>
-                        ) : (
-                          <span className="text-sm leading-6 text-gray-500">
-                            {field.label}
-                          </span>
-                        )}
+                          </Button>
 
-                        {hasStartedScope ? (
-                          (field.label === "Task Name" &&
-                            pickFromProjectScopeSchema({
-                              task: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Role" &&
-                            pickFromProjectScopeSchema({
-                              role: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Location" &&
-                            pickFromProjectScopeSchema({
-                              location: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Experience" &&
-                            pickFromProjectScopeSchema({
-                              experience: true,
-                            }).safeParse(phases)) ||
-                          (field.label === "Duration" &&
-                            pickFromProjectScopeSchema({
-                              duration: true,
-                            }).safeParse(phases)) ? (
-                            <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
-                              <Check className="size-3 text-white" />
-                            </div>
-                          ) : (
-                            <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
-                          )
-                        ) : null}
-                      </div>
-                    ))}
+                          {hasStartedScope ? (
+                            (field.label === "Task Name" &&
+                              pickFromProjectScopeSchema({
+                                task: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Role" &&
+                              pickFromProjectScopeSchema({
+                                role: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Location" &&
+                              pickFromProjectScopeSchema({
+                                location: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Experience" &&
+                              pickFromProjectScopeSchema({
+                                experience: true,
+                              }).safeParse(phases)) ||
+                            (field.label === "Duration" &&
+                              pickFromProjectScopeSchema({
+                                duration: true,
+                              }).safeParse(phases)) ? (
+                              <div className="size-[18px] rounded-full inline-flex items-center justify-center shrink-0 bg-success-500">
+                                <Check className="size-3 text-white" />
+                              </div>
+                            ) : (
+                              <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
+                            )
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   {label === "Team" &&
                     meta.Team.map((field, i) => {
                       const isSubActive = teamSubTab === field.name
                       return (
                         <div
-                          className="py-1.5 flex items-center justify-between pr-3 cursor-pointer"
+                          className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
-                          onClick={() => setTeamSubTab(field.name)}
                         >
-                          <span
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
                             className={cn(
-                              "text-sm leading-6 transition duration-300",
+                              "text-sm leading-6 p-0 h-auto transition duration-300",
                               isSubActive
                                 ? "text-primary-500"
                                 : "text-gray-500 hover:text-dark-blue-400"
                             )}
+                            onClick={() => setTeamSubTab(field.name)}
                           >
                             {field.label}
-                          </span>
+                          </Button>
                         </div>
                       )
                     })}
@@ -1188,14 +1451,24 @@ const Sidebar = ({
                       const hasError =
                         field.name === "faqs" &&
                         (faqError || faqModerationHasError)
+                      const targetId = SIDEBAR_SUB_ITEM_TARGET_IDS[field.name]
                       return (
                         <div
                           className="py-1.5 flex items-center justify-between pr-3"
                           key={i}
                         >
-                          <span className="text-sm leading-6 text-gray-500">
+                          <Button
+                            variant="link"
+                            visual="gray"
+                            size="sm"
+                            className="text-sm leading-6 p-0 h-auto text-gray-500 hover:text-dark-blue-400"
+                            onClick={() => {
+                              if (!targetId) return
+                              scrollToWizardField(targetId)
+                            }}
+                          >
                             {field.label}
-                          </span>
+                          </Button>
 
                           {hasError ? (
                             <AlertCircle className="size-[18px] text-warning-500 shrink-0" />
@@ -1223,12 +1496,16 @@ const Header = ({
   lastSavedAt,
   onPublish,
   publishing,
+  saveStatus,
+  isOffline,
 }: {
   onClose?: () => void
   slug?: string
   lastSavedAt?: Date | null
   onPublish?: () => void
   publishing?: boolean
+  saveStatus?: "idle" | "saving" | "saved" | "error"
+  isOffline?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1237,16 +1514,33 @@ const Header = ({
       </h3>
 
       <div className="flex items-center gap-x-3">
-        {lastSavedAt && (
+        {isOffline ? (
+          <Badge visual="warning">
+            <WifiOff className="size-3.5" />
+            You&apos;re offline. Changes will sync when you reconnect.
+          </Badge>
+        ) : saveStatus === "error" ? (
+          <Badge visual="error">
+            <AlertCircle className="size-3.5" />
+            Couldn&apos;t save. Retrying…
+          </Badge>
+        ) : saveStatus === "saving" ? (
           <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
-            <Clock className="size-4" />
-            Saved at{" "}
-            {lastSavedAt.toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-              hour12: true,
-            })}
+            <RefreshCcw05 className="size-4 animate-spin" />
+            Saving…
           </span>
+        ) : (
+          lastSavedAt && (
+            <span className="inline-flex items-center gap-x-1.5 text-sm text-gray-500">
+              <Clock className="size-4" />
+              Saved at{" "}
+              {lastSavedAt.toLocaleTimeString([], {
+                hour: "numeric",
+                minute: "2-digit",
+                hour12: true,
+              })}
+            </span>
+          )
         )}
         <TooltipProvider>
           <Tooltip>
@@ -1719,7 +2013,7 @@ const projectInfoSchema = z.object({
   title: z
     .string()
     .trim()
-    .min(1, "Please enter a project title")
+    .min(1, "Title is required.")
     .regex(
       /^[A-Za-z0-9 -]+$/,
       "Title can only contain letters, numbers, spaces, and hyphens."
@@ -1733,7 +2027,7 @@ const projectInfoSchema = z.object({
           category: z.string().default(""),
           subCategories: z
             .array(z.string())
-            .max(5, "You can add a maximum of five (5) sub categories"),
+            .max(5, "You can add a maximum of five (5) sub-categories."),
         })
         .superRefine((value, ctx) => {
           const selectedCategory = value.category.trim()
@@ -1767,20 +2061,23 @@ const projectInfoSchema = z.object({
     })
     .min(1, "Please enter at least 1 industry(s)")
     .max(5, "Please do not enter more than 5 industry(s)"),
+  // PMCM-255: settled at max 300, no minimum — required just means
+  // non-empty (after trim).
   shortDescription: z
     .string()
-    .min(350, "Please enter at least 350 character(s)")
-    .max(450, "Please do not enter more than 450 character(s)"),
+    .trim()
+    .min(1, "Short description is required.")
+    .max(300, "Please do not enter more than 300 character(s)"),
   fullDescription: z.string().superRefine((value, ctx) => {
     const contentLength = getRichTextCharacterCount(value)
 
-    if (contentLength < 100) {
+    if (contentLength < 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.too_small,
-        minimum: 100,
+        minimum: 1,
         type: "string",
         inclusive: true,
-        message: "Please enter at least 100 character(s)",
+        message: "Full description is required.",
       })
     }
 
@@ -1790,7 +2087,7 @@ const projectInfoSchema = z.object({
         maximum: FULL_DESCRIPTION_MAX_LENGTH,
         type: "string",
         inclusive: true,
-        message: "Please do not enter more than 5,000 character(s)",
+        message: "Please do not enter more than 2,000 character(s)",
       })
     }
   }),
@@ -1821,38 +2118,99 @@ const PROJECT_INFO_PROGRESS_FIELDS: Array<keyof ProjectInfoFormValues> = [
   "skills",
 ]
 
+// PMCM-253 follow-up: which of the three Project Info tabs each field lives
+// on — TabsContent (components/ui/tabs) unmounts inactive tab panels
+// entirely (not just display:none), so a field's own targetId div doesn't
+// exist in the DOM at all until its tab is the active one. `tab` lets the
+// publish-validation jump below switch tabs before it scrolls/focuses.
+type ProjectInfoTab = "basic-info" | "description" | "project-details"
+
 const PROJECT_INFO_VALIDATION_TARGETS: Array<{
   name: FieldPath<ProjectInfoFormValues>
   targetId: string
+  tab: ProjectInfoTab
 }> = [
-  { name: "title", targetId: "publish-project-title-field" },
-  { name: "category.0.category", targetId: "publish-project-category-field" },
+  { name: "title", targetId: "publish-project-title-field", tab: "basic-info" },
+  {
+    name: "category.0.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.0.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.1.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.1.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.1.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "category.2.category", targetId: "publish-project-category-field" },
+  {
+    name: "category.2.category",
+    targetId: "publish-project-category-field",
+    tab: "basic-info",
+  },
   {
     name: "category.2.subCategories",
     targetId: "publish-project-category-field",
+    tab: "basic-info",
   },
-  { name: "industry", targetId: "publish-project-industry-field" },
+  {
+    name: "industry",
+    targetId: "publish-project-industry-field",
+    tab: "project-details",
+  },
   {
     name: "shortDescription",
     targetId: "publish-project-short-description-field",
+    tab: "description",
   },
   {
     name: "fullDescription",
     targetId: "publish-project-full-description-field",
+    tab: "description",
   },
-  { name: "tags", targetId: "publish-project-tags-field" },
-  { name: "skills", targetId: "publish-project-skills-field" },
+  { name: "tags", targetId: "publish-project-tags-field", tab: "project-details" },
+  {
+    name: "skills",
+    targetId: "publish-project-skills-field",
+    tab: "project-details",
+  },
 ]
+
+const PROJECT_INFO_TAB_TRIGGER_IDS: Record<ProjectInfoTab, string> = {
+  "basic-info": "publish-project-info-tab-basic-info",
+  description: "publish-project-info-tab-description",
+  "project-details": "publish-project-info-tab-project-details",
+}
+
+// PMCM-253 follow-up: switches to the field's own tab first (a plain
+// .click() — Tabs' useControllableState picks it up like any other click,
+// no prop drilling needed since this only ever runs from an effect, not
+// render), then waits a frame for that tab's content to mount before
+// focusing/scrolling the field itself. A single rAF is what
+// scrollToWizardField already relies on elsewhere in this file for the
+// same click-then-render sequencing.
+const focusAndScrollProjectInfoField = (
+  methods: UseFormReturn<ProjectInfoFormValues>,
+  target: { name: FieldPath<ProjectInfoFormValues>; targetId: string; tab: ProjectInfoTab }
+) => {
+  if (typeof window === "undefined") return
+  document.getElementById(PROJECT_INFO_TAB_TRIGGER_IDS[target.tab])?.click()
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
 
 const scrollToPublishField = (targetId: string) => {
   if (typeof window === "undefined") return
@@ -1865,14 +2223,50 @@ const scrollToPublishField = (targetId: string) => {
   })
 }
 
+// PMCM-252/N2: sidebar sub-item → field-group anchor, for every sub-item
+// that doesn't already have a more specific click behavior (Project
+// Scope's "Task Name" opens the task-search dialog; every Team sub-item
+// already switches teamSubTab — both left as they are). The Questions
+// targets are RadixTabs.Trigger buttons (uncontrolled tabs), so the
+// shared helper below also clicks the element when it's a button, to
+// actually switch to that tab, not just scroll to its (already visible)
+// trigger.
+const SIDEBAR_SUB_ITEM_TARGET_IDS: Record<string, string> = {
+  title: "publish-project-title-field",
+  shortDescription: "publish-project-short-description-field",
+  tags: "publish-project-tags-field",
+  featuredImages: "publish-project-featured-images-field",
+  additionalImages: "publish-project-additional-images-field",
+  featuredVideo: "publish-project-featured-video-field",
+  role: "publish-project-scope-table-field",
+  location: "publish-project-scope-table-field",
+  experience: "publish-project-scope-table-field",
+  duration: "publish-project-scope-table-field",
+  faqs: "publish-project-faqs-field",
+  recentQuestions: "publish-project-recent-questions-field",
+}
+
+const scrollToWizardField = (targetId: string) => {
+  if (typeof window === "undefined") return
+  const el = document.getElementById(targetId)
+  if (el instanceof HTMLButtonElement) el.click()
+  window.requestAnimationFrame(() => {
+    document.getElementById(targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 const TITLE_MAX_LENGTH = 120
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+// PMCM-255: settled at max 300 / 2,000, no minimum on either field.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 450 character(s)"
+  "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
-  "Please do not enter more than 5,000 character(s)"
+  "Please do not enter more than 2,000 character(s)"
 
 const FALLBACK_CATEGORY_OPTIONS = [
   "Web Development",
@@ -1891,7 +2285,7 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 const SUBCATEGORY_LIMIT_ERROR =
-  "You can add a maximum of five (5) sub categories"
+  "You can add a maximum of five (5) sub-categories."
 
 const FALLBACK_SUBCATEGORY_OPTIONS = options.value
 const FALLBACK_INDUSTRY_OPTIONS = [
@@ -2278,6 +2672,20 @@ const ProjectInfo = ({
   const fullDescriptionCharacterCount = getRichTextCharacterCount(
     projectInfoValues.fullDescription ?? ""
   )
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping a form-state commit while typing does nothing to stop the
+  // seller from typing past the limit — the editor just keeps going on its
+  // own internal state. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper around the
+  // editor below); this ref gives those capture-phase handlers a
+  // synchronous, always-current character count to check against (a
+  // closure over `fullDescriptionCharacterCount` state could be stale).
+  const fullDescriptionLiveCountRef = useRef(fullDescriptionCharacterCount)
+  useEffect(() => {
+    fullDescriptionLiveCountRef.current = fullDescriptionCharacterCount
+  }, [fullDescriptionCharacterCount])
   const shortDescriptionField = methods.register("shortDescription", {
     onBlur: () => trigger("shortDescription"),
   })
@@ -2623,9 +3031,16 @@ const ProjectInfo = ({
           <div className="flex-auto min-w-0">
             <Tabs defaultValue="basic-info">
               <TabsList className="px-0 pt-0 gap-6">
-                <TabsTrigger value="basic-info">Basic Info</TabsTrigger>
-                <TabsTrigger value="description">Description</TabsTrigger>
-                <TabsTrigger value="project-details">
+                <TabsTrigger id="publish-project-info-tab-basic-info" value="basic-info">
+                  Basic Info
+                </TabsTrigger>
+                <TabsTrigger id="publish-project-info-tab-description" value="description">
+                  Description
+                </TabsTrigger>
+                <TabsTrigger
+                  id="publish-project-info-tab-project-details"
+                  value="project-details"
+                >
                   Project Details
                 </TabsTrigger>
               </TabsList>
@@ -2879,7 +3294,6 @@ const ProjectInfo = ({
                                       }
                                       options={subCategoryOptions}
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px] "
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(0, value)
@@ -3019,7 +3433,6 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(1, value)
@@ -3160,7 +3573,6 @@ const ProjectInfo = ({
                                           : "Add Sub-Category(s)"
                                       }
                                       allowCreateOption
-                                      portalDropdown
                                       className="flex-1 min-w-[100px]"
                                       onInputValueChange={(value) => {
                                         fetchCategoriesAutocomplete(2, value)
@@ -3283,7 +3695,7 @@ const ProjectInfo = ({
 
                   <Textarea
                     id="short-description"
-                    placeholder="Enter a short Description"
+                    placeholder="Enter a description..."
                     maxLength={SHORT_DESCRIPTION_MAX_LENGTH}
                     {...shortDescriptionField}
                     onChange={(event) => {
@@ -3355,7 +3767,15 @@ const ProjectInfo = ({
                         including its purpose and features.
                       </HelperText>
 
-                      <span className="text-xs leading-[14.52px] text-gray-500">
+                      <span
+                        className={cn(
+                          "text-xs leading-[14.52px]",
+                          fullDescriptionCharacterCount >=
+                            FULL_DESCRIPTION_MAX_LENGTH
+                            ? "text-error-500"
+                            : "text-gray-500"
+                        )}
+                      >
                         {fullDescriptionCharacterCount}/
                         {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
                       </span>
@@ -3366,61 +3786,96 @@ const ProjectInfo = ({
                     name="fullDescription"
                     control={methods.control}
                     render={({ field }) => (
-                      <RichTextEditor
-                        defaultValue={field.value ?? ""}
-                        placeholder="<p class='text-gray-400'>Enter a full Description</p>"
-                        allowFullscreen
-                        className={cn(
-                          "rounded-lg border bg-white transition-colors",
-                          fullDescriptionHasError
-                            ? "border-error-500"
-                            : "border-gray-300 focus-within:border-primary-500"
-                        )}
-                        toolbarClassName="left-4"
-                        editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
-                        onUpdate={(html) => {
-                          field.onChange(html)
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                      // PMCM-255 (follow-up): capture-phase guard — fires
+                      // before the event reaches the editor's own
+                      // contenteditable, so it blocks input without
+                      // touching the frozen RichTextEditor component.
+                      // Single-character typing is blocked once already at
+                      // the limit (liveCount >= max); paste/drop are
+                      // checked precisely against the text they'd actually
+                      // insert, since a multi-character paste can cross the
+                      // limit from under it. Deletions are never blocked.
+                      <div
+                        onBeforeInputCapture={(event) => {
+                          const inputType = event.nativeEvent.inputType
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            inputType?.startsWith("insert") &&
+                            fullDescriptionLiveCountRef.current >=
+                              FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
                         }}
-                        onBlur={(html) => {
-                          field.onBlur()
-
-                          const contentLength = getRichTextCharacterCount(html)
-                          if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
-                            triggerMaxLengthError(
-                              "fullDescription",
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
-                            )
-                            return
-                          }
-
+                        onPasteCapture={(event) => {
+                          const pastedText =
+                            event.clipboardData.getData("text")
                           if (
-                            fullDescriptionHasError &&
-                            get(errors, "fullDescription.message") ===
-                              FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            fullDescriptionLiveCountRef.current +
+                              pastedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
                           ) {
-                            methods.clearErrors("fullDescription")
+                            event.preventDefault()
                           }
-
-                          void trigger("fullDescription")
                         }}
-                      />
+                        onDropCapture={(event) => {
+                          const droppedText = event.dataTransfer.getData(
+                            "text/plain"
+                          )
+                          if (
+                            fullDescriptionLiveCountRef.current +
+                              droppedText.length >
+                            FULL_DESCRIPTION_MAX_LENGTH
+                          ) {
+                            event.preventDefault()
+                          }
+                        }}
+                      >
+                        <RichTextEditor
+                          defaultValue={field.value ?? ""}
+                          placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                          allowFullscreen
+                          fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
+                          fullscreenCharacterCount={fullDescriptionCharacterCount}
+                          fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
+                          className={cn(
+                            "rounded-lg border bg-white transition-colors",
+                            fullDescriptionHasError
+                              ? "border-error-500"
+                              : "border-gray-300 focus-within:border-primary-500"
+                          )}
+                          toolbarClassName="left-4"
+                          editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                          onUpdate={(html) => {
+                            // PMCM-255 (follow-up): always commit the real
+                            // HTML, even over the limit — form state must
+                            // reflect what the seller actually sees, so the
+                            // counter/error are truthful and nothing typed
+                            // (and visible) is ever silently lost. Actual
+                            // enforcement is the capture-phase wrapper above.
+                            const contentLength =
+                              getRichTextCharacterCount(html)
+                            fullDescriptionLiveCountRef.current = contentLength
+                            field.onChange(html)
+
+                            if (contentLength > FULL_DESCRIPTION_MAX_LENGTH) {
+                              triggerMaxLengthError(
+                                "fullDescription",
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                              )
+                            } else if (
+                              fullDescriptionHasError &&
+                              get(errors, "fullDescription.message") ===
+                                FULL_DESCRIPTION_MAX_LENGTH_ERROR
+                            ) {
+                              methods.clearErrors("fullDescription")
+                            }
+                          }}
+                          onBlur={() => {
+                            field.onBlur()
+                            void trigger("fullDescription")
+                          }}
+                        />
+                      </div>
                     )}
                   />
 
@@ -3506,7 +3961,6 @@ const ProjectInfo = ({
                                   options={tagOptions}
                                   placeholder="Add Tags"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "search_keywords",
@@ -3606,7 +4060,6 @@ const ProjectInfo = ({
                                   options={skills}
                                   placeholder="Add Skills"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "skills",
@@ -3748,7 +4201,6 @@ const ProjectInfo = ({
                                   options={industryOptions}
                                   placeholder="Add Industries"
                                   allowCreateOption
-                                  portalDropdown
                                   onInputValueChange={(value) => {
                                     fetchTypeAutocomplete(
                                       "industries",
@@ -3905,7 +4357,8 @@ const mediaFormSchema = z
           }
         },
         {
-          message: "Please enter a valid URL",
+          // PMCM-256 follow-up: match the inline editor's copy exactly.
+          message: "Please enter a valid YouTube or Vimeo URL.",
         }
       )
       .optional(),
@@ -3979,6 +4432,23 @@ const MEDIA_VALIDATION_TARGETS: Array<{
   },
   { name: "featuredVideo", targetId: "publish-project-featured-video-field" },
 ]
+
+// PMCM-253 follow-up: Media has no sub-tabs — a single rAF after the step
+// itself is active is enough for the field's targetId div to be in the DOM.
+const focusAndScrollMediaField = (
+  methods: UseFormReturn<MediaFormValues>,
+  target: { name: FieldPath<MediaFormValues>; targetId: string }
+) => {
+  if (typeof window === "undefined") return
+  window.requestAnimationFrame(() => {
+    methods.setFocus(target.name)
+    document.getElementById(target.targetId)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    })
+  })
+}
+
 type MediaProps = {
   setProgress?: (val: number) => void
 }
@@ -3995,6 +4465,7 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
     trigger,
     setValue,
   } = useMediaContext()
+  const { isExistingPublishedListing } = useProjectScopeContext()
 
   const formHiddenImages =
     (useWatch({ control, name: "hiddenImages" }) as string[] | undefined) ?? []
@@ -4190,48 +4661,122 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
               <Controller
                 control={control}
                 name="featuredImages"
-                render={({ field: { value, onChange } }) => (
-                  <Dropzone
-                    className="transition-colors duration-300"
-                    size="lg"
-                    icon
-                    value={value ?? []}
-                    onValueChange={(value) => {
-                      ref.current.forEach((cb) => cb())
-                      ref.current.clear()
+                render={({ field: { value, onChange } }) => {
+                  const currentMeta = value?.[0]?.meta
+                  const currentUrl =
+                    currentMeta && isPersistedMediaFile(currentMeta)
+                      ? currentMeta.__persistedUrl
+                      : undefined
+                  return (
+                    <>
+                      <Dropzone
+                        className="transition-colors duration-300"
+                        size="lg"
+                        icon
+                        maxSize={MEDIA_MAX_SIZE_BYTES}
+                        value={value ?? []}
+                        onValueChange={(nextValue) => {
+                          // PMCM-256/QA-176/PMCM-396: a published listing
+                          // can't be left with no featured image — the
+                          // backend already rejects a bare clear, but it
+                          // can't undo this Dropzone's own optimistic
+                          // empty state, so block the clear here instead,
+                          // matching the inline editor's guard.
+                          if (
+                            isExistingPublishedListing &&
+                            (value?.length ?? 0) > 0 &&
+                            (nextValue?.length ?? 0) === 0
+                          ) {
+                            setError("featuredImages", {
+                              message:
+                                "This listing is published. A replacement image must be uploaded first.",
+                            })
+                            return
+                          }
 
-                      onChange(value)
+                          ref.current.forEach((cb) => cb())
+                          ref.current.clear()
 
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 50,
-                              }))
-                            ),
-                          ONE_SECOND * 3
-                        ).cancel
-                      )
-                      ref.current.add(
-                        debounce(
-                          () =>
-                            onChange(
-                              value?.map((item) => ({
-                                ...item,
-                                progress: 100,
-                              }))
-                            ),
-                          ONE_SECOND * 6
-                        ).cancel
-                      )
-                    }}
-                    onError={(message) =>
-                      setError("featuredImages", { message })
-                    }
-                  />
-                )}
+                          onChange(nextValue)
+
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 50,
+                                  }))
+                                ),
+                              ONE_SECOND * 3
+                            ).cancel
+                          )
+                          ref.current.add(
+                            debounce(
+                              () =>
+                                onChange(
+                                  nextValue?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                ),
+                              ONE_SECOND * 6
+                            ).cancel
+                          )
+                        }}
+                        onError={(message) =>
+                          setError("featuredImages", {
+                            message: mapDropzoneErrorMessage(message),
+                          })
+                        }
+                      />
+                      {/* PMCM-256: true edit (scale/rotate) via the
+                          catalogued ImageEditor — Dropzone's own hover
+                          overlay (frozen) only exposes Change/Remove, with
+                          no slot for a third action, so this renders
+                          alongside it rather than inside it. Save feeds
+                          the edited file back into this same RHF field,
+                          so it uploads through the exact same saveMedia
+                          autosave path (moderation included) and only
+                          swaps in once that succeeds. */}
+                      {currentUrl && (
+                        <ImageEditor
+                          variant="image"
+                          defaultDataUrl={currentUrl}
+                          defaultFileName={
+                            currentUrl.split("?")[0].split("/").pop() ||
+                            "featured-image.jpg"
+                          }
+                          editDialogTitle="Edit Image"
+                          onSaveImage={(file) =>
+                            onChange([
+                              { meta: file, hasError: false, progress: 100 },
+                            ])
+                          }
+                          startingPoint={({ open, onEdit }) => (
+                            // PMCM-256 fix: ImageEditor's state machine
+                            // has no EDIT transition from "ideal" —
+                            // open() sends REMOVE first (ideal→removing,
+                            // dataUrl is set so no file picker opens),
+                            // then onEdit() sends EDIT (removing→editing).
+                            <Button
+                              type="button"
+                              variant="link"
+                              visual="gray"
+                              className="mt-1"
+                              onClick={() => {
+                                open()
+                                onEdit()
+                              }}
+                            >
+                              Edit image
+                            </Button>
+                          )}
+                        />
+                      )}
+                    </>
+                  )
+                }}
               />
 
               <HookFormErrorMessage
@@ -4275,33 +4820,87 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
                           ? meta.__persistedUrl
                           : undefined
                       return (
-                        <SquareShapeDropzone
-                          className="transition-colors duration-300"
-                          value={value}
-                          onValueChange={(value) => {
-                            onChange(
-                              value?.map((item) => ({ ...item, progress: 50 }))
-                            )
-                            window.setTimeout(() => {
+                        <div>
+                          <SquareShapeDropzone
+                            className="transition-colors duration-300"
+                            value={value}
+                            maxSize={MEDIA_MAX_SIZE_BYTES}
+                            onValueChange={(value) => {
                               onChange(
                                 value?.map((item) => ({
                                   ...item,
-                                  progress: 100,
+                                  progress: 50,
                                 }))
                               )
-                            }, ONE_SECOND * 2)
-                            isSubmitted ? trigger("additionalImages") : noop
-                          }}
-                          onError={(message) =>
-                            setError(`additionalImages.${index}`, { message })
-                          }
-                          isHidden={
-                            url ? hiddenImages.includes(url) : undefined
-                          }
-                          onToggleHidden={
-                            url ? (h) => setHiddenForUrl(url, h) : undefined
-                          }
-                        />
+                              window.setTimeout(() => {
+                                onChange(
+                                  value?.map((item) => ({
+                                    ...item,
+                                    progress: 100,
+                                  }))
+                                )
+                              }, ONE_SECOND * 2)
+                              isSubmitted ? trigger("additionalImages") : noop
+                            }}
+                            onError={(message) =>
+                              setError(`additionalImages.${index}`, {
+                                message: mapDropzoneErrorMessage(message),
+                              })
+                            }
+                            isHidden={
+                              url ? hiddenImages.includes(url) : undefined
+                            }
+                            onToggleHidden={
+                              url ? (h) => setHiddenForUrl(url, h) : undefined
+                            }
+                          />
+                          {/* PMCM-256: see the Featured Image ImageEditor
+                              comment above — same reasoning, rendered
+                              alongside this slot since the frozen
+                              SquareShapeDropzone has no slot for a third
+                              overlay action. */}
+                          {url && (
+                            <ImageEditor
+                              variant="image"
+                              defaultDataUrl={url}
+                              defaultFileName={
+                                url.split("?")[0].split("/").pop() ||
+                                "additional-image.jpg"
+                              }
+                              editDialogTitle="Edit Image"
+                              onSaveImage={(file) =>
+                                onChange([
+                                  {
+                                    meta: file,
+                                    hasError: false,
+                                    progress: 100,
+                                  },
+                                ])
+                              }
+                              startingPoint={({ open, onEdit }) => (
+                                // PMCM-256 fix: ImageEditor's state
+                                // machine has no EDIT transition from
+                                // "ideal" — open() sends REMOVE first
+                                // (ideal→removing, dataUrl is set so no
+                                // file picker opens), then onEdit() sends
+                                // EDIT (removing→editing).
+                                <Button
+                                  type="button"
+                                  variant="link"
+                                  visual="gray"
+                                  size="sm"
+                                  className="mt-0.5 w-full"
+                                  onClick={() => {
+                                    open()
+                                    onEdit()
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              )}
+                            />
+                          )}
+                        </div>
                       )
                     }}
                   />
@@ -4435,6 +5034,30 @@ const Media = ({ setProgress }: { setProgress?: (val: number) => void }) => {
   )
 }
 
+// PMCM-257 follow-up: extracted so the scope-type switch confirm dialog's
+// "Learn More" can reuse the same tip video instead of duplicating it.
+// Mirrors the identical extraction in scope-builder/index.tsx.
+const ProjectScopeTipVideo = () => (
+  <>
+    <DialogHeader>
+      <DialogTitle>Project Scope Tip Video</DialogTitle>
+    </DialogHeader>
+    {PROJECT_SCOPE_TIP_VIDEO_URL ? (
+      <ReactPlayer
+        controls
+        width="100%"
+        height={300}
+        url={PROJECT_SCOPE_TIP_VIDEO_URL}
+      />
+    ) : (
+      <p className="text-sm text-gray-500">
+        Tip video URL is not configured yet. Add
+        `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
+      </p>
+    )}
+  </>
+)
+
 const ProjectScopeTip = ({
   showArrow,
   closeTrigger,
@@ -4486,22 +5109,7 @@ const ProjectScopeTip = ({
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-[560px]">
-          <DialogHeader>
-            <DialogTitle>Project Scope Tip Video</DialogTitle>
-          </DialogHeader>
-          {PROJECT_SCOPE_TIP_VIDEO_URL ? (
-            <ReactPlayer
-              controls
-              width="100%"
-              height={300}
-              url={PROJECT_SCOPE_TIP_VIDEO_URL}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">
-              Tip video URL is not configured yet. Add
-              `NEXT_PUBLIC_PROJECT_SCOPE_TIP_VIDEO_URL` in `.env`.
-            </p>
-          )}
+          <ProjectScopeTipVideo />
         </DialogContent>
       </Dialog>
 
@@ -5328,6 +5936,24 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
+
+// PMCM-257: matches a phase's own name OR any of its task rows'
+// task/role/location text against the normalized search query. Mirrors
+// the same helper added to scope-builder/index.tsx's ScopeBuilder.
+const matchesPhaseSearch = (
+  phase: Pick<Phase, "phaseName" | "rows">,
+  normalizedQuery: string
+) => {
+  if (!normalizedQuery) return true
+  if (normalizeSearchText(phase.phaseName).includes(normalizedQuery)) {
+    return true
+  }
+  return (phase.rows ?? []).some((row) =>
+    [row.task, row.role, row.location].some((value) =>
+      normalizeSearchText(value).includes(normalizedQuery)
+    )
+  )
+}
 interface PhaseTableRowProps {
   row: Row<PhaseRow>
 }
@@ -5879,6 +6505,11 @@ const ProjectScope = ({
     defaultPhaseNameDialogState
   )
   const [accordionState, setAccordionState] = useState(["item-0"])
+  // PMCM-257: this search input previously had no value/onChange — a
+  // static placeholder. getPhaseSearchTargetId/getTaskSearchTargetId
+  // above are unused dead code (confirmed via grep — no call sites), so
+  // there's no existing scroll-to-target behavior this filter could break.
+  const [phaseSearchQuery, setPhaseSearchQuery] = useState("")
   const [scopeTeam, setScopeTeam] = useState<TeamMember[]>([])
 
   useEffect(() => {
@@ -5929,12 +6560,42 @@ const ProjectScope = ({
     scopeType,
     setScopeType,
     draftProjectId,
+    initialPricingPeriod,
+    publishAttempted,
   } = useProjectScopeContext()
   const isService = scopeType === "service"
 
-  const handleScopeTypeChange = (type: ScopeType) => {
+  // PMCM-257: this used to switch instantly — no confirmation, and
+  // (because it never touched `phases`) no clearing of the now-
+  // incompatible scope data either, leaving a Project-shaped scope
+  // (flat phases) sitting under a "Service" label or vice versa. Gated
+  // behind a confirm dialog now (state below), matching the inline
+  // editor's shared ScopeBuilder component, which already had the
+  // dialog but had the identical "doesn't actually clear" gap.
+  const [scopeTypeConfirmOpen, setScopeTypeConfirmOpen] = React.useState(false)
+  const [scopeTypeLearnMoreOpen, setScopeTypeLearnMoreOpen] =
+    React.useState(false)
+  const [pendingScopeType, setPendingScopeType] =
+    React.useState<ScopeType | null>(null)
+
+  const requestScopeTypeChange = (type: ScopeType) => {
     if (type === scopeType) return
+    setPendingScopeType(type)
+    setScopeTypeConfirmOpen(true)
+  }
+
+  const confirmScopeTypeChange = () => {
+    const type = pendingScopeType
+    if (!type) return
+    const previousType = scopeType
+    const previousPhases = phases
     setScopeType(type)
+    // PMCM-257 follow-up: previously cleared the scope on switch — per
+    // product direction this now converts and preserves phaseName/rows/
+    // order instead (convertPhasesForScopeType, same helper the inline
+    // editor's ScopeBuilder uses). Undo still restores the exact previous
+    // phases (not the converted ones) and the exact previous type.
+    setPhases(convertPhasesForScopeType(phases, type))
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
@@ -5943,7 +6604,26 @@ const ProjectScope = ({
     toast({
       variant: "success",
       title: type === "service" ? "Switched to Service" : "Switched to Project",
+      action: (
+        <ToastAction
+          altText="Undo"
+          className="ml-auto px-0 border-0 bg-transparent text-success-500 underline hover:no-underline focus:outline-none"
+          onClick={() => {
+            setScopeType(previousType)
+            setPhases(previousPhases)
+            if (draftProjectId) {
+              ProjectAPI.UpdateProjectDraft(draftProjectId, {
+                listingType: previousType,
+              }).catch(() => {})
+            }
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
     })
+    setPendingScopeType(null)
+    setScopeTypeConfirmOpen(false)
   }
   // Scope assignees must be members ON this project (Chris 07-28) — the owner
   // (self) plus added members — never the whole roster.
@@ -5968,63 +6648,34 @@ const ProjectScope = ({
       expandAll()
     },
   })
+
+  // PMCM-257 follow-up 2: Service scope must never have an untyped phase
+  // (the header falls back to "Phase One" otherwise) — covers a scope
+  // that was already "service" when this page mounted but had an
+  // untyped phase slip through some other path. Hydration (draftIsService)
+  // and the scope-type-switch confirm (confirmScopeTypeChange) already
+  // normalize on their own; this is the catch-all. After normalizing,
+  // every phase has a phaseType, so the guard condition is false on the
+  // next run and this does not loop.
+  useEffect(() => {
+    if (scopeType !== "service") return
+    if (phases.some((phase) => !phase.phaseType)) {
+      setPhases(ensureServicePhaseTypes(phases))
+    }
+  }, [scopeType, phases, setPhases])
+
   const success = projectScopeSchema.safeParse(phases)
 
   // Budget + duration computed from the scope (same helper/rate-card as the
   // inline my-listings view) — replaces the hardcoded sidebar figures.
+  // PMCM-258: duration day-counting now comes from the shared
+  // frontend/lib/listing-pricing.ts module instead of this file's own copy
+  // (which, per QA-200/PMCM-397, already matched my-listings' months
+  // handling — now both pages share one implementation instead of two
+  // copies that have to be kept in sync by hand).
   const { budgetTotalCents, durationLabel, durationDays } = React.useMemo(() => {
     const scopePhases = Array.isArray(phases) ? phases : []
-    let totalDays = 0
-    for (const phase of scopePhases) {
-      const taskDays = (((phase as any)?.rows ?? []) as any[])
-        .map((row: any) => {
-          const dur = row?.duration
-          // QA-200/PMCM-397: this only handled "weeks" and "hours",
-          // silently treating a "months" duration as raw days (e.g. "2
-          // months" counted as 2 days) and giving up entirely (0) on any
-          // row whose duration didn't arrive as the {value, type} object —
-          // never falling back to estimatedHours the way
-          // estimateScopeBudgetCents (this same memo's budget calculation,
-          // a few lines below) already does. Matched here to that
-          // reference implementation.
-          if (dur && typeof dur === "object") {
-            const val = Number(dur.value) || 0
-            if (val > 0) {
-              if (dur.type === "weeks") return val * 7
-              if (dur.type === "months") return val * 30
-              if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-              return val
-            }
-          }
-          if (typeof dur === "string" && dur.trim()) {
-            const [rv, ru] = dur.trim().split(/\s+/)
-            const v = Number(rv) || 0
-            const u = (ru || "days").toLowerCase()
-            if (v > 0) {
-              if (u.startsWith("week")) return v * 7
-              if (u.startsWith("month")) return v * 30
-              if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-              return v
-            }
-          }
-          const hrs = Number(row?.estimatedHours) || 0
-          return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-        })
-        .filter((d: number) => d > 0)
-      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
-    }
-    let label = "—"
-    if (totalDays > 0) {
-      if (totalDays < 7) {
-        label = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
-      } else if (totalDays < 28) {
-        const w = Math.max(1, Math.ceil(totalDays / 7))
-        label = `${w} Week${w !== 1 ? "s" : ""}`
-      } else {
-        const m = Math.max(1, Math.ceil(totalDays / 30))
-        label = `${m} Month${m !== 1 ? "s" : ""}`
-      }
-    }
+    const totalDays = scopeDurationDays(scopePhases as any)
     const computedCents = estimateScopeBudgetCents(scopePhases)
     // QA-178/PMCM-397: always prefer the freshly-computed total.
     // pricingBudgetCents only updates ~1.5-2s after a change, via the
@@ -6041,25 +6692,53 @@ const ProjectScope = ({
     // correctly-computed 0.
     return {
       budgetTotalCents: computedCents,
-      durationLabel: label,
+      durationLabel: formatDuration(totalDays),
       durationDays: totalDays,
     }
   }, [phases])
 
-  const formatBudget = React.useCallback(
-    (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
+  // PMCM-258/AC5: the wizard previously had no period selector at all —
+  // the sidebar budget was always shown "per week". Mirrors the
+  // hydrate-once-then-persist-on-change pattern used in my-listings so the
+  // seller's choice here round-trips through the same `pricingPeriod`
+  // draft field.
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>("week")
+  const pricingPeriodHydratedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (!initialPricingPeriod) return
+    pricingPeriodHydratedRef.current = true
+    setBudgetPeriodState(normalizePeriod(initialPricingPeriod))
+  }, [initialPricingPeriod])
+
+  const setBudgetPeriod = React.useCallback(
+    (next: PricingPeriod) => {
+      setBudgetPeriodState(next)
+      if (draftProjectId) {
+        ProjectAPI.UpdateProjectDraft(draftProjectId, {
+          pricingPeriod: next,
+        } as any).catch(() => {})
       }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      return `$${Math.round(total / numPeriods).toLocaleString()}`
+    },
+    [draftProjectId]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isService),
+    [durationDays, isService]
+  )
+
+  React.useEffect(() => {
+    if (!availableBudgetPeriods.includes(budgetPeriod)) {
+      setBudgetPeriodState(resolvePeriod(budgetPeriod, durationDays, isService))
+    }
+  }, [availableBudgetPeriods, budgetPeriod, durationDays, isService])
+
+  const formatBudget = React.useCallback(
+    (cents: number, period: PricingPeriod) => {
+      if (cents <= 0) return "$0"
+      return `$${costPerPeriod(cents, durationDays, period).toLocaleString()}`
     },
     [durationDays]
   )
@@ -6531,6 +7210,17 @@ const ProjectScope = ({
     }
   }
 
+  // PMCM-257: this dialog previously had no resolver at all — a plain
+  // HTML min={1} on the number input, which React Hook Form's
+  // handleSubmit does not enforce, so 0 (or a negative value) saved
+  // silently. Same rule as taskFormSchema.duration above.
+  const durationFormSchema = z.object({
+    duration: z.object({
+      value: z.coerce.number().min(1, "Minimum 1 hour per task."),
+      type: z.enum(DURATION_TYPE),
+    }),
+  })
+
   interface DurationDialogProps {
     open: boolean
     durationFormValues?: DurationFormValues
@@ -6544,7 +7234,13 @@ const ProjectScope = ({
     onDurationFormValuesChange,
     onOpenChange,
   }: DurationDialogProps) => {
-    const { control, handleSubmit, reset } = useForm<DurationFormValues>({
+    const {
+      control,
+      handleSubmit,
+      reset,
+      formState: { errors },
+    } = useForm<DurationFormValues>({
+      resolver: zodResolver(durationFormSchema),
       defaultValues: durationFormValues || {
         duration: { value: 1, type: "days" },
       },
@@ -6588,6 +7284,10 @@ const ProjectScope = ({
                     min={1}
                     className="w-24"
                     placeholder="Value"
+                    isInvalid={hookFormHasError({
+                      errors,
+                      name: "duration.value",
+                    })}
                   />
                 )}
               />
@@ -6618,6 +7318,11 @@ const ProjectScope = ({
                 )}
               />
             </div>
+            {hookFormHasError({ errors, name: "duration.value" }) && (
+              <ErrorMessage size="sm">
+                {get(errors, "duration.value.message")}
+              </ErrorMessage>
+            )}
             <DialogFooter>
               <Button type="submit">Save</Button>
               <DialogClose asChild>
@@ -6688,7 +7393,20 @@ const ProjectScope = ({
             </div>
           </div>
 
-          <div className="space-y-6 flex-auto min-w-0">
+          <div
+            className="space-y-6 flex-auto min-w-0"
+            id="publish-project-scope-table-field"
+          >
+            {/* PMCM-253 follow-up: Project Scope has no RHF form to show
+            a field-level error — `success` just above is the same live
+            projectScopeSchema check Step's own toggleValidation already
+            uses, so this reacts to the live phases/tasks state exactly
+            like every other section's inline errors do. */}
+            {!success && publishAttempted ? (
+              <ErrorMessage size="sm">
+                Add at least 1 phase with 1 task to publish.
+              </ErrorMessage>
+            ) : null}
             {/* Budget Calculator & Duration cards */}
             <div className="grid grid-cols-2 gap-x-4">
               <div className="border border-gray-200 rounded-lg p-6 flex items-start justify-between">
@@ -6708,12 +7426,23 @@ const ProjectScope = ({
                   </span>
                   <div className="mt-2 flex items-baseline gap-x-1.5">
                     <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                      {formatBudget(budgetTotalCents, "week")}
+                      {formatBudget(budgetTotalCents, budgetPeriod)}
                     </span>
                     <span className="text-sm text-dark-blue-400">per</span>
-                    <Badge visual="gray" className="rounded-[5px]">
-                      week
-                    </Badge>
+                    <Listbox value={budgetPeriod} onChange={setBudgetPeriod}>
+                      <ListboxButton
+                        className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
+                        iconClassName="ml-1"
+                        placeholder="Select"
+                      />
+                      <ListboxOptions className="w-[153px]">
+                        {availableBudgetPeriods.map((period) => (
+                          <ListboxOption key={period} value={period}>
+                            {PERIOD_WIDGET_LABELS[period]}
+                          </ListboxOption>
+                        ))}
+                      </ListboxOptions>
+                    </Listbox>
                   </div>
                 </div>
                 <ShieldDollar className="size-10 text-primary-500" />
@@ -6761,7 +7490,7 @@ const ProjectScope = ({
                   <DropdownMenuContent align="end" className="w-[280px]">
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("project")}
+                      onClick={() => requestScopeTypeChange("project")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {!isService && (
@@ -6777,7 +7506,7 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
-                      onClick={() => handleScopeTypeChange("service")}
+                      onClick={() => requestScopeTypeChange("service")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
                         {isService && (
@@ -6793,6 +7522,80 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* PMCM-257: mirrors the confirm dialog already built into
+                    the shared scope-builder/index.tsx ScopeBuilder (used by
+                    the inline editor) — same copy/structure, since the
+                    wizard has its own separate phase/task UI here rather
+                    than rendering <ScopeBuilder>. */}
+                <Dialog
+                  open={scopeTypeConfirmOpen}
+                  onOpenChange={setScopeTypeConfirmOpen}
+                >
+                  {/* Figma specs 409px; max-w-sm (384px) is the nearest
+                      standard Tailwind class — no arbitrary value added. */}
+                  <DialogContent className="max-w-sm p-0">
+                    <div className="p-6 border-b border-gray-200">
+                      <DialogTitle className="text-lg font-semibold text-dark-blue-400">
+                        Change to{" "}
+                        {pendingScopeType === "service"
+                          ? "Service"
+                          : "Project"}
+                        ?
+                      </DialogTitle>
+                      <DialogDescription className="mt-2 text-sm font-light text-dark-blue-400">
+                        {pendingScopeType === "service"
+                          ? "This action will modify the entire project scope. You'll need to manually update the service plan details, including time intervals for each phase and other related settings. You can undo this at anytime."
+                          : "This action will modify the entire service scope. You'll need to manually update the project plan details, including the duration of each phase and other related settings. You can undo this at anytime."}
+                      </DialogDescription>
+                      <Dialog
+                        open={scopeTypeLearnMoreOpen}
+                        onOpenChange={setScopeTypeLearnMoreOpen}
+                      >
+                        <DialogTrigger asChild>
+                          {/* visual="gray" variant="link" already gives
+                              text-gray-500, and size defaults to "sm"
+                              (text-sm) — only font-semibold/underline
+                              (persistent)/capitalize aren't covered by
+                              the variant. */}
+                          <Button
+                            type="button"
+                            variant="link"
+                            visual="gray"
+                            className="mt-3 font-semibold underline capitalize"
+                          >
+                            Learn More
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[560px]">
+                          <ProjectScopeTipVideo />
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+
+                    <div className="bg-gray-25 px-6 py-4 rounded-b-xl flex items-center justify-between">
+                      <DialogClose asChild>
+                        <Button
+                          className="opacity-50 hover:opacity-100"
+                          variant="link"
+                          visual="gray"
+                          onClick={() => setPendingScopeType(null)}
+                        >
+                          <X className="size-[15px]" />
+                          Cancel
+                        </Button>
+                      </DialogClose>
+
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        onClick={confirmScopeTypeChange}
+                      >
+                        Yes, Change
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
                 <div className="flex items-center">
                   <Button
@@ -6825,19 +7628,41 @@ const ProjectScope = ({
             </div>
 
             <InputGroup>
-              <Input type="text" placeholder="Find a phase or task" />
+              <Input
+                type="text"
+                placeholder="Find a phase or task"
+                value={phaseSearchQuery}
+                onChange={(event) => setPhaseSearchQuery(event.target.value)}
+              />
               <InputLeftElement>
                 <SearchMd className="text-gray-500 h-5 w-5" />
               </InputLeftElement>
             </InputGroup>
 
+            {(() => {
+              const normalizedQuery = normalizeSearchText(phaseSearchQuery)
+              const hasVisiblePhase = phases.some((phase) =>
+                matchesPhaseSearch(phase, normalizedQuery)
+              )
+              if (normalizedQuery && !hasVisiblePhase) {
+                return (
+                  <p className="py-6 text-center text-sm text-gray-500">
+                    No phases found
+                  </p>
+                )
+              }
+              return (
             <Accordion
               value={accordionState}
               onValueChange={setAccordionState}
               type="multiple"
               className="flex-auto space-y-3"
             >
-              {phases.map(({ phaseName, rows }, index) => (
+              {phases.map(({ phaseName, rows }, index) => {
+                if (!matchesPhaseSearch({ phaseName, rows }, normalizedQuery)) {
+                  return null
+                }
+                return (
                 <ArrayNavigator key={index} value={phases} index={index}>
                   {rows ? (
                     <AccordionItem value={`item-${index}`} asChild>
@@ -7072,8 +7897,11 @@ const ProjectScope = ({
                     </AccordionItem>
                   )}
                 </ArrayNavigator>
-              ))}
+                )
+              })}
             </Accordion>
+              )
+            })()}
 
             <Button
               className="mt-5"
@@ -7200,11 +8028,27 @@ const [ProjectScopeProvider, useProjectScopeContext] = createContext<{
   pendingInviteEmails: string[]
   setPendingInviteEmails: React.Dispatch<React.SetStateAction<string[]>>
   draftProjectId: string | null
+  // PMCM-256: whether this draft was already a published/live listing when
+  // the wizard loaded — distinct from isProjectSubmitted above, which only
+  // tracks "submitted during this session" and resets on a fresh load.
+  // Used to block clearing the featured image without a replacement
+  // (QA-176/PMCM-396), matching the inline editor's guard.
+  isExistingPublishedListing: boolean
   pricingBudgetCents: number
+  // PMCM-258/AC5: the seller's saved pricing-period preference, hydrated
+  // once from the draft on load — read-only from ProjectScope's side, it
+  // only seeds that component's own `budgetPeriod` state once.
+  initialPricingPeriod: string | null
   scopeType: ScopeType
   setScopeType: React.Dispatch<React.SetStateAction<ScopeType>>
   teamSubTab: string
   setTeamSubTab: React.Dispatch<React.SetStateAction<string>>
+  // PMCM-253 follow-up: Project Scope and Team have no RHF form to drive
+  // an inline error off of — their own live validity already exists
+  // (projectScopeSchema.safeParse(phases), the team-member count check),
+  // this just lets their inline error copy show only once Publish has
+  // actually been clicked, same gating every other section already uses.
+  publishAttempted: boolean
 }>({
   displayName: "MediaProvider",
   errorMessage: `useMediaContext returned is 'undefined'. Seems you forgot to wrap the components in "<MediaPopover />"`,
@@ -7219,6 +8063,9 @@ const TEAM_SUB_TAB_LABELS: Record<TeamSubTab, string> = {
   requests: "Requests",
   invites: "Invites",
 }
+
+const TEAM_SUB_TAB_ENTRY_ANIMATION =
+  "editStepFadeIn 450ms cubic-bezier(0.4, 0, 0.2, 1) forwards"
 
 // ---------------------------------------------------------------------------
 // Open Roles sub-tab content (pixel-perfect from Figma node 13101:118765)
@@ -7238,10 +8085,27 @@ const SAMPLE_SELECTED_ROLES = [
   "Product Manager",
 ]
 
-const SAMPLE_SUGGESTED_ROLES = [
+const ALL_ROLES_POOL = [
+  "Product Designer",
   "UX Researcher",
-  "Project Manager",
+  "Frontend Developer",
+  "iOS Developer",
+  "Android Developer",
+  "Backend Engineer",
+  "UX Writer",
+  "DevOps Engineer",
   "QA Engineer",
+  "React Native Dev",
+  "Full Stack Developer",
+  "Product Manager",
+  "Project Manager",
+  "Data Scientist",
+  "ML Engineer",
+  "Security Engineer",
+  "Cloud Architect",
+  "Technical Writer",
+  "Scrum Master",
+  "Solutions Architect",
 ]
 
 const SAMPLE_ROLE_OPTIONS = [
@@ -7258,6 +8122,14 @@ const SAMPLE_ROLE_QUESTIONS = [
 
 const OpenRolesContent = () => {
   const [selectedRoles, setSelectedRoles] = useState<string[]>(SAMPLE_SELECTED_ROLES)
+  const suggestedRoles = useMemo(
+    () => ALL_ROLES_POOL.filter((r) => !selectedRoles.includes(r)).slice(0, 3),
+    [selectedRoles]
+  )
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastRoleBadgeRef = useRef<HTMLDivElement>(null)
+  const questionLockRef = useRef<HTMLSpanElement>(null)
+  const [connector, setConnector] = useState<{ top: number; height: number } | null>(null)
   const MAX_ROLES = 15
 
   const removeRole = (role: string) => {
@@ -7270,13 +8142,70 @@ const OpenRolesContent = () => {
     }
   }
 
+  useEffect(() => {
+    const content = contentRef.current
+    const lastRoleBadge = lastRoleBadgeRef.current
+    const questionLock = questionLockRef.current
+
+    if (!content || !lastRoleBadge || !questionLock) {
+      setConnector(null)
+      return
+    }
+
+    const updateConnector = () => {
+      const contentRect = content.getBoundingClientRect()
+      const sourceRect = lastRoleBadge.getBoundingClientRect()
+      const targetRect = questionLock.getBoundingClientRect()
+      const sourceCenter = sourceRect.top + sourceRect.height / 2
+      const targetCenter = targetRect.top + targetRect.height / 2
+      const height = targetCenter - sourceCenter
+
+      setConnector(
+        height > 0
+          ? { top: sourceCenter - contentRect.top, height }
+          : null
+      )
+    }
+
+    updateConnector()
+
+    const observer = new ResizeObserver(updateConnector)
+    observer.observe(content)
+    observer.observe(lastRoleBadge)
+    observer.observe(questionLock)
+    window.addEventListener("resize", updateConnector)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateConnector)
+    }
+  }, [selectedRoles])
+
   return (
     <ScrollArea
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]">
+      <div
+        ref={contentRef}
+        className="relative py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]"
+      >
+        {/* Dynamic connector between the last role badge and the default question card. */}
+        {connector && (
+          <div
+            aria-hidden="true"
+            className="absolute hidden min-[1024px]:block left-[57px] pointer-events-none w-[18px]"
+            style={{ top: connector.top, height: connector.height }}
+          >
+            <div className="absolute bg-gray-300 left-0 top-0 w-px [height:calc(100%-9px)]" />
+            <div className="absolute border-b border-l border-gray-300 bottom-0 h-[9px] left-0 rounded-bl-[9px] w-[9px]" />
+            <div className="absolute bg-gray-300 bottom-0 h-px left-[8px] w-[7px]" />
+            <div className="absolute border-r border-t border-gray-300 bottom-[-2px] right-0 rotate-45 size-[6px]" />
+          </div>
+        )}
+
         {/* Left column */}
         <div className="flex-auto min-w-0 flex flex-col">
           <div className="flex flex-col gap-[18px]">
@@ -7302,21 +8231,25 @@ const OpenRolesContent = () => {
 
                   {/* Roles input box */}
                   <div className={cn(
-                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-start",
+                    "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-center",
                     selectedRoles.length >= MAX_ROLES ? "border-warning-300" : "border-gray-300"
                   )}>
-                    {selectedRoles.map((role) => (
-                      <Badge
+                    {selectedRoles.map((role, index) => (
+                      <div
                         key={role}
-                        visual="primary"
-                        size="sm"
-                        className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                        ref={index === selectedRoles.length - 1 ? lastRoleBadgeRef : undefined}
                       >
-                        {role}
-                        <BadgeCloseButton onClick={() => removeRole(role)}>
-                          <X className="size-3" />
-                        </BadgeCloseButton>
-                      </Badge>
+                        <Badge
+                          visual="primary"
+                          size="sm"
+                          className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default transition duration-300 hover:bg-primary-100"
+                        >
+                          {role}
+                          <BadgeCloseButton onClick={() => removeRole(role)}>
+                            <X className="size-3" />
+                          </BadgeCloseButton>
+                        </Badge>
+                      </div>
                     ))}
                     {selectedRoles.length < MAX_ROLES && (
                       <Badge
@@ -7336,26 +8269,28 @@ const OpenRolesContent = () => {
                   )}
                 </div>
 
-                {/* Suggested Roles */}
-                <div className="flex flex-col gap-2">
-                  <span className="text-xs font-normal leading-5 text-dark-blue-400">
-                    Suggested Roles
-                  </span>
-                  <div className="flex flex-wrap content-start gap-3">
-                    {SAMPLE_SUGGESTED_ROLES.map((role) => (
-                      <Badge
-                        key={role}
-                        visual="gray"
-                        size="md"
-                        className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
-                        onClick={() => addRole(role)}
-                      >
-                        {role}
-                        <Plus className="size-3.5 text-gray-500" />
-                      </Badge>
-                    ))}
+                {/* Suggested Roles — hidden when max reached */}
+                {selectedRoles.length < MAX_ROLES && suggestedRoles.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                      Suggested Roles
+                    </span>
+                    <div className="flex flex-wrap content-start gap-3">
+                      {suggestedRoles.map((role) => (
+                        <Badge
+                          key={role}
+                          visual="gray"
+                          size="md"
+                          className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                          onClick={() => addRole(role)}
+                        >
+                          {role}
+                          <Plus className="size-3.5 text-gray-500" />
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Empty state — shown when all roles are removed */}
@@ -7393,7 +8328,9 @@ const OpenRolesContent = () => {
                   <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
                     <div className="flex gap-2.5 items-start">
                       <div className="shrink-0 w-[15px] pt-[3px]">
-                        <Lock01 className="size-[15px] text-gray-500" />
+                        <span ref={questionLockRef} className="block size-[15px]">
+                          <Lock01 className="size-[15px] text-gray-500" />
+                        </span>
                       </div>
 
                       <div className="flex-1 min-w-0 flex flex-col gap-3">
@@ -7433,10 +8370,10 @@ const OpenRolesContent = () => {
                             <Button
                               variant="link"
                               visual="primary"
-                              className="gap-1 text-xs font-bold leading-5 underline"
+                              className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
                             >
                               Edit Roles
-                              <ArrowUpRight className="size-[15px]" />
+                              <ExternalLink className="size-[15px]" />
                             </Button>
                           </div>
 
@@ -7586,6 +8523,1580 @@ const OpenRolesContent = () => {
   )
 }
 
+// ---------------------------------------------------------------------------
+// Application Questions sub-tab content (pixel-perfect from Figma node 13101:119062)
+// ---------------------------------------------------------------------------
+const SAMPLE_SELECTED_TASK_TYPES = [
+  "Affinity Mapping",
+  "Visual Design",
+  "Mobile Development",
+  "Frontend Development",
+  "QA Testing",
+  "Competitive Analysis",
+  "UX Auditing",
+  "Prototyping",
+  "User Research",
+  "iOS Development",
+  "Android Development",
+  "Card Sorting",
+]
+
+const ALL_TASK_TYPES_POOL = [
+  "Persona Creation",
+  "User Flow Design",
+  "Wireframing",
+  "Usability Testing",
+  "Information Architecture",
+  "Design System",
+  "Accessibility Auditing",
+  "Interaction Design",
+  "API Integration",
+  "Database Design",
+  "Performance Optimization",
+  "Code Review",
+  "Technical Writing",
+  "Data Modeling",
+  "Security Auditing",
+]
+
+const SAMPLE_TASK_TYPE_OPTIONS = [
+  "Affinity Mapping",
+  "Visual Design",
+  "Mobile Development",
+  "Frontend Development",
+]
+
+const ApplicationQuestionsContent = () => {
+  const { draftProjectId } = useProjectScopeContext()
+  const [selectedTaskTypes, setSelectedTaskTypes] = useState<string[]>(SAMPLE_SELECTED_TASK_TYPES)
+  const suggestedTaskTypes = useMemo(
+    () => ALL_TASK_TYPES_POOL.filter((t) => !selectedTaskTypes.includes(t)).slice(0, 3),
+    [selectedTaskTypes]
+  )
+  const contentRef = useRef<HTMLDivElement>(null)
+  const lastTaskTypeBadgeRef = useRef<HTMLDivElement>(null)
+  const questionLockRef = useRef<HTMLSpanElement>(null)
+  const [connector, setConnector] = useState<{ top: number; height: number } | null>(null)
+  const MAX_TASK_TYPES = 15
+
+  // AI FAQ generation state (copied from my-listings inline edit mode)
+  const [aiFaqDialogOpen, setAiFaqDialogOpen] = useState(false)
+  const [faqGenLoading, setFaqGenLoading] = useState(false)
+  const [faqGenError, setFaqGenError] = useState(false)
+  const [faqSuggestions, setFaqSuggestions] = useState<
+    Array<{ question: string; answer: string; added?: boolean }>
+  >([])
+  const [faqItems, setFaqItems] = useState<Array<{ question: string; answer: string; is_ai_generated?: boolean }>>([])
+
+  const faqRemainingSlots = Math.max(0, 10 - faqItems.length)
+  const faqAddedCount = faqSuggestions.filter((s) => s.added).length
+
+  const runFaqGeneration = async () => {
+    if (!draftProjectId) return
+    setFaqGenError(false)
+    setFaqGenLoading(true)
+    try {
+      const res = await ProjectAPI.SuggestFaqs(draftProjectId)
+      const data = (res?.data ?? []) as Array<{
+        question: string
+        answer: string
+      }>
+      const existing = new Set(
+        faqItems.map((f) => (f.question || "").trim().toLowerCase())
+      )
+      const deduped = data
+        .filter((s) => s?.question && !existing.has(s.question.trim().toLowerCase()))
+        .map((s) => ({ question: s.question, answer: s.answer, added: false }))
+      setFaqSuggestions(deduped)
+    } catch {
+      setFaqGenError(true)
+    } finally {
+      setFaqGenLoading(false)
+    }
+  }
+
+  const openAiFaqDialog = () => {
+    setAiFaqDialogOpen(true)
+    void runFaqGeneration()
+  }
+
+  const insertFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s || s.added || faqItems.length >= 10) return
+    setFaqItems((prev) => [
+      ...prev,
+      { question: s.question, answer: s.answer, is_ai_generated: true },
+    ])
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: true } : x))
+    )
+  }
+
+  const removeFaqSuggestion = (idx: number) => {
+    const s = faqSuggestions[idx]
+    if (!s) return
+    const q = s.question.trim().toLowerCase()
+    setFaqItems((prev) =>
+      prev.filter((f) => (f.question || "").trim().toLowerCase() !== q)
+    )
+    setFaqSuggestions((prev) =>
+      prev.map((x, i) => (i === idx ? { ...x, added: false } : x))
+    )
+  }
+
+  const insertAllFaqSuggestions = () => {
+    const slots = Math.max(0, 10 - faqItems.length)
+    const toAdd = faqSuggestions.filter((s) => !s.added).slice(0, slots)
+    if (toAdd.length === 0) return
+    setFaqItems((prev) => [
+      ...prev,
+      ...toAdd.map((s) => ({
+        question: s.question,
+        answer: s.answer,
+        is_ai_generated: true,
+      })),
+    ])
+    const addedSet = new Set(toAdd.map((s) => s.question))
+    setFaqSuggestions((prev) =>
+      prev.map((x) => (addedSet.has(x.question) ? { ...x, added: true } : x))
+    )
+  }
+
+  // Edit Skills dialog state
+  const MAX_SKILLS = 25
+  const [editSkillsOpen, setEditSkillsOpen] = useState(false)
+  const [editSkillsRole, setEditSkillsRole] = useState("")
+  const [editSkillsList, setEditSkillsList] = useState<{ id: string | number; name: string }[]>([])
+  const [editSkillsSaved, setEditSkillsSaved] = useState<{ id: string | number; name: string }[]>([])
+  const [skillQuery, setSkillQuery] = useState("")
+  const [skillResults, setSkillResults] = useState<{ id: string | number; name: string }[]>([])
+
+  const fetchSkillResults = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setSkillResults([])
+      return
+    }
+    try {
+      const res = await fetch(
+        `${getPublicApiUrl()}/autocomplete/skills?q=${encodeURIComponent(q)}`
+      )
+      if (!res.ok) return
+      const data = await res.json()
+      const entries: { id?: string; label?: string; name?: string }[] =
+        Array.isArray(data) ? data : (data.entries ?? data.results ?? [])
+      setSkillResults(
+        entries
+          .map((e) => {
+            const name = e.label ?? e.name ?? ""
+            return { id: e.id ?? name, name }
+          })
+          .filter((e) => e.name)
+      )
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchSkillResults(skillQuery), 300)
+    return () => clearTimeout(timer)
+  }, [skillQuery, fetchSkillResults])
+
+  const editSkillsHasChanges = useMemo(() => {
+    const a = [...editSkillsList].map((s) => s.name.toLowerCase()).sort()
+    const b = [...editSkillsSaved].map((s) => s.name.toLowerCase()).sort()
+    if (a.length !== b.length) return true
+    return a.some((v, i) => v !== b[i])
+  }, [editSkillsList, editSkillsSaved])
+
+  const openEditSkills = (role: string) => {
+    setEditSkillsRole(role)
+    setEditSkillsList([...editSkillsSaved])
+    setSkillQuery("")
+    setSkillResults([])
+    setEditSkillsOpen(true)
+  }
+
+  const removeEditSkill = (index: number) => {
+    setEditSkillsList((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const saveEditSkills = () => {
+    setEditSkillsSaved([...editSkillsList])
+    setEditSkillsOpen(false)
+  }
+
+  const removeTaskType = (taskType: string) => {
+    setSelectedTaskTypes((prev) => prev.filter((t) => t !== taskType))
+  }
+
+  const addTaskType = (taskType: string) => {
+    if (selectedTaskTypes.length < MAX_TASK_TYPES && !selectedTaskTypes.includes(taskType)) {
+      setSelectedTaskTypes((prev) => [...prev, taskType])
+    }
+  }
+
+  useEffect(() => {
+    const content = contentRef.current
+    const lastTaskTypeBadge = lastTaskTypeBadgeRef.current
+    const questionLock = questionLockRef.current
+
+    if (!content || !lastTaskTypeBadge || !questionLock) {
+      setConnector(null)
+      return
+    }
+
+    const updateConnector = () => {
+      const contentRect = content.getBoundingClientRect()
+      const sourceRect = lastTaskTypeBadge.getBoundingClientRect()
+      const targetRect = questionLock.getBoundingClientRect()
+      const sourceCenter = sourceRect.top + sourceRect.height / 2
+      const targetCenter = targetRect.top + targetRect.height / 2
+      const height = targetCenter - sourceCenter
+
+      setConnector(
+        height > 0
+          ? { top: sourceCenter - contentRect.top, height }
+          : null
+      )
+    }
+
+    updateConnector()
+
+    const observer = new ResizeObserver(updateConnector)
+    observer.observe(content)
+    observer.observe(lastTaskTypeBadge)
+    observer.observe(questionLock)
+    window.addEventListener("resize", updateConnector)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateConnector)
+    }
+  }, [selectedTaskTypes])
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div
+        ref={contentRef}
+        className="relative py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row min-[1024px]:gap-[50px]"
+      >
+        {/* Dynamic connector between the last task type badge and the default question card. */}
+        {connector && (
+          <div
+            aria-hidden="true"
+            className="absolute hidden min-[1024px]:block left-[57px] pointer-events-none w-[18px]"
+            style={{ top: connector.top, height: connector.height }}
+          >
+            <div className="absolute bg-gray-300 left-0 top-0 w-px [height:calc(100%-9px)]" />
+            <div className="absolute border-b border-l border-gray-300 bottom-0 h-[9px] left-0 rounded-bl-[9px] w-[9px]" />
+            <div className="absolute bg-gray-300 bottom-0 h-px left-[8px] w-[7px]" />
+            <div className="absolute border-r border-t border-gray-300 bottom-[-2px] right-0 rotate-45 size-[6px]" />
+          </div>
+        )}
+
+        {/* Left column */}
+        <div className="flex-auto min-w-0 flex flex-col">
+          <div className="flex flex-col gap-[18px]">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Application Questions
+            </h1>
+
+            {/* Tabs */}
+            <Tabs defaultValue="default-question">
+              <TabsList className="justify-start px-0 border-b-0">
+                <TabsTrigger value="default-question" className="pb-[11px]">Default Questions</TabsTrigger>
+                <TabsTrigger value="role-specific-questions" className="pb-[11px]">Role-Specific Questions</TabsTrigger>
+                <TabsTrigger value="general-questions" className="pb-[11px]">General Questions</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="default-question">
+                <div className="flex flex-col gap-6 pt-6">
+                  {/* Task types input section */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-3 items-end">
+                        <p className="flex-1 min-w-0 text-sm leading-5 font-normal text-gray-500">
+                          Select at least 3 task types that best fit your project scope for easier discovery.
+                        </p>
+                        <span className={cn(
+                          "shrink-0 text-xs font-normal text-right whitespace-nowrap",
+                          selectedTaskTypes.length >= MAX_TASK_TYPES ? "text-warning-500" : "text-gray-500"
+                        )}>
+                          {selectedTaskTypes.length}/{MAX_TASK_TYPES}
+                        </span>
+                      </div>
+
+                      {/* Task types input box */}
+                      <div className={cn(
+                        "bg-white border rounded-[5px] p-3 shadow-xs flex flex-wrap content-start gap-x-2 gap-y-[10px] items-center",
+                        selectedTaskTypes.length >= MAX_TASK_TYPES ? "border-warning-300" : "border-gray-300"
+                      )}>
+                        {selectedTaskTypes.map((taskType, index) => (
+                          <div
+                            key={taskType}
+                            ref={index === selectedTaskTypes.length - 1 ? lastTaskTypeBadgeRef : undefined}
+                          >
+                            <Badge
+                              visual="primary"
+                              size="sm"
+                              className="pl-2 pr-1.5 py-0.5 gap-1 cursor-default"
+                            >
+                              {taskType}
+                              <BadgeCloseButton onClick={() => removeTaskType(taskType)}>
+                                <X className="size-3" />
+                              </BadgeCloseButton>
+                            </Badge>
+                          </div>
+                        ))}
+                        {selectedTaskTypes.length < MAX_TASK_TYPES && (
+                          <Badge
+                            visual="gray"
+                            size="sm"
+                            className="pl-1.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200"
+                          >
+                            <Plus className="size-3" />
+                            Add Task Type
+                          </Badge>
+                        )}
+                      </div>
+                      {selectedTaskTypes.length >= MAX_TASK_TYPES && (
+                        <p className="text-sm leading-5 font-normal text-warning-500">
+                          You've reached the maximum of {MAX_TASK_TYPES} task types.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Suggested Task Types — hidden when max reached */}
+                    {selectedTaskTypes.length < MAX_TASK_TYPES && suggestedTaskTypes.length > 0 && (
+                      <div className="flex flex-col gap-2">
+                        <span className="text-xs font-normal leading-5 text-dark-blue-400">
+                          Suggested Task Types
+                        </span>
+                        <div className="flex flex-wrap content-start gap-3">
+                          {suggestedTaskTypes.map((taskType) => (
+                            <Badge
+                              key={taskType}
+                              visual="gray"
+                              size="md"
+                              className="pl-2.5 pr-2 py-0.5 gap-1 cursor-pointer transition duration-300 hover:bg-gray-200 active:bg-gray-300"
+                              onClick={() => addTaskType(taskType)}
+                            >
+                              {taskType}
+                              <Plus className="size-3.5 text-gray-500" />
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Empty state */}
+                  {selectedTaskTypes.length === 0 && (
+                    <div className="flex flex-col gap-3 items-center justify-center p-4 rounded-[5px]">
+                      <div className="flex flex-col gap-2 items-center text-center">
+                        <h2 className="text-lg leading-7 font-semibold text-dark-blue-400">
+                          No Task Types yet
+                        </h2>
+                        <p className="text-sm leading-5 font-light text-dark-blue-400">
+                          Start by adding task types to define the work for this project.
+                        </p>
+                      </div>
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white"
+                        onClick={() => {
+                          /* TODO: open task type picker */
+                        }}
+                      >
+                        <Plus className="size-[15px]" />
+                        Add Task Types
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Question preview card */}
+                  {selectedTaskTypes.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm leading-5 font-normal text-gray-500">
+                        This question appears when talent requests to join the project.
+                      </p>
+
+                      <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-[0px_1px_2.5px_0px_rgba(16,24,40,0.02)]">
+                        <div className="flex gap-2.5 items-start">
+                          <div className="shrink-0 w-[15px] pt-[3px]">
+                            <span ref={questionLockRef} className="block size-[15px]">
+                              <Lock01 className="size-[15px] text-gray-500" />
+                            </span>
+                          </div>
+
+                          <div className="flex-1 min-w-0 flex flex-col gap-3">
+                            {/* Question title + tags */}
+                            <div className="flex items-center">
+                              <div className="flex gap-6 items-center">
+                                <span className="text-base font-semibold leading-[1.3] text-dark-blue-400">
+                                  What types of tasks can you help with?
+                                </span>
+                                <div className="flex gap-2 items-center">
+                                  <Badge
+                                    visual="gray"
+                                    size="sm"
+                                    className="rounded bg-gray-50 border border-gray-300 px-2 py-0.5 h-5 text-gray-700"
+                                  >
+                                    Default
+                                  </Badge>
+                                  <Badge
+                                    visual="gray"
+                                    size="sm"
+                                    className="rounded bg-gray-100 border-0 px-2 py-0.5 h-5 text-gray-700"
+                                  >
+                                    Multi-Select
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="w-full h-px bg-gray-200" />
+
+                            {/* Available Options */}
+                            <div className="flex flex-col gap-2">
+                              <div className="flex gap-3 items-center">
+                                <span className="text-[13px] font-normal leading-[21px] text-dark-blue-400">
+                                  Available Options
+                                </span>
+                                <Button
+                                  variant="link"
+                                  visual="primary"
+                                  className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
+                                >
+                                  Edit Task Types
+                                  <ExternalLink className="size-[15px]" />
+                                </Button>
+                              </div>
+
+                              <div className="flex flex-wrap content-center gap-2.5 items-center">
+                                {SAMPLE_TASK_TYPE_OPTIONS.map((taskType) => (
+                                  <Badge
+                                    key={taskType}
+                                    visual="gray"
+                                    size="sm"
+                                    className="h-[26px] pl-2 pr-1.5 py-0.5"
+                                  >
+                                    {taskType}
+                                  </Badge>
+                                ))}
+                                <span className="pl-2.5 pr-2 py-0.5 text-sm font-medium leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                                  + 8 more
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Task Type Source */}
+                  {selectedTaskTypes.length > 0 && (
+                    <div className="bg-gray-100 rounded-lg p-5 flex flex-col gap-[15px]">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                          <span className="text-base font-semibold text-dark-blue-400">
+                            Task Type Source
+                          </span>
+                          <p className="text-sm font-normal leading-5 text-gray-600">
+                            Task types are derived from your project's categories and scope. Click "Edit Scope" to update phases and tasks.
+                          </p>
+                        </div>
+                        <Button
+                          visual="gray"
+                          variant="outlined"
+                          className="shrink-0 bg-white"
+                        >
+                          <Edit03 className="size-[15px]" />
+                          Edit Scope
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="role-specific-questions">
+                <div className="flex flex-col gap-[14px] pt-6">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    Tailored questions for each role appear when a user selects one. Keep up to 3 question per role.
+                  </p>
+
+                  {/* Editing questions for + actions */}
+                  <div className="flex items-end justify-end gap-5">
+                    <div className="flex-1 flex flex-col gap-1.5">
+                      <span className="text-sm font-medium leading-5 text-dark-blue-400">
+                        Editing questions for
+                      </span>
+                      <div className="flex items-center gap-4">
+                        <Listbox value="Android Developer" onChange={() => {}}>
+                          <ListboxButton
+                            placeholder="Select role"
+                            className="w-[246px] bg-gray-50 border border-gray-200 rounded-[5px] px-3 py-2"
+                          >
+                            {({ value }) => (
+                              <span className="truncate block text-sm leading-5 font-normal text-gray-700">
+                                {value || "Select role"}
+                              </span>
+                            )}
+                          </ListboxButton>
+                          <ListboxOptions>
+                            {["Android Developer", "iOS Developer", "Frontend Developer", "Backend Engineer", "Product Designer"].map((role) => (
+                              <ListboxOption key={role} value={role}>
+                                {role}
+                              </ListboxOption>
+                            ))}
+                          </ListboxOptions>
+                        </Listbox>
+
+                        <Button
+                          variant="link"
+                          visual="primary"
+                          className="gap-1 text-xs font-bold leading-5 underline decoration-primary-500/30 hover:decoration-primary-500"
+                          onClick={() => openEditSkills("Android Developer")}
+                        >
+                          Edit Skills
+                          <ExternalLink className="size-[15px]" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]"
+                        onClick={openAiFaqDialog}
+                        disabled={!draftProjectId}
+                      >
+                        <Stars02 className="size-[15px]" />
+                        Generate With AI
+                      </Button>
+
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)] opacity-50"
+                      >
+                        <RefreshCcw05 className="size-[15px]" />
+                        Reset To Defaults
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Question cards */}
+                  <div className="flex flex-col gap-[10px]">
+                    {[
+                      {
+                        q: "How do you typically start a mobile project?",
+                        role: "Android Developer",
+                        type: "Single-Select",
+                        options: ["Design-first (Figma/prototype)", "Code-first", "Research-first", "It depends"],
+                      },
+                      {
+                        q: "Which testing approaches do you use?",
+                        role: "Android Developer",
+                        type: "Multi-Select",
+                        options: ["Manual", "Automated", "AI-based", "Jira"],
+                      },
+                      {
+                        q: "Which mobile platforms have you shipped products on?",
+                        role: "Android Developer",
+                        type: "Multi-Select",
+                        optional: true,
+                        options: ["iOS", "Android", "Web"],
+                      },
+                    ].map((card) => (
+                      <div key={card.q} className="bg-white border border-gray-300 rounded-lg p-4 drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]">
+                        <div className="flex items-start gap-[10px]">
+                          <div className="shrink-0 w-[15px] py-[3px] cursor-grab">
+                            <GripVertical2 />
+                          </div>
+                          <div className="flex-1 min-w-0 flex flex-col gap-3">
+                            <div className="flex items-center gap-6">
+                              <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                                <span className="text-base font-semibold leading-[1.3] text-dark-blue-400 overflow-hidden text-ellipsis whitespace-nowrap">
+                                  {card.q}
+                                </span>
+                                <div className="flex gap-[6px] items-center">
+                                  <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-50 border border-gray-300 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                    {card.role}
+                                  </Badge>
+                                  <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                    {card.type}
+                                  </Badge>
+                                  {card.optional && (
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      Optional
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0 h-6">
+                                <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                  <Edit03 className="size-[15px]" />
+                                </IconButton>
+                                <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                  <Trash01 className="size-[15px]" />
+                                </IconButton>
+                              </div>
+                            </div>
+                            <div className="w-full h-px bg-gray-200" />
+                            <div className="flex flex-col gap-2">
+                              <span className="text-[13px] font-normal leading-[21.4px] text-dark-blue-400">
+                                Available Options
+                              </span>
+                              <div className="flex flex-wrap gap-2 items-center">
+                                {card.options.map((opt) => (
+                                  <Badge key={opt} visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-gray-700">
+                                    {opt}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* + Add Question */}
+                    <div className="border border-dashed border-gray-300 rounded-[5px] py-[17px] flex items-center justify-center cursor-pointer transition duration-300 hover:border-gray-400 hover:bg-gray-50">
+                      <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 capitalize">
+                        <Plus className="size-[15px]" />
+                        Add Question
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="general-questions">
+                <div className="flex flex-col gap-[21px] pt-6">
+                  <p className="text-sm leading-5 font-normal text-gray-500">
+                    These questions appear for all applicants, regardless of their role. Keep it to 2-3 questions to avoid drop-off.
+                  </p>
+
+                  <div className="flex flex-col gap-5 pb-6">
+                    {/* Action buttons */}
+                    <div className="flex items-center justify-end gap-3">
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)]"
+                        onClick={openAiFaqDialog}
+                        disabled={!draftProjectId}
+                      >
+                        <Stars02 className="size-[15px]" />
+                        Generate With AI
+                      </Button>
+
+                      <Button
+                        visual="gray"
+                        variant="outlined"
+                        className="bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,0.03)] opacity-50"
+                      >
+                        <RefreshCcw05 className="size-[15px]" />
+                        Reset To Defaults
+                      </Button>
+                    </div>
+
+                    {/* Question cards */}
+                    <div className="flex flex-col gap-[10px]">
+                      {[
+                        { q: "Why do you want to join this project?" },
+                        { q: "Briefly describe a relevant project you've worked on and your contribution." },
+                      ].map((card) => (
+                        <div key={card.q} className="bg-white border border-gray-300 rounded-lg p-4 drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)]">
+                          <div className="flex items-start gap-[10px]">
+                            <div className="shrink-0 w-[15px] py-[3px] cursor-grab">
+                              <GripVertical2 />
+                            </div>
+                            <div className="flex-1 min-w-0 flex flex-col gap-3">
+                              <div className="flex items-center gap-6">
+                                <div className="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                                  <span className="text-base font-semibold leading-[1.3] text-dark-blue-400 overflow-hidden text-ellipsis whitespace-nowrap">
+                                    {card.q}
+                                  </span>
+                                  <div className="flex gap-[6px] items-center">
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-50 border border-gray-300 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      General
+                                    </Badge>
+                                    <Badge visual="gray" size="sm" className="rounded-[4px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[15px] text-gray-700">
+                                      Long text
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 h-6">
+                                  <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                    <Edit03 className="size-[15px]" />
+                                  </IconButton>
+                                  <IconButton variant="ghost" visual="gray" className="w-[35px] p-[10px] rounded-[5px]">
+                                    <Trash01 className="size-[15px]" />
+                                  </IconButton>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* + Add Question */}
+                      <div className="border border-dashed border-gray-300 rounded-[5px] py-[17px] flex items-center justify-center cursor-pointer transition duration-300 hover:border-gray-400 hover:bg-gray-50">
+                        <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 capitalize">
+                          <Plus className="size-[15px]" />
+                          Add Question
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* Right column — Arrow + Tip sidebar */}
+        <div className="shrink-0 self-start sticky top-6 xs:max-[1024px]:hidden flex items-start pt-6">
+          {/* Connector arrow (same as Open Roles) */}
+          <div className="flex items-center justify-center mr-[-8px] shrink-0 w-[25.455px] h-[71px]">
+            <svg className="rotate-90" width="71" height="20" viewBox="0 0 182.364 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 19V20V20V19ZM167 19V18V18V19ZM1 1.00001H0V11H1H2V1.00001H1ZM9 19V20L167 20V19V18L9 18V19ZM175 11H176V1H175H174V11H175ZM167 19V20C171.971 20 176 15.9705 176 11H175H174C174 14.866 170.866 18 167 18V19ZM1 11H0C0 15.9706 4.02944 20 9 20V19V18C5.13401 18 2 14.866 2 11H1ZM175.707 0.292893C175.317 -0.0976311 174.683 -0.0976311 174.293 0.292893L167.929 6.65685C167.538 7.04738 167.538 7.68054 167.929 8.07107C168.319 8.46159 168.953 8.46159 169.343 8.07107L175 2.41421L180.657 8.07107C181.047 8.46159 181.681 8.46159 182.071 8.07107C182.462 7.68054 182.462 7.04738 182.071 6.65685L175.707 0.292893Z" fill="#D0D5DD"/>
+            </svg>
+          </div>
+
+          <div className="p-5 rounded-lg w-[269px] bg-primary-50 flex flex-col gap-6">
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-x-2">
+                <Lightbulb05 className="size-[30px] shrink-0 text-primary-500" />
+                <span className="text-base leading-[30px] font-semibold capitalize text-gray-800">
+                  Tip
+                </span>
+              </div>
+              <p className="text-xs leading-normal text-black/60 tracking-[0.12px]">
+                A great title gives your audience a reason to open your project
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {/* Video player */}
+              <div className="w-full h-[141px] rounded-lg relative overflow-hidden cursor-pointer group/video">
+                <div className="absolute inset-0 bg-black/56 rounded-lg z-[1]" />
+                <div className="absolute inset-0 bg-black/10 rounded-lg z-[2]" />
+                <svg className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[58px] z-10 transition duration-300 group-hover/video:scale-110" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="24" cy="24" r="24" fill="white" fillOpacity="0.3" />
+                  <circle cx="24" cy="24" r="18" fill="white" fillOpacity="0.4" />
+                  <path d="M20 16L32 24L20 32V16Z" fill="white" />
+                </svg>
+                <div className="absolute bottom-[9.2px] right-[9.5px] bg-gray-500 rounded-[3.22px] px-[4.6px] py-[4.6px] z-10">
+                  <span className="text-xs font-normal leading-[24.7px] text-white text-center">01:20</span>
+                </div>
+                <div className="absolute left-[12.4px] top-[47.6px] flex flex-col gap-1 z-10">
+                  <span className="text-xs font-medium leading-[27.6px] text-white/80">Part 1</span>
+                  <span className="text-[15.3px] font-medium leading-[36.8px] text-white">How to get started</span>
+                </div>
+              </div>
+
+              {/* Tip card 1 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Focus on purpose
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Use impactful keywords that communicate value and make it easy to identify in a list of projects.
+                  </p>
+                </div>
+              </div>
+
+              {/* Tip card 2 */}
+              <div className="p-4 rounded-lg border border-gray-300 bg-gray-25">
+                <div className="flex items-start gap-x-3">
+                  <CheckCircle className="size-5 shrink-0 text-primary-500" />
+                  <span className="text-sm leading-5 font-semibold text-gray-700 truncate">
+                    Keep it short and sweet
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="text-sm leading-normal font-normal text-gray-500">
+                    Try to trim your project title to be less than 6 words
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* AI FAQ Generation Modal (copied from my-listings inline edit mode) */}
+      <Dialog
+        open={aiFaqDialogOpen}
+        onOpenChange={setAiFaqDialogOpen}
+      >
+        <DialogContent className="max-w-[640px] p-0 gap-0">
+          <div className="px-6 pt-6 pb-4 border-b border-gray-200 flex items-start justify-between">
+            <div className="flex items-start gap-x-2">
+              <Stars02 className="size-5 text-dark-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <DialogTitle>
+                  AI Generated FAQ&apos;s
+                </DialogTitle>
+                <DialogDescription className="mt-1">
+                  Review and adjust your
+                  AI-generated FAQ&apos;s as needed
+                </DialogDescription>
+              </div>
+            </div>
+            <Badge
+              className="rounded-full bg-success-50 text-success-600 shrink-0"
+              visual="gray"
+            >
+              {faqAddedCount} of{" "}
+              {faqSuggestions.length} added
+            </Badge>
+          </div>
+
+          {faqRemainingSlots <
+            faqSuggestions.filter((s) => !s.added)
+              .length && (
+            <p className="px-6 pt-4 text-sm text-error-500">
+              You currently have{" "}
+              {faqItems.length} FAQ&apos;s
+              in total, so you can only add{" "}
+              {faqRemainingSlots} more
+            </p>
+          )}
+
+          <ScrollArea
+            scrollBar={
+              <ScrollBar className="w-4 p-1" />
+            }
+            viewportClassName="max-h-[420px]"
+          >
+          <div className="px-6 py-4 space-y-3">
+            {faqGenLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-12">
+                <Spinner
+                  size={32}
+                  strokeWidth={4}
+                />
+                <p className="text-sm text-gray-500">
+                  Generating suggestions…
+                </p>
+              </div>
+            ) : faqGenError ? (
+              <div className="py-8 text-center">
+                <p className="text-sm text-error-500">
+                  Suggestions couldn&apos;t be
+                  loaded. Try again.
+                </p>
+                <Button
+                  variant="outlined"
+                  visual="gray"
+                  size="sm"
+                  className="mt-3"
+                  onClick={runFaqGeneration}
+                >
+                  <Stars02 className="size-[15px]" />
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              faqSuggestions.map((s, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "group/sfaq relative rounded-lg border p-4 transition",
+                    s.added
+                      ? "border-success-300 bg-success-25"
+                      : "border-gray-200 bg-white hover:bg-gray-50"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-x-3">
+                    <h3
+                      className={cn(
+                        "text-sm font-bold",
+                        s.added
+                          ? "text-success-700"
+                          : "text-dark-blue-400"
+                      )}
+                    >
+                      {s.question}
+                    </h3>
+                    {s.added ? (
+                      <span className="shrink-0 inline-flex items-center gap-x-1 text-sm font-medium text-success-600">
+                        <Check className="size-4" />
+                        Added
+                      </span>
+                    ) : (
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="shrink-0 opacity-0 group-hover/sfaq:opacity-100 transition"
+                        onClick={() =>
+                          insertFaqSuggestion(i)
+                        }
+                      >
+                        <Upload01 className="size-[15px]" />
+                        Insert
+                      </Button>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-1 text-sm font-light",
+                      s.added
+                        ? "text-success-700"
+                        : "text-dark-blue-400"
+                    )}
+                  >
+                    {s.answer}
+                  </p>
+                  {s.added && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeFaqSuggestion(i)
+                      }
+                      className="absolute bottom-3 right-3 size-9 rounded-full border border-success-300 bg-white text-success-600 hover:border-error-300 hover:text-error-500 inline-flex items-center justify-center opacity-0 group-hover/sfaq:opacity-100 transition"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          </ScrollArea>
+
+          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={runFaqGeneration}
+              disabled={faqGenLoading}
+            >
+              <Stars02 className="size-[15px]" />
+              Regenerate
+            </Button>
+            <Button
+              onClick={insertAllFaqSuggestions}
+              disabled={
+                faqGenLoading ||
+                faqRemainingSlots === 0 ||
+                faqSuggestions.every((s) => s.added)
+              }
+            >
+              Insert All ({faqSuggestions.length})
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Skills Modal (based on talent profile SkillsDialog, adapted for project roles) */}
+      <Dialog open={editSkillsOpen} onOpenChange={setEditSkillsOpen}>
+        <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+          <DialogTitle className="sr-only">Skills</DialogTitle>
+          <ScrollArea
+            scrollBar={<ScrollBar className="w-4 p-1" />}
+            className="p-6"
+            viewportClassName="max-h-[calc(100vh-10rem)]"
+          >
+            <div className="flex items-start gap-x-2">
+              <div className="flex-auto">
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                    Skills
+                  </h1>
+                  {editSkillsRole && (
+                    <Badge
+                      className="bg-gray-50 border border-gray-300 rounded-[4px] px-[9px] py-[2px] h-[22px] text-xs font-medium text-gray-700"
+                    >
+                      {editSkillsRole}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm font-light text-dark-blue-400">
+                  Edit Skills to improve how users are matched to your project.
+                </p>
+              </div>
+
+              <DialogClose type="button" asChild>
+                <IconButton variant="ghost" visual="gray">
+                  <X className="size-5" />
+                </IconButton>
+              </DialogClose>
+            </div>
+
+            <Combobox
+              multiple
+              className="mt-8 w-auto"
+              value={editSkillsList}
+              onChange={(val: typeof editSkillsList) => {
+                const capped = val.slice(0, MAX_SKILLS)
+                const unique = capped.filter(
+                  (s, i, arr) =>
+                    arr.findIndex(
+                      (x) => x.name.toLowerCase() === s.name.toLowerCase()
+                    ) === i
+                )
+                setEditSkillsList(unique)
+                setSkillQuery("")
+              }}
+              disabled={editSkillsList.length >= MAX_SKILLS}
+            >
+              <ComboboxTrigger>
+                <ComboboxInput
+                  size="lg"
+                  displayValue={() => skillQuery}
+                  onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSkillQuery(event.target.value)}
+                  placeholder="Search for skills"
+                  disabled={editSkillsList.length >= MAX_SKILLS}
+                />
+                <ComboboxButton>
+                  <SearchMd className="h-4 w-4" />
+                </ComboboxButton>
+              </ComboboxTrigger>
+              <ScaleOutIn afterLeave={() => setSkillQuery("")}>
+                <ComboboxOptions>
+                  <ScrollArea viewportClassName="max-h-[304px]">
+                    {skillResults
+                      .filter(
+                        (skill) =>
+                          !editSkillsList.some(
+                            (s) =>
+                              s.name.toLowerCase() === skill.name.toLowerCase()
+                          )
+                      )
+                      .map((skill) => (
+                        <ComboboxOption
+                          key={`${skill.id}-${skill.name}`}
+                          value={skill}
+                        >
+                          {skill.name}
+                        </ComboboxOption>
+                      ))}
+                    {(() => {
+                      const q = skillQuery.trim().toLowerCase()
+                      const alreadySelected = editSkillsList.some(
+                        (s) => s.name.toLowerCase() === q
+                      )
+                      const visibleOptions = skillResults.filter(
+                        (skill) =>
+                          !editSkillsList.some(
+                            (s) =>
+                              s.name.toLowerCase() === skill.name.toLowerCase()
+                          )
+                      )
+                      if (!q || alreadySelected || visibleOptions.length > 0)
+                        return null
+                      return (
+                        <ComboboxOption
+                          value={{
+                            id: `custom-${skillQuery.trim()}`,
+                            name: skillQuery.trim(),
+                          }}
+                        >
+                          Add &ldquo;{skillQuery.trim()}&rdquo;
+                        </ComboboxOption>
+                      )
+                    })()}
+                  </ScrollArea>
+                </ComboboxOptions>
+              </ScaleOutIn>
+            </Combobox>
+
+            {editSkillsList.length >= MAX_SKILLS && (
+              <p
+                role="status"
+                aria-live="assertive"
+                className="mt-1.5 text-sm font-medium text-error-500"
+              >
+                You have reached the maximum limit of {MAX_SKILLS} skills.
+              </p>
+            )}
+
+            <div className="mt-3 flex gap-3 flex-wrap">
+              {editSkillsList.map((skill, index) => (
+                <Badge visual="primary" key={skill.id ?? skill.name}>
+                  {skill.name}
+                  <BadgeCloseButton
+                    type="button"
+                    onClick={() => removeEditSkill(index)}
+                  />
+                </Badge>
+              ))}
+            </div>
+          </ScrollArea>
+          <div className="py-4 px-6 flex items-center justify-between border-t border-gray-200 bg-gray-25 rounded-b-[12px]">
+            <DialogClose asChild>
+              <Button variant="link" visual="gray" className="opacity-50" type="button">
+                <X className="size-[15px]" />
+                Cancel
+              </Button>
+            </DialogClose>
+
+            <Button
+              disabled={!editSkillsHasChanges || editSkillsList.length === 0}
+              onClick={saveEditSkills}
+              className={cn(!editSkillsHasChanges && "opacity-50")}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </ScrollArea>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Requests sub-tab content (pixel-perfect from Figma node 13101:119543)
+// ---------------------------------------------------------------------------
+const SAMPLE_REQUESTS = [
+  {
+    id: "1",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/kevinpark.fe.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "2",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/lucasf.pm.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "3",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/andresilva.be.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+  {
+    id: "4",
+    name: "Jordan",
+    username: "jordan_dev",
+    avatar: "/avatars/dan.okoro.png",
+    roles: ["Frontend Engineer", "UI Developer"],
+    matchPercent: 92,
+    requestedAgo: "8 minutes ago",
+    skills: ["React", "TypeScript", "CSS"],
+    moreSkills: 2,
+    quote: "I've rolled out 4 design systems and helped move our Figma tokens to React in my last job.",
+  },
+]
+
+const RequestsContent = () => {
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Manage Requests
+            </h1>
+            <p className="text-sm leading-5 font-normal text-gray-500">
+              Review join requests, approve contributors, and manage your project team.
+            </p>
+          </div>
+
+          {/* Requests container */}
+          <div className="bg-white border border-gray-200 rounded-lg shadow-[0px_1px_5px_0px_rgba(16,24,40,0.02)] overflow-clip isolate">
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-center border-b border-gray-200 rounded-t-lg">
+              <div className="flex flex-1 min-w-0 gap-4 items-center">
+                <p className="shrink-0 text-dark-blue-400 leading-9 whitespace-pre">
+                  <span className="text-base font-semibold">Requests</span>
+                  <span className="text-xs font-normal">  </span>
+                  <span className="text-xs font-normal">&bull; {SAMPLE_REQUESTS.length} people</span>
+                </p>
+
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="relative w-[284px]">
+                  <SearchMd className="absolute left-[10px] top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+                  <Input
+                    placeholder="Search by name or username"
+                    className="pl-[34px] pr-3 py-[10px] h-9 rounded-[5px] shadow-xs"
+                  />
+                </div>
+
+                <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                  <FilterLines className="size-[15px]" />
+                  Filters
+                </Button>
+
+                <span className="flex items-center gap-2 text-sm font-semibold leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                  Newest First
+                  <ArrowDown className="size-4" />
+                </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Request rows */}
+            {SAMPLE_REQUESTS.map((req, idx) => (
+              <div
+                key={req.id + idx}
+                className={cn(
+                  "px-6 py-4 flex items-start gap-10",
+                  idx > 0 && "border-t border-gray-200"
+                )}
+              >
+                {/* Avatar + Content group */}
+                <div className="flex-1 min-w-0 flex items-start gap-3">
+                  {/* Avatar */}
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarImage src={req.avatar || undefined} alt={req.name} className="object-cover" />
+                      <AvatarFallback>{req.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0 flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-0.5 flex-wrap">
+                        <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                          {req.name}
+                        </span>
+                        <span className="text-sm font-light text-gray-500">
+                          @{req.username}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {req.roles.map((role) => (
+                            <Badge key={role} visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                              {role}
+                            </Badge>
+                          ))}
+                          <Badge visual="gray" size="sm" className="rounded-[16px] bg-success-50 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-success-700 mix-blend-multiply">
+                            {req.matchPercent}% Match
+                          </Badge>
+                          <span className="text-xs font-medium leading-[18px] text-gray-400">
+                            Requested {req.requestedAgo}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {req.skills.map((skill) => (
+                            <Badge key={skill} visual="gray" size="sm" className="rounded-[100px] bg-gray-100 border-0 px-[7px] py-1 text-xs font-medium text-gray-700 flex items-center gap-1">
+                              <Check className="size-[15px] text-primary-500" />
+                              {skill}
+                            </Badge>
+                          ))}
+                          {req.moreSkills > 0 && (
+                            <span className="text-xs font-semibold leading-[18px] text-dark-blue-400">
+                              + {req.moreSkills} more...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-xs font-normal leading-4 text-gray-500 not-italic">
+                      &ldquo;{req.quote}&rdquo;
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 shrink-0">
+                  <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                    View Request
+                  </Button>
+                  <IconButton variant="ghost" visual="gray" className="h-9 p-[10px] rounded-full opacity-50 hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="size-[15px]" />
+                  </IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invites sub-tab content (pixel-perfect from Figma nodes 13101:119745 + 13109:182550)
+// ---------------------------------------------------------------------------
+const SAMPLE_PENDING_INVITES = [
+  {
+    id: "1",
+    email: "david.park@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Pending" as const,
+    role: "Viewer",
+    sentAgo: "Sent 3 days ago",
+  },
+  {
+    id: "2",
+    email: "lisa.wang@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Pending" as const,
+    role: "Viewer",
+    sentAgo: "Sent 7 days ago",
+  },
+  {
+    id: "3",
+    email: "lisa.wang@example.com",
+    username: "jordan_dev",
+    name: "",
+    avatar: "/avatars/jamesokafor.png",
+    status: "Pending" as const,
+    role: "Member",
+    sentAgo: "Sent 7 days ago",
+    secondarySentAgo: "Sent 12 days ago",
+  },
+]
+
+const SAMPLE_INVITE_HISTORY = [
+  {
+    id: "1",
+    email: "james.miller@example.com",
+    username: "",
+    name: "",
+    avatar: "",
+    status: "Expired" as const,
+    role: "Viewer",
+    sentAgo: "Sent 2 months ago",
+  },
+  {
+    id: "2",
+    email: "",
+    username: "ux23isee",
+    name: "Sarah",
+    avatar: "/avatars/bella.ux.png",
+    status: "Accepted" as const,
+    role: "Member",
+    jobTitle: "Full Stack Designer",
+    sentAgo: "Sent 2 months ago",
+  },
+]
+
+const InvitesContent = () => {
+  const [inviteTab, setInviteTab] = useState("pending-invites")
+
+  const currentData = inviteTab === "pending-invites" ? SAMPLE_PENDING_INVITES : SAMPLE_INVITE_HISTORY
+  const description = inviteTab === "pending-invites"
+    ? "Manage and invite contributors to your project."
+    : "View and manage your team's invite history."
+
+  return (
+    <ScrollArea
+      className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
+      viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
+      scrollBar={<ScrollBar className="w-4 p-1" />}
+    >
+      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px]">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-8">
+            <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
+              Manage Invites
+            </h1>
+
+            {/* Tabs */}
+            <Tabs value={inviteTab} onValueChange={setInviteTab}>
+              <TabsList className="justify-start px-0 pt-0 gap-4 border-b-0">
+                <TabsTrigger value="pending-invites" className="px-1 pb-[11px] pt-px capitalize">Pending Invites</TabsTrigger>
+                <TabsTrigger value="invite-history" className="px-1 pb-[11px] pt-px capitalize">Invite History</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          <div
+            key={inviteTab}
+            className="flex flex-col gap-6"
+            style={{ animation: "editStepFadeIn 300ms linear forwards" }}
+          >
+          <div className="flex items-end justify-between gap-6">
+            <p className="flex-1 text-sm leading-5 font-normal text-gray-500">
+              {description}
+            </p>
+            <div className="relative shrink-0 w-[284px]">
+              <SearchMd className="absolute left-[10px] top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+              <Input
+                placeholder="Search by name or username"
+                className="pl-[34px] pr-3 py-[10px] h-9 rounded-[5px] shadow-xs"
+              />
+            </div>
+          </div>
+
+          {/* Invites container */}
+          <div className="bg-white border border-gray-200 rounded-lg drop-shadow-[0px_1px_2.5px_rgba(16,24,40,0.02)] overflow-clip">
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-gray-200 rounded-t-lg">
+              <div className="flex items-center gap-8">
+                <div className="flex items-center gap-3">
+                  <span className="text-base font-semibold leading-5 text-dark-blue-400">
+                    {inviteTab === "pending-invites" ? "Pending Invites" : "Invite History"}
+                  </span>
+                  <div className="size-1 rounded-full bg-dark-blue-400" />
+                  <span className="text-xs font-normal text-dark-blue-400">
+                    {currentData.length} people
+                  </span>
+                </div>
+
+                <span className="flex items-center gap-2 px-[14px] py-2 rounded-[5px] text-sm font-semibold leading-5 text-gray-500 cursor-pointer transition duration-300 hover:opacity-70">
+                  Newest First
+                  <ArrowDown className="size-4" />
+                </span>
+              </div>
+
+              <Button
+                className="h-9 px-[14px] py-2 rounded-[5px] bg-primary-500/15 text-primary-500 text-sm font-semibold leading-5 capitalize border-0 shadow-none hover:bg-primary-500/25"
+              >
+                <Plus className="size-[15px]" />
+                Invite Member
+              </Button>
+            </div>
+
+            {/* Invite rows */}
+            {currentData.map((invite, idx) => (
+              <div
+                key={invite.id + idx}
+                className={cn(
+                  "h-20 px-6 py-4 flex items-center gap-3 overflow-clip",
+                  idx > 0 && "border-t border-gray-200"
+                )}
+              >
+                {/* Avatar */}
+                {invite.avatar && invite.avatar.trim() !== "" ? (
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarImage src={invite.avatar} alt={invite.name || invite.email} className="object-cover" />
+                      <AvatarFallback>{(invite.name || invite.email).charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                ) : invite.name ? (
+                  <div className="shrink-0 size-[46px] rounded-full overflow-hidden relative">
+                    <Avatar className="size-full">
+                      <AvatarFallback>{invite.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                ) : (
+                  <div className="shrink-0 size-[46px] rounded-full border border-dashed border-gray-400 flex items-center justify-center px-[11px] py-px">
+                    <Mail01 className="size-[14px] text-gray-400" />
+                  </div>
+                )}
+
+                {/* Content */}
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold leading-5 text-dark-blue-400">
+                      {invite.name || invite.email}
+                    </span>
+                    {invite.username && (
+                      <span className="text-sm font-light text-gray-500">
+                        @{invite.username}
+                      </span>
+                    )}
+                    {invite.status === "Pending" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                        <Clock className="size-3" />
+                        Pending
+                      </Badge>
+                    )}
+                    {invite.status === "Expired" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-gray-100 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-gray-700 mix-blend-multiply">
+                        <Clock className="size-3" />
+                        Expired
+                      </Badge>
+                    )}
+                    {invite.status === "Accepted" && (
+                      <Badge visual="gray" size="sm" className="rounded-[16px] bg-success-50 border-0 pl-1.5 pr-2 py-[2px] text-xs font-medium leading-[18px] text-success-700 mix-blend-multiply">
+                        <Check className="size-3" />
+                        Accepted
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap gap-y-1.5">
+                    {(invite as any).jobTitle ? (
+                      <span className="text-sm font-normal leading-5 text-dark-blue-400">
+                        {(invite as any).jobTitle}
+                      </span>
+                    ) : (invite as any).secondarySentAgo ? (
+                      <span className="text-sm font-normal leading-5 text-dark-blue-400">
+                        {invite.sentAgo}
+                      </span>
+                    ) : null}
+                    <Badge
+                      visual="primary"
+                      size="sm"
+                      className="rounded-[16px] bg-primary-50 border-0 py-[2px] px-2 text-xs font-medium leading-[18px] text-primary-500 mix-blend-multiply"
+                    >
+                      {invite.role}
+                    </Badge>
+                    <span className="text-xs font-medium leading-[18px] text-gray-400">
+                      {(invite as any).secondarySentAgo || invite.sentAgo}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-[9px] shrink-0">
+                  {invite.status !== "Accepted" && (
+                    <Button visual="gray" variant="outlined" className="bg-white h-9 px-[14px] py-2 shadow-xs">
+                      Resend Invitation
+                    </Button>
+                  )}
+                  <IconButton variant="ghost" visual="gray" className="h-9 p-[10px] rounded-full opacity-50 hover:opacity-100 transition-opacity">
+                    <MoreHorizontal className="size-[15px]" />
+                  </IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+}
+
 const Team = () => {
   const [members, setMembers] = React.useState<any[]>([])
   React.useEffect(() => {
@@ -7619,6 +10130,7 @@ const Team = () => {
     draftProjectId,
     projectScopeMethods,
     teamSubTab,
+    publishAttempted,
   } = useProjectScopeContext()
   const inviteWindow = useInviteWindowStore()
   const [addQuery, setAddQuery] = React.useState("")
@@ -7665,6 +10177,53 @@ const Team = () => {
         .toLowerCase()
         .includes(addQuery.trim().toLowerCase())
   )
+
+  // G7: who the owner is told about. The roster is saved through endpoints that
+  // gate every NEW person on verification and answer with one result per entry; a
+  // person who is not added never fails the save, so each result is read here, the
+  // owner is told who was left out (neutral wording, never why), and the person is
+  // taken back out of the roster the page is showing. Failures are never discarded.
+  const memberLabelFor = (userId: string | null, index: number) => {
+    const m = members.find((x: any) => String(x.userId || x.id) === String(userId))
+    return m?.firstName || m?.username || m?.email || (userId ? "this person" : `entry ${index + 1}`)
+  }
+  const reportedMemberProblems = React.useRef<Map<string, number>>(new Map())
+  const reportMemberResults = (
+    results: MemberAddResult[],
+    announceAlreadyMember: Set<string> = new Set()
+  ) => {
+    const problems = notAdded(results, memberLabelFor, announceAlreadyMember)
+    if (problems.length === 0) return
+    const drop = idsToDrop(problems)
+    if (drop.size > 0) {
+      setTeamMemberIds((prev) => prev.filter((id) => !drop.has(String(id))))
+    }
+    // The same person can be reported by both saves of one change; say it once.
+    const now = Date.now()
+    for (const p of problems) {
+      const key = `${p.kind}:${p.userId ?? p.index}`
+      const last = reportedMemberProblems.current.get(key)
+      if (last && now - last < 5000) continue
+      reportedMemberProblems.current.set(key, now)
+      wizardToast({ title: p.message, variant: "destructive" })
+    }
+  }
+  const reportMemberSaveFailure = (err: unknown, revertTo?: string[]) => {
+    // Only the gate being unavailable is announced here; every other failure keeps
+    // the autosave's existing quiet behaviour.
+    if (!isGateUnavailable(err)) return
+    // Only when it actually differs, so an outage cannot make the autosave retry in a loop.
+    if (revertTo) {
+      setTeamMemberIds((prev) =>
+        [...prev].sort().join(",") === [...revertTo].sort().join(",") ? prev : revertTo
+      )
+    }
+    const now = Date.now()
+    const last = reportedMemberProblems.current.get("gate-unavailable")
+    if (last && now - last < 5000) return
+    reportedMemberProblems.current.set("gate-unavailable", now)
+    wizardToast({ title: TEAM_SAVE_UNAVAILABLE_MESSAGE, variant: "destructive" })
+  }
 
   const wizardHydratedRef = React.useRef(false)
   React.useEffect(() => {
@@ -7715,18 +10274,33 @@ const Team = () => {
     })
     if (payload.length === 0) return
     const t = setTimeout(() => {
-      ProjectAPI.SaveProjectMembers(draftProjectId, payload).catch(() => {})
+      ProjectAPI.SaveProjectMembers(draftProjectId, payload)
+        .then((res) => reportMemberResults(readSaveMembersResponse(res).results))
+        .catch((err) => reportMemberSaveFailure(err, lastSavedTeamIds.current))
     }, 800)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardRoles, wizardStatus, wizardLeadId, wizardLeadLabel, teamMemberIds])
 
+  // The roster the server last accepted, so an unavailable gate can put the page
+  // back instead of leaving people on screen who were not actually added.
+  const lastSavedTeamIds = React.useRef<string[]>(teamMemberIds)
   const persistTeam = (next: string[]) => {
+    const previous = teamMemberIds
     setTeamMemberIds(next)
     if (draftProjectId) {
+      const justChosen = new Set(next.filter((id) => !previous.includes(id)).map(String))
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         teamMemberIds: next,
-      } as any).catch(() => {})
+      } as any)
+        .then((res) => {
+          const results = readDraftMemberResults(res)
+          lastSavedTeamIds.current = next.filter(
+            (id) => !results.some((r) => r.userId === String(id) && !r.added && r.status !== "already_member")
+          )
+          reportMemberResults(results, justChosen)
+        })
+        .catch((err) => reportMemberSaveFailure(err, previous))
     }
   }
   // QA-180/PMCM-399: same persistence shape as persistTeam above, for the
@@ -7775,14 +10349,28 @@ const Team = () => {
   }
 
   if (teamSubTab === "openRoles") {
-    return <OpenRolesContent />
+    return <OpenRolesContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "applicationQuestions") {
+    return <ApplicationQuestionsContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "requests") {
+    return <RequestsContent key={teamSubTab} />
+  }
+
+  if (teamSubTab === "invites") {
+    return <InvitesContent key={teamSubTab} />
   }
 
   if (teamSubTab !== "members") {
     const subLabel = TEAM_SUB_TAB_LABELS[teamSubTab as TeamSubTab] ?? teamSubTab
     return (
       <ScrollArea
+        key={teamSubTab}
         className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+        style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
         viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
@@ -7815,11 +10403,16 @@ const Team = () => {
 
   return (
     <ScrollArea
+      key={teamSubTab}
       className="h-[calc(theme(size.full)-70px)] overflow-x-hidden"
+      style={{ animation: TEAM_SUB_TAB_ENTRY_ANIMATION }}
       viewportClassName="[&>div]:!block [&>div]:w-full [&>div]:min-w-0 [&>div]:max-w-full"
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
-      <div className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]">
+      <div
+        className="py-10 px-5 md:px-10 min-[1024px]:py-[50px] min-[1024px]:px-[75px] flex flex-col min-[1024px]:flex-row gap-y-10 min-[1024px]:gap-x-[41.45px]"
+        id="publish-project-team-members-field"
+      >
         <div className="flex-auto min-w-0">
           <h1 className="text-xl leading-[30px] font-semibold text-dark-blue-400">
             Members
@@ -7829,6 +10422,17 @@ const Team = () => {
             permissions for Project Title. Only an existing team member can be
             made the project lead. Read more about roles and permissions.
           </p>
+
+          {/* PMCM-253 follow-up: practically unreachable (the account
+          owner always satisfies this check once signed in — see
+          sectionValidity's identical condition), kept for defensiveness
+          since Team has no RHF form to otherwise surface this on. */}
+          {!(teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id)) &&
+          publishAttempted ? (
+            <ErrorMessage size="sm" className="mt-2">
+              Add at least 1 team member to publish.
+            </ErrorMessage>
+          ) : null}
 
           {/* Project Owner */}
           <div className="mt-6">
@@ -8518,67 +11122,67 @@ const SortableFaqItem = ({
       value={id}
       className="rounded-lg border border-gray-200 bg-white"
     >
-      <AccordionTrigger className="w-full p-4 flex items-center gap-3 [&[data-state=open]_.closed-icons]:hidden [&[data-state=closed]_.open-icons]:hidden [&[data-state=open]_.closed-text]:hidden [&[data-state=open]_.open-text]:inline">
-        <button
-          type="button"
-          className="cursor-grab text-gray-400 hover:text-gray-600"
-          onClick={(e) => e.stopPropagation()}
+      <div className="flex items-center gap-3 p-4 [&:has([data-state=open])_.closed-icons]:hidden [&:has([data-state=closed])_.open-icons]:hidden [&:has([data-state=open])_.closed-text]:hidden [&:has([data-state=open])_.open-text]:inline">
+        <div
+          className="cursor-grab text-gray-400 hover:text-gray-600 shrink-0"
           {...attributes}
           {...listeners}
         >
           <GripVertical2 />
-        </button>
-        <div className="min-w-0 flex-1 text-left">
-          <span className="text-sm font-bold text-dark-blue-400">
-            Question {index + 1}
-            <span className="closed-text">:</span>
-          </span>
-          <span className="closed-text"> </span>
-          <span className="closed-text text-sm text-dark-blue-400">
-            {faq.q}
-          </span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="open-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Check className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <span className="closed-icons">
-            <IconButton
-              asChild
-              variant="ghost"
-              visual="gray"
-              size="sm"
-              className="rounded-full text-gray-500 hover:text-gray-800"
-            >
-              <span>
-                <Edit03 className="size-4" />
-              </span>
-            </IconButton>
-          </span>
-          <IconButton
-            variant="ghost"
-            visual="gray"
-            size="sm"
-            className="rounded-full text-gray-500 hover:text-gray-800"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(id)
-            }}
-          >
-            <Trash2 className="size-4" />
-          </IconButton>
-        </div>
-      </AccordionTrigger>
+        <AccordionTrigger className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="min-w-0 flex-1 text-left">
+            <span className="text-sm font-bold text-dark-blue-400">
+              Question {index + 1}
+              <span className="closed-text">:</span>
+            </span>
+            <span className="closed-text"> </span>
+            <span className="closed-text text-sm text-dark-blue-400">
+              {faq.q}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="open-icons">
+              <IconButton
+                asChild
+                variant="ghost"
+                visual="gray"
+                size="sm"
+                className="rounded-full text-gray-500 hover:text-gray-800"
+              >
+                <span>
+                  <Check className="size-4" />
+                </span>
+              </IconButton>
+            </span>
+            <span className="closed-icons">
+              <IconButton
+                asChild
+                variant="ghost"
+                visual="gray"
+                size="sm"
+                className="rounded-full text-gray-500 hover:text-gray-800"
+              >
+                <span>
+                  <Edit03 className="size-4" />
+                </span>
+              </IconButton>
+            </span>
+          </div>
+        </AccordionTrigger>
+        <IconButton
+          variant="ghost"
+          visual="gray"
+          size="sm"
+          className="rounded-full text-gray-500 hover:text-gray-800 shrink-0"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(id)
+          }}
+        >
+          <Trash2 className="size-4" />
+        </IconButton>
+      </div>
       <DisclosureContent className="px-4 pb-4">
         <p className="text-sm font-light text-dark-blue-400">
           Make this clear and concise, this is what customers will see first.
@@ -8875,12 +11479,14 @@ const Questions = ({
           <RadixTabs.Root defaultValue="FAQs">
             <RadixTabs.List className="inline-flex items-end gap-4 border-b border-b-gray-200 w-full">
               <RadixTabs.Trigger
+                id="publish-project-faqs-field"
                 value="FAQs"
                 className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
               >
                 FAQ&apos;s
               </RadixTabs.Trigger>
               <RadixTabs.Trigger
+                id="publish-project-recent-questions-field"
                 value="RecentQuestions"
                 className="inline-flex items-center justify-center px-1 pb-2 pt-px text-sm font-semibold text-gray-500 data-[state=active]:text-primary-500 border-b-2 border-transparent data-[state=active]:border-primary-500 focus-visible:outline-none"
               >
@@ -9131,7 +11737,6 @@ const Questions = ({
               <Tabs
                 value={recentQTab}
                 onValueChange={setRecentQTab}
-                unanimated
                 className="mt-4"
               >
                 <TabsList className="justify-start border-b border-gray-200 px-0 pt-0">
@@ -9385,6 +11990,28 @@ function PublishProject({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { toast } = useToast()
+  const { user, openAuthModal } = useAuth()
+  // PMCM-261/AC3: this wizard has no auth-prompt mechanism of its own
+  // (unlike project-details' promptSignIn, PMCM-402/PMCM-260) — a 401 on
+  // publish/autosave previously fell through to generic/leaky error
+  // handling with no way to resume. Open the modal in place (never
+  // router.push("/sign-in")) and queue the retry, same local
+  // ref-resume pattern as my-listings/project-details.
+  const pendingSessionActionRef = useRef<(() => void) | null>(null)
+  const promptSignInToRetry = useCallback(
+    (retry: () => void) => {
+      pendingSessionActionRef.current = retry
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  useEffect(() => {
+    if (user?.id && pendingSessionActionRef.current) {
+      const action = pendingSessionActionRef.current
+      pendingSessionActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const handledCheckoutStepRef = useRef(false)
 
   useEffect(() => {
@@ -9402,17 +12029,65 @@ function PublishProject({
     })
   }, [pathname, router, searchParams, setStep])
 
+  // PMCM-253 follow-up: setStep(n) unmounts the previous step's whole
+  // subtree and mounts the new one (Step in components/ui/stepper renders
+  // `active ? children : null`) — any trigger()/setFocus/scrollIntoView
+  // aimed at the new step's fields has to run AFTER that mount, not in the
+  // same tick as setStep. pendingStepFocusRef holds what to run once
+  // currentStep catches up; stepFocusToken always changes on every publish
+  // attempt (even re-clicking Publish while already sitting on the target
+  // step, where currentStep itself never changes) so the effect below
+  // reliably fires on the very first click, not just the second.
+  const pendingStepFocusRef = useRef<{ step: number; run: () => void } | null>(
+    null
+  )
+  const [stepFocusToken, setStepFocusToken] = useState(0)
+  const scheduleStepFocus = useCallback((step: number, run: () => void) => {
+    pendingStepFocusRef.current = { step, run }
+    setStepFocusToken((token) => token + 1)
+  }, [])
+  useEffect(() => {
+    const pending = pendingStepFocusRef.current
+    if (!pending || pending.step !== currentStep) return
+    pendingStepFocusRef.current = null
+    pending.run()
+  }, [currentStep, stepFocusToken])
+
   const stepperValue = useMemo(
     () => ({ nextStep, prevStep, setStep, toggleStepValidation }),
     [nextStep, prevStep, setStep, toggleStepValidation]
   )
+  // PMCM-253/E1: true forever once a section has been valid at least once
+  // this session — lets a since-cleared required field in an
+  // already-finished section drop straight to "error" instead of quietly
+  // back to "incomplete".
+  const [everCompletedSteps, setEverCompletedSteps] = useState<boolean[]>([
+    false,
+    false,
+    false,
+    false,
+    false,
+  ])
+  // PMCM-253 follow-up (product direction): this is an edit system, not a
+  // step-by-step wizard — every section is always open, nothing is ever
+  // locked. The shared useStepper hook (utils/hooks.ts, shared by
+  // onboarding/client, onboarding/talent, job-listing, publish-project, and
+  // security-settings.tsx) still runs its own disabled cascade internally
+  // on an invalid step — left untouched since other flows depend on it —
+  // so `disabled` is hardcoded false here on every step before it reaches
+  // context, instead of changing the hook itself. Every existing reader of
+  // stepsState[index].disabled (this sidebar's click handling, the
+  // PMCM-252 sub-items) now always sees an unlocked section.
   const stepperRootValue = useMemo(
     () => ({
       currentStep,
       hasNextStep,
       hasPreviousStep,
       totalSteps,
-      stepsState,
+      stepsState: stepsState.map((step) => ({
+        ...step,
+        disabled: false,
+      })),
     }),
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
@@ -9449,26 +12124,95 @@ function PublishProject({
     useState<SubmissionOutcome | null>(null)
   const [isTaskSearchDialogOpen, setTaskSearchDialogOpen] = useState(false)
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
+  const [isExistingPublishedListing, setIsExistingPublishedListing] =
+    useState(false)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
   const [pricingBudgetCents, setPricingBudgetCents] = useState(0)
+  // PMCM-258/AC5: the seller's saved display-period preference, hydrated
+  // once from the draft below and read (not written) by ProjectScope via
+  // context — same read-only-from-context shape as pricingBudgetCents.
+  const [initialPricingPeriod, setInitialPricingPeriod] = useState<
+    string | null
+  >(null)
   const [scopeType, setScopeType] = useState<ScopeType>("project")
   const [isPublishing, setIsPublishing] = useState(false)
   const [publishAttempted, setPublishAttempted] = useState(false)
+
+  // PMCM-253 follow-up (product decision): Publish with an incomplete
+  // section no longer toasts — it opens that section (and, for Project
+  // Info/Questions, the sub-tab the first invalid field actually lives
+  // on), shows every inline field error in it (RHF trigger()), and
+  // scrolls/focuses the first invalid field. Runs once the target step is
+  // confirmed mounted (see scheduleStepFocus above).
+  const runPublishValidationJump = async (step: number) => {
+    if (step === 0) {
+      await projectInfoMethods.trigger()
+      const firstInvalidTarget = PROJECT_INFO_VALIDATION_TARGETS.find(
+        ({ name }) => projectInfoMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollProjectInfoField(projectInfoMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 1) {
+      await mediaMethods.trigger()
+      const firstInvalidTarget = MEDIA_VALIDATION_TARGETS.find(
+        ({ name }) => mediaMethods.getFieldState(name).invalid
+      )
+      if (firstInvalidTarget) {
+        focusAndScrollMediaField(mediaMethods, firstInvalidTarget)
+      }
+      return
+    }
+    if (step === 2) {
+      // Project Scope isn't RHF — its own inline error (gated on
+      // publishAttempted, same as every other non-RHF section here) is
+      // already reactive to the live phases/tasks state; just bring it
+      // into view.
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-scope-table-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 3) {
+      // Team's validity (teamMemberIds.length > 0 || currentUser id) is
+      // effectively always true once signed in — practically unreachable,
+      // but handled defensively. "members" is the one sub-tab the
+      // member-count error can actually render on.
+      setTeamSubTab("members")
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("publish-project-team-members-field")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" })
+      })
+      return
+    }
+    if (step === 4) {
+      // Questions' own inline error ("Please add at least 3 FAQs before
+      // publishing.") is already reactive to publishAttempted — just
+      // switch to the FAQ tab (scrollToWizardField clicks the trigger
+      // since it's a real <button>, same as every other sidebar sub-item
+      // target) and scroll to it.
+      scrollToWizardField("publish-project-faqs-field")
+    }
+  }
 
   const handlePublish = async () => {
     if (!draftProjectId || isPublishing) return
     setPublishAttempted(true)
     setFaqModerationError(null)
     setProjectInfoModerationError(null)
+    setMediaModerationError(null)
     if (firstInvalidStep !== null) {
-      setStep(firstInvalidStep)
-      if (firstInvalidStep === 0) await projectInfoMethods.trigger()
-      else if (firstInvalidStep === 1) await mediaMethods.trigger()
-      toast({
-        title: "Please complete all required sections before publishing.",
-        variant: "destructive",
+      const invalidStep = firstInvalidStep
+      setStep(invalidStep)
+      scheduleStepFocus(invalidStep, () => {
+        void runPublishValidationJump(invalidStep)
       })
       return
     }
@@ -9479,6 +12223,13 @@ function PublishProject({
       router.push("/my-listings")
     } catch (error: any) {
       console.error("Failed to publish project", error)
+      if (isUnauthorizedError(error)) {
+        // PMCM-261/AC3: queue through the ref (below), not `handlePublish`
+        // by name, to always resume with the freshest closure.
+        setIsPublishing(false)
+        promptSignInToRetry(() => handlePublishRef.current())
+        return
+      }
       const errorMessage =
         error?.response?.data?.reason ||
         error?.response?.data?.message ||
@@ -9500,40 +12251,76 @@ function PublishProject({
         "tags",
         "skills",
       ]
+      // PMCM-253 follow-up: a curated, field-tagged rejection already has
+      // an inline home (the setError calls above/below) — scroll to it
+      // and drop the toast instead of showing both. Only a genuinely
+      // generic/infra error (no field, no moderation category) still has
+      // nowhere inline to live, so it keeps the toast.
       if (field && projectInfoFields.includes(field)) {
         projectInfoMethods.setError(field as any, { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === field || t.name.startsWith(`${field}.`)
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
       } else if (field === "faqs") {
         setFaqModerationError(errorMessage)
         setStep(4)
+        scheduleStepFocus(4, () =>
+          scrollToWizardField("publish-project-faqs-field")
+        )
       } else if (errorType === "video_rejection") {
         mediaMethods.setError("featuredVideo", { message: errorMessage })
+        setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredVideo",
+            targetId: "publish-project-featured-video-field",
+          })
+        )
       } else if (errorType === "image_rejection") {
         mediaMethods.setError("featuredImages", { message: errorMessage })
+        setMediaModerationError(errorMessage)
         setStep(1)
+        scheduleStepFocus(1, () =>
+          focusAndScrollMediaField(mediaMethods, {
+            name: "featuredImages",
+            targetId: "publish-project-featured-images-field",
+          })
+        )
       } else if (errorType === "content_rejection") {
         projectInfoMethods.setError("fullDescription", { message: errorMessage })
         setProjectInfoModerationError(errorMessage)
         setStep(0)
+        const target = PROJECT_INFO_VALIDATION_TARGETS.find(
+          (t) => t.name === "fullDescription"
+        )
+        if (target) {
+          scheduleStepFocus(0, () =>
+            focusAndScrollProjectInfoField(projectInfoMethods, target)
+          )
+        }
+      } else {
+        // PMCM-261/X3: no field tag, no moderation category — a generic
+        // or infra failure with no inline home. toUserMessage keeps the
+        // raw backend message off the screen either way.
+        toast({
+          title: toUserMessage(error),
+          variant: "destructive",
+        })
       }
-
-      toast({
-        title:
-          errorType === "video_rejection"
-            ? `Project rejected: video violated moderation policy. ${errorMessage}`
-            : errorType === "image_rejection"
-              ? `Project rejected: image violated moderation policy. ${errorMessage}`
-              : errorType === "content_rejection"
-                ? `Project rejected: content did not meet community guidelines. ${errorMessage}`
-                : errorMessage,
-        variant: "destructive",
-      })
     } finally {
       setIsPublishing(false)
     }
   }
+  const handlePublishRef = useRef(handlePublish)
+  handlePublishRef.current = handlePublish
   const [isDraftBootstrapping, setIsDraftBootstrapping] = useState(true)
   // QA-196/PMCM-402: set when the backend 403s the draft fetch — the
   // listing exists but this account isn't its owner or a team member on it.
@@ -9544,6 +12331,14 @@ function PublishProject({
     null
   )
   const [projectInfoModerationError, setProjectInfoModerationError] = useState<
+    string | null
+  >(null)
+  // PMCM-253/AC4: Media's moderation/validation rejections (saveMedia's and
+  // handlePublish's `mediaMethods.setError(...)` calls, PMCM-261/252) had no
+  // boolean flag reaching the sidebar the way Project Info's and FAQ's do —
+  // the section's own circle/badge, and therefore the publish gate, never
+  // actually reflected a rejected image/video. Mirrors the other two.
+  const [mediaModerationError, setMediaModerationError] = useState<
     string | null
   >(null)
   const [hasRecentQuestions, setHasRecentQuestions] = useState(false)
@@ -9557,6 +12352,30 @@ function PublishProject({
   const lastScopePayloadRef = useRef<string>("")
   const scopeSavesInFlightRef = useRef(0)
   const lastMediaPayloadRef = useRef<string>("")
+  // PMCM-252/E1: consecutive-failure counts, for the backoff curve above —
+  // reset to 0 on success or on a definitive 4xx (which stops retrying
+  // that payload instead of backing off on it). The "rejected" refs below
+  // are the definitive-4xx payload signatures themselves, so that exact
+  // payload isn't retried again until the seller actually changes it.
+  const draftFailureCountRef = useRef(0)
+  const draftRejectedPayloadRef = useRef<string>("")
+  const scopeFailureCountRef = useRef(0)
+  const scopeRejectedPayloadRef = useRef<string>("")
+  const mediaFailureCountRef = useRef(0)
+  const faqsFailureCountRef = useRef(0)
+  const faqsRejectedPayloadRef = useRef<string>("")
+  const videoFailureCountRef = useRef(0)
+  const videoRejectedPayloadRef = useRef<string>("")
+  // PMCM-252/E1: the header already shows "Couldn't save. Retrying…" for the
+  // whole duration of a failure streak, so a toast per autosave tick (or per
+  // edit made while still failing) would be redundant noise on top of that.
+  // One shared gate across all four generic-failure autosaves below — set on
+  // the first failure of a streak, cleared only in endSaveSuccess (i.e. on
+  // the NEXT successful save, by any autosave), so at most one toast fires
+  // per streak regardless of how many payload changes happen during it.
+  // (Supersedes the former per-save, per-payload-signature dedup refs, which
+  // would otherwise re-toast on every new edit made while still failing.)
+  const hasToastedForFailureRef = useRef(false)
   // QA-205/PMCM-403: unlike saveDraft/saveScope/saveFaqs/saveVideo below,
   // saveMedia had no ref here and its effect's cleanup only cleared the
   // interval — a media change made within the ~2s polling window, followed
@@ -9573,6 +12392,60 @@ function PublishProject({
   const saveVideoRef = useRef<() => Promise<void>>(async () => {})
   const hasHydratedRef = useRef(false)
 
+  // PMCM-252/AC2/E1/E3: one shared save-status machine derived from every
+  // autosave below, so the header can show more than just "Saved at h:mm".
+  // "saving" wins while anything is in flight; "error" is sticky until the
+  // NEXT save (any of them) succeeds, since a silent "saved" while a
+  // different field is still failing to persist would be misleading.
+  const [saveStatus, setSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle")
+  const saveInFlightCountRef = useRef(0)
+  // Set true the moment any autosave starts, cleared only once EVERY
+  // in-flight save has resolved successfully — covers X1/beforeunload
+  // ("are there unsynced changes right now").
+  const hasUnsyncedChangesRef = useRef(false)
+  const beginSave = () => {
+    saveInFlightCountRef.current += 1
+    hasUnsyncedChangesRef.current = true
+    setSaveStatus("saving")
+  }
+  const endSaveSuccess = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+    setLastSavedAt(new Date())
+    if (saveInFlightCountRef.current === 0) {
+      hasUnsyncedChangesRef.current = false
+      setSaveStatus("saved")
+    }
+    hasToastedForFailureRef.current = false
+  }
+  const endSaveError = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+    setSaveStatus("error")
+  }
+  // A 401 isn't a save failure in the "couldn't save, retrying" sense —
+  // it's paused on login, with its own modal as the indicator — so it
+  // intentionally does NOT flip saveStatus to "error".
+  const endSavePaused = () => {
+    saveInFlightCountRef.current = Math.max(0, saveInFlightCountRef.current - 1)
+  }
+
+  // PMCM-252/E1: shared backoff curve for every autosave's retry loop —
+  // 2s baseline, doubling per consecutive non-definitive failure, capped
+  // at 30s; back to 2s the moment that autosave's failure count resets
+  // (on success, or on a definitive 4xx that stops retrying until the
+  // payload changes).
+  const nextAutosaveDelayMs = (consecutiveFailures: number): number =>
+    consecutiveFailures <= 0
+      ? 2000
+      : Math.min(2000 * 2 ** consecutiveFailures, 30000)
+
+  // PMCM-252/E3: offline detection. A ref (not just the state) so the
+  // long-lived recursive autosave timeouts below always read the CURRENT
+  // connectivity without needing to be recreated on every flip.
+  const [isOffline, setIsOffline] = useState(false)
+  const isOfflineRef = useRef(false)
+
   useEffect(() => {
     faqsRef.current = faqs
     setFaqModerationError(null)
@@ -9584,6 +12457,14 @@ function PublishProject({
   useEffect(() => {
     setProjectInfoModerationError(null)
   }, [projectInfoModerationWatch])
+
+  // PMCM-253: same clear-on-edit convention as the two watches above —
+  // the instant the seller touches Media again, drop the stale rejection
+  // so E3's "fixing it updates the status automatically" actually applies.
+  const mediaModerationWatch = useWatch({ control: mediaMethods.control })
+  useEffect(() => {
+    setMediaModerationError(null)
+  }, [mediaModerationWatch])
 
   // Sidebar step ticks: each step's form only mounts when it's the active step,
   // so validate every step here (always mounted) — an existing/edited project
@@ -9641,8 +12522,14 @@ function PublishProject({
     setStepValid(4, completedFaqCount >= 3)
   }, [completedFaqCount, setStepValid])
 
-  const firstInvalidStep = useMemo(() => {
-    const validity: Record<number, boolean> = {
+  // PMCM-253: the one canonical per-section validity record — PMCM-261
+  // flagged `firstInvalidStep` as a second, independently-reimplemented copy
+  // of the exact same five checks `setStepValid` above already runs; this
+  // extracts it once so firstInvalidStep, the "ever completed" tracking,
+  // and the publish-gate state machine below all read the SAME values
+  // instead of separately-maintained copies that could drift apart.
+  const sectionValidity = useMemo<Record<number, boolean>>(
+    () => ({
       0: projectInfoSchema.safeParse(projectInfoMethods.getValues()).success,
       1: mediaFormSchema.safeParse(mediaMethods.getValues()).success,
       2: projectScopeSchema.safeParse(scopePhases),
@@ -9651,17 +12538,41 @@ function PublishProject({
       // (PMCM-401), and it was blocked by the identical stale condition.
       3: teamMemberIds.length > 0 || Boolean(getCurrentUser()?.id),
       4: completedFaqCount >= 3,
-    }
-    return [0, 1, 2, 3, 4].find((index) => !validity[index]) ?? null
-  }, [
-    projectInfoWatch,
-    mediaWatch,
-    scopePhases,
-    teamMemberIds,
-    completedFaqCount,
-    projectInfoMethods,
-    mediaMethods,
-  ])
+    }),
+    [
+      projectInfoWatch,
+      mediaWatch,
+      scopePhases,
+      teamMemberIds,
+      completedFaqCount,
+      projectInfoMethods,
+      mediaMethods,
+    ]
+  )
+
+  const firstInvalidStep = useMemo(
+    () => [0, 1, 2, 3, 4].find((index) => !sectionValidity[index]) ?? null,
+    [sectionValidity]
+  )
+
+  // PMCM-253/E1: mark a section "ever completed" the first time it's valid
+  // — stays true even if a required field is cleared afterward, which is
+  // exactly the signal deriveSectionState uses to drop that section to
+  // "error" instead of back to "incomplete".
+  useEffect(() => {
+    setEverCompletedSteps((prev) => {
+      let changed = false
+      const next = prev.map((wasCompleted, index) => {
+        if (wasCompleted) return true
+        if (sectionValidity[index]) {
+          changed = true
+          return true
+        }
+        return false
+      })
+      return changed ? next : prev
+    })
+  }, [sectionValidity])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -9739,6 +12650,7 @@ function PublishProject({
         const draft = response?.data ?? {}
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
+        setIsExistingPublishedListing(draft?.status === "published")
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
@@ -9750,6 +12662,7 @@ function PublishProject({
             : []
         )
         setPricingBudgetCents(Number(draft?.budgetUsdCents) || 0)
+        setInitialPricingPeriod(draft?.pricingPeriod ?? null)
         const draftIsService =
           draft?.listingType === "service" ||
           (Array.isArray(draft?.scope) &&
@@ -9846,9 +12759,16 @@ function PublishProject({
               "featured-image.jpg"
             )
           : null
+        // PMCM-256 follow-up: additionalImages can now contain "" placeholders
+        // for a cleared slot (gallery slots persist in place, see
+        // handleGalleryDelete-equivalent fixes). hydrateRemoteMediaFile("")
+        // would fetch("") — resolves against the current page in a browser,
+        // producing a bogus "file" rather than an empty slot. Map position
+        // to null instead of calling it, so index alignment with the
+        // per-slot additionalImages.${index} fields below is preserved.
         const hydratedAdditionalImages = await Promise.all(
           (persistedMedia?.additionalImages ?? []).map((url: string) =>
-            hydrateRemoteMediaFile(url, "additional-image.jpg")
+            url ? hydrateRemoteMediaFile(url, "additional-image.jpg") : null
           )
         )
 
@@ -9862,13 +12782,9 @@ function PublishProject({
                 },
               ]
             : [],
-          additionalImages: hydratedAdditionalImages.map((file) => [
-            {
-              meta: file,
-              progress: 100,
-              hasError: false,
-            },
-          ]),
+          additionalImages: hydratedAdditionalImages.map((file) =>
+            file ? [{ meta: file, progress: 100, hasError: false }] : []
+          ),
           featuredVideo: draft?.videoUrl ?? persistedMedia?.featuredVideo ?? "",
           hiddenImages: persistedMedia?.hiddenImages ?? [],
         })
@@ -9919,7 +12835,20 @@ function PublishProject({
             }))
           : []
 
-        projectScopeMethods[1](scope.length > 0 ? scope : [{}])
+        // PMCM-257 follow-up 2: an older service draft saved before
+        // phaseType was required stays untyped on disk — normalize once
+        // on hydration so the header never falls back to "Phase One"
+        // (project scopes are passed through as-is). The empty-scope
+        // fallback also needs to start typed for a fresh service draft.
+        projectScopeMethods[1](
+          draftIsService
+            ? ensureServicePhaseTypes(
+                scope.length > 0 ? scope : [{ phaseName: "" }]
+              )
+            : scope.length > 0
+              ? scope
+              : [{}]
+        )
         lastScopePayloadRef.current = JSON.stringify(
           buildScopeDraftPayload(nextDraftId, scope.length > 0 ? scope : [])
         )
@@ -9948,7 +12877,12 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveDraft = async () => {
+    // Returns true when this attempt was skipped/paused (offline, or a
+    // 401 handed off to promptSignInToRetry) — the scheduler below uses
+    // that to decide whether to keep the normal retry loop running.
+    const saveDraft = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const info = projectInfoMethods.getValues()
       const payload = buildProjectDraftPayload({
         title: info.title ?? "",
@@ -9962,25 +12896,60 @@ function PublishProject({
       })
 
       const serializedPayload = JSON.stringify(payload)
-      if (serializedPayload === lastDraftPayloadRef.current) return
+      if (
+        serializedPayload === lastDraftPayloadRef.current ||
+        serializedPayload === draftRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, payload)
         lastDraftPayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        draftRejectedPayloadRef.current = ""
+        draftFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project draft", error)
+        if (isUnauthorizedError(error)) {
+          endSavePaused()
+          // PMCM-261: the queued retry calls saveDraftRef.current(), which
+          // (below) is this same recursive cycle — resuming it also
+          // re-arms the backoff loop, not just one bare retry.
+          promptSignInToRetry(() => void saveDraftRef.current())
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          // PMCM-252/E1: a real validation/moderation rejection — stop
+          // retrying THIS payload (it will never succeed unchanged), but
+          // don't back off on it; the next genuinely new edit tries fresh.
+          draftRejectedPayloadRef.current = serializedPayload
+        } else {
+          draftFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
+        return false
       }
     }
 
-    saveDraftRef.current = saveDraft
+    const loop = createAutosaveLoop(saveDraft, () =>
+      nextAutosaveDelayMs(draftFailureCountRef.current)
+    )
 
-    void saveDraft()
-    const interval = setInterval(() => {
-      void saveDraft()
-    }, 2000)
+    saveDraftRef.current = loop.run
+
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveDraft()
     }
   }, [
@@ -9993,16 +12962,29 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveScope = async () => {
+    const saveScope = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const payload = buildScopeDraftPayload(
         draftProjectId,
         projectScopeMethods[0]
       )
       const serializedPayload = JSON.stringify(payload)
 
-      if (serializedPayload === lastScopePayloadRef.current) return
+      if (
+        serializedPayload === lastScopePayloadRef.current ||
+        serializedPayload === scopeRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      // Never stack ticks: the recursive scheduler below only ever starts
+      // the next cycle once this one resolves, which is what actually
+      // prevents the overlapping-saves pile-up that took listings-service
+      // down on 2026-10-03 — this counter is now just an in-flight marker,
+      // kept for that same defensive intent.
       scopeSavesInFlightRef.current += 1
+      beginSave()
       try {
         const scopeRes = await ProjectAPI.ReplaceProjectScope(
           draftProjectId,
@@ -10013,28 +12995,45 @@ function PublishProject({
           setPricingBudgetCents(nextBudget)
         }
         lastScopePayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        scopeRejectedPayloadRef.current = ""
+        scopeFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project scope draft", error)
+        if (isUnauthorizedError(error)) {
+          endSavePaused()
+          promptSignInToRetry(() => void saveScopeRef.current())
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          scopeRejectedPayloadRef.current = serializedPayload
+        } else {
+          scopeFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
+        return false
       } finally {
         scopeSavesInFlightRef.current -= 1
       }
     }
 
-    saveScopeRef.current = saveScope
+    const loop = createAutosaveLoop(saveScope, () =>
+      nextAutosaveDelayMs(scopeFailureCountRef.current)
+    )
 
-    void saveScope()
-    const interval = setInterval(() => {
-      // Never stack ticks: until a save resolves, the payload still differs
-      // from lastScopePayloadRef, so a slow save got re-sent every 2s — the
-      // pile-up that took listings-service down on 2026-10-03. The flushes
-      // on cleanup and beforeunload still go out regardless.
-      if (scopeSavesInFlightRef.current > 0) return
-      void saveScope()
-    }, 2000)
+    saveScopeRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveScope()
     }
   }, [
@@ -10047,31 +13046,62 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveFaqs = async () => {
+    const saveFaqs = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const payload = faqsRef.current
         .filter((f) => f.q.trim() || f.a.trim())
         .map((f) => ({ question: f.q.trim(), answer: f.a.trim() }))
       const serializedPayload = JSON.stringify(payload)
 
-      if (serializedPayload === lastFaqsPayloadRef.current) return
+      if (
+        serializedPayload === lastFaqsPayloadRef.current ||
+        serializedPayload === faqsRejectedPayloadRef.current
+      ) {
+        return false
+      }
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { faqs: payload })
         lastFaqsPayloadRef.current = serializedPayload
-        setLastSavedAt(new Date())
+        faqsRejectedPayloadRef.current = ""
+        faqsFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project FAQs draft", error)
+        if (isUnauthorizedError(error)) {
+          endSavePaused()
+          promptSignInToRetry(() => void saveFaqsRef.current())
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          faqsRejectedPayloadRef.current = serializedPayload
+        } else {
+          faqsFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
+        return false
       }
     }
 
-    saveFaqsRef.current = saveFaqs
+    const loop = createAutosaveLoop(saveFaqs, () =>
+      nextAutosaveDelayMs(faqsFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveFaqs()
-    }, 2000)
+    saveFaqsRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveFaqs()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted])
@@ -10079,49 +13109,128 @@ function PublishProject({
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveVideo = async () => {
+    const saveVideo = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const videoUrl = mediaMethods.getValues().featuredVideo?.trim() ?? ""
 
-      if (videoUrl === lastVideoUrlRef.current) return
+      if (videoUrl === lastVideoUrlRef.current) return false
+      // PMCM-256: invalid URL gets an inline error (mediaFormSchema's
+      // featuredVideo .refine()) and nothing saved — without this gate,
+      // this 2s-interval autosave persisted whatever was typed regardless
+      // of validity, since it reads form state directly rather than
+      // going through form validation.
+      if (!isValidFeaturedVideoUrl(videoUrl)) return false
+      if (videoUrl === videoRejectedPayloadRef.current) return false
 
+      beginSave()
       try {
         await ProjectAPI.UpdateProjectDraft(draftProjectId, { videoUrl })
         lastVideoUrlRef.current = videoUrl
-        setLastSavedAt(new Date())
+        videoRejectedPayloadRef.current = ""
+        videoFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error) {
         console.error("Failed to save project video draft", error)
+        if (isUnauthorizedError(error)) {
+          endSavePaused()
+          promptSignInToRetry(() => void saveVideoRef.current())
+          return true
+        }
+        const status = (error as any)?.response?.status
+        const isDefiniteRejection =
+          typeof status === "number" && status >= 400 && status < 500
+        if (isDefiniteRejection) {
+          videoRejectedPayloadRef.current = videoUrl
+        } else {
+          videoFailureCountRef.current += 1
+        }
+        endSaveError()
+        if (!hasToastedForFailureRef.current) {
+          hasToastedForFailureRef.current = true
+          toast({ title: toUserMessage(error), variant: "destructive" })
+        }
+        return false
       }
     }
 
-    saveVideoRef.current = saveVideo
+    const loop = createAutosaveLoop(saveVideo, () =>
+      nextAutosaveDelayMs(videoFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveVideo()
-    }, 2000)
+    saveVideoRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveVideo()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
 
-  // Flush pending saves when the user navigates away or closes the tab
+  // Flush pending saves when the user navigates away or closes the tab.
+  // PMCM-252/E3/X1: also warns the user first (native "leave site?"
+  // dialog) when there's a save still in flight or unsynced from an
+  // offline edit — reusing this same handler rather than adding a second
+  // one, since firing the saves fire-and-forget here was already the
+  // existing behavior and the browser may kill the page before any of
+  // them complete.
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       void saveDraftRef.current()
       void saveScopeRef.current()
       void saveMediaRef.current()
-      void saveFaqsRef.current()
       void saveVideoRef.current()
+      void saveFaqsRef.current()
+      if (hasUnsyncedChangesRef.current) {
+        event.preventDefault()
+        event.returnValue = ""
+      }
     }
     window.addEventListener("beforeunload", handleBeforeUnload)
     return () => window.removeEventListener("beforeunload", handleBeforeUnload)
   }, [])
 
+  // PMCM-252/E3: offline/online. While offline, every autosave below
+  // pauses (no API calls, no error spam) instead of treating a network
+  // failure as a save error. The moment the browser reports "online"
+  // again, flush every pending save once, in a safe order — draft (the
+  // project's own fields) before scope (which can reference team members
+  // the draft save doesn't touch), then media, then video, then FAQs —
+  // reusing the exact same save functions autosave/beforeunload already
+  // use, not a new sync path.
+  useEffect(() => {
+    const syncOnline = () => {
+      isOfflineRef.current = false
+      setIsOffline(false)
+      void (async () => {
+        await saveDraftRef.current()
+        await saveScopeRef.current()
+        await saveMediaRef.current()
+        await saveVideoRef.current()
+        await saveFaqsRef.current()
+      })()
+    }
+    const syncOffline = () => {
+      isOfflineRef.current = true
+      setIsOffline(true)
+    }
+    isOfflineRef.current = !navigator.onLine
+    setIsOffline(!navigator.onLine)
+    window.addEventListener("online", syncOnline)
+    window.addEventListener("offline", syncOffline)
+    return () => {
+      window.removeEventListener("online", syncOnline)
+      window.removeEventListener("offline", syncOffline)
+    }
+  }, [])
+
   useEffect(() => {
     if (!draftProjectId || isProjectSubmitted || isDraftBootstrapping) return
 
-    const saveMedia = async () => {
+    const saveMedia = async (): Promise<boolean> => {
+      if (isOfflineRef.current) return true
+
       const mediaValues = mediaMethods.getValues()
       const featuredMeta = mediaValues.featuredImages?.[0]?.meta
       const additionalMeta =
@@ -10142,11 +13251,11 @@ function PublishProject({
         hiddenImages,
       })
 
-      if (signature === lastMediaPayloadRef.current) return
+      if (signature === lastMediaPayloadRef.current) return false
 
       const isClearingFeatured =
         !featuredMeta && !!persistedMediaRef.current?.featuredImage
-      if (!featuredMeta && !isClearingFeatured) return
+      if (!featuredMeta && !isClearingFeatured) return false
 
       const prevMediaSignature = lastMediaPayloadRef.current
       lastMediaPayloadRef.current = signature
@@ -10163,7 +13272,7 @@ function PublishProject({
         )
         if (!hasFeatured) {
           lastMediaPayloadRef.current = prevMediaSignature
-          return
+          return false
         }
       }
 
@@ -10175,6 +13284,7 @@ function PublishProject({
       }
       formData.append("replaceHidden", "true")
 
+      beginSave()
       try {
         const response = await ProjectAPI.UploadMedia(formData)
         const nextMedia = {
@@ -10205,14 +13315,24 @@ function PublishProject({
                 },
               ]
             : [],
+          // PMCM-256 follow-up: a blank slot must reset to an empty
+          // array (SquareShapeDropzone's own "empty" shape), not a
+          // PersistedMediaFile wrapping an empty URL — the latter reads
+          // as "has a file" with nothing to actually preview.
           additionalImages: (nextMedia.additionalImages ?? []).map(
-            (url: string) => [
-              {
-                meta: buildPersistedMediaFile(url, "additional-image.jpg"),
-                progress: 100,
-                hasError: false,
-              },
-            ]
+            (url: string) =>
+              url
+                ? [
+                    {
+                      meta: buildPersistedMediaFile(
+                        url,
+                        "additional-image.jpg"
+                      ),
+                      progress: 100,
+                      hasError: false,
+                    },
+                  ]
+                : []
           ),
           featuredVideo: nextMedia.featuredVideo ?? "",
           hiddenImages: nextMedia.hiddenImages ?? [],
@@ -10234,13 +13354,34 @@ function PublishProject({
           ),
           hiddenImages: resetValues.hiddenImages ?? [],
         })
-        setLastSavedAt(new Date())
+        mediaFailureCountRef.current = 0
+        endSaveSuccess()
+        return false
       } catch (error: any) {
         console.error("Failed to save project media draft", error)
+        if (isUnauthorizedError(error)) {
+          // PMCM-261/AC3: this autosave has no `fields`-style argument to
+          // thread through — reverting the signature ref (like the 5xx
+          // branch below) makes the *next* poll see the payload as
+          // changed again and resend it once logged back in, which is
+          // exactly the retry this needs.
+          lastMediaPayloadRef.current = prevMediaSignature
+          endSavePaused()
+          promptSignInToRetry(() => void saveMediaRef.current())
+          return true
+        }
         const status = error?.response?.status
         if (!status || status >= 500) {
           lastMediaPayloadRef.current = prevMediaSignature
+          mediaFailureCountRef.current += 1
+          endSaveError()
         } else {
+          // PMCM-252/E1: a real validation/moderation rejection — never
+          // retried (lastMediaPayloadRef is already at this signature, so
+          // the next tick's unchanged-check skips it), so the backoff
+          // resets rather than growing.
+          mediaFailureCountRef.current = 0
+          endSaveError()
           const errorMessage =
             error?.response?.data?.reason ||
             error?.response?.data?.message ||
@@ -10251,29 +13392,54 @@ function PublishProject({
             statusCode: status,
             status: error?.response?.data?.status,
           })
+          // PMCM-261/X3: only the moderation-rejection categories keep
+          // their curated, backend-sourced detail (the exception this
+          // ticket carves out) — anything else uses the shared generic
+          // copy instead of the raw backend message.
+          const isCuratedMessage =
+            errorType === "video_rejection" ||
+            errorType === "image_rejection" ||
+            errorType === "content_rejection"
+          const safeMessage = isCuratedMessage
+            ? errorMessage
+            : toUserMessage(error)
+          // PMCM-261/AC2/E1: this autosave previously left the Dropzone
+          // showing the picked file at its (cosmetic, upload-unrelated)
+          // 100% progress even though the backend rejected it — only a
+          // toast said anything was wrong. Surface it inline on the Media
+          // step too, via the same RHF setError path handlePublish's own
+          // moderation-rejection branch already uses.
+          if (errorType === "video_rejection") {
+            mediaMethods.setError("featuredVideo", { message: safeMessage })
+          } else {
+            mediaMethods.setError("featuredImages", { message: safeMessage })
+          }
+          setMediaModerationError(safeMessage)
           toast({
             title:
               errorType === "video_rejection"
-                ? `Media rejected: video violated moderation policy. ${errorMessage}`
+                ? `Media rejected: video violated moderation policy. ${safeMessage}`
                 : errorType === "image_rejection"
-                  ? `Media rejected: image violated moderation policy. ${errorMessage}`
+                  ? `Media rejected: image violated moderation policy. ${safeMessage}`
                   : errorType === "content_rejection"
-                    ? `Media rejected: content did not meet community guidelines. ${errorMessage}`
-                    : errorMessage,
+                    ? `Media rejected: content did not meet community guidelines. ${safeMessage}`
+                    : safeMessage,
             variant: "destructive",
           })
         }
+        return false
       }
     }
 
-    saveMediaRef.current = saveMedia
+    const loop = createAutosaveLoop(saveMedia, () =>
+      nextAutosaveDelayMs(mediaFailureCountRef.current)
+    )
 
-    const interval = setInterval(() => {
-      void saveMedia()
-    }, 2000)
+    saveMediaRef.current = loop.run
 
+    void loop.run()
     return () => {
-      clearInterval(interval)
+      loop.dispose()
       void saveMedia()
     }
   }, [draftProjectId, isDraftBootstrapping, isProjectSubmitted, mediaMethods])
@@ -10292,11 +13458,14 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
       teamSubTab,
       setTeamSubTab,
+      publishAttempted,
     }),
     [
       projectScopeMethods,
@@ -10311,9 +13480,12 @@ function PublishProject({
       pendingInviteEmails,
       setPendingInviteEmails,
       draftProjectId,
+      isExistingPublishedListing,
       pricingBudgetCents,
+      initialPricingPeriod,
       scopeType,
       setScopeType,
+      publishAttempted,
       teamSubTab,
       setTeamSubTab,
     ]
@@ -10435,8 +13607,10 @@ function PublishProject({
                   projectInfoModerationHasError={Boolean(
                     projectInfoModerationError
                   )}
+                  mediaModerationHasError={Boolean(mediaModerationError)}
                   publishAttempted={publishAttempted}
                   questionsStarted={faqs.length > 0}
+                  everCompletedSteps={everCompletedSteps}
                 />
                 <div className="flex-auto bg-white min-w-0 overflow-x-hidden">
                   <Header
@@ -10451,6 +13625,8 @@ function PublishProject({
                     lastSavedAt={lastSavedAt}
                     onPublish={handlePublish}
                     publishing={isPublishing}
+                    saveStatus={saveStatus}
+                    isOffline={isOffline}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}

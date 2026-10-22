@@ -267,7 +267,7 @@ function hitToListingCardProps(
         ? hit.collaborators
         : Array.isArray(hit.team_avatars)
           ? hit.team_avatars
-          : undefined,
+          : [],
       badge: kind === "service" ? "Service" : undefined,
       favoriteSlot: <FavoriteRoot>{() => <Favorite />}</FavoriteRoot>,
       cardVariant,

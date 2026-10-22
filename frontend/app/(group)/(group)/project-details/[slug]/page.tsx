@@ -4,7 +4,12 @@ import * as React from "react"
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
-import { claimProject, checkClaimLimit, recordClaim } from "@/src/lib/api/claim"
+import {
+  ClaimConflictError,
+  claimProject,
+  checkClaimLimit,
+  recordClaim,
+} from "@/src/lib/api/claim"
 import {
   type JoinRequestStatus,
   cancelJoinRequest,
@@ -18,6 +23,21 @@ import {
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { useAblyChannel } from "@/utils/useAblyChannel"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
+import { isUnauthorizedError, toUserMessage } from "@/lib/listing-errors"
+import {
+  addGuestRecentlyViewed,
+  clearGuestRecentlyViewed,
+  getGuestRecentlyViewed,
+} from "@/lib/guest-recently-viewed"
 import {
   estimateScopeBudgetCents,
   PHASE_TYPE_TITLE,
@@ -97,6 +117,7 @@ import {
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import { sanitizeProjectDescription } from "@/lib/sanitize-html"
 import { csrfHeader } from "@/src/lib/csrf"
 import { ProjectAPI } from "@/service/http/project"
 import { UserAPI } from "@/service/http/user"
@@ -115,7 +136,7 @@ import {
   ShowMoreLessComp,
   ShowMoreLessRoot,
 } from "@/components/show-more-less"
-import { SaveButton, SectionSearchBar } from "@/components/talent-profile-comps"
+import { SectionSearchBar } from "@/components/talent-profile-comps"
 import {
   Accordion,
   AccordionItem,
@@ -152,6 +173,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   Favorite,
   FavoriteRoot,
   IconButton,
@@ -1143,18 +1165,50 @@ const Inbox = ({ children }: { children?: React.ReactNode }) => {
 }
 
 // PMCM-402/QA-221: ApiError.body is the raw response text — pull the
-// Nest exception's own `message` out of it so a specific rejection (e.g.
-// "Project has no team members available to chat with") reaches the user
+// Nest exception's own `message` out of it so the one specific, known
+// rejection this was written for ("Project has no team members available
+// to chat with", messaging-service's threads.service.ts) reaches the user
 // instead of a generic string.
+// PMCM-261/X3: this used to pass through WHATEVER message the backend put
+// in that body, for any error on this call — only that one known, curated
+// string is safe to show verbatim; everything else now goes through the
+// shared generic/timeout copy instead of leaking a raw backend message.
+const KNOWN_CHAT_ERROR_MESSAGES = [
+  "Project has no team members available to chat with",
+]
 const extractApiErrorMessage = (err: unknown, fallback: string): string => {
   if (err instanceof ApiError) {
     try {
       const parsed = JSON.parse(err.body)
-      if (typeof parsed?.message === "string") return parsed.message
+      if (
+        typeof parsed?.message === "string" &&
+        KNOWN_CHAT_ERROR_MESSAGES.includes(parsed.message)
+      ) {
+        return parsed.message
+      }
     } catch {}
   }
-  return fallback
+  return toUserMessage(err) || fallback
 }
+
+// PMCM-402/E2: the one curated chat error (no team to chat with) still gets
+// its own specific copy; every other question-submission failure shows the
+// ticket's exact inline copy below, not the generic toUserMessage() fallback.
+const extractKnownChatError = (err: unknown): string | null => {
+  if (err instanceof ApiError) {
+    try {
+      const parsed = JSON.parse(err.body)
+      if (
+        typeof parsed?.message === "string" &&
+        KNOWN_CHAT_ERROR_MESSAGES.includes(parsed.message)
+      ) {
+        return parsed.message
+      }
+    } catch {}
+  }
+  return null
+}
+const UNABLE_TO_SUBMIT_QUESTION = "Unable to submit your question. Please try again."
 
 const Chats = ({
   projectId,
@@ -1174,6 +1228,33 @@ const Chats = ({
   const { user, openAuthModal } = useAuth()
   const myId = user?.id ? String(user.id) : ""
   const { toast } = useToast()
+  // PMCM-402/E2: isSending disables the composer's Send control for the
+  // duration of the request (re-enabled in every exit path below);
+  // sendError is the inline, non-toast failure message shown under it.
+  const [isSending, setIsSending] = React.useState(false)
+  const [sendError, setSendError] = React.useState<string | null>(null)
+  // PMCM-260/X2: this component calls useAuth() directly rather than
+  // receiving promptSignIn as a prop from ProjectDetails, so it mirrors
+  // that same component's resume-on-login pattern (~1893-1915) locally —
+  // no auth-context change. Only wired for handleSend's text message
+  // below; sendAttachment/handleSendMedia's dialog-close-and-clear-state
+  // flow makes queuing the attachment itself unsafe to do the same way
+  // (reported, not fixed — see the PMCM-260 report).
+  const pendingChatActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignInToChat = React.useCallback(
+    (action: () => void) => {
+      pendingChatActionRef.current = action
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (myId && pendingChatActionRef.current) {
+      const action = pendingChatActionRef.current
+      pendingChatActionRef.current = null
+      action()
+    }
+  }, [myId])
 
   const { onChatChange, chat } = useEditContext()
   const [textareaValue, setTextareaValue] = useControllableState({
@@ -1290,10 +1371,18 @@ const Chats = ({
     const text = (textareaValue ?? "").trim()
     if (!text) return
     if (!myId) {
-      openAuthModal("sign-in")
+      // PMCM-260/X2 + follow-up: queue so the typed message (left in the
+      // composer, not cleared yet) actually sends once login completes.
+      // Must go through the ref (below), not `handleSend` by name — that
+      // name resolves to this closure, captured while `myId` was still
+      // "", so resuming it post-login would re-run this same stale
+      // check and re-open the modal instead of sending.
+      promptSignInToChat(() => handleSendRef.current())
       return
     }
     setTextareaValue("")
+    setSendError(null)
+    setIsSending(true)
     let tid: string | null
     try {
       tid = await ensureThread()
@@ -1304,14 +1393,18 @@ const Chats = ({
       // self-excluded team list is empty and thread creation 400s) — the
       // composer had already been cleared above, so the message just
       // silently vanished with nothing sent and no feedback at all.
+      // PMCM-402/E2: inline error (not a toast), submit re-enabled so the
+      // visitor can retry — the known "no team to chat with" case keeps
+      // its own specific copy, everything else gets the ticket's exact text.
       setTextareaValue(text)
-      toast({
-        title: extractApiErrorMessage(err, "Failed to send message. Please try again."),
-        variant: "destructive",
-      })
+      setSendError(extractKnownChatError(err) ?? UNABLE_TO_SUBMIT_QUESTION)
+      setIsSending(false)
       return
     }
-    if (!tid) return
+    if (!tid) {
+      setIsSending(false)
+      return
+    }
     const saved = await apiFetch<{
       id: string
       senderId: string
@@ -1321,18 +1414,18 @@ const Chats = ({
       method: "POST",
       body: { threadId: tid, content: text, messageType: "text" },
     }).catch(() => null)
+    setIsSending(false)
     if (saved?.id) {
       setMessages((prev) =>
         prev.some((m) => m.id === saved.id) ? prev : [...prev, saved]
       )
     } else {
       setTextareaValue(text)
-      toast({
-        title: "Failed to send message. Please try again.",
-        variant: "destructive",
-      })
+      setSendError(UNABLE_TO_SUBMIT_QUESTION)
     }
-  }, [textareaValue, myId, ensureThread, openAuthModal, setTextareaValue, toast])
+  }, [textareaValue, myId, ensureThread, promptSignInToChat, setTextareaValue])
+  const handleSendRef = React.useRef(handleSend)
+  handleSendRef.current = handleSend
 
   const handleEmojiSelect = React.useCallback(
     (emoji: DataEmoji) => {
@@ -1611,37 +1704,43 @@ const Chats = ({
           </DropdownMenu>
         </div>
 
-        <InputGroup className="flex-auto w-[calc(theme(size.full)-164px)]">
-          <Textarea
-            placeholder="Send message..."
-            className="[field-sizing:content] h-auto pr-11 w-full"
-            value={textareaValue}
-            onChange={onChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                if (textareaValue) handleSend()
-              }
-            }}
-          />
-          <InputRightElement className="items-end pb-[13px]">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
-                  onClick={() => textareaValue && handleSend()}
-                  disabled={!textareaValue}
-                >
-                  <Send className="size-[18px]" />
-                </TooltipTrigger>
+        <div className="flex-auto w-[calc(theme(size.full)-164px)] flex flex-col gap-y-1">
+          <InputGroup className="w-full">
+            <Textarea
+              placeholder="Send message..."
+              className="[field-sizing:content] h-auto pr-11 w-full"
+              value={textareaValue}
+              onChange={(e) => {
+                setSendError(null)
+                onChange(e)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  if (textareaValue && !isSending) handleSend()
+                }
+              }}
+            />
+            <InputRightElement className="items-end pb-[13px]">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger
+                    className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
+                    onClick={() => textareaValue && !isSending && handleSend()}
+                    disabled={!textareaValue || isSending}
+                  >
+                    <Send className="size-[18px]" />
+                  </TooltipTrigger>
 
-                <TooltipContent>
-                  {textareaValue ? "Send" : "Edit"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </InputRightElement>
-        </InputGroup>
+                  <TooltipContent>
+                    {textareaValue ? "Send" : "Edit"}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </InputRightElement>
+          </InputGroup>
+          {sendError && <ErrorMessage size="sm">{sendError}</ErrorMessage>}
+        </div>
       </div>
     </div>
   )
@@ -1879,7 +1978,8 @@ export default function ProjectDetails({
 } = {}) {
   const params = useParams()
   const router = useRouter()
-  const { user, openAuthModal } = useAuth()
+  const { user, isLoading: isAuthLoading, openAuthModal } = useAuth()
+  const { toast } = useToast()
   // PMCM-402/QA-190: openAuthModal() only opens the modal — it doesn't
   // expose a callback/promise for "and then do X on success". The signal
   // it does expose, without touching its internals, is `user` itself: it
@@ -1904,6 +2004,11 @@ export default function ProjectDetails({
   }, [user?.id])
   const [project, setProject] = React.useState<any>(null)
   const [loading, setLoading] = React.useState(true)
+  // PMCM-259/E1: a real 404 (nothing matched) keeps the existing "This
+  // listing isn't available" state below (PMCM-402/X3); this is only set on
+  // a network/5xx failure, so Retry (bumping refetchKey) shows a distinct
+  // full-page error instead.
+  const [loadError, setLoadError] = React.useState(false)
   const [refetchKey, setRefetchKey] = React.useState(0)
   const [claimed, setClaimed] = React.useState(false)
   const [claimStep, setClaimStep] = React.useState<"closed" | "confirm" | "done" | "blocked">("closed")
@@ -1950,7 +2055,7 @@ export default function ProjectDetails({
       setClaimStep("blocked")
       return
     }
-    openClaimDialog()
+    setClaimStep("confirm")
   }, [])
 
   const handlePageClaim = React.useCallback(async () => {
@@ -1964,7 +2069,16 @@ export default function ProjectDetails({
       setRefetchKey((k) => k + 1)
       setClaimStep("done")
     } catch (e: any) {
-      setClaimError(e?.message ?? "Could not claim this project right now")
+      // PMCM-261/X3: a 409 conflict's message ("already claimed by someone
+      // else") is a genuinely useful, curated-feeling detail worth keeping
+      // — everything else (a generic Error from claim.ts's catch-all
+      // `body?.message ?? fallback`, which could be anything the backend
+      // happened to say) goes through the shared generic copy instead.
+      setClaimError(
+        e instanceof ClaimConflictError
+          ? e.message
+          : toUserMessage(e)
+      )
     } finally {
       setClaimBusy(false)
     }
@@ -1991,6 +2105,14 @@ export default function ProjectDetails({
       ),
     [project, isOnline]
   )
+  // PMCM-402/AC4: Live Chat and both Ask a Question entry points only show
+  // while a team member is online. Presence is only observable once signed
+  // in (useOnlineUsers joins the presence channel for a logged-in user
+  // only), so for a signed-out visitor it is unknown, not "nobody online":
+  // they keep the entry points, which open the login modal and resume after
+  // login (AC2/AC3). Once signed in, the online rule applies.
+  const showAskEntryPoints =
+    (!user?.id && !isAuthLoading) || onlineTeam.length > 0
 
   const mediaItems = React.useMemo(() => {
     const items: { type: "video" | "image"; url: string }[] = []
@@ -2007,7 +2129,11 @@ export default function ProjectDetails({
   const openLiveChat = React.useCallback(
     (question?: string) => {
       if (!user?.id) {
-        promptSignIn(() => openLiveChat(question))
+        // PMCM-260 follow-up: queue through the ref (below), not
+        // `openLiveChat` directly — that name resolves to this closure,
+        // captured while `user` was still null, so resuming it post-login
+        // would re-run this same stale check and re-open the modal.
+        promptSignIn(() => openLiveChatRef.current(question))
         return
       }
       if (question !== undefined) setPendingQuestion(question)
@@ -2015,11 +2141,14 @@ export default function ProjectDetails({
     },
     [user?.id, promptSignIn]
   )
+  const openLiveChatRef = React.useRef(openLiveChat)
+  openLiveChatRef.current = openLiveChat
 
   const handleAsk = React.useCallback(() => {
     if (!user?.id) {
       setAskModalOpen(false)
-      promptSignIn(() => handleAsk())
+      // PMCM-260 follow-up: same stale-closure fix — queue through the ref.
+      promptSignIn(() => handleAskRef.current())
       return
     }
     if (pendingQuestion.trim()) {
@@ -2030,6 +2159,8 @@ export default function ProjectDetails({
       setShowAskErrorMsg(true)
     }
   }, [user?.id, pendingQuestion, openLiveChat, promptSignIn])
+  const handleAskRef = React.useRef(handleAsk)
+  handleAskRef.current = handleAsk
 
   const [suggestedQuestions, setSuggestedQuestions] = React.useState<string[]>(
     DEFAULT_SUGGESTED_QUESTIONS
@@ -2146,99 +2277,64 @@ export default function ProjectDetails({
 
   const [tabsRef, isSticky] = useMakeFixedBehaveSticky<HTMLDivElement>()
   const [isFavorited, setIsFavorited] = React.useState(false)
-  const [selectedPeriod, setSelectedPeriod] = React.useState("week")
+  // PMCM-259/E2: guards against a stale response winning when the user
+  // toggles again before the first request settles — only the latest
+  // request's outcome is allowed to revert/toast.
+  const favoriteRequestIdRef = React.useRef(0)
+  // PMCM-258/AC5: default is "biweekly" per spec; the stored
+  // project.pricingPeriod (the seller's choice) wins when present and still
+  // valid for this listing's duration. The toggle itself stays local/
+  // real-time (N2) — nothing here saves back from the buyer side.
+  const [selectedPeriod, setSelectedPeriod] =
+    React.useState<PricingPeriod>("biweek")
+  const pricingPeriodHydratedRef = React.useRef<string | null>(null)
   const [activeAnchor, setActiveAnchor] = React.useState("Description")
 
   // --- Sidebar pricing (docs §01, §14) ---
+  // PMCM-258: duration day-counting and the per-period cost math now come
+  // from the shared frontend/lib/listing-pricing.ts module instead of this
+  // page's own copy. That copy never handled a "months" task duration
+  // (treated it as raw days) and used Math.round instead of the shared
+  // module's Math.ceil, and gated Quarter/Year behind 90/360-day
+  // thresholds instead of the spec's "quarter always available, year at
+  // >=364 days" rule — see the PMCM-258 report for the full before/after.
   const sidebarPricing = React.useMemo(() => {
     if (!project) return null
     // Budget (docs §14.7): compute from the scope when it's populated — same
     // helper/rate-card as the edit view — so both views show the same number.
     // Fall back to a stored price only when there's no scope to price.
-    const pricingCost = (Number(project.budgetUsdCents) || 0) / 100
-    const computedCost = estimateScopeBudgetCents(project.scope) / 100
-    const totalCost =
-      pricingCost > 0
-        ? pricingCost
-        : computedCost > 0
-          ? computedCost
-          : Number(project.priceMin ?? project.budget ?? 0)
+    const pricingCostCents = Number(project.budgetUsdCents) || 0
+    const computedCents = estimateScopeBudgetCents(project.scope)
+    const totalCostCents =
+      pricingCostCents > 0
+        ? pricingCostCents
+        : computedCents > 0
+          ? computedCents
+          : Math.round(Number(project.priceMin ?? project.budget ?? 0) * 100)
+    const totalCost = totalCostCents / 100
 
     // Derive duration + roles from scope (matches edit mode). Handles both the
     // published shape (phase.tasks / roleName) and the draft shape (phase.rows / role).
     const scopeArr = Array.isArray(project.scope) ? project.scope : []
     let memberSlots = 0
-    let totalDays = 0
     for (const phase of scopeArr) {
       const rows = ((phase?.rows ?? phase?.tasks ?? []) as any[]) ?? []
-      const taskDays: number[] = []
       for (const row of rows) {
         const role = row?.role ?? row?.roleName
         if (role || row?.task || row?.taskName) memberSlots++
-        const dur = row?.duration
-        let days = 0
-        if (dur && typeof dur === "object") {
-          const val = Number(dur.value) || 0
-          if (val > 0) {
-            days =
-              dur.type === "weeks"
-                ? val * 7
-                : dur.type === "hours"
-                  ? Math.max(1, Math.ceil(val / 24))
-                  : val
-          }
-        }
-        // No explicit duration on the task — derive it from estimatedHours at
-        // 40 hrs/week (full-time), so duration reflects the actual scope.
-        if (days <= 0) {
-          const hrs = Number(row?.estimatedHours) || 0
-          if (hrs > 0) days = Math.max(1, Math.round((hrs * 7) / 40))
-        }
-        if (days > 0) taskDays.push(days)
       }
-      if (taskDays.length > 0) totalDays += Math.max(...taskDays)
     }
+    const totalDays = scopeDurationDays(scopeArr as any)
 
     // Fall back to the baked project.duration / durationMonths when scope has no durations.
-    let durationWeeks = totalDays > 0 ? totalDays / 7 : 0
-    if (durationWeeks <= 0) {
-      durationWeeks = parseInt(String(project.duration ?? ""), 10) || 0
-      if (durationWeeks <= 0 && Number(project.durationMonths) > 0) {
-        durationWeeks = Number(project.durationMonths) * 4.33
+    let effDays = totalDays
+    if (effDays <= 0) {
+      const durationWeeks = parseInt(String(project.duration ?? ""), 10) || 0
+      if (durationWeeks > 0) {
+        effDays = Math.round(durationWeeks * 7)
+      } else if (Number(project.durationMonths) > 0) {
+        effDays = Math.round(Number(project.durationMonths) * 30)
       }
-    }
-    // Whole billing periods (docs: Installment Plans §04). Each installment is
-    // Total_Cost ÷ ceil(duration / period); the initial payment is one
-    // installment (the first week / 2 weeks / month), not an average spread
-    // over a fractional number of periods.
-    const effDays = totalDays > 0 ? totalDays : Math.round(durationWeeks * 7)
-    const installmentCost = (periodDays: number) => {
-      if (effDays <= 0 || totalCost <= 0) return 0
-      const count = Math.max(1, Math.ceil(effDays / periodDays))
-      return Math.ceil(totalCost / count)
-    }
-    const costPerWeek = installmentCost(7)
-    const costPerBiweek = installmentCost(14)
-    const costPerMonth = installmentCost(30)
-    const costPerQuarter = effDays >= 90 ? installmentCost(90) : 0
-    const costPerYear = effDays >= 360 ? installmentCost(360) : 0
-
-    const periodOptions = [
-      { label: "week", value: "week", cost: costPerWeek },
-      { label: "2 weeks", value: "2 weeks", cost: costPerBiweek },
-      { label: "month", value: "month", cost: costPerMonth },
-      ...(costPerQuarter > 0 ? [{ label: "quarter", value: "quarter", cost: costPerQuarter }] : []),
-      ...(costPerYear > 0 ? [{ label: "year", value: "year", cost: costPerYear }] : []),
-    ]
-
-    // Duration display (docs §01 L98-104): <7d → days, <4w → weeks, else → months (rounded up)
-    let formattedDuration = ""
-    if (effDays > 0 && effDays < 7) {
-      formattedDuration = `${effDays} day`
-    } else if (effDays >= 7 && effDays < 28) {
-      formattedDuration = `${Math.max(1, Math.ceil(effDays / 7))} week`
-    } else if (effDays >= 28) {
-      formattedDuration = `${Math.max(1, Math.ceil(effDays / 30))} month`
     }
 
     const isServiceScope =
@@ -2250,41 +2346,105 @@ export default function ProjectDetails({
           p?.phaseType === "ongoing"
       )
 
+    const periodOptions = availablePeriods(effDays, isServiceScope).map(
+      (period) => ({
+        label: PERIOD_WIDGET_LABELS[period],
+        value: period,
+        cost: costPerPeriod(totalCostCents, effDays, period),
+      })
+    )
+
+    const formattedDuration = formatDuration(effDays)
+
     return {
       totalCost,
       periodOptions,
       minTeamMembers: memberSlots,
       formattedDuration,
       isServiceScope,
+      effDays,
     }
   }, [project])
 
+  // PMCM-258/AC5: hydrate the period toggle from the stored
+  // project.pricingPeriod once sidebarPricing (and therefore effDays/
+  // isServiceScope) is known; falls back to biweek per spec when unset or
+  // no longer valid for this listing's duration.
+  React.useEffect(() => {
+    if (!project || !sidebarPricing) return
+    const projectKey = String((project as any)?.id ?? "")
+    if (pricingPeriodHydratedRef.current === projectKey) return
+    pricingPeriodHydratedRef.current = projectKey
+    const stored = (project as any)?.pricingPeriod
+    setSelectedPeriod(
+      resolvePeriod(
+        stored ?? null,
+        sidebarPricing.effDays,
+        sidebarPricing.isServiceScope,
+        "biweek"
+      )
+    )
+  }, [project, sidebarPricing])
 
   React.useEffect(() => {
-    if (!project?.id) return
+    // PMCM-259/E2: anonymous visitors can never have a saved favorite —
+    // skip the call entirely instead of firing a request that always
+    // 401s (no visible noise either way, since findFavoriteByItemId
+    // already swallows a non-ok response, but there's no reason to ask).
+    if (!project?.id || !user?.id) {
+      setIsFavorited(false)
+      return
+    }
     findFavoriteByItemId(String(project.id)).then((fav) => {
       setIsFavorited(!!fav)
     })
-  }, [project?.id])
+  }, [project?.id, user?.id])
 
   const handleFavoriteToggle = async (pressed: boolean) => {
     if (!user?.id) {
-      promptSignIn(() => handleFavoriteToggle(pressed))
+      // PMCM-260 follow-up: queue through the ref (assigned below, every
+      // render), not the `handleFavoriteToggle` name directly — that name
+      // resolves to THIS closure, captured while `user` was still null,
+      // so calling it post-login would re-run this same stale `!user?.id`
+      // check and re-open the modal instead of completing the toggle.
+      promptSignIn(() => handleFavoriteToggleRef.current(pressed))
       return
     }
+    const previous = isFavorited
     setIsFavorited(pressed)
+    const requestId = ++favoriteRequestIdRef.current
     const itemId = String(project.id)
     const type = project.listingType === "service" ? "service" : "project"
-    if (pressed) {
-      await addFavorite({ type, itemId })
-    } else {
-      const fav = await findFavoriteByItemId(itemId)
-      if (fav) await removeFavorite(fav.id)
+    let succeeded = false
+    try {
+      if (pressed) {
+        succeeded = !!(await addFavorite({ type, itemId }))
+      } else {
+        const fav = await findFavoriteByItemId(itemId)
+        succeeded = fav ? await removeFavorite(fav.id) : true
+      }
+    } catch {
+      succeeded = false
+    }
+    // A later toggle has already superseded this request — its own
+    // result (not this stale one) owns the UI state, so do nothing.
+    if (favoriteRequestIdRef.current !== requestId) return
+    if (!succeeded) {
+      setIsFavorited(previous)
+      toast({
+        variant: "destructive",
+        title: "Unable to save this listing. Please try again.",
+      })
     }
   }
+  const handleFavoriteToggleRef = React.useRef(handleFavoriteToggle)
+  handleFavoriteToggleRef.current = handleFavoriteToggle
 
   React.useEffect(() => {
     async function fetchProject() {
+      setLoading(true)
+      setLoadError(false)
+      let sawServerError = false
       try {
         const rawSlug = params.slug as string
         // URLs are generated as `${slug}-${shortId}` but the shortId may be
@@ -2300,8 +2460,15 @@ export default function ProjectDetails({
         const apiBase = getPublicApiUrl() || "http://localhost:4000"
         let res: Response | null = null
         let slug = rawSlug
+        // PMCM-261/AC5: these plain fetch() calls bypassed the shared axios
+        // instance's 30s default entirely — a hung connection would wait
+        // forever instead of ever reaching the loadError/Retry state below.
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { cache: 'no-store' })
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: AbortSignal.timeout(30000),
+          })
           if (r.ok) {
             res = r
             slug = candidate
@@ -2311,23 +2478,35 @@ export default function ProjectDetails({
         if (!res) {
           // last attempt — assign the final failing response so the fallback
           // branches below can run against the last tried slug
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { cache: 'no-store' })
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, {
+            cache: 'no-store',
+            credentials: 'include',
+            signal: AbortSignal.timeout(30000),
+          })
         }
         if (!res.ok) {
+          if (res.status !== 404) sawServerError = true
           // Try as a service. Service URLs are also generated as
           // `${slug}-${shortId}`, while the API expects the plain slug.
           let svcRes: Response | null = null
           for (const candidate of candidates) {
-            const r = await fetch(`${apiBase}/v1/services/slug/${candidate}`)
+            const r = await fetch(
+              `${apiBase}/v1/services/slug/${candidate}`,
+              { credentials: 'include', signal: AbortSignal.timeout(30000) }
+            )
             if (r.ok) {
               svcRes = r
               break
             }
           }
           if (!svcRes) {
-            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+            svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, {
+              credentials: 'include',
+              signal: AbortSignal.timeout(30000),
+            })
           }
           if (!svcRes.ok) {
+            if (svcRes.status !== 404) sawServerError = true
             // If rawSlug looks like a UUID, try the publish/draft endpoint
             // so "View as Client" works for unpublished drafts
             const isUuid =
@@ -2356,8 +2535,12 @@ export default function ProjectDetails({
                     if (Array.isArray(mediaObj?.hiddenImages))
                       hiddenUrls.push(...mediaObj.hiddenImages)
                   }
+                  // PMCM-256 follow-up: gallery slots now persist "" in
+                  // place of a removed image (so other slots don't shift
+                  // in the editor) — a buyer-facing page must never render
+                  // one of those as an empty gallery tile.
                   const visibleGallery = galleryUrls.filter(
-                    (u) => !hiddenUrls.includes(u)
+                    (u) => u && !hiddenUrls.includes(u)
                   )
                   const composedMediaUrls = featuredImage
                     ? [featuredImage, ...visibleGallery]
@@ -2502,9 +2685,11 @@ export default function ProjectDetails({
                 }
               } catch {
                 // draft fetch failed — fall through
+                sawServerError = true
               }
             }
             setLoading(false)
+            setLoadError(sawServerError)
             return
           }
           const svcData = await svcRes.json()
@@ -2541,6 +2726,10 @@ export default function ProjectDetails({
         })
       } catch (err) {
         console.error(err)
+        // A thrown fetch (offline, DNS failure, connection refused, etc.)
+        // never even reached a status code — always a server/network
+        // problem, never a legitimate 404.
+        setLoadError(true)
       } finally {
         setLoading(false)
       }
@@ -2591,16 +2780,60 @@ export default function ProjectDetails({
     }
   }, [project?.id, joinBusy])
 
-  // Track view when project loads — skip in owner preview
+  // Track view when project loads — skip in owner preview.
+  // PMCM-402/X2: signed-in buyers sync to their account (existing endpoint,
+  // JwtAuthGuard'd); signed-out visitors can't call that endpoint at all, so
+  // their view is recorded client-side only, merged into their account on
+  // the next successful login (see the effect below).
   React.useEffect(() => {
     if (!project?.id || isPreview) return
+    if (!user?.id) {
+      addGuestRecentlyViewed({
+        id: String(project.id),
+        slug: project.slug,
+        title: project.title,
+        shortDescription:
+          project.shortDescription ?? project.description?.slice(0, 120) ?? null,
+        thumbnail: project.mediaUrls?.[0] ?? null,
+        budget: project.budget != null ? Number(project.budget) : null,
+        duration: project.duration ?? null,
+        viewedAt: new Date().toISOString(),
+      })
+      return
+    }
     const apiBase = getPublicApiUrl() || "http://localhost:4000"
     fetch(`${apiBase}/v1/recently-viewed/${project.id}`, {
       method: "POST",
       credentials: "include",
       headers: csrfHeader("POST"),
     }).catch(() => {})
-  }, [project?.id, isPreview])
+  }, [project?.id, isPreview, user?.id])
+
+  // PMCM-402/X2: merge the guest's localStorage history into their account
+  // the moment they sign in — no batch endpoint exists (verified against
+  // recently-viewed.controller.ts), so this POSTs each guest id individually
+  // through the same per-id endpoint above, oldest-viewed first so the most
+  // recently viewed guest listing ends up with the latest viewedAt (newest
+  // first) once merged with any pre-existing account history, then clears
+  // the local copy so it never re-merges.
+  const guestHistoryMergedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!user?.id || guestHistoryMergedRef.current) return
+    guestHistoryMergedRef.current = true
+    const guestHistory = getGuestRecentlyViewed()
+    if (guestHistory.length === 0) return
+    const apiBase = getPublicApiUrl() || "http://localhost:4000"
+    ;(async () => {
+      for (const entry of [...guestHistory].reverse()) {
+        await fetch(`${apiBase}/v1/recently-viewed/${entry.id}`, {
+          method: "POST",
+          credentials: "include",
+          headers: csrfHeader("POST"),
+        }).catch(() => {})
+      }
+      clearGuestRecentlyViewed()
+    })()
+  }, [user?.id])
 
   // Scroll to top when page loads
   React.useEffect(() => {
@@ -2679,6 +2912,47 @@ export default function ProjectDetails({
     )
   }
 
+  // PMCM-259/E1: a network/5xx failure gets a distinct full-page error
+  // with Retry (+ Refresh page), separate from the "This listing isn't
+  // available" state below (PMCM-402/X3 — a real 404/archived/removed
+  // listing). Retry just bumps refetchKey to re-run the same fetch in
+  // place — no page reload, same pattern used by the owner-preview "View
+  // as Client" retry below and by verify-withdrawal/page.tsx's error state.
+  if (loadError) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <div className="mx-auto mb-4 size-12 rounded-full bg-gray-100 flex items-center justify-center">
+            <AlertCircle className="size-6 text-gray-400" />
+          </div>
+          <h1 className="text-xl font-semibold text-dark-blue-400">
+            Something went wrong
+          </h1>
+          <p className="mt-2 text-sm text-gray-500">
+            We couldn&apos;t load this listing. Please check your connection
+            and try again.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-x-3">
+            <Button onClick={() => setRefetchKey((k) => k + 1)}>
+              Retry
+            </Button>
+            <Button
+              variant="outlined"
+              visual="gray"
+              onClick={() => window.location.reload()}
+            >
+              Refresh page
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // PMCM-402/X3: any case where no project/service/draft was ever
+  // resolved (true 404, archived listing, archived service per #716,
+  // slug changed) lands here with this copy — distinct from the E1
+  // network-error state above, which only fires on a real 5xx/exception.
   if (!project) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center px-6">
@@ -2687,11 +2961,11 @@ export default function ProjectDetails({
             <AlertCircle className="size-6 text-gray-400" />
           </div>
           <h1 className="text-xl font-semibold text-dark-blue-400">
-            Project not found
+            This listing isn&apos;t available
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            We couldn&apos;t find the project you&apos;re looking for. It may
-            have been removed or the link is broken.
+            It may have been removed, archived, or the link may be out of
+            date.
           </p>
           <div className="mt-6">
             {isPreview && onEdit ? (
@@ -2921,17 +3195,19 @@ export default function ProjectDetails({
                 </Button>
               </div>
 
-              <Button
-                variant="link"
-                className="!text-primary-500 shrink-0"
-                onClick={() => {
-                  if (selected === "Live Chat") setSelected("Details")
-                  else openLiveChat()
-                }}
-              >
-                <MessageTextCircle01 className="size-5" />
-                {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
-              </Button>
+              {showAskEntryPoints && (
+                <Button
+                  variant="link"
+                  className="!text-primary-500 shrink-0"
+                  onClick={() => {
+                    if (selected === "Live Chat") setSelected("Details")
+                    else openLiveChat()
+                  }}
+                >
+                  <MessageTextCircle01 className="size-5" />
+                  {selected === "Live Chat" ? "Close Chat" : "Live Chat"}
+                </Button>
+              )}
 
               <div className="flex-1 flex justify-end">
                 <Button
@@ -3240,12 +3516,53 @@ export default function ProjectDetails({
                       </div>
                       <div className="flex items-center gap-x-3 group-data-[position=default]/tabs:hidden">
                         <Button size="md">Star Project</Button>
-                        <SaveButton />
+                        {/* PMCM-259/AC3: talent-profile-comps' <SaveButton />
+                            is an uncontrolled, self-contained toggle with no
+                            props — it never reflected this project's real
+                            favorited state and never called add/removeFavorite.
+                            Swapped for the same FavoriteRoot/Favorite pair
+                            already wired correctly in the sidebar below. */}
+                        <FavoriteRoot
+                          value={isFavorited}
+                          onValueChange={handleFavoriteToggle}
+                        >
+                          {({ pressed }) => (
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-block">
+                                    <Favorite />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {pressed ? (
+                                    <span className="inline-flex items-center gap-x-1">
+                                      <Check className="size-[15px] shrink-0 text-green-500" />
+                                      Saved
+                                    </span>
+                                  ) : (
+                                    "Save to favorites"
+                                  )}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </FavoriteRoot>
                         <IconButton
                           className="text-gray-500"
                           variant="outlined"
                           visual="gray"
                           size="md"
+                          onClick={() => {
+                            if (!user?.id) {
+                              // PMCM-402/AC2-AC3: Share is gated behind
+                              // sign-in like Save, and resumes automatically
+                              // post-login via the same promptSignIn queue.
+                              promptSignIn(() => toggleShareWindow(true, project.title))
+                              return
+                            }
+                            toggleShareWindow(true, project.title)
+                          }}
                         >
                           <Share className="size-[20px]" />
                         </IconButton>
@@ -3257,21 +3574,38 @@ export default function ProjectDetails({
                     <div id="section-description" className="pt-6">
                       <CollapsibleCard maxHeight={599}>
                         {/*
-                          project.description is HTML generated from the
-                          Payload Lexical rich-text editor by the
-                          listings-service ProjectSyncService. Editor
-                          content is admin-authored (not user-submitted)
-                          so `dangerouslySetInnerHTML` is safe here — see
-                          the lexicalToHtml() helper on the service which
-                          escapes text content before wrapping in tags.
+                          PMCM-255: project.description is seller-authored
+                          HTML from the RichTextEditor component (talent's
+                          own My Listings / wizard Description editor),
+                          saved directly via publish.service.ts's
+                          createProjectDraft/updateProjectDraft — it is
+                          NOT the Payload/Lexical admin-authored content
+                          this comment previously (incorrectly) described.
+                          That assumption no longer holds for self-serve
+                          listings, so this renders through an allow-list
+                          sanitizer rather than raw dangerouslySetInnerHTML.
+                        */}
+                        {/*
+                          PMCM-255 (follow-up): rich-text-content is the
+                          same class the frozen RichTextEditor applies to
+                          its own editable surface (components/rich-text-editor.tsx)
+                          — globals.css's heading-size and image
+                          alignment/wrap rules ([data-font-size=...],
+                          img[data-align=...]) are scoped under that class
+                          only. Without it here, the client-view render had
+                          none of that styling even though the sanitizer
+                          preserves the markup. Tailwind typography's own
+                          `prose` img/heading rules are wrapped in :where()
+                          (near-zero specificity), so rich-text-content's
+                          plain class+attribute selectors win without
+                          needing !important or new arbitrary values.
                         */}
                         <div
-                          className="prose prose-sm max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
+                          className="prose prose-sm rich-text-content max-w-none text-dark-blue-400 prose-headings:text-dark-blue-400 prose-headings:font-semibold prose-p:font-extralight prose-p:leading-relaxed prose-strong:text-dark-blue-400 prose-li:font-extralight"
                           dangerouslySetInnerHTML={{
-                            __html:
-                              project.description ||
-                              project.summary ||
-                              "",
+                            __html: sanitizeProjectDescription(
+                              project.description || project.summary || ""
+                            ),
                           }}
                         />
                       </CollapsibleCard>
@@ -3417,7 +3751,7 @@ export default function ProjectDetails({
                                       (tech: string, i: number) => (
                                         <NextLink
                                           key={tech + i}
-                                          href="#"
+                                          href={`/search?industry=${encodeURIComponent(tech)}`}
                                           className="focus-visible:outline-none hover:underline transition duration-300 inline-block text-sm leading-6 font-semibold text-dark-blue-400"
                                         >
                                           {tech}
@@ -3538,7 +3872,8 @@ export default function ProjectDetails({
                             const visibleSkills = allSkills.slice(0, 5)
                             const extraSkillCount =
                               allSkills.length - visibleSkills.length
-                            const headerLabel = "Current Team"
+                            const headerLabel =
+                              members.length === 1 ? "Created By" : "Current Team"
                             return (
                               <div className="p-6">
                                 <h3 className="text-base leading-none font-semibold text-dark-blue-400">
@@ -3677,7 +4012,12 @@ export default function ProjectDetails({
                                   visual="primary"
                                   onClick={() => {
                                     if (!user?.id) {
-                                      openAuthModal("sign-in")
+                                      // PMCM-260/X2: queue the action so it
+                                      // resumes automatically after login,
+                                      // matching the other "Claim this
+                                      // Project" button (~6824) which
+                                      // already uses promptSignIn.
+                                      promptSignIn(() => openClaimDialog())
                                       return
                                     }
                                     openClaimDialog()
@@ -3701,7 +4041,7 @@ export default function ProjectDetails({
                           Questions
                         </h1>
 
-                        {!isOwnerViewing && (
+                        {!isOwnerViewing && showAskEntryPoints && (
                         <div className="relative mt-6 p-6 rounded-lg border border-gray-200 bg-gray-50">
                           {!isPreview && onlineTeam.length > 0 && (
                           <div
@@ -4051,7 +4391,7 @@ export default function ProjectDetails({
                             </TabsContent>
                           </Tabs>
 
-                          {!isOwnerViewing && (
+                          {!isOwnerViewing && showAskEntryPoints && (
                             <div className="py-8 px-6 bg-gray-50 border mt-8 border-gray-200 rounded-lg">
                               <h1 className="text-base font-semibold text-dark-blue-400 text-center">
                                 Can’t find what you’re looking for?
@@ -6456,7 +6796,7 @@ export default function ProjectDetails({
                       })()}
                     </span>
                     <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      {selectedPeriod === "2 weeks" ? "every" : "per"}
+                      {selectedPeriod === "biweek" ? "every" : "per"}
                     </span>
                   </div>
 
@@ -6523,7 +6863,9 @@ export default function ProjectDetails({
               isTalentAccount(user) ? (
               <div className="flex flex-col items-start gap-y-3 mt-6">
                 <span className="inline-block text-xs font-medium text-dark-blue-400">
-                  Current Team
+                  {Array.isArray(currentTeam) && currentTeam.length === 1
+                    ? "Created By"
+                    : "Current Team"}
                 </span>
 
                 {Array.isArray(currentTeam) && currentTeam.length > 0 ? (
@@ -6843,7 +7185,28 @@ export default function ProjectDetails({
                         </Button>
                       </DialogClose>
                       <Button
-                        onClick={() => router.push(`/checkout/${params.slug}`)}
+                        onClick={() => {
+                          // PMCM-259/AC2: pass the buyer's selected Budget
+                          // Calculator period + the amount they saw for it
+                          // along to checkout (which had no existing
+                          // mechanism to receive this) — mirrors the
+                          // existing per-period cost lookup used for the
+                          // sidebar display above.
+                          const activePeriod =
+                            sidebarPricing?.periodOptions.find(
+                              (p) => p.value === selectedPeriod
+                            ) ?? sidebarPricing?.periodOptions[0]
+                          const amount =
+                            activePeriod?.cost ?? sidebarPricing?.totalCost
+                          const qs = new URLSearchParams()
+                          qs.set("period", selectedPeriod)
+                          if (amount != null && amount > 0) {
+                            qs.set("periodAmount", String(Math.round(amount)))
+                          }
+                          router.push(
+                            `/checkout/${params.slug}?${qs.toString()}`
+                          )
+                        }}
                       >
                         Continue to Checkout
                       </Button>
@@ -6938,7 +7301,11 @@ export default function ProjectDetails({
                   className="inline-flex items-center gap-x-2 cursor-pointer"
                   onClick={() => {
                     if (!user?.id) {
-                      openAuthModal("sign-in")
+                      // PMCM-260/X2: queue the action so it resumes
+                      // automatically after login.
+                      promptSignIn(() =>
+                        toggleReportWindow(true, project.id, project.title)
+                      )
                       return
                     }
                     toggleReportWindow(true, project.id, project.title)

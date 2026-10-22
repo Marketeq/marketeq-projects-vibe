@@ -15,12 +15,15 @@ import { CryptoModule }                 from '../crypto/crypto.module';
 import { ProvidersModule }              from '../providers/providers.module';
 import { PublishersModule }             from '../publishers/publishers.module';
 
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([PayoutRequest, DepositMethod]),
     CryptoModule,       // ConversionService
     ProvidersModule,    // CryptoPayoutProvider
     PublishersModule,   // PayoutPublisher
+    IdentityGateModule, // G9 PayoutExecutionGate
   ],
   providers: [
     BridgeSelectorService,

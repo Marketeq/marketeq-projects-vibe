@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { RatesController } from './controllers/rates.controller';
+import { RatesRpcController } from './controllers/rates-rpc.controller';
 import { RatesService } from './services/rates.service';
 import { RatesRefreshService } from './services/rates-refresh.service';
 import { PlatformRateAverage } from './entities/platform-rate-average.entity';
@@ -13,7 +14,7 @@ import { PlatformRateAverage } from './entities/platform-rate-average.entity';
     HttpModule,
     TypeOrmModule.forFeature([PlatformRateAverage]),
   ],
-  controllers: [RatesController],
+  controllers: [RatesController, RatesRpcController],
   providers: [
     RatesService,
     RatesRefreshService,

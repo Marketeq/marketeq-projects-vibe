@@ -17,7 +17,10 @@ export const mediaFileFilter = (
   callback: any,
 ) => {
   if (file.fieldname === 'featuredImage' || file.fieldname === 'additionalImages') {
-    if (!file.originalname.match(/\.(jpg|jpeg|png|webp)$/i)) {
+    // PMCM-256: webp dropped from new project-media uploads — this only
+    // gates the upload filename at the multer layer, so it doesn't touch
+    // already-stored webp URLs (nothing re-validates mimetype on read).
+    if (!file.originalname.match(/\.(jpg|jpeg|png)$/i)) {
       return callback(new Error('Only image files are allowed!'), false);
     }
     return callback(null, true);

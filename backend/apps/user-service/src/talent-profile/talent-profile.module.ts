@@ -9,10 +9,12 @@ import { TalentProfileSyncConsumer } from './talent-profile-sync.consumer';
 import { TalentProfileController } from './talent-profile.controller';
 import { TalentProfileRecommendationService } from './talent-profile-recommendation.service';
 import { User } from '../user/entities/user.entity';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     HttpModule,
+    IdentityGateModule,
     TypeOrmModule.forFeature([TalentProfile, User]),
     ConfigModule,
     ClientsModule.registerAsync([

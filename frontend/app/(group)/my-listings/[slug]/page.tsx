@@ -18,6 +18,15 @@ import {
 } from "@/service/http/autocomplete"
 import { CategoryAPI, type CategoryTreeNode } from "@/service/http/category"
 import { ProjectAPI } from "@/service/http/project"
+import {
+  idsToDrop,
+  isGateUnavailable,
+  notAdded,
+  readDraftMemberResults,
+  readSaveMembersResponse,
+  TEAM_SAVE_UNAVAILABLE_MESSAGE,
+  type MemberAddResult,
+} from "@/lib/member-add-results"
 import { TeamsAPI } from "@/service/http/teams"
 import {
   PROJECT_TYPE_OPTIONS,
@@ -29,6 +38,10 @@ import {
   removeFavorite,
 } from "@/src/lib/api/favorites"
 import { extractShortIdFromSlug } from "@/src/lib/urlHelpers"
+import {
+  isUnauthorizedError,
+  toUserMessage,
+} from "@/lib/listing-errors"
 import { useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
@@ -118,6 +131,16 @@ import {
   type ProjectStaticIcon,
   buildProjectStaticContentFromGateway,
 } from "@/lib/project-details/project-static-content-from-api"
+import {
+  availablePeriods,
+  costPerPeriod,
+  formatDuration,
+  normalizePeriod,
+  PERIOD_WIDGET_LABELS,
+  resolvePeriod,
+  scopeDurationDays,
+  type PricingPeriod,
+} from "@/lib/listing-pricing"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import {
   Combobox,
@@ -146,7 +169,11 @@ import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
-import { ScopeBuilder, estimateScopeBudgetCents } from "@/components/scope-builder"
+import {
+  ensureServicePhaseTypes,
+  estimateScopeBudgetCents,
+  ScopeBuilder,
+} from "@/components/scope-builder"
 import {
   ShowMoreLess,
   ShowMoreLessComp,
@@ -187,9 +214,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   Favorite,
   FavoriteRoot,
+  HelperText,
   IconButton,
+  ImageEditor,
   Input,
   InputGroup,
   InputLeftAddon,
@@ -346,10 +376,10 @@ const FALLBACK_CATEGORY_OPTIONS = [
 
 const MAX_SUBCATEGORIES_PER_CATEGORY = 5
 
-const SHORT_DESCRIPTION_MIN_LENGTH = 350
-const SHORT_DESCRIPTION_MAX_LENGTH = 450
+// PMCM-255: settled at max 300, no minimum — required just means non-empty.
+const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MIN_LENGTH = 100
-const FULL_DESCRIPTION_MAX_LENGTH = 5000
+const FULL_DESCRIPTION_MAX_LENGTH = 2000
 // Demo-toggle: publish-attempt validation (red inline hints + blocked publish).
 // Set to false to hide all publish validation.
 const SHOW_PUBLISH_VALIDATION = true
@@ -388,6 +418,21 @@ const toEmbedUrl = (raw?: string | null): string => {
   return url
 }
 
+// PMCM-256: toEmbedUrl silently returns an unrecognized URL unchanged
+// (no error) — this is the actual gate: only a URL toEmbedUrl can convert
+// is a valid YouTube/Vimeo URL, so re-running the same two patterns here
+// is how "invalid" gets defined for the video field's inline error.
+const isValidVideoUrl = (raw?: string | null): boolean => {
+  if (!raw) return false
+  const url = raw.trim()
+  if (!url) return false
+  return (
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]{11})/.test(
+      url
+    ) || /vimeo\.com\/(?:video\/)?(\d+)/.test(url)
+  )
+}
+
 const toVideoThumb = (raw?: string | null): string => {
   if (!raw) return ""
   const yt = raw.match(
@@ -407,6 +452,24 @@ const backendErrorMessage = (err: any): string => {
 const isModerationRejection = (err: any): boolean =>
   err?.response?.status === 400 &&
   /moderation|rejected|violat/i.test(backendErrorMessage(err))
+
+// PMCM-256: reject before any network call for the two things the backend
+// has always enforced anyway (allowed mimetypes, 10MB max — see
+// publish.module.ts/upload.validator.ts) — avoids a round trip just to
+// learn a file was always going to be rejected, and surfaces the ticket's
+// exact copy instead of whatever the generic backend error text is.
+const IMAGE_MAX_SIZE_BYTES = 10 * 1024 * 1024
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"])
+
+const validateImageFileBeforeUpload = (file: File): string | null => {
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
+    return "Only JPG and PNG files are supported."
+  }
+  if (file.size > IMAGE_MAX_SIZE_BYTES) {
+    return "File size must be 10 MB or less."
+  }
+  return null
+}
 
 const moderationFieldLabel = (field?: string | null): string | null => {
   switch (field) {
@@ -1149,7 +1212,7 @@ function SortableGalleryItem({
   isHidden: boolean
   isUploading: boolean
   isCompleting: boolean
-  onUpload: (files: FileList | null, replaceIndex?: number) => void
+  onUpload: (files: FileList | File[] | null, replaceIndex?: number) => void
   onDelete: (index: number) => void
   onToggleHidden: (index: number) => void
   onUploadComplete: () => void
@@ -1252,6 +1315,57 @@ function SortableGalleryItem({
               </TooltipProvider>
               {/* Action buttons */}
               <div className="absolute inset-0 flex items-center justify-center gap-x-2 z-10">
+                {/* PMCM-256: true edit (scale/rotate) via the catalogued
+                    ImageEditor, matching the same component's usage inside
+                    rich-text-editor.tsx's image toolbar. Save re-uploads
+                    through the same handleGalleryUpload path (moderation
+                    included) and only swaps the stored URL on success —
+                    on failure the original image is left untouched since
+                    nothing is placed until finalUrl resolves. */}
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    {/* PMCM-256 fix: ImageEditor's state machine has no
+                        EDIT transition from its initial "ideal" state —
+                        only UPLOAD/REMOVE — so onEdit() alone was a no-op.
+                        open() sends REMOVE first (ideal→removing, since
+                        dataUrl is set and skipUploadDialog is false, so no
+                        file picker opens), then onEdit() sends EDIT
+                        (removing→editing). Also: ImageEditor itself isn't
+                        a DOM element, so TooltipTrigger asChild moves
+                        inside startingPoint to wrap the actual button. */}
+                    <ImageEditor
+                      variant="image"
+                      defaultDataUrl={url}
+                      defaultFileName={
+                        url?.split("?")[0].split("/").pop() || "image.jpg"
+                      }
+                      editDialogTitle="Edit Image"
+                      onSaveImage={(file) => onUpload([file], index)}
+                      startingPoint={({ open, onEdit }) => (
+                        <TooltipTrigger asChild>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            className="size-9 rounded-full bg-white/20 hover:bg-white/40"
+                            onClick={() => {
+                              open()
+                              onEdit()
+                            }}
+                          >
+                            <Edit03 className="size-4 text-white" />
+                          </IconButton>
+                        </TooltipTrigger>
+                      )}
+                    />
+                    <TooltipContent
+                      side="bottom"
+                      visual="white"
+                      className="text-xs"
+                    >
+                      Edit image
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -1269,7 +1383,7 @@ function SortableGalleryItem({
                           input.click()
                         }}
                       >
-                        <Edit03 className="size-4 text-white" />
+                        <Upload01 className="size-4 text-white" />
                       </button>
                     </TooltipTrigger>
                     <TooltipContent
@@ -1429,7 +1543,30 @@ function ProjectDetailsInner() {
   const params = useParams()
   const router = useRouter()
   const pathname = usePathname()
-  const { user } = useAuth()
+  const { user, openAuthModal } = useAuth()
+  // PMCM-261/AC3: this editor is already wrapped in AuthenticatedRoute (see
+  // the default export below), which only gates the *initial* mount — a
+  // session that goes bad mid-edit (save/upload/publish 401s after the
+  // refresh-and-retry in service/index.ts's axios interceptor also fails)
+  // previously fell through to generic/silent error handling. Mirrors
+  // project-details' promptSignIn + latest-ref resume pattern (PMCM-402/
+  // PMCM-260) locally: open the modal in place, queue the exact retry, and
+  // run it once `user` flips truthy again — never router.push("/sign-in").
+  const pendingSessionActionRef = React.useRef<(() => void) | null>(null)
+  const promptSignInToRetry = React.useCallback(
+    (retry: () => void) => {
+      pendingSessionActionRef.current = retry
+      openAuthModal("sign-in")
+    },
+    [openAuthModal]
+  )
+  React.useEffect(() => {
+    if (user?.id && pendingSessionActionRef.current) {
+      const action = pendingSessionActionRef.current
+      pendingSessionActionRef.current = null
+      action()
+    }
+  }, [user?.id])
   const [project, setProject] = React.useState<any>({
     id: "draft",
     title: "Enter Project Title",
@@ -1501,9 +1638,35 @@ function ProjectDetailsInner() {
   const [selected, setSelected] = React.useState<string>("Details")
   const [descFullscreenOpen, setDescFullscreenOpen] = React.useState(false)
   const [descDraft, setDescDraft] = React.useState("")
-  const descDraftTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  )
+  // PMCM-255: snapshot of descDraft at the moment the modal opened, so Save
+  // can stay disabled until actually dirty (same pattern as PMCM-254's
+  // resetProjectInfoDraft/isProjectInfoDirty).
+  const [descDraftBaseline, setDescDraftBaseline] = React.useState("")
+  const descCharCount = getRichTextCharacterCount(descDraft)
+  // PMCM-255 (follow-up): RichTextEditor only resyncs from `defaultValue`
+  // when the user isn't actively editing it (rich-text-editor.tsx's
+  // `!isEditing && !isFullscreenOpen` guard on its own resync effect), so
+  // skipping the setDescDraft commit while typing did nothing to stop the
+  // seller typing past the limit — the editor just kept going on its own
+  // internal state, and the un-committed overflow text was then silently
+  // lost on Save. Enforcement now happens at the DOM level (the
+  // onBeforeInputCapture/onPasteCapture/onDropCapture wrapper below); this
+  // ref gives those capture-phase handlers a synchronous, always-current
+  // character count (a plain closure over `descCharCount` state could read
+  // a stale value if several input events fire before React re-renders,
+  // e.g. held-down-key repeat).
+  const descLiveCountRef = React.useRef(descCharCount)
+  React.useEffect(() => {
+    descLiveCountRef.current = descCharCount
+  }, [descCharCount])
+  const openDescriptionModal = React.useCallback(() => {
+    const current = project.description || ""
+    setDescDraft(current)
+    setDescDraftBaseline(current)
+    descLiveCountRef.current = getRichTextCharacterCount(current)
+    setDescFullscreenOpen(true)
+  }, [project.description])
+  const isDescDirty = descDraft !== descDraftBaseline
   const [projectInfoOpen, setProjectInfoOpen] = React.useState(false)
   const toTitleCase = (str: string) =>
     str.replace(/\b\w/g, (char) => char.toUpperCase())
@@ -1556,6 +1719,69 @@ function ProjectDetailsInner() {
     null,
     null,
   ])
+  const [infoDraftBaseline, setInfoDraftBaseline] = React.useState<{
+    title: string
+    summary: string
+    projectType: string
+    categories: CategoryRow[]
+  } | null>(null)
+  // PMCM-254: rebuild the Basic Info / Categories draft fresh from the
+  // committed `project` state. Must run on every modal-open — infoTitle and
+  // infoSummary were already re-hydrated inline at each open call site, but
+  // infoProjectType/infoCategories were not, so Cancel-ing an edit to either
+  // left the mutation sitting in state until the next real Save. Also
+  // captures the pre-edit snapshot so the Save button can tell whether the
+  // modal is actually dirty.
+  const resetProjectInfoDraft = React.useCallback(() => {
+    const title = toTitleCase(
+      project.title && project.title !== "Enter Project Title"
+        ? project.title
+        : ""
+    )
+    const summary = project.summary || ""
+    const projectType = project.projectType || "Website"
+    let categories: CategoryRow[]
+    if (
+      Array.isArray(project.categorySelections) &&
+      project.categorySelections.length > 0
+    ) {
+      categories = project.categorySelections.map((cs: CategoryRow) => ({
+        category: cs.category || "",
+        subCategories: Array.isArray(cs.subCategories)
+          ? cs.subCategories
+          : [],
+      }))
+    } else if (
+      Array.isArray(project.categories) &&
+      project.categories.length > 0
+    ) {
+      const subs = project.subcategories ?? []
+      categories = project.categories.map((cat: string, i: number) => ({
+        category: cat,
+        subCategories: i === 0 && Array.isArray(subs) ? subs : [],
+      }))
+    } else {
+      categories = []
+    }
+    while (categories.length < 3)
+      categories.push({ category: "", subCategories: [] })
+    categories = categories.slice(0, 3)
+
+    setInfoTitleRaw(title)
+    setInfoSummary(summary)
+    setInfoProjectType(projectType)
+    setInfoCategories(categories)
+    setInfoCatErrors([null, null, null])
+    setInfoDraftBaseline({ title, summary, projectType, categories })
+  }, [project])
+  const isProjectInfoDirty = infoDraftBaseline
+    ? JSON.stringify({
+        title: infoTitle,
+        summary: infoSummary,
+        projectType: infoProjectType,
+        categories: infoCategories,
+      }) !== JSON.stringify(infoDraftBaseline)
+    : false
   const [hiddenImages, setHiddenImages] = React.useState<Set<number>>(new Set())
   const [videoHidden, setVideoHidden] = React.useState(false)
   const galleryInputRef = React.useRef<HTMLInputElement>(null)
@@ -1575,6 +1801,13 @@ function ProjectDetailsInner() {
   > | null>(null)
   const [featuredUploading, setFeaturedUploading] = React.useState(false)
   const [featuredCompleting, setFeaturedCompleting] = React.useState(false)
+  // PMCM-256 follow-up: rejected-media errors render inline under the
+  // dropzone/grid (Figma has no error state for Media — this follows the
+  // existing video-URL inline-error pattern), not as toasts.
+  const [featuredImageError, setFeaturedImageError] = React.useState<
+    string | null
+  >(null)
+  const [galleryError, setGalleryError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     galleryUrlsRef.current = project.mediaUrls ?? []
@@ -1606,7 +1839,11 @@ function ProjectDetailsInner() {
         !PROJECT_TYPE_OPTIONS.includes(infoProjectType),
         !project.title || project.title === "Enter Project Title",
         (project.categories || []).length < 3,
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH,
+        // PMCM-255: required = non-empty, no minimum length. Still blocks
+        // on over-limit so an unshortened over-300 value can't pass as
+        // "complete" either.
+        !(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) > SHORT_DESCRIPTION_MAX_LENGTH,
         getRichTextCharacterCount(project.description || "") === 0,
         !(
           Array.isArray(project.deliverables) &&
@@ -1644,7 +1881,9 @@ function ProjectDetailsInner() {
         (!project.title || project.title === "Enter Project Title") &&
           "project title",
         (project.categories || []).length < 3 && "categories",
-        (project.summary?.trim().length ?? 0) < SHORT_DESCRIPTION_MIN_LENGTH &&
+        (!(project.summary?.trim().length ?? 0) ||
+          (project.summary?.trim().length ?? 0) >
+            SHORT_DESCRIPTION_MAX_LENGTH) &&
           "short description",
         getRichTextCharacterCount(project.description || "") === 0 &&
           "project description",
@@ -1701,6 +1940,9 @@ function ProjectDetailsInner() {
       ? arr[0] ?? ""
       : `${arr.slice(0, -1).join(", ")} and ${arr[arr.length - 1]}`
   const [videoUrlInput, setVideoUrlInput] = React.useState("")
+  const [videoUrlError, setVideoUrlError] = React.useState<string | null>(
+    null
+  )
   const { toast } = useToast()
 
   const updateGalleryScrollState = React.useCallback(() => {
@@ -1725,14 +1967,63 @@ function ProjectDetailsInner() {
   }, [])
 
   const handleGalleryUpload = React.useCallback(
-    async (files: FileList | null, replaceIndex?: number) => {
+    async (files: FileList | File[] | null, replaceIndex?: number) => {
       if (!files || files.length === 0) return
       if (!project.id || !isRealBackendId(project.id)) {
-        console.error(
-          "Cannot upload images — project has no backend ID yet. Save the project first."
-        )
+        // PMCM-256: was a silent console.error-and-return — nothing told
+        // the seller why their drop did nothing.
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
+
+      const requested = Array.from(files)
+      const validFiles: File[] = []
+      // PMCM-256 follow-up: inline, not a toast per rejected file — if
+      // several files fail, show the first message (valid files in the
+      // same batch still upload). Set once at the end so a later check
+      // (the 8-image cap, below) can still override it — never cleared
+      // partway through only to be stomped by a later failure in the
+      // same call.
+      let nextGalleryError: string | null = null
+      for (const file of requested) {
+        const validationError = validateImageFileBeforeUpload(file)
+        if (validationError) {
+          if (!nextGalleryError) nextGalleryError = validationError
+          continue
+        }
+        validFiles.push(file)
+      }
+      if (validFiles.length === 0) {
+        setGalleryError(nextGalleryError)
+        return
+      }
+
+      // PMCM-256 AC2: cap additional images at 8 total — occupied slots
+      // plus uploads already in flight plus this batch — matching the
+      // backend's @ArrayMaxSize(8)/multer maxCount(8). Replacing an
+      // existing slot never counts against the cap, it isn't adding one.
+      let filesToUpload = validFiles
+      if (replaceIndex === undefined) {
+        const occupiedCount = galleryUrlsRef.current.filter(Boolean).length
+        const inFlightCount = galleryReservedRef.current.size
+        const availableSlots = Math.max(
+          0,
+          8 - occupiedCount - inFlightCount
+        )
+        if (availableSlots < validFiles.length) {
+          nextGalleryError = "You can upload a maximum of 8 images."
+        }
+        filesToUpload = validFiles.slice(0, availableSlots)
+        if (filesToUpload.length === 0) {
+          setGalleryError(nextGalleryError)
+          return
+        }
+      }
+
+      setGalleryError(nextGalleryError)
       setHasChanges(true)
 
       // Reserve the next free slot so concurrent uploads never collide.
@@ -1765,18 +2056,30 @@ function ProjectDetailsInner() {
           try {
             await ProjectAPI.UpdateGalleryImages(
               project.id,
-              galleryUrlsRef.current.filter(
-                (u: string) => u && !u.startsWith("blob:")
+              // PMCM-256: map, don't filter — a filter here compacts the
+              // array, which desyncs the persisted order from the grid's
+              // fixed-by-index slots the next time this loads. Empty/blob
+              // entries become "" in place instead of being dropped.
+              galleryUrlsRef.current.map((u: string) =>
+                u && !u.startsWith("blob:") ? u : ""
               )
             )
           } catch (err) {
             console.error("Failed to save gallery images:", err)
+            if (isUnauthorizedError(err)) {
+              // Safe to re-queue this exact closure: it only ever reads
+              // galleryUrlsRef.current (always fresh), never a stale value
+              // captured at creation time.
+              promptSignInToRetry(() => schedulePersist())
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
           }
         }, 500)
       }
 
       await Promise.all(
-        Array.from(files).map(async (file) => {
+        filesToUpload.map(async (file) => {
           const targetIndex =
             replaceIndex !== undefined ? replaceIndex : reserveSlot()
           setUploadingSlots((prev) => new Set(prev).add(targetIndex))
@@ -1791,7 +2094,14 @@ function ProjectDetailsInner() {
             const res = await ProjectAPI.UploadMedia(formData)
             finalUrl = res?.data?.url || res?.data?.featuredImage
           } catch (err: any) {
-            if (isModerationRejection(err)) {
+            if (isUnauthorizedError(err)) {
+              // PMCM-261/AC3: queue this exact file for re-upload after
+              // login, through the ref (below) to avoid PMCM-260's
+              // stale-closure bug.
+              promptSignInToRetry(() =>
+                handleGalleryUploadRef.current([file], replaceIndex)
+              )
+            } else if (isModerationRejection(err)) {
               toast({
                 title: backendErrorMessage(err),
                 variant: "destructive",
@@ -1811,10 +2121,12 @@ function ProjectDetailsInner() {
               // file was never accepted. Previously this fell into the same
               // branch as the 503 case above and showed a local preview of
               // an image that was never actually uploaded.
-              toast({
-                title: backendErrorMessage(err) || "Failed to upload image. Please try again.",
-                variant: "destructive",
-              })
+              // PMCM-256 follow-up: inline, not a toast — this is a
+              // rejected-media error (the backend's own type/size
+              // validation), same category as the client-side checks above.
+              // PMCM-261/X3: shared generic/timeout copy, not the raw
+              // backend message.
+              setGalleryError(toUserMessage(err))
             }
           }
 
@@ -1834,22 +2146,28 @@ function ProjectDetailsInner() {
         })
       )
     },
-    [project.id, toast]
+    [project.id, toast, promptSignInToRetry]
   )
+  const handleGalleryUploadRef = React.useRef(handleGalleryUpload)
+  handleGalleryUploadRef.current = handleGalleryUpload
 
   const handleGalleryDelete = React.useCallback(
     async (index: number) => {
       const currentUrls: string[] = project.mediaUrls ?? []
-      // First 3 slots: clear in place so visible grid doesn't shift
-      // Beyond slot 2: remove and shift remaining images forward
-      const newUrls =
-        index < 3
-          ? currentUrls.map((url: string, i: number) =>
-              i === index ? "" : url
-            )
-          : currentUrls.filter((_: string, i: number) => i !== index)
+      // PMCM-256: every slot clears in place — the grid renders by raw
+      // array index (allUrls[index]), so the previous index>=3 branch's
+      // .filter() silently shifted every later slot's image down one
+      // (and desynced hiddenImages' indices with it). No slot's removal
+      // may ever move another slot's image or hidden state.
+      const newUrls = currentUrls.map((url: string, i: number) =>
+        i === index ? "" : url
+      )
       setProject((prev: any) => ({ ...prev, mediaUrls: newUrls }))
       setHasChanges(true)
+      // PMCM-256 follow-up: deleting a slot frees capacity (relevant to
+      // the 8-image-cap error) and is itself a form of "the grid changed",
+      // so any stale rejected-media error no longer applies.
+      setGalleryError(null)
       setHiddenImages((prev) => {
         const next = new Set(prev)
         next.delete(index)
@@ -1860,15 +2178,24 @@ function ProjectDetailsInner() {
         try {
           await ProjectAPI.UpdateGalleryImages(
             project.id,
-            newUrls.filter((u: string) => u && !u.startsWith("blob:"))
+            // Map, don't filter — preserve position so the persisted
+            // order matches the grid's fixed-by-index slots on reload.
+            newUrls.map((u: string) => (u && !u.startsWith("blob:") ? u : ""))
           )
         } catch (err) {
           console.error("Failed to save gallery after delete:", err)
+          if (isUnauthorizedError(err)) {
+            promptSignInToRetry(() => handleGalleryDeleteRef.current(index))
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
       }
     },
-    [project.id, project.mediaUrls]
+    [project.id, project.mediaUrls, toast, promptSignInToRetry]
   )
+  const handleGalleryDeleteRef = React.useRef(handleGalleryDelete)
+  handleGalleryDeleteRef.current = handleGalleryDelete
 
   const handleGalleryToggleHidden = React.useCallback(
     (index: number) => {
@@ -1879,18 +2206,41 @@ function ProjectDetailsInner() {
 
       if (project.id && isRealBackendId(project.id)) {
         const urls: string[] = project.mediaUrls ?? []
-        const additional = urls.filter(
-          (u: string) => u && !u.startsWith("blob:")
+        // Map, don't filter — preserve position (see handleGalleryDelete).
+        const additional = urls.map((u: string) =>
+          u && !u.startsWith("blob:") ? u : ""
         )
         const hidden = Array.from(next)
           .map((i) => urls[i])
           .filter((u): u is string => Boolean(u && !u.startsWith("blob:")))
+        const projectId = project.id
+        const retryPersist = () =>
+          ProjectAPI.UpdateGalleryImages(projectId, additional, hidden).catch(
+            (retryErr: any) => {
+              console.error("Failed to save hidden images:", retryErr)
+              toast({
+                title: toUserMessage(retryErr),
+                variant: "destructive",
+              })
+            }
+          )
         ProjectAPI.UpdateGalleryImages(project.id, additional, hidden).catch(
-          (err: any) => console.error("Failed to save hidden images:", err)
+          (err: any) => {
+            console.error("Failed to save hidden images:", err)
+            if (isUnauthorizedError(err)) {
+              // Retry the already-computed persist call directly — NOT the
+              // toggle function itself, which would flip hiddenImages back
+              // again (it already applied once, above, before this API
+              // call ever ran).
+              promptSignInToRetry(retryPersist)
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
+          }
         )
       }
     },
-    [hiddenImages, project.id, project.mediaUrls]
+    [hiddenImages, project.id, project.mediaUrls, toast, promptSignInToRetry]
   )
 
   const gallerySensors = useSensors(
@@ -1937,11 +2287,28 @@ function ProjectDetailsInner() {
 
       // Persist in background
       if (prev.id && isRealBackendId(prev.id)) {
-        ProjectAPI.UpdateGalleryImages(
-          prev.id,
-          reordered.filter((u: string) => u && !u.startsWith("blob:"))
-        ).catch((err: any) =>
-          console.error("Failed to save gallery reorder:", err)
+        const reorderedUrls = reordered.map((u: string) =>
+          u && !u.startsWith("blob:") ? u : ""
+        )
+        const persistReorder = () =>
+          ProjectAPI.UpdateGalleryImages(prev.id, reorderedUrls).catch(
+            (retryErr: any) => {
+              console.error("Failed to save gallery reorder:", retryErr)
+              toast({
+                title: toUserMessage(retryErr),
+                variant: "destructive",
+              })
+            }
+          )
+        ProjectAPI.UpdateGalleryImages(prev.id, reorderedUrls).catch(
+          (err: any) => {
+            console.error("Failed to save gallery reorder:", err)
+            if (isUnauthorizedError(err)) {
+              promptSignInToRetry(persistReorder)
+            } else {
+              toast({ title: toUserMessage(err), variant: "destructive" })
+            }
+          }
         )
       }
 
@@ -1952,12 +2319,30 @@ function ProjectDetailsInner() {
 
   const handleFeaturedImageUpload = React.useCallback(
     async (file: File) => {
+      const validationError = validateImageFileBeforeUpload(file)
+      if (validationError) {
+        // PMCM-256 follow-up: rejected-media errors (type/size/count) are
+        // inline under the dropzone, not toasts — Figma has no error
+        // state for Media, so this follows the existing video-URL inline
+        // error pattern already in this file.
+        setFeaturedImageError(validationError)
+        return
+      }
+      setFeaturedImageError(null)
       setHasChanges(true)
       setFeaturedUploading(true)
       if (!project.id || !isRealBackendId(project.id)) {
+        // PMCM-256: previously fell straight through to a local preview
+        // with no explanation — the image looked uploaded but wasn't
+        // persisted anywhere yet. Still show the preview (reasonable
+        // stand-in until the draft exists), but now say why.
         const localUrl = URL.createObjectURL(file)
         setProject((prev: any) => ({ ...prev, featuredImage: localUrl }))
         setFeaturedUploading(false)
+        toast({
+          title: "Your project is still being created. Please wait a moment and try again.",
+          variant: "destructive",
+        })
         return
       }
       const formData = new FormData()
@@ -1968,10 +2353,19 @@ function ProjectDetailsInner() {
         const url = res?.data?.featuredImage || res?.data?.url
         if (url) {
           setProject((prev: any) => ({ ...prev, featuredImage: url }))
+          setFeaturedImageError(null)
         }
       } catch (err: any) {
         console.error("Failed to upload featured image:", err)
-        if (isModerationRejection(err)) {
+        if (isUnauthorizedError(err)) {
+          // PMCM-261/AC3: session expired mid-upload — the file (and
+          // hasChanges/featuredUploading flags) are already local state,
+          // nothing to lose. Queue the exact same upload for after login
+          // through the ref (below), not `handleFeaturedImageUpload` by
+          // name — PMCM-260 found that self-reference captures a stale
+          // closure and just re-prompts instead of completing.
+          promptSignInToRetry(() => handleFeaturedImageUploadRef.current(file))
+        } else if (isModerationRejection(err)) {
           toast({ title: backendErrorMessage(err), variant: "destructive" })
         } else if (err?.response?.status === 503) {
           // Moderation service itself is down, not a rejection of the
@@ -1989,18 +2383,23 @@ function ProjectDetailsInner() {
           // file was never accepted. Previously this fell into the same
           // branch as the 503 case above and showed a local preview of
           // an image that was never actually uploaded.
-          toast({
-            title: backendErrorMessage(err) || "Failed to upload featured image. Please try again.",
-            variant: "destructive",
-          })
+          // PMCM-256 follow-up: inline, not a toast — this is a rejected-
+          // media error (the backend's own type/size validation), same
+          // category as the client-side validationError above.
+          // PMCM-261/X3: was `backendErrorMessage(err) || "Upload failed..."`
+          // — replaced with the shared generic/timeout copy so a raw
+          // backend validation string never reaches the UI.
+          setFeaturedImageError(toUserMessage(err))
         }
       } finally {
         setFeaturedUploading(false)
         setFeaturedCompleting(true)
       }
     },
-    [project.id, toast]
+    [project.id, toast, promptSignInToRetry]
   )
+  const handleFeaturedImageUploadRef = React.useRef(handleFeaturedImageUpload)
+  handleFeaturedImageUploadRef.current = handleFeaturedImageUpload
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
@@ -2016,9 +2415,24 @@ function ProjectDetailsInner() {
       toast({ title: `Your ${label} is live`, variant: "success" })
     } catch (err: any) {
       console.error("Failed to publish:", err)
-      const message =
-        backendErrorMessage(err) || "Failed to publish. Please try again."
+      if (isUnauthorizedError(err)) {
+        // PMCM-261/AC3: queue through the ref, not `handlePublish` by name
+        // (PMCM-260 stale-closure bug).
+        promptSignInToRetry(() => handlePublishRef.current())
+        setPublishDialogOpen(false)
+        return
+      }
       const field = err?.response?.data?.field
+      // PMCM-261/X3: the backend only ever tags a message with `field` for
+      // its own deliberate, curated publish-validation copy (matching
+      // PMCM-254's client-side field copy) — safe to show verbatim. A
+      // moderation rejection is the other known-safe, human-written case.
+      // Anything else (infra error, unexpected 4xx/5xx) goes through the
+      // shared generic/timeout copy instead of the raw backend message.
+      const message =
+        isModerationRejection(err) || typeof field === "string"
+          ? backendErrorMessage(err) || toUserMessage(err)
+          : toUserMessage(err)
       setPublishError(message)
       setPublishErrorField(typeof field === "string" ? field : null)
       setPublishDialogOpen(false)
@@ -2026,7 +2440,9 @@ function ProjectDetailsInner() {
     } finally {
       setIsPublishing(false)
     }
-  }, [project?.id, project?.listingType, toast])
+  }, [project?.id, project?.listingType, toast, promptSignInToRetry])
+  const handlePublishRef = React.useRef(handlePublish)
+  handlePublishRef.current = handlePublish
 
   const handleUnpublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
@@ -2039,14 +2455,17 @@ function ProjectDetailsInner() {
       toast({ title: `Your ${label} is now a draft`, variant: "success" })
     } catch (err) {
       console.error("Failed to unpublish:", err)
-      toast({
-        title: "Failed to unpublish. Please try again.",
-        variant: "destructive",
-      })
+      if (isUnauthorizedError(err)) {
+        promptSignInToRetry(() => handleUnpublishRef.current())
+        return
+      }
+      toast({ title: toUserMessage(err), variant: "destructive" })
     } finally {
       setIsPublishing(false)
     }
-  }, [project?.id, project?.listingType, toast])
+  }, [project?.id, project?.listingType, toast, promptSignInToRetry])
+  const handleUnpublishRef = React.useRef(handleUnpublish)
+  handleUnpublishRef.current = handleUnpublish
 
   const isPublished = project?.status === "published"
 
@@ -2084,6 +2503,17 @@ function ProjectDetailsInner() {
     !(user as any)?.id ||
     !ownerId ||
     ownerId === String((user as any).id)
+
+  // PMCM-259/N2: "View as Client" is owner-or-team-lead only. originalLeadId
+  // (not the editable teamLeadId, which can hold an unsaved pending
+  // reassignment) is the persisted project_members.isLead row, hydrated
+  // on load a few lines below.
+  const isLeadViewing = Boolean(
+    (user as any)?.id &&
+      originalLeadId &&
+      String((user as any).id) === String(originalLeadId)
+  )
+  const canViewAsClient = isOwnerViewing || isLeadViewing
 
   const { isOnline } = useOnlineUsers()
   const onlineTeam = React.useMemo(
@@ -2190,21 +2620,69 @@ function ProjectDetailsInner() {
         }
       })
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
-    try {
-      if ((project as any)?.id) {
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
-          teamMemberIds: nextIds,
-        } as any)
-        await ProjectAPI.SaveProjectMembers((project as any).id, memberPayload)
-      }
-    } catch {
-      // non-blocking
-    }
     setRemoveTarget(null)
-    toast({
-      title: `${target.firstName} has been removed`,
-      variant: "success",
-    })
+    const projectId = (project as any)?.id
+    const persistRemoval = async () => {
+      try {
+        if (projectId) {
+          const draftRes = await ProjectAPI.UpdateProjectDraft(projectId, {
+            teamMemberIds: nextIds,
+          } as any)
+          const saveRes = await ProjectAPI.SaveProjectMembers(projectId, memberPayload)
+          // Removing someone adds nobody, but anything the server did not accept is still reported.
+          reportMemberResults(readDraftMemberResults(draftRes))
+          reportMemberResults(readSaveMembersResponse(saveRes).results)
+        }
+        toast({
+          title: `${target.firstName} has been removed`,
+          variant: "success",
+        })
+      } catch (err) {
+        // PMCM-261/E2: this used to show the success toast unconditionally
+        // even when both persistence calls above failed — the removal
+        // never actually reached the backend but the seller was told it
+        // had. Retry via this closure (not confirmRemoveMember itself,
+        // which reads the now-cleared removeTarget state) on 401.
+        if (isUnauthorizedError(err)) {
+          promptSignInToRetry(persistRemoval)
+        } else {
+          toast({ title: toUserMessage(err), variant: "destructive" })
+        }
+      }
+    }
+    await persistRemoval()
+  }
+
+  // G7: the roster is saved through endpoints that gate every NEW person on
+  // verification and answer with one result per entry. Someone who is not added never
+  // fails the save, so each result is read, the owner is told who was left out (neutral
+  // wording, never why), and the person is taken back out of the roster on screen.
+  const memberLabel = (userId: string | null, index: number) => {
+    const m =
+      (Array.isArray((project as any)?.team) ? (project as any).team : []).find(
+        (x: any) => String(x.id || x.userId || "") === String(userId)
+      ) ?? null
+    return (
+      m?.firstName || m?.name || m?.username || (userId ? "this person" : `entry ${index + 1}`)
+    )
+  }
+  /** Tells the owner who was not added; returns how many were. */
+  const reportMemberResults = (
+    results: MemberAddResult[],
+    announceAlreadyMember: Set<string> = new Set()
+  ): number => {
+    const problems = notAdded(results, memberLabel, announceAlreadyMember)
+    const drop = idsToDrop(problems)
+    if (drop.size > 0) {
+      setProject((prev: any) => ({
+        ...prev,
+        teamMemberIds: (Array.isArray(prev?.teamMemberIds) ? prev.teamMemberIds : []).filter(
+          (id: any) => !drop.has(String(id))
+        ),
+      }))
+    }
+    for (const p of problems) toast({ title: p.message, variant: "destructive" })
+    return problems.length
   }
 
   const addableMembers = React.useMemo(() => {
@@ -2236,15 +2714,42 @@ function ProjectDetailsInner() {
     if (ids.includes(String(userId))) return
     const nextIds = [...ids, String(userId)]
     setProject((prev: any) => ({ ...prev, teamMemberIds: nextIds }))
-    try {
-      if ((project as any)?.id)
-        await ProjectAPI.UpdateProjectDraft((project as any).id, {
-          teamMemberIds: nextIds,
-        } as any)
-    } catch {
-      // non-blocking
+    const projectId = (project as any)?.id
+    const persistAdd = async () => {
+      let added = true
+      try {
+        if (projectId) {
+          const res = await ProjectAPI.UpdateProjectDraft(projectId, {
+            teamMemberIds: nextIds,
+          } as any)
+          // The person was added only if the server says so: a verification block, an
+          // invalid or a duplicate entry is reported instead of "added".
+          const results = readDraftMemberResults(res)
+          const mine = results.find((r) => r.userId === String(userId))
+          const reported = reportMemberResults(results, new Set([String(userId)]))
+          added = mine ? mine.added : reported === 0
+          if (mine && mine.status === "already_member") added = false
+        }
+        if (added) toast({ title: "Team member added to project", variant: "success" })
+      } catch (err) {
+        // PMCM-261/E2: used to show the success toast unconditionally even
+        // when persistence failed. Retry via this closure (not
+        // addMemberToProject itself — the optimistic update above already
+        // makes `ids.includes(userId)` true, so a re-call would just
+        // return early without ever retrying) on 401.
+        if (isUnauthorizedError(err)) {
+          promptSignInToRetry(persistAdd)
+          return
+        }
+        // Nothing was added: put the roster back and say so; never claim the add.
+        setProject((prev: any) => ({ ...prev, teamMemberIds: ids }))
+        toast({
+          title: isGateUnavailable(err) ? TEAM_SAVE_UNAVAILABLE_MESSAGE : toUserMessage(err),
+          variant: "destructive",
+        })
+      }
     }
-    toast({ title: "Team member added to project", variant: "success" })
+    await persistAdd()
   }
 
   const saveTeamSettings = async () => {
@@ -2266,16 +2771,29 @@ function ProjectDetailsInner() {
       }
     })
     try {
-      if ((project as any)?.id)
-        await ProjectAPI.SaveProjectMembers((project as any).id, members)
-      toast({ title: "Team settings saved", variant: "success" })
-    } catch {
+      let notAddedCount = 0
+      if ((project as any)?.id) {
+        const res = await ProjectAPI.SaveProjectMembers((project as any).id, members)
+        // Successfully added members stay added; everyone else is reported by name.
+        notAddedCount = reportMemberResults(readSaveMembersResponse(res).results)
+      }
+      if (notAddedCount === 0) toast({ title: "Team settings saved", variant: "success" })
+      setTeamDialogOpen(false)
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        // PMCM-261/AC3: no internal auth re-check in this function (it's
+        // the server 401 that surfaces here), so a direct self-reference
+        // is safe — unlike the promptSignIn/handleAsk-style functions
+        // PMCM-260 fixed, this one can't loop back into re-prompting.
+        promptSignInToRetry(() => saveTeamSettings())
+        return
+      }
       toast({
-        title: "Failed to save team settings",
+        title: isGateUnavailable(err) ? TEAM_SAVE_UNAVAILABLE_MESSAGE : toUserMessage(err),
         variant: "destructive",
       })
+      setTeamDialogOpen(false)
     }
-    setTeamDialogOpen(false)
   }
 
   const hydratedMembersRef = React.useRef<string | null>(null)
@@ -2611,7 +3129,7 @@ function ProjectDetailsInner() {
       if (values.length > MAX_SUBCATEGORIES_PER_CATEGORY) {
         setInfoCatErrors((prev) => {
           const next = [...prev]
-          next[index] = "You can add a maximum of five (5) sub categories"
+          next[index] = "You can add a maximum of five (5) sub-categories."
           return next
         })
         return
@@ -2632,14 +3150,19 @@ function ProjectDetailsInner() {
 
   const handleSuggestedCategoryClick = React.useCallback(
     (category: string, subCategory: string) => {
-      const indexToUpdate = activeCategoryIndex
+      // PMCM-254: target the first EMPTY row rather than activeCategoryIndex
+      // (which defaults to 0 and only updates on dropdown/input focus) — a
+      // suggestion click must never silently overwrite a row the seller
+      // already filled in.
       setInfoCategories((prev) => {
+        const indexToUpdate = prev.findIndex((row) => !row.category)
+        if (indexToUpdate === -1) return prev
         const next = [...prev]
         next[indexToUpdate] = { category, subCategories: [subCategory] }
         return next
       })
     },
-    [activeCategoryIndex]
+    []
   )
 
   const selectedSuggestedPairs = React.useMemo(
@@ -2676,6 +3199,11 @@ function ProjectDetailsInner() {
   }, [infoProjectType, infoCategories, categoryTree])
 
   const suggestedForDisplay = React.useMemo(() => {
+    // PMCM-254: once all 3 rows are filled there's no empty row left for a
+    // suggestion click to land in — hide suggestions entirely instead of
+    // letting a click silently overwrite an existing row (or need a
+    // separate max-3 error for a path that structurally can't add a 4th row).
+    if (selectedCategoryNames.size >= 3) return []
     const seenCategories = new Set(selectedCategoryNames)
     const result: SuggestedCategoryOption[] = []
     for (const item of [...derivedSuggestions, ...suggested]) {
@@ -2712,6 +3240,18 @@ function ProjectDetailsInner() {
           await ProjectAPI.UpdateProjectDraft(project.id, fields)
         } catch (err: any) {
           console.error("Failed to save project fields:", err)
+          if (isUnauthorizedError(err)) {
+            // PMCM-261/AC3: `fields` is this call's own argument, not a
+            // captured outer value, so re-invoking through the ref with
+            // the same argument is safe — no stale-closure risk on the
+            // data being retried, only on which `saveProjectFields`
+            // version runs (the ref fixes that part).
+            promptSignInToRetry(() =>
+              saveProjectFieldsRef.current(fields)
+            )
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
         return
       }
@@ -2739,6 +3279,11 @@ function ProjectDetailsInner() {
         }
       } catch (createErr) {
         console.error("Failed to create project draft:", createErr)
+        if (isUnauthorizedError(createErr)) {
+          promptSignInToRetry(() => saveProjectFieldsRef.current(fields))
+        } else {
+          toast({ title: toUserMessage(createErr), variant: "destructive" })
+        }
       }
     },
     [
@@ -2754,8 +3299,24 @@ function ProjectDetailsInner() {
       project?.skills,
       project?.listingType,
       router,
+      toast,
+      promptSignInToRetry,
     ]
   )
+  const saveProjectFieldsRef = React.useRef(saveProjectFields)
+  saveProjectFieldsRef.current = saveProjectFields
+
+  // PMCM-255: explicit Save for the Project Description modal — commits
+  // descDraft to project.description and persists it, instead of the
+  // previous "always save whenever the editor closes, no matter how"
+  // behavior that had no real Cancel/discard path.
+  const handleSaveDescription = React.useCallback(() => {
+    if (descCharCount > FULL_DESCRIPTION_MAX_LENGTH) return
+    const savedDesc = descCharCount === 0 ? "" : descDraft
+    setProject((prev: any) => ({ ...prev, description: savedDesc }))
+    saveProjectFields({ fullDescription: savedDesc })
+    setDescFullscreenOpen(false)
+  }, [descCharCount, descDraft, saveProjectFields])
 
   const faqSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(
     null
@@ -2991,11 +3552,21 @@ function ProjectDetailsInner() {
           }
         } catch (err) {
           console.error("Failed to autosave scope:", err)
+          if (isUnauthorizedError(err)) {
+            // PMCM-261/AC3: re-run the whole debounced save for this exact
+            // phases snapshot through the ref, not `handleScopeChange` by
+            // name (stale-closure risk).
+            promptSignInToRetry(() => handleScopeChangeRef.current(phases))
+          } else {
+            toast({ title: toUserMessage(err), variant: "destructive" })
+          }
         }
       }, 1500)
     },
-    [project?.id, saveProjectFields]
+    [project?.id, saveProjectFields, toast, promptSignInToRetry]
   )
+  const handleScopeChangeRef = React.useRef(handleScopeChange)
+  handleScopeChangeRef.current = handleScopeChange
 
   // Cleanup scope save timer on unmount
   React.useEffect(() => {
@@ -3005,7 +3576,15 @@ function ProjectDetailsInner() {
   }, [])
 
   // ── Budget & Duration computed from scope ──────────────────────────────────
-  const [budgetPeriod, setBudgetPeriod] = React.useState("week")
+  // PMCM-258: duration day-counting, the duration label, the available
+  // periods, and the cost-per-period math all now come from the shared
+  // frontend/lib/listing-pricing.ts module — this page no longer keeps
+  // its own copy. See that module for the exact rules (months factor,
+  // Yearly threshold, rounding).
+  const [budgetPeriod, setBudgetPeriodState] = React.useState<PricingPeriod>(
+    "week"
+  )
+  const pricingPeriodHydratedRef = React.useRef(false)
 
   const isServiceListing =
     project?.listingType === "service" ||
@@ -3020,66 +3599,23 @@ function ProjectDetailsInner() {
   const { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays } =
     React.useMemo(() => {
       const phases = project.scope ?? []
+      const totalDays = scopeDurationDays(phases)
 
-      // Duration: tasks within a phase run in parallel (take max), phases are sequential (sum).
-      // Matches the scope builder's getPhaseDurationInDays logic.
-      let totalDays = 0
-      for (const phase of phases) {
-        const taskDurations = ((phase.rows ?? phase.tasks ?? []) as any[])
-          .map((row: any) => {
-            const dur = row.duration
-            // Object form { value, type }
-            if (dur && typeof dur === "object") {
-              const val = Number(dur.value) || 0
-              if (val > 0) {
-                if (dur.type === "weeks") return val * 7
-                if (dur.type === "months") return val * 30
-                if (dur.type === "hours") return Math.max(1, Math.ceil(val / 24))
-                return val // days
-              }
-            }
-            // String form, e.g. "2 weeks" (relational scope stores it this way)
-            if (typeof dur === "string" && dur.trim()) {
-              const [rv, ru] = dur.trim().split(/\s+/)
-              const v = Number(rv) || 0
-              const u = (ru || "days").toLowerCase()
-              if (v > 0) {
-                if (u.startsWith("week")) return v * 7
-                if (u.startsWith("month")) return v * 30
-                if (u.startsWith("hour")) return Math.max(1, Math.ceil(v / 24))
-                return v
-              }
-            }
-            // Fall back to estimatedHours at 40 hrs/week.
-            const hrs = Number(row.estimatedHours) || 0
-            return hrs > 0 ? Math.max(1, Math.round((hrs * 7) / 40)) : 0
-          })
-          .filter((d: number) => d > 0)
-        if (taskDurations.length > 0) {
-          totalDays += Math.max(...taskDurations)
-        }
-      }
-
-      // Display rules from docs:
-      // < 7 days → show days | < 4 weeks (28 days) → show weeks | otherwise → show months
-      let durationLabel = "—"
+      // durationValue/durationUnit feed the "Starting from a {value} {unit}
+      // duration" sentence elsewhere on this page — formatDuration() only
+      // returns the combined label, so these mirror its own bucketing.
       let durationValue = 0
       let durationUnit = ""
       if (totalDays > 0) {
         if (totalDays < 7) {
           durationValue = totalDays
           durationUnit = "day"
-          durationLabel = `${totalDays} Day${totalDays !== 1 ? "s" : ""}`
         } else if (totalDays < 28) {
-          const weeks = Math.max(1, Math.ceil(totalDays / 7))
-          durationValue = weeks
+          durationValue = Math.max(1, Math.ceil(totalDays / 7))
           durationUnit = "week"
-          durationLabel = `${weeks} Week${weeks !== 1 ? "s" : ""}`
         } else {
-          const months = Math.max(1, Math.ceil(totalDays / 30))
-          durationValue = months
+          durationValue = Math.max(1, Math.ceil(totalDays / 30))
           durationUnit = "month"
-          durationLabel = `${months} Month${months !== 1 ? "s" : ""}`
         }
       }
 
@@ -3112,7 +3648,13 @@ function ProjectDetailsInner() {
           ? pricingCents
           : storedCents
 
-      return { budgetTotalCents, durationLabel, durationValue, durationUnit, durationDays: totalDays }
+      return {
+        budgetTotalCents,
+        durationLabel: formatDuration(totalDays),
+        durationValue,
+        durationUnit,
+        durationDays: totalDays,
+      }
     }, [
       project.scope,
       project.budgetUsdCents,
@@ -3120,23 +3662,62 @@ function ProjectDetailsInner() {
       project.budget,
     ])
 
+  // PMCM-258/AC5: hydrate the saved period preference once, the first
+  // time it's actually loaded (undefined = not hydrated yet; null = no
+  // preference was ever saved, so the existing "week" default stands).
+  React.useEffect(() => {
+    if (pricingPeriodHydratedRef.current) return
+    if (project.pricingPeriod === undefined) return
+    pricingPeriodHydratedRef.current = true
+    if (project.pricingPeriod) {
+      setBudgetPeriodState(normalizePeriod(project.pricingPeriod))
+    }
+  }, [project.pricingPeriod])
+
+  // E2: if the selected period is no longer available (e.g. duration
+  // dropped under 52 weeks while Yearly was selected), fall back to
+  // biweek automatically.
+  React.useEffect(() => {
+    const resolved = resolvePeriod(
+      budgetPeriod,
+      durationDays,
+      isServiceListing,
+      budgetPeriod
+    )
+    if (resolved !== budgetPeriod) setBudgetPeriodState(resolved)
+  }, [budgetPeriod, durationDays, isServiceListing])
+
+  // PMCM-258/AC5: changing the period saves it through the same draft-save
+  // path as every other field on this page.
+  const setBudgetPeriod = React.useCallback(
+    (period: string) => {
+      const normalized = normalizePeriod(period)
+      setBudgetPeriodState(normalized)
+      if (project.id && isRealBackendId(project.id)) {
+        ProjectAPI.UpdateProjectDraft(project.id, {
+          pricingPeriod: normalized,
+        } as any).catch((err: any) =>
+          console.error("Failed to save pricing period:", err)
+        )
+      }
+    },
+    [project.id]
+  )
+
+  const availableBudgetPeriods = React.useMemo(
+    () => availablePeriods(durationDays, isServiceListing),
+    [durationDays, isServiceListing]
+  )
+
   // Format budget: Cost_Per_Period = Total_Cost / Number_of_Periods
   const formatBudget = React.useCallback(
     (cents: number, period: string) => {
-      if (cents <= 0) return "$0"
-      const total = cents / 100
-      // Number of periods in the project duration
-      const periodDays: Record<string, number> = {
-        week: 7,
-        "2-week": 14,
-        month: 30,
-        quarter: 90,
-        year: 365,
-      }
-      const daysPerPeriod = periodDays[period] ?? 7
-      const numPeriods = Math.max(1, Math.ceil(durationDays / daysPerPeriod))
-      const perPeriod = Math.round(total / numPeriods)
-      return `$${perPeriod.toLocaleString()}`
+      const perPeriod = costPerPeriod(
+        cents,
+        durationDays,
+        normalizePeriod(period)
+      )
+      return perPeriod > 0 ? `$${perPeriod.toLocaleString()}` : "$0"
     },
     [durationDays]
   )
@@ -3291,7 +3872,8 @@ function ProjectDetailsInner() {
               } catch {
                 /* ignore */
               }
-              return (d.scope ?? []).map((phase: any, phaseIdx: number) => {
+              const mappedScope = (d.scope ?? []).map(
+                (phase: any, phaseIdx: number) => {
                 const rawTasks = phase.rows || phase.task || []
                 return {
                   phaseName:
@@ -3367,7 +3949,9 @@ function ProjectDetailsInner() {
                                       ? "weeks"
                                       : unit.startsWith("hour")
                                         ? "hours"
-                                        : "days"
+                                        : unit.startsWith("month")
+                                          ? "months"
+                                          : "days"
                                     return { value, type }
                                   })(),
                             ...(assignedMember ? { assignedMember } : {}),
@@ -3376,11 +3960,20 @@ function ProjectDetailsInner() {
                       }
                     : {}),
                 }
-              })
+                }
+              )
+              // PMCM-257 follow-up 2: an older service draft saved before
+              // phaseType was required stays untyped on disk — normalize
+              // once on hydration so the header never falls back to
+              // "Phase One" (project scopes are returned as-is).
+              return d.listingType === "service"
+                ? ensureServicePhaseTypes(mappedScope)
+                : mappedScope
             })(),
             rating: 4.9,
             reviewCount: 14,
             listingType: d.listingType || "project",
+            pricingPeriod: d.pricingPeriod ?? null,
           })
           if (d.projectType || d.listingType)
             setInfoProjectType(d.projectType || d.listingType)
@@ -3531,7 +4124,7 @@ function ProjectDetailsInner() {
         let res: Response | null = null
         let slug = rawSlug
         for (const candidate of candidates) {
-          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`)
+          const r = await fetch(`${apiBase}/v1/projects/slug/${candidate}`, { credentials: "include" })
           if (r.ok) {
             res = r
             slug = candidate
@@ -3539,10 +4132,10 @@ function ProjectDetailsInner() {
           }
         }
         if (!res) {
-          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`)
+          res = await fetch(`${apiBase}/v1/projects/slug/${slug}`, { credentials: "include" })
         }
         if (!res.ok) {
-          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`)
+          const svcRes = await fetch(`${apiBase}/v1/services/slug/${slug}`, { credentials: "include" })
           if (!svcRes.ok) {
             // Not found anywhere — fall through to step 4 (auto-create draft)
             throw new Error("not-found")
@@ -3909,6 +4502,45 @@ function ProjectDetailsInner() {
                               "pointer-events-none !opacity-0"
                           )}
                         >
+                          {/* PMCM-256: true edit (scale/rotate) via the
+                              catalogued ImageEditor, same pattern/component
+                              used inside rich-text-editor.tsx's image
+                              toolbar — Save re-uploads through the same
+                              handleFeaturedImageUpload path (moderation
+                              included), only swapping the stored URL on a
+                              successful response. */}
+                          <ImageEditor
+                            variant="image"
+                            defaultDataUrl={project.featuredImage}
+                            defaultFileName={
+                              project.featuredImage
+                                ?.split("?")[0]
+                                .split("/")
+                                .pop() || "image.jpg"
+                            }
+                            editDialogTitle="Edit Image"
+                            onSaveImage={(file) =>
+                              handleFeaturedImageUpload(file)
+                            }
+                            startingPoint={({ open, onEdit }) => (
+                              // PMCM-256 fix: ImageEditor's state machine
+                              // has no EDIT transition from "ideal" —
+                              // open() sends REMOVE first (ideal→removing,
+                              // dataUrl is set so no file picker opens),
+                              // then onEdit() sends EDIT (removing→editing).
+                              <IconButton
+                                variant="ghost"
+                                visual="gray"
+                                className="size-8 rounded-full bg-white/20 hover:bg-white/40"
+                                onClick={() => {
+                                  open()
+                                  onEdit()
+                                }}
+                              >
+                                <Edit03 className="size-3.5 text-white" />
+                              </IconButton>
+                            )}
+                          />
                           <button
                             type="button"
                             className="size-8 rounded-full bg-white/20 hover:bg-white/40 inline-flex items-center justify-center transition"
@@ -3926,7 +4558,7 @@ function ProjectDetailsInner() {
                               input.click()
                             }}
                           >
-                            <Edit03 className="size-3.5 text-white" />
+                            <Upload01 className="size-3.5 text-white" />
                           </button>
                           <button
                             type="button"
@@ -3990,6 +4622,36 @@ function ProjectDetailsInner() {
                       </>
                     )}
                   </div>
+                  {featuredImageError && (
+                    <div className="mt-1.5 flex items-center gap-x-2">
+                      <ErrorMessage size="sm">
+                        {featuredImageError}
+                      </ErrorMessage>
+                      {/* PMCM-261/AC2: a visible retry affordance next to
+                          the error, in addition to re-hovering the (now
+                          empty) thumbnail — re-runs validation+upload from
+                          scratch via the same picker the "Add Image"
+                          control above uses. */}
+                      <Button
+                        size="sm"
+                        variant="link"
+                        onClick={() => {
+                          const input = document.createElement("input")
+                          input.type = "file"
+                          input.accept = "image/*"
+                          input.onchange = (e) => {
+                            const files = (e.target as HTMLInputElement).files
+                            if (files?.[0]) {
+                              handleFeaturedImageUpload(files[0])
+                            }
+                          }
+                          input.click()
+                        }}
+                      >
+                        Retry
+                      </Button>
+                    </div>
+                  )}
                   {SHOW_PUBLISH_VALIDATION &&
                     publishAttempted &&
                     !project.featuredImage &&
@@ -4255,7 +4917,7 @@ function ProjectDetailsInner() {
                       (!project.title ||
                         project.title === "Enter Project Title") && (
                         <p className="text-sm text-error-500">
-                          Please enter your project title
+                          Title is required.
                         </p>
                       )}
 
@@ -4287,12 +4949,7 @@ function ProjectDetailsInner() {
                             : "text-dark-blue-400"
                         )}
                         onClick={() => {
-                          setInfoTitle(
-                            project.title === "Enter Project Title"
-                              ? ""
-                              : project.title || ""
-                          )
-                          setInfoSummary(project.summary || "")
+                          resetProjectInfoDraft()
                           setInfoTab("Categories")
                           setSelected("Details")
                           setProjectInfoOpen(true)
@@ -4305,9 +4962,9 @@ function ProjectDetailsInner() {
 
                     {SHOW_PUBLISH_VALIDATION &&
                       publishAttempted &&
-                      (project.categories || []).length < 3 && (
+                      (project.categories || []).length < 1 && (
                         <p className="text-sm text-error-500">
-                          Please add at least 3 categories
+                          At least one category is required.
                         </p>
                       )}
                   </div>
@@ -4317,12 +4974,7 @@ function ProjectDetailsInner() {
                     variant="ghost"
                     visual="gray"
                     onClick={() => {
-                      setInfoTitle(
-                        project.title === "Enter Project Title"
-                          ? ""
-                          : project.title || ""
-                      )
-                      setInfoSummary(project.summary || "")
+                      resetProjectInfoDraft()
                       setInfoTab("Basic Info")
                       setSelected("Details")
                       setProjectInfoOpen(true)
@@ -4335,6 +4987,7 @@ function ProjectDetailsInner() {
                 <div
                   className="mt-6 relative cursor-pointer hover:bg-gray-50 rounded-md transition -mx-2 px-2 py-1"
                   onClick={() => {
+                    resetProjectInfoDraft()
                     setInfoTab("Basic Info")
                     setFocusSummaryOnOpen(true)
                     setSelected("Details")
@@ -4595,6 +5248,7 @@ function ProjectDetailsInner() {
                                     setVideoUrlInput(
                                       project.featuredVideo || ""
                                     )
+                                    setVideoUrlError(null)
                                     setVideoDialogOpen(true)
                                   }}
                                 >
@@ -4687,6 +5341,12 @@ function ProjectDetailsInner() {
                   </div>
                 </DndContext>
 
+                {galleryError && (
+                  <ErrorMessage size="sm" className="mt-1.5">
+                    {galleryError}
+                  </ErrorMessage>
+                )}
+
                 {SHOW_PUBLISH_VALIDATION &&
                   publishAttempted &&
                   publishImageCount < 3 && (
@@ -4715,6 +5375,7 @@ function ProjectDetailsInner() {
                     <DropdownMenuItem
                       onSelect={() => {
                         setVideoUrlInput(project.featuredVideo || "")
+                        setVideoUrlError(null)
                         setVideoDialogOpen(true)
                       }}
                     >
@@ -4837,10 +5498,7 @@ function ProjectDetailsInner() {
                         {getRichTextCharacterCount(project.description || "") > 0 ? (
                           <DescriptionCard
                             descHtml={project.description}
-                            onEdit={() => {
-                              setDescDraft(project.description || "")
-                              setDescFullscreenOpen(true)
-                            }}
+                            onEdit={openDescriptionModal}
                           />
                         ) : (
                           <>
@@ -4886,10 +5544,7 @@ function ProjectDetailsInner() {
                                     publishAttempted &&
                                     "text-error-500 border-error-300"
                                 )}
-                                onClick={() => {
-                                  setDescDraft(project.description || "")
-                                  setDescFullscreenOpen(true)
-                                }}
+                                onClick={openDescriptionModal}
                               >
                                 <Plus className="size-[15px]" />
                                 Add Description
@@ -4910,43 +5565,135 @@ function ProjectDetailsInner() {
                             </p>
                           )}
 
-                        {descFullscreenOpen && (
-                          <RichTextEditor
-                            defaultValue={descDraft}
-                            placeholder="<p class='text-gray-400'>Enter a full description</p>"
-                            allowFullscreen
-                            fullscreenOpen={descFullscreenOpen}
-                            onFullscreenOpenChange={(open) => {
-                              if (!open) {
-                                // Auto-save on close
-                                const savedDesc =
-                                  getRichTextCharacterCount(descDraft) === 0
-                                    ? ""
-                                    : descDraft
-                                setProject((prev: any) => ({
-                                  ...prev,
-                                  description: savedDesc,
-                                }))
-                                saveProjectFields({
-                                  fullDescription: savedDesc,
-                                })
-                              }
-                              setDescFullscreenOpen(open)
-                            }}
-                            fullscreenHelperText="Provide a comprehensive description of this project, including its purpose and features."
-                            fullscreenCharacterCount={getRichTextCharacterCount(descDraft)}
-                            fullscreenMaxCharacterCount={FULL_DESCRIPTION_MAX_LENGTH}
-                            className="hidden"
-                            onUpdate={(html) => {
-                              if (descDraftTimerRef.current)
-                                clearTimeout(descDraftTimerRef.current)
-                              descDraftTimerRef.current = setTimeout(
-                                () => setDescDraft(html),
-                                250
-                              )
-                            }}
-                          />
-                        )}
+                        {/* Project Description Modal */}
+                        <Dialog
+                          open={descFullscreenOpen}
+                          onOpenChange={setDescFullscreenOpen}
+                        >
+                          <DialogContent className="max-w-[700px] rounded-[12px] p-0">
+                            <div className="px-6 pt-6">
+                              <div className="flex items-start gap-x-2">
+                                <div className="flex-auto">
+                                  <h1 className="text-lg text-dark-blue-400 leading-7 font-semibold">
+                                    Project Description
+                                  </h1>
+                                </div>
+                                <IconButton
+                                  type="button"
+                                  variant="ghost"
+                                  visual="gray"
+                                  onClick={() => setDescFullscreenOpen(false)}
+                                >
+                                  <X className="size-5" />
+                                </IconButton>
+                              </div>
+                            </div>
+
+                            <div className="px-6 pt-4 pb-6 space-y-1.5">
+                              <div className="flex items-center justify-between gap-x-3">
+                                <HelperText className="flex-auto">
+                                  Provide a comprehensive description of this
+                                  project, including its purpose and features.
+                                </HelperText>
+                                <span
+                                  className={cn(
+                                    "shrink-0 text-xs",
+                                    descCharCount >= FULL_DESCRIPTION_MAX_LENGTH
+                                      ? "text-error-500"
+                                      : "text-gray-400"
+                                  )}
+                                >
+                                  {descCharCount.toLocaleString()}/
+                                  {FULL_DESCRIPTION_MAX_LENGTH.toLocaleString()}
+                                </span>
+                              </div>
+                              {descFullscreenOpen && (
+                                // PMCM-255 (follow-up): capture-phase guard
+                                // around the editor — fires before the event
+                                // reaches its contenteditable, blocking input
+                                // without touching the frozen component.
+                                <div
+                                  onBeforeInputCapture={(event) => {
+                                    const inputType =
+                                      event.nativeEvent.inputType
+                                    if (
+                                      inputType?.startsWith("insert") &&
+                                      descLiveCountRef.current >=
+                                        FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onPasteCapture={(event) => {
+                                    const pastedText =
+                                      event.clipboardData.getData("text")
+                                    if (
+                                      descLiveCountRef.current +
+                                        pastedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                  onDropCapture={(event) => {
+                                    const droppedText =
+                                      event.dataTransfer.getData("text/plain")
+                                    if (
+                                      descLiveCountRef.current +
+                                        droppedText.length >
+                                      FULL_DESCRIPTION_MAX_LENGTH
+                                    ) {
+                                      event.preventDefault()
+                                    }
+                                  }}
+                                >
+                                  <RichTextEditor
+                                    defaultValue={descDraft}
+                                    placeholder="<p class='text-gray-400'>Enter a description...</p>"
+                                    allowFullscreen
+                                    className="rounded-lg border border-gray-300 bg-white transition-colors focus-within:border-primary-500"
+                                    editorClassName="min-h-[176px] w-full max-w-full min-w-0 overflow-x-hidden px-4 py-4 text-base leading-7 text-gray-700 break-words [overflow-wrap:anywhere] [word-break:break-word] [&_.ProseMirror]:min-h-[150px] [&_.ProseMirror]:w-full [&_.ProseMirror]:max-w-full [&_.ProseMirror]:min-w-0 [&_.ProseMirror]:overflow-x-hidden [&_.ProseMirror]:focus:outline-none [&_[data-font-size='large-heading']]:text-2xl [&_[data-font-size='large-heading']]:font-semibold [&_[data-font-size='large-heading']_strong]:font-bold [&_[data-font-size='normal-heading']]:text-xl [&_[data-font-size='normal-heading']]:font-semibold [&_[data-font-size='normal-heading']_strong]:font-bold [&_[data-font-size='small-heading']]:text-base [&_[data-font-size='small-heading']]:font-semibold [&_[data-font-size='small-heading']_strong]:font-bold [&_h1]:break-words [&_h1]:[word-break:break-word] [&_h1]:text-2xl [&_h1]:font-semibold [&_h1_strong]:font-bold [&_h2]:break-words [&_h2]:[word-break:break-word] [&_h2]:text-xl [&_h2]:font-semibold [&_h2_strong]:font-bold [&_h3]:break-words [&_h3]:[word-break:break-word] [&_h3]:text-base [&_h3]:font-semibold [&_h3_strong]:font-bold [&_img]:my-4 [&_img]:block [&_img]:h-auto [&_img]:w-full [&_img]:max-w-full [&_img]:rounded-lg [&_img]:object-contain [&_li]:break-words [&_li]:[word-break:break-word] [&_ol]:list-decimal [&_ol]:list-outside [&_ol]:pl-7 [&_p]:min-h-[1.75rem] [&_p]:break-words [&_p]:[word-break:break-word] [&_p]:whitespace-pre-wrap [&_strong]:font-bold [&_ul]:list-disc [&_ul]:list-outside [&_ul]:pl-7"
+                                    onUpdate={(html) => {
+                                      // PMCM-255 (follow-up): always commit
+                                      // the real HTML, even over the limit —
+                                      // state must reflect what the seller
+                                      // actually sees, so the counter/Save
+                                      // button are truthful and nothing
+                                      // typed is ever silently lost. Actual
+                                      // enforcement is the capture-phase
+                                      // wrapper above, not this commit.
+                                      descLiveCountRef.current =
+                                        getRichTextCharacterCount(html)
+                                      setDescDraft(html)
+                                    }}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
+                              <Button
+                                type="button"
+                                variant="link"
+                                visual="gray"
+                                onClick={() => setDescFullscreenOpen(false)}
+                              >
+                                <X className="size-[15px]" />
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                disabled={
+                                  !isDescDirty ||
+                                  descCharCount > FULL_DESCRIPTION_MAX_LENGTH
+                                }
+                                onClick={handleSaveDescription}
+                              >
+                                Save
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
 
                         {/* Project Info Modal */}
                         <Dialog
@@ -4957,10 +5704,13 @@ function ProjectDetailsInner() {
                             <form
                               onSubmit={(e) => {
                                 e.preventDefault()
+                                // PMCM-255: block saving while the short
+                                // description is over the limit — never
+                                // silently truncate an existing over-limit
+                                // value on save.
                                 if (
-                                  infoSummary.length > 0 &&
-                                  infoSummary.length <
-                                    SHORT_DESCRIPTION_MIN_LENGTH
+                                  infoSummary.length >
+                                  SHORT_DESCRIPTION_MAX_LENGTH
                                 )
                                   return
                                 const updatedCategories = infoCategories
@@ -5038,19 +5788,24 @@ function ProjectDetailsInner() {
                                   {infoTab === "Basic Info" && (
                                     <div className="pt-6 px-6 pb-6 space-y-5">
                                       <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                          <Label
-                                            size="sm"
-                                            className="font-medium cursor-default"
-                                          >
-                                            Title
-                                          </Label>
-                                          <span className="text-xs text-gray-400">
+                                        <Label
+                                          size="sm"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
+                                        >
+                                          Title
+                                        </Label>
+                                        <div className="flex items-center justify-between gap-x-3">
+                                          <HelperText className="flex-auto">
+                                            Write a title that accurately
+                                            describes your project scope for
+                                            the marketplace.
+                                          </HelperText>
+                                          <span className="shrink-0 text-xs text-gray-400">
                                             {infoTitle.length}/120
                                           </span>
                                         </div>
                                         <Input
-                                          placeholder="Enter project title"
+                                          placeholder="Enter Title"
                                           value={infoTitle}
                                           onChange={(e) =>
                                             setInfoTitle(
@@ -5061,17 +5816,21 @@ function ProjectDetailsInner() {
                                       </div>
 
                                       <div className="space-y-1.5">
-                                        <div className="flex items-center justify-between">
-                                          <Label
-                                            size="sm"
-                                            className="font-medium cursor-default"
-                                          >
-                                            Short Description
-                                          </Label>
+                                        <Label
+                                          size="sm"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
+                                        >
+                                          Short Description
+                                        </Label>
+                                        <div className="flex items-center justify-between gap-x-3">
+                                          <HelperText className="flex-auto">
+                                            Provide a brief overview of your
+                                            project scope.
+                                          </HelperText>
                                           <span
                                             className={cn(
-                                              "text-xs",
-                                              infoSummary.length >
+                                              "shrink-0 text-xs",
+                                              infoSummary.length >=
                                                 SHORT_DESCRIPTION_MAX_LENGTH
                                                 ? "text-error-500"
                                                 : "text-gray-400"
@@ -5084,49 +5843,100 @@ function ProjectDetailsInner() {
                                         <Textarea
                                           ref={summaryTextareaRef}
                                           className="min-h-[100px] resize-none"
-                                          placeholder="Enter a short description..."
+                                          placeholder="Enter a description..."
                                           value={infoSummary}
                                           isInvalid={
-                                            infoSummary.length > 0 &&
-                                            (infoSummary.length <
-                                              SHORT_DESCRIPTION_MIN_LENGTH ||
-                                              infoSummary.length >
-                                                SHORT_DESCRIPTION_MAX_LENGTH)
+                                            infoSummary.length >
+                                            SHORT_DESCRIPTION_MAX_LENGTH
                                           }
+                                          // PMCM-255: never truncate an
+                                          // existing over-limit value —
+                                          // block further insertions instead
+                                          // of slicing the whole string on
+                                          // every keystroke. Deletions are
+                                          // always allowed (key.length !== 1
+                                          // for Backspace/Delete).
                                           onChange={(e) =>
-                                            setInfoSummary(
-                                              e.target.value.slice(
-                                                0,
-                                                SHORT_DESCRIPTION_MAX_LENGTH
-                                              )
-                                            )
+                                            setInfoSummary(e.target.value)
                                           }
+                                          onKeyDown={(e) => {
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              !e.ctrlKey &&
+                                              !e.metaKey &&
+                                              !e.altKey &&
+                                              e.key.length === 1 &&
+                                              currentLen - selLen >=
+                                                SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
+                                          onPaste={(e) => {
+                                            const pastedText =
+                                              e.clipboardData.getData("text")
+                                            const currentLen =
+                                              infoSummary.length
+                                            const selLen =
+                                              (e.currentTarget.selectionEnd ??
+                                                0) -
+                                              (e.currentTarget
+                                                .selectionStart ?? 0)
+                                            if (
+                                              currentLen -
+                                                selLen +
+                                                pastedText.length >
+                                              SHORT_DESCRIPTION_MAX_LENGTH
+                                            ) {
+                                              e.preventDefault()
+                                            }
+                                          }}
                                         />
-                                        {infoSummary.length > 0 &&
-                                          infoSummary.length <
-                                            SHORT_DESCRIPTION_MIN_LENGTH && (
-                                            <p className="text-xs text-error-500">
-                                              Please enter at least{" "}
-                                              {SHORT_DESCRIPTION_MIN_LENGTH}{" "}
-                                              character(s)
-                                            </p>
-                                          )}
+                                        {infoSummary.length >
+                                          SHORT_DESCRIPTION_MAX_LENGTH && (
+                                          // PMCM-261/AC1/E1: the submit
+                                          // handler above silently no-ops
+                                          // while over the limit (an old
+                                          // value saved before the limit
+                                          // existed) — previously the only
+                                          // feedback was the red
+                                          // border/counter, with no text
+                                          // explaining why Save did
+                                          // nothing. Clears automatically
+                                          // as soon as the value is
+                                          // shortened back under the limit.
+                                          <ErrorMessage size="sm">
+                                            Shorten this to{" "}
+                                            {SHORT_DESCRIPTION_MAX_LENGTH}{" "}
+                                            characters or fewer to save.
+                                          </ErrorMessage>
+                                        )}
                                       </div>
 
                                       <div className="space-y-1.5">
                                         <Label
                                           size="sm"
-                                          className="font-medium cursor-default"
+                                          className="font-semibold text-dark-blue-400 cursor-default"
                                         >
                                           Project Type
                                         </Label>
+                                        <HelperText>
+                                          Select the category that best
+                                          represents your project scope.
+                                        </HelperText>
                                         <Listbox
                                           value={infoProjectType}
                                           onChange={setInfoProjectType}
                                         >
                                           <ListboxButton
                                             placeholder="Select type"
-                                            className="h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
+                                            className="w-32 h-[44px] px-[14px] py-[10px] flex items-center justify-start border border-gray-300 rounded-[5px]"
                                           >
                                             {({ value }) => (
                                               <span className="truncate block">
@@ -5212,6 +6022,10 @@ function ProjectDetailsInner() {
                                               </div>
 
                                               <TagsInputRoot
+                                                disabled={
+                                                  !infoCategories[index]
+                                                    .category
+                                                }
                                                 value={
                                                   infoCategories[index]
                                                     .subCategories
@@ -5289,7 +6103,6 @@ function ProjectDetailsInner() {
                                                         )
                                                       )}
                                                       <TagsInputInput
-                                                        portalDropdown
                                                         placeholder={
                                                           tagsInput.value.length
                                                             ? ""
@@ -5393,7 +6206,12 @@ function ProjectDetailsInner() {
                                   <X className="size-[15px]" />
                                   Cancel
                                 </Button>
-                                <Button type="submit">Save</Button>
+                                <Button
+                                  type="submit"
+                                  disabled={!isProjectInfoDirty}
+                                >
+                                  Save
+                                </Button>
                               </div>
                             </form>
                           </DialogContent>
@@ -6401,7 +7219,6 @@ function ProjectDetailsInner() {
                                                 )
                                               )}
                                               <TagsInputInput
-                                                portalDropdown
                                                 options={field.options}
                                                 placeholder={
                                                   tagsInput.value.length
@@ -6452,6 +7269,7 @@ function ProjectDetailsInner() {
                                       visual="gray"
                                       className="shrink-0 ml-4 bg-white"
                                       onClick={() => {
+                                        resetProjectInfoDraft()
                                         setDetailsDialogOpen(false)
                                         setProjectInfoOpen(true)
                                         setInfoTab("Categories")
@@ -9892,13 +10710,13 @@ function ProjectDetailsInner() {
                         </span>
                         <div className="mt-2 flex items-baseline gap-x-1.5">
                           <span className="text-[28px] leading-none font-bold text-dark-blue-400">
-                            {formatBudget(budgetTotalCents, "week")}
+                            {formatBudget(budgetTotalCents, budgetPeriod)}
                           </span>
                           <span className="text-sm text-dark-blue-400">
                             per
                           </span>
                           <Badge visual="gray" className="rounded-[5px]">
-                            week
+                            {PERIOD_WIDGET_LABELS[budgetPeriod]}
                           </Badge>
                         </div>
                       </div>
@@ -10017,15 +10835,9 @@ function ProjectDetailsInner() {
                           placeholder="Select"
                         />
                         <ListboxOptions className="w-[153px]">
-                          {[
-                            "week",
-                            "2-week",
-                            "month",
-                            "quarter",
-                            ...(durationDays >= 365 ? ["year"] : []),
-                          ].map((timeline) => (
-                            <ListboxOption key={timeline} value={timeline}>
-                              {timeline}
+                          {availableBudgetPeriods.map((period) => (
+                            <ListboxOption key={period} value={period}>
+                              {PERIOD_WIDGET_LABELS[period]}
                             </ListboxOption>
                           ))}
                         </ListboxOptions>
@@ -10299,6 +11111,7 @@ function ProjectDetailsInner() {
                       </Tooltip>
                     </TooltipProvider>
                   )}
+                  {canViewAsClient && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -10322,6 +11135,7 @@ function ProjectDetailsInner() {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                  )}
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -10451,9 +11265,18 @@ function ProjectDetailsInner() {
                           <Input
                             placeholder="www.video.com"
                             value={videoUrlInput}
-                            onChange={(e) => setVideoUrlInput(e.target.value)}
+                            onChange={(e) => {
+                              setVideoUrlInput(e.target.value)
+                              if (videoUrlError) setVideoUrlError(null)
+                            }}
+                            isInvalid={Boolean(videoUrlError)}
                           />
                         </InputGroup>
+                        {videoUrlError && (
+                          <ErrorMessage size="sm" className="mt-1.5">
+                            {videoUrlError}
+                          </ErrorMessage>
+                        )}
                       </div>
                     </div>
 
@@ -10471,6 +11294,18 @@ function ProjectDetailsInner() {
                             const fullUrl = url.startsWith("http")
                               ? url
                               : `https://${url}`
+                            // PMCM-256: invalid URL gets an inline error and
+                            // nothing is saved — toEmbedUrl silently passes
+                            // through anything it doesn't recognize, so
+                            // without this gate a typo'd URL would still
+                            // autosave and render as a raw, unresolved
+                            // iframe src on the client view.
+                            if (!isValidVideoUrl(fullUrl)) {
+                              setVideoUrlError(
+                                "Please enter a valid YouTube or Vimeo URL."
+                              )
+                              return
+                            }
                             setProject((prev: any) => ({
                               ...prev,
                               featuredVideo: fullUrl,

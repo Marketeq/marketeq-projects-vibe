@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { ROLE } from "@/types/user"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
+import { useApplyGate } from "@/utils/useApplyGate"
 import {
   clientSortOptions,
   clientStatusFilters,
@@ -781,6 +782,7 @@ export default function MyJobsPage() {
     useState<(typeof jobTabs)[number]["value"]>("saved")
   const { user } = useAuth()
   const { toggle: openInviteWindow } = useInviteWindowStore()
+  const { runApply, applyGateDialog } = useApplyGate()
 
   if (resolveDashboardRole(user) === ROLE.CLIENT) {
     return (
@@ -834,9 +836,11 @@ export default function MyJobsPage() {
                       variant="link"
                       visual="gray"
                       className="mt-3 px-0 text-primary-500"
+                      onClick={() => void runApply()}
                     >
                       Apply Now <ArrowRight className="size-4" />
                     </Button>
+                    {applyGateDialog}
                   </div>
 
                   <IconButton variant="ghost" visual="gray" size="sm">
@@ -935,7 +939,11 @@ export default function MyJobsPage() {
                                         View My Application
                                       </DropdownMenuItem>
                                     ) : (
-                                      <DropdownMenuItem onSelect={() => router.push(`/job-details/${job.id}`)}>
+                                      <DropdownMenuItem
+                                        onSelect={() =>
+                                          void runApply(() => router.push(`/job-details/${job.id}`))
+                                        }
+                                      >
                                         Apply Now
                                       </DropdownMenuItem>
                                     )}

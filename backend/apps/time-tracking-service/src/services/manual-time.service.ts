@@ -43,8 +43,9 @@ export class ManualTimeService {
     }
     // AC-79.02: future-dated entries are rejected server-side too — the
     // frontend already blocks this client-side, but that's bypassable via a
-    // direct API call, and this is the only real enforcement point.
-    if (start > new Date()) {
+    // direct API call, and this is the only real enforcement point. The end
+    // is checked too, so a past start can't carry hours that haven't happened.
+    if (start > new Date() || end > new Date()) {
       throw new BadRequestException('Entries cannot be logged for a future date or time');
     }
 

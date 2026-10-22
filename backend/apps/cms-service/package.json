@@ -7,6 +7,7 @@
     "build": "payload build && tsc",
     "start": "node dist/server.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "migrate": "payload migrate",
     "bootstrap": "node scripts/bootstrap.mjs",
     "fix:blog-richtext": "ts-node-dev --transpile-only --no-respawn --exit-child src/scripts/fix-blog-richtext.ts",
     "seed:homepage": "ts-node-dev --transpile-only --no-respawn --exit-child src/seeds/run-homepage-seed.ts",

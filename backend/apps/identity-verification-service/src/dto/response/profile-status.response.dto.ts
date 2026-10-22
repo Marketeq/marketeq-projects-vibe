@@ -7,6 +7,7 @@ import {
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
 import { coarseFailureReason } from '../../common/status/coarse-failure-reason';
 import { NextAction, VerificationSummary } from '../../common/status/verification-summary';
+import { computeGateState } from '../../common/gate/account-gate-decision';
 import { deriveTravelModeState, deriveTravelReminderSchedule } from '../../common/travel-mode/travel-mode-state';
 
 export class ProfileStatusResponseDto {
@@ -51,6 +52,14 @@ export class ProfileStatusResponseDto {
   // (GET /me); responses that do not supply one simply omit them. See
   // common/status/verification-summary.ts for the nextAction contract.
   fullyVerified!: boolean;
+  /**
+   * gate_open = is_verified OR in_grace (the same definition the RabbitMQ gate
+   * decision uses). Unlike fullyVerified it stays true for a talent inside the
+   * 30-day grace window, so a screen that gates an action must read this, not
+   * fullyVerified. The grace flag itself, expired_at and the raw statuses'
+   * meaning stay inside this service; only the boolean is exposed.
+   */
+  gateOpen!: boolean;
   nextAction?: NextAction;
   attemptsUsed?: number;
   attemptsRemaining?: number;
@@ -93,6 +102,7 @@ export class ProfileStatusResponseDto {
     dto.fullyVerified =
       profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
+    dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;

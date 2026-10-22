@@ -19,6 +19,7 @@ import {
 import NotificationsAPI, {
   isTransientNotificationsApiError,
 } from "@/service/http/notifications"
+import { CheckoutAPI } from "@/service/http/checkout"
 import { UserAPI } from "@/service/http/user"
 import { persistActiveRole } from "@/src/lib/api/active-role"
 import { getContract, respondToContract } from "@/src/lib/api/contracts"
@@ -30,24 +31,33 @@ import {
 } from "@/utils/useInboxThreads"
 import { useNotificationChannel } from "@/utils/useNotificationChannel"
 import {
+  AlertCircle,
   BarChart2,
+  BarChartSquare02,
   Bell,
+  Briefcase,
   Briefcase02,
   ChevronDown,
   ClockRewind,
   CoinStack,
+  CurrencyDollar,
   FileCheck02,
+  Home03,
   LayoutGrid02,
   LifeBuoy,
   List,
   LogOut,
+  Mail01,
   Monitor,
   Plus,
   Repeat,
+  Search,
   SearchMd,
   Settings,
+  Settings02,
   Star,
   User,
+  UserCircle,
   Users,
   X,
 } from "@blend-metrics/icons"
@@ -1744,6 +1754,7 @@ export const TopMostHeader = ({
 }) => {
   const pathname = usePathname()
   const [menuOpen, setMenuOpen] = React.useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
   // null = no secondary nav shell mounted on this route.
   const [navState, setNavState] = React.useState<"visible" | "hidden" | null>(
     null
@@ -1753,6 +1764,29 @@ export const TopMostHeader = ({
 
   const router = useRouter()
   const { logoutHandler, user, setUser } = useAuth()
+
+  // BTB-334: "My Balance" is the account wallet (what Add Funds tops up),
+  // read from checkout-service. Refetched on route change so a top-up or
+  // spend shows without a reload; "—" until it loads or if it fails.
+  const [walletBalance, setWalletBalance] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    if (!user?.id) {
+      setWalletBalance(null)
+      return
+    }
+    let cancelled = false
+    CheckoutAPI.GetWalletBalance()
+      .then((res) => {
+        const balance = Number(res.data?.balance)
+        if (!cancelled) setWalletBalance(Number.isFinite(balance) ? balance : null)
+      })
+      .catch(() => {
+        if (!cancelled) setWalletBalance(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, pathname])
 
   // The secondary nav shell publishes `data-secondary-nav` on <html> while it is
   // mounted and removes it on unmount, so the DOM is the authority on whether a
@@ -1827,7 +1861,12 @@ export const TopMostHeader = ({
                       size="md"
                     >
                       <span className="inline-flex items-center gap-x-[7.2px] lg:gap-x-1 text-[12.6px] leading-5 lg:text-base lg:leading-6 font-light">
-                        <span className="font-semibold">$ 1,540</span> USD
+                        <span className="font-semibold">
+                          {walletBalance === null
+                            ? "—"
+                            : `$ ${walletBalance.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}
+                        </span>{" "}
+                        USD
                       </span>
                       <ChevronDown className="text-gray-500 size-[13.5px] lg:size-[15px]" />
                     </Button>
@@ -1877,6 +1916,7 @@ export const TopMostHeader = ({
                   size="md"
                   variant="ghost"
                   visual="gray"
+                  onClick={() => setMobileMenuOpen(true)}
                 >
                   <ThreeHorizontalLines className="text-dark-blue-500" />
                 </IconButton>
@@ -2136,6 +2176,228 @@ export const TopMostHeader = ({
       <div className="md:hidden">
         <SearchBar />
       </div>
+
+      {/* Mobile slide-in menu: combines sidebar nav + account menu */}
+      {mobileMenuOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/40 z-[60] lg:hidden"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
+            {/* Drawer panel */}
+            <div
+              className="fixed inset-y-0 right-0 z-[61] w-[280px] bg-white flex flex-col lg:hidden animate-in slide-in-from-right duration-200"
+            >
+              {/* Header — pinned, does not scroll */}
+              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 shrink-0">
+                {user && (
+                  <div className="flex items-center gap-x-3 min-w-0">
+                    <Avatar className="shrink-0 size-9">
+                      <AvatarImage src={user?.avatarUrl ?? ""} alt={user?.firstName ?? "User"} />
+                      <AvatarFallback suppressHydrationWarning>
+                        {user?.firstName?.[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-sm font-semibold text-gray-900 truncate" suppressHydrationWarning>
+                        {user?.firstName}
+                      </span>
+                      <span className="text-xs text-gray-500 truncate" suppressHydrationWarning>
+                        {user?.email}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <IconButton
+                  className="shrink-0 ml-auto"
+                  size="sm"
+                  variant="ghost"
+                  visual="gray"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <X className="size-4" />
+                </IconButton>
+              </div>
+
+              {/* Nav content + footer — scrollable */}
+              <div className="flex flex-col flex-1 min-h-0 overflow-y-auto px-3 py-4 gap-y-6">
+                {/* Work section */}
+                <div className="flex flex-col gap-y-1">
+                  <span className="px-3 text-xs font-medium text-dark-blue-400 mb-1">Work</span>
+                  {(resolveDashboardRole(user) === ROLE.CLIENT
+                    ? [
+                        { href: "/client-dashboard", label: "Home", icon: Home03 },
+                        { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
+                        { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
+                        { href: "/client-stats", label: "Stats & Trends", icon: BarChartSquare02 },
+                      ]
+                    : [
+                        { href: "/talent-dashboard", label: "Home", icon: Home03 },
+                        { href: "/my-listings", label: "My Listings", icon: Search },
+                        { href: "/my-contracts", label: "My Contracts", icon: FileCheck02 },
+                        { href: "/my-jobs", label: "My Jobs", icon: Briefcase },
+                        { href: "/my-teams", label: "My Teams", icon: Users },
+                        { href: "/earnings", label: "Financials", icon: CurrencyDollar },
+                        { href: "/reports", label: "Reports", icon: BarChartSquare02 },
+                      ]
+                  ).map(({ href, label, icon: Icon }) => (
+                    <NextLink
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-dark-blue-400",
+                        pathname === href || pathname.startsWith(href + "/")
+                          ? "bg-primary-50 text-primary-500"
+                          : "hover:bg-gray-100"
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "size-[18px] shrink-0",
+                          pathname === href || pathname.startsWith(href + "/")
+                            ? "text-primary-500"
+                            : "text-dark-blue-400/50"
+                        )}
+                      />
+                      {label}
+                    </NextLink>
+                  ))}
+                </div>
+
+                {/* Account section */}
+                <div className="flex flex-col gap-y-1">
+                  <span className="px-3 text-xs font-medium text-dark-blue-400 mb-1">Account</span>
+                  {[
+                    {
+                      href: resolveDashboardRole(user) === ROLE.CLIENT ? "/client-profile" : "/talent-profile",
+                      label: "Profile",
+                      icon: UserCircle,
+                    },
+                    { href: "/inbox", label: "Inbox", icon: Mail01 },
+                    { href: "/notifications", label: "Notifications", icon: AlertCircle },
+                    { href: "/settings", label: "Settings", icon: Settings02 },
+                  ].map(({ href, label, icon: Icon }) => (
+                    <NextLink
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        "flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-dark-blue-400",
+                        pathname === href || pathname.startsWith(href + "/")
+                          ? "bg-primary-50 text-primary-500"
+                          : "hover:bg-gray-100"
+                      )}
+                    >
+                      <Icon
+                        className={cn(
+                          "size-[18px] shrink-0",
+                          pathname === href || pathname.startsWith(href + "/")
+                            ? "text-primary-500"
+                            : "text-dark-blue-400/50"
+                        )}
+                      />
+                      {label}
+                    </NextLink>
+                  ))}
+                </div>
+
+                {/* More links */}
+                <div className="flex flex-col gap-y-1">
+                  <span className="px-3 text-xs font-medium text-dark-blue-400 mb-1">More</span>
+                  {[
+                    { href: "/my-network", label: "My Network", icon: Users },
+                    { href: "/favorites", label: "My Favorites", icon: Star },
+                    { href: "/browsing-history", label: "Browsing History", icon: ClockRewind },
+                    { href: "/settings?tab=billing-overview", label: "Billing", icon: CoinStack },
+                  ].map(({ href, label, icon: Icon }) => (
+                    <NextLink
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-dark-blue-400 hover:bg-gray-100"
+                    >
+                      <Icon className="size-[18px] shrink-0 text-dark-blue-400/50" />
+                      {label}
+                    </NextLink>
+                  ))}
+                </div>
+
+                {/* Footer actions — scrolls with content */}
+                <div className="border-t border-gray-200 -mx-3 px-3 pt-4 flex flex-col gap-y-1">
+                <NextLink
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setMobileMenuOpen(false)
+                    const isTalent =
+                      user?.accountType?.toUpperCase() === "TALENT" ||
+                      user?.userType?.toLowerCase() === "talent" ||
+                      user?.role?.toUpperCase() === "TALENT"
+                    const newType = isTalent ? "client" : "talent"
+                    const newRole = newType === "talent" ? ROLE.TALENT : ROLE.CLIENT
+                    const updatedUser = user
+                      ? { ...user, userType: newType, accountType: newRole, activeRole: newRole, role: newRole }
+                      : null
+                    setUser((prev) =>
+                      prev
+                        ? { ...prev, userType: newType, accountType: newRole, activeRole: newRole, role: newRole }
+                        : prev
+                    )
+                    if (user?.id) {
+                      UserAPI.updateProfile(user.id, { userType: newType }).catch(() => {})
+                      persistActiveRole(newRole).catch(() => {})
+                    }
+                    const needsOnboarding =
+                      newType === "client"
+                        ? !hasCompletedClientOnboarding(updatedUser)
+                        : !hasCompletedTalentOnboarding(updatedUser)
+                    const destination = needsOnboarding
+                      ? `/onboarding/${newType}`
+                      : newType === "client"
+                        ? "/client-dashboard"
+                        : "/talent-dashboard"
+                    router.push(destination)
+                  }}
+                  className="flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-dark-blue-400 hover:bg-gray-100"
+                >
+                  <Repeat className="size-[18px] shrink-0 text-dark-blue-400/50" />
+                  {user?.accountType?.toUpperCase() === "TALENT" ||
+                  user?.userType?.toLowerCase() === "talent" ||
+                  user?.role?.toUpperCase() === "TALENT"
+                    ? "Switch to Client"
+                    : "Switch to Talent"}
+                </NextLink>
+                <NextLink
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); setMobileMenuOpen(false) }}
+                  className="flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-dark-blue-400 hover:bg-gray-100"
+                >
+                  <LifeBuoy className="size-[18px] shrink-0 text-dark-blue-400/50" />
+                  Help Center
+                </NextLink>
+                <NextLink
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setMobileMenuOpen(false)
+                    logoutHandler()
+                  }}
+                  className="flex items-center gap-x-3 px-3 h-10 rounded-[5px] text-sm font-semibold text-error-700 hover:bg-error-50"
+                >
+                  <LogOut className="size-[18px] shrink-0 text-error-500" />
+                  Log out
+                </NextLink>
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
 
       <AuthModal
         open={authModalOpen}

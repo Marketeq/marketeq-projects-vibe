@@ -12,6 +12,7 @@ import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor'
 import { OffersModule } from '../offers/offers.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { OfferHistoryModule } from '../offer-history/offer-history.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { OfferHistoryModule } from '../offer-history/offer-history.module';
     forwardRef(() => OffersModule),
     OutboxModule,
     OfferHistoryModule,
+    IdentityGateModule,
   ],
   controllers: [CounterOffersController],
   providers: [CounterOffersService, OfferPartyGuard, IdempotencyInterceptor],

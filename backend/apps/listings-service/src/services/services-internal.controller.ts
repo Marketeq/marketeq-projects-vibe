@@ -37,6 +37,6 @@ export class ServicesInternalController {
     if (typeof dto.featured === 'boolean') patch.featured = dto.featured;
     if (dto.editorialLabel !== undefined) patch.editorialLabel = dto.editorialLabel;
     if (dto.excerpt !== undefined) patch.shortDescription = dto.excerpt;
-    return this.services.update(id, patch);
+    return this.services.updateFromCms(id, patch);
   }
 }

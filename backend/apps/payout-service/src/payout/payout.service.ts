@@ -1,5 +1,6 @@
 // apps/payout-service/src/payout/payout.service.ts
 // PS-02 + PS-14 + PS-19: Payout service with rate limiting, dedup, execution re-checks
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 import { Injectable, Logger, HttpStatus } from '@nestjs/common';
 import { InjectRepository }    from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -58,6 +59,7 @@ export class PayoutService {
     private readonly feeService: PayoutFeeService,
     private readonly pauseStatusService: PauseStatusService,
     @InjectQueue('payout-processing') private readonly queue: Queue,
+    private readonly executionGate: PayoutExecutionGate,
   ) {
     this.payoutMinimum = parseFloat(this.config.get('PAYOUT_MINIMUM_USD', '50'));
   }
@@ -484,57 +486,111 @@ export class PayoutService {
   }
 
   // ─── PS-19 §3.3: Execution-time balance re-check ─────────────
+  // Every payout that reaches the queue already holds its amount: the hold
+  // (BalanceService.holdForPayout) moved it out of available_balance at
+  // confirmation, or at creation for a scheduled payout. Comparing what is left
+  // against the payout amount (as this used to) failed every withdrawal of more
+  // than half the balance. The funds are reserved, so the only thing that can
+  // still go wrong is the balance being clawed back below zero since the hold
+  // (a refund or chargeback debit), and that is what this checks.
+  //
+  // Returns false after failing the payout and releasing its hold. Throws when
+  // earnings-service cannot be reached, so the queue processor can retry.
   async recheckBalanceAtExecution(
     contractorId: string,
     payoutRequestId: string,
     amountUsd: number,
   ): Promise<boolean> {
-    try {
-      const balance = await this.earningsClient.getBalance(contractorId);
-      const available = parseFloat(balance?.availableBalance ?? '0');
-      if (available < amountUsd) {
-        // PS-24 §3: ERR_INSUFFICIENT_BALANCE_AT_EXECUTION — balance dropped
-        // between initiation and execution. Was a bare non-ERR_-prefixed
-        // constant before; every other failureReason on this entity is a
-        // contractor-readable sentence, so this now matches the doc's
-        // userMessage instead of being the odd one out.
-        await this.payoutRepo.update(payoutRequestId, {
-          status: PayoutStatus.FAILED,
-          failureReason: 'Your balance changed before your withdrawal could be sent. Please start a new withdrawal.',
-          failedAt: new Date(),
-        });
-        this.logger.warn(`Payout ${payoutRequestId} failed: balance $${available} < required $${amountUsd}`);
-        return false;
-      }
-      return true;
-    } catch {
-      this.logger.error(`Balance re-check failed for payout ${payoutRequestId}`);
+    const balance = await this.earningsClient.getBalance(contractorId);
+    const available = parseFloat(balance?.availableBalance ?? '0');
+    if (available < 0) {
+      // PS-24 §3: ERR_INSUFFICIENT_BALANCE_AT_EXECUTION.
+      this.logger.warn(`Payout ${payoutRequestId} failed: balance is $${available} after holding $${amountUsd}`);
+      await this.failHeldPayoutBeforeExecution(
+        payoutRequestId,
+        'Your balance changed before your withdrawal could be sent. Please start a new withdrawal.',
+        'ERR_INSUFFICIENT_BALANCE_AT_EXECUTION',
+      );
       return false;
     }
+    return true;
   }
 
   // ─── PS-19 §3.4: Execution-time KYC re-check ─────────────────
+  // Same contract as the balance re-check: false after failing the payout and
+  // releasing its hold, throws when the KYC lookup itself fails.
   async recheckKycAtExecution(
     contractorId: string,
     payoutRequestId: string,
   ): Promise<boolean> {
-    try {
-      const kyc = await this.kycClient.getStatus(contractorId);
-      if (kyc.suspended || kyc.firstPayoutHold) {
-        const reason = kyc.suspended ? 'KYC_SUSPENDED_AT_EXECUTION' : 'KYC_HOLD_AT_EXECUTION';
-        await this.payoutRepo.update(payoutRequestId, {
-          status: PayoutStatus.FAILED,
-          failureReason: reason,
-          failedAt: new Date(),
-        });
-        this.logger.warn(`Payout ${payoutRequestId} failed: KYC re-check failed (${reason})`);
-        return false;
-      }
-      return true;
-    } catch {
-      this.logger.error(`KYC re-check failed for payout ${payoutRequestId}`);
+    const kyc = await this.kycClient.getStatus(contractorId);
+    if (kyc.suspended || kyc.firstPayoutHold) {
+      // failureReason is shown to the contractor in the payout history, so it
+      // is a sentence. The code goes to the audit trail and the notifier.
+      const code = kyc.suspended ? 'ERR_KYC_SUSPENDED_AT_EXECUTION' : 'ERR_KYC_HOLD_AT_EXECUTION';
+      const reason = kyc.suspended
+        ? 'Your account is under review, so this withdrawal could not be sent. Your funds are back in your available balance.'
+        : 'Your first withdrawal is still on hold, so this withdrawal could not be sent. Your funds are back in your available balance.';
+      this.logger.warn(`Payout ${payoutRequestId} failed: KYC re-check failed (${code})`);
+      await this.failHeldPayoutBeforeExecution(payoutRequestId, reason, code);
       return false;
     }
+    return true;
+  }
+
+  // ─── PMCM-285: fail a queued payout before any money moved ───
+  // Used by the execution-time re-checks and by the queue processor once its
+  // retries run out. Marks the payout FAILED and publishes payout.failed, which
+  // is what returns the held amount to available_balance (earnings-service
+  // PayoutFailedConsumer) and sends the "withdrawal failed" notification.
+  // Before this, those paths only wrote FAILED, so the money stayed in
+  // pending_hold with nothing left that would ever release it.
+  //
+  // The update is conditional on QUEUED. If the contractor cancelled in the
+  // meantime, cancel() has already released the hold, and publishing here as
+  // well would credit the balance twice.
+  async failHeldPayoutBeforeExecution(
+    payoutRequestId: string,
+    reason: string,
+    failureCode: string,
+  ): Promise<boolean> {
+    const payout = await this.payoutRepo.findOne({
+      where: { id: payoutRequestId },
+      relations: ['depositMethod'],
+    });
+    if (!payout) return false;
+
+    const failedAt = new Date();
+    const result = await this.payoutRepo.update(
+      { id: payoutRequestId, status: PayoutStatus.QUEUED },
+      { status: PayoutStatus.FAILED, failureReason: reason, failedAt },
+    );
+    if (!result.affected) {
+      this.logger.warn(`Payout ${payoutRequestId} not failed: status is no longer QUEUED`);
+      return false;
+    }
+
+    await this.auditService.log({
+      contractorId: payout.contractorId,
+      payoutRequestId,
+      actorType: 'service', actorId: 'payout-queue-processor',
+      action: 'payout.failed_before_execution',
+      previousStatus: PayoutStatus.QUEUED,
+      newStatus: PayoutStatus.FAILED,
+      metadata: { failureCode },
+    });
+
+    await this.publisher.publishPayoutFailed({
+      contractorId: payout.contractorId,
+      payoutRequestId,
+      amount: payout.amountUsd,
+      currency: payout.currency ?? 'USD',
+      methodType: payout.depositMethod?.methodType ?? 'UNKNOWN',
+      reason,
+      failedAt: failedAt.toISOString(),
+      failureCode,
+    });
+    return true;
   }
 
   // ─── Step 5: Verify Magic Link ────────────────────────────────
@@ -560,6 +616,11 @@ export class PayoutService {
     if (request.status !== PayoutStatus.PENDING_VERIFICATION) {
       return { payoutRequestId: request.id, status: request.status };
     }
+
+    // G9: verification gate for the contractor stored on the payout, before
+    // the balance is held and before the token is consumed (it stays usable
+    // once the account is verified). Same check as the email-link path.
+    await this.executionGate.assertOpen(request.contractorId);
 
     // Instant hold: debit available_balance the moment the withdrawal is
     // confirmed, rather than waiting for the provider's completion webhook
@@ -726,9 +787,11 @@ export class PayoutService {
 
     if (request.status === PayoutStatus.QUEUED) {
       const jobs = await (this.queue as any).getJobs(['waiting', 'delayed']);
+      let removedQueuedJob = false;
       for (const job of jobs) {
         if (job.data?.payoutRequestId === request.id) {
           await job.remove();
+          removedQueuedJob = true;
           break;
         }
       }
@@ -739,7 +802,16 @@ export class PayoutService {
       // (schedule-execution.cron.ts) are created directly at QUEUED and never
       // hold, so refunding them unconditionally here would credit balance
       // that was never debited. Only restore when verifiedAt is set.
-      if (request.verifiedAt) {
+      // PMCM-285: scheduled payouts do hold now (schedule-execution.cron.ts
+      // calls holdBalance before creating the row), without ever setting
+      // verifiedAt, so they are restored too.
+      // Only when this cancel removed the payout's queue job, though. Before
+      // #586 the cron wrote the same QUEUED row with no hold and never
+      // enqueued it, so a scheduled payout with no waiting/delayed job is one
+      // of those, and restoring it would credit money that was never held.
+      const scheduledWithHold =
+        request.trigger === PayoutTrigger.SCHEDULED && removedQueuedJob;
+      if (request.verifiedAt || scheduledWithHold) {
         await this.publisher.publishPayoutFailed({
           contractorId, payoutRequestId: request.id,
           amount: request.amountUsd, currency: request.currency ?? 'USD',

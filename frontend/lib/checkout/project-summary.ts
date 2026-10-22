@@ -1,4 +1,9 @@
 import { getPublicApiUrl } from "@/lib/runtime-urls"
+import {
+  HOURS_PER_DAY,
+  workingDaysToCalendarDays,
+  workingDaysToWeeks,
+} from "./working-days"
 
 export type CheckoutRawTeamMember = {
   id: string
@@ -10,6 +15,12 @@ export type CheckoutRawTeamMember = {
   rate: number | null
   experienceLevel: string | null
   isLead: boolean
+  status: string | null
+}
+
+export type CheckoutFaq = {
+  question: string
+  answer: string
 }
 
 export type CheckoutProjectSummary = {
@@ -21,6 +32,7 @@ export type CheckoutProjectSummary = {
   projectCost: number | null
   durationLabel: string | null
   teamMembers: CheckoutRawTeamMember[]
+  faqs: CheckoutFaq[]
 }
 
 export const titleizeCheckoutSlug = (value: string): string =>
@@ -30,31 +42,16 @@ export const titleizeCheckoutSlug = (value: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
 
-const getProjectCandidates = (slug: string): string[] => {
-  const parts = slug.split("-")
-  const stripped = parts.length > 1 ? parts.slice(0, -1).join("-") : slug
-  return Array.from(new Set([slug, stripped]))
-}
-
 const getTeamMemberCount = (project: any): number | null => {
   // `team` is the real, currently-assigned roster (resolved from
   // teamMemberIds server-side) — trust it whenever it's present, even when
-  // empty, rather than falling through to the scope role-name guess below,
-  // which isn't actual assignment data and would contradict the Team
-  // Members tab (which only ever shows the real `team` array).
+  // empty. Scope role names describe vacancies, not assigned people.
   if (Array.isArray(project.team)) {
-    return project.team.length > 0 ? project.team.length : null
+    return new Set(project.team.map((member: any) => member.id)).size
   }
   if (typeof project.teamMemberCount === "number") return project.teamMemberCount
 
-  const scope = Array.isArray(project.scope) ? project.scope : []
-  const roles = new Set(
-    scope.flatMap((phase: any) =>
-      (phase.tasks ?? []).map((task: any) => task.roleName).filter(Boolean)
-    )
-  )
-
-  return roles.size > 0 ? roles.size : null
+  return null
 }
 
 const getTeamMembers = (project: any): CheckoutRawTeamMember[] => {
@@ -70,6 +67,7 @@ const getTeamMembers = (project: any): CheckoutRawTeamMember[] => {
     rate: typeof member.rate === "number" ? member.rate : null,
     experienceLevel: member.experienceLevel ?? null,
     isLead: Boolean(member.isLead),
+    status: member.status ?? null,
   }))
 }
 
@@ -84,9 +82,60 @@ const monthYearFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 })
 
+
+const getScopeDurationDays = (project: any): number => {
+  const phases = Array.isArray(project.scope) ? project.scope : []
+  if (!phases.length) return 0
+
+  let totalDays = 0
+  for (const phase of phases) {
+    const taskDurations = ((phase.tasks ?? phase.rows ?? []) as any[])
+      .map((task: any) => {
+        const dur = task.duration
+        if (dur && typeof dur === "object") {
+          const val = Number(dur.value) || 0
+          if (val > 0) {
+            if (dur.type === "weeks") return val * 5
+            if (dur.type === "months") return Math.ceil((val * 150) / 7)
+            if (dur.type === "hours") {
+              return Math.max(1, Math.ceil(val / HOURS_PER_DAY))
+            }
+            return val
+          }
+        }
+        if (typeof dur === "string" && dur.trim()) {
+          const [rv, ru] = dur.trim().split(/\s+/)
+          const v = Number(rv) || 0
+          const u = (ru || "days").toLowerCase()
+          if (v > 0) {
+            if (u.startsWith("week")) return v * 5
+            if (u.startsWith("month")) return Math.ceil((v * 150) / 7)
+            if (u.startsWith("hour")) {
+              return Math.max(1, Math.ceil(v / HOURS_PER_DAY))
+            }
+            return v
+          }
+        }
+        const hrs = Number(task.estimatedHours) || 0
+        return hrs > 0 ? Math.ceil(hrs / HOURS_PER_DAY) : 0
+      })
+      .filter((d: number) => d > 0)
+    if (taskDurations.length > 0) {
+      totalDays += Math.max(...taskDurations)
+    }
+  }
+
+  return totalDays
+}
+
 const getDuration = (
   project: any
 ): { amount: number; unit: "day" | "week" | "month" } | null => {
+  const scopeDays = getScopeDurationDays(project)
+  if (scopeDays > 0) {
+    return { amount: workingDaysToCalendarDays(scopeDays), unit: "day" }
+  }
+
   if (typeof project.duration === "string") {
     const match = project.duration.match(/(\d+)\s*(day|week|month)/i)
     if (match) {
@@ -128,6 +177,11 @@ const getDateRangeLabel = (project: any): string => {
 }
 
 const getDurationLabel = (project: any): string | null => {
+  const scopeDays = getScopeDurationDays(project)
+  if (scopeDays > 0) {
+    const weeks = workingDaysToWeeks(scopeDays)
+    return `${weeks} Week${weeks !== 1 ? "s" : ""}`
+  }
   if (typeof project.duration === "string" && project.duration.trim()) {
     return project.duration
   }
@@ -137,40 +191,55 @@ const getDurationLabel = (project: any): string | null => {
   return null
 }
 
-const mapProjectSummary = (project: any, slug: string): CheckoutProjectSummary => ({
+const getFaqs = (project: any): CheckoutFaq[] => {
+  if (!Array.isArray(project.faqs)) return []
+  return project.faqs
+    .map((faq: any) => ({
+      question: typeof faq?.question === "string" ? faq.question.trim() : "",
+      answer: typeof faq?.answer === "string" ? faq.answer.trim() : "",
+    }))
+    .filter((faq: CheckoutFaq) => faq.question && faq.answer)
+}
+
+const mapProjectSummary = (project: any): CheckoutProjectSummary => ({
   id: project.id ? String(project.id) : null,
-  title: project.title || titleizeCheckoutSlug(slug),
-  mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "/dashboard.png",
+  title: project.title || "Project Title Unavailable",
+  mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "",
   teamMemberCount: getTeamMemberCount(project),
   dateRangeLabel: getDateRangeLabel(project),
   projectCost: getProjectCost(project),
   durationLabel: getDurationLabel(project),
   teamMembers: getTeamMembers(project),
+  faqs: getFaqs(project),
 })
 
 export const getCheckoutProjectSummary = async (
-  slug: string,
+  listingId: string,
   signal?: AbortSignal
 ): Promise<CheckoutProjectSummary | null> => {
+  if (!listingId) return null
   const apiBase = getPublicApiUrl() || "http://localhost:4000"
+  const id = encodeURIComponent(listingId)
 
-  for (const candidate of getProjectCandidates(slug)) {
-    const projectResponse = await fetch(
-      `${apiBase}/v1/projects/slug/${candidate}`,
-      { signal }
-    )
-    if (projectResponse.ok) {
-      return mapProjectSummary(await projectResponse.json(), candidate)
-    }
-
-    const serviceResponse = await fetch(
-      `${apiBase}/v1/services/slug/${candidate}`,
-      { signal }
-    )
-    if (serviceResponse.ok) {
-      return mapProjectSummary(await serviceResponse.json(), candidate)
-    }
+  const projectResponse = await fetch(`${apiBase}/v1/projects/slug/${id}`, {
+    signal,
+    credentials: "include",
+  })
+  if (projectResponse.ok) {
+    return mapProjectSummary(await projectResponse.json())
   }
 
-  return null
+  const serviceResponse = await fetch(`${apiBase}/v1/services/slug/${id}`, {
+    signal,
+    credentials: "include",
+  })
+  if (serviceResponse.ok) {
+    return mapProjectSummary(await serviceResponse.json())
+  }
+
+  if (projectResponse.status === 404 && serviceResponse.status === 404) {
+    return null
+  }
+
+  throw new Error("Project summary request failed")
 }

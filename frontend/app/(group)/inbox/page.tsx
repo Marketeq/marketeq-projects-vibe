@@ -368,9 +368,23 @@ export default function InboxRoot() {
                     typeof offer.workSchedule.hoursPerWeek === "number"
                       ? `${offer.workSchedule.hoursPerWeek} hrs/week`
                       : undefined,
+                  // offer.startDate is a date-only "YYYY-MM-DD" string (see
+                  // offer-service's normalizeDateOnly) — new Date() parses
+                  // that as UTC midnight, so formatting it in the browser's
+                  // local timezone showed the previous day west of UTC.
+                  // timeZone: "UTC" keeps the formatted day matching the
+                  // UTC-midnight instant that was actually parsed, with no
+                  // change to the stored value. expiresAt is a real
+                  // timestamp (not date-only), so it keeps local-time
+                  // formatting unchanged.
                   startDate: new Date(offer.startDate).toLocaleDateString(
                     "en-US",
-                    { month: "short", day: "numeric", year: "numeric" }
+                    {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                      timeZone: "UTC",
+                    }
                   ),
                   expiresLabel: new Date(offer.expiresAt).toLocaleDateString(
                     "en-US",
@@ -449,6 +463,18 @@ export default function InboxRoot() {
                         month: "short",
                         day: "numeric",
                         year: "numeric",
+                      })
+                    : ""
+                // Same date-only-parsed-as-UTC issue as offer.startDate
+                // above — only used for metadata.startDate below, never for
+                // expiresAt, which stays on the local-time formatDate.
+                const formatDateOnly = (value: unknown) =>
+                  typeof value === "string" && !Number.isNaN(Date.parse(value))
+                    ? new Date(value).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                        timeZone: "UTC",
                       })
                     : ""
                 const jobListingId =

@@ -13,11 +13,13 @@ import { R2Service } from '../storage/r2.service';
 import { UserModule } from '../user/user.module';
 import { Portfolio } from '../portfolio/portfolio.entity';
 import { TalentProfile } from '../talent-profile/entities/talent-profile.entity';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Skill, Experience, Education, Certification, Industry, Language, Portfolio, TalentProfile]),
     UserModule,
+    IdentityGateModule,
   ],
   controllers: [TalentController],
   providers: [TalentService, R2Service],

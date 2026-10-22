@@ -26,6 +26,8 @@ import { CryptoProviderIcon, formatMethodOptionLabel } from "@/components/transa
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 import { csrfHeader } from "@/src/lib/csrf"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 
 const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
 
@@ -172,6 +174,13 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   const router = useRouter()
   const [step, setStep] = React.useState<StepId>("amount")
 
+  // G9: the payout service's identity gate answered 403/503 - the existing
+  // Verify My Account popup opens; "Verify My Account" continues on the talent dashboard.
+  const [verificationBlock, setVerificationBlock] = React.useState<WithdrawalVerificationBlock>(null)
+  const goVerify = () => {
+    setVerificationBlock(null)
+    router.push("/talent-dashboard")
+  }
   const [gateAllowed, setGateAllowed] = React.useState<boolean | null>(null)
   const [gateBlockedBy, setGateBlockedBy] = React.useState<string | undefined>(undefined)
   const [gateHoldReleasesAt, setGateHoldReleasesAt] = React.useState<string | undefined>(undefined)
@@ -456,6 +465,8 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
       })
       const data = await res.json()
       if (!res.ok) {
+        const block = withdrawalBlockFor(res.status, data)
+        if (block) { setSubmitting(false); setVerificationBlock(block); return }
         if (data.errorCode === "ERR_INSUFFICIENT_BALANCE") {
           loadBalance(); setStep("amount"); setSubmitting(false)
           return
@@ -491,6 +502,15 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   }
 
   return (
+    <>
+    <AccountVerificationGate
+      open={verificationBlock !== null}
+      reason={verificationBlock === "verification_unavailable" ? "status_unavailable" : "unstarted"}
+      connectionCheckState="idle"
+      onVerify={goVerify}
+      onRetryConnectionCheck={goVerify}
+      onDismissConnectionError={() => setVerificationBlock(null)}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         variant="unanimated"
@@ -829,5 +849,6 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
         </div>
       </DialogContent>
     </Dialog>
+    </>
   )
 }

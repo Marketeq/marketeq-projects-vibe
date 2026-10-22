@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { OfferServiceException, ActiveOfferAlreadyExistsException } from '../common/exceptions/offer.exceptions';
+import {
+  OfferServiceException,
+  ActiveOfferAlreadyExistsException,
+  VerificationRequiredException,
+} from '../common/exceptions/offer.exceptions';
 
 @Catch()
 export class OfferExceptionFilter implements ExceptionFilter {
@@ -39,6 +43,22 @@ export class OfferExceptionFilter implements ExceptionFilter {
         message: payload.message,
         activeOfferId: exception.activeOfferId,
         activeOfferStatus: exception.activeOfferStatus,
+        ...baseEnvelope,
+      });
+    }
+
+    // ============================================================
+    // Case 1b: VerificationRequiredException (G4 - the acting talent's own
+    // outstanding requirement, and nothing else)
+    // ============================================================
+    if (exception instanceof VerificationRequiredException) {
+      const status = exception.getStatus();
+      const payload = exception.getResponse() as { errorCode: string; message: string };
+      return void response.status(status).json({
+        statusCode: status,
+        error: payload.errorCode,
+        message: payload.message,
+        missingRequirements: exception.missingRequirements,
         ...baseEnvelope,
       });
     }

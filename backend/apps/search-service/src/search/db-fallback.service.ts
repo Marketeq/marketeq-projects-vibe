@@ -36,6 +36,41 @@ interface FallbackHits {
   fallback: true
 }
 
+// G1 - a talent profile is listed only when its account has a KNOWN OPEN gate. user-service owns
+// the last-known state (user_service.talent_gate_state, migration 1799500000000); this is a
+// semi-join against it, and the partial expression index on ("userId"::text) WHERE "gateOpen" serves
+// the text comparison. The account is the one the talent index is keyed on: source_id, else uuid.
+const openTalentSqlFor = (rel: string): string => `EXISTS (SELECT 1 FROM user_service.talent_gate_state g
+               WHERE g."userId"::text = COALESCE(NULLIF(${rel}.source_id::text, ''), ${rel}.uuid::text)
+                 AND g."gateOpen" = true)`
+const OPEN_TALENT_SQL = openTalentSqlFor('talent_profiles')
+
+// G5 - a listing whose OWNER has no known open gate is withheld from marketplace
+// discovery (no public owner exemption). The gate state is listings-service's own
+// last-known table, kept current by `identity.gate_changed` events, so this is a
+// plain join, never a live identity lookup. Ownerless listings (CMS, seeded) are
+// not subject to it, and an owner whose state has never been received is hidden.
+// Display only: the stored listing and its published status are never changed;
+// it reappears by itself when the owner's gate opens.
+// The owning account of a listing row, the same one listings-service gates on: a
+// service falls back to a createdBy that is a real user id when it has no userId
+// (system values such as 'n8n-seed' are not owners); a project is owned by userId.
+const PROJECT_OWNER_SQL = `(CASE WHEN listings.project."listingType" = 'service'
+                 THEN COALESCE(listings.project."userId",
+                   CASE WHEN listings.project."createdBy" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+                        THEN listings.project."createdBy"::uuid END)
+                 ELSE listings.project."userId" END)`
+const PROJECT_OWNER_GATE_SQL = `AND (${PROJECT_OWNER_SQL} IS NULL OR EXISTS (
+               SELECT 1 FROM listings.account_gate_state g
+               WHERE g."userId" = ${PROJECT_OWNER_SQL} AND g."gateOpen"))`
+// listings.teams.createdBy is free text (system values exist), so only a real
+// user id is an owner to gate.
+const TEAM_OWNER_GATE_SQL = `AND ("createdBy" IS NULL
+               OR "createdBy" !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+               OR EXISTS (
+                 SELECT 1 FROM listings.account_gate_state g
+                 WHERE g."userId"::text = listings.teams."createdBy" AND g."gateOpen"))`
+
 @Injectable()
 export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbFallbackService.name)
@@ -393,38 +428,89 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         if (experienceClause) clauses.push(experienceClause)
 
         const filterSql = clauses.length ? `AND ${clauses.join(' AND ')}` : ''
-        const result = await this.pool.query(
-          `SELECT id, ${nameSql} AS name, username, availability,
-                  (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
-                  (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
-                  (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
-                  (SELECT EXTRACT(YEAR FROM AGE(now(), MIN(we.start_date)))::int FROM cms.talent_profiles_work_experience we WHERE we._parent_id = talent_profiles.id) AS years_of_experience,
-                  COUNT(*) OVER () AS total_count
-           FROM cms.talent_profiles
-           WHERE status = 'active'
+        // G1 - marketplace discovery gate, applied INSIDE the query. A talent is listed only
+        // while its account has a KNOWN OPEN gate in user-service's locally kept last-known state
+        // (user_service.talent_gate_state, fed by identity's gate_changed events): a semi-join,
+        // evaluated before the COUNT and before LIMIT/OFFSET. So the total, the page count and the
+        // page are all over visible talent, in the original ranking order, in two bounded
+        // queries - no id list of every matching talent is loaded, identity is not called, and a
+        // hidden talent's profile data is never read. The account is the same one the index is
+        // keyed on (source_id, else the profile uuid). An account whose state was never received
+        // has no row and is hidden. If the state table cannot be read, nobody is listed.
+        const baseWhere = `status = 'active'
              AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
              ${filterSql}
-           ORDER BY ${orderBy}
-           LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
-          params,
-        )
-        rows = result.rows.map((r) => ({
-          id: r.id,
-          name: r.name || r.username,
-          username: r.username,
-          availability: r.availability,
-          hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
-          job_title: r.job_title ?? undefined,
-          skills: Array.isArray(r.skills) ? r.skills : undefined,
-          // Derived, not stored — only present when a category filter was
-          // applied, since that's the only time we've paid to match. Result
-          // cards fall back to showing no category chips otherwise, which is
-          // what they already do for an untagged profile.
-          categories: derivedByProfileId?.get(String(r.id))?.categories,
-          subcategories: derivedByProfileId?.get(String(r.id))?.subcategories,
-          years_of_experience: r.years_of_experience != null ? Number(r.years_of_experience) : undefined,
-          total_count: r.total_count,
-        }))
+             AND ${OPEN_TALENT_SQL}`
+        let total: number
+        let pageIds: number[]
+        try {
+          const counted = await this.pool.query(
+            `SELECT COUNT(*)::int AS n FROM cms.talent_profiles WHERE ${baseWhere}`,
+            params,
+          )
+          total = Number(counted.rows[0]?.n ?? 0)
+          if (total === 0 || page * limit >= total) {
+            pageIds = []
+          } else {
+            const pageParams = [...params, limit, page * limit]
+            const paged = await this.pool.query(
+              `SELECT id FROM cms.talent_profiles
+               WHERE ${baseWhere}
+               ORDER BY ${orderBy}, id ASC
+               LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+              pageParams,
+            )
+            pageIds = paged.rows.map((r) => r.id)
+          }
+        } catch (err) {
+          if (!/talent_gate_state/i.test(err instanceof Error ? err.message : String(err))) throw err
+          this.logger.warn(
+            `Talent gate state unreadable; showing no talent: ${err instanceof Error ? err.message : String(err)}`,
+          )
+          return this.empty(limit, page)
+        }
+
+        let hits: any[] = []
+        if (pageIds.length) {
+          const detail = await this.pool.query(
+            `SELECT id, ${nameSql} AS name, username, availability,
+                    (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
+                    (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
+                    (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
+                    (SELECT EXTRACT(YEAR FROM AGE(now(), MIN(we.start_date)))::int FROM cms.talent_profiles_work_experience we WHERE we._parent_id = talent_profiles.id) AS years_of_experience
+             FROM cms.talent_profiles
+             WHERE id = ANY($1::int[])`,
+            [pageIds],
+          )
+          const byId = new Map<number, any>(detail.rows.map((r) => [r.id, r]))
+          hits = pageIds
+            .map((id) => byId.get(id))
+            .filter(Boolean)
+            .map((r) => ({
+              objectID: r.id,
+              id: r.id,
+              name: r.name || r.username,
+              username: r.username,
+              availability: r.availability,
+              hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
+              job_title: r.job_title ?? undefined,
+              skills: Array.isArray(r.skills) ? r.skills : undefined,
+              // Derived, not stored - only present when a category filter was
+              // applied, since that's the only time we've paid to match.
+              categories: derivedByProfileId?.get(String(r.id))?.categories,
+              subcategories: derivedByProfileId?.get(String(r.id))?.subcategories,
+              years_of_experience: r.years_of_experience != null ? Number(r.years_of_experience) : undefined,
+            }))
+        }
+
+        return {
+          hits,
+          nbHits: total,
+          page,
+          nbPages: Math.ceil(total / limit),
+          hitsPerPage: limit,
+          fallback: true,
+        }
       }
 
       if (category === SearchCategory.TEAMS) {
@@ -469,6 +555,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
            FROM listings.teams
            WHERE status = 'published'
              AND ${this.freeTextClause(['title', 'description'])}
+             ${TEAM_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -557,6 +644,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                // filter above.
                ['skills', 'tags', 'industries', 'programmingLanguages', 'developmentTech'],
              )}
+             ${PROJECT_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -641,6 +729,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
                ['title', 'description', '"category"'],
                ['skills', 'tags'],
              )}
+             ${PROJECT_OWNER_GATE_SQL}
              ${filterSql}
            ORDER BY ${orderBy}
            LIMIT $${params.push(limit)} OFFSET $${params.push(offset)}`,
@@ -718,6 +807,9 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
    *
    * Returns a map of profile id to the categories that were derived for it, so
    * the caller can both filter by id and render chips without matching twice.
+   *
+   * G1: only talent with a known open gate are candidates, so a hidden talent's text is never
+   * sent for scoring and the candidate cap is spent on talent that can actually be listed.
    */
   private async semanticCategoryMatch(
     selected: string[],
@@ -753,6 +845,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           WHERE status = 'active'
             AND ${this.freeTextClause([nameSql, 'username', 'overview::text'])}
             ${filterSql}
+            AND ${OPEN_TALENT_SQL}
           LIMIT ${DbFallbackService.MAX_SEMANTIC_CANDIDATES}`,
         probeParams,
       )
@@ -989,6 +1082,9 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
    * That keeps the number meaning the same thing as the Algolia facet count it
    * stands in for, which counts records.
    *
+   * G1: for talent, only profiles whose account has a known open gate are counted, the same
+   * rule the results use, so a sidebar count never includes a talent the results leave out.
+   *
    * Table and column names come from hardcoded maps, never from the request,
    * so interpolating them into the SQL is injection-safe.
    */
@@ -1008,6 +1104,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
           WHERE p.status = $1
             AND c."${column}" IS NOT NULL
             AND btrim(c."${column}") <> ''
+            ${category === SearchCategory.TALENT ? `AND ${openTalentSqlFor('p')}` : ''}
           GROUP BY btrim(c."${column}")
           ORDER BY usage_count DESC, name ASC
           LIMIT 1000`,

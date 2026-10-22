@@ -19,6 +19,8 @@ import { PublishersModule }          from '../publishers/publishers.module';
 import { PauseModule }               from '../pause/pause.module';
 import { PayoutModule }              from '../payout/payout.module';
 import { KycModule }                 from '../kyc/kyc.module';
+import { IdentityGateModule }        from '../identity-gate/identity-gate.module';
+import { ScheduleVerificationPauseService } from './schedule-verification-pause.service';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { KycModule }                 from '../kyc/kyc.module';
     PauseModule,        // PauseStatusService (PS-16 assertNotPaused)
     PayoutModule,       // PayoutService.enqueueForProcessing
     KycModule,          // KycGateService — same PS-15 gate the manual withdrawal path uses
+    IdentityGateModule, // G9 PayoutExecutionGate
   ],
   controllers: [ScheduleController],
   providers: [
@@ -44,8 +47,10 @@ import { KycModule }                 from '../kyc/kyc.module';
     ThresholdCheckService,
     NextExecutionService,
     AchInitiationCalculatorService,
+    ScheduleVerificationPauseService,
   ],
   exports: [
+    ScheduleVerificationPauseService,
     ScheduleService,
     SplitService,
     SplitCalculatorService,

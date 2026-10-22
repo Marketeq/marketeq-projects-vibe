@@ -20,6 +20,7 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 import { RolesGuard } from '../guards/roles.guard';
 import { OfferPartyGuard } from '../guards/offer-party.guard';
 import { ListingOwnerGuard } from '../guards/listing-owner.guard';
+import { TalentGateGuard } from '../guards/talent-gate.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UserRole } from '../common/types/user-role.enum';
@@ -37,8 +38,11 @@ export class OffersController {
   // derive a party from either. ListingOwnerGuard is the authorization
   // boundary instead — only the client who owns dto.jobListingId may
   // create an offer against it. See listing-owner.guard.ts.
+  //
+  // G4: TalentGateGuard runs after ListingOwnerGuard (only the listing owner
+  // can probe the recipient's gate) and before the idempotency interceptor.
   @Post()
-  @UseGuards(ListingOwnerGuard)
+  @UseGuards(ListingOwnerGuard, TalentGateGuard)
   @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.CREATED)
   async createOffer(@CurrentUser() user: any, @Body() dto: CreateOfferDto, @Req() req: Request) {
@@ -80,7 +84,7 @@ export class OffersController {
   // before RolesGuard reads it. Same bug as accept/decline/withdraw/resend
   // had, same fix.
   @Patch(':id')
-  @UseGuards(OfferPartyGuard, RolesGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard, TalentGateGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async editOffer(
@@ -97,7 +101,7 @@ export class OffersController {
   // reads. Order here is significant, not stylistic.
   @Post(':id/accept')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(OfferPartyGuard, RolesGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard, TalentGateGuard)
   @Roles(UserRole.TALENT)
   @UseInterceptors(IdempotencyInterceptor)
   async acceptOffer(
@@ -142,7 +146,7 @@ export class OffersController {
   // Guard order matters — see acceptOffer's comment above.
   @Post(':id/resend')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(OfferPartyGuard, RolesGuard)
+  @UseGuards(OfferPartyGuard, RolesGuard, TalentGateGuard)
   @Roles(UserRole.CLIENT)
   @UseInterceptors(IdempotencyInterceptor)
   async resendOffer(

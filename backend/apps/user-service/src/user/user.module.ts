@@ -5,6 +5,7 @@ import { UserSettingsController } from "./user-settings.controller";
 import { UserSyncController } from "./user-sync.controller";
 import { UserSelfController } from "./user-self.controller";
 import { UserInternalController } from "./user-internal.controller";
+import { UserInternalRpcController } from "./user-internal-rpc.controller";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { UserSchemaGuardService } from "./user-schema-guard.service";
 import { User } from "./entities/user.entity";
@@ -59,6 +60,7 @@ import { AuditModule } from "../audit/audit.module";
     UserSyncController,
     UserSelfController,
     UserInternalController,
+    UserInternalRpcController,
     TaxInfoController,
   ],
   exports: [UserService],
