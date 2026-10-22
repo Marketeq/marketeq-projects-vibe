@@ -2,7 +2,11 @@ import { useState } from "react"
 import {
   CHECK_IN_COPY,
   CHECK_IN_DURATION_LABELS,
+  type CheckInConfirmation,
+  applyCheckInRevision,
+  confirmationBack,
   durationCopyFor,
+  showCheckInConfirmation,
 } from "@/src/lib/api/travel-check-in"
 import { AlertTriangle, ArrowLeft, Info, X } from "@blend-metrics/icons"
 import { Meta } from "@storybook/react"
@@ -157,3 +161,158 @@ const DurationQuestion = ({ answerCount }: { answerCount: number }) => {
 export const DurationFirstTime = () => <DurationQuestion answerCount={0} />
 
 export const DurationAskedBefore = () => <DurationQuestion answerCount={1} />
+
+// "Travel Mode is now active!" after a saved answer (the dashboard's second dialog). Back opens
+// the duration screen with the saved option selected; choosing a different one saves it as a
+// revision (no extra check-in is counted) and shows the confirmation again; Done and X close
+// the whole flow; Skip or X on the duration screen keep the saved duration and close it too.
+export const TravelModeActive = () => {
+  const [open, setOpen] = useState(false)
+  const [flow, setFlow] = useState<CheckInConfirmation | null>(null)
+  const copy = durationCopyFor(flow?.answerCount ?? 1)
+  const close = () => {
+    setFlow(null)
+    setOpen(false)
+  }
+  return (
+    <>
+      <Button
+        onClick={() => {
+          setFlow(showCheckInConfirmation("1–2 weeks", 1))
+          setOpen(true)
+        }}
+      >
+        Trigger
+      </Button>
+      <Dialog
+        open={open && flow !== null}
+        onOpenChange={(next) => {
+          if (!next) close()
+        }}
+      >
+        {flow?.screen === "confirmation" && (
+          <DialogContent className="max-w-[650px]">
+            <div className="flex items-center justify-between">
+              <IconButton
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={() => setFlow(confirmationBack(flow))}
+              >
+                <ArrowLeft className="size-5" />
+              </IconButton>
+
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={close}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </div>
+
+            <div className="mt-3 pt-[9px]">
+              <DialogTitle className="text-lg font-medium text-dark-blue-400">
+                {CHECK_IN_COPY.confirmation.title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-light text-dark-blue-400">
+                {CHECK_IN_COPY.confirmation.body}
+              </DialogDescription>
+            </div>
+
+            <div className="mt-6 space-y-6">
+              <Alert>
+                <AlertIcon>
+                  <Info className="size-5" />
+                </AlertIcon>
+                <AlertContent>
+                  <AlertTitle>{CHECK_IN_COPY.confirmation.alert}</AlertTitle>
+                </AlertContent>
+              </Alert>
+
+              <div className="grid">
+                <Button onClick={close}>{CHECK_IN_COPY.confirmation.done}</Button>
+              </div>
+            </div>
+          </DialogContent>
+        )}
+
+        {flow?.screen === "revise" && (
+          <DialogContent className="max-w-[650px]">
+            <div className="flex items-start justify-between">
+              <IconButton
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={() => setFlow(confirmationBack(flow))}
+              >
+                <ArrowLeft className="size-5" />
+              </IconButton>
+
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={close}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </div>
+
+            <div className="mt-3 max-w-[554px] pt-[9px]">
+              <DialogTitle className="text-lg font-medium leading-5 text-dark-blue-400">
+                {copy.title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-light leading-5 text-dark-blue-400">
+                {copy.body}
+              </DialogDescription>
+            </div>
+
+            <RadioGroup
+              className="mt-6"
+              aria-label={copy.title}
+              value={flow.saved}
+              onValueChange={(label) =>
+                setFlow(applyCheckInRevision(flow, label, "saved"))
+              }
+            >
+              {CHECK_IN_DURATION_LABELS.map((label, index) => (
+                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                  <RadioGroupItem
+                    className="cursor-pointer disabled:cursor-not-allowed"
+                    value={label}
+                    id={`check-in-revise-duration-${index}`}
+                  />
+                  <Label
+                    htmlFor={`check-in-revise-duration-${index}`}
+                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                  >
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+
+            <Alert className="mt-6">
+              <AlertIcon>
+                <Info className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>{copy.alert}</AlertTitle>
+              </AlertContent>
+            </Alert>
+
+            <div className="mt-6 grid">
+              <Button variant="outlined" visual="gray" onClick={close}>
+                {CHECK_IN_COPY.skip}
+              </Button>
+            </div>
+          </DialogContent>
+        )}
+      </Dialog>
+    </>
+  )
+}

@@ -383,7 +383,7 @@ describe("Skip, X/close, Escape, refresh and navigation send nothing", () => {
       "stories",
       "identity-verification-check-in.stories.tsx"
     )
-    assert.ok(!/Confirm/.test(stories))
+    assert.ok(!/>\s*Confirm\s*</.test(stories))
   })
 
   it("only a duration choice reaches the answer handler", () => {

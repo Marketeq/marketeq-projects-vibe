@@ -117,13 +117,26 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
 
   const setNow = (nowMs: number) =>
     jest.spyOn(Date, 'now').mockReturnValue(nowMs);
+  // The real client always sends the occurrence /me showed. By default an answer here does
+  // the same (the current unresolved occurrence); `checkInAt: null` is a voluntary revision.
   const answer = (
     nowMs: number,
     duration: DeclaredDuration,
     options: { checkInAt?: Date | null; session?: LoginSession | null } = {},
   ) => {
     setNow(nowMs);
-    return service.updateActiveTravelDuration('u1', duration, options);
+    const current =
+      options.checkInAt === undefined && row
+        ? (service as any).getTravelCheckIn(
+            row,
+            options.session ?? null,
+            nowMs,
+          ).availableAt
+        : options.checkInAt;
+    return service.updateActiveTravelDuration('u1', duration, {
+      ...options,
+      checkInAt: current ?? null,
+    });
   };
   const due = async (nowMs: number, session: LoginSession | null = null) => {
     setNow(nowMs);
@@ -469,11 +482,6 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
       expect(row.travelCheckInCount).toBe(2);
     });
 
-    it('without checkInAt the answer is a voluntary update: allowed, and still a compare-and-set', async () => {
-      build();
-      await answer(at(2).getTime(), DeclaredDuration.NOT_SURE);
-      expect(row.travelCheckInCount).toBe(1);
-    });
 
     it('an answer that finds the period ended meanwhile is reported as not active, not as answered', async () => {
       build();
@@ -483,6 +491,101 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
         answer(at(2).getTime(), DeclaredDuration.NOT_SURE),
       );
       expect(error).toBeInstanceOf(TravelModeNotActiveException);
+    });
+  });
+
+  describe('a revision (no checkInAt) edits the answer just given: same update and restart, no extra count', () => {
+    const revise = (nowMs: number, duration: DeclaredDuration) =>
+      answer(nowMs, duration, { checkInAt: null });
+
+    it('updates the duration, restarts the period and the schedule, and leaves the count alone', async () => {
+      build();
+      await answer(at(3, MINUTE).getTime(), DeclaredDuration.ONE_TO_TWO_WEEKS);
+      expect(row.travelCheckInCount).toBe(1);
+
+      const reviseMs = at(3, 10 * MINUTE).getTime();
+      const saved = await revise(reviseMs, DeclaredDuration.MORE_THAN_TWO_WEEKS);
+
+      expect(row.declaredDuration).toBe(DeclaredDuration.MORE_THAN_TWO_WEEKS);
+      expect(row.travelModeActivatedAt).toEqual(new Date(reviseMs));
+      expect(
+        travelModeEndsAt(row.travelModeActivatedAt, row.declaredDuration),
+      ).toEqual(new Date(reviseMs + 30 * DAY));
+      expect(row.nextTravelReminderAt).toEqual(new Date(reviseMs + 3 * DAY));
+      expect(row.lastTravelReminderSentAt).toBeNull();
+      expect(row.travelCheckInCount).toBe(1);
+      expect(saved.travelCheckInCount).toBe(1);
+      expect(schedule(reviseMs)).toEqual({
+        due: false,
+        availableAt: new Date(reviseMs + 3 * DAY),
+      });
+    });
+
+    it('several revisions in a row never count', async () => {
+      build();
+      await answer(at(3).getTime(), DeclaredDuration.NOT_SURE);
+      await revise(at(3, MINUTE).getTime(), DeclaredDuration.A_FEW_DAYS);
+      await revise(at(3, 2 * MINUTE).getTime(), DeclaredDuration.ONE_TO_TWO_WEEKS);
+      expect(row.travelCheckInCount).toBe(1);
+      expect(row.declaredDuration).toBe(DeclaredDuration.ONE_TO_TWO_WEEKS);
+    });
+
+    it('the original occurrence stays resolved: it is not due again and cannot be answered again', async () => {
+      build();
+      await answer(at(3, MINUTE).getTime(), DeclaredDuration.ONE_TO_TWO_WEEKS);
+      await revise(at(3, 5 * MINUTE).getTime(), DeclaredDuration.NOT_SURE);
+
+      expect(await due(at(3, 6 * MINUTE).getTime())).toBe(false);
+      await expect(
+        service.updateActiveTravelDuration('u1', DeclaredDuration.NOT_SURE, {
+          checkInAt: at(3),
+        }),
+      ).rejects.toBeInstanceOf(TravelCheckInAlreadyAnsweredException);
+      expect(row.travelCheckInCount).toBe(1);
+    });
+
+    it('writes no count column, and keeps the compare-and-set pins on the period, the count and the resolved-up-to time', async () => {
+      build(profile({ travelCheckInCount: 2 }));
+      await revise(at(5).getTime(), DeclaredDuration.NOT_SURE);
+
+      const [criteria, data] = profileUpdate.mock.calls[0];
+      expect(Object.keys(data)).not.toContain('travelCheckInCount');
+      expect(criteria.travelCheckInCount).toBe(2);
+      expect(Object.keys(criteria)).toEqual(
+        expect.arrayContaining([
+          'id',
+          'travelModeActive',
+          'travelClassification',
+          'travelModeActivatedAt',
+          'declaredDuration',
+          'travelCheckInCount',
+          'lastTravelReminderSentAt',
+        ]),
+      );
+      expect(row.travelCheckInCount).toBe(2);
+    });
+
+    it('two simultaneous revisions: exactly one applies', async () => {
+      build();
+      setNow(at(4).getTime());
+      const results = await Promise.allSettled([
+        service.updateActiveTravelDuration('u1', DeclaredDuration.NOT_SURE),
+        service.updateActiveTravelDuration('u1', DeclaredDuration.A_FEW_DAYS),
+      ]);
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      const lost = results.find(
+        (r) => r.status === 'rejected',
+      ) as PromiseRejectedResult;
+      expect(lost.reason).toBeInstanceOf(TravelCheckInAlreadyAnsweredException);
+      expect(row.travelCheckInCount).toBe(0);
+    });
+
+    it('is still refused unless Travel Mode is in force, and while a home-country change runs', async () => {
+      build(profile({ travelModeActive: false }));
+      await expect(
+        revise(at(4).getTime(), DeclaredDuration.NOT_SURE),
+      ).rejects.toBeInstanceOf(TravelModeNotActiveException);
+      expect(row.travelCheckInCount).toBe(0);
     });
   });
 

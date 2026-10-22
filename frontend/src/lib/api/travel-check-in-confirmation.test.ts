@@ -141,26 +141,31 @@ describe("it is never shown without a saved answer", () => {
     }
   })
 
-  it("the page opens it in exactly one place: after the saved-outcome check", () => {
-    const opens = page.match(/setCheckInConfirmationOpen\(true\)/g) ?? []
+  it("the page opens it in exactly one place: when the outcome is saved", () => {
+    const opens =
+      page.match(/setCheckInConfirmation\(showCheckInConfirmation\(/g) ?? []
     assert.equal(opens.length, 1)
     assert.ok(
       page.includes(
-        "if (shouldShowCheckInConfirmation(outcome)) setCheckInConfirmationOpen(true)"
+        'if (outcome === "saved") {\n          setCheckInConfirmation(showCheckInConfirmation(label, checkIn.answerCount))'
       )
     )
   })
 
-  it("a refresh never shows it: memory only, no storage, not derived from /me", () => {
-    const state = between(page, "const [checkInConfirmationOpen", "const checkInHasPriorityNow")
-    assert.ok(state.includes("useState(false)"))
+  it("a refresh never shows it again: memory only, no storage, not derived from /me", () => {
+    const state = between(
+      page,
+      "const [checkInConfirmation,",
+      "const checkInHasPriorityNow"
+    )
+    assert.ok(state.includes("useState<CheckInConfirmation | null>(null)"))
+    assert.ok(!/localStorage|sessionStorage/.test(state))
     const close = between(
       page,
       "const handleCheckInConfirmationClose",
-      "// \"Update my home country\""
+      "// Back toggles"
     )
     assert.ok(!/localStorage|sessionStorage|document\.cookie/.test(close))
-    assert.ok(!/localStorage|sessionStorage/.test(state))
   })
 })
 
@@ -169,9 +174,7 @@ describe("while it is open, the small alert and the mismatch popup stay suppress
     const answered = due({ travelReminderDue: false })
     assert.equal(checkInHasPriority(answered, false), false)
     assert.equal(checkInHasPriority(answered, true), true)
-    assert.ok(
-      page.includes("checkIn !== null || checkInConfirmationOpen")
-    )
+    assert.ok(page.includes("checkIn !== null || checkInConfirmation !== null"))
   })
 
   it("the mismatch popup and the small alert are both gated on that priority", () => {
@@ -187,7 +190,7 @@ describe("while it is open, the small alert and the mismatch popup stay suppress
       "const outcome = await answerCheckIn(",
       "checkInSavingRef.current = false"
     )
-    const open = answerHandler.indexOf("setCheckInConfirmationOpen(true)")
+    const open = answerHandler.indexOf("setCheckInConfirmation(showCheckInConfirmation(")
     assert.ok(open > 0)
     assert.ok(open < answerHandler.indexOf("setCheckIn(null)"))
     assert.ok(open < answerHandler.indexOf("await readTravelSummary(false)"))
@@ -197,26 +200,32 @@ describe("while it is open, the small alert and the mismatch popup stay suppress
 describe("Done and X close it, then a pending mismatch is evaluated again", () => {
   const dialog = between(
     page,
-    "open={checkInConfirmationOpen}",
+    "open={checkInConfirmation !== null}",
     "{/* Not rendered while the check-in is due or open"
   )
 
-  it("Done and X (and the dialog's own close) share one handler", () => {
+  it("Done, X and the dialog's own close share one handler (on both screens)", () => {
     assert.ok(dialog.includes("{CHECK_IN_COPY.confirmation.done}"))
+    assert.match(dialog, /if \(!open\) handleCheckInConfirmationClose\(\)/)
+    // confirmation: X + Done; duration screen: X + Skip
     assert.equal(
       (dialog.match(/onClick=\{handleCheckInConfirmationClose\}/g) ?? []).length,
-      3 // back arrow, X, Done
+      4
     )
-    assert.match(dialog, /if \(!open\) handleCheckInConfirmationClose\(\)/)
+    // the two back arrows never close
+    assert.equal(
+      (dialog.match(/onClick=\{handleCheckInConfirmationBack\}/g) ?? []).length,
+      2
+    )
   })
 
   it("closing releases the priority and re-evaluates the location mismatch", () => {
     const close = between(
       page,
       "const handleCheckInConfirmationClose",
-      "// \"Update my home country\""
+      "// Back toggles"
     )
-    assert.ok(close.includes("setCheckInConfirmationOpen(false)"))
+    assert.ok(close.includes("setCheckInConfirmation(null)"))
     assert.ok(
       close.includes(
         "setLocationMismatchOpen(shouldShowLocationMismatchPrompt(travelSummary))"
@@ -226,7 +235,7 @@ describe("Done and X close it, then a pending mismatch is evaluated again", () =
 
   it("built from design-system parts only, no raw controls", () => {
     assert.ok(!/<(button|input|textarea|select|dialog|label)\b/.test(dialog))
-    assert.ok(dialog.includes("<Alert>"))
+    assert.ok(dialog.includes("<Alert"))
     assert.ok(dialog.includes("<DialogContent"))
   })
 })

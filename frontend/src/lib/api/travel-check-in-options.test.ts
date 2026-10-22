@@ -122,7 +122,7 @@ describe("later-check-in copy and the Skip button", () => {
     assert.equal(CHECK_IN_COPY.skip, "Skip")
     assert.equal((screen.match(/<Button\b/g) ?? []).length, 1)
     assert.ok(!/Confirm/.test(screen))
-    assert.ok(!/Confirm/.test(stories))
+    assert.ok(!/>\s*Confirm\s*</.test(stories))
   })
 })
 

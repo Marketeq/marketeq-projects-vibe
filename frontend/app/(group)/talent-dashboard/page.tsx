@@ -108,7 +108,11 @@ import {
   durationCopyFor,
   reconcileCheckIn,
   recordCheckInAnswerOutcome,
-  shouldShowCheckInConfirmation,
+  showCheckInConfirmation,
+  confirmationBack,
+  reviseCheckIn,
+  applyCheckInRevision,
+  type CheckInConfirmation,
   shouldRecheckOnVisibility,
 } from "@/src/lib/api/travel-check-in"
 import {
@@ -288,12 +292,14 @@ export default function TalentDashboard() {
   )
   // The check-in wins while it is due or open: the traveler location prompt and the small
   // Travel Mode alert wait, and come back once it is resolved.
-  // The "Travel Mode is now active!" confirmation after a saved answer is part of the
-  // check-in: it keeps holding them back until Done or X.
-  const [checkInConfirmationOpen, setCheckInConfirmationOpen] = useState(false)
+  // The "Travel Mode is now active!" confirmation after a saved answer, and the duration
+  // screen its Back arrow returns to, are part of the check-in: the whole flow keeps holding
+  // them back until it closes. Memory only; a refresh never brings it back.
+  const [checkInConfirmation, setCheckInConfirmation] =
+    useState<CheckInConfirmation | null>(null)
   const checkInHasPriorityNow = checkInHasPriority(
     travelSummary,
-    checkIn !== null || checkInConfirmationOpen
+    checkIn !== null || checkInConfirmation !== null
   )
 
 
@@ -892,7 +898,9 @@ export default function TalentDashboard() {
         })
         // Opened in the same batch that closes the question, so the small alert and the
         // location-mismatch popup never get a gap to appear in.
-        if (shouldShowCheckInConfirmation(outcome)) setCheckInConfirmationOpen(true)
+        if (outcome === "saved") {
+          setCheckInConfirmation(showCheckInConfirmation(label, checkIn.answerCount))
+        }
         setCheckIn(null)
         if (outcome === "in_progress") {
           // A home-country change owns the account now: follow the state /me returns.
@@ -909,13 +917,61 @@ export default function TalentDashboard() {
     [checkIn, checkInScopeKey, readTravelSummary, runIdentityVerificationCheck]
   )
 
-  // Done or X on the confirmation. Releasing the check-in's priority lets the traveler
-  // prompt effect run again; the location-mismatch prompt is evaluated against the
-  // summary read after the answer was saved.
+  // Done or X on the confirmation, or Skip or X on the duration screen Back returned to,
+  // closes the WHOLE flow and sends nothing: the duration that was saved stays. Releasing
+  // the check-in's priority lets the traveler prompt effect run again; the location-mismatch
+  // prompt is evaluated against the summary read after the answer was saved.
   const handleCheckInConfirmationClose = useCallback(() => {
-    setCheckInConfirmationOpen(false)
+    setCheckInConfirmation(null)
     setLocationMismatchOpen(shouldShowLocationMismatchPrompt(travelSummary))
   }, [travelSummary])
+
+  // Back toggles between the confirmation and the duration screen (the saved option is
+  // preselected there); it never closes the flow and sends nothing.
+  const handleCheckInConfirmationBack = useCallback(() => {
+    setCheckInConfirmation((current) => (current ? confirmationBack(current) : current))
+  }, [])
+
+  // A different duration chosen on the revision screen: the same update endpoint without
+  // checkInAt (no extra check-in is counted, the original occurrence stays resolved).
+  // Saved: the confirmation is shown again. Failed: the screen stays on the saved option.
+  const handleCheckInRevise = useCallback(
+    async (label: string) => {
+      if (!checkInConfirmation || checkInSavingRef.current) return
+      if (label === checkInConfirmation.saved) return
+      checkInSavingRef.current = true
+      setCheckInSaving(true)
+      setCheckInSelected(label)
+      try {
+        const outcome = await reviseCheckIn(
+          {
+            post: async (duration) => {
+              const { IdentityVerificationAPI } = await import(
+                "@/service/http/identity-verification"
+              )
+              return IdentityVerificationAPI.reviseActiveTravelDuration(duration)
+            },
+          },
+          label
+        )
+        if (outcome === "failed") {
+          console.error("[identity-verification] could not save the new duration")
+        }
+        const next = applyCheckInRevision(checkInConfirmation, label, outcome)
+        setCheckInConfirmation(next)
+        setCheckInSelected(undefined)
+        if (outcome === "in_progress") {
+          await runIdentityVerificationCheck()
+        } else if (outcome !== "failed") {
+          await readTravelSummary(false)
+        }
+      } finally {
+        checkInSavingRef.current = false
+        setCheckInSaving(false)
+      }
+    },
+    [checkInConfirmation, readTravelSummary, runIdentityVerificationCheck]
+  )
 
   // "Update my home country" enters the existing home-country flow: the current location
   // (city, region, country and map), "Is this your home country?", then Didit. Starting
@@ -1196,62 +1252,145 @@ export default function TalentDashboard() {
 
       {/* "Travel Mode is now active!": the Storybook TravelMode design (stories/
           identity-verfication.stories.tsx), shown once after a saved duration answer.
-          Done and X close it; nothing is persisted, so a refresh never shows it again. */}
+          Back opens the duration screen with the saved option selected; a different choice
+          is saved as a revision and the confirmation is shown again. Done, X, or Skip/X on
+          the duration screen close the whole flow; nothing is persisted, so a refresh never
+          shows it again. */}
       <Dialog
-        open={checkInConfirmationOpen}
+        open={checkInConfirmation !== null}
         onOpenChange={(open) => {
           if (!open) handleCheckInConfirmationClose()
         }}
       >
-        <DialogContent className="max-w-[650px]">
-          <div className="flex items-center justify-between">
-            {/* The answer is already saved, so the story's back arrow can only close. */}
-            <IconButton
-              size="md"
-              visual="gray"
-              variant="ghost"
-              onClick={handleCheckInConfirmationClose}
+        {checkInConfirmation?.screen === "confirmation" && (
+          <DialogContent className="max-w-[650px]">
+            <div className="flex items-center justify-between">
+              <IconButton
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={handleCheckInConfirmationBack}
+              >
+                <ArrowLeft className="size-5" />
+              </IconButton>
+
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={handleCheckInConfirmationClose}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </div>
+
+            <div className="mt-3 pt-[9px]">
+              <DialogTitle className="text-lg font-medium text-dark-blue-400">
+                {CHECK_IN_COPY.confirmation.title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-light text-dark-blue-400">
+                {CHECK_IN_COPY.confirmation.body}
+              </DialogDescription>
+            </div>
+
+            <div className="mt-6 space-y-6">
+              <Alert>
+                <AlertIcon>
+                  <Info className="size-5" />
+                </AlertIcon>
+                <AlertContent>
+                  <AlertTitle>{CHECK_IN_COPY.confirmation.alert}</AlertTitle>
+                </AlertContent>
+              </Alert>
+
+              <div className="grid">
+                <Button onClick={handleCheckInConfirmationClose}>
+                  {CHECK_IN_COPY.confirmation.done}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        )}
+
+        {checkInConfirmation?.screen === "revise" && (
+          <DialogContent className="max-w-[650px]">
+            <div className="flex items-start justify-between">
+              <IconButton
+                size="md"
+                visual="gray"
+                variant="ghost"
+                disabled={checkInSaving}
+                onClick={handleCheckInConfirmationBack}
+              >
+                <ArrowLeft className="size-5" />
+              </IconButton>
+
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={handleCheckInConfirmationClose}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </div>
+
+            <div className="mt-3 max-w-[554px] pt-[9px]">
+              <DialogTitle className="text-lg font-medium leading-5 text-dark-blue-400">
+                {durationCopyFor(checkInConfirmation.answerCount).title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-light leading-5 text-dark-blue-400">
+                {durationCopyFor(checkInConfirmation.answerCount).body}
+              </DialogDescription>
+            </div>
+
+            <RadioGroup
+              className="mt-6"
+              aria-label={durationCopyFor(checkInConfirmation.answerCount).title}
+              value={checkInSelected ?? checkInConfirmation.saved}
+              disabled={checkInSaving}
+              onValueChange={(label) => void handleCheckInRevise(label)}
             >
-              <ArrowLeft className="size-5" />
-            </IconButton>
+              {CHECK_IN_DURATION_LABELS.map((label, index) => (
+                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                  <RadioGroupItem
+                    className="cursor-pointer disabled:cursor-not-allowed"
+                    value={label}
+                    id={`check-in-revise-duration-${index}`}
+                  />
+                  <Label
+                    htmlFor={`check-in-revise-duration-${index}`}
+                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                  >
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
 
-            <IconButton
-              className="text-gray-500/50 hover:text-gray-500"
-              size="md"
-              visual="gray"
-              variant="ghost"
-              onClick={handleCheckInConfirmationClose}
-            >
-              <X className="size-5" />
-            </IconButton>
-          </div>
-
-          <div className="mt-3 pt-[9px]">
-            <DialogTitle className="text-lg font-medium text-dark-blue-400">
-              {CHECK_IN_COPY.confirmation.title}
-            </DialogTitle>
-            <DialogDescription className="mt-1 text-sm font-light text-dark-blue-400">
-              {CHECK_IN_COPY.confirmation.body}
-            </DialogDescription>
-          </div>
-
-          <div className="mt-6 space-y-6">
-            <Alert>
+            <Alert className="mt-6">
               <AlertIcon>
                 <Info className="size-5" />
               </AlertIcon>
               <AlertContent>
-                <AlertTitle>{CHECK_IN_COPY.confirmation.alert}</AlertTitle>
+                <AlertTitle>{durationCopyFor(checkInConfirmation.answerCount).alert}</AlertTitle>
               </AlertContent>
             </Alert>
 
-            <div className="grid">
-              <Button onClick={handleCheckInConfirmationClose}>
-                {CHECK_IN_COPY.confirmation.done}
+            <div className="mt-6 grid">
+              <Button
+                variant="outlined"
+                visual="gray"
+                disabled={checkInSaving}
+                onClick={handleCheckInConfirmationClose}
+              >
+                {CHECK_IN_COPY.skip}
               </Button>
             </div>
-          </div>
-        </DialogContent>
+          </DialogContent>
+        )}
       </Dialog>
 
       {/* Not rendered while the check-in is due or open: it goes first. */}

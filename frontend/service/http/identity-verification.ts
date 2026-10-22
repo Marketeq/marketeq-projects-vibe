@@ -184,6 +184,17 @@ export const IdentityVerificationAPI = {
       checkInAt,
     }),
 
+  // A revision of the answer that was just saved (the confirmation's Back, then a different
+  // duration): the same endpoint WITHOUT checkInAt. The backend updates the duration and
+  // restarts the schedule but does not count another check-in; the original occurrence stays
+  // resolved. src/lib/api/travel-check-in.ts (reviseCheckIn) is the only caller.
+  reviseActiveTravelDuration: (
+    duration: "a_few_days" | "one_to_two_weeks" | "more_than_two_weeks" | "not_sure"
+  ) =>
+    AxiosRequest.post("/v1/identity-verification/travel-duration/update", {
+      duration,
+    }),
+
   // Claims the next due Travel Mode reminder (day 3 / day 7) for the CALLER only:
   // no body, no query, no id, no timestamp. The backend answers exactly
   // { claimed: boolean }; typed unknown here on purpose so the only reader is

@@ -107,7 +107,15 @@ describe('POST /v1/identity-verification/travel-duration/update (the check-in an
     jest.restoreAllMocks();
   });
 
-  const post = (duration: unknown) => request(app.getHttpServer()).post(URL).send({ duration });
+  // Like the real client: the answer names the occurrence /me showed (day 3 of the period).
+  const occurrence = () =>
+    row.travelModeActivatedAt instanceof Date
+      ? new Date(row.travelModeActivatedAt.getTime() + 3 * DAY).toISOString()
+      : undefined;
+  const post = (duration: unknown) =>
+    request(app.getHttpServer()).post(URL).send({ duration, checkInAt: occurrence() });
+  // A voluntary revision: no checkInAt.
+  const revise = (duration: unknown) => request(app.getHttpServer()).post(URL).send({ duration });
 
   it.each(['a_few_days', 'one_to_two_weeks', 'more_than_two_weeks', 'not_sure'])(
     'an active traveler answers with %s: 200, the new period starts now, the count goes to 1',
@@ -210,6 +218,33 @@ describe('POST /v1/identity-verification/travel-duration/update (the check-in an
     expect(first.body.travelCheckInCount).toBe(1);
     const second = await post('one_to_two_weeks').expect(200);
     expect(second.body.travelCheckInCount).toBe(2);
+  });
+
+  it('a revision (no checkInAt) updates the duration and restarts the schedule without counting again', async () => {
+    await build(inForce());
+    const answered = await post('one_to_two_weeks').expect(200);
+    expect(answered.body.travelCheckInCount).toBe(1);
+    const activatedAfterAnswer = row.travelModeActivatedAt.getTime();
+
+    const before = Date.now();
+    const revised = await revise('more_than_two_weeks').expect(200);
+
+    expect(revised.body).toMatchObject({
+      declaredDuration: 'more_than_two_weeks',
+      travelModeActive: true,
+      travelCheckInCount: 1,
+    });
+    expect(row.travelCheckInCount).toBe(1);
+    expect(row.travelModeActivatedAt.getTime()).toBeGreaterThanOrEqual(Math.max(before, activatedAfterAnswer));
+    expect(row.lastTravelReminderSentAt).toBeNull();
+    expect(row.nextTravelReminderAt.getTime() - row.travelModeActivatedAt.getTime()).toBe(3 * DAY);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('a revision still refuses a period that is not in force', async () => {
+    await build(inForce({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null, nextTravelReminderAt: null }));
+    const res = await revise('not_sure').expect(409);
+    expect(res.body).toMatchObject({ code: 'TRAVEL_MODE_NOT_ACTIVE' });
   });
 
   it('"skipped" is not an answer: there is no such duration, and nothing is written', async () => {

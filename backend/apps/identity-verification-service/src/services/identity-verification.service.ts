@@ -590,8 +590,10 @@ export class IdentityVerificationService {
    * starts now and ends at the new duration's expiry (it restarts from the response time,
    * it is not added to the old end), the check-in schedule restarts from now (the
    * resolved-up-to time is cleared, so nothing a previous period resolved can suppress it),
-   * and the answer count goes up by one, which also ends the five-minute-after-login
-   * check-in for this cycle. Only Travel Mode columns are written: identity and location
+   * and an ANSWER (a request with `checkInAt`) also raises the answer count by one, which
+   * ends the five-minute-after-login check-in for this cycle. A REVISION (no `checkInAt`)
+   * edits the answer that was just given: same update and restart, but the count is
+   * neither read as a new answer nor changed. Only Travel Mode columns are written: identity and location
    * status, the verified home country and any home-country claim are untouched, and a
    * running or in-review home-country change refuses the answer outright.
    *
@@ -600,7 +602,9 @@ export class IdentityVerificationService {
    * simultaneous answers exactly one applies. `options.checkInAt` closes the sequential
    * case: it is the `travelReminderAvailableAt` the caller was shown, and it must still be
    * the current unresolved occurrence, otherwise another tab already resolved it and this
-   * request is rejected without writing. Without it the answer is a voluntary update.
+   * request is rejected without writing. Without it the request is a voluntary revision of
+   * the duration (the confirmation's Back): it resolves no occurrence, counts nothing, and
+   * keeps the same compare-and-set on the period, the count and the resolved-up-to time.
    */
   async updateActiveTravelDuration(
     userId: string,
@@ -640,6 +644,8 @@ export class IdentityVerificationService {
       }
     }
 
+    // Only an answer to an occurrence counts; a revision edits the answer already counted.
+    const countsAsAnswer = Boolean(options.checkInAt);
     const observedResolvedUpTo = profile.lastTravelReminderSentAt;
     const now = new Date(nowMs);
     const nextReminderAt = new Date(nowMs + FIRST_REMINDER_AFTER_ACTIVATION_MS);
@@ -665,7 +671,7 @@ export class IdentityVerificationService {
         travelModeActivatedAt: now,
         lastTravelReminderSentAt: null,
         nextTravelReminderAt: nextReminderAt,
-        travelCheckInCount: observedCount + 1,
+        ...(countsAsAnswer ? { travelCheckInCount: observedCount + 1 } : {}),
       },
     );
     if (result.affected !== 1) {
@@ -683,7 +689,7 @@ export class IdentityVerificationService {
     profile.travelModeActivatedAt = now;
     profile.lastTravelReminderSentAt = null;
     profile.nextTravelReminderAt = nextReminderAt;
-    profile.travelCheckInCount = observedCount + 1;
+    if (countsAsAnswer) profile.travelCheckInCount = observedCount + 1;
     return profile;
   }
 

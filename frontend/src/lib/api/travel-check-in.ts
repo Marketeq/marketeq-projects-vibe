@@ -355,6 +355,17 @@ function errorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null
 }
 
+function outcomeOfError(error: unknown): CheckInAnswerOutcome {
+  const code = errorCode(error)
+  if (
+    code === "TRAVEL_CHECK_IN_ALREADY_ANSWERED" ||
+    code === "TRAVEL_MODE_NOT_ACTIVE"
+  )
+    return "stale"
+  if (code === "HOME_COUNTRY_CHANGE_IN_PROGRESS") return "in_progress"
+  return "failed"
+}
+
 /**
  * Submits ONE duration answer for the occurrence that was captured when the modal opened
  * (`checkInAt` is passed in, never re-read here). An unknown label or a missing occurrence
@@ -371,13 +382,87 @@ export async function answerCheckIn(
     await deps.post(duration, checkInAt)
     return "saved"
   } catch (error) {
-    const code = errorCode(error)
-    if (
-      code === "TRAVEL_CHECK_IN_ALREADY_ANSWERED" ||
-      code === "TRAVEL_MODE_NOT_ACTIVE"
-    )
-      return "stale"
-    if (code === "HOME_COUNTRY_CHANGE_IN_PROGRESS") return "in_progress"
-    return "failed"
+    return outcomeOfError(error)
   }
+}
+
+// --- the confirmation and its Back (a revision of the saved answer) ----------
+
+/**
+ * The "Travel Mode is now active!" flow after a saved answer. `saved` is the duration the
+ * server holds right now (it is what Back preselects), `answerCount` picks the same
+ * first-time / "asked before" copy the answered screen had, and `screen` is which of the
+ * two screens is showing. The whole flow is open while this is non-null; it closes only
+ * through Done, X, or Skip/X on the revision screen, and none of those send anything.
+ */
+export interface CheckInConfirmation {
+  saved: CheckInDurationLabel
+  answerCount: number
+  screen: "confirmation" | "revise"
+}
+
+export function isDurationLabel(label: string): label is CheckInDurationLabel {
+  return (CHECK_IN_DURATION_LABELS as readonly string[]).includes(label)
+}
+
+/** Opens the flow on the confirmation, right after a saved answer. */
+export function showCheckInConfirmation(
+  label: string,
+  answerCount: number
+): CheckInConfirmation | null {
+  return isDurationLabel(label)
+    ? { saved: label, answerCount, screen: "confirmation" }
+    : null
+}
+
+/** Back toggles between the confirmation and the duration screen; it never closes the flow. */
+export function confirmationBack(
+  current: CheckInConfirmation
+): CheckInConfirmation {
+  return {
+    ...current,
+    screen: current.screen === "confirmation" ? "revise" : "confirmation",
+  }
+}
+
+export interface CheckInRevisionDeps {
+  /** POST /v1/identity-verification/travel-duration/update, with NO checkInAt */
+  post: (duration: DeclaredDurationValue) => Promise<unknown>
+}
+
+/**
+ * Submits a revision of the answer that was just saved: the same endpoint without checkInAt,
+ * so the server updates the duration and restarts the schedule but counts nothing and the
+ * original occurrence stays resolved. Same outcomes as an answer.
+ */
+export async function reviseCheckIn(
+  deps: CheckInRevisionDeps,
+  label: string
+): Promise<CheckInAnswerOutcome> {
+  const duration = TRAVEL_DURATION_TO_BACKEND[label]
+  if (!duration) return "failed"
+  try {
+    await deps.post(duration)
+    return "saved"
+  } catch (error) {
+    return outcomeOfError(error)
+  }
+}
+
+/**
+ * Where the flow goes after a revision attempt:
+ *  - saved: the new duration is the saved one and the confirmation is shown again;
+ *  - failed: nothing changed, the duration screen stays (the saved option stays selected);
+ *  - stale / in_progress: the server no longer takes edits (Travel Mode ended, another tab
+ *    won, a home-country change started): the flow ends and /me is read again.
+ */
+export function applyCheckInRevision(
+  current: CheckInConfirmation,
+  label: string,
+  outcome: CheckInAnswerOutcome
+): CheckInConfirmation | null {
+  if (outcome === "saved" && isDurationLabel(label)) {
+    return { ...current, saved: label, screen: "confirmation" }
+  }
+  return outcome === "failed" ? current : null
 }
