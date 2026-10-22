@@ -174,7 +174,8 @@ describe("the success alert is preserved exactly as in commit 494827a0, and the 
   it("Done closes the modal and then opens the alert, through the same handler as before", () => {
     assert.ok(page.includes("<Button onClick={handleSuccessDone}>Done</Button>"))
     assert.match(page, /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+setSuccessAlertOpen\(true\)\s+\}/)
-    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 1)
+    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
+    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 2)
   })
 
   it("its dedicated test file is present", () => {

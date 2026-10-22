@@ -748,7 +748,9 @@ export function createTimerService(deps: TimerServiceDeps) {
     // open here is a crash / force-kill leftover. Close every one of them and
     // leave the FSM Idle so the user can start fresh. Rows, time entries and
     // screenshots are kept — only ended_at/end_reason are set. The
-    // Recover/Discard prompt (DTT Epic W) is separate feature work.
+    // Recover/Discard prompt (DTT Epic W) is crash-recovery.ts: closing here
+    // first keeps capture off while the user decides, and Recover reopens the
+    // row via recoverCrashedSession().
     const rows = repos.session.closeAllOpen({
       endedAt: Date.now(),
       reason: 'crash_recover',
@@ -769,6 +771,39 @@ export function createTimerService(deps: TimerServiceDeps) {
       snapshot: snapshot(),
       closed: rows,
     };
+  }
+
+  /**
+   * Crash recovery — Recover (doc 01 §18, DTT-US-132). Reopens a session the
+   * startup sweep closed and restores it into Paused at its last checkpoint:
+   * same session id, same contract/task, billable seconds = what the sweep
+   * kept. A break the crash interrupted ends at the crash point (doc 05
+   * CRASH.03), and the pre-crash time entries are tagged `recovered`.
+   * Continuing needs an explicit Resume, which opens a fresh `live` entry.
+   * Returns false (and changes nothing) if the session can't be reopened.
+   */
+  async function recoverCrashedSession(sessionId: string): Promise<boolean> {
+    if (machine.getState() !== 'Idle') return false;
+    const row = repos.session.findById(sessionId);
+    if (!row || row.end_reason !== 'crash_recover' || row.ended_at == null) return false;
+    if (!repos.session.reopenCrashRecovered(sessionId)) return false;
+    repos.break.closeOpenForSession(sessionId, row.ended_at);
+    repos.timeEntry.markRecovered(sessionId);
+
+    activeSessionId = sessionId as SessionId;
+    pickedContract = {
+      contractId: row.contract_id as ContractId,
+      taskId: row.task_id as TaskId,
+    };
+    sessionStartedAt = row.started_at;
+    accumulatedRunningSec = row.billable_seconds;
+    activeTimeEntryId = null;
+    runningStartedAt = null;
+    runningStartedHr = null;
+
+    await safeDispatch({ type: 'RESTORE_SESSION', sessionId });
+    logger.info({ sessionId, billableSeconds: row.billable_seconds }, 'crash recovery: session restored to Paused');
+    return true;
   }
 
   // ---------------------------------------------------------------------------
@@ -800,6 +835,7 @@ export function createTimerService(deps: TimerServiceDeps) {
     // bus / lifecycle
     attachEventBus,
     restoreFromDb,
+    recoverCrashedSession,
     dispose,
   };
 }

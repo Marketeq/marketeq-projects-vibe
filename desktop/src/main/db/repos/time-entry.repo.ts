@@ -35,6 +35,10 @@ export function createTimeEntryRepo(db: DbHandle) {
         [endedAt, durationSeconds, id],
       );
     },
+    /** Crash recovery: tag every entry recorded so far in this session as recovered. */
+    markRecovered(sessionId: string): void {
+      run(db, `UPDATE time_entry SET source = 'recovered' WHERE session_id = ?`, [sessionId]);
+    },
   };
 }
 export type TimeEntryRepo = ReturnType<typeof createTimeEntryRepo>;
