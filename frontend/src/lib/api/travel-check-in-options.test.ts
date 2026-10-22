@@ -31,15 +31,16 @@ describe("a simple vertical radio list with an accessible label per option", () 
       assert.ok(group.includes("CHECK_IN_DURATION_LABELS.map("))
       assert.equal((group.match(/<Label\b/g) ?? []).length, 1)
       assert.equal((group.match(/<RadioGroupItem\b/g) ?? []).length, 1)
-      // the same rows as the first-time TravelingForm story (Figma): flex row, gap-x-3, default Label
-      assert.ok(group.includes('className="flex items-center gap-x-3"'))
+      // the first-time TravelingForm story's row (flex, gap-x-3, default Label) plus feedback only
+      assert.ok(/className="group flex w-fit origin-left items-center gap-x-3 /.test(group))
       assert.ok(group.indexOf("<RadioGroupItem") < group.indexOf("<Label"))
       assert.ok(group.includes(`htmlFor={\`${prefix}\${index}\`}`))
       assert.ok(group.includes(`id={\`${prefix}\${index}\`}`))
       assert.ok(group.includes("{label}"))
       assert.ok(group.includes('className="mt-6"'))
       assert.ok(!group.includes("space-y")) // the group's own gap-y-2.5 is the only spacing
-      assert.ok(!/<Label[^>]*className/.test(group)) // default Label: 12px/18px, medium
+      // the Label keeps its default 12px/18px medium type; only colour/weight on hover are added
+      assert.ok(!/text-(xs|sm|base)|leading-|font-(bold|normal|light)/.test(group))
     })
 
     it(`${where}: the group is named, pointer on the radio, and no raw controls`, () => {
@@ -50,14 +51,44 @@ describe("a simple vertical radio list with an accessible label per option", () 
       assert.ok(!/<(button|input|label)\b/.test(group))
     })
 
-    it(`${where}: no card, border, shadow, background, padding box or hover treatment`, () => {
+    it(`${where}: no card, border, shadow, background, padding box or Passport hover`, () => {
       assert.ok(
-        !/\b(border|shadow|bg-|ring|rounded|hover:|has-\[|px-|py-|pl-|pr-|h-14)/.test(
-          group.replace(/text-dark-blue-400/g, "")
+        !/\b(border|shadow|bg-|ring|rounded|px-|py-|pl-|pr-|h-14|has-\[\[data-state|hover:(bg|border|ring))/.test(
+          group
         ),
         where
       )
       assert.ok(!/Passport|Chevron/.test(group))
+    })
+
+    it(`${where}: hover darkens and bolds only the text; press is a tiny scale; reduced motion respected`, () => {
+      for (const c of [
+        "group-hover:font-semibold",
+        "group-hover:text-gray-900",
+        "active:scale-[0.99]",
+        "origin-left",
+        "transition-transform",
+        "duration-150",
+        "motion-reduce:transition-none",
+        "motion-reduce:active:scale-100",
+      ]) {
+        assert.ok(group.includes(c), c)
+      }
+      // text hover is on the Label, the press scale on the row; neither changes size or spacing
+      assert.ok(!/\b(m[trblxy]?-|p[trblxy]?-|gap-y|space-y|w-\[|h-\[|scale-(1[1-9]|[2-9])\d)/.test(
+        group.replace("mt-6", "").replace("gap-x-3", "")
+      ))
+    })
+
+    it(`${where}: a disabled option shows no hover or press feedback`, () => {
+      for (const c of [
+        "has-[:disabled]:active:scale-100",
+        "group-has-[:disabled]:group-hover:font-medium",
+        "group-has-[:disabled]:group-hover:text-gray-800",
+        "group-has-[:disabled]:cursor-not-allowed",
+      ]) {
+        assert.ok(group.includes(c), c)
+      }
     })
   }
 

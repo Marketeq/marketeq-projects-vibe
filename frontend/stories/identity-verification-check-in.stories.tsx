@@ -116,13 +116,16 @@ const DurationQuestion = ({ answerCount }: { answerCount: number }) => {
           }}
         >
           {CHECK_IN_DURATION_LABELS.map((label, index) => (
-            <div key={label} className="flex items-center gap-x-3">
+            <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
               <RadioGroupItem
                 className="cursor-pointer disabled:cursor-not-allowed"
                 value={label}
                 id={`check-in-duration-${answerCount}-${index}`}
               />
-              <Label htmlFor={`check-in-duration-${answerCount}-${index}`}>
+              <Label
+                    htmlFor={`check-in-duration-${answerCount}-${index}`}
+                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                  >
                 {label}
               </Label>
             </div>
