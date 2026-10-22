@@ -17,7 +17,7 @@ export const talentProfileSyncPlugin: Plugin = (incomingConfig) => {
   config.endpoints = [
     ...existingEndpoints,
     {
-      path: '/api/cms/reconcile-talent-profiles',
+      path: '/cms/reconcile-talent-profiles',
       method: 'post',
       handler: async (req: any, res: any) => {
         try {

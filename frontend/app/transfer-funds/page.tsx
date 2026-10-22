@@ -15,6 +15,8 @@ import { cn } from "@/utils/functions"
 import { AlertTriangle, ArrowLeft, Check, Lock, RefreshCcw01 } from "@blend-metrics/icons"
 import { Logo3 } from "@/components/icons"
 import { Button, Input } from "@/components/ui"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
@@ -579,6 +581,13 @@ function TransferFundsInner() {
 
   // US-30/31/AC-30.01/31.01: gate check runs on mount, before the form is shown —
   // fail-closed per AC-30.04 (gateAllowed starts false until the server confirms).
+  // G9: the payout service's identity gate answered 403/503 - the existing
+  // Verify My Account popup opens; "Verify My Account" continues on the talent dashboard.
+  const [verificationBlock, setVerificationBlock] = React.useState<WithdrawalVerificationBlock>(null)
+  const goVerify = () => {
+    setVerificationBlock(null)
+    router.push("/talent-dashboard")
+  }
   const [gateAllowed, setGateAllowed] = React.useState<boolean | null>(null)
   const [gateBlockedBy, setGateBlockedBy] = React.useState<string | undefined>(undefined)
   const [gateHoldReleasesAt, setGateHoldReleasesAt] = React.useState<string | undefined>(undefined)
@@ -818,6 +827,8 @@ function TransferFundsInner() {
       })
       const data = await res.json()
       if (!res.ok) {
+        const block = withdrawalBlockFor(res.status, data)
+        if (block) { setSubmitting(false); setVerificationBlock(block); return }
         // AC-17.04/17.05: specific, mapped errors — balance-changed routes back to
         // step 1 rather than a dead end (fresh idempotency key minted on return to
         // step 3). Everything else in this class of error is now a dedicated
@@ -1002,6 +1013,14 @@ function TransferFundsInner() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <AccountVerificationGate
+        open={verificationBlock !== null}
+        reason={verificationBlock === "verification_unavailable" ? "status_unavailable" : "unstarted"}
+        connectionCheckState="idle"
+        onVerify={goVerify}
+        onRetryConnectionCheck={goVerify}
+        onDismissConnectionError={() => setVerificationBlock(null)}
+      />
       <TopBar current={step} />
       <div className="px-6 py-[50px]">
         <div className="max-w-[720px] mx-auto">

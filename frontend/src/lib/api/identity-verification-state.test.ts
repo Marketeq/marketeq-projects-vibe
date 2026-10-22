@@ -80,6 +80,8 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       flowState: "wait-for-retry",
       nextAction: "wait_for_retry",
       fullyVerified: false,
+      // the append-only gate_open signal (G3): absent from this body, so null
+      gateOpen: null,
       attemptsUsed: 3,
       attemptsRemaining: 0,
       maxAttempts: 3,
@@ -93,6 +95,10 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       travelReminderAvailableAt: null,
       // the append-only returning-user new-location signal: absent from this body, so null
       locationMismatch: null,
+      travelModeLocationMismatch: null,
+      pendingHomeCountry: null,
+      // the opaque per-login key: absent from this body, so null
+      loginSessionKey: null,
     })
   })
 

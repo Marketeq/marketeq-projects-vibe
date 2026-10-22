@@ -2228,6 +2228,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         osVersion: s.osVersion ?? null,
         deviceType: s.deviceType ?? null,
         ipAddress: s.ipAddress,
+        // Reuses describeLocation(), already used for the password-changed
+        // email: offline geoip-lite lookup, full country/state names, and
+        // undefined for private and loopback addresses.
+        location: this.describeLocation(s.ipAddress) ?? null,
         createdAt: s.createdAt.toISOString(),
         lastActiveAt: s.lastActiveAt.toISOString(),
         isCurrent: s.id === currentSessionId,

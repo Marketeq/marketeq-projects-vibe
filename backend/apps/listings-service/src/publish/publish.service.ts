@@ -46,6 +46,8 @@ import { CreateModeratedSubcategoryDto } from './dto/create-moderated-subcategor
 import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
+import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
+import sanitizeHtml = require('sanitize-html');
 import {
   DELIVERABLES_ADAPTER,
   DeliverablesAdapter,
@@ -54,6 +56,61 @@ import { ScopePhaseInput } from '../project-sync/deliverables/deliverables.types
 import { FAQ_ADAPTER, FaqAdapter } from './faq/faq.adapter';
 import { FaqContext, FaqSuggestion } from './faq/faq.types';
 import { UserProfileClient } from '../shared/user-profile/user-profile.client';
+
+// PMCM-255: fullDescription comes straight from the seller's own browser
+// (RichTextEditor, via createProjectDraft/updateProjectDraft below) and was
+// never sanitized server-side before being persisted. `sanitize-html` is
+// already a real dependency of this service (job-listing.service.ts's
+// `sanitiseRichText`) — reused here with an allow-list matching what
+// RichTextEditor actually produces (span[data-font-size] for headings, img
+// with data-align for inline images, blockquote) rather than job-listing's
+// narrower h2-h4/p/ul/ol/li set, which has no image/heading-mark support.
+// Mirrors the frontend's sanitizeProjectDescription allow-list
+// (frontend/lib/sanitize-html.ts) — no <a>, no custom fonts/CSS beyond
+// alignment.
+function sanitizeProjectFullDescription(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      'b',
+      'strong',
+      'i',
+      'em',
+      'u',
+      's',
+      'p',
+      'br',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'span',
+      'img',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+    ],
+    allowedAttributes: {
+      span: ['data-font-size'],
+      img: ['src', 'alt', 'data-align'],
+      p: ['style'],
+      h1: ['style'],
+      h2: ['style'],
+      h3: ['style'],
+      h4: ['style'],
+      h5: ['style'],
+      h6: ['style'],
+    },
+    allowedStyles: {
+      '*': {
+        'text-align': [/^left$|^center$|^right$|^justify$/],
+      },
+    },
+    allowedSchemes: ['https', 'http'],
+  });
+}
 
 type ProjectScopeReplacement = { scope: Phase[]; budgetUsdCents: number };
 
@@ -89,6 +146,7 @@ export class PublishService {
     @Inject(FAQ_ADAPTER)
     private readonly faqAdapter: FaqAdapter,
     private readonly userProfileClient: UserProfileClient,
+    private readonly memberGate: MemberAddGate,
   ) {}
 
   private faqContextFromProject(project: Project): FaqContext {
@@ -471,10 +529,21 @@ export class PublishService {
         slug: title ? slugify(title) : null,
         subtitle: dto.subtitle ?? null,
         shortDescription: dto.shortDescription ?? '',
-        fullDescription: dto.fullDescription ?? '',
-        budget: dto.budget ?? null,
+        fullDescription: dto.fullDescription
+          ? sanitizeProjectFullDescription(dto.fullDescription)
+          : '',
+        // PMCM-258/X1: budget and duration are seller-visible but
+        // server-computed — a client-sent value is never trusted, even
+        // on first create. `budget` gets its real value from the first
+        // scope save (writeProjectScope's updatePublishedSnapshot);
+        // `durationMonths` has no equivalent compute-and-write path today,
+        // so it's just left null rather than inventing one. The DTO still
+        // accepts both fields (backwards-compat for any client still
+        // sending them), they're just never persisted.
+        budget: null,
         initialTeamBudget: dto.initialTeamBudget ?? null,
-        durationMonths: dto.durationMonths ?? null,
+        durationMonths: null,
+        pricingPeriod: dto.pricingPeriod ?? null,
         location: dto.location ?? null,
         timezone: dto.timezone ?? null,
         categories: dto.categories ?? [],
@@ -556,7 +625,13 @@ export class PublishService {
     const unit = (rawUnit ?? 'days').toLowerCase();
     if (unit.startsWith('hour')) return value;
     if (unit.startsWith('week')) return value * 40;
-    if (unit.startsWith('month')) return value * 160;
+    // PMCM-258 follow-up: was a flat 4-week month (value * 160), disagreeing
+    // with the 30-day month used everywhere else (taskDurationDays below,
+    // frontend's listing-pricing.ts MONTH_DAYS and scope-builder's
+    // durationToHours/durationToDays) — 30/7 weeks/month * 40h/week, same
+    // full-time-week assumption this function already uses for the
+    // 'week'/else-days branches.
+    if (unit.startsWith('month')) return value * (30 / 7) * 40;
     return value * 8;
   }
 
@@ -697,8 +772,28 @@ export class PublishService {
     }>,
   ) {
     await this.ensureProjectOwnership(projectId, userId);
-    await this.projectRepository.upsertProjectMembers(projectId, members ?? []);
-    return this.projectRepository.getProjectMembers(projectId);
+
+    // G7: the people being ADDED must pass the verification gate, exactly like
+    // accepting an invitation. Only people not already on the roster are evaluated
+    // (the owner doing the saving is not), in ONE batch gate request. A blocked,
+    // invalid or duplicate entry is left out and reported - it never fails the
+    // request and never rolls back the others. If the gate cannot be evaluated the
+    // request fails (503) before anything is written.
+    const requested = members ?? [];
+    const current = await this.projectRepository.getProjectMembers(projectId);
+    const outcome = await this.memberGate.evaluate(
+      requested.map((m) => m?.userId),
+      current.map((m) => m.userId),
+    );
+    await this.projectRepository.upsertProjectMembers(
+      projectId,
+      requested.filter((_, i) => outcome.keep[i]),
+    );
+    return {
+      members: await this.projectRepository.getProjectMembers(projectId),
+      // One result per entry sent, in the order sent.
+      results: outcome.results,
+    };
   }
 
   async getRecentQuestions(userId: string, projectId: string) {
@@ -779,27 +874,42 @@ export class PublishService {
     projectId: string,
     dto: UpsertProjectDraftDto,
   ): Promise<Project> {
-    await this.ensureProjectOwnership(projectId, userId);
+    const existingProject = await this.ensureProjectOwnership(projectId, userId);
 
     const payload: Partial<Project> = {};
 
     if (dto.title !== undefined) {
       payload.title = dto.title;
-      payload.slug = dto.title ? slugify(dto.title) : null;
+      // PMCM-254: slug is generated from the title on first save only —
+      // editing the title afterward must never change it. Previously this
+      // regenerated the slug from the title on every update with no check
+      // against the project's existing slug, so any title edit after the
+      // first save silently changed the published URL.
+      if (!existingProject.slug && dto.title) {
+        payload.slug = slugify(dto.title);
+      }
     }
     if (dto.subtitle !== undefined) payload.subtitle = dto.subtitle;
     if (dto.shortDescription !== undefined) {
       payload.shortDescription = dto.shortDescription;
     }
     if (dto.fullDescription !== undefined) {
-      payload.fullDescription = dto.fullDescription;
+      payload.fullDescription = dto.fullDescription
+        ? sanitizeProjectFullDescription(dto.fullDescription)
+        : dto.fullDescription;
     }
-    if (dto.budget !== undefined) payload.budget = dto.budget;
+    // PMCM-258/X1: budget and duration are server-computed — a client-
+    // sent value is never persisted here, even on update. `budget` is
+    // kept current by every scope save instead (writeProjectScope's
+    // updatePublishedSnapshot); `durationMonths` has no equivalent
+    // compute-and-write path today, so dto.durationMonths is simply
+    // ignored rather than inventing one. Both DTO fields stay accepted
+    // (backwards-compat), just unused here.
     if (dto.initialTeamBudget !== undefined) {
       payload.initialTeamBudget = dto.initialTeamBudget;
     }
-    if (dto.durationMonths !== undefined) {
-      payload.durationMonths = dto.durationMonths;
+    if (dto.pricingPeriod !== undefined) {
+      payload.pricingPeriod = dto.pricingPeriod;
     }
     if (dto.location !== undefined) payload.location = dto.location;
     if (dto.timezone !== undefined) payload.timezone = dto.timezone;
@@ -819,8 +929,18 @@ export class PublishService {
     if (dto.projectType !== undefined) payload.projectType = dto.projectType;
     if (dto.videoUrl !== undefined) payload.videoUrl = dto.videoUrl;
     if (dto.faqs !== undefined) payload.faqs = dto.faqs;
+    let memberResults: MemberAddResult[] | undefined;
     if (dto.teamMemberIds !== undefined) {
-      payload.teamMemberIds = dto.teamMemberIds;
+      // G7: people newly added through the wizard's team list must pass the
+      // verification gate (one batch request); the rest of the draft still saves.
+      const outcome = await this.memberGate.evaluate(
+        Array.isArray(dto.teamMemberIds) ? dto.teamMemberIds : [],
+        existingProject?.teamMemberIds ?? [],
+      );
+      memberResults = outcome.results;
+      payload.teamMemberIds = (Array.isArray(dto.teamMemberIds) ? dto.teamMemberIds : [])
+        .filter((_, i) => outcome.keep[i])
+        .map(String);
     }
     if (dto.pendingInviteEmails !== undefined) {
       payload.pendingInviteEmails = dto.pendingInviteEmails;
@@ -831,7 +951,7 @@ export class PublishService {
       throw new NotFoundException('Project not found');
     }
 
-    return updated;
+    return memberResults ? Object.assign(updated, { memberResults }) : updated;
   }
 
   async getProjectDraftBySlug(userId: string, slug: string): Promise<any> {
@@ -1134,6 +1254,7 @@ export class PublishService {
         return {
           title: task.taskName,
           roleName: task.role,
+          assigneeUserId: task.assigneeUserId ?? null,
           location: task.location ?? [],
           experienceLevel:
             task.experienceLevel ?? task.experience?.[0] ?? 'Medior',
@@ -1599,11 +1720,13 @@ export class PublishService {
 
       return { ...media, url: featuredImageUrl } as Media;
     } catch (error) {
-      console.log('err', error);
+      // PMCM-261/X3: was `throw new InternalServerErrorException(error.message)`
+      // — any underlying driver/SDK error's raw message (DB error text,
+      // internal service detail) landed verbatim in the response body.
+      // Matches the generic-fallback pattern used elsewhere in this file
+      // (e.g. createProject/createProjectDraft) instead.
+      console.error('Failed to upload media:', error);
       this.throwIfHttpException(error);
-      if (error instanceof Error && error.message) {
-        throw new InternalServerErrorException(error.message);
-      }
       throw new InternalServerErrorException('Failed to upload media');
     }
   }

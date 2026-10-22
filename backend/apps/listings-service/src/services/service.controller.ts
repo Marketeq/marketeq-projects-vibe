@@ -18,6 +18,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
+import { ViewerDependent, ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/services')
 export class ServicesController {
@@ -28,14 +29,16 @@ export class ServicesController {
     return this.service.findAll();
   }
 
+  @ViewerDependent()
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.service.findBySlug(slug);
+  findBySlug(@Param('slug') slug: string, @ViewerId() viewerId: string | null) {
+    return this.service.findBySlug(slug, viewerId);
   }
 
+  @ViewerDependent()
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOne(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @ViewerId() viewerId: string | null) {
+    return this.service.findOneForViewer(id, viewerId);
   }
 
   @Post()
@@ -52,14 +55,18 @@ export class ServicesController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateServiceDto) {
-    return this.service.update(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateServiceDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.update(id, dto, userId);
   }
 
   @Put(':id/publish')
   @UseGuards(JwtAuthGuard)
-  publish(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.publish(id);
+  publish(@Param('id', ParseUUIDPipe) id: string, @CurrentUser('id') userId: string) {
+    return this.service.publish(id, userId);
   }
 
   @Put(':id/archive')

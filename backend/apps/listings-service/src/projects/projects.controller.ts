@@ -12,12 +12,14 @@ import {
   UseGuards,
   ParseUUIDPipe,
   Query,
+  NotFoundException,
 } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { ProjectsService } from './projects.service';
 import { Project } from './entities/project.entity';
 import { ReportProjectDto } from './dto/report-project.dto';
 import { JwtAuthGuard } from '../shared/guards/jwt-auth.guard';
+import { ViewerDependent, ViewerId } from '../identity-gate/viewer.decorator';
 
 @Controller('v1/projects')
 export class ProjectsController {
@@ -37,9 +39,10 @@ export class ProjectsController {
     return this.service.getRecommendedBySkills(skillList, limit ? parseInt(limit, 10) : 10);
   }
 
+  @ViewerDependent()
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.service.findBySlug(slug);
+  findBySlug(@Param('slug') slug: string, @ViewerId() viewerId: string | null) {
+    return this.service.findBySlug(slug, viewerId);
   }
 
   @Get(':id/related-searches')
@@ -110,9 +113,10 @@ export class ProjectsController {
     );
   }
 
+  @ViewerDependent()
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.findOnePublished(id);
+  findOne(@Param('id', ParseUUIDPipe) id: string, @ViewerId() viewerId: string | null) {
+    return this.service.findOnePublished(id, viewerId);
   }
 
   @Post()
@@ -150,4 +154,32 @@ export class ProjectsController {
   handleFindById(@Payload() data: { id: string }) {
     return this.service.findOne(data.id);
   }
+
+  @MessagePattern('project.findPublishedById')
+  async handleFindPublishedById(@Payload() data: { id: string }) {
+    try {
+      return await this.service.findOnePublished(data.id);
+    } catch (err) {
+      throw toRpcException(err);
+    }
+  }
+
+  @MessagePattern('project.findPublishedBySlug')
+  async handleFindPublishedBySlug(@Payload() data: { slug: string }) {
+    try {
+      return await this.service.findBySlug(data.slug);
+    } catch (err) {
+      throw toRpcException(err);
+    }
+  }
 }
+
+const toRpcException = (err: unknown) =>
+  new RpcException(
+    err instanceof NotFoundException
+      ? { statusCode: 404, message: err.message }
+      : {
+          statusCode: 500,
+          message: err instanceof Error ? err.message : 'Unexpected error',
+        },
+  );

@@ -697,6 +697,16 @@ export function OfferDialog({
   // `||` not `??`: a resolved-but-nameless fetch yields "", which should
   // still defer to the seed name rather than display blank.
   const displayName = fetchedDisplayName || seedDisplayName
+
+  // BTB-259: the dialog header specifically wants first+last, falling back
+  // to username only when no name is set — the opposite precedence from
+  // getDisplayName above (which every other caller, e.g. avatar alt/Offer
+  // Sent copy, keeps using unchanged). Same fetched-over-seed precedence as
+  // the rest of this component.
+  const getHeaderDisplayName = (p?: Partial<UserProfile> | null) =>
+    `${p?.firstName || ""} ${p?.lastName || ""}`.trim() || p?.username || ""
+  const headerDisplayName =
+    getHeaderDisplayName(fetchedProfile) || getHeaderDisplayName(profile)
   // Shared by headerName below and the AC-1.3 name line — same
   // fetched-over-seed precedence as displayName throughout.
   const username = fetchedProfile?.username || profile?.username || ""
@@ -1395,7 +1405,9 @@ export function OfferDialog({
           <div className="shrink-0 flex h-[52px] items-center justify-between border-b border-gray-200 px-3 py-2 pl-3">
             {isEditMode ? (
               <DialogTitle className="text-[16px] font-semibold leading-normal text-dark-blue-400">
-                Edit Offer
+                {headerDisplayName
+                  ? `Edit Offer to ${headerDisplayName}`
+                  : "Edit Offer"}
               </DialogTitle>
             ) : (isStepThree || isStepFour) && hasExistingContracts ? (
               // T1-10: with no existing contracts, select-contract is
@@ -1418,7 +1430,7 @@ export function OfferDialog({
               </Button>
             ) : (
               <DialogTitle className="text-[16px] font-semibold leading-normal text-dark-blue-400">
-                Hire Me
+                {headerDisplayName ? `Hire ${headerDisplayName}` : "Hire Me"}
               </DialogTitle>
             )}
 

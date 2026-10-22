@@ -35,6 +35,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
     getOrCreateProfile: jest.fn(),
     getVerificationSummary: jest.fn(),
     getLocationMismatch: jest.fn(),
+    getTravelModeLocationMismatch: jest.fn().mockResolvedValue(false),
     getLoginReminderAt: jest.fn(),
     claimTravelReminder: jest.fn(),
   };
@@ -72,6 +73,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
       } as any),
     );
     ivs.getLocationMismatch.mockReset().mockResolvedValue(false);
+    ivs.getTravelModeLocationMismatch.mockReset().mockResolvedValue(false);
     ivs.getLoginReminderAt.mockReset().mockResolvedValue(null);
     ivs.claimTravelReminder.mockReset().mockResolvedValue({ claimed: false });
 

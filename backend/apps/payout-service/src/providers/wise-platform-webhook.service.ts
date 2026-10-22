@@ -178,6 +178,7 @@ export class WisePlatformWebhookService {
       reason,
       failedAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
+      failureCode: reasonCode,
     });
 
     // PS-40 §3.2: additive, dedicated event — same rationale as
@@ -221,6 +222,7 @@ export class WisePlatformWebhookService {
       reason: 'The transfer was cancelled before funding.',
       failedAt: new Date().toISOString(),
       wisePlatformTransferId: transferId,
+      cancelledByProvider: true,
     });
   }
 }

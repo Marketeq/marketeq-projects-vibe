@@ -1094,3 +1094,98 @@ this branch unreviewable.
 
 That branch still needs to come forward to `dev-main` on its own. When it does,
 §8.1 is the merge instruction for the one file that matters.
+
+---
+
+## 9. Why none of this works on staging yet — deployment topology
+
+Added 2026-10-14, on `fix/settings-account-recovery` (branched from `staging`).
+§7.1 lists the env vars that break the feature. This section covers a problem
+one level below that: **the code has no route to the staging backend at all.**
+
+### 9.1 What happened to #737
+
+| | |
+|---|---|
+| #737 merged to `dev-main` | 2026-10-08 **13:51:59** |
+| staging's last promotion (`43c772fb`) | 2026-10-08 **13:39:09** |
+| gap | **12 min 50 s** |
+
+No promotion has run since, so `staging` is 17 commits behind `dev-main` and has
+never contained #737. This is not specific to this work — every commit merged
+after 13:39 on 8 October is equally absent, including the time-tracking
+screenshot epic (#754, #755), Didit KYC (#746) and the BTB earnings and payout
+fixes (#766–#772).
+
+### 9.2 The larger problem: staging has no backend
+
+Per `DEVOPS_SOP.md` §3, there is **one** Render service, `marketeq-backend`,
+and all three Vercel frontends point at it:
+
+| Frontend | Branch | Backend it calls |
+|---|---|---|
+| `dev-marketeq-projects.vercel.app` | `dev-main` | `marketeq-backend` |
+| `staging-marketeq-projects.vercel.app` | `staging` | `marketeq-backend` |
+| `live-marketeq-projects.vercel.app` | `live` | `marketeq-backend` |
+
+**Nothing deploys a backend from `staging`.** `render.yaml` line 25 pins the
+service to `branch: dev-main` with `autoDeploy: false`, while `DEVOPS_SOP.md`
+§3's table says it tracks `live` — those two disagree and someone should
+reconcile them. Either way the deployed instance has not moved since before
+#737: `origin/live` is **501 commits** behind `staging` and its tip is dated
+2026-09-02.
+
+Verified against the running deployment rather than inferred:
+
+```
+GET https://marketeq-backend.onrender.com/health                          200
+GET https://marketeq-backend.onrender.com/categories                      200
+GET https://marketeq-backend.onrender.com/auth/security-questions/catalog 401
+```
+
+The same catalog route returns `200` with the real question list locally. It is
+public on `dev-main` because #737 added it to `PUBLIC_EXACT_ROUTES`; the
+deployed gateway's copy of `jwt.middleware.ts` has no security-questions
+entries, so it treats the route as protected. The `/categories` 200 rules out a
+blanket auth wall.
+
+**Consequence:** merging this branch into `staging` delivers the *frontend*
+half only. The eleven endpoints, three migrations and the changes across
+auth-service, user-service, notification-service and api-gateway cannot reach
+staging, because no backend is deployed from it. The UI would load and every
+call would 401 or 404.
+
+This also means the Oct 8 promotion would not have fixed it. Even with #737
+included, Settings and Account Recovery would have failed on staging for this
+reason.
+
+### 9.3 Order of operations to unblock testing
+
+1. **Set the three required env vars on the Render service** (declared in
+   `backend/.env.staging.example` by this PR, values empty):
+   `TWO_FACTOR_ENCRYPTION_KEY` — required, hard-throws;
+   `BREVO_RECOVERY_EMAIL_TEMPLATE_ID` and `BREVO_PASSWORD_CHANGED_TEMPLATE_ID`.
+   Do this **before** the deploy: auth-service and user-service both run with
+   `migrationsRun: true`, so a service that cannot boot is a failed deploy.
+2. **Deploy `marketeq-backend`** from a branch containing #737. `autoDeploy` is
+   off, so this is a manual trigger and is independent of the staging
+   promotion. This is the actual blocker.
+3. **Then** land this branch (or run the full `dev-main` → `staging`
+   promotion) so the staging frontend matches the backend.
+
+Already configured, no action: `USER_SERVICE_URL` (boot-all.js:108 sets
+`http://localhost:3002` and user-service runs on 3002 in the shared container)
+and `INTERNAL_SERVICE_TOKEN` (in the orchestrator's
+`RENDER_SHARED_BACKEND_BASELINE`). `SUPPORT_RATE_LIMIT`,
+`SUPPORT_RATE_LIMIT_WINDOW_MS`, `SUPPORT_INBOX_EMAIL` and
+`AUTH_RECOVERY_RESET_TOKEN_EXPIRES_IN` have in-code defaults and are declared
+only so they are findable.
+
+### 9.4 Why this branch merges cleanly
+
+#737 is a single squash commit whose parent, `67385d86`, is exactly the
+`staging`↔`dev-main` merge base. It was therefore merged — not cherry-picked —
+so it stays a true ancestor of `staging` and the eventual full promotion sees
+the content as already merged rather than finding the same diff under a
+different SHA. `git merge-tree` reported no conflicts before the merge; the
+resulting diff against `staging` is exactly #737's 56 files.

@@ -1823,7 +1823,7 @@ export const Carousel = () => {
 
 export const TakeCareersToNextLevel = () => {
   return (
-    <div className="mt-3 md:mt-5 p-5 md:p-[50px] rounded-lg border bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
+    <div className="mt-3 min-[1024px]:mt-5 p-5 min-[1024px]:p-[50px] rounded-lg border bg-white border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)]">
       <div className="max-w-[561px] mx-auto">
         <h1 className="text-[22px] text-center leading-[26.63px] text-dark-blue-400 font-bold">
           Take your careers to the next level
@@ -1834,7 +1834,7 @@ export const TakeCareersToNextLevel = () => {
         </p>
       </div>
 
-      <div className="mt-5 md:mt-[50px] grid md:grid-cols-2 gap-5 items-end">
+      <div className="mt-5 min-[1024px]:mt-[50px] grid md:grid-cols-2 gap-5 items-end">
         <article className="rounded-xl border border-gray-200">
           <div className="bg-primary-25 border-b rounded-t-xl py-1 border-gray-200 flex justify-center items-center gap-x-2.5">
             <StarsBFill className="size-6 text-primary-500" />

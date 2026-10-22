@@ -1071,6 +1071,7 @@ export class StripeProvider {
       methodType: 'BANK',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: stripePayout.failure_code ?? null,
     });
 
     // By the time Stripe sends payout.failed, the platform→connected-account
@@ -1153,6 +1154,7 @@ export class StripeProvider {
       methodType: 'BANK',
       reason: 'Payout was cancelled by Stripe before settlement.',
       failedAt: new Date().toISOString(),
+      cancelledByProvider: true,
     });
   }
 

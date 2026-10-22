@@ -31,6 +31,25 @@ export class IdentityVerificationProfile {
   @Column({ name: 'verified_home_country_confirmed_at', type: 'timestamptz', nullable: true })
   verifiedHomeCountryConfirmedAt!: Date | null;
 
+  // --- Home-country change (a fully verified account re-verifying its residence) ---
+  // The claimed new home country stays PENDING here; verifiedHomeCountry is only
+  // replaced when Didit approves the session linked below. Detected server-side
+  // from the request IP and explicitly confirmed by the user, never typed.
+  @Column({ name: 'pending_home_country', type: 'char', length: 2, nullable: true })
+  pendingHomeCountry!: string | null;
+
+  // When the user confirmed the pending country: the 15-minute freshness basis
+  // for starting a home-country-change session.
+  @Column({ name: 'pending_home_country_confirmed_at', type: 'timestamptz', nullable: true })
+  pendingHomeCountryConfirmedAt!: Date | null;
+
+  // hosted_kyc_sessions.id of the CURRENT home-country-change session. Only that
+  // session can promote the pending country (or change the account's status);
+  // an older one never can. Attempts, failure states and the 24-hour cooldown
+  // reuse the ordinary identity fields (failed_final_at etc.).
+  @Column({ name: 'pending_relocation_session_id', type: 'uuid', nullable: true })
+  pendingRelocationSessionId!: string | null;
+
   @Column({ name: 'detected_country', type: 'char', length: 2, nullable: true })
   detectedCountry!: string | null;
 

@@ -14,12 +14,14 @@ import { OfferActionGuard } from './guards/offer-action.guard';
 import { IdempotencyInterceptor } from '../interceptors/idempotency.interceptor';
 import { OutboxModule } from '../outbox/outbox.module';
 import { OfferHistoryModule } from '../offer-history/offer-history.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Offer]),
     OutboxModule,
     OfferHistoryModule,
+    IdentityGateModule,
   ],
   controllers: [OffersController],
   providers: [

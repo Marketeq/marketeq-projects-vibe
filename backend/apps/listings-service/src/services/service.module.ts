@@ -7,12 +7,14 @@ import { ServicesController } from './service.controller';
 import { ServicesService } from './service.service';
 import { Service } from './entities/service.entity';
 import { UserProfileModule } from '../shared/user-profile/user-profile.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Service]),
     ConfigModule,
     UserProfileModule,
+    IdentityGateModule,
     ClientsModule.registerAsync([
       {
         name: 'ALGOLIA_CLIENT',

@@ -20,7 +20,7 @@ import axios from 'axios';
 import type { Logger } from 'pino';
 import type { ApiClient } from './api-client';
 import type { NetworkMonitor } from './network-monitor';
-import type { Outbox, OutboxRow } from './outbox';
+import { VERIFICATION_GATED_KINDS, type Outbox, type OutboxRow } from './outbox';
 
 export interface SyncProgress {
   total: number;
@@ -67,6 +67,34 @@ export interface SyncWorkerDeps {
 
 export type SyncWorker = ReturnType<typeof createSyncWorker>;
 
+/** Error code time-tracking-service answers with when the gate cannot be evaluated. */
+export const GATE_UNAVAILABLE_CODE = 'IDENTITY_VERIFICATION_UNAVAILABLE';
+
+/** Error code time-tracking-service answers with when the talent is not verified. */
+export const VERIFICATION_REQUIRED_CODE = 'VERIFICATION_REQUIRED';
+
+/** True when a 503 body carries the gate-unavailable code, however the gateway wraps it. */
+export function isGateUnavailable(data: unknown): boolean {
+  return carriesCode(data, GATE_UNAVAILABLE_CODE);
+}
+
+/** True when a 403 body carries the verification-required code, however the gateway wraps it. */
+export function isVerificationRequired(data: unknown): boolean {
+  return carriesCode(data, VERIFICATION_REQUIRED_CODE);
+}
+
+function carriesCode(data: unknown, code: string): boolean {
+  const seen = new Set<unknown>();
+  const visit = (v: unknown, depth: number): boolean => {
+    if (v === code) return true;
+    if (!v || typeof v !== 'object' || depth > 3 || seen.has(v)) return false;
+    seen.add(v);
+    const o = v as Record<string, unknown>;
+    return visit(o.error, depth + 1) || visit(o.code, depth + 1) || visit(o.message, depth + 1);
+  };
+  return visit(data, 0);
+}
+
 export function createSyncWorker(deps: SyncWorkerDeps) {
   const log = deps.logger?.child({ svc: 'sync-worker' });
   const bus = new EventEmitter() as EventEmitter & SyncWorkerEvents;
@@ -83,9 +111,17 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
   let lastError: string | null = null;
   let shutdownPromise: Promise<void> | null = null;
 
+  // Doc 16 §4: flush only when the probe says Online. 'Degraded' (one or two
+  // failed probes) still reports online=true, and draining then is what used
+  // to burn every retry within a minute of an outage starting.
+  const isOnline = () => deps.network.detail === 'Online';
+
   const offOnlineChanged = (online: boolean) => {
     if (online) {
       log?.info('network back online — kicking sync');
+      // Recover work an earlier outage dead-lettered before network failures
+      // stopped counting as attempts.
+      deps.outbox.requeueNetworkDeadLetters();
       void drain();
     } else {
       log?.info('network offline — sync paused');
@@ -126,6 +162,15 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       lastSyncAt = Date.now();
       return;
     }
+    // Two copies of the same create landed at once (e.g. a retry racing the
+    // original after reconnect): the server saved one and rejected the other
+    // as a duplicate key. The data is on the server, so this row is done.
+    const message = (resp.data as { message?: unknown } | undefined)?.message;
+    if (resp.status === 409 && message === 'Duplicate key') {
+      deps.outbox.markDone(row.id);
+      lastSyncAt = Date.now();
+      return;
+    }
     // Non-2xx — decide retryable vs dead-letter per doc 16 §5. 401 is
     // deliberately excluded here (matching doc 16 §4's reference queue
     // exactly) — a 401 reaching this layer means api-client's own
@@ -135,23 +180,49 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     const s = resp.status;
     const retryable = s === 408 || s === 429 || (s >= 500 && s <= 599);
     const msg = `HTTP ${s}`;
+    // The server could not confirm the talent's verification status
+    // (identity-verification-service restarting, slow or unreachable) and
+    // refused the write WITHOUT saving anything. Like an offline device, that
+    // is an outage rather than a verdict on this row, so it waits and tries
+    // again forever instead of spending one of its attempts. Otherwise a
+    // restart lasting about a minute would dead-letter every queued session,
+    // entry, break and idle. A closed gate (403 VERIFICATION_REQUIRED) is a
+    // real answer and is NOT handled here.
+    if (s === 503 && isGateUnavailable(resp.data)) {
+      deps.outbox.markFailed(row.id, `${msg} ${GATE_UNAVAILABLE_CODE}`, { retryable: true, transient: true });
+      throw new DispatchError(row.id, msg, true);
+    }
+    // The talent is not verified (403 VERIFICATION_REQUIRED). That is a state
+    // that ends when they verify again, not a verdict on this row: the work is
+    // kept as queued (same payload, same idempotency key), spends no attempt
+    // and is never dead-lettered, and retries slowly with jitter until the
+    // gate opens. Every other 403 is NOT handled here and keeps dead-lettering.
+    if (s === 403 && isVerificationRequired(resp.data)) {
+      deps.outbox.holdForVerification(row.id, `${msg} ${VERIFICATION_REQUIRED_CODE}`);
+      throw new DispatchError(row.id, msg, true, true);
+    }
     deps.outbox.markFailed(row.id, msg, { retryable });
     throw new DispatchError(row.id, msg, retryable);
   }
 
-  async function dispatchWithCatch(row: OutboxRow): Promise<'ok' | 'retry' | 'dead'> {
+  async function dispatchWithCatch(row: OutboxRow): Promise<'ok' | 'retry' | 'dead' | 'held'> {
     try {
       await dispatch(row);
+      if (VERIFICATION_GATED_KINDS.has(row.kind)) deps.outbox.clearVerificationHold();
       return 'ok';
     } catch (err) {
       if (err instanceof DispatchError) {
         bus.emit('sync:error', { id: row.id, message: err.message });
         lastError = err.message;
+        if (err.held) return 'held';
         return err.retryable ? 'retry' : 'dead';
       }
-      // Network / timeout / unknown — always retryable.
+      // Network / timeout / unknown — always retryable. A request that never
+      // got an HTTP response (offline, DNS, refused, timed out) is transient:
+      // it waits for the network instead of spending one of its attempts.
       const msg = describe(err);
-      deps.outbox.markFailed(row.id, msg, { retryable: true });
+      const transient = axios.isAxiosError(err) && !err.response;
+      deps.outbox.markFailed(row.id, msg, { retryable: true, transient });
       bus.emit('sync:error', { id: row.id, message: msg });
       lastError = msg;
       return 'retry';
@@ -164,7 +235,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
 
   async function drain(): Promise<void> {
     if (draining) return;
-    if (!deps.network.online) {
+    if (!isOnline()) {
       emitStatus();
       return;
     }
@@ -181,17 +252,25 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       // Safety: don't loop forever on a pathological queue.
       const maxIterations = 100;
       for (let i = 0; i < maxIterations; i++) {
-        if (!deps.network.online) {
+        if (!isOnline()) {
           log?.info('network dropped mid-drain — pausing');
           break;
         }
         const batch = deps.outbox.claimNext(batchSize);
         if (batch.length === 0) break;
+        let gateHeld = false;
         for (const row of batch) {
+          // The gate just answered "not verified": the rest of the gated work
+          // in this batch waits with it, with no request. Un-gated kinds go on.
+          if (gateHeld && VERIFICATION_GATED_KINDS.has(row.kind)) {
+            deps.outbox.releaseToVerificationHold(row.id);
+            continue;
+          }
           const result = await dispatchWithCatch(row);
           processed++;
+          if (result === 'held') gateHeld = true;
           if (result === 'ok') succeeded++;
-          else if (result === 'retry') failed++;
+          else if (result === 'retry' || result === 'held') failed++;
           else if (result === 'dead') deadLettered++;
           const stats = deps.outbox.stats();
           bus.emit('sync:progress', {
@@ -222,7 +301,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     if (pollHandle) return;
     deps.network.on('net:online-changed', offOnlineChanged);
     pollHandle = setInterval(() => {
-      if (deps.network.online) void drain();
+      if (isOnline()) void drain();
     }, pollIntervalMs);
     if (pollHandle.unref) pollHandle.unref();
     sweepHandle = setInterval(() => {
@@ -234,6 +313,9 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
     }, retentionSweepMs);
     if (sweepHandle.unref) sweepHandle.unref();
     log?.info('sync-worker started');
+    // Work an earlier outage dead-lettered (before network failures stopped
+    // counting as attempts) gets another chance on every launch.
+    deps.outbox.requeueNetworkDeadLetters();
     // Immediate kick.
     void drain();
   }
@@ -252,7 +334,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
       deps.network.off('net:online-changed', offOnlineChanged);
       // Final drain with a short grace period so writes in flight have
       // a chance to complete.
-      if (deps.network.online) {
+      if (isOnline()) {
         try {
           await Promise.race([
             drain(),
@@ -285,11 +367,14 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
 class DispatchError extends Error {
   readonly id: string;
   readonly retryable: boolean;
-  constructor(id: string, message: string, retryable: boolean) {
+  /** The gate said "not verified": the row was held, not failed. */
+  readonly held: boolean;
+  constructor(id: string, message: string, retryable: boolean, held = false) {
     super(message);
     this.name = 'DispatchError';
     this.id = id;
     this.retryable = retryable;
+    this.held = held;
   }
 }
 

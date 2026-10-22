@@ -2,8 +2,9 @@
 //
 // When to show the Travel Mode expiry popup and how closing it is remembered. The
 // backend says whether Travel Mode expired (travelModeExpired); this file adds only the
-// per-LOGIN dismissal, keyed by the existing readable `session_id` cookie (a new login
-// has a new session id; a refresh keeps it). No time, duration or expiry rule lives
+// per-LOGIN dismissal, keyed by the opaque `loginSessionKey` that GET /me returns (the
+// `session_id` cookie is HttpOnly and is never read here; a new login has a new key, a
+// refresh keeps it, and another account never shares it). No time, duration or expiry rule lives
 // here, and verification status plays no part: Travel Mode never changes identity or
 // location status, fullyVerified, isVerified, inGrace or gate access, so verified and
 // unverified accounts see the popup alike.
@@ -12,13 +13,12 @@
 //           when the backend clears the state (home-country confirmation) or a new
 //           Travel Mode period starts (travelModeExpired is then false); an unknown
 //           value shows nothing.
-//   closing the X stores localStorage["travelExpiryDismissed:<sid>"] and removes the
-//           marker of every other session, so at most ONE marker ever exists.
-//   no session id  the popup is shown and nothing is persisted (it may reappear after a
+//   closing the X stores localStorage["travelExpiryDismissed:<key>"] and removes the
+//           marker of every other login, so at most ONE marker ever exists.
+//   no key  the popup is shown and nothing is persisted (it may reappear after a
 //           refresh); dismissal never leaks across logins.
 
 export const TRAVEL_EXPIRY_DISMISSED_PREFIX = "travelExpiryDismissed:"
-export const SESSION_COOKIE_NAME = "session_id"
 
 // The part of Storage this file uses (so tests can pass a fake).
 export interface DismissalStorage {
@@ -29,37 +29,13 @@ export interface DismissalStorage {
   removeItem: (key: string) => void
 }
 
-export function travelExpiryDismissalKey(sessionId: string): string {
-  return `${TRAVEL_EXPIRY_DISMISSED_PREFIX}${sessionId}`
+export function travelExpiryDismissalKey(loginSessionKey: string): string {
+  return `${TRAVEL_EXPIRY_DISMISSED_PREFIX}${loginSessionKey}`
 }
 
-/** One cookie's value from a document.cookie string, or null when absent or empty. */
-export function readCookieValue(cookieString: string, name: string): string | null {
-  for (const part of cookieString.split(";")) {
-    const at = part.indexOf("=")
-    if (at === -1) continue
-    if (part.slice(0, at).trim() !== name) continue
-    const raw = part.slice(at + 1).trim()
-    if (!raw) return null
-    try {
-      return decodeURIComponent(raw)
-    } catch {
-      return raw
-    }
-  }
-  return null
-}
-
-/** The current login's session id, read from the browser's own cookie; null if absent. */
-export function readSessionId(
-  cookieString: string | undefined = typeof document === "undefined" ? undefined : document.cookie
-): string | null {
-  return cookieString ? readCookieValue(cookieString, SESSION_COOKIE_NAME) : null
-}
-
-function wasDismissed(storage: DismissalStorage | undefined, sessionId: string): boolean {
+function wasDismissed(storage: DismissalStorage | undefined, loginSessionKey: string): boolean {
   try {
-    return storage?.getItem(travelExpiryDismissalKey(sessionId)) === "1"
+    return storage?.getItem(travelExpiryDismissalKey(loginSessionKey)) === "1"
   } catch {
     return false // storage unavailable: show it rather than hide it silently
   }
@@ -67,27 +43,27 @@ function wasDismissed(storage: DismissalStorage | undefined, sessionId: string):
 
 export interface ExpiryPopupInput {
   expired: boolean | null
-  sessionId: string | null
+  loginSessionKey: string | null
   storage?: DismissalStorage
 }
 
 export function shouldShowTravelExpiryPopup(input: ExpiryPopupInput): boolean {
   if (input.expired !== true) return false
-  if (!input.sessionId) return true // no id: show, and nothing can be remembered
-  return !wasDismissed(input.storage, input.sessionId)
+  if (!input.loginSessionKey) return true // no key: show, and nothing can be remembered
+  return !wasDismissed(input.storage, input.loginSessionKey)
 }
 
 /**
  * Remembers that the user closed the popup in this login. Keeps exactly one marker:
- * every marker for another session id is removed first. A no-op without a session id.
+ * every marker for another login is removed first. A no-op without a key.
  */
 export function dismissTravelExpiryPopup(
-  sessionId: string | null,
+  loginSessionKey: string | null,
   storage: DismissalStorage | undefined
 ): void {
-  if (!sessionId || !storage) return
+  if (!loginSessionKey || !storage) return
   try {
-    const current = travelExpiryDismissalKey(sessionId)
+    const current = travelExpiryDismissalKey(loginSessionKey)
     const stale: string[] = []
     for (let i = 0; i < storage.length; i += 1) {
       const key = storage.key(i)

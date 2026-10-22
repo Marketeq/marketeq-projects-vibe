@@ -37,6 +37,8 @@ export interface WindowManagerDeps {
   devServerUrl?: string;
   preloadPath: string;
   rendererIndexPath: string;
+  /** App logo used for the window / taskbar icon. */
+  iconPath?: string;
   /** Called to know whether to block quit with a confirm dialog. */
   getTimerState?: () => string;
   /** Injected for unit tests; defaults to Electron's BrowserWindow. */
@@ -72,6 +74,7 @@ export function createWindowManager(deps: WindowManagerDeps): WindowManager {
     devServerUrl,
     preloadPath,
     rendererIndexPath,
+    iconPath,
     getTimerState,
     dialog,
   } = deps;
@@ -109,6 +112,7 @@ export function createWindowManager(deps: WindowManagerDeps): WindowManager {
       minHeight: 540,
       show: false,
       title: 'Marketeq Time Tracker',
+      ...(iconPath ? { icon: iconPath } : {}),
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,

@@ -34,4 +34,25 @@ export class UserClient {
       return null;
     }
   }
+
+  // PMCM-806: the withdrawal notifications greet the contractor by first name
+  // and email them, and run from webhooks/queue jobs where no JWT is in hand.
+  // Same endpoint as above; null on any failure so a lookup problem never
+  // blocks the payout path that triggered it.
+  async getContractorContact(
+    contractorId: string,
+  ): Promise<{ email: string | null; firstName: string | null } | null> {
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get<{ email?: string; firstName?: string | null }>(
+          `${this.baseUrl}/internal/users/${contractorId}`,
+          { timeout: 5000 },
+        ),
+      );
+      return { email: data?.email ?? null, firstName: data?.firstName ?? null };
+    } catch (err: any) {
+      this.logger.warn(`Failed to look up contractor contact for ${contractorId}: ${err.message}`);
+      return null;
+    }
+  }
 }

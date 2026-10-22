@@ -57,6 +57,15 @@ export const ERROR_CODE_CATALOG: readonly ErrorCatalogEntry[] = [
     messagingNote: 'Message is the fixed sentence "Travel Mode is already active." and carries no details.',
   },
   {
+    code: 'HOME_COUNTRY_CHANGE_IN_PROGRESS',
+    httpStatus: 409,
+    meaning: 'Travel Mode was chosen while a home-country change has an unfinished Didit session (running or in review). Nothing is changed.',
+    source: 'PMCM-650 (returning-user re-verification)',
+    callerAudience: 'end-user',
+    safeToDisplayVerbatim: true,
+    messagingNote: 'Message is the fixed sentence "A home-country change is in progress." and carries no details.',
+  },
+  {
     code: 'DUPLICATE_DOCUMENT',
     httpStatus: 409,
     meaning: 'This document is already on file under a different account.',

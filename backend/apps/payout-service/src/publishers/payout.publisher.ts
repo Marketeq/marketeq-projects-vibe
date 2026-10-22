@@ -53,6 +53,7 @@ import * as amqpConnectionManager from 'amqp-connection-manager';
 import type { ChannelWrapper } from 'amqp-connection-manager';
 import { firstValueFrom, defaultIfEmpty } from 'rxjs';
 import { randomUUID } from 'crypto';
+import { WithdrawalNotifier } from '../notifications/withdrawal-notifier.service';
 
 /**
  * RMQ rejections are routinely not Error instances: NestJS surfaces the
@@ -123,6 +124,7 @@ export class PayoutPublisher implements OnModuleDestroy {
 
   constructor(
     @Inject('EARNINGS_RABBITMQ_CLIENT') private readonly client: ClientProxy,
+    private readonly withdrawalNotifier: WithdrawalNotifier,
   ) {
     const rabbitmqUrl = process.env.RABBITMQ_URL;
     if (!rabbitmqUrl) {
@@ -303,6 +305,11 @@ export class PayoutPublisher implements OnModuleDestroy {
       amount: parseFloat(payload.amount),
       completedAt: payload.settledAt,
     });
+
+    // PMCM-806 N-02. Every completion path funnels through here. Not awaited:
+    // the notifier never throws, and a slow user lookup must not hold up a
+    // webhook response.
+    void this.withdrawalNotifier.notifyCompleted(payload.payoutRequestId);
   }
 
   /**
@@ -321,6 +328,13 @@ export class PayoutPublisher implements OnModuleDestroy {
     // PS-40 §4: additive, optional — lets finance reconcile a failed Wise
     // Platform transfer specifically.
     wisePlatformTransferId?: string | null;
+    // PMCM-806: the provider or executor code behind the failure (Stripe
+    // failure_code, Wise reasonCode, ERR_*). It picks the plain-language reason
+    // shown to the contractor. Never forwarded downstream.
+    failureCode?: string | null;
+    // PMCM-806 N-04: set by the Stripe/Wise cancellation webhooks, which
+    // restore the balance through this same event. Never forwarded downstream.
+    cancelledByProvider?: boolean;
   }): Promise<void> {
     const ok = await this.emit('payout.failed', {
       eventId: randomUUID(),
@@ -341,6 +355,20 @@ export class PayoutPublisher implements OnModuleDestroy {
       contractorId: payload.contractorId,
       failureReason: payload.reason,
     });
+
+    // PMCM-806 N-03 / N-04. Only once earnings-service has the event that
+    // restores the balance, because both notifications lead with "your money
+    // is back in your balance". A DROPPED payout.failed would make that untrue
+    // until it is replayed. Other cancellations (contractor cancel, expired
+    // link) also arrive here without cancelledByProvider; the notifier skips
+    // them because their status is CANCELLED, not FAILED.
+    if (ok) {
+      if (payload.cancelledByProvider) {
+        void this.withdrawalNotifier.notifyCancelled(payload.payoutRequestId);
+      } else {
+        void this.withdrawalNotifier.notifyFailed(payload.payoutRequestId, payload.failureCode);
+      }
+    }
   }
 
   /**

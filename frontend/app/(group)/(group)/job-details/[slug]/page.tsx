@@ -11,6 +11,7 @@ import {
   type LegalServiceError,
 } from "@/src/lib/api/legal-service"
 import { useAuth } from "@/contexts/auth"
+import { useApplyGate } from "@/utils/useApplyGate"
 import {
   ArrowLeft,
   Check,
@@ -304,6 +305,7 @@ export default function JobDetailsPage({
       ? slugTitle
       : job.subtitle
   const { user } = useAuth()
+  const { runApply, applyGateDialog } = useApplyGate()
   const isOfferView = searchParams.get("view") === "offer"
   const isLegalServiceNda = heroVariant === "legal-service-nda" || isOfferView
   const isPrivateJob =
@@ -1063,7 +1065,14 @@ export default function JobDetailsPage({
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-3">
-                  <Button size="md">{primaryCtaLabel}</Button>
+                  {/* G3: Apply is gated for talents; "Accept Offer" is a different action and is unchanged. */}
+                  <Button
+                    size="md"
+                    onClick={isLegalServiceNda ? undefined : () => void runApply()}
+                  >
+                    {primaryCtaLabel}
+                  </Button>
+                  {!isLegalServiceNda && applyGateDialog}
                   <SaveButton />
                   <IconButton variant="outlined" visual="gray" size="md">
                     <Share06 className="size-5" />
@@ -1517,7 +1526,7 @@ export default function JobDetailsPage({
                     </span>
                   </span>
                   <NextLink
-                    href={`/checkout/${slug}`}
+                      href={`/checkout/project-details?listingId=${encodeURIComponent(slug)}`}
                     className="shrink-0 whitespace-nowrap text-[12px] font-medium leading-6 text-primary-500 hover:underline"
                   >
                     View Details

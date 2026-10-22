@@ -64,6 +64,22 @@ export function travelModeBlocksNewSession(fields: TravelModeFields, nowMs: numb
   );
 }
 
+/**
+ * Whether Travel Mode keeps the new-location prompt from being offered. Unlike
+ * travelModeBlocksNewSession it ignores `pending` (classified Temporarily Traveling
+ * with no duration, never activated): the old flow saved that on a button click and
+ * left the account stranded, and an account in it must be able to reach the
+ * mismatch flow again. Active, and invalid raw-active data for a traveler, still
+ * suppress it.
+ */
+export function travelModeSuppressesLocationPrompt(fields: TravelModeFields, nowMs: number): boolean {
+  const { state } = deriveTravelModeState(fields, nowMs);
+  return (
+    state === 'active' ||
+    (fields.travelClassification === TravelClassification.TEMPORARILY_TRAVELING && state === 'invalid')
+  );
+}
+
 export interface TravelReminderFields extends TravelModeFields {
   lastTravelReminderSentAt?: unknown;
 }

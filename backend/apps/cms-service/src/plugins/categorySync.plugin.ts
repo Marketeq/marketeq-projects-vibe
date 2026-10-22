@@ -18,7 +18,7 @@ export const categorySyncPlugin: Plugin = (incomingConfig) => {
   config.endpoints = [
     ...existingEndpoints,
     {
-      path: '/api/cms/reconcile-categories',
+      path: '/cms/reconcile-categories',
       method: 'post',
       handler: async (req: any, res: any) => {
         try {

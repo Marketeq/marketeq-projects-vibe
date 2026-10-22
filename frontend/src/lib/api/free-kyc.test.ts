@@ -187,24 +187,31 @@ describe("travel branch persistence (never touches Free KYC)", () => {
     })
   })
 
-  it("records the classification, and sends the duration only AFTER the classification finished", async () => {
+  it("the duration is the whole Travel Mode save: no classification call, and it resolves true on success", async () => {
     const log: string[] = []
-    let finish!: () => void
-    const slowClassification = new Promise<void>((r) => (finish = r))
     const deps: TravelModeDeps = {
-      recordTravelClassification: async (c) => {
-        await slowClassification
-        log.push(`class:${c}`)
-      },
+      recordTravelClassification: async (c) => void log.push(`class:${c}`),
       recordTravelDuration: async (d) => void log.push(`dur:${d}`),
     }
-    const pending = recordTravelClassification(deps, "temporarily_traveling")
-    const duration = recordTravelDuration(deps, "1–2 weeks", pending)
-    await new Promise((r) => setTimeout(r, 10))
-    assert.deepEqual(log, []) // duration is waiting
-    finish()
-    await duration
-    assert.deepEqual(log, ["class:temporarily_traveling", "dur:one_to_two_weeks"])
+    const saved = await recordTravelDuration(deps, "1–2 weeks")
+    assert.equal(saved, true)
+    assert.deepEqual(log, ["dur:one_to_two_weeks"])
+  })
+
+  it("a failed duration save resolves false (logged), so the caller keeps its screen open", async () => {
+    const deps: TravelModeDeps = {
+      recordTravelClassification: async () => {},
+      recordTravelDuration: async () => {
+        throw new Error("409")
+      },
+    }
+    const original = console.error
+    console.error = () => {}
+    try {
+      assert.equal(await recordTravelDuration(deps, "A few days"), false)
+    } finally {
+      console.error = original
+    }
   })
 
   it("'Skip' (no duration) is recorded as the screen's own 'Not sure'", async () => {
@@ -264,7 +271,8 @@ describe("flow wiring (source guard)", () => {
   })
 
   it("the travel options persist classification and keep their original navigation events", () => {
-    assert.ok(flow.includes('persistTravelClassification("temporarily_traveling")'))
+    // "Temporarily traveling" saves nothing at its click: the duration save carries it.
+    assert.ok(!flow.includes('persistTravelClassification("temporarily_traveling")'))
     assert.ok(flow.includes('send("NEXT")'))
     assert.ok(flow.includes('persistTravelClassification("permanently_relocated")'))
     assert.ok(flow.includes('send("RELOCATED")'))

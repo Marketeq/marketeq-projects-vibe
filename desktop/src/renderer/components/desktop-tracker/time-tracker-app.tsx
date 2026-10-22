@@ -681,6 +681,12 @@ export function TimeTrackerApp({
   // Unfinished session from an unclean shutdown awaiting Recover / Discard
   // (DTT-US-131). Non-null renders the blocking CrashRecoveryModal below.
   const [crashRecovery, setCrashRecovery] = React.useState<CrashRecoveryDTO | null>(null)
+  // Offline-first status: tracking never stops for a lost connection; work is
+  // queued locally and uploads on reconnect. `catchingUp` stays true from a
+  // reconnect until the queue is empty, so the talent sees it sync.
+  const [isOnline, setIsOnline] = React.useState(true)
+  const [queueDepth, setQueueDepth] = React.useState(0)
+  const [catchingUp, setCatchingUp] = React.useState(false)
 
   // Clock
   const [utcTime, setUtcTime] = React.useState(formatUtcTime())
@@ -870,6 +876,24 @@ export function TimeTrackerApp({
     })
     return () => { off?.() }
   }, [refreshTodayStats, applyTimerSnapshot])
+
+  // Network + queue state from the main process (existing sync IPC) — drives
+  // the offline / syncing line in the header.
+  React.useEffect(() => {
+    window.dtt?.sync?.getStatus?.().then((s) => {
+      setIsOnline(s.online)
+      setQueueDepth(s.queueDepth)
+    }).catch(() => undefined)
+    const offOnline = window.dtt?.sync?.onOnlineChanged?.((online) => {
+      setIsOnline(online)
+      if (online) setCatchingUp(true)
+    })
+    const offStatus = window.dtt?.sync?.onStatusChanged?.((s) => setQueueDepth(s.queueDepth))
+    return () => { offOnline?.(); offStatus?.() }
+  }, [])
+  React.useEffect(() => {
+    if (catchingUp && queueDepth === 0) setCatchingUp(false)
+  }, [catchingUp, queueDepth])
 
   // Idle popup — the backend FSM is correctly detecting idle and freezing
   // billable time/capture already; this is what actually shows the prompt
@@ -1538,9 +1562,19 @@ export function TimeTrackerApp({
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-error-500" />
                     </span>
                   )}
-                  <span className="text-xs font-medium text-dark-blue-400">
-                    {isRunning && activeTask ? "Tracking time..." : dateStr}
-                  </span>
+                  {!isOnline ? (
+                    <span role="status" className="text-xs font-medium text-warning-600">
+                      Offline — tracking continues, will sync later
+                    </span>
+                  ) : catchingUp && queueDepth > 0 ? (
+                    <span role="status" className="text-xs font-medium text-dark-blue-400">
+                      Back online — syncing {queueDepth} saved item{queueDepth === 1 ? "" : "s"}…
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-dark-blue-400">
+                      {isRunning && activeTask ? "Tracking time..." : dateStr}
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-gray-500">{utcTime}</span>

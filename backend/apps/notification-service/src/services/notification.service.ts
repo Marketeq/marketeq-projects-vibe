@@ -3,11 +3,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
+import { NotificationIdempotency } from '../entities/notification-idempotency.entity';
 import {
   CategoryPref,
   GlobalChannelPrefs,
@@ -33,6 +35,12 @@ import {
   SocialLink,
 } from '../templates/team-invitation.template';
 import { buildInvitationAcceptedEmail } from '../templates/invitation-accepted.template';
+import {
+  buildWithdrawalEmail,
+  buildWithdrawalPush,
+  normalizeFailureReason,
+  WithdrawalKind,
+} from '../templates/withdrawal.template';
 
 /** Public Marketeq profiles linked from the invitation email footer. These are
  * marketing destinations, not environment config. Every environment links to
@@ -56,6 +64,31 @@ export interface NotificationPayload {
   delivery?: { inApp?: boolean; email?: boolean; sms?: boolean };
   recipientEmail?: string;
   origin?: string;
+  /**
+   * Optional. A publisher that can emit the same notification more than once (retry,
+   * redelivery, concurrent workers) sets a key that is stable for that one notification;
+   * it is delivered once and every repeat is dropped.
+   */
+  idempotencyKey?: string;
+}
+
+/** PMCM-806: emitted by payout-service (WithdrawalNotifier) on
+ * `notification.payout.withdrawal`. Amounts are 2dp USD strings. */
+export interface WithdrawalNotificationPayload {
+  kind: WithdrawalKind;
+  recipientId: string;
+  recipientEmail?: string | null;
+  firstName?: string | null;
+  payoutRequestId: string;
+  depositMethodId?: string | null;
+  amountUsd: string;
+  feeUsd: string;
+  netAmountUsd: string;
+  methodLabel: string;
+  estimatedArrivalAt?: string | null;
+  arrivalWindow?: string | null;
+  completedAt?: string | null;
+  failureReason?: string | null;
 }
 
 export interface ResolvedPreferences {
@@ -79,6 +112,35 @@ function normalizePositiveInt(
   return Math.min(Math.max(parsed, min), max);
 }
 
+/** How long one worker may hold a keyed notification before another may take it over. */
+export const CLAIM_LEASE_MS = 60_000;
+
+/**
+ * The key is being delivered by another worker right now. Not a failure of the notification:
+ * the delivery service retries it after its normal delay, by which time the other worker has
+ * finished (the repeat is then dropped) or died (its lease has expired and this delivery takes over).
+ */
+export class NotificationInProgressException extends ServiceUnavailableException {
+  constructor(key: string) {
+    super(`Notification ${key} is being delivered by another worker`);
+  }
+}
+
+/** A stable UUID for the in-app row of a key, so the same key can only ever be one stored row. */
+export function notificationIdForKey(key: string): string {
+  const h = createHash('sha256').update(`notification:${key}`).digest('hex');
+  const variant = ((parseInt(h.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, '0');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${variant}${h.slice(18, 20)}-${h.slice(20, 32)}`;
+}
+
+/** What an earlier delivery of a keyed notification already did. */
+interface ChannelProgress {
+  key: string;
+  notificationId: string | null;
+  ablyDone: boolean;
+  emailDone: boolean;
+}
+
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
@@ -86,6 +148,7 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification) private readonly notifRepo: Repository<Notification>,
     @InjectRepository(UserPreference) private readonly prefRepo: Repository<UserPreference>,
+    @InjectRepository(NotificationIdempotency) private readonly idempotencyRepo: Repository<NotificationIdempotency>,
     private readonly ablyService: AblyNotificationsService,
     private readonly brevoService: BrevoService,
   ) {}
@@ -95,6 +158,69 @@ export class NotificationService {
    * mean there is nothing to store.
    */
   async dispatch(payload: NotificationPayload): Promise<Notification | null> {
+    const key = payload.idempotencyKey?.trim();
+    // No key: exactly the original single-shot behaviour. Nothing is claimed or recorded, and the
+    // caller does not retry it (a retry could repeat a channel that already went out).
+    if (!key) return this.deliver(payload, null);
+
+    const progress = await this.acquire(key);
+    if (!progress) {
+      this.logger.log(`Duplicate notification dropped (idempotency key ${key}, event ${payload.event}).`);
+      return null;
+    }
+    try {
+      const stored = await this.deliver(payload, progress);
+      await this.idempotencyRepo.update({ key }, { completedAt: new Date(), lockedUntil: null });
+      return stored;
+    } catch (err) {
+      // Keep what was delivered (the progress columns) and hand the key back at once, so the
+      // retry resumes at the unfinished channel instead of being mistaken for a repeat of a
+      // delivered notification - or repeating one that already went out.
+      await this.idempotencyRepo.update({ key }, { lockedUntil: new Date() }).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  /**
+   * Takes the key, or reports that it is finished / held by someone else.
+   *   - new key: this worker owns it (INSERT conflicts for everyone else);
+   *   - completed: returns null - a duplicate, drop it;
+   *   - held by a live lease: throws NotificationInProgressException;
+   *   - free or lease expired (the holder failed or died): this worker takes it over atomically
+   *     and resumes from the recorded progress.
+   */
+  private async acquire(key: string): Promise<ChannelProgress | null> {
+    for (let pass = 0; pass < 2; pass++) {
+      const now = new Date();
+      const lease = new Date(now.getTime() + CLAIM_LEASE_MS);
+      const claimed = await this.idempotencyRepo
+        .createQueryBuilder()
+        .insert()
+        .values({ key, lockedUntil: lease })
+        .orIgnore()
+        .returning('key')
+        .execute();
+      if (claimed.raw?.length) return { key, notificationId: null, ablyDone: false, emailDone: false };
+
+      const row = await this.idempotencyRepo.findOne({ where: { key } });
+      if (!row) continue; // removed between the two statements: claim it afresh
+      if (row.completedAt) return null;
+      if (row.lockedUntil && row.lockedUntil.getTime() > now.getTime()) throw new NotificationInProgressException(key);
+
+      // Free or expired: one UPDATE wins (the database serialises them and re-checks the lease).
+      const base = { key, completedAt: IsNull() };
+      for (const free of [IsNull(), LessThanOrEqual(now)]) {
+        const taken = await this.idempotencyRepo.update({ ...base, lockedUntil: free }, { lockedUntil: lease });
+        if (taken.affected) {
+          return { key, notificationId: row.notificationId, ablyDone: row.ablyDone, emailDone: row.emailDone };
+        }
+      }
+      throw new NotificationInProgressException(key);
+    }
+    throw new NotificationInProgressException(key);
+  }
+
+  private async deliver(payload: NotificationPayload, progress: ChannelProgress | null): Promise<Notification | null> {
     const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
     const resolved = this.resolvePreferences(prefs);
 
@@ -157,9 +283,17 @@ export class NotificationService {
       );
     }
 
-    const saved = inAppAllowed
-      ? await this.notifRepo.save(
+    // A keyed notification's row has a deterministic id, so the same key can only ever be one
+    // stored row; if an earlier attempt already stored it, it is read back, not stored again.
+    let saved: Notification | null = null;
+    if (inAppAllowed) {
+      if (progress?.notificationId) {
+        saved = await this.notifRepo.findOne({ where: { id: progress.notificationId } });
+      }
+      if (!saved) {
+        saved = await this.notifRepo.save(
           this.notifRepo.create({
+            ...(progress ? { id: notificationIdForKey(progress.key) } : {}),
             userId: payload.recipientId,
             title: payload.title,
             body: payload.body,
@@ -169,10 +303,19 @@ export class NotificationService {
             metadata: payload.metadata,
             origin: payload.origin || 'system',
           }),
-        )
-      : null;
+        );
+        if (progress) {
+          await this.idempotencyRepo.update({ key: progress.key }, { notificationId: saved.id });
+          progress.notificationId = saved.id;
+        }
+      }
+    }
 
-    if (saved) {
+    // Channels are independent. Each one that succeeds is recorded at once, and a keyed retry
+    // skips the ones already done; a channel that fails is thrown at the end so it is retried.
+    const failures: unknown[] = [];
+
+    if (saved && !(progress?.ablyDone)) {
       if (this.ablyService.isEnabled()) {
         try {
           await this.ablyService.sendInApp(payload.recipientId, {
@@ -186,12 +329,22 @@ export class NotificationService {
           });
           const unreadCount = await this.getUnreadCount(payload.recipientId);
           await this.ablyService.updateBadgeCount(payload.recipientId, unreadCount);
+          if (progress) {
+            await this.idempotencyRepo.update({ key: progress.key }, { ablyDone: true });
+            progress.ablyDone = true;
+          }
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          this.logger.warn(
-            `Ably realtime delivery failed for user ${payload.recipientId}; ` +
-              `the notification is stored and will appear in the panel. Error: ${errMsg}`,
-          );
+          if (progress) {
+            // Keyed: the row is stored, and the realtime push is retried on its own.
+            this.logger.warn(`Ably realtime delivery failed for user ${payload.recipientId}; it will be retried. Error: ${errMsg}`);
+            failures.push(err);
+          } else {
+            this.logger.warn(
+              `Ably realtime delivery failed for user ${payload.recipientId}; ` +
+                `the notification is stored and will appear in the panel. Error: ${errMsg}`,
+            );
+          }
         }
       } else {
         this.logger.warn(
@@ -215,20 +368,38 @@ export class NotificationService {
       resolved.channels.email.address ?? payload.recipientEmail;
     const shouldSendEmail = emailAllowed && !!recipientAddress;
 
-    if (shouldSendEmail && recipientAddress) {
+    if (shouldSendEmail && recipientAddress && !(progress?.emailDone)) {
       this.logger.log(
         `Dispatching email: to=${recipientAddress} event=${payload.event} category=${payload.category} subject="${payload.title}"`,
       );
-      await this.sendEmailViaBrevo(
-        recipientAddress,
-        payload.title,
-        payload.body,
-        payload.link,
-      );
+      try {
+        await this.sendEmailViaBrevo(
+          recipientAddress,
+          payload.title,
+          payload.body,
+          payload.link,
+        );
+        if (progress) {
+          await this.idempotencyRepo.update({ key: progress.key }, { emailDone: true });
+          progress.emailDone = true;
+        }
+      } catch (err) {
+        // Keyed: retried on its own, without storing or pushing again. Unkeyed: as before.
+        if (!progress) throw err;
+        this.logger.warn(`Email for key ${progress.key} failed and will be retried: ${err instanceof Error ? err.message : String(err)}`);
+        failures.push(err);
+      }
+    } else if (progress?.emailDone) {
+      this.logger.log(`Email already sent for key ${progress.key}; not repeated.`);
     } else {
       this.logger.log(
         `Email skipped: shouldSendEmail=${shouldSendEmail} recipientEmail=${recipientAddress ?? 'none'} event=${payload.event}`,
       );
+    }
+
+    if (failures.length) {
+      const first = failures[0];
+      throw first instanceof Error ? first : new ServiceUnavailableException(String(first));
     }
 
     return saved;
@@ -812,5 +983,121 @@ export class NotificationService {
 
     this.logger.log(`Invitation accepted email sent successfully: to=${payload.to}`);
     return { sent: true };
+  }
+
+  /**
+   * PMCM-806: withdrawal submitted / completed / failed / cancelled. Each is a push (the
+   * in-app notification, delivered live over Ably) and an email.
+   *
+   * The push goes through dispatch(), so the recipient's in-app switches
+   * apply. `payouts` resolves to the General category (CATEGORY_ALIASES).
+   *
+   * The email is transactional and is sent whatever the email preferences say,
+   * like the invitation emails above. Every catalog category defaults email
+   * to off, so under dispatch()'s rules this email would almost never be
+   * delivered. A contractor told nothing about where their money went is the
+   * gap this ticket closes. It still goes to the notification address the
+   * recipient confirmed, when they set one.
+   *
+   * No quiet hours or batching exist in this service, so N-03 is delivered
+   * immediately (AC-07) without any special casing.
+   */
+  async sendWithdrawalNotification(payload: WithdrawalNotificationPayload) {
+    const kind = payload.kind;
+    if (kind !== 'submitted' && kind !== 'completed' && kind !== 'failed' && kind !== 'cancelled') {
+      this.logger.warn(`Withdrawal notification with unknown kind "${String(kind)}" ignored`);
+      return { sent: false };
+    }
+    const methodLabel = payload.methodLabel?.trim() || 'your payout method';
+    const failureReason =
+      kind === 'failed' ? normalizeFailureReason(payload.failureReason) : null;
+
+    // AC-05: every push and the Track/View receipt CTAs open this payout's
+    // detail view (PMCM-280), the Payout Details dialog on the Payouts tab,
+    // which PayoutsTab opens from `?payout=<id>`. Deposit methods and the
+    // Withdraw action both live on the Earnings Overview tab.
+    const detailPath = `/earnings?tab=payouts&payout=${encodeURIComponent(payload.payoutRequestId)}`;
+    const overviewPath = '/earnings?tab=overview';
+
+    const push = buildWithdrawalPush({
+      kind,
+      amountUsd: payload.amountUsd,
+      netAmountUsd: payload.netAmountUsd,
+      methodLabel,
+      estimatedArrivalAt: payload.estimatedArrivalAt,
+    });
+
+    try {
+      await this.dispatch({
+        recipientId: payload.recipientId,
+        category: 'payouts',
+        event: `payout.withdrawal.${kind}`,
+        title: push.title,
+        body: push.body,
+        link: detailPath,
+        metadata: {
+          payoutRequestId: payload.payoutRequestId,
+          depositMethodId: payload.depositMethodId ?? null,
+          amountUsd: payload.amountUsd,
+          netAmountUsd: payload.netAmountUsd,
+          ...(failureReason ? { failureReason } : {}),
+        },
+        delivery: { inApp: true, email: false },
+        origin: 'payout-service',
+      });
+    } catch (err) {
+      // The email below must still go out if the in-app write fails.
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Withdrawal ${kind} in-app notification failed for ${payload.payoutRequestId}: ${message}`,
+      );
+    }
+
+    const prefs = await this.prefRepo.findOne({ where: { userId: payload.recipientId } });
+    const to = prefs?.channels?.email?.address || payload.recipientEmail || null;
+    if (!to) {
+      this.logger.warn(
+        `Withdrawal ${kind} email skipped for ${payload.payoutRequestId}: no address for user ${payload.recipientId}`,
+      );
+      return { sent: false };
+    }
+
+    const appBase = this.resolveAppBaseUrl();
+    const { subject, html, text } = buildWithdrawalEmail({
+      kind,
+      firstName: payload.firstName,
+      amountUsd: payload.amountUsd,
+      feeUsd: payload.feeUsd,
+      netAmountUsd: payload.netAmountUsd,
+      methodLabel,
+      estimatedArrivalAt: payload.estimatedArrivalAt,
+      arrivalWindow: payload.arrivalWindow,
+      completedAt: payload.completedAt,
+      failureReason,
+      reference: payload.payoutRequestId,
+      transactionUrl: `${appBase}${detailPath}`,
+      reviewMethodUrl: `${appBase}${overviewPath}`,
+      tryAgainUrl: `${appBase}${overviewPath}`,
+      logoUrl: this.resolveLogoUrl(),
+      supportEmail: process.env.SUPPORT_EMAIL?.trim() || 'support@marketeqdigital.com',
+      socialLinks: this.resolveSocialLinks(),
+    });
+
+    await this.sendHtmlViaBrevo(to, subject, html, text);
+    // Without BREVO_API_KEY sendHtmlViaBrevo only logs a mock email, so don't claim delivery.
+    if (!(process.env.BREVO_API_KEY ?? '').trim()) {
+      this.logger.log(`Withdrawal ${kind} email NOT delivered (no BREVO_API_KEY, mock logged) for ${payload.payoutRequestId}: to=${to}`);
+      return { sent: false };
+    }
+    this.logger.log(`Withdrawal ${kind} email sent for ${payload.payoutRequestId}: to=${to}`);
+    return { sent: true };
+  }
+
+  /** The web app's origin for email links. FRONTEND_URL can be a
+   * comma-separated list of trusted origins (see the env templates); the
+   * first one is the canonical app URL. */
+  private resolveAppBaseUrl(): string {
+    const first = (process.env.FRONTEND_URL ?? '').split(',')[0]?.trim();
+    return (first || 'http://localhost:3000').replace(/\/+$/, '');
   }
 }

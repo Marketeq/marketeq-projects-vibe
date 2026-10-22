@@ -2,9 +2,14 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
+  Delete,
   Param,
   Body,
+  Query,
+  ParseIntPipe,
   Req,
+  ParseUUIDPipe,
   HttpCode,
   HttpStatus,
   RawBodyRequest,
@@ -12,15 +17,21 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { CheckoutService } from "./checkout.service";
+import { CheckoutSummaryService } from "./checkout-summary.service";
 import { CheckoutDraftService } from "./checkout-draft.service";
+import { CheckoutDraftCodeService } from "./checkout-draft-code.service";
+import { CheckoutDraftPricingService } from "./pricing/checkout-draft-pricing.service";
+import { CheckoutDraftSessionService } from "./checkout-draft-session.service";
+import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
+import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
+import { InternalTokenGuard } from "../guards/internal-token.guard";
 import { RolesGuard } from "../guards/roles.guard";
 import { Request } from "express";
 
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { FindOrCreateDraftDto } from './dto/find-or-create-draft.dto';
-import { ApplyGiftCardDto } from './dto/apply-gift-card.dto';
+import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { UseWalletDto } from './dto/use-wallet.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { CancelPaymentDto } from './dto/cancel-payment.dto';
@@ -34,34 +45,267 @@ import { WalletTopUpDto } from './dto/wallet-topup.dto';
 import { StoreMetadataDto } from './dto/store-metadata.dto';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { ConfirmPaymentIntentDto } from './dto/confirm-payment-intent.dto';
+import { CalculateRateEstimateDto } from './dto/calculate-rate-estimate.dto';
+import {
+  AddDraftPhaseDto,
+  DuplicateDraftPhaseDto,
+  RemoveDraftMemberDto,
+  ReplaceDraftMemberDto,
+  UpdateDraftRoleDto,
+  AddDraftTaskDto,
+  UpdateDraftPhaseDto,
+  UpdateDraftTaskDto,
+} from './dto/draft-task.dto';
 
 @Controller("v1/checkout")
 export class CheckoutController {
   constructor(
     private readonly checkoutService: CheckoutService,
     private readonly stripeService: StripeService,
+    private readonly checkoutSummaryService: CheckoutSummaryService,
     private readonly checkoutDraftService: CheckoutDraftService,
+    private readonly checkoutDraftCodeService: CheckoutDraftCodeService,
+    private readonly checkoutDraftPricingService: CheckoutDraftPricingService,
+    private readonly checkoutDraftSessionService: CheckoutDraftSessionService,
   ) {}
 
-  // ─── Checkout draft (read-only for now — seeded once, never edited) ──
-
-  @Post("drafts/find-or-create")
-  @UseGuards(JwtAuthGuard)
-  findOrCreateDraft(@Body() dto: FindOrCreateDraftDto, @Req() req: any) {
-    return this.checkoutDraftService.findOrCreate(req.user.sub, dto.listingId, {
-      phases: dto.phases,
-      projectCost: dto.projectCost,
-    });
+  @Post("listings/:listingId/draft")
+  @UseGuards(InternalTokenGuard)
+  createListingDraft(
+    @Param('listingId', ParseUUIDPipe) listingId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.createDraft(clientId, listingId);
   }
 
-  // Internal gateway-to-service call — the gateway already authenticated
-  // the user via JwtAuthGuard and passes clientId in the body.
-  @Post("drafts/find-or-create-internal")
-  findOrCreateDraftInternal(@Body() dto: FindOrCreateDraftDto & { clientId: string }) {
-    return this.checkoutDraftService.findOrCreate(dto.clientId, dto.listingId, {
-      phases: dto.phases,
-      projectCost: dto.projectCost,
-    });
+  @Get("listings/:listingId/draft")
+  @UseGuards(InternalTokenGuard)
+  getListingDraft(
+    @Param('listingId') listingId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.getDraft(clientId, listingId);
+  }
+
+  @Delete("drafts/:draftId")
+  @UseGuards(InternalTokenGuard)
+  discardDraft(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.discard(clientId, draftId);
+  }
+
+  @Get("drafts/:draftId/scope")
+  @UseGuards(InternalTokenGuard)
+  getDraftScope(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.getScope(clientId, draftId);
+  }
+
+  @Get("drafts/:draftId/team")
+  @UseGuards(InternalTokenGuard)
+  getDraftTeam(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.getTeam(clientId, draftId);
+  }
+
+  @Get("drafts/:draftId/pricing")
+  @UseGuards(InternalTokenGuard)
+  getDraftPricing(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftPricingService.getPricing(clientId, draftId);
+  }
+
+  @Get("session/:sessionId")
+  @UseGuards(InternalTokenGuard)
+  getDraftSession(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.getSession(clientId, sessionId);
+  }
+
+  @Post("drafts/:draftId/create-session")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  createDraftSession(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: CreateDraftSessionDto,
+  ) {
+    return this.checkoutDraftSessionService.createSession(clientId, draftId, dto);
+  }
+
+  @Post("drafts/:draftId/phases")
+  @UseGuards(InternalTokenGuard)
+  addDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: AddDraftPhaseDto,
+  ) {
+    return this.checkoutDraftService.addPhase(clientId, draftId, dto);
+  }
+
+  @Post("drafts/:draftId/team/replace-member")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  replaceDraftMember(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: ReplaceDraftMemberDto,
+  ) {
+    return this.checkoutDraftService.replaceMember(clientId, draftId, dto);
+  }
+
+  @Post("drafts/:draftId/team/update-role")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  updateDraftRole(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: UpdateDraftRoleDto,
+  ) {
+    return this.checkoutDraftService.updateRole(clientId, draftId, dto);
+  }
+
+  @Delete("drafts/:draftId/team/:userId")
+  @UseGuards(InternalTokenGuard)
+  removeDraftMember(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.removeMember(clientId, draftId, userId, version);
+  }
+
+  @Post("drafts/:draftId/team/remove-member")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  removeDraftMemberAndTasks(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: RemoveDraftMemberDto,
+  ) {
+    return this.checkoutDraftService.removeMemberAndTasks(
+      clientId,
+      draftId,
+      dto,
+    );
+  }
+
+  @Post("drafts/:draftId/apply-code")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  async applyDraftCode(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @ClientId() clientId: string,
+    @Body() dto: ApplyDraftCodeDto,
+  ) {
+    await this.checkoutDraftCodeService.applyCode(clientId, draftId, dto);
+    return this.checkoutDraftPricingService.getCodes(clientId, draftId);
+  }
+
+  @Delete("drafts/:draftId/apply-code/:code")
+  @UseGuards(InternalTokenGuard)
+  async removeDraftCode(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('code') code: string,
+    @ClientId() clientId: string,
+  ) {
+    await this.checkoutDraftCodeService.removeCode(clientId, draftId, code);
+    return this.checkoutDraftPricingService.getCodes(clientId, draftId);
+  }
+
+  @Post("drafts/:draftId/phases/:phaseId/duplicate")
+  @UseGuards(InternalTokenGuard)
+  duplicateDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @ClientId() clientId: string,
+    @Body() dto: DuplicateDraftPhaseDto,
+  ) {
+    return this.checkoutDraftService.duplicatePhase(clientId, draftId, phaseId, dto);
+  }
+
+  @Patch("drafts/:draftId/phases/:phaseId")
+  @UseGuards(InternalTokenGuard)
+  updateDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @ClientId() clientId: string,
+    @Body() dto: UpdateDraftPhaseDto,
+  ) {
+    return this.checkoutDraftService.updatePhase(clientId, draftId, phaseId, dto);
+  }
+
+  @Delete("drafts/:draftId/phases/:phaseId")
+  @UseGuards(InternalTokenGuard)
+  deleteDraftPhase(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.deletePhase(clientId, draftId, phaseId, version);
+  }
+
+  @Post("drafts/:draftId/phases/:phaseId/tasks")
+  @UseGuards(InternalTokenGuard)
+  addDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('phaseId', ParseUUIDPipe) phaseId: string,
+    @ClientId() clientId: string,
+    @Body() dto: AddDraftTaskDto,
+  ) {
+    return this.checkoutDraftService.addTask(clientId, draftId, phaseId, dto);
+  }
+
+  @Patch("drafts/:draftId/tasks/:taskId")
+  @UseGuards(InternalTokenGuard)
+  updateDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @ClientId() clientId: string,
+    @Body() dto: UpdateDraftTaskDto,
+  ) {
+    return this.checkoutDraftService.updateTask(clientId, draftId, taskId, dto);
+  }
+
+  @Delete("drafts/:draftId/tasks/:taskId")
+  @UseGuards(InternalTokenGuard)
+  deleteDraftTask(
+    @Param('draftId', ParseUUIDPipe) draftId: string,
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @Query('version', ParseIntPipe) version: number,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftService.deleteTask(clientId, draftId, taskId, version);
+  }
+
+  @Get("listings/:listingId/summary")
+  @UseGuards(InternalTokenGuard)
+  getListingSummary(@Param('listingId') listingId: string) {
+    return this.checkoutSummaryService.getSummary(listingId);
+  }
+
+  @Post("listings/:listingId/rate-estimate")
+  @UseGuards(JwtAuthGuard)
+  getListingRateEstimate(
+    @Param('listingId') listingId: string,
+    @Body() dto: CalculateRateEstimateDto,
+  ) {
+    return this.checkoutSummaryService.getRateEstimate(
+      listingId,
+      dto.selections,
+    );
   }
 
   // ─── Existing Endpoints (now with auth + proper DTOs) ─────────────
@@ -83,12 +327,6 @@ export class CheckoutController {
       successUrl: dto.successUrl,
       cancelUrl: dto.cancelUrl,
     });
-  }
-
-  @Post("apply-giftcard")
-  @UseGuards(JwtAuthGuard)
-  applyGiftCard(@Body() dto: ApplyGiftCardDto) {
-    return this.checkoutService.applyGiftCard(dto.code);
   }
 
   @Post("use-wallet")

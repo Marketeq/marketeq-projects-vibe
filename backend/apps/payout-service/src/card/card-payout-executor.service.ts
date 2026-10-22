@@ -11,6 +11,7 @@ import { DepositMethod, MethodType, VerificationStatus } from '../entities/depos
 import { AuditService } from '../audit/audit.service';
 import { PayoutError } from '../common/errors/payout.error';
 import { PayoutPublisher } from '../publishers/payout.publisher';
+import { PayoutExecutionGate } from '../identity-gate/payout-execution-gate.service';
 
 const CARD_BALANCE_CAP = 10_000; // $10,000 max balance
 
@@ -27,6 +28,7 @@ export class CardPayoutExecutorService {
     private readonly config: ConfigService,
     private readonly auditService: AuditService,
     private readonly publisher: PayoutPublisher,
+    private readonly executionGate: PayoutExecutionGate,
   ) {
     const key = this.config.get('STRIPE_SECRET_KEY', '');
     if (key && key !== 'sk_test_YOUR_TEST_KEY_HERE') {
@@ -57,6 +59,10 @@ export class CardPayoutExecutorService {
       this.logger.error(`Payout ${payoutRequestId} is not DEBIT_CARD type`);
       return;
     }
+
+    // G9: verification gate before any status change or provider contact.
+    if (!(await this.executionGate.guardBeforeProvider(payout, 'card.start'))) return;
+    const rerun = payout.status === PayoutStatus.PROCESSING;
 
     // Pre-flight checks
     // PS-24 §11: this is "not yet activated," not "not found" — the row
@@ -100,7 +106,9 @@ export class CardPayoutExecutorService {
       const amountCents = Math.round(amountUsd * 100);
       let stripeTransactionId = `txn_stub_${Date.now()}`;
 
+      // G9: re-check immediately before the funding call (only the real call moves money).
       if (this.stripe && method.stripeCardId && !method.stripeCardId.startsWith('ic_stub')) {
+        if (!(await this.executionGate.allowProviderCall(payout, 'card.fund', rerun))) return;
         // Production: use Stripe Issuing funding
         // Exact API confirmed during card program setup
         const funding = await this.stripe.testHelpers.issuing.cards.fundCard(
@@ -193,6 +201,7 @@ export class CardPayoutExecutorService {
       methodType: 'MARKETEQ_DEBIT_CARD',
       reason,
       failedAt: new Date().toISOString(),
+      failureCode: errorCode,
     });
   }
 

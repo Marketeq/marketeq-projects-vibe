@@ -20,6 +20,7 @@ import { BankModule }      from '../bank/bank.module';
 import { PublishersModule } from '../publishers/publishers.module';
 import { FeesModule }      from '../fees/fees.module';
 import { PauseModule }     from '../pause/pause.module';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { PauseModule }     from '../pause/pause.module';
     PublishersModule,
     FeesModule,
     PauseModule,        // PauseStatusService.assertNotPaused — PS-16 §6
+    IdentityGateModule, // G9 withdrawal gate (identity-verification-service RPC)
   ],
   controllers: [PayoutController],
   providers: [PayoutService, WithdrawalRateLimitService, PayoutQueueProcessor],

@@ -8,10 +8,11 @@ import {
 
 export type PaymentMethod = 'card' | 'ach' | 'wire' | 'klarna';
 export type PaymentStatus =
-  'pending' | 'success' | 'failed' | 'cancelled' | 'refunded';
+  'pending' | 'success' | 'failed' | 'cancelled' | 'refunded' | 'expired';
+export type AppliedGiftCard = { code: string; amountUsed: number };
 export type InstallmentPlan = 'full' | 'monthly' | 'biweekly';
 
-@Entity('checkout_sessions')
+@Entity('sessions')
 export class CheckoutSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -19,8 +20,8 @@ export class CheckoutSession {
   @Column()
   clientId: string;
 
-  @Column({ nullable: true })
-  projectId: string;
+  @Column()
+  listingId: string;
 
   @Column({ type: 'varchar', nullable: true })
   contractId: string | null;
@@ -43,7 +44,7 @@ export class CheckoutSession {
 
   @Column({
     type: 'enum',
-    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded'],
+    enum: ['pending', 'success', 'failed', 'cancelled', 'refunded', 'expired'],
     default: 'pending',
   })
   status: PaymentStatus;
@@ -61,12 +62,6 @@ export class CheckoutSession {
   @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
   walletAmountUsed: number;
 
-  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
-  giftCardAmountUsed: number;
-
-  @Column({ nullable: true })
-  giftCardCode: string;
-
   @Column({ default: false })
   splitPaymentEnabled: boolean;
 
@@ -79,9 +74,15 @@ export class CheckoutSession {
   @Column({ type: 'jsonb', nullable: true })
   stripeMetadata: Record<string, unknown>;
 
-  @CreateDateColumn()
+  @Column({ type: 'jsonb', nullable: true })
+  appliedGiftCards: AppliedGiftCard[] | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  appliedPromoCode: string | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamptz' })
   updatedAt: Date;
 }

@@ -6,11 +6,13 @@ import { AlgoliaClient } from './search/algolia.client'
 import { SearchService } from './search/search.service'
 import { SearchController } from './search/search.controller'
 import { DbFallbackService } from './search/db-fallback.service'
+import { IdentityGateModule } from './identity-gate/identity-gate.module'
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     HttpModule,
+    IdentityGateModule,
     ClientsModule.registerAsync([
       {
         // Talent categories are derived by category-service, which owns the

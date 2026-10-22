@@ -14,6 +14,8 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { Button } from "@/components/ui"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 import { Bank, Check, X } from "@blend-metrics/icons"
 
 import { getPublicApiUrl } from "@/lib/runtime-urls"
@@ -31,6 +33,7 @@ type VerifyState =
   | { kind: "expired" }
   | { kind: "used" }
   | { kind: "invalid" }
+  | { kind: "verification"; block: Exclude<WithdrawalVerificationBlock, null> }
   | { kind: "network-error" }
 
 // AC-21.01/21.02/21.03, ERR-48/49/50/51: three distinct failure modes, each with
@@ -140,6 +143,11 @@ function VerifyWithdrawal() {
           }
           return
         }
+        // G9: the withdrawal was not confirmed because the account is not verified
+        // (or that could not be checked). The link stays valid; the existing Verify
+        // My Account popup opens instead of the generic invalid-link state.
+        const block = withdrawalBlockFor(res.status, data)
+        if (block) { setState({ kind: "verification", block }); return }
         // AC-21.04: no matter which error, the underlying payout request is
         // untouched server-side — this page only ever reflects, never mutates
         // state beyond what verify-email itself already decided.
@@ -159,6 +167,14 @@ function VerifyWithdrawal() {
 
   return (
     <>
+      <AccountVerificationGate
+        open={state.kind === "verification"}
+        reason={state.kind === "verification" && state.block === "verification_unavailable" ? "status_unavailable" : "unstarted"}
+        connectionCheckState="idle"
+        onVerify={() => router.push("/talent-dashboard")}
+        onRetryConnectionCheck={() => setRetryTick((t) => t + 1)}
+        onDismissConnectionError={() => setState({ kind: "invalid" })}
+      />
       <div className="px-5 md:px-[100px] h-[64px] flex items-center">
         <Link href="/">
           <MarketeqLogo />

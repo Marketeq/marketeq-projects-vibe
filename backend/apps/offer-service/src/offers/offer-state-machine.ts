@@ -195,10 +195,17 @@ export class InvalidOfferTransitionException extends OfferServiceException {
 // ============================================================
 
 export class OfferConcurrentModificationException extends OfferServiceException {
+  // `id` is kept as a constructor param (for any future server-side
+  // logging) but intentionally left out of the user-facing message below —
+  // callers pass either an offer id or a counter-offer id depending on
+  // which row's CAS update affected 0 rows (see counter-offers.service.ts/
+  // offers.service.ts), so a message naming it "Offer {id}" was wrong for
+  // every counter-offer call site, and a raw internal id in front of a
+  // real user is not a safe message regardless of which entity it is.
   constructor(id: string) {
     super(
       'OFFER_CONCURRENT_MODIFICATION',
-      `Offer ${id} was modified by a concurrent request. Reload and retry.`,
+      'This was just updated elsewhere. Please reload and try again.',
       HttpStatus.CONFLICT,
     );
   }

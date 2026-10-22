@@ -7,11 +7,13 @@ import { TeamsController } from './team.controller';
 import { MyTeamsController } from './my-teams.controller';
 import { TeamsService } from './team.service';
 import { Team } from './entities/team.entity';
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Team]),
     ConfigModule,
+    IdentityGateModule,
     ClientsModule.registerAsync([
       {
         name: 'ALGOLIA_CLIENT',

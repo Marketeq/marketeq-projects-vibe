@@ -27,7 +27,8 @@ describe('IdentityVerificationService — location backfill', () => {
       {} as any,
       {} as any,
       {} as any,
-      {} as any,
+      // No Didit approval on record for this profile (first-time verification).
+      { getRepository: () => ({ exist: jest.fn().mockResolvedValue(false) }) } as any,
       {} as any,
       {} as any,
       {} as any,

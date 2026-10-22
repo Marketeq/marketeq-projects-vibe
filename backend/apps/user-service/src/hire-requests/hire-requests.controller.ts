@@ -9,6 +9,7 @@ import {
   Post,
   Put,
   Query,
+  UseFilters,
 } from '@nestjs/common';
 import { HireRequestsService } from './hire-requests.service';
 import { ApiOperation } from '@nestjs/swagger';
@@ -18,7 +19,11 @@ import { FindHireRequestsQueryDto } from './dtos/find-hire-requests-query.dto';
 import { CreateHireRequestDto } from './dtos/create-hire-request.dto';
 import { UpdateHireRequestDto } from './dtos/update-hire-request.dto';
 import { UpdateHireStatusDto } from './dtos/update-hire-status.dto';
+import { HireRequestGateExceptionFilter } from './hire-request-gate';
 
+// G4: gate refusals are rendered in offer-service's envelope (same status, code and
+// body shape).
+@UseFilters(HireRequestGateExceptionFilter)
 @Controller('hire-requests')
 export class HireRequestsController {
   constructor(private readonly hireRequestsService: HireRequestsService) {}
@@ -94,6 +99,6 @@ export class HireRequestsController {
         'You are not a participant in this hire request',
       );
     }
-    return this.hireRequestsService.updateStatus(id, dto);
+    return this.hireRequestsService.updateStatus(id, dto, user.sub);
   }
 }

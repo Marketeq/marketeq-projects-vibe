@@ -15,6 +15,15 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `(owner_gate_open:true OR owner_gate_exempt:true)` (see AlgoliaClient). A
+      // listing is visible only while its platform owner's gate is known open, or
+      // when it is explicitly exempt (no platform owner); a record carrying
+      // neither - e.g. not yet backfilled - is hidden, and its stored listing
+      // stays published. `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_gate_open)',
+      'filterOnly(owner_gate_exempt)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       'searchable(technologies)',
@@ -59,6 +68,16 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G1 discovery gate: every talent query carries `gate_open:true` (see
+      // AlgoliaClient), so Algolia filters BEFORE it counts hits, paginates and
+      // builds facet counts. A record without this attribute can never match
+      // and stays hidden until it is backfilled. filterOnly: never a facet the
+      // sidebar can read or count.
+      'filterOnly(gate_open)',
+      // The platform account that owns the profile (identity-verification's
+      // user id). Lets a gate change, which is keyed by account, find the
+      // record without a CMS lookup. Filter-only for the same reason.
+      'filterOnly(account_id)',
       'searchable(skills)',
       'searchable(tags)',
       'job_title',
@@ -106,6 +125,15 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `(owner_gate_open:true OR owner_gate_exempt:true)` (see AlgoliaClient). A
+      // listing is visible only while its platform owner's gate is known open, or
+      // when it is explicitly exempt (no platform owner); a record carrying
+      // neither - e.g. not yet backfilled - is hidden, and its stored listing
+      // stays published. `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_gate_open)',
+      'filterOnly(owner_gate_exempt)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       'category',
@@ -136,6 +164,15 @@ export const ALGOLIA_INDEX_SETTINGS = {
     ],
     attributesForFaceting: [
       'filterOnly(status)',
+      // G5 listing-owner gate: every marketplace query on this index carries
+      // `(owner_gate_open:true OR owner_gate_exempt:true)` (see AlgoliaClient). A
+      // listing is visible only while its platform owner's gate is known open, or
+      // when it is explicitly exempt (no platform owner); a record carrying
+      // neither - e.g. not yet backfilled - is hidden, and its stored listing
+      // stays published. `owner_id` lets a gate change find the owner's records.
+      'filterOnly(owner_gate_open)',
+      'filterOnly(owner_gate_exempt)',
+      'filterOnly(owner_id)',
       'searchable(skills)',
       'searchable(tags)',
       // Services counterpart of the projects index's `project_category` —

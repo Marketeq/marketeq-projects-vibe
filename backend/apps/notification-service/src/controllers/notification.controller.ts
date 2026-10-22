@@ -12,8 +12,14 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { EventPattern, Payload } from '@nestjs/microservices';
-import { NotificationService, NotificationPayload } from '../services/notification.service';
+import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
+import { NotificationDeliveryService } from '../delivery/notification-delivery.service';
+import { NotificationDeliveryMonitor } from '../delivery/notification-delivery-monitor';
+import {
+  NotificationService,
+  NotificationPayload,
+  WithdrawalNotificationPayload,
+} from '../services/notification.service';
 import { BrevoService } from '../brevo/brevo.service';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { Public } from '../guards/jwt-auth.guard';
@@ -25,6 +31,8 @@ export class NotificationController {
   constructor(
     private readonly service: NotificationService,
     private readonly brevoService: BrevoService,
+    private readonly delivery: NotificationDeliveryService,
+    private readonly deliveryMonitor: NotificationDeliveryMonitor,
   ) {}
 
   @Get()
@@ -115,15 +123,17 @@ export class NotificationController {
 
   @Public()
   @Get('health')
-  health() {
-    return { status: 'ok', service: 'notification-service' };
+  async health() {
+    return { status: 'ok', service: 'notification-service', notificationDelivery: await this.deliveryMonitor.snapshot() };
   }
 
   // RabbitMQ event handlers from other services
   // Using @EventPattern because publishers use client.emit() (fire-and-forget)
+  // Manual acknowledgment (see NotificationDeliveryService): acked after dispatch succeeds,
+  // retried through the delay queues on failure, dead-lettered when it keeps failing.
   @EventPattern('notification.send')
-  handleSend(@Payload() payload: NotificationPayload) {
-    return this.service.dispatch(payload);
+  handleSend(@Payload() payload: NotificationPayload, @Ctx() context: RmqContext) {
+    return this.delivery.handle(payload, context);
   }
 
   @EventPattern('auth.password_reset_requested')
@@ -196,6 +206,12 @@ export class NotificationController {
     },
   ) {
     return this.service.sendInvitationAcceptedEmail(data);
+  }
+
+  // PMCM-806: withdrawal submitted / completed / failed / cancelled, from payout-service.
+  @EventPattern('notification.payout.withdrawal')
+  handleWithdrawalNotification(@Payload() data: WithdrawalNotificationPayload) {
+    return this.service.sendWithdrawalNotification(data);
   }
 
   @EventPattern('invitation.created')

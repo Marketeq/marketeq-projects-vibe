@@ -9,6 +9,8 @@ import { DepositMethod } from '../entities/deposit-method.entity';
 import { PublishersModule } from '../publishers/publishers.module';
 import { BrevoMailService } from '../notifications/brevo-mail.service';
 
+import { IdentityGateModule } from '../identity-gate/identity-gate.module';
+
 @Module({
   imports: [
     // MagicLinkToken (PS-01's original table) is intentionally not
@@ -18,6 +20,7 @@ import { BrevoMailService } from '../notifications/brevo-mail.service';
     // registering it in their own module.
     TypeOrmModule.forFeature([MagicLinkVerification, PayoutRequest, DepositMethod]),
     PublishersModule,
+    IdentityGateModule, // G9 PayoutExecutionGate
   ],
   providers: [MagicLinkService, BrevoMailService],
   exports: [MagicLinkService],

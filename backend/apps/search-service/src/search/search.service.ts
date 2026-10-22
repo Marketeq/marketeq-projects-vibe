@@ -2,7 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { ConfigService } from '@nestjs/config'
 import { firstValueFrom } from 'rxjs'
-import { AlgoliaClient, INDICES } from './algolia.client'
+import { AlgoliaClient, INDICES, TalentGateUnavailableError } from './algolia.client'
 import { SearchDto, SearchCategory, SearchFiltersDto, SortDto } from '../dto/search.dto'
 import { DbFallbackService } from './db-fallback.service'
 import {
@@ -679,7 +679,9 @@ export class SearchService implements OnApplicationBootstrap {
     const replicaIndex = `${baseIndex}_sort_${sort.field}_${sort.direction}`
     try {
       return await this.algolia.search(replicaIndex, q, params)
-    } catch {
+    } catch (err) {
+      // A closed talent gate is not a missing replica: never retry past it.
+      if (err instanceof TalentGateUnavailableError) throw err
       this.logger.warn(`Sort replica "${replicaIndex}" not found — returning unsorted results`)
       return this.algolia.search(baseIndex, q, params)
     }

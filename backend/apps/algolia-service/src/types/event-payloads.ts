@@ -36,6 +36,12 @@ export interface ListingEventPayload {
   deliveryTime: string | null
   priceMin: number | null
   priceMax: number | null
+
+  // G5 listing-owner gate. `ownerGateOpen` is listings-service's last known gate
+  // for `ownerId`. A listing WITH a platform owner is indexed visible only when that gate
+  // is known open (`owner_gate_open`); a listing with no platform owner is visible only
+  // because it is explicitly `owner_gate_exempt`.
+  ownerGateOpen?: boolean
 }
 
 export interface ListingDeletedPayload {
@@ -79,6 +85,41 @@ export interface TalentEventPayload {
   // filters (Junior 1-3, Middle 3-5, …) become plain numeric range queries
   // instead of needing an exact-match label agreed on by both sides.
   yearsOfExperience: number | null
+  // G1 discovery gate. `accountId` is the platform account that owns the
+  // profile (the id identity-verification keys its decision on); it is indexed
+  // as `account_id` so a gate change can find the record. `gateOpen` is the
+  // gate decision the sender obtained from identity-verification-service at
+  // `gateCheckedAt`. Both are optional on purpose: when the sender could not
+  // get a decision it omits `gateOpen`, the record's existing `gate_open` is
+  // left untouched, and a record that never had one stays hidden.
+  accountId?: string | null
+  gateOpen?: boolean
+  gateCheckedAt?: string
+}
+
+// identity-verification-service -> here, whenever an account's gate_open may
+// have changed (verification approved/lost, grace entered/expired, duplicate
+// document block, ...). Carries the decision only, never a status or reason.
+export interface GateChangedPayload {
+  userId: string
+  gateOpen: boolean
+  occurredAt: string
+}
+
+// user-service -> here: the repeatable backfill/reconcile. One entry per
+// talent record (`id` = the record's objectID).
+export interface TalentGateBackfillPayload {
+  entries: Array<{ id: string; accountId: string; gateOpen: boolean }>
+  checkedAt: string
+}
+
+// listings-service -> here: the repeatable backfill/reconcile of the listing-owner
+// gate (G5). One entry per listing record (`id` = objectID in `index`).
+export interface ListingOwnerGateBackfillPayload {
+  // `ownerId: null` = no platform owner (CMS-authored, seeded, system-owned): the listing is
+  // explicitly exempt from the owner gate.
+  entries: Array<{ index: 'projects' | 'services' | 'teams'; id: string; ownerId: string | null; ownerGateOpen?: boolean }>
+  checkedAt: string
 }
 
 export interface TalentDeletedPayload {
@@ -87,6 +128,9 @@ export interface TalentDeletedPayload {
 
 export interface TeamEventPayload {
   id: string            // Algolia objectID
+  // G5: the account that owns the team and listings-service's last known gate for it.
+  ownerId?: string | null
+  ownerGateOpen?: boolean
   teamName: string
   createdAt: string | null
   username: string | null
