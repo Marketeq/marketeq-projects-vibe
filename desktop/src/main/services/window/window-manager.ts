@@ -67,6 +67,13 @@ export interface WindowManager {
   isQuitting(): boolean;
 }
 
+const ACTIVE_SESSION_STATES: ReadonlySet<string> = new Set([
+  'Running',
+  'Paused',
+  'OnBreakPaid',
+  'OnBreakUnpaid',
+]);
+
 export function createWindowManager(deps: WindowManagerDeps): WindowManager {
   const {
     logger,
@@ -185,7 +192,8 @@ export function createWindowManager(deps: WindowManagerDeps): WindowManager {
 
   async function confirmQuit(): Promise<boolean> {
     const st = getTimerState?.() ?? 'Idle';
-    if (st !== 'Running' && st !== 'Paused') return true;
+    // Active session = Running, Paused, or any OnBreak* (DTT-AC-048.1).
+    if (!ACTIVE_SESSION_STATES.has(st)) return true;
     try {
       const result = await getDialog().showMessageBox({
         type: 'warning',

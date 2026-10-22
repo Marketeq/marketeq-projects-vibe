@@ -122,6 +122,8 @@ export interface OutboxStore {
   deleteCompletedBefore(cutoff: number): number;
   /** All dead-lettered rows, oldest first. */
   listDeadLetters(): OutboxRow[];
+  /** Returns every 'inflight' row to 'pending'. Returns the number reset. */
+  resetInflight(): number;
   // Test helpers
   _all?(): OutboxRow[];
 }
@@ -266,6 +268,12 @@ export function createSqliteOutboxStore(db: DbHandle): OutboxStore {
         .all() as Record<string, unknown>[];
       return rows.map(parseRow);
     },
+    resetInflight(): number {
+      const res = db
+        .prepare(`UPDATE sync_queue SET status = 'pending' WHERE status = 'inflight'`)
+        .run();
+      return Number(res.changes ?? 0);
+    },
   };
 }
 
@@ -330,6 +338,16 @@ export function createInMemoryOutboxStore(): OutboxStore {
         .filter((r) => r.status === 'dead_letter')
         .sort((a, b) => a.createdAt - b.createdAt)
         .map((r) => ({ ...r }));
+    },
+    resetInflight(): number {
+      let n = 0;
+      for (const [id, r] of rows.entries()) {
+        if (r.status === 'inflight') {
+          rows.set(id, { ...r, status: 'pending' });
+          n++;
+        }
+      }
+      return n;
     },
     _all(): OutboxRow[] {
       return Array.from(rows.values()).map((r) => ({ ...r }));
@@ -594,6 +612,19 @@ export function createOutbox(deps: OutboxDeps) {
     };
   }
 
+  /**
+   * Called once at launch, before the sync worker starts. A row is only
+   * 'inflight' while a request for it is open; if the app quit (or was
+   * killed) mid-request, the row is left 'inflight' and claimNext() would
+   * never pick it up again. Every row carries its id as the request's
+   * Idempotency-Key, so resending one the server already got is safe.
+   */
+  function recoverInflight(): number {
+    const n = deps.store.resetInflight();
+    if (n > 0) log?.info({ n }, 'outbox: recovered inflight rows from last run');
+    return n;
+  }
+
   function purgeDone(olderThanMs: number): number {
     const cutoff = now() - olderThanMs;
     const n = deps.store.deleteCompletedBefore(cutoff);
@@ -616,6 +647,7 @@ export function createOutbox(deps: OutboxDeps) {
     requeueDeadLetter,
     requeueNetworkDeadLetters,
     stats,
+    recoverInflight,
     purgeDone,
     findById,
     // exposed so the worker can compute idempotency keys in the same space
