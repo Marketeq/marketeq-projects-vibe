@@ -194,14 +194,16 @@ describe('POST /v1/identity-verification/travel-duration (no extending or shorte
     expect(row.declaredDuration).toBe(winnerDuration);
   });
 
-  it('keeps its existing contracts: CLASSIFICATION_REQUIRED (409) and VALIDATION_ERROR (400)', async () => {
+  it('saves the classification with the duration (no separate classification call) and keeps VALIDATION_ERROR (400)', async () => {
     await build(pending({ travelClassification: null }));
-
-    const required = await post('a_few_days').expect(409);
-    expect(required.body.code).toBe('CLASSIFICATION_REQUIRED');
 
     const invalid = await post('forever').expect(400);
     expect(invalid.body.code).toBe('VALIDATION_ERROR');
     expect(update).not.toHaveBeenCalled();
+
+    const ok = await post('a_few_days').expect(200);
+    expect(ok.body.declaredDuration).toBe('a_few_days');
+    expect(row.travelClassification).toBe('temporarily_traveling');
+    expect(update).toHaveBeenCalledTimes(1);
   });
 });

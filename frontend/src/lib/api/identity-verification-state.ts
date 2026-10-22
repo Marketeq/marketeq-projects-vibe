@@ -90,12 +90,30 @@ export interface IdentityVerificationSummaryView {
   // absent or malformed, which shows nothing). The backend alone decides it: a
   // verified home country, a known and different live country, no Travel Mode.
   locationMismatch: boolean | null
+  // The same idea for an account whose Travel Mode is in force: the live country
+  // differs from the verified home country. The backend sends the key only when true
+  // (null otherwise); it is what offers the "still traveling?" prompt (once per
+  // login, decided by the screen, see travel-location-prompt.ts).
+  travelModeLocationMismatch: boolean | null
+  // The country the account has claimed it moved to and that still awaits Didit's
+  // approval, exactly as the backend sent it (the key is omitted when there is none).
+  // It only tells the screen that the next trip to Didit is a home-country change.
+  pendingHomeCountry: string | null
+  // An opaque key for THIS login, derived by the backend from the verified token (the
+  // browser cannot read the HttpOnly session_id cookie and must never see the session
+  // id). Same for the whole login, different for a new login or another account. Used
+  // only to scope "already shown / dismissed in this login" markers. Null when the
+  // backend sent none (an older token) or anything but a 64-character hex digest: the
+  // popups then show and persist nothing.
+  loginSessionKey: string | null
 }
 
 const bool = (v: unknown): boolean | null => (typeof v === "boolean" ? v : null)
 const count = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null
 // A string that is a real timestamp, else null (an unparseable value never schedules anything).
+const loginKey = (v: unknown): string | null =>
+  typeof v === "string" && /^[0-9a-f]{64}$/.test(v) ? v : null
 const isoTime = (v: unknown): string | null =>
   typeof v === "string" && Number.isFinite(Date.parse(v)) ? v : null
 
@@ -123,7 +141,22 @@ export function parseIdentityVerificationSummary(
     travelReminderDue: bool(body.travelReminderDue),
     travelReminderAvailableAt: isoTime(body.travelReminderAvailableAt),
     locationMismatch: bool(body.locationMismatch),
+    travelModeLocationMismatch: bool(body.travelModeLocationMismatch),
+    pendingHomeCountry:
+      typeof body.pendingHomeCountry === "string" && body.pendingHomeCountry
+        ? body.pendingHomeCountry
+        : null,
+    loginSessionKey: loginKey(body.loginSessionKey),
   }
+}
+
+// The pending modal's only trigger: the backend says Didit has the session in
+// review (nextAction await_review). Re-verifying a home country and a first-time
+// verification share it.
+export function shouldShowPendingModal(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  return summary?.flowState === "await-review"
 }
 
 // The success modal's only trigger: the backend says the account is complete.

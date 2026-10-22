@@ -49,7 +49,9 @@ describe("dashboard verification entry: nothing opens on page load", () => {
       "const openFlowFromMismatch = useCallback(",
     ]) {
       const from = page.indexOf(owner)
-      const next = page.indexOf("\n  }, [", from)
+      const next = owner.includes("openFlowFromMismatch")
+        ? page.indexOf("const handleIdentityFlowOpenChange", from)
+        : page.indexOf("\n  }, [", from)
       assert.ok(from > -1 && page.slice(from, next).includes("setIdentityFlowOpen(true)"), owner)
     }
   })
@@ -152,8 +154,8 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     const at = page.indexOf('setTravelPopup("expiry")')
     const guard = page.slice(page.lastIndexOf("shouldShowTravelExpiryPopup({", at), at)
     assert.ok(guard.includes("expired: travelSummary.travelModeExpired"))
-    assert.ok(guard.includes("sessionId: readSessionId()"))
-    const base = { expired: true, sessionId: "s1" }
+    assert.ok(guard.includes("loginSessionKey: travelSummary.loginSessionKey"))
+    const base = { expired: true, loginSessionKey: "k".repeat(64) }
     const store = new Map<string, string>()
     const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size } }
     assert.equal(shouldShowTravelExpiryPopup({ ...base, expired: false, storage }), false)
@@ -176,7 +178,7 @@ describe("Travel Mode popups: each appears only when its backend condition appli
   it("closing a reminder spends it; closing the expiry popup is remembered for this login only", () => {
     const close = page.slice(page.indexOf("const handleTravelPopupClose"), page.indexOf("const handleTravelUpdate"))
     assert.ok(close.includes('if (travelPopup === "expiry")'))
-    assert.ok(close.includes("dismissTravelExpiryPopup(readSessionId(), window.localStorage)"))
+    assert.ok(close.includes("dismissTravelExpiryPopup(travelSummary?.loginSessionKey ?? null, window.localStorage)"))
   })
 })
 
@@ -201,23 +203,20 @@ describe("Travel Mode and location actions route correctly", () => {
     assert.equal(shouldShowLocationMismatchPrompt(null), false)
   })
 
-  it("'I’m currently traveling' records temporarily_traveling and opens the duration screen", async () => {
-    assert.ok(page.includes("I’m currently traveling"))
-    assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+  it("'I’m still traveling' (Storybook ChangeLocation) opens the duration screen and saves nothing", async () => {
+    assert.ok(page.includes("I’m still traveling"))
+    assert.ok(!page.includes("I’m currently traveling"))
+    assert.ok(page.includes('openFlowFromMismatch(await startStillTraveling(), "traveling")'))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startStillTraveling(deps)
-    assert.deepEqual(seen, ["temporarily_traveling"])
     assert.equal(launch.initialState, "traveling-showcase")
   })
 
-  it("'Change my home country' records permanently_relocated and starts from the top", async () => {
+  it("'Change my home country' starts from the top and saves nothing", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+    assert.ok(page.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)
-    assert.deepEqual(seen, ["permanently_relocated"])
     assert.equal(launch.initialState, undefined)
   })
 

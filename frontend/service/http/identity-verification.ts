@@ -137,6 +137,16 @@ export const IdentityVerificationAPI = {
       data: { url: string }
     }>,
 
+  // Home-country change: starts (or resumes) the Didit session for a pending home
+  // country. Separate from startFreeKyc, which still refuses an account that is
+  // already verified. No body: the backend reads the pending country it stored when
+  // the user confirmed the detected location. Returns only a Didit https URL; see
+  // src/lib/api/free-kyc.ts, which validates it again before redirecting.
+  startHomeCountryChange: () =>
+    AxiosRequest.post("/v1/identity-verification/kyc-sessions/home-country-change", {}) as Promise<{
+      data: { url: string }
+    }>,
+
   // Fallback for a lost or delayed Didit webhook: asks the backend to check the
   // CALLER'S OWN stored session with Didit. POST because it may update state; no
   // body and no session id — the server resolves the session itself. Returns only a

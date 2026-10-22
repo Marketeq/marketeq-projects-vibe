@@ -185,6 +185,25 @@ describe('verification summary (backward-compatible additions + stable nextActio
       expect(summary({ travelClassification: TravelClassification.TEMPORARILY_TRAVELING }).nextAction).toBe('confirm_location');
     });
 
+    it('an active Travel Mode does not stand in the way of a pending home-country claim: start_identity, not confirm_location', () => {
+      const claim = {
+        ...traveling,
+        ...ACTIVE_TRAVEL,
+        pendingHomeCountry: 'CA',
+        pendingHomeCountryConfirmedAt: FRESH,
+        identityStatus: I.UNSTARTED,
+      };
+      expect(summary(claim).nextAction).toBe('start_identity');
+      expect(newSessionRequirementsMet(base(claim))).toBe(true);
+      // The same traveler without a claim is still asked to confirm first.
+      expect(summary({ ...traveling, ...ACTIVE_TRAVEL, identityStatus: I.UNSTARTED }).nextAction).toBe('confirm_location');
+    });
+
+    it('a claim still needs its own fresh confirmation, Travel Mode or not', () => {
+      const stale = { ...traveling, ...ACTIVE_TRAVEL, pendingHomeCountry: 'CA', pendingHomeCountryConfirmedAt: STALE, identityStatus: I.UNSTARTED };
+      expect(summary(stale).nextAction).toBe('confirm_location');
+    });
+
     it('an expired period neither changes the other fields nor fakes verification', () => {
       const s = summary({ ...traveling, ...ENDED_TRAVEL });
       expect(s.fullyVerified).toBe(false);

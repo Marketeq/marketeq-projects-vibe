@@ -1,6 +1,12 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react"
 import { useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
@@ -10,6 +16,7 @@ import {
   ArrowRight,
   CheckCircle,
   ChevronRight,
+  MarkerPin01,
   Plane,
   RefreshCw,
   X,
@@ -75,6 +82,7 @@ import {
 import {
   createReturnReconciler,
   fetchIdentityVerificationSummary,
+  shouldShowPendingModal,
   shouldShowSuccessModal,
   type IdentityVerificationSummaryView,
 } from "@/src/lib/api/identity-verification-state"
@@ -88,9 +96,23 @@ import {
 } from "@/src/lib/api/travel-reminder"
 import {
   dismissTravelExpiryPopup,
-  readSessionId,
   shouldShowTravelExpiryPopup,
 } from "@/src/lib/api/travel-expiry-popup"
+import {
+  createTravelerPromptHandled,
+  markTravelerPromptShown,
+  mismatchFlowCompleted,
+  shouldOpenTravelerPrompt,
+  type MismatchFlowKind,
+} from "@/src/lib/api/travel-location-prompt"
+import {
+  clearHomeCountryChange,
+  consumeHomeCountryChange,
+  HOME_COUNTRY_UPDATED_ALERT,
+  markHomeCountryChange,
+  successAlertKindFor,
+  type SuccessAlertKind,
+} from "@/src/lib/api/home-country-change-result"
 import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
@@ -189,9 +211,31 @@ export default function TalentDashboard() {
     activeTravelModeUpdate?: boolean
   }>({ key: 0 })
   // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
-  // locationMismatch decides; closing it unanswered only hides it for this page load.
+  // locationMismatch decides. It has only its two buttons: no outside click, no Escape,
+  // no X, so it is closed only by answering it.
   const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
   const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
+  // The same dialog for an account whose Travel Mode is in force and that was detected
+  // in another country (travelModeLocationMismatch). Offered once per login: see
+  // travel-location-prompt.ts. The login is marked only when a button is chosen.
+  // "I'm still traveling" only closes it.
+  const [travelerPromptOpen, setTravelerPromptOpen] = useState(false)
+  // Handled in THIS login while a flow opened by the popup is on screen: a summary read
+  // behind it must not reopen the popup. Memory only. It is cleared when that flow closes
+  // unfinished, and dropped whenever the loginSessionKey changes (a logout and login that
+  // keeps this page mounted must not inherit it). The per-login marker is written only
+  // when a path has COMPLETED.
+  const travelerPromptHandledRef = useRef(createTravelerPromptHandled())
+  // Which popup answer opened the flow now on screen, or null (any other launcher).
+  const mismatchFlowKindRef = useRef<MismatchFlowKind>(null)
+  // A completed path: write the per-login marker and hold the popup closed for it.
+  const markTravelerPromptCompleted = useCallback(
+    (loginSessionKey: string | null) => {
+      travelerPromptHandledRef.current.markHandled(loginSessionKey)
+      markTravelerPromptShown(loginSessionKey, window.localStorage)
+    },
+    []
+  )
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
 
@@ -229,9 +273,28 @@ export default function TalentDashboard() {
   // refresh remain as fallbacks (GET only — never another reconcile). Nothing is read
   // from the URL Didit returns to, and no attempt/cooldown/status rule lives here.
   const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
+  // "Your verification has been submitted": shown once when this browser comes back
+  // from Didit and the backend says the session is in review. Done only closes it.
+  const [pendingModalOpen, setPendingModalOpen] = useState(false)
   // Success alert (Figma node 13101-47566): shown only AFTER the user clicks the
   // success modal's own Done button, never while the modal is open.
   const [successAlertOpen, setSuccessAlertOpen] = useState(false)
+  // Which copy the success alert carries: the generic one, or the home-country one when
+  // this browser went to Didit to change the home country (home-country-change-result.ts).
+  const [successAlertKind, setSuccessAlertKind] =
+    useState<SuccessAlertKind>("verified")
+  // The location-specific notification (Figma node 13101-47577): the same alert, with
+  // the map pin and the home-country copy. Shown INSTEAD of the generic one.
+  const [homeCountryUpdatedOpen, setHomeCountryUpdatedOpen] = useState(false)
+  // The modal's own Done button opens the generic alert. For a home-country approval the
+  // location-specific one replaces it, in the same commit (before paint), so the
+  // generic alert is never seen and only one notification shows.
+  useLayoutEffect(() => {
+    if (successAlertOpen && successAlertKind === "home-country-updated") {
+      setSuccessAlertOpen(false)
+      setHomeCountryUpdatedOpen(true)
+    }
+  }, [successAlertOpen, successAlertKind])
   // "You've used all three attempts": the retry time (ISO) while the backend says to
   // wait for a retry window, else null. Closing it only hides it for this view; a
   // fresh backend answer shows it again.
@@ -262,6 +325,22 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        // Which success alert follows the modal. Read once: a repeat (duplicate
+        // webhook, reconcile, refresh) finds no flag, so it can never show twice.
+        setSuccessAlertKind(
+          successAlertKindFor(consumeHomeCountryChange(window.localStorage))
+        )
+        return
+      }
+      // Back from Didit with the session in review: tell the user once. The result
+      // arrives later as a notification, so this browser stops waiting for it.
+      if (shouldShowPendingModal(summary)) {
+        clearAwaitingResult(window.localStorage)
+        // The approval will arrive as a backend notification: no alert from here.
+        clearHomeCountryChange(window.localStorage)
+        setVerificationGateOpen(false)
+        setProfileBannerShown(false)
+        setPendingModalOpen(true)
         return
       }
       // The banner or gate may have opened from an earlier read, before this result
@@ -361,6 +440,13 @@ export default function TalentDashboard() {
         return
       }
       if (action.kind === "didit") {
+        // This trip to Didit is a home-country change when a different country is
+        // pending (the backend hands the retry to the same session); recorded
+        // explicitly either way, so an ordinary trip clears a flag left by an earlier one.
+        markHomeCountryChange(
+          window.localStorage,
+          summary?.pendingHomeCountry != null
+        )
         const started = await startIdentityOnlyForDashboard()
         if (started === "redirected") return // the browser is leaving for Didit
         if (started === "not_startable") {
@@ -407,19 +493,36 @@ export default function TalentDashboard() {
   }, [runIdentityVerificationCheck])
 
   // Travel Mode expiry popup: when the backend says Travel Mode ended, show it (verified
-  // or not) unless it was closed in THIS login (the existing
-  // readable session_id cookie; a refresh keeps it, a new login changes it).
+  // or not) unless it was closed in THIS login (the opaque loginSessionKey from /me: a
+  // refresh keeps it, a new login changes it; the HttpOnly session_id is never read).
   useEffect(() => {
     if (!travelSummary) return
     if (
       shouldShowTravelExpiryPopup({
         expired: travelSummary.travelModeExpired,
-        sessionId: readSessionId(),
+        loginSessionKey: travelSummary.loginSessionKey,
         storage: window.localStorage,
       })
     ) {
       setTravelPopup("expiry")
     }
+  }, [travelSummary])
+
+  // "Still traveling?" for an account whose Travel Mode is in force and that logged in
+  // from a country other than its verified home country. The backend decides whether it
+  // applies; the once-per-login rule is the loginSessionKey marker, written when the
+  // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
+  useEffect(() => {
+    if (
+      !shouldOpenTravelerPrompt({
+        summary: travelSummary,
+        storage: window.localStorage,
+        handled: travelerPromptHandledRef.current,
+      })
+    ) {
+      return
+    }
+    setTravelerPromptOpen(true)
   }, [travelSummary])
 
   // Travel Mode day-3 / day-7 reminders. If /me says one is due it is CLAIMED first and
@@ -449,10 +552,10 @@ export default function TalentDashboard() {
   // was claimed when it opened. A closed expiry popup is remembered for this login only.
   const handleTravelPopupClose = useCallback(() => {
     if (travelPopup === "expiry") {
-      dismissTravelExpiryPopup(readSessionId(), window.localStorage)
+      dismissTravelExpiryPopup(travelSummary?.loginSessionKey ?? null, window.localStorage)
     }
     setTravelPopup(null)
-  }, [travelPopup])
+  }, [travelPopup, travelSummary])
 
   // "Update": hide the popup (nothing is remembered) and open the existing verification
   // flow at "Tell us more about your current location", which keeps its own
@@ -481,26 +584,96 @@ export default function TalentDashboard() {
   // The new-location prompt's two answers. Each records the choice, then opens the
   // existing verification flow: "currently traveling" on its duration screen, "change my
   // home country" from the top so the home country is confirmed again.
-  const openFlowFromMismatch = useCallback((launch: MismatchLaunch) => {
-    setDetectedLocation(launch.location)
-    setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
-    setLocationMismatchOpen(false)
-    setIdentityFlowOpen(true)
-  }, [])
+  const openFlowFromMismatch = useCallback(
+    (launch: MismatchLaunch, kind: MismatchFlowKind) => {
+      // Held only while the flow is on screen; handleIdentityFlowOpenChange releases it.
+      travelerPromptHandledRef.current.markHandled(
+        travelSummary?.loginSessionKey ?? null
+      )
+      mismatchFlowKindRef.current = kind
+      setDetectedLocation(launch.location)
+      setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
+      setLocationMismatchOpen(false)
+      setTravelerPromptOpen(false)
+      setIdentityFlowOpen(true)
+    },
+    [travelSummary]
+  )
+
+  // The flow opened by a popup answer closed. If its duration save succeeded the login is
+  // answered (marker written). Otherwise nothing was completed: nothing is written, the
+  // in-memory hold is released and /me is read again, so the popup is offered again.
+  // Flows opened by anything else are untouched.
+  const handleIdentityFlowOpenChange = useCallback(
+    (open: boolean) => {
+      setIdentityFlowOpen(open)
+      const kind = mismatchFlowKindRef.current
+      if (open || kind === null) return
+      mismatchFlowKindRef.current = null
+      void fetchIdentityVerificationSummary().then((fresh) => {
+        if (mismatchFlowCompleted(kind, fresh)) {
+          markTravelerPromptCompleted(fresh?.loginSessionKey ?? null)
+        } else {
+          travelerPromptHandledRef.current.reset()
+        }
+        if (!fresh) return
+        setProfileBannerShown(shouldShowProfileBanner(fresh))
+        setCooldownRetryTime(cooldownRetryAt(fresh))
+        setTravelSummary(fresh)
+        setLocationMismatchOpen(shouldShowLocationMismatchPrompt(fresh))
+      })
+    },
+    [markTravelerPromptCompleted]
+  )
 
   const handleStillTraveling = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      openFlowFromMismatch(await startStillTraveling())
+      // Saves nothing: the duration screen's Confirm/Skip is what activates Travel Mode.
+      openFlowFromMismatch(await startStillTraveling(), "traveling")
+    } catch (error) {
+      // Nothing was started: the prompt stays open to try again.
+      console.error("[identity-verification] could not open the flow", error)
     } finally {
       setLocationMismatchBusy(false)
     }
   }, [openFlowFromMismatch])
 
+  // "I'm still traveling" for an active traveler: Travel Mode and the verified home
+  // country stay exactly as they are and the prompt closes (the duration is not asked
+  // again here). The only write is dropping a home-country claim that has no live
+  // session (an abandoned or expired Didit session), which the backend refuses for a
+  // running or in-review one. The login is marked only after that has succeeded.
+  const handleTravelerStillTraveling = useCallback(async () => {
+    setLocationMismatchBusy(true)
+    try {
+      if (travelSummary?.pendingHomeCountry) {
+        const { IdentityVerificationAPI } = await import(
+          "@/service/http/identity-verification"
+        )
+        await IdentityVerificationAPI.recordTravelClassification(
+          "temporarily_traveling"
+        )
+      }
+      markTravelerPromptCompleted(travelSummary?.loginSessionKey ?? null)
+      setTravelerPromptOpen(false)
+    } catch (error) {
+      // Nothing was changed: the prompt stays open to try again.
+      console.error("[identity-verification] could not confirm still traveling", error)
+    } finally {
+      setLocationMismatchBusy(false)
+    }
+  }, [markTravelerPromptCompleted, travelSummary])
+
   const handleChangeHomeCountry = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
-      openFlowFromMismatch(await startChangeHomeCountry())
+      // Saves nothing and marks nothing: the claim is created only by the flow's own
+      // explicit country confirmation, and the backend then keeps the prompt quiet.
+      openFlowFromMismatch(await startChangeHomeCountry(), "change-country")
+    } catch (error) {
+      // Nothing was started: the prompt stays open to try again.
+      console.error("[identity-verification] could not open the flow", error)
     } finally {
       setLocationMismatchBusy(false)
     }
@@ -609,6 +782,29 @@ export default function TalentDashboard() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={pendingModalOpen} onOpenChange={setPendingModalOpen}>
+        <DialogContent className="max-w-[456px] pt-[50px]">
+          <div className="flex items-center justify-center">
+            <div className="size-12 rounded-full border-[8px] inline-flex items-center justify-center text-success-600 border-success-50 bg-success-100">
+              <CheckCircle className="size-6" />
+            </div>
+          </div>
+
+          <h1 className="text-lg text-center text-dark-blue-400 mt-5 font-semibold leading-7">
+            Your verification has been submitted
+          </h1>
+          <DialogDescription className="text-sm text-center text-dark-blue-400 leading-5 mt-2">
+            Once approved, your new location will be confirmed and your profile
+            will be updated. You’ll receive a notification when the verification
+            is complete.
+          </DialogDescription>
+
+          <div className="mt-[50px] grid">
+            <Button onClick={() => setPendingModalOpen(false)}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={cooldownRetryTime !== null}
         onOpenChange={(open) => {
@@ -633,8 +829,14 @@ export default function TalentDashboard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={locationMismatchOpen} onOpenChange={setLocationMismatchOpen}>
-        <DialogContent className="w-[456px]">
+      <Dialog
+        open={locationMismatchOpen || travelerPromptOpen}
+      >
+        <DialogContent
+          className="w-[456px]"
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <div className="flex items-center justify-center">
             <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
               <AlertTriangle className="size-6" />
@@ -651,9 +853,13 @@ export default function TalentDashboard() {
               variant="outlined"
               size="md"
               disabled={locationMismatchBusy}
-              onClick={() => void handleStillTraveling()}
+              onClick={() =>
+                travelerPromptOpen
+                  ? void handleTravelerStillTraveling()
+                  : void handleStillTraveling()
+              }
             >
-              I’m currently traveling
+              I’m still traveling
             </Button>
             <Button
               size="md"
@@ -750,6 +956,39 @@ export default function TalentDashboard() {
           </IconButton>
         </Toast>
 
+        {/* Home country updated — the approved success alert (Figma node 13101-47577): the
+            same markup as the generic success alert, with the map pin and its own copy.
+            It shares this viewport; the generic alert is replaced by it, never stacked. */}
+        <Toast
+          open={homeCountryUpdatedOpen}
+          onOpenChange={setHomeCountryUpdatedOpen}
+          duration={5000}
+          className="relative w-[400px] max-w-full items-start gap-5 space-x-0 rounded-xl border border-gray-100 bg-white p-4 text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)] data-[state=open]:sm:slide-in-from-top-full"
+        >
+          <div className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+            <MarkerPin01 className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1 pt-0.5">
+            <ToastTitle className="text-sm font-semibold leading-5 text-gray-900">
+              {HOME_COUNTRY_UPDATED_ALERT.title}
+            </ToastTitle>
+            <ToastDescription className="text-sm font-normal leading-5 text-gray-600">
+              {HOME_COUNTRY_UPDATED_ALERT.description}
+            </ToastDescription>
+          </div>
+
+          <IconButton
+            className="absolute right-2 top-2 size-9 text-gray-500"
+            size="md"
+            visual="gray"
+            variant="ghost"
+            onClick={() => setHomeCountryUpdatedOpen(false)}
+          >
+            <X className="size-5" />
+          </IconButton>
+        </Toast>
+
         <ToastViewport className="top-5 right-5 left-auto bottom-auto w-auto max-w-[400px] flex-col gap-3 p-0 sm:top-5 sm:right-5 sm:left-auto sm:bottom-auto sm:flex-col md:max-w-[400px]" />
       </ToastProvider>
 
@@ -766,7 +1005,7 @@ export default function TalentDashboard() {
         <IdentityVerificationFlow
           key={flowLaunch.key}
           open={identityFlowOpen}
-          onOpenChange={setIdentityFlowOpen}
+          onOpenChange={handleIdentityFlowOpenChange}
           detectedLocation={detectedLocation}
           initialState={flowLaunch.initialState}
           activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}

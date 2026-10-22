@@ -101,6 +101,16 @@ export class TravelModeAlreadyActiveException extends DomainException {
   }
 }
 
+// A home-country change is unfinished (its Didit session is running or waiting for a
+// decision). Travel Mode is not changed underneath it: the user finishes or abandons
+// that session first.
+export class HomeCountryChangeInProgressException extends DomainException {
+  readonly code = 'HOME_COUNTRY_CHANGE_IN_PROGRESS';
+  constructor(details?: Record<string, unknown>) {
+    super('A home-country change is in progress.', HttpStatus.CONFLICT, details);
+  }
+}
+
 export class InvalidWebhookSignatureException extends DomainException {
   readonly code = 'INVALID_SIGNATURE';
   constructor(details?: Record<string, unknown>) {

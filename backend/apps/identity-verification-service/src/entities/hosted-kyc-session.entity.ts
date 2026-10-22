@@ -9,7 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { IdentityVerificationProfile } from './identity-verification-profile.entity';
-import { HostedKycSessionStatus } from './enums/identity-verification.enums';
+import { HostedKycSessionPurpose, HostedKycSessionStatus } from './enums/identity-verification.enums';
 
 // One row per Didit-hosted Free KYC session. Deliberately stores NO hosted
 // URL (it can carry a session token): the URL is obtained from Didit's own
@@ -45,6 +45,22 @@ export class HostedKycSession {
     default: HostedKycSessionStatus.CREATED,
   })
   status!: HostedKycSessionStatus;
+
+  // Why this session exists. Ordinary identity sessions keep the default.
+  @Column({
+    name: 'purpose',
+    type: 'enum',
+    enum: HostedKycSessionPurpose,
+    enumName: 'hosted_kyc_session_purpose_enum',
+    default: HostedKycSessionPurpose.IDENTITY_VERIFICATION,
+  })
+  purpose!: HostedKycSessionPurpose;
+
+  // HOME_COUNTRY_CHANGE only: the country this session was started for, copied
+  // from the profile's pending home country at creation. An approval promotes
+  // exactly this value, and only while the profile still points at this session.
+  @Column({ name: 'pending_home_country', type: 'char', length: 2, nullable: true })
+  pendingHomeCountry!: string | null;
 
   @Column({ name: 'last_event_timestamp', type: 'bigint', nullable: true })
   lastEventTimestamp!: string | null;
