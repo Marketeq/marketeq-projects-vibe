@@ -1,0 +1,304 @@
+// frontend/src/lib/api/travel-check-in.ts
+//
+// The periodic "Still traveling?" check-in (PMCM-641). The backend decides everything:
+// GET /me says whether a check-in is due now (travelReminderDue), which occurrence it is
+// (travelReminderAvailableAt) and how many duration answers were saved in this Travel Mode
+// cycle (travelCheckInCount, absent = 0). A check-in stays due until a saved duration answer
+// or a started home-country flow resolves it, so showing, closing, skipping or refreshing it
+// changes nothing on the server. This file only
+//   1. picks the copy (first time vs asked before),
+//   2. decides when the modal opens, and keeps a closed one from reopening in a render loop,
+//   3. says when to look at /me again (one timer, no polling) and how to answer, and
+//   4. keeps the check-in ahead of the traveler location prompt and the small Travel Mode alert.
+// No UI lives here and no reminder rule (days, durations, expiry) is re-derived.
+import type { IdentityVerificationSummaryView } from "./identity-verification-state"
+import {
+  type DeclaredDurationValue,
+  TRAVEL_DURATION_TO_BACKEND,
+} from "./travel-mode-backend"
+import {
+  MAX_EARLY_RETRIES,
+  MAX_TIMER_MS,
+  MIN_RETRY_DELAY_MS,
+} from "./travel-reminder"
+
+// --- copy -----------------------------------------------------------------
+
+export const CHECK_IN_COPY = {
+  // The large "Still traveling?" modal (Figma node 13101-46785).
+  prompt: {
+    title: "Still traveling?",
+    body: "Please confirm whether you’re still traveling.",
+    stillTraveling: "I’m still traveling",
+    updateHomeCountry: "Update my home country",
+  },
+  // The duration question the first time it is asked: the existing Storybook copy.
+  firstDuration: {
+    title: "How long are you traveling?",
+    body: "You’re marked as temporarily traveling. Some features may be limited until you’re back in your home country.",
+  },
+  // The second and later time (Figma node 13101-46818).
+  laterDuration: {
+    title: "How much longer will you be traveling?",
+    body: "We’ve asked before, answering helps reduce these reminders.",
+  },
+  durationAlert: "We’ll remind you later to check if your status has changed.",
+  skip: "Skip",
+} as const
+
+/** The four duration answers, in display order. "Not sure" is an answer like the others. */
+export const CHECK_IN_DURATION_LABELS = [
+  "A few days",
+  "1–2 weeks",
+  "More than 2 weeks",
+  "Not sure",
+] as const
+export type CheckInDurationLabel = (typeof CHECK_IN_DURATION_LABELS)[number]
+
+/** Saved answers in this cycle; the backend omits the key while it is 0. */
+export function checkInAnswerCount(
+  summary: Pick<IdentityVerificationSummaryView, "travelCheckInCount"> | null
+): number {
+  const n = summary?.travelCheckInCount
+  return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : 0
+}
+
+/** First-time copy for 0 answers, the "asked before" copy from the first saved answer on. */
+export function durationCopyFor(answerCount: number) {
+  return answerCount >= 1
+    ? CHECK_IN_COPY.laterDuration
+    : CHECK_IN_COPY.firstDuration
+}
+
+// --- which occurrence is due ----------------------------------------------
+
+type DueFields = Pick<
+  IdentityVerificationSummaryView,
+  "travelReminderDue" | "travelReminderAvailableAt" | "travelModeExpired"
+>
+
+/**
+ * The due occurrence (travelReminderAvailableAt exactly as /me sent it), or null. Due means
+ * the backend said so, with a usable time, for a Travel Mode that has not ended. Anything
+ * unknown or malformed is "not due".
+ */
+export function dueCheckInOccurrence(summary: DueFields | null): string | null {
+  if (!summary) return null
+  if (summary.travelReminderDue !== true) return null
+  if (summary.travelModeExpired === true) return null
+  const at = summary.travelReminderAvailableAt
+  return typeof at === "string" && Number.isFinite(Date.parse(at)) ? at : null
+}
+
+// --- closing is not answering ---------------------------------------------
+
+/**
+ * "Closed in this page" memory, scoped to ONE account and ONE login: a dismissal made under
+ * another scope never hides this one. It exists only to stop a closed modal reopening on the
+ * very next render; every real re-check (load, a visible tab, the timer) calls clear(), and
+ * the occurrence, still due on the server, opens again. Memory only, nothing is persisted.
+ */
+export interface CheckInDismissals {
+  dismiss(scope: string, occurrence: string): void
+  isDismissed(scope: string, occurrence: string): boolean
+  clear(): void
+}
+
+export function createCheckInDismissals(): CheckInDismissals {
+  const dismissed = new Set<string>()
+  const key = (scope: string, occurrence: string) =>
+    JSON.stringify([scope, occurrence])
+  return {
+    dismiss: (scope, occurrence) => void dismissed.add(key(scope, occurrence)),
+    isDismissed: (scope, occurrence) => dismissed.has(key(scope, occurrence)),
+    clear: () => dismissed.clear(),
+  }
+}
+
+/** One account on one login: the account id and the opaque per-login key from /me. */
+export function checkInScope(
+  userId: string | null | undefined,
+  loginSessionKey: string | null
+): string {
+  return JSON.stringify([userId ?? "", loginSessionKey ?? ""])
+}
+
+/**
+ * The occurrence the modal should be showing right now, or null for none. A due occurrence
+ * that was closed in this page is not offered again until a re-check clears the dismissals;
+ * `busy` (another verification dialog owns the screen) holds it back without dismissing it.
+ */
+export function checkInToShow(input: {
+  summary: DueFields | null
+  scope: string
+  dismissals: CheckInDismissals
+  busy?: boolean
+}): string | null {
+  const occurrence = dueCheckInOccurrence(input.summary)
+  if (!occurrence || input.busy) return null
+  return input.dismissals.isDismissed(input.scope, occurrence)
+    ? null
+    : occurrence
+}
+
+/**
+ * Whether a modal that is open for `open` is stale against a fresh /me read: the occurrence
+ * is no longer the due one (answered or resolved elsewhere, Travel Mode ended, or replaced).
+ */
+export function isCheckInStale(
+  open: string,
+  summary: DueFields | null
+): boolean {
+  return dueCheckInOccurrence(summary) !== open
+}
+
+// --- priority ---------------------------------------------------------------
+
+/**
+ * The check-in wins while it is due or open, and only then: the traveler location prompt is
+ * not opened, and the small Travel Mode alert is not shown. A closed (dismissed) check-in is
+ * still due, so it keeps holding them back until it is answered; once it is resolved this
+ * is false and a pending mismatch prompt is evaluated again.
+ */
+export function checkInHasPriority(
+  summary: DueFields | null,
+  open: boolean
+): boolean {
+  return open || dueCheckInOccurrence(summary) !== null
+}
+
+// --- when to look at /me again ---------------------------------------------
+
+/** A tab that becomes visible re-checks, but not while a read is already in flight. */
+export function shouldRecheckOnVisibility(input: {
+  visibilityState: string
+  inFlight: boolean
+  lastCheckAt: number | null
+  now: number
+  minGapMs?: number
+}): boolean {
+  if (input.visibilityState !== "visible" || input.inFlight) return false
+  const gap = input.minGapMs ?? 2_000
+  return input.lastCheckAt === null || input.now - input.lastCheckAt >= gap
+}
+
+export interface CheckInTimerDeps {
+  /** Called when the next occurrence is expected to be due: re-read /me. */
+  onFire: () => void
+  now?: () => number
+  setTimer?: (callback: () => void, ms: number) => unknown
+  clearTimer?: (handle: unknown) => void
+  retries?: Map<string, number>
+}
+
+/**
+ * ONE timer for the next occurrence (never a poll). A due occurrence needs none (the modal
+ * handles it). A future one is waited for in steps no longer than setTimeout allows; when the
+ * browser clock thinks it has passed but /me still says "not yet" (skew), it waits at least
+ * MIN_RETRY_DELAY_MS and gives up on that occurrence after MAX_EARLY_RETRIES, so it can never
+ * loop. A reload tries again. update() replaces the timer, dispose() clears it.
+ */
+export function createCheckInTimer(deps: CheckInTimerDeps) {
+  const now = deps.now ?? (() => Date.now())
+  const setTimer = deps.setTimer ?? ((cb, ms) => setTimeout(cb, ms))
+  const clearTimer =
+    deps.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>))
+  const retries = deps.retries ?? new Map<string, number>()
+  let timer: unknown = null
+  let disposed = false
+
+  const clear = () => {
+    if (timer !== null) {
+      clearTimer(timer)
+      timer = null
+    }
+  }
+
+  const arm = (slot: string, at: number) => {
+    const tries = retries.get(slot) ?? 0
+    const delay = Math.max(at - now(), tries > 0 ? MIN_RETRY_DELAY_MS : 0)
+    const wait = Math.min(delay, MAX_TIMER_MS)
+    timer = setTimer(() => {
+      timer = null
+      if (disposed) return
+      if (delay > MAX_TIMER_MS) {
+        arm(slot, at) // still far away: keep waiting in steps
+        return
+      }
+      retries.set(slot, (retries.get(slot) ?? 0) + 1)
+      deps.onFire()
+    }, wait)
+  }
+
+  return {
+    update(summary: DueFields | null): void {
+      clear()
+      if (disposed || !summary) return
+      if (dueCheckInOccurrence(summary) !== null) return // due now: the modal owns it
+      const slot = summary.travelReminderAvailableAt
+      const at = slot ? Date.parse(slot) : Number.NaN
+      if (!slot || !Number.isFinite(at) || summary.travelModeExpired === true)
+        return
+      if ((retries.get(slot) ?? 0) >= MAX_EARLY_RETRIES) return
+      arm(slot, at)
+    },
+    dispose(): void {
+      disposed = true
+      clear()
+    },
+  }
+}
+
+// --- the answer -------------------------------------------------------------
+
+export type CheckInAnswerOutcome =
+  /** The server saved the answer. */
+  | "saved"
+  /** Another tab answered it, or Travel Mode ended: re-read /me and close the modal. */
+  | "stale"
+  /** A home-country change is running or in review: re-read /me and follow its state. */
+  | "in_progress"
+  /** Nothing was saved (network or server error): keep the screen open to try again. */
+  | "failed"
+
+export interface CheckInAnswerDeps {
+  /** POST /v1/identity-verification/travel-duration/update */
+  post: (duration: DeclaredDurationValue, checkInAt: string) => Promise<unknown>
+}
+
+function errorCode(error: unknown): string | null {
+  const data = (
+    error as {
+      response?: { data?: { code?: unknown; error?: { code?: unknown } } }
+    } | null
+  )?.response?.data
+  const code = data?.code ?? data?.error?.code
+  return typeof code === "string" ? code : null
+}
+
+/**
+ * Submits ONE duration answer for the occurrence that was captured when the modal opened
+ * (`checkInAt` is passed in, never re-read here). An unknown label or a missing occurrence
+ * sends nothing. Skip, X/close, a refresh or navigating away never reach this function.
+ */
+export async function answerCheckIn(
+  deps: CheckInAnswerDeps,
+  label: string,
+  checkInAt: string | null
+): Promise<CheckInAnswerOutcome> {
+  const duration = TRAVEL_DURATION_TO_BACKEND[label]
+  if (!duration || !checkInAt) return "failed"
+  try {
+    await deps.post(duration, checkInAt)
+    return "saved"
+  } catch (error) {
+    const code = errorCode(error)
+    if (
+      code === "TRAVEL_CHECK_IN_ALREADY_ANSWERED" ||
+      code === "TRAVEL_MODE_NOT_ACTIVE"
+    )
+      return "stale"
+    if (code === "HOME_COUNTRY_CHANGE_IN_PROGRESS") return "in_progress"
+    return "failed"
+  }
+}

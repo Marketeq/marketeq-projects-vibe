@@ -470,18 +470,8 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
   it("declines and retries reuse the existing Verify My Account and cooldown screens: nothing new for them", () => {
     assert.ok(page.includes("You’ve used all three attempts"))
     assert.ok(page.includes("handleVerifyMyAccount"))
-    // Comments are ignored: this is about copy the user can see.
-    const rendered = page
-      .split("\n")
-      .filter((line) => !line.trim().startsWith("//"))
-      .join("\n")
-    for (const forbidden of [
-      "Still traveling?",
-      "How much longer will you be traveling?",
-      "We’ve asked before",
-    ]) {
-      assert.ok(!rendered.includes(forbidden), forbidden)
-    }
+    // The "Still traveling?" check-in (PMCM-641) is a separate feature: its copy lives in
+    // travel-check-in.ts and it adds no decline or retry screen.
   })
 })
 
@@ -506,10 +496,11 @@ describe("SOURCE-PINNED: the client, and the components that must stay read-only
     assert.ok(flow.includes("Yes, this is my home country"))
   })
 
-  it("no Marketeq capture, duration re-ask or Didit loading screen was added to the dashboard", () => {
+  it("no Marketeq capture or Didit loading screen was added to the dashboard", () => {
+    // The PMCM-641 check-in duration question is composed from travel-check-in.ts copy; the
+    // dashboard still has no document capture and no "taking you to Didit" screen.
     for (const forbidden of [
       "Scan your Passport",
-      "How long are you traveling?",
       "Taking you to",
       "Redirecting",
     ]) {

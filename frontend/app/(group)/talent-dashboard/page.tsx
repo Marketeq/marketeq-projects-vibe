@@ -13,10 +13,12 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   CheckCircle,
   ChevronRight,
   MarkerPin01,
+  Info,
   Plane,
   RefreshCw,
   X,
@@ -46,8 +48,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogTitle,
   DialogTrigger,
   IconButton,
+  Label,
+  RadioGroup,
+  RadioGroupItem,
   ScrollArea,
   ScrollBar,
   Toast,
@@ -91,9 +97,19 @@ import {
   type DetectedLocation,
 } from "@/src/lib/api/detected-location"
 import {
-  claimTravelReminder,
-  createTravelReminderScheduler,
-} from "@/src/lib/api/travel-reminder"
+  answerCheckIn,
+  CHECK_IN_COPY,
+  CHECK_IN_DURATION_LABELS,
+  checkInAnswerCount,
+  checkInHasPriority,
+  checkInScope,
+  checkInToShow,
+  createCheckInDismissals,
+  createCheckInTimer,
+  durationCopyFor,
+  isCheckInStale,
+  shouldRecheckOnVisibility,
+} from "@/src/lib/api/travel-check-in"
 import {
   dismissTravelExpiryPopup,
   shouldShowTravelExpiryPopup,
@@ -238,6 +254,43 @@ export default function TalentDashboard() {
   )
   // Tells a user's close of the popup (X, Escape, swipe) from the toast closing itself.
   const travelPopupCloseGuardRef = useRef(createTravelPopupCloseGuard())
+
+  // "Still traveling?" check-in (PMCM-641). The backend decides when it is due (/me:
+  // travelReminderDue, travelReminderAvailableAt) and keeps it due until a duration answer
+  // is saved or the home-country update flow is started. `occurrence` is the
+  // travelReminderAvailableAt captured when the modal opened: it is what the answer sends
+  // as checkInAt, and it is never re-read at submit. Closing, skipping, a refresh or
+  // navigating away send nothing.
+  const [checkIn, setCheckIn] = useState<{
+    occurrence: string
+    answerCount: number
+    phase: "prompt" | "duration"
+  } | null>(null)
+  const [checkInSelected, setCheckInSelected] = useState<string | undefined>(
+    undefined
+  )
+  const [checkInSaving, setCheckInSaving] = useState(false)
+  const [checkInStarting, setCheckInStarting] = useState(false)
+  const checkInSavingRef = useRef(false)
+  // Closed in this page: memory only, scoped to this account and login, cleared by every
+  // real re-check (load, a visible tab, the timer) so the still-due occurrence returns.
+  const checkInDismissalsRef = useRef(createCheckInDismissals())
+  const checkInReadRef = useRef<{ inFlight: boolean; lastAt: number | null }>({
+    inFlight: false,
+    lastAt: null,
+  })
+  // Shared across timer instances so a skewed clock can never loop (see createCheckInTimer).
+  const checkInRetriesRef = useRef(new Map<string, number>())
+  const checkInScopeKey = checkInScope(
+    user?.id,
+    travelSummary?.loginSessionKey ?? null
+  )
+  // The check-in wins while it is due or open: the traveler location prompt and the small
+  // Travel Mode alert wait, and come back once it is resolved.
+  const checkInHasPriorityNow = checkInHasPriority(
+    travelSummary,
+    checkIn !== null
+  )
 
 
   const runIdentityVerificationCheck = useCallback(async () => {
@@ -513,6 +566,11 @@ export default function TalentDashboard() {
   // applies; the once-per-login rule is the loginSessionKey marker, written when the
   // user answers it (not when it opens), so an unanswered prompt returns after a refresh.
   useEffect(() => {
+    // A due or open check-in goes first; this prompt is evaluated again when it is resolved.
+    if (checkInHasPriorityNow) {
+      setTravelerPromptOpen(false)
+      return
+    }
     if (
       !shouldOpenTravelerPrompt({
         summary: travelSummary,
@@ -523,30 +581,102 @@ export default function TalentDashboard() {
       return
     }
     setTravelerPromptOpen(true)
-  }, [travelSummary])
+  }, [travelSummary, checkInHasPriorityNow])
 
-  // Travel Mode day-3 / day-7 reminders. If /me says one is due it is CLAIMED first and
-  // shown only when the backend answers { claimed: true } (so of several tabs only the
-  // winner shows it); if it is in the future one timer is set for that time. No polling.
-  // The timer is replaced whenever the backend answer changes and cleared on unmount;
-  // after a definitive claim answer /me is re-read for the next occurrence.
+  // The check-in. /me alone drives it: travelReminderDue opens the modal, no claim.
+  // The summary is read on dashboard load/login (runIdentityVerificationCheck), when the tab
+  // becomes visible, and when the one timer for travelReminderAvailableAt fires. A read
+  // that clears the dismissals is a real re-check; the occurrence, still due on the
+  // server, then opens again. Without the account switch below, a closed modal never
+  // reopens in a render loop.
+  const readTravelSummary = useCallback(async (clearDismissals: boolean) => {
+    const next = await fetchIdentityVerificationSummary()
+    if (!next) return null
+    if (clearDismissals) checkInDismissalsRef.current.clear()
+    setTravelSummary(next)
+    return next
+  }, [])
+  const recheckCheckIn = useCallback(async () => {
+    const read = checkInReadRef.current
+    if (read.inFlight) return
+    read.inFlight = true
+    read.lastAt = Date.now()
+    try {
+      await readTravelSummary(true)
+    } finally {
+      read.inFlight = false
+    }
+  }, [readTravelSummary])
+
+  // Opens the modal for the due occurrence, and closes one that /me no longer calls due
+  // (answered in another tab, Travel Mode ended, replaced by another occurrence).
   useEffect(() => {
-    if (!travelSummary) return
-    const scheduler = createTravelReminderScheduler({
-      claim: () => claimTravelReminder(),
-      onClaimed: () => setTravelPopup("reminder"),
-      onSettled: () => {
-        void fetchIdentityVerificationSummary().then((next) => {
-          if (next) setTravelSummary(next)
+    const next = checkInToShow({
+      summary: travelSummary,
+      scope: checkInScopeKey,
+      dismissals: checkInDismissalsRef.current,
+      busy: identityFlowOpen,
+    })
+    setCheckIn((current) => {
+      if (current && !isCheckInStale(current.occurrence, travelSummary)) {
+        return current
+      }
+      if (!next) return null
+      return {
+        occurrence: next,
+        answerCount: checkInAnswerCount(travelSummary),
+        phase: "prompt",
+      }
+    })
+  }, [travelSummary, checkInScopeKey, identityFlowOpen])
+
+  useEffect(() => {
+    setCheckInSelected(undefined)
+  }, [checkIn?.occurrence, checkIn?.phase])
+
+  // One timer for the next occurrence; no polling.
+  useEffect(() => {
+    const timer = createCheckInTimer({
+      onFire: () => void recheckCheckIn(),
+      retries: checkInRetriesRef.current,
+    })
+    timer.update(travelSummary)
+    return () => timer.dispose()
+  }, [travelSummary, recheckCheckIn])
+
+  // A tab that becomes visible looks again (an answer in another tab, a new occurrence).
+  useEffect(() => {
+    if (!user || resolveDashboardRole(user) !== ROLE.TALENT) return
+    const onVisible = () => {
+      if (!identityStatusCheckStartedRef.current) return
+      if (
+        !shouldRecheckOnVisibility({
+          visibilityState: document.visibilityState,
+          inFlight: checkInReadRef.current.inFlight,
+          lastCheckAt: checkInReadRef.current.lastAt,
+          now: Date.now(),
         })
-      },
-    })
-    scheduler.update({
-      due: travelSummary.travelReminderDue,
-      availableAt: travelSummary.travelReminderAvailableAt,
-    })
-    return () => scheduler.dispose()
-  }, [travelSummary])
+      ) {
+        return
+      }
+      void recheckCheckIn()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [user, recheckCheckIn])
+
+  // Another account in the same mounted page never inherits this one's check-in state.
+  const checkInUserRef = useRef<string | undefined>(user?.id)
+  useEffect(() => {
+    if (checkInUserRef.current === user?.id) return
+    const previous = checkInUserRef.current
+    checkInUserRef.current = user?.id
+    if (previous === undefined) return // the first user to load, not a switch
+    checkInDismissalsRef.current.clear()
+    checkInRetriesRef.current.clear()
+    setCheckIn(null)
+    setTravelSummary(null)
+  }, [user?.id])
 
   // Closing the popup (X, swipe or Escape). A closed reminder is spent: its occurrence
   // was claimed when it opened. A closed expiry popup is remembered for this login only.
@@ -701,6 +831,91 @@ export default function TalentDashboard() {
             instruction: "Please disable your VPN and proxy to continue",
           }
 
+  // Skip, X, Escape or a click outside: not an answer. Nothing is sent and the occurrence
+  // stays due; it is only kept from reopening until the next real re-check.
+  const handleCheckInDismiss = useCallback(() => {
+    if (checkIn) {
+      checkInDismissalsRef.current.dismiss(checkInScopeKey, checkIn.occurrence)
+    }
+    setCheckIn(null)
+  }, [checkIn, checkInScopeKey])
+
+  // "I'm still traveling": ask the duration question (first-time or "asked before" copy).
+  const handleCheckInStillTraveling = useCallback(() => {
+    setCheckIn((current) => (current ? { ...current, phase: "duration" } : current))
+  }, [])
+
+  const handleCheckInBack = useCallback(() => {
+    setCheckIn((current) => (current ? { ...current, phase: "prompt" } : current))
+  }, [])
+
+  // A duration choice IS the answer ("Not sure" included): it is sent once, with the
+  // occurrence captured when the modal opened.
+  const handleCheckInAnswer = useCallback(
+    async (label: string) => {
+      if (!checkIn || checkInSavingRef.current) return
+      const occurrence = checkIn.occurrence
+      checkInSavingRef.current = true
+      setCheckInSaving(true)
+      setCheckInSelected(label)
+      try {
+        const outcome = await answerCheckIn(
+          {
+            post: async (duration, checkInAt) => {
+              const { IdentityVerificationAPI } = await import(
+                "@/service/http/identity-verification"
+              )
+              return IdentityVerificationAPI.updateActiveTravelDuration(
+                duration,
+                checkInAt
+              )
+            },
+          },
+          label,
+          occurrence
+        )
+        if (outcome === "failed") {
+          // Nothing was saved: the screen stays open to try again.
+          console.error("[identity-verification] could not save the check-in answer")
+          setCheckInSelected(undefined)
+          return
+        }
+        setCheckIn(null)
+        if (outcome === "in_progress") {
+          // A home-country change owns the account now: follow the state /me returns.
+          await runIdentityVerificationCheck()
+        } else {
+          // Saved, or another tab already answered it: read the real state.
+          await readTravelSummary(false)
+        }
+      } finally {
+        checkInSavingRef.current = false
+        setCheckInSaving(false)
+      }
+    },
+    [checkIn, readTravelSummary, runIdentityVerificationCheck]
+  )
+
+  // "Update my home country" enters the existing home-country flow: the current location
+  // (city, region, country and map), "Is this your home country?", then Didit. Starting
+  // that flow is what resolves the check-in on the server; until then it stays due, so it
+  // is only kept from reopening while the flow is on screen.
+  const handleCheckInUpdateHomeCountry = useCallback(async () => {
+    if (!checkIn || checkInStarting) return
+    setCheckInStarting(true)
+    try {
+      const launch = await startChangeHomeCountry()
+      checkInDismissalsRef.current.dismiss(checkInScopeKey, checkIn.occurrence)
+      setCheckIn(null)
+      openFlowFromMismatch(launch, "change-country")
+    } catch (error) {
+      // Nothing was started: the modal stays open to try again.
+      console.error("[identity-verification] could not open the flow", error)
+    } finally {
+      setCheckInStarting(false)
+    }
+  }, [checkIn, checkInStarting, checkInScopeKey, openFlowFromMismatch])
+
   return (
     <>
       {showSecurityModal && (
@@ -829,48 +1044,175 @@ export default function TalentDashboard() {
         </DialogContent>
       </Dialog>
 
+      {/* "Still traveling?" check-in (Figma 13101-46785) and its duration question
+          (13101-46818, "asked before" copy from the second answer on). Built from the
+          design system's Dialog, Button, RadioGroup and Alert only. Closing is not an
+          answer; a duration choice is. */}
       <Dialog
-        open={locationMismatchOpen || travelerPromptOpen}
+        open={checkIn !== null}
+        onOpenChange={(open) => {
+          if (!open) handleCheckInDismiss()
+        }}
       >
-        <DialogContent
-          className="w-[456px]"
-          onInteractOutside={(event) => event.preventDefault()}
-          onEscapeKeyDown={(event) => event.preventDefault()}
-        >
-          <div className="flex items-center justify-center">
-            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
-              <AlertTriangle className="size-6" />
+        {checkIn?.phase === "prompt" && (
+          <DialogContent className="w-[405px] pt-[50px]">
+            <div className="flex items-center justify-center">
+              <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+                <AlertTriangle className="size-6" />
+              </div>
             </div>
-          </div>
 
-          <DialogDescription className="text-sm mt-5 text-center leading-5 text-dark-blue-400">
-            You’re logging in from a location outside your usual one. Just
-            checking if you’re still away.
-          </DialogDescription>
+            <div className="mt-5 flex flex-col items-center gap-y-2">
+              <DialogTitle className="max-w-[317px] text-center text-lg font-semibold leading-7 text-dark-blue-400">
+                {CHECK_IN_COPY.prompt.title}
+              </DialogTitle>
+              <DialogDescription className="text-sm text-center leading-5 text-dark-blue-400">
+                {CHECK_IN_COPY.prompt.body}
+              </DialogDescription>
+            </div>
 
-          <div className="mt-[50px] grid grid-cols-2 gap-x-3">
-            <Button
-              variant="outlined"
-              size="md"
-              disabled={locationMismatchBusy}
-              onClick={() =>
-                travelerPromptOpen
-                  ? void handleTravelerStillTraveling()
-                  : void handleStillTraveling()
-              }
+            <div className="mt-[50px] flex items-center justify-center gap-x-3">
+              <Button
+                variant="outlined"
+                visual="gray"
+                size="md"
+                disabled={checkInStarting}
+                onClick={handleCheckInStillTraveling}
+              >
+                {CHECK_IN_COPY.prompt.stillTraveling}
+              </Button>
+              <Button
+                variant="light"
+                size="md"
+                disabled={checkInStarting}
+                onClick={() => void handleCheckInUpdateHomeCountry()}
+              >
+                {CHECK_IN_COPY.prompt.updateHomeCountry}
+              </Button>
+            </div>
+          </DialogContent>
+        )}
+
+        {checkIn?.phase === "duration" && (
+          <DialogContent className="max-w-[650px]">
+            <div className="flex items-start justify-between">
+              <IconButton
+                size="md"
+                visual="gray"
+                variant="ghost"
+                disabled={checkInSaving}
+                onClick={handleCheckInBack}
+              >
+                <ArrowLeft className="size-5" />
+              </IconButton>
+
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={handleCheckInDismiss}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </div>
+
+            <div className="mt-3 max-w-[554px] pt-[9px]">
+              <DialogTitle className="text-lg font-medium leading-5 text-dark-blue-400">
+                {durationCopyFor(checkIn.answerCount).title}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-light leading-5 text-dark-blue-400">
+                {durationCopyFor(checkIn.answerCount).body}
+              </DialogDescription>
+            </div>
+
+            <RadioGroup
+              className="mt-6 space-y-2.5"
+              value={checkInSelected}
+              disabled={checkInSaving}
+              onValueChange={(label) => void handleCheckInAnswer(label)}
             >
-              I’m still traveling
-            </Button>
-            <Button
-              size="md"
-              disabled={locationMismatchBusy}
-              onClick={() => void handleChangeHomeCountry()}
-            >
-              Change my home country
-            </Button>
-          </div>
-        </DialogContent>
+              {CHECK_IN_DURATION_LABELS.map((label, index) => (
+                <div key={label} className="inline-flex items-center gap-x-3">
+                  <RadioGroupItem value={label} id={`check-in-duration-${index}`} />
+                  <Label
+                    htmlFor={`check-in-duration-${index}`}
+                    className="text-xs font-medium text-dark-blue-400"
+                  >
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+
+            <Alert className="mt-6">
+              <AlertIcon>
+                <Info className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>{CHECK_IN_COPY.durationAlert}</AlertTitle>
+              </AlertContent>
+            </Alert>
+
+            <div className="mt-6 grid">
+              <Button
+                variant="outlined"
+                visual="gray"
+                disabled={checkInSaving}
+                onClick={handleCheckInDismiss}
+              >
+                {CHECK_IN_COPY.skip}
+              </Button>
+            </div>
+          </DialogContent>
+        )}
       </Dialog>
+
+      {/* Not rendered while the check-in is due or open: it goes first. */}
+      {!checkInHasPriorityNow && (
+        <Dialog
+          open={locationMismatchOpen || travelerPromptOpen}
+        >
+          <DialogContent
+            className="w-[456px]"
+            onInteractOutside={(event) => event.preventDefault()}
+            onEscapeKeyDown={(event) => event.preventDefault()}
+          >
+            <div className="flex items-center justify-center">
+              <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+                <AlertTriangle className="size-6" />
+              </div>
+            </div>
+
+            <DialogDescription className="text-sm mt-5 text-center leading-5 text-dark-blue-400">
+              You’re logging in from a location outside your usual one. Just
+              checking if you’re still away.
+            </DialogDescription>
+
+            <div className="mt-[50px] grid grid-cols-2 gap-x-3">
+              <Button
+                variant="outlined"
+                size="md"
+                disabled={locationMismatchBusy}
+                onClick={() =>
+                  travelerPromptOpen
+                    ? void handleTravelerStillTraveling()
+                    : void handleStillTraveling()
+                }
+              >
+                I’m still traveling
+              </Button>
+              <Button
+                size="md"
+                disabled={locationMismatchBusy}
+                onClick={() => void handleChangeHomeCountry()}
+              >
+                Change my home country
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <ToastProvider duration={5000} swipeDirection="right">
         <Toast
@@ -910,7 +1252,7 @@ export default function TalentDashboard() {
           carries an action, and for the expiry popup a close is what is remembered. */}
       <ToastProvider swipeDirection="right">
         <Toast
-          open={travelPopup !== null}
+          open={travelPopup !== null && !checkInHasPriorityNow}
           onOpenChange={(open) => {
             // Only a user's close counts; the toast closing itself is ignored.
             if (travelPopupCloseGuardRef.current.shouldClose(open)) {
