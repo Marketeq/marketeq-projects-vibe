@@ -105,6 +105,7 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
       { resolve: locationResolve } as any,
       {} as any,
       events as any,
+      {} as any,
     );
     jest
       .spyOn((service as any).logger, 'warn')
@@ -377,7 +378,7 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
     it('resolved by starting the home-country flow (the resolved-up-to time passes it): the next occurrence is day 7', () => {
       build();
       row.lastTravelReminderSentAt = at(3, 5 * MINUTE);
-      expect(schedule(at(3, 6 * MINUTE))).toEqual({
+      expect(schedule(at(3, 6 * MINUTE).getTime())).toEqual({
         due: false,
         availableAt: at(7),
       });

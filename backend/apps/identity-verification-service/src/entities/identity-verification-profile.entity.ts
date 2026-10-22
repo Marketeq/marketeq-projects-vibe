@@ -89,11 +89,7 @@ export class IdentityVerificationProfile {
   // The time up to which Travel Mode check-ins are RESOLVED (the column name predates this).
   // Written only by a saved duration answer (which clears it) or by starting the
   // home-country update flow; showing, closing or refreshing a check-in never moves it.
-  @Column({
-    name: 'last_travel_reminder_sent_at',
-    type: 'timestamptz',
-    nullable: true,
-  })
+  @Column({ name: 'last_travel_reminder_sent_at', type: 'timestamptz', nullable: true })
   lastTravelReminderSentAt!: Date | null;
 
   @Column({ name: 'next_travel_reminder_at', type: 'timestamptz', nullable: true })

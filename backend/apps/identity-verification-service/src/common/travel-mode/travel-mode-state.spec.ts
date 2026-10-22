@@ -39,144 +39,28 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
 
   describe('complete state table', () => {
     // [label, fields, clock, expected state, blocks a new session]
-    const table: Array<
-      [string, TravelModeFields, number, TravelModeState, boolean]
-    > = [
+    const table: Array<[string, TravelModeFields, number, TravelModeState, boolean]> = [
       ['no travel data at all', fields(), ENDS_A_FEW, 'none', false],
-      [
-        'permanently relocated alone',
-        fields({ travelClassification: RELOCATED }),
-        ENDS_A_FEW,
-        'none',
-        false,
-      ],
-      [
-        'pending duration: traveling, flag off, no activation',
-        fields({ travelClassification: TRAVELING }),
-        ENDS_A_FEW,
-        'pending',
-        true,
-      ],
-      [
-        'pending duration: traveling with only a duration, no activation time',
-        fields({
-          travelClassification: TRAVELING,
-          declaredDuration: DeclaredDuration.NOT_SURE,
-        }),
-        ENDS_A_FEW,
-        'pending',
-        true,
-      ],
-      [
-        'pending duration: traveling with only an activation time, no duration',
-        fields({
-          travelClassification: TRAVELING,
-          travelModeActivatedAt: ACTIVATED,
-        }),
-        ENDS_A_FEW,
-        'pending',
-        true,
-      ],
+      ['permanently relocated alone', fields({ travelClassification: RELOCATED }), ENDS_A_FEW, 'none', false],
+      ['pending duration: traveling, flag off, no activation', fields({ travelClassification: TRAVELING }), ENDS_A_FEW, 'pending', true],
+      ['pending duration: traveling with only a duration, no activation time', fields({ travelClassification: TRAVELING, declaredDuration: DeclaredDuration.NOT_SURE }), ENDS_A_FEW, 'pending', true],
+      ['pending duration: traveling with only an activation time, no duration', fields({ travelClassification: TRAVELING, travelModeActivatedAt: ACTIVATED }), ENDS_A_FEW, 'pending', true],
       ['active, 1 ms before the end', valid(), ENDS_A_FEW - 1, 'active', true],
       ['expired, exactly at the end', valid(), ENDS_A_FEW, 'expired', false],
-      [
-        'expired, 1 ms after the end',
-        valid(),
-        ENDS_A_FEW + 1,
-        'expired',
-        false,
-      ],
-      [
-        'expired with the raw flag still true',
-        valid({ travelModeActive: true }),
-        ENDS_A_FEW + DAY_MS,
-        'expired',
-        false,
-      ],
-      [
-        'expired with the raw flag already false',
-        valid({ travelModeActive: false }),
-        ENDS_A_FEW + DAY_MS,
-        'expired',
-        false,
-      ],
-      [
-        'expired, classification null',
-        valid({ travelClassification: null }),
-        ENDS_A_FEW,
-        'expired',
-        false,
-      ],
-      [
-        'active, classification null (relocation never declared)',
-        valid({ travelClassification: null }),
-        ENDS_A_FEW - 1,
-        'active',
-        true,
-      ],
-      [
-        'active, classification permanently relocated',
-        valid({ travelClassification: RELOCATED }),
-        ENDS_A_FEW - 1,
-        'active',
-        true,
-      ],
-      [
-        'invalid: raw active, no activation, no duration, classification null',
-        fields({ travelModeActive: true }),
-        ENDS_A_FEW,
-        'invalid',
-        false,
-      ],
-      [
-        'invalid: raw active, classification permanently relocated',
-        fields({ travelModeActive: true, travelClassification: RELOCATED }),
-        ENDS_A_FEW,
-        'invalid',
-        false,
-      ],
-      [
-        'invalid: raw active, classification traveling',
-        fields({ travelModeActive: true, travelClassification: TRAVELING }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
-      [
-        'invalid: raw active, missing duration',
-        valid({ declaredDuration: null }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
-      [
-        'invalid: raw active, unknown duration',
-        valid({ declaredDuration: 'forever' }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
-      [
-        'invalid: raw active, missing activation time',
-        valid({ travelModeActivatedAt: null }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
-      [
-        'invalid: raw active, invalid activation date',
-        valid({ travelModeActivatedAt: new Date('not a date') }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
-      [
-        'invalid: raw active, activation time is not a Date',
-        valid({ travelModeActivatedAt: ACTIVATED.toISOString() }),
-        ENDS_A_FEW,
-        'invalid',
-        true,
-      ],
+      ['expired, 1 ms after the end', valid(), ENDS_A_FEW + 1, 'expired', false],
+      ['expired with the raw flag still true', valid({ travelModeActive: true }), ENDS_A_FEW + DAY_MS, 'expired', false],
+      ['expired with the raw flag already false', valid({ travelModeActive: false }), ENDS_A_FEW + DAY_MS, 'expired', false],
+      ['expired, classification null', valid({ travelClassification: null }), ENDS_A_FEW, 'expired', false],
+      ['active, classification null (relocation never declared)', valid({ travelClassification: null }), ENDS_A_FEW - 1, 'active', true],
+      ['active, classification permanently relocated', valid({ travelClassification: RELOCATED }), ENDS_A_FEW - 1, 'active', true],
+      ['invalid: raw active, no activation, no duration, classification null', fields({ travelModeActive: true }), ENDS_A_FEW, 'invalid', false],
+      ['invalid: raw active, classification permanently relocated', fields({ travelModeActive: true, travelClassification: RELOCATED }), ENDS_A_FEW, 'invalid', false],
+      ['invalid: raw active, classification traveling', fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_A_FEW, 'invalid', true],
+      ['invalid: raw active, missing duration', valid({ declaredDuration: null }), ENDS_A_FEW, 'invalid', true],
+      ['invalid: raw active, unknown duration', valid({ declaredDuration: 'forever' }), ENDS_A_FEW, 'invalid', true],
+      ['invalid: raw active, missing activation time', valid({ travelModeActivatedAt: null }), ENDS_A_FEW, 'invalid', true],
+      ['invalid: raw active, invalid activation date', valid({ travelModeActivatedAt: new Date('not a date') }), ENDS_A_FEW, 'invalid', true],
+      ['invalid: raw active, activation time is not a Date', valid({ travelModeActivatedAt: ACTIVATED.toISOString() }), ENDS_A_FEW, 'invalid', true],
     ];
 
     it.each(table)('%s', (_label, f, now, state, blocks) => {
@@ -211,105 +95,48 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
 
     it('endsAt is null whenever there is no valid activation', () => {
       expect(deriveTravelModeState(fields(), ENDS_A_FEW).endsAt).toBeNull();
-      expect(
-        deriveTravelModeState(
-          valid({ declaredDuration: 'forever' }),
-          ENDS_A_FEW,
-        ).endsAt,
-      ).toBeNull();
-      expect(
-        deriveTravelModeState(
-          fields({ travelClassification: TRAVELING }),
-          ENDS_A_FEW,
-        ).endsAt,
-      ).toBeNull();
+      expect(deriveTravelModeState(valid({ declaredDuration: 'forever' }), ENDS_A_FEW).endsAt).toBeNull();
+      expect(deriveTravelModeState(fields({ travelClassification: TRAVELING }), ENDS_A_FEW).endsAt).toBeNull();
     });
   });
 
   describe('travelModeSuppressesLocationPrompt', () => {
     it('active suppresses; expired does not', () => {
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW - 1)).toBe(
-        true,
-      );
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW)).toBe(
-        false,
-      );
+      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW - 1)).toBe(true);
+      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW)).toBe(false);
     });
 
     it('a leftover classification with no duration (pending) suppresses nothing, although it still blocks a new session', () => {
       const stranded = fields({ travelClassification: TRAVELING });
-      expect(travelModeSuppressesLocationPrompt(stranded, ENDS_A_FEW)).toBe(
-        false,
-      );
+      expect(travelModeSuppressesLocationPrompt(stranded, ENDS_A_FEW)).toBe(false);
       expect(travelModeBlocksNewSession(stranded, ENDS_A_FEW)).toBe(true);
     });
 
     it('invalid raw-active data suppresses it only for a traveler', () => {
-      expect(
-        travelModeSuppressesLocationPrompt(
-          fields({ travelModeActive: true, travelClassification: TRAVELING }),
-          ENDS_A_FEW,
-        ),
-      ).toBe(true);
+      expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_A_FEW)).toBe(true);
       for (const classification of [null, RELOCATED]) {
-        expect(
-          travelModeSuppressesLocationPrompt(
-            fields({
-              travelModeActive: true,
-              travelClassification: classification,
-            }),
-            ENDS_A_FEW,
-          ),
-        ).toBe(false);
+        expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: classification }), ENDS_A_FEW)).toBe(false);
       }
     });
   });
 
   describe('the blocking rule', () => {
     it('pending and active block; expired does not', () => {
-      expect(
-        travelModeBlocksNewSession(
-          fields({ travelClassification: TRAVELING }),
-          ENDS_A_FEW,
-        ),
-      ).toBe(true);
+      expect(travelModeBlocksNewSession(fields({ travelClassification: TRAVELING }), ENDS_A_FEW)).toBe(true);
       expect(travelModeBlocksNewSession(valid(), ENDS_A_FEW - 1)).toBe(true);
       expect(travelModeBlocksNewSession(valid(), ENDS_A_FEW)).toBe(false);
     });
 
     it('invalid raw-active data blocks only when the classification is temporarily_traveling', () => {
-      expect(
-        travelModeBlocksNewSession(
-          fields({ travelModeActive: true, travelClassification: TRAVELING }),
-          ENDS_A_FEW,
-        ),
-      ).toBe(true);
+      expect(travelModeBlocksNewSession(fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_A_FEW)).toBe(true);
       for (const classification of [null, RELOCATED]) {
-        expect(
-          travelModeBlocksNewSession(
-            fields({
-              travelModeActive: true,
-              travelClassification: classification,
-            }),
-            ENDS_A_FEW,
-          ),
-        ).toBe(false);
+        expect(travelModeBlocksNewSession(fields({ travelModeActive: true, travelClassification: classification }), ENDS_A_FEW)).toBe(false);
       }
     });
 
     it('an unrelated classification keeps its existing behavior: it never blocks by itself', () => {
-      expect(
-        travelModeBlocksNewSession(
-          fields({ travelClassification: RELOCATED }),
-          ENDS_A_FEW,
-        ),
-      ).toBe(false);
-      expect(
-        travelModeBlocksNewSession(
-          fields({ travelClassification: null }),
-          ENDS_A_FEW,
-        ),
-      ).toBe(false);
+      expect(travelModeBlocksNewSession(fields({ travelClassification: RELOCATED }), ENDS_A_FEW)).toBe(false);
+      expect(travelModeBlocksNewSession(fields({ travelClassification: null }), ENDS_A_FEW)).toBe(false);
     });
 
     it('a clock that is not a finite number fails closed for a valid activation', () => {
@@ -480,26 +307,14 @@ describe('deriveTravelReminderSchedule', () => {
 
   describe('expiry', () => {
     it('exactly at the end nothing is available, for every duration', () => {
-      for (const [duration, days] of [
-        [DeclaredDuration.A_FEW_DAYS, 7],
-        [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
-        [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
-        [DeclaredDuration.NOT_SURE, 30],
-      ] as const) {
-        expect(
-          schedule(fields({ declaredDuration: duration }), at(days)),
-        ).toEqual(NONE);
-        expect(
-          schedule(fields({ declaredDuration: duration }), at(days, -1))
-            .availableAt,
-        ).not.toBeNull();
+      for (const [duration, days] of [[DeclaredDuration.A_FEW_DAYS, 7], [DeclaredDuration.ONE_TO_TWO_WEEKS, 13], [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30], [DeclaredDuration.NOT_SURE, 30]] as const) {
+        expect(schedule(fields({ declaredDuration: duration }), at(days))).toEqual(NONE);
+        expect(schedule(fields({ declaredDuration: duration }), at(days, -1)).availableAt).not.toBeNull();
       }
     });
     it('an expired period reports nothing, whether the raw flag is still true or already false', () => {
       expect(schedule(fields(few), at(8))).toEqual(NONE);
-      expect(
-        schedule(fields({ ...few, travelModeActive: false }), at(8)),
-      ).toEqual(NONE);
+      expect(schedule(fields({ ...few, travelModeActive: false }), at(8))).toEqual(NONE);
     });
   });
 

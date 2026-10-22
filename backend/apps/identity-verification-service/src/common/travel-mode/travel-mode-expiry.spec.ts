@@ -88,45 +88,32 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
       ['no duration', { declaredDuration: null }],
       ['an unknown duration', { declaredDuration: 'forever' }],
       ['neither', { travelModeActivatedAt: null, declaredDuration: null }],
-    ])(
-      'with %s: only the flag and the cursor change, with a fixed reason and no identifier',
-      async (_label, over) => {
-        const { repository, logger, run } = build();
-        const profile = profileRow(over);
-        const before = { ...profile };
+    ])('with %s: only the flag and the cursor change, with a fixed reason and no identifier', async (_label, over) => {
+      const { repository, logger, run } = build();
+      const profile = profileRow(over);
+      const before = { ...profile };
 
-        const result = await run(profile, ENDS_A_FEW - 5 * DAY_MS);
+      const result = await run(profile, ENDS_A_FEW - 5 * DAY_MS);
 
-        expect(repository.update).toHaveBeenCalledTimes(1);
-        expect(repository.update.mock.calls[0][1]).toEqual({
-          travelModeActive: false,
-          nextTravelReminderAt: null,
-        });
-        expect(result.travelModeActive).toBe(false);
-        expect(result.nextTravelReminderAt).toBeNull();
-        expect(result.travelClassification).toBe(before.travelClassification);
-        expect(result.declaredDuration).toEqual(before.declaredDuration);
-        expect(result.travelModeActivatedAt).toEqual(
-          before.travelModeActivatedAt,
-        );
-        expect(result.lastTravelReminderSentAt).toBe(LAST_SENT);
-        expect(logger.warn).toHaveBeenCalledTimes(1);
-        expect(logger.warn).toHaveBeenCalledWith(
-          'Travel Mode fail-safe: reason=invalid_travel_data',
-        );
-        const logged = JSON.stringify(logger.warn.mock.calls);
-        expect(logged).not.toContain('p1');
-        expect(logged).not.toContain('u1');
-      },
-    );
+      expect(repository.update).toHaveBeenCalledTimes(1);
+      expect(repository.update.mock.calls[0][1]).toEqual({ travelModeActive: false, nextTravelReminderAt: null });
+      expect(result.travelModeActive).toBe(false);
+      expect(result.nextTravelReminderAt).toBeNull();
+      expect(result.travelClassification).toBe(before.travelClassification);
+      expect(result.declaredDuration).toEqual(before.declaredDuration);
+      expect(result.travelModeActivatedAt).toEqual(before.travelModeActivatedAt);
+      expect(result.lastTravelReminderSentAt).toBe(LAST_SENT);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith('Travel Mode fail-safe: reason=invalid_travel_data');
+      const logged = JSON.stringify(logger.warn.mock.calls);
+      expect(logged).not.toContain('p1');
+      expect(logged).not.toContain('u1');
+    });
 
     it('matches observed null values with IS NULL, never with an equals-null', async () => {
       const { repository, run } = build();
 
-      await run(
-        profileRow({ travelModeActivatedAt: null, declaredDuration: null }),
-        ENDS_A_FEW,
-      );
+      await run(profileRow({ travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW);
 
       const criteria = repository.update.mock.calls[0][0];
       expect(criteria).toMatchObject({ id: 'p1', travelModeActive: true });
@@ -147,14 +134,8 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
 
   describe('a lost compare-and-set', () => {
     it('reloads and returns the fresh row without overwriting the winner or the caller’s copy', async () => {
-      const winner = profileRow({
-        travelModeActivatedAt: new Date(ENDS_A_FEW + 1000),
-        declaredDuration: DeclaredDuration.NOT_SURE,
-      });
-      const { repository, run } = build(
-        jest.fn().mockResolvedValue({ affected: 0 }),
-        winner,
-      );
+      const winner = profileRow({ travelModeActivatedAt: new Date(ENDS_A_FEW + 1000), declaredDuration: DeclaredDuration.NOT_SURE });
+      const { repository, run } = build(jest.fn().mockResolvedValue({ affected: 0 }), winner);
       const stale = profileRow();
 
       const result = await run(stale, ENDS_A_FEW + DAY_MS);
@@ -178,41 +159,10 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
   describe('nothing due: no update and no reload', () => {
     it.each([
       ['active Travel Mode', profileRow(), ENDS_A_FEW - 1],
-      [
-        'the raw flag already false after an expired period',
-        profileRow({ travelModeActive: false }),
-        ENDS_A_FEW + DAY_MS,
-      ],
-      [
-        'a pending duration (classified, never activated)',
-        profileRow({
-          travelModeActive: false,
-          travelModeActivatedAt: null,
-          declaredDuration: null,
-        }),
-        ENDS_A_FEW,
-      ],
-      [
-        'no travel data at all',
-        profileRow({
-          travelModeActive: false,
-          travelClassification: null,
-          travelModeActivatedAt: null,
-          declaredDuration: null,
-        }),
-        ENDS_A_FEW,
-      ],
-      [
-        'a profile cleared by a home-country confirmation',
-        profileRow({
-          travelModeActive: false,
-          travelClassification: null,
-          travelModeActivatedAt: null,
-          declaredDuration: null,
-          nextTravelReminderAt: null,
-        }),
-        ENDS_A_FEW,
-      ],
+      ['the raw flag already false after an expired period', profileRow({ travelModeActive: false }), ENDS_A_FEW + DAY_MS],
+      ['a pending duration (classified, never activated)', profileRow({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW],
+      ['no travel data at all', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW],
+      ['a profile cleared by a home-country confirmation', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null, nextTravelReminderAt: null }), ENDS_A_FEW],
     ])('%s', async (_label, profile, now) => {
       const { repository, logger, run } = build();
 

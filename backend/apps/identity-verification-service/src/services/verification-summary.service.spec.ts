@@ -66,19 +66,8 @@ describe('VerificationSummaryService (hosted Free KYC data only, read-only)', ()
       const { service } = build();
       const activated = NOW - DAY;
       const endsAt = activated + 7 * DAY;
-      expect(
-        (await service.summarize(travelling(activated), endsAt - 1)).nextAction,
-      ).toBe('confirm_location');
-      expect(
-        (
-          await service.summarize(
-            travelling(activated, {
-              verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000),
-            }),
-            endsAt,
-          )
-        ).nextAction,
-      ).toBe('start_identity');
+      expect((await service.summarize(travelling(activated), endsAt - 1)).nextAction).toBe('confirm_location');
+      expect((await service.summarize(travelling(activated, { verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000) }), endsAt)).nextAction).toBe('start_identity');
     });
 
     it('an expired period is startable whether the raw flag is true or false', async () => {

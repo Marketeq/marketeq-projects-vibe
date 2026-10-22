@@ -78,16 +78,9 @@ export class IdentityVerificationController {
     const ip = getEffectiveClientIp(req);
     const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
-    const locationMismatch = await this.service.getLocationMismatch(
-      profile,
-      ip,
-    );
-    const travelModeLocationMismatch =
-      await this.service.getTravelModeLocationMismatch(profile, ip);
-    const loginReminderAt = this.service.getLoginReminderAt(
-      profile,
-      readLoginSession(req.user, Date.now()),
-    );
+    const locationMismatch = await this.service.getLocationMismatch(profile, ip);
+    const travelModeLocationMismatch = await this.service.getTravelModeLocationMismatch(profile, ip);
+    const loginReminderAt = this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
     const loginSessionKey = readLoginSessionKey(req.user, req.userId);
     return ProfileStatusResponseDto.fromEntity(
       profile,
@@ -188,13 +181,8 @@ export class IdentityVerificationController {
   // error. Not guarded by VpnProxyCheckGuard: it advances no verification.
   @Post('travel-reminder/claim')
   @HttpCode(HttpStatus.OK)
-  async claimTravelReminder(
-    @Req() req: AuthenticatedRequest,
-  ): Promise<TravelReminderClaimResponseDto> {
-    const { due } = await this.service.isTravelCheckInDue(
-      req.userId,
-      readLoginSession(req.user, Date.now()),
-    );
+  async claimTravelReminder(@Req() req: AuthenticatedRequest): Promise<TravelReminderClaimResponseDto> {
+    const { due } = await this.service.isTravelCheckInDue(req.userId, readLoginSession(req.user, Date.now()));
     return TravelReminderClaimResponseDto.from({ claimed: due });
   }
 
