@@ -27,7 +27,7 @@ export interface AddableContractDTO {
   type: string
   status: string
   phase: string | null
-  memberAvatars: string[]
+  memberAvatars: Array<string | null>
   memberCount: number
   createdAt: string
 }

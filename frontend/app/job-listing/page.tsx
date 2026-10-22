@@ -3494,6 +3494,8 @@ const scrollToPublishField = (targetId: string) => {
   });
 };
 
+const DEFAULT_MEMBER_AVATAR_URL =
+  "https://images.unsplash.com/vector-1742875355318-00d715aec3e8?q=80&w=1480&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D";
 const TITLE_MAX_LENGTH = 100;
 const SHORT_DESCRIPTION_MAX_LENGTH = 300;
 const FULL_DESCRIPTION_MAX_LENGTH = 5000;
@@ -4319,7 +4321,13 @@ const ProjectInfo = ({
       title: "Marketeq Projects Network",
       badges: ["Design Phase"],
       icon: <MdOutlineAssignment className="size-6" />,
-      avatars: ["AK", "NS", "RP", "+3"],
+      avatars: [
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        "+3",
+      ],
       workType: "project" as const,
     },
     {
@@ -4328,7 +4336,13 @@ const ProjectInfo = ({
       badges: ["Design Phase"],
       image:
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=160&q=80",
-      avatars: ["MJ", "CT", "AL", "+5"],
+      avatars: [
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        DEFAULT_MEMBER_AVATAR_URL,
+        "+5",
+      ],
       workType: "project" as const,
     },
     {
@@ -4336,7 +4350,7 @@ const ProjectInfo = ({
       title: "E-commerce Website Build with React JS",
       badges: ["Development Phase", "Service"],
       icon: <MdAutorenew className="size-6" />,
-      avatars: ["RK", "SB"],
+      avatars: [DEFAULT_MEMBER_AVATAR_URL, DEFAULT_MEMBER_AVATAR_URL],
       workType: "service" as const,
     },
   ];
@@ -4372,7 +4386,9 @@ const ProjectInfo = ({
       ["disputed", "expired", "closed", "paused"].includes(normalizedStatus)
         ? formatContractStatusLabel(contract.status)
         : "";
-    const avatarUrls = contract.memberAvatars.filter(Boolean).slice(0, 4);
+    const avatarUrls = contract.memberAvatars
+      .slice(0, 4)
+      .map((avatar) => avatar || DEFAULT_MEMBER_AVATAR_URL);
     const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
     const isServiceContract = contract.type?.toLowerCase() === "service";
 
