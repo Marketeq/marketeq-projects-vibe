@@ -73,6 +73,10 @@ import { createTrayService } from './services/tray/tray-service';
 import { createNotificationService } from './services/notifications/notification-service';
 
 const isDev = !app.isPackaged;
+// Hard limit on quitting once the user has confirmed (see before-quit).
+const QUIT_TIMEOUT_MS = 3_000;
+// Extra time the last-resort force exit allows for the ordered teardown.
+const QUIT_FORCE_EXIT_MARGIN_MS = 500;
 let windowManager: WindowManager | null = null;
 
 // The Marketeq logo ships next to the app (extraResources) when packaged and
@@ -554,6 +558,9 @@ async function bootstrap(): Promise<void> {
   // Shared with phase 6 so the tray and notifications can follow sync state.
   let networkMonitor: ReturnType<typeof createNetworkMonitor> | null = null;
   let syncWorker: ReturnType<typeof createSyncWorker> | null = null;
+  // Cancels every open backend request at once. Used when quitting runs out
+  // of time, so a hung backend can't hold the app open.
+  let abortSync: (() => void) | null = null;
   let detachSyncIpc: (() => void) | null = null;
   let detachEventBridge: (() => void) | null = null;
   let realtimeClient: ReturnType<typeof createRealtimeClient> | null = null;
@@ -575,6 +582,9 @@ async function bootstrap(): Promise<void> {
       store: createSqliteOutboxStore(db),
       logger,
     });
+    // Rows a previous run left mid-request go back in the queue before the
+    // worker starts (a quit that hit its time limit leaves them 'inflight').
+    outbox.recoverInflight();
     // Wire the auth token into the API client so sync requests are authenticated
     if (authService) {
       authService.setApiClient({ setAuthToken: (t) => api.setAuthToken(t) });
@@ -683,6 +693,13 @@ async function bootstrap(): Promise<void> {
         /* ignore */
       }
     };
+    abortSync = () => {
+      try {
+        api.close();
+      } catch {
+        /* ignore */
+      }
+    };
     logger.info({ apiBaseUrl }, 'phase 4 sync pipeline wired');
   } catch (err) {
     logger.error({ err }, 'failed to initialize sync pipeline');
@@ -745,7 +762,9 @@ async function bootstrap(): Promise<void> {
       onSyncNow: () => undefined,
       onLogout: () => undefined,
       onQuit: () => {
-        windowManager?.prepareToQuit();
+        // Goes through before-quit's confirm-before-quit flow, same as any
+        // other quit (DTT-AC-152.1). Calling prepareToQuit() here first used
+        // to mark the app as already quitting, which skipped the confirm.
         app.quit();
       },
     });
@@ -890,6 +909,37 @@ async function bootstrap(): Promise<void> {
     }
   };
 
+  // Quitting has a hard time limit. The clock starts once the user has
+  // confirmed (time spent on the confirm dialog doesn't count). Closing the
+  // session and the final sync share the budget; whatever the backend is
+  // doing, the app is gone by then. Anything not yet sent stays in the
+  // SQLite outbox and goes out on the next launch (outbox.recoverInflight).
+  // Electron has no force-kill timer of its own, so without this a hung
+  // request could hold the quit open.
+  let quitDeadline: number | null = null;
+  const startQuitClock = () => {
+    if (quitDeadline !== null) return;
+    quitDeadline = Date.now() + QUIT_TIMEOUT_MS;
+    // Last resort if something unexpected hangs past the deadline; the
+    // margin leaves room for the ordered teardown below to finish first.
+    setTimeout(() => {
+      logger.warn('quit: still running after the time limit — forcing exit');
+      app.exit(0);
+    }, QUIT_TIMEOUT_MS + QUIT_FORCE_EXIT_MARGIN_MS).unref();
+  };
+  // Resolves true if the deadline passed before `work` finished.
+  const raceQuitDeadline = (work: Promise<unknown>): Promise<boolean> => {
+    const remaining = Math.max(0, (quitDeadline ?? Date.now()) - Date.now());
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), remaining);
+    });
+    return Promise.race([work.then(() => false), deadline]).finally(() =>
+      clearTimeout(timer),
+    );
+  };
+  let shutdownStarted = false;
+
   app.on('before-quit', (evt) => {
     // Confirm-before-quit when there's an active session.
     if (windowManager && !windowManager.isQuitting()) {
@@ -897,7 +947,8 @@ async function bootstrap(): Promise<void> {
       void (async () => {
         const ok = await windowManager!.confirmQuit();
         if (!ok) return;
-        await closeSessionForQuit();
+        startQuitClock();
+        await raceQuitDeadline(closeSessionForQuit());
         windowManager!.prepareToQuit();
         app.quit();
       })();
@@ -908,18 +959,36 @@ async function bootstrap(): Promise<void> {
     // window manager): hold the quit once to close the session first.
     if (!sessionClosedForQuit && timerService?.getSnapshot().activeSessionId) {
       evt.preventDefault();
-      void closeSessionForQuit().then(() => app.quit());
+      startQuitClock();
+      void raceQuitDeadline(closeSessionForQuit()).then(() => app.quit());
       return;
     }
 
+    // Hold the quit while the sync pipeline gets its last chance to send,
+    // bounded by the deadline, then tear down and exit.
+    evt.preventDefault();
+    if (shutdownStarted) return;
+    shutdownStarted = true;
+    startQuitClock();
+    void (async () => {
+      const stopping = stopSync
+        ? stopSync().catch((err) =>
+            logger.warn({ err }, 'error while stopping sync pipeline'),
+          )
+        : Promise.resolve();
+      if (await raceQuitDeadline(stopping)) {
+        logger.warn(
+          { timeoutMs: QUIT_TIMEOUT_MS },
+          'quit: sync did not finish in time — cancelling open requests; unsent items stay queued for next launch',
+        );
+        abortSync?.();
+      }
+      teardownForQuit();
+      app.exit(0);
+    })();
+  });
 
-    // Fire off the async sync shutdown but don't block the quit path —
-    // Electron gives us ~2 s before force-killing anyway.
-    if (stopSync) {
-      void stopSync().catch((err) =>
-        logger.warn({ err }, 'error while stopping sync pipeline'),
-      );
-    }
+  const teardownForQuit = () => {
     try {
       stopCaptureIpc?.();
       captureSupervisor?.stop();
@@ -979,7 +1048,7 @@ async function bootstrap(): Promise<void> {
     } catch (err) {
       logger.warn({ err }, 'error while closing database on quit');
     }
-  });
+  };
 
   logger.info('waiting for app.whenReady()...');
   await app.whenReady();
