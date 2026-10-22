@@ -27,12 +27,34 @@
  */
 
 const { spawn } = require('child_process');
+const { filterEnv, describe: describeEnvIsolation, parseMode } = require('./env-isolation');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
 // External port (Render injects PORT)
 const GATEWAY_PORT = process.env.PORT || '10000';
+
+// Each service is handed only the environment it reads, rather than every
+// secret on the platform. Defaults to monitor: it reports what it would hold
+// back and changes nothing, so this can ship to a running deployment and be
+// read before it is switched on. See env-isolation.js.
+const ENV_ISOLATION_MODE = process.env.ENV_ISOLATION_MODE;
+let ENV_MANIFEST = { baseline: [], shared: [], services: {} };
+try {
+  ENV_MANIFEST = JSON.parse(fs.readFileSync(path.join(__dirname, 'env-manifest.json'), 'utf8'));
+} catch (err) {
+  // No manifest means every service is "unknown", which fails open: they all
+  // get the full environment, exactly as before this change.
+  console.warn(`[env-isolation] env-manifest.json unreadable (${err.message}); passing full environment to every service.`);
+}
+{
+  const { mode, valid } = parseMode(ENV_ISOLATION_MODE);
+  if (!valid) {
+    console.warn(`[env-isolation] ENV_ISOLATION_MODE="${ENV_ISOLATION_MODE}" is not off|monitor|enforce; using "monitor".`);
+  }
+  console.log(`[env-isolation] mode=${mode}`);
+}
 
 // ── All 28 backend services ──────────────────────────────────────────────
 // Ports must match the gatewayEnv map below and proxy.service.ts defaults.
@@ -100,8 +122,14 @@ const GATEWAY = { name: 'api-gateway', port: GATEWAY_PORT, dir: 'apps/api-gatewa
 
 // Gateway env — every internal service URL must be listed here so the
 // proxy can reach them. Ports must match the SERVICES array above.
+const gatewayFiltered = filterEnv('api-gateway', process.env, ENV_MANIFEST, ENV_ISOLATION_MODE);
+{
+  const line = describeEnvIsolation('api-gateway', gatewayFiltered);
+  if (line) console.log(line);
+}
+
 const gatewayEnv = {
-  ...process.env,
+  ...gatewayFiltered.env,
   PORT: GATEWAY_PORT,
   HOST: '0.0.0.0',
   AUTH_SERVICE_URL:               'http://localhost:3001',
@@ -144,8 +172,12 @@ const gatewayEnv = {
 // svc.portKey allows services that read a non-standard env var for their port
 // (e.g. cms-service reads CMS_PORT instead of PORT).
 function buildInternalServiceEnv(svc) {
+  const result = filterEnv(svc.name, process.env, ENV_MANIFEST, ENV_ISOLATION_MODE);
+  const line = describeEnvIsolation(svc.name, result);
+  if (line) console.log(line);
+
   const env = {
-    ...process.env,
+    ...result.env,
     PORT: svc.port,
     HOST: '127.0.0.1',
     RABBITMQ_REQUIRED: 'false',

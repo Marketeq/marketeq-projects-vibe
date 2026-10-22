@@ -1,42 +1,43 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService }      from '@nestjs/config';
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import { FieldEncryption, RINGS } from '../crypto/field-encryption';
 
 @Injectable()
 export class BankEncryptionService {
   private readonly logger = new Logger(BankEncryptionService.name);
-  private readonly KEY: Buffer;
-  private readonly ALG = 'aes-256-gcm' as const;
+  private readonly ring: FieldEncryption;
 
   constructor(private readonly config: ConfigService) {
-    // A silent random-key fallback here means every restart with a
-    // missing/malformed env var invisibly invalidates every already-encrypted
-    // bank account number — same failure mode fixed for OAUTH_TOKEN_ENCRYPTION_KEY
-    // in oauth.service.ts. Fail fast instead.
-    const keyHex = this.config.get('BANK_ENCRYPTION_KEY', '');
-    if (keyHex.length !== 64) {
-      throw new Error(
-        'BANK_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once bank accounts have been stored.',
-      );
-    }
-    this.KEY = Buffer.from(keyHex, 'hex');
+    // Key handling moved into FieldEncryption so several keys can be live at
+    // once and a rotation no longer makes stored account numbers permanently
+    // unreadable (AC-1.3.3). Behaviour that has not changed: a missing or
+    // malformed key still refuses to start rather than inventing one, and the
+    // single-key BANK_ENCRYPTION_KEY form every environment sets today keeps
+    // working, registered as k1.
+    this.ring = new FieldEncryption(RINGS.BANK, (k) => this.config.get<string>(k));
   }
 
   encrypt(plaintext: string): string {
-    if (!plaintext) return '';
-    const iv = randomBytes(12);
-    const cipher = createCipheriv(this.ALG, this.KEY, iv);
-    const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return [iv.toString('hex'), tag.toString('hex'), enc.toString('hex')].join(':');
+    return this.ring.encrypt(plaintext);
   }
 
   decrypt(stored: string): string {
-    if (!stored || !stored.includes(':')) return stored;
-    const [ivHex, tagHex, ctHex] = stored.split(':');
-    const decipher = createDecipheriv(this.ALG, this.KEY, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(ctHex, 'hex'), undefined, 'utf8') + decipher.final('utf8');
+    return this.ring.decrypt(stored);
+  }
+
+  /** The key new values are written under. */
+  currentKeyId(): string {
+    return this.ring.currentKeyId();
+  }
+
+  /** True when a stored value was written under an older key and should be moved. */
+  needsReEncryption(stored: string): boolean {
+    return this.ring.needsReEncryption(stored);
+  }
+
+  /** Re-encrypt under the current key. Returns the input unchanged if already current. */
+  reEncrypt(stored: string): string {
+    return this.ring.reEncrypt(stored);
   }
 
   last4(value: string): string {

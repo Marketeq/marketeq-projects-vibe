@@ -14,6 +14,8 @@ import { MagicLinkVerification } from './entities/magic-link-verification.entity
 import { DepositMethodVerification } from './entities/deposit-method-verification.entity';
 import { PayoutAuditLog } from './entities/payout-audit-log.entity';
 import { FirstPayoutHold } from './entities/first-payout-hold.entity';
+import { EncryptionKeyRotation } from './entities/encryption-key-rotation.entity';
+import { KeyRotationRecorderService } from './crypto/key-rotation-recorder.service';
 
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { DatabaseModule } from './database/database.module';
@@ -97,6 +99,7 @@ const rabbitMQImports = rabbitmqUrl
         DepositMethodVerification,
         PayoutAuditLog,
         FirstPayoutHold,
+        EncryptionKeyRotation,
       ],
       synchronize: false,
       logging: false,
@@ -112,6 +115,7 @@ const rabbitMQImports = rabbitmqUrl
         })]
       : []),
 
+    TypeOrmModule.forFeature([EncryptionKeyRotation]),
     ScheduleModule.forRoot(),
 
     DatabaseModule,
@@ -141,6 +145,9 @@ const rabbitMQImports = rabbitmqUrl
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    // AC-1.3.3: records which encryption key is current for each ring and
+    // when it changed. Writes at most one row per key per ring, at startup.
+    KeyRotationRecorderService,
   ],
 })
 export class AppModule {}

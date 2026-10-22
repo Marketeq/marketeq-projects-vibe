@@ -17,12 +17,13 @@ import { AuditService }        from '../audit/audit.service';
 import { PayoutError }         from '../common/errors/payout.error';
 import { getProviderConfig, getWalletConnectChainId } from './provider-registry';
 import { WalletConnectClientService } from './walletconnect-client.service';
+import { FieldEncryption, RINGS } from '../crypto/field-encryption';
 
 @Injectable()
 export class CryptoConnectionService {
   private readonly logger = new Logger(CryptoConnectionService.name);
   private readonly redis: Redis;
-  private readonly encryptionKey: Buffer;
+  private readonly addressRing: FieldEncryption;
   private readonly wcSessionTtl: number;
 
   constructor(
@@ -59,13 +60,11 @@ export class CryptoConnectionService {
     // Same failure mode already fixed for OAUTH_TOKEN_ENCRYPTION_KEY and
     // BANK_ENCRYPTION_KEY: a silent random-key fallback invisibly invalidates
     // every already-encrypted wallet address on restart. Fail fast instead.
-    const keyHex = this.config.get('CRYPTO_ADDRESS_ENCRYPTION_KEY', '');
-    if (keyHex.length !== 64) {
-      throw new Error(
-        'CRYPTO_ADDRESS_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once wallet addresses have been stored.',
-      );
-    }
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    // AC-1.3.3: a key ring rather than a single key, so a rotation no longer
+    // makes every stored wallet address unreadable. Still refuses to start on
+    // a missing or malformed key, and CRYPTO_ADDRESS_ENCRYPTION_KEY keeps
+    // working exactly as set today, registered as k1.
+    this.addressRing = new FieldEncryption(RINGS.CRYPTO_ADDRESS, (k) => this.config.get<string>(k));
     this.wcSessionTtl = parseInt(this.config.get('WALLETCONNECT_SESSION_TTL_SECONDS', '300'), 10);
   }
 
@@ -304,11 +303,10 @@ export class CryptoConnectionService {
   }
 
   private encrypt(plaintext: string): string {
-    if (!plaintext) return '';
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
+    return this.addressRing.encrypt(plaintext);
+  }
+
+  private decrypt(stored: string): string {
+    return this.addressRing.decrypt(stored);
   }
 }

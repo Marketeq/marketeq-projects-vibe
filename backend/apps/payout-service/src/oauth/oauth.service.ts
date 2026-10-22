@@ -10,6 +10,7 @@ import { PayoutPublisher }    from '../publishers/payout.publisher';
 import { PayoutError }        from '../common/errors/payout.error';
 import { StripeProvider }     from '../providers/stripe.provider';
 import { PauseStatusService } from '../pause/pause-status.service';
+import { FieldEncryption, RINGS } from '../crypto/field-encryption';
 
 interface TokenResult { accessToken: string; refreshToken: string; expiresAt: Date; idToken?: string; }
 interface ProfileResult { email: string; accountIdentifier: string; displayName: string; }
@@ -23,7 +24,7 @@ interface BankingDetailsResult { routingNumber: string; accountNumber: string; a
 export class OAuthService {
   private readonly logger = new Logger(OAuthService.name);
   private readonly redis: Redis;
-  private readonly encryptionKey: Buffer;
+  private readonly tokenRing: FieldEncryption;
   private readonly stateTtl: number;
 
   private readonly providerConfig: Record<string, {
@@ -50,13 +51,11 @@ export class OAuthService {
     // A silent random-key fallback on a missing/malformed env var is
     // exactly that failure mode on every restart, with no signal at boot
     // time — fail fast instead so a misconfigured deploy never ships.
-    const keyHex = this.config.get('OAUTH_TOKEN_ENCRYPTION_KEY', '');
-    if (keyHex.length !== 64) {
-      throw new Error(
-        'OAUTH_TOKEN_ENCRYPTION_KEY must be a 64-character hex string (32 bytes) — generate with `openssl rand -hex 32` and never regenerate it once contractors have connected accounts.',
-      );
-    }
-    this.encryptionKey = Buffer.from(keyHex, 'hex');
+    // AC-1.3.3: a key ring rather than a single key, so a rotation no longer
+    // makes every stored provider token unreadable. Still refuses to start on
+    // a missing or malformed key, and OAUTH_TOKEN_ENCRYPTION_KEY keeps working
+    // exactly as set today, registered as k1.
+    this.tokenRing = new FieldEncryption(RINGS.OAUTH_TOKEN, (k) => this.config.get<string>(k));
 
     // PS-09 v2.0 §3/§12: base URL is env-driven so sandbox (local dev,
     // staging) and production point at different hosts without a code
@@ -533,19 +532,10 @@ export class OAuthService {
 
   // ─── Encryption ───────────────────────────────────────────────
   private encrypt(plaintext: string): string {
-    if (!plaintext) return '';
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-    const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
+    return this.tokenRing.encrypt(plaintext);
   }
 
   private decrypt(stored: string): string {
-    if (!stored || !stored.includes(':')) return stored;
-    const [ivHex, tagHex, ctHex] = stored.split(':');
-    const decipher = crypto.createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(ivHex, 'hex'));
-    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-    return decipher.update(Buffer.from(ctHex, 'hex'), undefined, 'utf8') + decipher.final('utf8');
+    return this.tokenRing.decrypt(stored);
   }
 }
