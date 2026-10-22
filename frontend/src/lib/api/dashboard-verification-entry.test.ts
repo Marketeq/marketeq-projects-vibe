@@ -113,7 +113,8 @@ describe("dashboard verification entry: return from Didit", () => {
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("clearAwaitingResult", at), at).includes("setProfileBannerShown(false)"))
     assert.ok(page.includes("setVerifiedModalOpen(false)\n    setSuccessAlertOpen(true)"))
-    assert.equal(count("setSuccessAlertOpen(true)"), 1)
+    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
+    assert.equal(count("setSuccessAlertOpen(true)"), 2)
   })
 })
 

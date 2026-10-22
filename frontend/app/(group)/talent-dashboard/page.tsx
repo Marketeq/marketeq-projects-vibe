@@ -127,6 +127,13 @@ import {
   type MismatchFlowKind,
 } from "@/src/lib/api/travel-location-prompt"
 import {
+  clearReviewedResult,
+  markReviewedResult,
+  reconcileReviewedSession,
+  resolveReviewedResult,
+  shouldMarkReviewedResult,
+} from "@/src/lib/api/reviewed-approval-result"
+import {
   clearHomeCountryChange,
   consumeHomeCountryChange,
   HOME_COUNTRY_UPDATED_ALERT,
@@ -388,6 +395,8 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        // The immediate result is handled by the modal: no review alert may follow it.
+        clearReviewedResult(window.localStorage, user.id)
         // Which success alert follows the modal. Read once: a repeat (duplicate
         // webhook, reconcile, refresh) finds no flag, so it can never show twice.
         setSuccessAlertKind(
@@ -399,8 +408,14 @@ export default function TalentDashboard() {
       // arrives later as a notification, so this browser stops waiting for it.
       if (shouldShowPendingModal(summary)) {
         clearAwaitingResult(window.localStorage)
-        // The approval will arrive as a backend notification: no alert from here.
+        // A home-country approval arrives as a backend notification: no alert from here.
         clearHomeCountryChange(window.localStorage)
+        // Either kind (first-time or a home-country change) remembers it is under review,
+        // so the approved result can be shown (see reviewed-approval-result.ts); the
+        // backend's own "home country was updated" notification is separate.
+        if (shouldMarkReviewedResult(summary)) {
+          markReviewedResult(window.localStorage, user.id)
+        }
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setPendingModalOpen(true)
@@ -445,12 +460,68 @@ export default function TalentDashboard() {
       })
       void returnReconcilerRef.current.run().then((result) => apply(result.summary))
     }
+    // Coming back from the provider with Back can restore this page from the browser's
+    // back/forward cache without running anything again (no mount, no visibility change):
+    // a restored page rechecks exactly like a tab that became visible.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted || !hasAwaitingResult(window.localStorage)) return
+      attempts = 0
+      if (timer) clearTimeout(timer)
+      // Nothing reconciled this trip while the page was frozen, and without the webhook
+      // the server still has the session as started: reconcile (once per return, the
+      // shared reconciler dedupes) and then read /me, exactly as a fresh load does.
+      returnReconcilerRef.current ??= createReturnReconciler({
+        awaitingStorage: window.localStorage,
+        markerStorage: window.sessionStorage,
+      })
+      void returnReconcilerRef.current.run().then((result) => apply(result.summary))
+    }
     document.addEventListener("visibilitychange", onVisible)
+    window.addEventListener("pageshow", onPageShow)
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
       document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("pageshow", onPageShow)
     }
+  }, [user])
+
+  // PMCM-653: a first-time verification that was shown as submitted and is approved
+  // later shows the existing success alert once. The marker only says this browser is
+  // waiting; the backend summary (nextAction complete AND fullyVerified) decides. It is
+  // rechecked on load (one reconcile, then GET /me) and whenever the tab becomes
+  // visible (GET only), with no timer: a review can take days. Nothing is shown while
+  // the review continues, and the marker is consumed in the same step that shows it.
+  const reviewedCheckStartedRef = useRef(false)
+  useEffect(() => {
+    if (!user) return
+    if (resolveDashboardRole(user) !== ROLE.TALENT) return
+
+    const check = async (withReconcile: boolean) => {
+      const outcome = await resolveReviewedResult({
+        storage: window.localStorage,
+        userId: user.id,
+        fetchSummary: fetchIdentityVerificationSummary,
+        reconcile: withReconcile ? reconcileReviewedSession : undefined,
+      })
+      if (outcome !== "approved") return
+      setVerificationGateOpen(false)
+      setProfileBannerShown(false)
+      setSuccessAlertKind("verified")
+      setSuccessAlertOpen(true)
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void check(false)
+    }
+
+    // StrictMode runs this effect twice; the load check (and its reconcile) runs once.
+    if (!reviewedCheckStartedRef.current) {
+      reviewedCheckStartedRef.current = true
+      void check(true)
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
   }, [user])
 
   // The Identity Verification check (which may open AccountVerificationGate) waits
