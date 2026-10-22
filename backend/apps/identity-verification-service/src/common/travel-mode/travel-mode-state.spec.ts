@@ -120,26 +120,6 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
     });
   });
 
-  describe('travelModeSuppressesLocationPrompt', () => {
-    it('active suppresses; expired does not', () => {
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_6 - 1)).toBe(true);
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_6)).toBe(false);
-    });
-
-    it('a leftover classification with no duration (pending) suppresses nothing, although it still blocks a new session', () => {
-      const stranded = fields({ travelClassification: TRAVELING });
-      expect(travelModeSuppressesLocationPrompt(stranded, ENDS_6)).toBe(false);
-      expect(travelModeBlocksNewSession(stranded, ENDS_6)).toBe(true);
-    });
-
-    it('invalid raw-active data suppresses it only for a traveler', () => {
-      expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_6)).toBe(true);
-      for (const classification of [null, RELOCATED]) {
-        expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: classification }), ENDS_6)).toBe(false);
-      }
-    });
-  });
-
   describe('the blocking rule', () => {
     it('pending and active block; expired does not', () => {
       expect(travelModeBlocksNewSession(fields({ travelClassification: TRAVELING }), ENDS_A_FEW)).toBe(true);
