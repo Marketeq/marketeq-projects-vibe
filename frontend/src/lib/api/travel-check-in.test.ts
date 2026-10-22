@@ -95,6 +95,26 @@ describe("copy: first time versus asked before", () => {
     )
   })
 
+  it("the check-in modal body is the confirmed Figma sentence", () => {
+    assert.equal(
+      CHECK_IN_COPY.prompt.body,
+      "You’re logging in from a location outside your usual one. Just checking if you’re still away."
+    )
+  })
+
+  it("the information box: reminder copy the first time, 'won’t be asked again' from the first answer on", () => {
+    assert.equal(
+      durationCopyFor(0).alert,
+      "We’ll remind you later to check if your status has changed."
+    )
+    for (const n of [1, 2, 5]) {
+      assert.equal(
+        durationCopyFor(n).alert,
+        "You won’t be asked again for a while based on your selection."
+      )
+    }
+  })
+
   it("the check-in modal copy and the two actions", () => {
     assert.equal(CHECK_IN_COPY.prompt.title, "Still traveling?")
     assert.equal(CHECK_IN_COPY.prompt.stillTraveling, "I’m still traveling")
@@ -345,6 +365,25 @@ describe("Skip, X/close, Escape, refresh and navigation send nothing", () => {
       2
     ) // the X and Skip
     assert.match(dialog, /\{CHECK_IN_COPY\.skip\}/)
+  })
+
+  it("there is no Confirm button: a duration choice submits immediately, Skip only closes", () => {
+    const duration = between(
+      page,
+      'checkIn?.phase === "duration"',
+      "</DialogContent>"
+    )
+    assert.ok(!/Confirm/.test(duration))
+    assert.equal((duration.match(/<Button\b/g) ?? []).length, 1) // Skip
+    assert.match(
+      duration,
+      /onValueChange=\{\(label\) => void handleCheckInAnswer\(label\)\}/
+    )
+    const stories = read(
+      "stories",
+      "identity-verification-check-in.stories.tsx"
+    )
+    assert.ok(!/Confirm/.test(stories))
   })
 
   it("only a duration choice reaches the answer handler", () => {
@@ -867,7 +906,7 @@ describe("the two new UI states are composed from design-system parts only", () 
     assert.ok(dialog.includes("durationCopyFor(checkIn.answerCount).body"))
     assert.ok(dialog.includes("CHECK_IN_DURATION_LABELS.map("))
     assert.ok(dialog.includes("onClick={handleCheckInBack}"))
-    assert.ok(dialog.includes("{CHECK_IN_COPY.durationAlert}"))
+    assert.ok(dialog.includes("durationCopyFor(checkIn.answerCount).alert"))
   })
 })
 
@@ -883,6 +922,7 @@ describe("Storybook: the two supplied states have stories that share the dashboa
   it("uses the same copy module and design-system parts as the page, and no raw controls", () => {
     assert.ok(stories.includes('from "@/src/lib/api/travel-check-in"'))
     assert.ok(stories.includes("durationCopyFor(1)"))
+    assert.ok(stories.includes("{copy.alert}"))
     assert.ok(stories.includes("CHECK_IN_COPY.prompt.updateHomeCountry"))
     assert.ok(!/<(button|input|textarea|select|dialog|label)\b/.test(stories))
   })

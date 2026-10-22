@@ -1150,7 +1150,7 @@ export default function TalentDashboard() {
                 <Info className="size-5" />
               </AlertIcon>
               <AlertContent>
-                <AlertTitle>{CHECK_IN_COPY.durationAlert}</AlertTitle>
+                <AlertTitle>{durationCopyFor(checkIn.answerCount).alert}</AlertTitle>
               </AlertContent>
             </Alert>
 

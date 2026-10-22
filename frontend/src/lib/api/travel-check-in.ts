@@ -28,7 +28,7 @@ export const CHECK_IN_COPY = {
   // The large "Still traveling?" modal (Figma node 13101-46785).
   prompt: {
     title: "Still traveling?",
-    body: "Please confirm whether you’re still traveling.",
+    body: "You’re logging in from a location outside your usual one. Just checking if you’re still away.",
     stillTraveling: "I’m still traveling",
     updateHomeCountry: "Update my home country",
   },
@@ -36,13 +36,14 @@ export const CHECK_IN_COPY = {
   firstDuration: {
     title: "How long are you traveling?",
     body: "You’re marked as temporarily traveling. Some features may be limited until you’re back in your home country.",
+    alert: "We’ll remind you later to check if your status has changed.",
   },
   // The second and later time (Figma node 13101-46818).
   laterDuration: {
     title: "How much longer will you be traveling?",
     body: "We’ve asked before, answering helps reduce these reminders.",
+    alert: "You won’t be asked again for a while based on your selection.",
   },
-  durationAlert: "We’ll remind you later to check if your status has changed.",
   skip: "Skip",
 } as const
 

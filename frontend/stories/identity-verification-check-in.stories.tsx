@@ -119,7 +119,7 @@ export const DurationAskedBefore = () => {
             <Info className="size-5" />
           </AlertIcon>
           <AlertContent>
-            <AlertTitle>{CHECK_IN_COPY.durationAlert}</AlertTitle>
+            <AlertTitle>{copy.alert}</AlertTitle>
           </AlertContent>
         </Alert>
 
