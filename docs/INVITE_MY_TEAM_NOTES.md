@@ -8,6 +8,26 @@ specification documents.
 
 ---
 
+## Update — 22 October 2026
+
+Two things happened since this was written: the **Round 3 answers (19 Oct) were
+applied to the doc set on 21 Oct**, and the branch was run end to end against a
+live local stack. Read §10 and §11 first — they supersede parts of what follows.
+
+**Corrections to the sections below.** These were true on 20 Oct and are not any
+more; they are left in place rather than deleted so the history reads straight:
+
+| Section | Said | Actually |
+|---|---|---|
+| §2 | Confirmations "Partly" built | **Built.** Toast with Undo/Manage Roles, invitee in-app notification, and both email templates, all wired |
+| §4 defect 2 | In-app notification goes to the wrong person | **Fixed.** `notifyInviteeOnInvite` sends title "New Offer", body "@handle invited you to join their external team" — an exact Figma match |
+| §3 call 3 / §7 Q2 | Hire Me modal "is not in the repo" | **It is** — `components/hire-me-button.tsx`, created by @CTorres9800 in April. The docs route S17's Continue to it, and this branch now does |
+| §3 call 1 | Eligibility rule was a guess | **Confirmed correct** by the Figma sticky note: "does not show profiles that already have a contract or a pending offer" |
+| §7 Q4 / Q5 | Logo limit and expiry unresolved | **Answered** (R3-04: 1 MB; R3-03: 30 days). The code is wrong on both — see §10 |
+| §8 | TC-09 / TC-12 On Hold, backend not building them | **Reversed.** R3-02 puts Copy Link and Manage Invite Settings in this release |
+
+---
+
 ## 1. The thing to decide first
 
 **The backend docs say to build a new `team-service`. This repo already has that
@@ -256,3 +276,141 @@ Of that suite, TC-09 (Copy Link) and TC-12 (Manage Invite Settings) are On Hold
 because the backend is not building them this release (R3-02) — yet both render
 in the UI today. 25 of 27 error tests have no designed copy to assert, and 18 UX
 gaps have nothing to test against.
+
+---
+
+## 10. Round 3 answers (19 Oct) vs the code as it stands
+
+The 21 Oct doc set applies the Product Owner's Round 3 decisions. Nine of them
+contradict what is built. Everything below was checked against the code.
+
+| # | Decision | Code today | Where |
+|---|---|---|---|
+| 1 | S17 Continue → the existing Hire Me modal | **Fixed on this branch.** It pushed to `/talent-checkout/<username>`, which has no `page.tsx` at the `[slug]` root and 404s | AC-26.5, 04 §S17 |
+| 2 | Manage Invite Settings saves immediately, **no Save button**, Back returns, a failed save reverts | Ships `Cancel` + `Save Settings` | R3-14, AC-12.7 |
+| 3 | A resend is **held** until its toast closes; Undo drops it | **Fixed on this branch** (was a dead button) | R3-09, AC-17.4 |
+| 4 | Undo on a cancel restores the invitation; on permissions restores the prior roles | **Fixed on this branch** (both were dead) | AC-17.2, R2-25 |
+| 5 | Send Invite sends valid staged chips; flagged chips stay in the field | `canSend` has `!hasInvalid`, so one flagged chip blocks the whole send | R3-13, AC-10.2 |
+| 6 | A multi-invitee toast lists **all** addresses | Says "sent to N people" | R3-15, UX-31 |
+| 7 | Count = active members **on the open tab only** | `useTeamMemberCount` returns `activeTalent + acceptedExternal` — both tabs summed | R3-05 |
+| 8 | Email invitations expire in a fixed **30 days** | Defaults to `336h` = 14 days (env-overridable) | R3-03 |
+| 9 | Logo limit **1 MB**, message "Max image size 1 mb" | `MAX_LOGO_BYTES = 5 * 1024 * 1024` | R3-04 |
+
+**2, 5 and 6 are not ours to fix.** They live in `components/invite-window.tsx`
+and `components/invite-sent-notification.tsx`, which are READ-ONLY under
+COMPONENTS.md Rule 2. They need either an owner's change or an explicit
+exemption.
+
+### One copy fix that was our mistake
+
+S17's "recipient no longer available" alert read *"This person is no longer
+available to receive an offer. Remove them and choose someone else."* The spec
+string — present in **four** documents since the original 8 Oct set, so this was
+not a Round 3 change — is:
+
+> "This user has no availability for new projects or services right now. Please
+> select someone else to continue."
+
+Corrected on this branch.
+
+---
+
+## 11. Found while testing the branch against a live stack (22 Oct)
+
+Full stack up: 30/30 PM2 services, api-gateway/auth/user/contracts/invitations/
+identity-verification all 200, frontend on :3000. Signed in as a real client
+holding four `ended` contracts, so S17 had eligible recipients.
+
+**Verified working end to end:** S16 → "Send an offer" → S17 → dropdown listed
+only the four eligible members (correctly hiding the Active and the pending
+one) → chip → Continue → the Hire Me modal opened for the right person, no
+navigation, no 404. Resend's Undo was tested both ways: pressed, nothing reached
+the backend and no email went out; left alone, the request fired at the 8s mark
+(`Emitted: invitation.resent`, Brevo `statusCode=201`).
+
+### 11.1 The S17 dropdown was clipped inside the modal — fixed
+
+`DialogContent` carried `overflow-hidden`, and overflow clips
+absolutely-positioned descendants, so the results list was trapped inside the
+card and cut off. Removed; the white fill and 12px radius are on
+`DialogContent` itself and no child paints to the corners, so nothing needed
+clipping. The same trap cost four rounds on the Security Questions modal in
+October — worth knowing it is the first thing to check when a dropdown in a
+dialog renders short.
+
+### 11.2 The Hire Me modal clips its own message field — NOT ours
+
+`components/hire-me-button.tsx` (created by @CTorres9800 on 16 Apr, maintained
+by @VAndrejeus, last touched 19 Oct). Now that S17 hands off to it, this is on
+the epic's happy path.
+
+Its scroll viewport is capped at `max-h-[calc(100dvh-76px)]`, which subtracts
+the **header** but never the **footer**. Measured live at a 745px viewport:
+
+```
+viewport max-height : 669px   (calc(100dvh-76px))
+viewport height     : 669px
+parent height       : 600px
+overflow past parent:  69px   ← clipped, parent is overflow:hidden
+```
+
+Those 69px — almost exactly the footer height — are unreachable: the scrollbar
+belongs to the viewport, which believes it is 669px tall. Scrolled fully to the
+bottom (`scrollTop 553` of `scrollHeight 1222`) the last 69px still cannot be
+seen, which is why "Add a Message" dies where "Send Offer" begins. It is
+viewport-height dependent, so it disappears on a tall window.
+
+Fix is one expression — subtract header *and* footer — but the file is
+READ-ONLY to us and actively owned, so it is left for @VAndrejeus.
+
+### 11.3 Two more in the same modal
+
+- **"We couldn't load your contracts. Please try again."** on the Select From
+  Existing Contracts step. A failing fetch inside the Hire Me modal, unrelated
+  to the hand-off.
+- **An eligibility disagreement the hand-off exposes.** On a talent's own
+  profile the Hire Me button is disabled when they are not available for hire
+  (BTB-261). S17 still opens the same modal for them, because the eligibility
+  rule is contract-based (`past`) per the Figma sticky note and never consults
+  the availability flag. **Decision needed:** should S17 also respect
+  availability? Adding it goes beyond the written sticky note, but leaving it
+  means two entry points disagree about who can be hired.
+
+### 11.4 Sorting on My Team does nothing — to build next
+
+The toolbar sort control is presentational only:
+
+```tsx
+const SortDropdown = () => (          // no props, no state, no handlers
+  <DropdownMenuCheckItem>Name A-Z</DropdownMenuCheckItem>
+  <DropdownMenuCheckItem>Name Z-A</DropdownMenuCheckItem>
+  <DropdownMenuCheckItem>Newest First</DropdownMenuCheckItem>
+  <DropdownMenuCheckItem>Oldest First</DropdownMenuCheckItem>
+)
+```
+
+No `checked`, no `onCheckedChange`, and nothing downstream reads a sort order.
+All four options are inert, in **both** tabs and **both** views. The list-view
+tables do have real TanStack sorting wired (`getSortedRowModel` plus `sorting`
+state) for their column headers, but the toolbar dropdown does not drive it, and
+grid view has no sorting at all.
+
+Two things to settle before building it: what "Newest/Oldest" sorts on (the
+Talent Network has no date field on the card — presumably contract start or end
+from contracts-service), and whether the choice is shared across the two tabs or
+kept per tab. Not started.
+
+### 11.5 Local setup notes
+
+Two gaps that cost time on a clean boot, neither caused by this branch:
+
+- `E2EE_SERVER_SECRET` is required or messaging-service refuses to start, and is
+  in none of the four env templates. Generated locally with `openssl rand -hex 32`.
+- Brevo silently 401s on IPv6 (the allowlist holds the IPv4 address only).
+  `NODE_OPTIONS=--dns-result-order=ipv4first` in the shell that launches PM2
+  fixes it; nothing pins this in `ecosystem.config.js`, so a plain `npm run dev`
+  sends mail that fails invisibly.
+
+Still unfixed from §5: the three colliding `InitContractsSchema` migrations, and
+`messaging-service` / `time-tracking-service` / `content-moderation-service`
+restart-looping past `max_restarts` on broken or unrun migrations.
