@@ -133,6 +133,77 @@ describe('POST /v1/identity-verification/travel-duration/update (the check-in an
     },
   );
 
+  describe('checkInAt: one answer per occurrence across tabs', () => {
+    const day3 = () =>
+      new Date(row.travelModeActivatedAt.getTime() + 3 * DAY).toISOString();
+    const postWith = (duration: unknown, checkInAt: unknown) =>
+      request(app.getHttpServer()).post(URL).send({ duration, checkInAt });
+
+    it('answering the occurrence /me showed succeeds', async () => {
+      await build(
+        inForce({
+          travelModeActivatedAt: new Date(Date.now() - 4 * DAY),
+          nextTravelReminderAt: new Date(Date.now() - DAY),
+        }),
+      );
+      const shown = day3();
+
+      const res = await postWith('not_sure', shown).expect(200);
+
+      expect(res.body).toMatchObject({
+        declaredDuration: 'not_sure',
+        travelCheckInCount: 1,
+      });
+    });
+
+    it('a second tab answering the same occurrence later gets exactly the documented 409 and changes nothing', async () => {
+      await build(
+        inForce({
+          travelModeActivatedAt: new Date(Date.now() - 4 * DAY),
+          nextTravelReminderAt: new Date(Date.now() - DAY),
+        }),
+      );
+      const shown = day3();
+      await postWith('not_sure', shown).expect(200);
+      const afterFirst = JSON.parse(JSON.stringify(row));
+
+      const res = await postWith('one_to_two_weeks', shown).expect(409);
+
+      expect(res.body).toEqual({
+        code: 'TRAVEL_CHECK_IN_ALREADY_ANSWERED',
+        message: 'This check-in was already answered.',
+      });
+      expect(JSON.parse(JSON.stringify(row))).toEqual(afterFirst);
+    });
+
+    it('two simultaneous submissions of the same occurrence: exactly one 200', async () => {
+      await build(
+        inForce({
+          travelModeActivatedAt: new Date(Date.now() - 4 * DAY),
+          nextTravelReminderAt: new Date(Date.now() - DAY),
+        }),
+      );
+      const shown = day3();
+
+      const [a, b] = await Promise.all([
+        postWith('not_sure', shown),
+        postWith('one_to_two_weeks', shown),
+      ]);
+
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect(row.travelCheckInCount).toBe(1);
+    });
+
+    it.each(['not a date', '2026-13-45T00:00:00Z', 12345, ''])(
+      'a malformed checkInAt (%p) is a 400 and writes nothing',
+      async (bad) => {
+        await build(inForce());
+        await postWith('not_sure', bad).expect(400);
+        expect(update).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   it('the count appears in the response only once an answer was saved (absent means 0)', async () => {
     await build(inForce());
     const first = await post('not_sure').expect(200);

@@ -155,30 +155,73 @@ describe('ProfileStatusResponseDto — Travel Mode fields', () => {
     });
   });
 
-  describe('the 6-day duration', () => {
-    const sixDay = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
-    it('knows its end and has only day 3', () => {
-      expect(travel(dto(sixDay, at(1).getTime()))).toEqual({ endsAt: iso(at(6)), expired: false, due: false, availableAt: iso(at(3)) });
+  describe('"A few days" (7 days): day 3 and day 6', () => {
+    const few = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
+    it('knows its end and starts with day 3', () => {
+      expect(travel(dto(few, at(1).getTime()))).toEqual({
+        endsAt: iso(at(7)),
+        expired: false,
+        due: false,
+        availableAt: iso(at(3)),
+      });
     });
-    it('day 3 stays claimable until the last millisecond before the end', () => {
-      expect(travel(dto(sixDay, at(6, -1).getTime()))).toMatchObject({ expired: false, due: true, availableAt: iso(at(3)) });
+    it('day 3 stays due until it is resolved, even long after it', () => {
+      expect(travel(dto(few, at(5).getTime()))).toMatchObject({
+        expired: false,
+        due: true,
+        availableAt: iso(at(3)),
+      });
     });
-    it('after the day-3 claim there is no day 7: nothing is available', () => {
-      expect(travel(dto({ ...sixDay, lastTravelReminderSentAt: at(3) }, at(4).getTime()))).toMatchObject({ due: false, availableAt: null });
+    it('after day 3 is resolved day 6 is next, and it stays due until the last millisecond before the end', () => {
+      const resolved = { ...few, lastTravelReminderSentAt: at(3) };
+      expect(travel(dto(resolved, at(4).getTime()))).toMatchObject({
+        due: false,
+        availableAt: iso(at(6)),
+      });
+      expect(travel(dto(resolved, at(6).getTime()))).toMatchObject({
+        due: true,
+        availableAt: iso(at(6)),
+      });
+      expect(travel(dto(resolved, at(7, -1).getTime()))).toMatchObject({
+        expired: false,
+        due: true,
+        availableAt: iso(at(6)),
+      });
+    });
+    it('after day 6 is resolved nothing is available', () => {
+      expect(
+        travel(
+          dto({ ...few, lastTravelReminderSentAt: at(6) }, at(6, 1).getTime()),
+        ),
+      ).toMatchObject({ due: false, availableAt: null });
     });
   });
 
   describe('expired', () => {
     it('exactly at the end: expired, end time still reported, nothing to claim', () => {
-      expect(travel(dto({ declaredDuration: DeclaredDuration.A_FEW_DAYS }, at(6).getTime()))).toEqual({
-        endsAt: iso(at(6)),
+      expect(
+        travel(
+          dto(
+            { declaredDuration: DeclaredDuration.A_FEW_DAYS },
+            at(7).getTime(),
+          ),
+        ),
+      ).toEqual({
+        endsAt: iso(at(7)),
         expired: true,
         due: false,
         availableAt: null,
       });
     });
     it('1 ms before the end it is not expired', () => {
-      expect(travel(dto({ declaredDuration: DeclaredDuration.A_FEW_DAYS }, at(6, -1).getTime())).expired).toBe(false);
+      expect(
+        travel(
+          dto(
+            { declaredDuration: DeclaredDuration.A_FEW_DAYS },
+            at(7, -1).getTime(),
+          ),
+        ).expired,
+      ).toBe(false);
     });
     it.each([
       ['raw flag still true', true],
@@ -192,7 +235,7 @@ describe('ProfileStatusResponseDto — Travel Mode fields', () => {
       });
     });
     it.each([
-      [DeclaredDuration.A_FEW_DAYS, 6],
+      [DeclaredDuration.A_FEW_DAYS, 7],
       [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
       [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
       [DeclaredDuration.NOT_SURE, 30],

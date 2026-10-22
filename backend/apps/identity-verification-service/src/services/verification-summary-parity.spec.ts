@@ -125,19 +125,71 @@ describe('verification summary ↔ real start path parity (new-session requireme
 
   // Every Travel Mode state, including the exact end instant, must agree between
   // the summary and the real start path (the fake clock is frozen at T0).
-  const SIX_DAYS = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
+  const FEW_DAYS = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
   const TRAVELING = TravelClassification.TEMPORARILY_TRAVELING;
   const travelStates: Array<[string, Record<string, unknown>, boolean]> = [
     ['none', {}, false],
     ['permanently relocated alone', { travelClassification: TravelClassification.PERMANENTLY_RELOCATED }, false],
     ['pending duration', { travelClassification: TRAVELING }, true],
-    ['active', { travelModeActive: true, travelClassification: TRAVELING, ...ACTIVE_TRAVEL }, true],
-    ['active, 1 ms before the end', { travelModeActive: true, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 6 * DAY + 1) }, true],
-    ['expired, exactly at the end', { travelModeActive: true, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 6 * DAY) }, false],
-    ['expired, raw flag already false', { travelModeActive: false, travelClassification: TRAVELING, ...SIX_DAYS, travelModeActivatedAt: new Date(T0.getTime() - 7 * DAY) }, false],
-    ['invalid raw-active data, no classification', { travelModeActive: true }, false],
-    ['invalid raw-active data, temporarily traveling', { travelModeActive: true, travelClassification: TRAVELING }, true],
-    ['invalid raw-active data, unknown duration', { travelModeActive: true, travelClassification: TRAVELING, travelModeActivatedAt: new Date(T0.getTime() - DAY), declaredDuration: 'forever' }, true],
+    [
+      'active',
+      {
+        travelModeActive: true,
+        travelClassification: TRAVELING,
+        ...ACTIVE_TRAVEL,
+      },
+      true,
+    ],
+    [
+      'active, 1 ms before the end',
+      {
+        travelModeActive: true,
+        travelClassification: TRAVELING,
+        ...FEW_DAYS,
+        travelModeActivatedAt: new Date(T0.getTime() - 7 * DAY + 1),
+      },
+      true,
+    ],
+    [
+      'expired, exactly at the end',
+      {
+        travelModeActive: true,
+        travelClassification: TRAVELING,
+        ...FEW_DAYS,
+        travelModeActivatedAt: new Date(T0.getTime() - 7 * DAY),
+      },
+      false,
+    ],
+    [
+      'expired, raw flag already false',
+      {
+        travelModeActive: false,
+        travelClassification: TRAVELING,
+        ...FEW_DAYS,
+        travelModeActivatedAt: new Date(T0.getTime() - 8 * DAY),
+      },
+      false,
+    ],
+    [
+      'invalid raw-active data, no classification',
+      { travelModeActive: true },
+      false,
+    ],
+    [
+      'invalid raw-active data, temporarily traveling',
+      { travelModeActive: true, travelClassification: TRAVELING },
+      true,
+    ],
+    [
+      'invalid raw-active data, unknown duration',
+      {
+        travelModeActive: true,
+        travelClassification: TRAVELING,
+        travelModeActivatedAt: new Date(T0.getTime() - DAY),
+        declaredDuration: 'forever',
+      },
+      true,
+    ],
   ];
 
   it.each(travelStates)('Travel Mode state: %s', async (_label, over, blocked) => {

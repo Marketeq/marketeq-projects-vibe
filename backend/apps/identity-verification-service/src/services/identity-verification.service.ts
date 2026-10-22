@@ -2,7 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
+import { DataSource, In, IsNull, LessThanOrEqual, Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
@@ -86,7 +86,7 @@ import {
 import { VerificationSummaryService } from './verification-summary.service';
 import {
   deriveTravelModeState,
-  deriveTravelReminderClaim,
+  deriveTravelReminderSchedule,
   expireTravelModeIfDue,
   travelModeSuppressesLocationPrompt,
 } from '../common/travel-mode/travel-mode-state';
@@ -582,25 +582,30 @@ export class IdentityVerificationService {
    * recordTravelDuration keeps rejecting an active period, so a normal activation request
    * can never replace one by accident; this is the one explicit path that does.
    *
-   * Only a saved duration is an answer, "Not sure" included. Skipping or closing a
-   * check-in calls nothing, so nothing here can be triggered by it.
+   * Only a saved duration is an answer, "Not sure" included. Opening, closing, skipping or
+   * refreshing a check-in calls nothing, and a failed request writes nothing, so the same
+   * occurrence stays due.
    *
    * It updates the existing row (there is no second period to overlap): the new period
    * starts now and ends at the new duration's expiry (it restarts from the response time,
-   * it is not added to the old end), the day-3 / day-6-or-7 schedule restarts from now
-   * (nothing a previous period claimed can suppress it), and the answer count goes up by
-   * one, which also ends the five-minute-after-login check-in for this cycle. Only Travel
-   * Mode columns are written: identity and location status, the verified home country and
-   * any home-country claim are untouched, and a running or in-review home-country change
-   * refuses the answer outright (the same guard as every other travel write).
+   * it is not added to the old end), the check-in schedule restarts from now (the
+   * resolved-up-to time is cleared, so nothing a previous period resolved can suppress it),
+   * and the answer count goes up by one, which also ends the five-minute-after-login
+   * check-in for this cycle. Only Travel Mode columns are written: identity and location
+   * status, the verified home country and any home-country claim are untouched, and a
+   * running or in-review home-country change refuses the answer outright.
    *
-   * One compare-and-set on the period that was observed, so of any number of concurrent
-   * answers exactly one applies; the rest write nothing and are reported as already
-   * answered (or as not active when the period ended or was cleared meanwhile).
+   * One occurrence is resolved at most once. The write is a compare-and-set on the period,
+   * the count and the resolved-up-to time that were observed, so of any number of
+   * simultaneous answers exactly one applies. `options.checkInAt` closes the sequential
+   * case: it is the `travelReminderAvailableAt` the caller was shown, and it must still be
+   * the current unresolved occurrence, otherwise another tab already resolved it and this
+   * request is rejected without writing. Without it the answer is a voluntary update.
    */
   async updateActiveTravelDuration(
     userId: string,
     duration: DeclaredDuration,
+    options: { checkInAt?: Date | null; session?: LoginSession | null } = {},
   ): Promise<IdentityVerificationProfile> {
     const found = await this.profileRepository.findOne({ where: { userId } });
     if (!found) throw new TravelModeNotActiveException();
@@ -621,6 +626,21 @@ export class IdentityVerificationService {
     if (!(observedActivation instanceof Date)) throw new TravelModeNotActiveException();
     const observedCount = profile.travelCheckInCount ?? 0;
 
+    if (options.checkInAt) {
+      const current = this.getTravelCheckIn(
+        profile,
+        options.session ?? null,
+        nowMs,
+      );
+      if (
+        !current.availableAt ||
+        current.availableAt.getTime() !== options.checkInAt.getTime()
+      ) {
+        throw new TravelCheckInAlreadyAnsweredException();
+      }
+    }
+
+    const observedResolvedUpTo = profile.lastTravelReminderSentAt;
     const now = new Date(nowMs);
     const nextReminderAt = new Date(nowMs + FIRST_REMINDER_AFTER_ACTIVATION_MS);
     // A claim with no live session may exist (it is recoverable and left exactly as it is).
@@ -635,7 +655,10 @@ export class IdentityVerificationService {
         travelModeActivatedAt: observedActivation,
         declaredDuration: profile.declaredDuration ?? IsNull(),
         travelCheckInCount: observedCount,
-        ...(pinsStatus ? { identityVerificationStatus: profile.identityVerificationStatus } : {}),
+        lastTravelReminderSentAt: observedResolvedUpTo ?? IsNull(),
+        ...(pinsStatus
+          ? { identityVerificationStatus: profile.identityVerificationStatus }
+          : {}),
       },
       {
         declaredDuration: duration,
@@ -665,166 +688,59 @@ export class IdentityVerificationService {
   }
 
   /**
-   * Claims the next Travel Mode reminder for the dashboard, for the caller's own
-   * profile only. Returns { claimed: true } to exactly one of any number of
-   * simultaneous callers; everyone else, and every case where nothing is
-   * claimable (no profile, not active, pending, invalid, expired, nothing due,
-   * everything already claimed), gets { claimed: false }. It never creates a
-   * profile and never throws for those cases.
-   *
-   * Only lastTravelReminderSentAt is written (the reminder job stays the sole
-   * owner of nextTravelReminderAt and of the travel_mode_still_active event, and
-   * no event is published here). The write is one compare-and-set on the id, the
-   * flag still being active and the activation time and duration this call
-   * observed, with the stored claim time null or earlier than the latest due
-   * reminder, so a claim made against an older activation can never consume a
-   * newer one's reminders, and a future or unusable stored claim time claims
-   * nothing.
+   * The check-in schedule for a profile as GET /me reports it: the earliest unresolved
+   * occurrence (day 3, day 6 or 7, or this login's five-minute occurrence) and whether it
+   * is due. Pure and read-only, the one derivation /me, the due check and the answer's
+   * occurrence check share.
    */
-  async claimTravelReminder(
-    userId: string,
-    session: LoginSession | null = null,
-  ): Promise<{ claimed: boolean }> {
-    const found = await this.profileRepository.findOne({ where: { userId } });
-    if (!found) return { claimed: false };
-
-    // Lazy expiry first: an ended period (or active data with no trustworthy end,
-    // which takes the fail-safe) is deactivated before anything is claimed.
-    const nowMs = Date.now();
-    const profile = await expireTravelModeIfDue(this.profileRepository, found, nowMs, this.logger);
-
-    // A running or in-review home-country change owns the screen (the location prompts are
-    // quiet for the same reason) and refuses a duration answer, so nothing is claimed: the
-    // occurrence stays unclaimed and is offered once that change is finished or abandoned.
-    if (isRelocationUnfinished(profile)) return { claimed: false };
-
-    const claim = deriveTravelReminderClaim(profile, nowMs);
-
-    // This login session's own reminder (5 minutes after authentication), when the
-    // verified token carries a usable session and the period was active at login.
-    const loginAt = session ? deriveLoginReminderAt(profile, session.authTimeMs, nowMs) : null;
-    const loginDue = session !== null && loginAt !== null && loginAt.getTime() <= nowMs;
-
-    if (!claim && !loginDue) return { claimed: false };
-    if (!loginDue) {
-      // Day 3 / day 7 only: exactly the original single compare-and-set.
-      return { claimed: await this.claimDayReminder(this.profileRepository, profile, claim!.latestDue, nowMs) };
-    }
-    return this.claimWithLoginReminder(profile, claim, (session as LoginSession).sid, nowMs);
+  private getTravelCheckIn(
+    profile: IdentityVerificationProfile,
+    session: LoginSession | null,
+    nowMs: number,
+  ) {
+    const loginAt = session
+      ? deriveLoginReminderAt(profile, session.authTimeMs, nowMs)
+      : null;
+    return deriveTravelReminderSchedule(profile, nowMs, loginAt);
   }
 
   /**
-   * The login-session reminder to report on GET /me: the time it is due, or null when
-   * the token has no usable session, the period was not active at login, it is over,
-   * or this session's reminder was already claimed. Read-only; a lookup failure only
-   * means "no login reminder" (it never fails or changes the status response).
+   * Whether a check-in is due for the caller right now. READ-ONLY: it claims, consumes and
+   * writes nothing (an expired period is deactivated first, as on every read). A check-in
+   * stays due until it is resolved by a saved duration answer or by starting the
+   * home-country update flow, so opening, closing, skipping, refreshing or navigating away
+   * from it reports it again. It is kept as POST travel-reminder/claim for clients that
+   * still call it; GET /me (travelReminderDue) says the same thing.
    */
-  async getLoginReminderAt(
+  async isTravelCheckInDue(
+    userId: string,
+    session: LoginSession | null = null,
+  ): Promise<{ due: boolean }> {
+    const found = await this.profileRepository.findOne({ where: { userId } });
+    if (!found) return { due: false };
+    const nowMs = Date.now();
+    const profile = await expireTravelModeIfDue(
+      this.profileRepository,
+      found,
+      nowMs,
+      this.logger,
+    );
+    return { due: this.getTravelCheckIn(profile, session, nowMs).due };
+  }
+
+  /**
+   * This login's five-minute occurrence to report on GET /me: the time it is due, or null
+   * when the token has no usable session, the period was not active at login, it is over,
+   * the first check-in was already answered, or it was resolved. Pure and read-only.
+   */
+  getLoginReminderAt(
     profile: IdentityVerificationProfile,
     session: LoginSession | null,
     nowMs: number = Date.now(),
-  ): Promise<Date | null> {
-    if (!session) return null;
-    const dueAt = deriveLoginReminderAt(profile, session.authTimeMs, nowMs);
-    if (!dueAt) return null;
-    try {
-      const rows: unknown[] = await this.dataSource.query(
-        `SELECT 1 FROM identity_verification.travel_login_reminder_claims
-         WHERE profile_id = $1 AND session_id = $2 LIMIT 1`,
-        [profile.id, session.sid],
-      );
-      return rows.length > 0 ? null : dueAt;
-    } catch {
-      this.logger.error('Travel Mode login reminder lookup failed; reporting no login reminder.');
-      return null;
-    }
-  }
-
-  // The day 3 / day 7 claim: one atomic compare-and-set on the profile's
-  // lastTravelReminderSentAt, against whatever repository the caller is using.
-  private async claimDayReminder(
-    repository: Pick<Repository<IdentityVerificationProfile>, 'update'>,
-    profile: IdentityVerificationProfile,
-    latestDue: Date,
-    nowMs: number,
-  ): Promise<boolean> {
-    const result = await repository.update(
-      {
-        id: profile.id,
-        travelModeActive: true,
-        travelModeActivatedAt: profile.travelModeActivatedAt as Date,
-        declaredDuration: profile.declaredDuration as DeclaredDuration,
-        lastTravelReminderSentAt: Or(IsNull(), LessThan(latestDue)),
-      },
-      { lastTravelReminderSentAt: new Date(nowMs) },
-    );
-    return result.affected === 1;
-  }
-
-  /**
-   * Claims a due login-session reminder together with any day reminder that is due at the
-   * same moment, so an overlap is ONE popup. One transaction under a per-profile advisory
-   * lock: of any number of simultaneous claimers (tabs, refreshes) exactly one gets
-   * { claimed: true } for everything due, the rest get nothing. The session's claim is a
-   * unique (profile, session) row, so a refresh or another tab of the SAME login can
-   * never claim it twice, while a new login (new session id) gets its own.
-   */
-  private async claimWithLoginReminder(
-    profile: IdentityVerificationProfile,
-    dayClaim: { latestDue: Date } | null,
-    sessionId: string,
-    nowMs: number,
-  ): Promise<{ claimed: boolean }> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-    try {
-      await queryRunner.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`travel-reminder-claim:${profile.id}`]);
-      // The login reminder is derived from the profile this call read BEFORE taking the
-      // lock. A check-in answer that committed meanwhile (the first check-in is now
-      // answered, or the period was replaced or ended) makes it stale: re-read the row under
-      // a share lock, which also holds off an answer until this claim commits, and claim
-      // nothing when the profile is no longer the one the reminder was derived from.
-      const [current] = (await queryRunner.query(
-        `SELECT travel_mode_active, travel_mode_activated_at, travel_check_in_count
-         FROM identity_verification.identity_verification_profiles WHERE id = $1 FOR SHARE`,
-        [profile.id],
-      )) as Array<{ travel_mode_active: boolean; travel_mode_activated_at: Date | null; travel_check_in_count: number }>;
-      const observedActivation = profile.travelModeActivatedAt;
-      const unchanged =
-        !!current &&
-        current.travel_mode_active === true &&
-        Number(current.travel_check_in_count) === (profile.travelCheckInCount ?? 0) &&
-        current.travel_mode_activated_at instanceof Date &&
-        observedActivation instanceof Date &&
-        current.travel_mode_activated_at.getTime() === observedActivation.getTime();
-      if (!unchanged) {
-        await queryRunner.rollbackTransaction();
-        return { claimed: false };
-      }
-      const inserted: unknown[] = await queryRunner.query(
-        `INSERT INTO identity_verification.travel_login_reminder_claims (profile_id, session_id)
-         VALUES ($1, $2)
-         ON CONFLICT (profile_id, session_id) DO NOTHING
-         RETURNING id`,
-        [profile.id, sessionId],
-      );
-      const dayClaimed = dayClaim
-        ? await this.claimDayReminder(
-            queryRunner.manager.getRepository(IdentityVerificationProfile),
-            profile,
-            dayClaim.latestDue,
-            nowMs,
-          )
-        : false;
-      await queryRunner.commitTransaction();
-      return { claimed: inserted.length === 1 || dayClaimed };
-    } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw error;
-    } finally {
-      await queryRunner.release();
-    }
+  ): Date | null {
+    return session
+      ? deriveLoginReminderAt(profile, session.authTimeMs, nowMs)
+      : null;
   }
 
   // --- Documents ---

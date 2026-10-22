@@ -20,9 +20,10 @@ export function travelReminderDays(duration: DeclaredDuration | null | undefined
 }
 
 // Approved length of each declared duration, in days. Exhaustive on purpose:
-// adding a DeclaredDuration without a length is a compile error.
+// adding a DeclaredDuration without a length is a compile error. "A few days" is 7 days
+// (it was 6) so that its day-6 check-in falls strictly before the end and can be due.
 const TRAVEL_DURATION_DAYS: Record<DeclaredDuration, number> = {
-  [DeclaredDuration.A_FEW_DAYS]: 6,
+  [DeclaredDuration.A_FEW_DAYS]: 7,
   [DeclaredDuration.ONE_TO_TWO_WEEKS]: 13,
   [DeclaredDuration.MORE_THAN_TWO_WEEKS]: 30,
   [DeclaredDuration.NOT_SURE]: 30,
@@ -44,8 +45,8 @@ export function travelModeEndsAt(activatedAt: Date, duration: DeclaredDuration):
 /**
  * The reminder times of one activation, earliest first: the duration's check-in days
  * after activation (see travelReminderDays), keeping only those that fall strictly
- * before the end. A reminder that would land at or after `endsAt` does not exist, so
- * the 6-day "A few days" period, which ends exactly on day 6, keeps only day 3.
+ * before the end. A reminder that would land at or after `endsAt` does not exist.
+ * Every duration is longer than its last check-in day (7 > 6, 13 > 7, 30 > 7).
  */
 export function travelReminderOccurrences(
   activatedAt: Date,

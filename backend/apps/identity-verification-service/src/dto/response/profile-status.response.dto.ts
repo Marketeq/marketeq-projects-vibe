@@ -27,9 +27,15 @@ export class ProfileStatusResponseDto {
   travelModeEndsAt!: string | null;
   /** A valid activation exists and its end has passed. */
   travelModeExpired!: boolean;
-  /** An unclaimed day-3 or day-7 reminder is due now. */
+  /**
+   * A Travel Mode check-in is due now and unresolved: it stays true (with the same
+   * travelReminderAvailableAt) until a duration answer is saved or the home-country update
+   * flow is started, however often it was shown, closed or refreshed. False while a
+   * home-country change is running or in review. Independent of travelModeLocationMismatch:
+   * both can be true at once.
+   */
   travelReminderDue!: boolean;
-  /** Time of the earliest unclaimed reminder; null when none is left or Travel Mode is not active. */
+  /** Time of the earliest unresolved check-in; null when none is left or Travel Mode is not active. */
   travelReminderAvailableAt!: string | null;
 
   identityVerificationStatus!: IdentityVerificationStatus;

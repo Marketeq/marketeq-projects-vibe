@@ -1,7 +1,11 @@
-import { deriveTravelModeState, hasAnsweredFirstCheckIn, TravelModeFields } from './travel-mode-state';
+import {
+  deriveTravelModeState,
+  hasAnsweredFirstCheckIn,
+  TravelReminderFields,
+} from './travel-mode-state';
 
-// Approved rule: while Travel Mode is active, the reminder shows exactly 5 minutes after
-// authentication, once per genuinely new login session. The login time is the access
+// Approved rule: while Travel Mode is active, the first check-in is due exactly 5 minutes
+// after authentication, for each genuinely new login session until it is resolved. The login time is the access
 // token's `auth_time` claim (epoch seconds, fixed for the life of a session, preserved
 // across refresh) and the session is its `sid`. Both are optional: a token without a
 // usable pair simply has no login reminder, so day 3 / day 7 are never affected.
@@ -48,11 +52,12 @@ export function readLoginSession(user: unknown, nowMs: number): LoginSession | n
  *    gives the 6-day option no day-7 reminder);
  *  - the cycle's first check-in has not been answered yet (a skipped or closed one is not
  *    an answer, so it does not count).
- * Whether it has been claimed already is a separate, per-session question (see the claim
- * table), not decided here.
+ *  - it is not already resolved: `lastTravelReminderSentAt` (written only by a saved
+ *    answer or by starting the home-country update flow) is before it. Showing or closing
+ *    the check-in never resolves it, so a refresh reports the same time again.
  */
 export function deriveLoginReminderAt(
-  fields: TravelModeFields,
+  fields: TravelReminderFields,
   authTimeMs: number,
   nowMs: number,
 ): Date | null {
@@ -68,5 +73,13 @@ export function deriveLoginReminderAt(
   if (authTimeMs >= endsAt.getTime()) return null; // already over at login
 
   const dueMs = authTimeMs + LOGIN_REMINDER_DELAY_MS;
-  return dueMs < endsAt.getTime() ? new Date(dueMs) : null;
+  if (dueMs >= endsAt.getTime()) return null;
+  const resolved = fields.lastTravelReminderSentAt;
+  if (
+    resolved instanceof Date &&
+    Number.isFinite(resolved.getTime()) &&
+    resolved.getTime() >= dueMs
+  )
+    return null;
+  return new Date(dueMs);
 }

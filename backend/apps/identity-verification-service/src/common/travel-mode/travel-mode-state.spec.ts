@@ -1,5 +1,7 @@
 import {
   DeclaredDuration,
+  IdentityVerificationStatus,
+  LocationVerificationStatus,
   TravelClassification,
 } from '../../entities/enums/identity-verification.enums';
 import { DAY_MS } from './travel-mode-duration';
@@ -8,7 +10,6 @@ import {
   TravelModeState,
   TravelReminderFields,
   deriveTravelModeState,
-  deriveTravelReminderClaim,
   deriveTravelReminderSchedule,
   travelModeBlocksNewSession,
   travelModeSuppressesLocationPrompt,
@@ -16,7 +17,7 @@ import {
 
 describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
   const ACTIVATED = new Date('2026-06-01T12:00:00.000Z');
-  const ENDS_6 = ACTIVATED.getTime() + 6 * DAY_MS;
+  const ENDS_A_FEW = ACTIVATED.getTime() + 7 * DAY_MS;
   const TRAVELING = TravelClassification.TEMPORARILY_TRAVELING;
   const RELOCATED = TravelClassification.PERMANENTLY_RELOCATED;
 
@@ -38,28 +39,144 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
 
   describe('complete state table', () => {
     // [label, fields, clock, expected state, blocks a new session]
-    const table: Array<[string, TravelModeFields, number, TravelModeState, boolean]> = [
-      ['no travel data at all', fields(), ENDS_6, 'none', false],
-      ['permanently relocated alone', fields({ travelClassification: RELOCATED }), ENDS_6, 'none', false],
-      ['pending duration: traveling, flag off, no activation', fields({ travelClassification: TRAVELING }), ENDS_6, 'pending', true],
-      ['pending duration: traveling with only a duration, no activation time', fields({ travelClassification: TRAVELING, declaredDuration: DeclaredDuration.NOT_SURE }), ENDS_6, 'pending', true],
-      ['pending duration: traveling with only an activation time, no duration', fields({ travelClassification: TRAVELING, travelModeActivatedAt: ACTIVATED }), ENDS_6, 'pending', true],
-      ['active, 1 ms before the end', valid(), ENDS_6 - 1, 'active', true],
-      ['expired, exactly at the end', valid(), ENDS_6, 'expired', false],
-      ['expired, 1 ms after the end', valid(), ENDS_6 + 1, 'expired', false],
-      ['expired with the raw flag still true', valid({ travelModeActive: true }), ENDS_6 + DAY_MS, 'expired', false],
-      ['expired with the raw flag already false', valid({ travelModeActive: false }), ENDS_6 + DAY_MS, 'expired', false],
-      ['expired, classification null', valid({ travelClassification: null }), ENDS_6, 'expired', false],
-      ['active, classification null (relocation never declared)', valid({ travelClassification: null }), ENDS_6 - 1, 'active', true],
-      ['active, classification permanently relocated', valid({ travelClassification: RELOCATED }), ENDS_6 - 1, 'active', true],
-      ['invalid: raw active, no activation, no duration, classification null', fields({ travelModeActive: true }), ENDS_6, 'invalid', false],
-      ['invalid: raw active, classification permanently relocated', fields({ travelModeActive: true, travelClassification: RELOCATED }), ENDS_6, 'invalid', false],
-      ['invalid: raw active, classification traveling', fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_6, 'invalid', true],
-      ['invalid: raw active, missing duration', valid({ declaredDuration: null }), ENDS_6, 'invalid', true],
-      ['invalid: raw active, unknown duration', valid({ declaredDuration: 'forever' }), ENDS_6, 'invalid', true],
-      ['invalid: raw active, missing activation time', valid({ travelModeActivatedAt: null }), ENDS_6, 'invalid', true],
-      ['invalid: raw active, invalid activation date', valid({ travelModeActivatedAt: new Date('not a date') }), ENDS_6, 'invalid', true],
-      ['invalid: raw active, activation time is not a Date', valid({ travelModeActivatedAt: ACTIVATED.toISOString() }), ENDS_6, 'invalid', true],
+    const table: Array<
+      [string, TravelModeFields, number, TravelModeState, boolean]
+    > = [
+      ['no travel data at all', fields(), ENDS_A_FEW, 'none', false],
+      [
+        'permanently relocated alone',
+        fields({ travelClassification: RELOCATED }),
+        ENDS_A_FEW,
+        'none',
+        false,
+      ],
+      [
+        'pending duration: traveling, flag off, no activation',
+        fields({ travelClassification: TRAVELING }),
+        ENDS_A_FEW,
+        'pending',
+        true,
+      ],
+      [
+        'pending duration: traveling with only a duration, no activation time',
+        fields({
+          travelClassification: TRAVELING,
+          declaredDuration: DeclaredDuration.NOT_SURE,
+        }),
+        ENDS_A_FEW,
+        'pending',
+        true,
+      ],
+      [
+        'pending duration: traveling with only an activation time, no duration',
+        fields({
+          travelClassification: TRAVELING,
+          travelModeActivatedAt: ACTIVATED,
+        }),
+        ENDS_A_FEW,
+        'pending',
+        true,
+      ],
+      ['active, 1 ms before the end', valid(), ENDS_A_FEW - 1, 'active', true],
+      ['expired, exactly at the end', valid(), ENDS_A_FEW, 'expired', false],
+      [
+        'expired, 1 ms after the end',
+        valid(),
+        ENDS_A_FEW + 1,
+        'expired',
+        false,
+      ],
+      [
+        'expired with the raw flag still true',
+        valid({ travelModeActive: true }),
+        ENDS_A_FEW + DAY_MS,
+        'expired',
+        false,
+      ],
+      [
+        'expired with the raw flag already false',
+        valid({ travelModeActive: false }),
+        ENDS_A_FEW + DAY_MS,
+        'expired',
+        false,
+      ],
+      [
+        'expired, classification null',
+        valid({ travelClassification: null }),
+        ENDS_A_FEW,
+        'expired',
+        false,
+      ],
+      [
+        'active, classification null (relocation never declared)',
+        valid({ travelClassification: null }),
+        ENDS_A_FEW - 1,
+        'active',
+        true,
+      ],
+      [
+        'active, classification permanently relocated',
+        valid({ travelClassification: RELOCATED }),
+        ENDS_A_FEW - 1,
+        'active',
+        true,
+      ],
+      [
+        'invalid: raw active, no activation, no duration, classification null',
+        fields({ travelModeActive: true }),
+        ENDS_A_FEW,
+        'invalid',
+        false,
+      ],
+      [
+        'invalid: raw active, classification permanently relocated',
+        fields({ travelModeActive: true, travelClassification: RELOCATED }),
+        ENDS_A_FEW,
+        'invalid',
+        false,
+      ],
+      [
+        'invalid: raw active, classification traveling',
+        fields({ travelModeActive: true, travelClassification: TRAVELING }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
+      [
+        'invalid: raw active, missing duration',
+        valid({ declaredDuration: null }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
+      [
+        'invalid: raw active, unknown duration',
+        valid({ declaredDuration: 'forever' }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
+      [
+        'invalid: raw active, missing activation time',
+        valid({ travelModeActivatedAt: null }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
+      [
+        'invalid: raw active, invalid activation date',
+        valid({ travelModeActivatedAt: new Date('not a date') }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
+      [
+        'invalid: raw active, activation time is not a Date',
+        valid({ travelModeActivatedAt: ACTIVATED.toISOString() }),
+        ENDS_A_FEW,
+        'invalid',
+        true,
+      ],
     ];
 
     it.each(table)('%s', (_label, f, now, state, blocks) => {
@@ -75,7 +192,7 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
 
   describe('exact end instant (explicit clock, no sleeping)', () => {
     it.each([
-      [DeclaredDuration.A_FEW_DAYS, 6],
+      [DeclaredDuration.A_FEW_DAYS, 7],
       [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
       [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
       [DeclaredDuration.NOT_SURE, 30],
@@ -93,49 +210,106 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
     });
 
     it('endsAt is null whenever there is no valid activation', () => {
-      expect(deriveTravelModeState(fields(), ENDS_6).endsAt).toBeNull();
-      expect(deriveTravelModeState(valid({ declaredDuration: 'forever' }), ENDS_6).endsAt).toBeNull();
-      expect(deriveTravelModeState(fields({ travelClassification: TRAVELING }), ENDS_6).endsAt).toBeNull();
+      expect(deriveTravelModeState(fields(), ENDS_A_FEW).endsAt).toBeNull();
+      expect(
+        deriveTravelModeState(
+          valid({ declaredDuration: 'forever' }),
+          ENDS_A_FEW,
+        ).endsAt,
+      ).toBeNull();
+      expect(
+        deriveTravelModeState(
+          fields({ travelClassification: TRAVELING }),
+          ENDS_A_FEW,
+        ).endsAt,
+      ).toBeNull();
     });
   });
 
   describe('travelModeSuppressesLocationPrompt', () => {
     it('active suppresses; expired does not', () => {
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_6 - 1)).toBe(true);
-      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_6)).toBe(false);
+      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW - 1)).toBe(
+        true,
+      );
+      expect(travelModeSuppressesLocationPrompt(valid(), ENDS_A_FEW)).toBe(
+        false,
+      );
     });
 
     it('a leftover classification with no duration (pending) suppresses nothing, although it still blocks a new session', () => {
       const stranded = fields({ travelClassification: TRAVELING });
-      expect(travelModeSuppressesLocationPrompt(stranded, ENDS_6)).toBe(false);
-      expect(travelModeBlocksNewSession(stranded, ENDS_6)).toBe(true);
+      expect(travelModeSuppressesLocationPrompt(stranded, ENDS_A_FEW)).toBe(
+        false,
+      );
+      expect(travelModeBlocksNewSession(stranded, ENDS_A_FEW)).toBe(true);
     });
 
     it('invalid raw-active data suppresses it only for a traveler', () => {
-      expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_6)).toBe(true);
+      expect(
+        travelModeSuppressesLocationPrompt(
+          fields({ travelModeActive: true, travelClassification: TRAVELING }),
+          ENDS_A_FEW,
+        ),
+      ).toBe(true);
       for (const classification of [null, RELOCATED]) {
-        expect(travelModeSuppressesLocationPrompt(fields({ travelModeActive: true, travelClassification: classification }), ENDS_6)).toBe(false);
+        expect(
+          travelModeSuppressesLocationPrompt(
+            fields({
+              travelModeActive: true,
+              travelClassification: classification,
+            }),
+            ENDS_A_FEW,
+          ),
+        ).toBe(false);
       }
     });
   });
 
   describe('the blocking rule', () => {
     it('pending and active block; expired does not', () => {
-      expect(travelModeBlocksNewSession(fields({ travelClassification: TRAVELING }), ENDS_6)).toBe(true);
-      expect(travelModeBlocksNewSession(valid(), ENDS_6 - 1)).toBe(true);
-      expect(travelModeBlocksNewSession(valid(), ENDS_6)).toBe(false);
+      expect(
+        travelModeBlocksNewSession(
+          fields({ travelClassification: TRAVELING }),
+          ENDS_A_FEW,
+        ),
+      ).toBe(true);
+      expect(travelModeBlocksNewSession(valid(), ENDS_A_FEW - 1)).toBe(true);
+      expect(travelModeBlocksNewSession(valid(), ENDS_A_FEW)).toBe(false);
     });
 
     it('invalid raw-active data blocks only when the classification is temporarily_traveling', () => {
-      expect(travelModeBlocksNewSession(fields({ travelModeActive: true, travelClassification: TRAVELING }), ENDS_6)).toBe(true);
+      expect(
+        travelModeBlocksNewSession(
+          fields({ travelModeActive: true, travelClassification: TRAVELING }),
+          ENDS_A_FEW,
+        ),
+      ).toBe(true);
       for (const classification of [null, RELOCATED]) {
-        expect(travelModeBlocksNewSession(fields({ travelModeActive: true, travelClassification: classification }), ENDS_6)).toBe(false);
+        expect(
+          travelModeBlocksNewSession(
+            fields({
+              travelModeActive: true,
+              travelClassification: classification,
+            }),
+            ENDS_A_FEW,
+          ),
+        ).toBe(false);
       }
     });
 
     it('an unrelated classification keeps its existing behavior: it never blocks by itself', () => {
-      expect(travelModeBlocksNewSession(fields({ travelClassification: RELOCATED }), ENDS_6)).toBe(false);
-      expect(travelModeBlocksNewSession(fields({ travelClassification: null }), ENDS_6)).toBe(false);
+      expect(
+        travelModeBlocksNewSession(
+          fields({ travelClassification: RELOCATED }),
+          ENDS_A_FEW,
+        ),
+      ).toBe(false);
+      expect(
+        travelModeBlocksNewSession(
+          fields({ travelClassification: null }),
+          ENDS_A_FEW,
+        ),
+      ).toBe(false);
     });
 
     it('a clock that is not a finite number fails closed for a valid activation', () => {
@@ -146,8 +320,8 @@ describe('deriveTravelModeState / travelModeBlocksNewSession', () => {
     it('does not read or change anything outside its arguments', () => {
       const f = valid();
       const snapshot = JSON.stringify(f);
-      deriveTravelModeState(f, ENDS_6);
-      travelModeBlocksNewSession(f, ENDS_6);
+      deriveTravelModeState(f, ENDS_A_FEW);
+      travelModeBlocksNewSession(f, ENDS_A_FEW);
       expect(JSON.stringify(f)).toBe(snapshot);
     });
   });
@@ -166,7 +340,7 @@ describe('deriveTravelReminderSchedule', () => {
     lastTravelReminderSentAt: null,
     ...over,
   });
-  const six = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
+  const few = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
   const NONE = { due: false, availableAt: null };
   const schedule = (f: TravelReminderFields, now: Date | number) =>
     deriveTravelReminderSchedule(f, typeof now === 'number' ? now : now.getTime());
@@ -217,33 +391,115 @@ describe('deriveTravelReminderSchedule', () => {
     });
   });
 
-  describe('the 6-day duration has no day 7', () => {
-    it('day 3 only: due from day 3 until the end', () => {
-      expect(schedule(fields(six), at(3, -1))).toEqual({ due: false, availableAt: at(3) });
-      expect(schedule(fields(six), at(3))).toEqual({ due: true, availableAt: at(3) });
-      expect(schedule(fields(six), at(6, -1))).toEqual({ due: true, availableAt: at(3) });
+  describe('"A few days" (7 days): day 3 and day 6', () => {
+    it('day 3 first, then day 6, each due from its exact time', () => {
+      expect(schedule(fields(few), at(3, -1))).toEqual({
+        due: false,
+        availableAt: at(3),
+      });
+      expect(schedule(fields(few), at(3))).toEqual({
+        due: true,
+        availableAt: at(3),
+      });
+      const afterDay3 = fields({ ...few, lastTravelReminderSentAt: at(3) });
+      expect(schedule(afterDay3, at(6, -1))).toEqual({
+        due: false,
+        availableAt: at(6),
+      });
+      expect(schedule(afterDay3, at(6))).toEqual({
+        due: true,
+        availableAt: at(6),
+      });
+      expect(schedule(afterDay3, at(7, -1))).toEqual({
+        due: true,
+        availableAt: at(6),
+      });
     });
-    it('once day 3 is claimed there is nothing left', () => {
-      expect(schedule(fields({ ...six, lastTravelReminderSentAt: at(3) }), at(4))).toEqual(NONE);
-    });
-    it('never reports day 7, whatever the claim state', () => {
+    it('once day 6 is resolved there is nothing left, and never a day 7', () => {
+      expect(
+        schedule(fields({ ...few, lastTravelReminderSentAt: at(6) }), at(6, 1)),
+      ).toEqual(NONE);
       for (const sent of [null, at(1), at(3), at(5)]) {
-        const result = schedule(fields({ ...six, lastTravelReminderSentAt: sent }), at(5));
-        expect(result.availableAt === null || result.availableAt.getTime() === at(3).getTime()).toBe(true);
+        const result = schedule(
+          fields({ ...few, lastTravelReminderSentAt: sent }),
+          at(5),
+        );
+        expect([at(3).getTime(), at(6).getTime()]).toContain(
+          result.availableAt!.getTime(),
+        );
       }
+    });
+  });
+
+  describe('a shown check-in is not a resolved one', () => {
+    it('reports the same occurrence however often it is asked, until the resolved-up-to time passes it', () => {
+      const f = fields();
+      for (let i = 0; i < 3; i += 1)
+        expect(schedule(f, at(4))).toEqual({ due: true, availableAt: at(3) });
+      expect(
+        schedule({ ...f, lastTravelReminderSentAt: at(4) }, at(4)),
+      ).toEqual({ due: false, availableAt: at(7) });
+    });
+  });
+
+  describe('a home-country change that is running or waiting owns the screen', () => {
+    const claim = {
+      verifiedHomeCountry: 'US',
+      locationVerificationStatus: LocationVerificationStatus.VERIFIED,
+      pendingHomeCountry: 'CA',
+    };
+    it.each([
+      IdentityVerificationStatus.IN_PROGRESS,
+      IdentityVerificationStatus.PENDING,
+    ])(
+      'no check-in is due while the session is %s (it would refuse an answer)',
+      (status) => {
+        expect(
+          schedule(
+            fields({ ...claim, identityVerificationStatus: status }),
+            at(4),
+          ),
+        ).toEqual(NONE);
+      },
+    );
+    it('a recoverable claim (no live session) does not hide it', () => {
+      expect(
+        schedule(
+          fields({
+            ...claim,
+            identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+          }),
+          at(4),
+        ),
+      ).toEqual({
+        due: true,
+        availableAt: at(3),
+      });
     });
   });
 
   describe('expiry', () => {
     it('exactly at the end nothing is available, for every duration', () => {
-      for (const [duration, days] of [[DeclaredDuration.A_FEW_DAYS, 6], [DeclaredDuration.ONE_TO_TWO_WEEKS, 13], [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30], [DeclaredDuration.NOT_SURE, 30]] as const) {
-        expect(schedule(fields({ declaredDuration: duration }), at(days))).toEqual(NONE);
-        expect(schedule(fields({ declaredDuration: duration }), at(days, -1)).availableAt).not.toBeNull();
+      for (const [duration, days] of [
+        [DeclaredDuration.A_FEW_DAYS, 7],
+        [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
+        [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
+        [DeclaredDuration.NOT_SURE, 30],
+      ] as const) {
+        expect(
+          schedule(fields({ declaredDuration: duration }), at(days)),
+        ).toEqual(NONE);
+        expect(
+          schedule(fields({ declaredDuration: duration }), at(days, -1))
+            .availableAt,
+        ).not.toBeNull();
       }
     });
     it('an expired period reports nothing, whether the raw flag is still true or already false', () => {
-      expect(schedule(fields(six), at(7))).toEqual(NONE);
-      expect(schedule(fields({ ...six, travelModeActive: false }), at(7))).toEqual(NONE);
+      expect(schedule(fields(few), at(8))).toEqual(NONE);
+      expect(
+        schedule(fields({ ...few, travelModeActive: false }), at(8)),
+      ).toEqual(NONE);
     });
   });
 
@@ -296,65 +552,5 @@ describe('deriveTravelReminderSchedule', () => {
       schedule(f, at(5));
       expect(JSON.stringify(f)).toBe(snapshot);
     });
-  });
-});
-
-describe('deriveTravelReminderClaim', () => {
-  const ACTIVATED = new Date('2026-06-01T12:00:00.000Z');
-  const at = (days: number, offsetMs = 0) => new Date(ACTIVATED.getTime() + days * DAY_MS + offsetMs);
-  const fields = (over: TravelReminderFields = {}): TravelReminderFields => ({
-    travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
-    travelModeActive: true,
-    travelModeActivatedAt: ACTIVATED,
-    declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS, // 13 days
-    lastTravelReminderSentAt: null,
-    ...over,
-  });
-  const six = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
-  const latest = (f: TravelReminderFields, now: Date) => deriveTravelReminderClaim(f, now.getTime())?.latestDue ?? null;
-
-  it('day 3: nothing 1 ms before, claimable exactly at it and after', () => {
-    expect(latest(fields(), at(3, -1))).toBeNull();
-    expect(latest(fields(), at(3))).toEqual(at(3));
-    expect(latest(fields(), at(3, 1))).toEqual(at(3));
-  });
-
-  it('day 7 (13 and both 30-day durations): claimable exactly at it once day 3 is claimed', () => {
-    for (const duration of [DeclaredDuration.ONE_TO_TWO_WEEKS, DeclaredDuration.MORE_THAN_TWO_WEEKS, DeclaredDuration.NOT_SURE]) {
-      const f = fields({ declaredDuration: duration, lastTravelReminderSentAt: at(3) });
-      expect(latest(f, at(7, -1))).toBeNull();
-      expect(latest(f, at(7))).toEqual(at(7));
-    }
-  });
-
-  it('the 6-day duration has only day 3 and never a day 7', () => {
-    expect(latest(fields(six), at(5))).toEqual(at(3));
-    expect(latest(fields({ ...six, lastTravelReminderSentAt: at(3) }), at(5))).toBeNull();
-    expect(latest(fields(six), at(7))).toBeNull();
-  });
-
-  it('exact expiry: claimable 1 ms before the end, never at it', () => {
-    expect(latest(fields(six), at(6, -1))).toEqual(at(3));
-    expect(latest(fields(six), at(6))).toBeNull();
-    expect(latest(fields(), at(13))).toBeNull();
-  });
-
-  it('catch-up: day 5 claims day 3 only; after day 7 the latest due is day 7 so one claim consumes both', () => {
-    expect(latest(fields(), at(5))).toEqual(at(3));
-    expect(latest(fields(), at(9))).toEqual(at(7));
-  });
-
-  it('nothing is claimable once everything due is claimed', () => {
-    expect(latest(fields({ lastTravelReminderSentAt: at(9) }), at(10))).toBeNull();
-  });
-
-  it.each([
-    ['pending', fields({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null })],
-    ['inactive', fields({ travelModeActive: false })],
-    ['invalid', fields({ declaredDuration: null })],
-    ['an unusable stored claim time', fields({ lastTravelReminderSentAt: 'garbage' })],
-    ['a future stored claim time', fields({ lastTravelReminderSentAt: at(99) })],
-  ])('%s: nothing to claim', (_label, f) => {
-    expect(latest(f, at(9))).toBeNull();
   });
 });

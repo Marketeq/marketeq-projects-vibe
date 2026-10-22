@@ -6,8 +6,8 @@ describe('travelModeEndsAt', () => {
   const endsAfterDays = (duration: DeclaredDuration) =>
     (travelModeEndsAt(activatedAt, duration)!.getTime() - activatedAt.getTime()) / DAY_MS;
 
-  it('maps the four durations to 6, 13, 30 and 30 days', () => {
-    expect(endsAfterDays(DeclaredDuration.A_FEW_DAYS)).toBe(6);
+  it('maps the four durations to 7, 13, 30 and 30 days', () => {
+    expect(endsAfterDays(DeclaredDuration.A_FEW_DAYS)).toBe(7);
     expect(endsAfterDays(DeclaredDuration.ONE_TO_TWO_WEEKS)).toBe(13);
     expect(endsAfterDays(DeclaredDuration.MORE_THAN_TWO_WEEKS)).toBe(30);
     expect(endsAfterDays(DeclaredDuration.NOT_SURE)).toBe(30);
@@ -21,7 +21,7 @@ describe('travelModeEndsAt', () => {
 
   it('is exact to the millisecond: active 1 ms before the end, expired exactly at the end', () => {
     const endsAt = travelModeEndsAt(activatedAt, DeclaredDuration.A_FEW_DAYS)!;
-    expect(endsAt.toISOString()).toBe('2026-06-07T12:00:00.000Z');
+    expect(endsAt.toISOString()).toBe('2026-06-08T12:00:00.000Z');
     const effective = (now: number) => now < endsAt.getTime();
     expect(effective(endsAt.getTime() - 1)).toBe(true);
     expect(effective(endsAt.getTime())).toBe(false);
@@ -31,8 +31,8 @@ describe('travelModeEndsAt', () => {
   it('uses elapsed UTC time, not calendar days, across a daylight-saving change', () => {
     const start = new Date('2026-03-07T12:00:00.000Z');
     const endsAt = travelModeEndsAt(start, DeclaredDuration.A_FEW_DAYS)!;
-    expect(endsAt.getTime() - start.getTime()).toBe(144 * 60 * 60 * 1000);
-    expect(endsAt.toISOString()).toBe('2026-03-13T12:00:00.000Z');
+    expect(endsAt.getTime() - start.getTime()).toBe(168 * 60 * 60 * 1000);
+    expect(endsAt.toISOString()).toBe('2026-03-14T12:00:00.000Z');
   });
 
   it('returns null for an invalid activation time or an unknown duration', () => {
@@ -61,10 +61,10 @@ describe('travelReminderOccurrences', () => {
   const occurrencesFor = (duration: DeclaredDuration) =>
     travelReminderOccurrences(activatedAt, travelModeEndsAt(activatedAt, duration)!, duration).map((d) => (d.getTime() - activatedAt.getTime()) / DAY_MS);
 
-  // "A few days" is day 3 and day 6, but the 6-day period ends exactly on day 6 and a
-  // reminder at or after the end does not exist, so only day 3 can ever be due.
-  it('6 days: day 3 only (day 6 lands exactly on the end)', () => {
-    expect(occurrencesFor(DeclaredDuration.A_FEW_DAYS)).toEqual([3]);
+  // "A few days" lasts 7 days and is checked on day 3 and day 6, so its day-6 check-in
+  // falls strictly before the end and can be due.
+  it('7 days ("A few days"): day 3 and day 6', () => {
+    expect(occurrencesFor(DeclaredDuration.A_FEW_DAYS)).toEqual([3, 6]);
   });
 
   it('13, 30 and 30 days: day 3 and day 7, earliest first', () => {
@@ -80,7 +80,7 @@ describe('travelReminderOccurrences', () => {
     expect(travelReminderOccurrences(activatedAt, at(7), n).map((d) => d.getTime())).toEqual([at(3).getTime()]);
     expect(travelReminderOccurrences(activatedAt, at(3, 1), n).map((d) => d.getTime())).toEqual([at(3).getTime()]);
     expect(travelReminderOccurrences(activatedAt, at(3), n)).toEqual([]);
-    // "A few days" keeps day 6 only when the period is longer than 6 days.
+    // "A few days" keeps day 6 only while the period outlasts it.
     const f = DeclaredDuration.A_FEW_DAYS;
     expect(travelReminderOccurrences(activatedAt, at(6, 1), f).map((d) => d.getTime())).toEqual([at(3).getTime(), at(6).getTime()]);
     expect(travelReminderOccurrences(activatedAt, at(6), f).map((d) => d.getTime())).toEqual([at(3).getTime()]);
