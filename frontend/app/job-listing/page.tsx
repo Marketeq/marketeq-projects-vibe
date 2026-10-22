@@ -4374,12 +4374,14 @@ const ProjectInfo = ({
         : "";
     const avatarUrls = contract.memberAvatars.filter(Boolean).slice(0, 4);
     const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
+    const isServiceContract = contract.type?.toLowerCase() === "service";
 
     return {
       id: contract.id,
       title: contract.name || "Untitled contract",
       badges: [
         formatContractPhaseLabel(contract.phase),
+        isServiceContract ? "Service" : "",
         statusBadge,
       ].filter(Boolean),
       icon: <MdOutlineAssignment className="size-6" />,
@@ -4387,7 +4389,7 @@ const ProjectInfo = ({
         overflowAvatarCount > 0
           ? [...avatarUrls, `+${overflowAvatarCount}`]
           : avatarUrls,
-      workType: "project",
+      workType: isServiceContract ? "service" : "project",
       disabledReason: getContractDisabledReason(contract.status),
     };
   };
