@@ -29,6 +29,25 @@ export class CheckoutDraftController {
   // forwarding the raw Authorization header — checkout-service now trusts
   // this call via INTERNAL_SERVICE_TOKEN (InternalTokenGuard) rather than
   // re-validating a user JWT itself.
+  @Post('cards/setup-intent')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  createCardSetupIntent(@UserId() clientId: string) {
+    return this.checkoutDraftService.createCardSetupIntent(clientId);
+  }
+
+  @Post('cards')
+  @UseGuards(JwtAuthGuard)
+  saveCard(@Body() body: Record<string, unknown>, @UserId() clientId: string) {
+    return this.checkoutDraftService.saveCard(body, clientId);
+  }
+
+  @Get('cards')
+  @UseGuards(JwtAuthGuard)
+  listCards(@UserId() clientId: string) {
+    return this.checkoutDraftService.listCards(clientId);
+  }
+
   @Post('listings/:listingId/draft')
   @UseGuards(JwtAuthGuard)
   createDraft(@Param('listingId') listingId: string, @UserId() clientId: string) {

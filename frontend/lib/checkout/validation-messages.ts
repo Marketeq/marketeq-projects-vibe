@@ -10,6 +10,8 @@ export const CHECKOUT_VALIDATION_MESSAGES: Record<string, string> = {
     "Please try again, pricing is temporarily unavailable",
   SESSION_ALREADY_PAID:
     "Please check your payments, this checkout has already been paid",
+  CUSTOMER_UNAVAILABLE:
+    "Please try again, we could not set up your payment account",
   DRAFT_STALE:
     "Please review your scope, it was updated elsewhere and the latest version has been loaded",
 }

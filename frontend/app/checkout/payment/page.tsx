@@ -22,6 +22,10 @@ import {
 } from "@/lib/checkout/validation-messages"
 import { GiftCard } from "@/components/icons"
 import { UserAPI } from "@/service/http/user"
+import {
+  BillingAddressesAPI,
+  type BillingAddress,
+} from "@/service/http/billing-addresses"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
 import {
@@ -470,6 +474,8 @@ type InstallmentPaymentMethod = {
   title: string
   subtitle: string
   cardNumber?: string
+  brand?: string
+  funding?: string
   saveDefaultPaymentMethod?: boolean
   accountType?: string
   accountNumber?: string
@@ -1006,33 +1012,112 @@ const ContactlessMark = ({ className }: { className?: string }) => (
     aria-hidden="true"
     className={cn("object-contain", className)}
     data-testid="credit-card-contactless-icon"
-    height={50}
-    src="/checkout/contactless-icon.png"
-    width={40}
+    height={25}
+    src="/checkout/card-preview/paypass.svg"
+    width={20}
   />
 )
 
+const cardChipStrokes = [
+  {
+    large: false,
+    className:
+      "left-[18.0995px] top-[61.044px] [mask-position:0.242px_-2.395px]",
+  },
+  {
+    large: false,
+    className:
+      "left-[18.0995px] top-[68.9605px] [mask-position:0.242px_-10.307px]",
+  },
+  {
+    large: true,
+    className:
+      "left-[29.598px] top-[68.087px] [mask-position:-11.251px_-9.428px]",
+  },
+  {
+    large: false,
+    className:
+      "left-[18.0995px] top-[76.874px] [mask-position:0.242px_-18.217px]",
+  },
+  {
+    large: false,
+    className:
+      "left-[47.2575px] top-[61.044px] [mask-position:-28.932px_-2.395px]",
+  },
+  {
+    large: false,
+    className:
+      "left-[47.2575px] top-[68.9605px] [mask-position:-28.932px_-10.307px]",
+  },
+  {
+    large: false,
+    className:
+      "left-[47.2575px] top-[76.874px] [mask-position:-28.932px_-18.217px]",
+  },
+]
+
 const CardChip = () => (
-  <div
-    className="absolute left-[20px] top-[60.65px] h-[29.01px] w-[40.67px] overflow-hidden rounded-[3.8px] border-[0.95px] border-[#667085]"
-    aria-hidden="true"
-  >
-    <span className="absolute left-[-1px] top-[8.9px] h-[0.95px] w-[42px] bg-[#667085]" />
-    <span className="absolute left-[-1px] top-[20.1px] h-[0.95px] w-[42px] bg-[#667085]" />
-    <span className="absolute left-[10px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
-    <span className="absolute right-[9.8px] top-[-1px] h-[31px] w-[0.95px] bg-[#667085]" />
-    <span className="absolute left-[13.7px] top-[11.2px] h-[8.6px] w-[13.2px] rounded-[1.6px] border-[0.95px] border-[#667085] border-l-0" />
+  <div aria-hidden="true">
+    <NextImage
+      alt=""
+      className="absolute left-[18.333px] top-[58.652px] h-[29.007px] w-[40.667px] max-w-none"
+      height={29}
+      src="/checkout/card-preview/chip-base.svg"
+      width={41}
+    />
+    {cardChipStrokes.map((stroke) => (
+      <div
+        key={stroke.className}
+        className={cn(
+          "absolute [mask-composite:intersect] [mask-image:url(/checkout/card-preview/chip-mask.svg)] [mask-mode:alpha] [mask-repeat:no-repeat] [mask-size:40.667px_29.008px]",
+          stroke.large
+            ? "h-[11.0295px] w-[18.1653px]"
+            : "h-[8.39244px] w-[11.9769px]",
+          stroke.className
+        )}
+      >
+        <NextImage
+          alt=""
+          className="block size-full max-w-none"
+          height={stroke.large ? 11 : 8}
+          src={
+            stroke.large
+              ? "/checkout/card-preview/chip-stroke-large.svg"
+              : "/checkout/card-preview/chip-stroke-small.svg"
+          }
+          width={stroke.large ? 18 : 12}
+        />
+      </div>
+    ))}
   </div>
 )
 
 const MastercardMark = () => (
   <div
-    className="absolute left-[223.67px] top-[125.29px] h-[36.27px] w-[61px]"
+    className="absolute left-[221.666px] top-[123.339px] h-[36.2744px] w-[61.0001px]"
     aria-hidden="true"
   >
-    <span className="absolute left-0 top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#98A2B3]" />
-    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[36.27px] rounded-full bg-[#EAECF0]" />
-    <span className="absolute left-[24.73px] top-0 h-[36.27px] w-[11.54px] rounded-full bg-[#D0D5DD]" />
+    <NextImage
+      alt=""
+      className="absolute left-0 top-0 block h-[36.2743px] w-[60.9998px] max-w-none"
+      height={36}
+      src="/checkout/card-preview/mastercard-left.svg"
+      width={61}
+    />
+    <NextImage
+      alt=""
+      className="absolute left-[30.5px] top-0 block h-[36.2742px] w-[30.5002px] max-w-none"
+      height={36}
+      src="/checkout/card-preview/mastercard-right.svg"
+      width={31}
+    />
+    <NextImage
+      alt=""
+      className="absolute left-[24px] top-[4.349px] block h-[27.6083px] w-[12.9994px] max-w-none"
+      height={28}
+      src="/checkout/card-preview/mastercard-middle.svg"
+      width={13}
+    />
   </div>
 )
 
@@ -1042,12 +1127,14 @@ const CreditCardPreview = ({
   expiry,
   cvv,
   isBack,
+  activeField,
 }: {
   cardNumber: string
   cardName: string
   expiry: string
   cvv: string
   isBack: boolean
+  activeField?: CardField | null
 }) => {
   const displayCardNumber = formatPreviewCardNumber(cardNumber)
   const displayCardName =
@@ -1062,7 +1149,7 @@ const CreditCardPreview = ({
       data-testid={
         isBack ? "credit-card-preview-back" : "credit-card-preview-front"
       }
-      className="relative h-[181.95px] w-[305px] overflow-hidden rounded-[11.4px] border-2 border-[#EAECF0] bg-white shadow-[3.8px_4.75px_7.6px_0px_rgba(0,0,0,0.05)]"
+      className="relative h-[181.95px] w-[305px] overflow-hidden rounded-[11.402px] border-2 border-[#EAECF0] bg-white shadow-[3.801px_4.751px_7.601px_0px_rgba(0,0,0,0.05)]"
     >
       {isBack ? (
         <>
@@ -1075,61 +1162,162 @@ const CreditCardPreview = ({
             {displayCardNumber}
           </div>
           <ContactlessMark className="absolute left-[264.14px] top-[133.97px] h-[24.82px] w-[19.35px]" />
+          {activeField === "cvv" ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute left-[214.735px] top-[64.615px] h-[25.65px] w-[51.78px] rounded-[3.563px] border-[2.375px] border-primary-500"
+            />
+          ) : null}
         </>
       ) : (
         <>
-          <div
-            className="absolute left-[20px] top-[25.58px] h-[13px] w-[56px] text-[20px] font-bold leading-[26.68px] tracking-[-0.02em] text-[#667085]"
+          <NextImage
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 size-full max-w-none rounded-[11.402px] object-cover"
+            height={178}
+            src="/checkout/card-preview/card-bg.png"
+            width={301}
+          />
+          <NextImage
+            alt=""
+            aria-hidden="true"
+            className="absolute left-[262.333px] top-[18.218px] block h-[25.0308px] w-[20.3333px] max-w-none"
+            height={25}
+            src="/checkout/card-preview/paypass.svg"
+            width={20}
+          />
+          <p
+            className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] [word-break:break-word] absolute left-[18px] top-[24px] text-[20px] font-bold leading-[26.677px] tracking-[-0.4px] text-[#667085] whitespace-nowrap"
             style={{ fontFamily: "Sen, Inter, sans-serif" }}
           >
             credit
-          </div>
-          <div className="absolute left-[117.5px] top-[27px] h-[24px] w-px bg-[#D0D5DD]" />
-          <div
-            className="absolute left-[137px] top-[27.58px] h-[9px] w-[72px] text-[13.15px] font-medium leading-[17.54px] tracking-[-0.02em] text-[#667085]"
+          </p>
+          <NextImage
+            alt=""
+            aria-hidden="true"
+            className="absolute left-[123.388px] top-[22.071px] block h-[18.7731px] w-[0.968254px] max-w-none"
+            height={19}
+            src="/checkout/card-preview/logotype-divider.svg"
+            width={1}
+          />
+          <p
+            className="[text-box-edge:cap_alphabetic] [text-box-trim:trim-both] [word-break:break-word] absolute left-[135px] top-[26px] h-[9px] w-[72px] text-[13.153px] font-medium leading-[17.545px] tracking-[-0.2631px] text-[#667085]"
             style={{ fontFamily: "Sen, Inter, sans-serif" }}
           >
             Credit Bank
-          </div>
-          <ContactlessMark className="absolute left-[264.14px] top-[25.58px] h-[24.82px] w-[19.35px]" />
+          </p>
           <CardChip />
-          <div className="absolute left-[30.02px] top-[98.42px] flex h-[21.11px] w-[244.21px] items-center justify-center overflow-hidden bg-transparent px-[4.75px] font-mono text-[17px] leading-[21.11px] tracking-[0.12em] text-[#667085] whitespace-nowrap">
-            {displayCardNumber}
+          <div className="absolute left-[28.016px] top-[96.417px] h-[21.106px] w-[244.214px]">
+            <NextImage
+              alt=""
+              aria-hidden="true"
+              className="absolute inset-0 block size-full max-w-none"
+              height={21}
+              src="/checkout/card-preview/card-number.svg"
+              width={244}
+            />
           </div>
-          <div className="absolute left-[128px] top-[133.33px] flex h-[9.87px] w-[72px] items-center justify-end gap-[4px] text-[#667085]">
-            <span className="text-[6px] font-bold leading-[5.5px]">
-              VALID
-              <br />
-              THRU
-            </span>
-            <span className="font-mono text-[13px] font-bold leading-[9.87px] tracking-[0.1em]">
-              {displayExpiry}
-            </span>
+          <div className="absolute left-[143.352px] top-[122.045px] flex h-[18.747px] w-[61.484px] items-start gap-[4.751px] rounded-[2.375px] bg-[rgba(255,255,255,0)] p-[4.751px]">
+            <div className="relative h-[9.204px] w-[13.889px] shrink-0">
+              <NextImage
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 block size-full max-w-none"
+                height={9}
+                src="/checkout/card-preview/valid-thru-label.svg"
+                width={14}
+              />
+            </div>
+            <div className="relative h-[9.246px] w-[33.342px] shrink-0">
+              <NextImage
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-[0_0_-2.57%_0] block h-[102.57%] w-full max-w-none"
+                height={9}
+                src="/checkout/card-preview/valid-thru-date.svg"
+                width={33}
+              />
+            </div>
           </div>
-          <div
-            className="absolute left-[16.11px] top-[149.03px] flex h-[17.6px] w-[176.37px] items-center overflow-visible rounded-[2.38px] bg-transparent font-mono font-bold leading-none tracking-[0.12em] text-[#667085] whitespace-nowrap"
-            style={{
-              fontSize: `${cardNameFontSize}px`,
-              textShadow: "0px 0.24px 0px #0F172A",
-            }}
-          >
-            {displayCardName}
+          <div className="absolute left-[14.11px] top-[147.03px] h-[17.603px] w-[185.868px]">
+            <NextImage
+              alt=""
+              aria-hidden="true"
+              className="absolute left-[4.751px] top-[4.751px] block h-[8.339px] w-[176.366px] max-w-none"
+              height={8}
+              src="/checkout/card-preview/cardholder.svg"
+              width={176}
+            />
           </div>
           <MastercardMark />
+          {activeField === "cardNumber" ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute left-[25.641px] top-[94.042px] h-[25.856px] w-[248.964px] rounded-[3.563px] border-[2.375px] border-primary-500"
+            />
+          ) : null}
+          {activeField === "expirationDate" ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute left-[140.977px] top-[119.67px] h-[23.497px] w-[66.234px] rounded-[3.563px] border-[2.375px] border-primary-500"
+            />
+          ) : null}
+          {activeField === "cardName" ? (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute left-[11.73px] top-[144.655px] h-[22.354px] w-[190.618px] rounded-[3.563px] border-[2.375px] border-primary-500"
+            />
+          ) : null}
         </>
       )}
     </div>
   )
 }
 
-const savedBillingAddresses: Array<{
+type SavedBillingAddress = {
   id: string
   fullName: string
   line: string
   addressLine1: string
   cityStateZip: string
   phoneNumber: string
-}> = []
+  country: string
+  raw: BillingAddress
+}
+
+const formatSavedBillingPhone = (phoneNumber: string) => {
+  const digits = phoneNumber.replace(/\D/g, "")
+  if (phoneNumber.startsWith("+1") && digits.length === 11) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+  }
+  return phoneNumber
+}
+
+const toSavedBillingAddress = (
+  address: BillingAddress
+): SavedBillingAddress => {
+  const streetAddress = address.addressLine2
+    ? `${address.addressLine1}, ${address.addressLine2}`
+    : address.addressLine1
+  const cityStateZip = [
+    address.city,
+    [address.state, address.postalCode].filter(Boolean).join(" "),
+  ]
+    .filter(Boolean)
+    .join(", ")
+
+  return {
+    id: address.id,
+    fullName: address.fullName,
+    line: `${streetAddress}, ${cityStateZip}`,
+    addressLine1: streetAddress,
+    cityStateZip,
+    phoneNumber: formatSavedBillingPhone(address.phoneNumber),
+    country: address.country,
+    raw: address,
+  }
+}
 
 export default function PaymentPage() {
   const pathname = usePathname()
@@ -1552,6 +1740,9 @@ export default function PaymentPage() {
   >(null)
 
   // Billing address
+  const [savedBillingAddresses, setSavedBillingAddresses] = React.useState<
+    SavedBillingAddress[]
+  >([])
   const hasSavedBillingAddresses = savedBillingAddresses.length > 0
   const [fullName, setFullName] = React.useState("")
   const [addressLine1, setAddressLine1] = React.useState("")
@@ -1578,6 +1769,28 @@ export default function PaymentPage() {
     React.useState(savedBillingAddresses[0]?.id ?? "")
   const [isConfirmAddressDialogOpen, setIsConfirmAddressDialogOpen] =
     React.useState(false)
+  const [isSavingBillingAddress, setIsSavingBillingAddress] =
+    React.useState(false)
+  const [isSavingCard, setIsSavingCard] = React.useState(false)
+
+  React.useEffect(() => {
+    let isActive = true
+    BillingAddressesAPI.list()
+      .then((response) => {
+        if (!isActive) return
+        const addresses = (response.data as BillingAddress[]).map(
+          toSavedBillingAddress
+        )
+        if (addresses.length === 0) return
+        setSavedBillingAddresses(addresses)
+        setSelectedBillingAddressId(addresses[0].id)
+        setBillingAddressMode("saved")
+      })
+      .catch(() => {})
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   // Bank account
   const [accountType, setAccountType] = React.useState("")
@@ -3466,6 +3679,7 @@ export default function PaymentPage() {
       addressLine1: "",
       cityStateZip: "",
       phoneNumber: "",
+      country: "United States",
     }
   const billingAddressSummary = {
     fullName: fullName || selectedBillingAddress.fullName,
@@ -3475,6 +3689,7 @@ export default function PaymentPage() {
         ? `${city}, ${billingState} ${zipcode}`
         : selectedBillingAddress.cityStateZip,
     phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
+    country: selectedBillingAddress.country,
   }
   const cardNumberError = getCardNumberError(cardNumber)
   const cardNameError = getCardNameError(cardName)
@@ -3901,7 +4116,7 @@ export default function PaymentPage() {
       zipcode: false,
       phone: false,
     })
-    setBillingAddressMode(hasSavedBillingAddresses ? "summary" : "new")
+    setBillingAddressMode(hasSavedBillingAddresses ? "saved" : "new")
   }
 
   const resetFullPaymentBankForm = () => {
@@ -3934,24 +4149,150 @@ export default function PaymentPage() {
     setSplitPaymentError("")
   }
 
-  const handleSaveFullPaymentCard = () => {
-    setHasAttemptedCardSubmit(true)
-    if (!isFullPaymentCardFormValid) return
+  const saveNewBillingAddress = async () => {
+    setIsSavingBillingAddress(true)
+    try {
+      const response = await BillingAddressesAPI.create({
+        fullName: fullName.trim(),
+        addressLine1: addressLine1.trim(),
+        ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
+        city: city.trim(),
+        state: billingState,
+        postalCode: zipcode.trim(),
+        country: "United States",
+        phoneNumber: `+1${getUsPhoneDigits(phoneNumber)}`,
+      })
+      const savedAddress = toSavedBillingAddress(
+        response.data as BillingAddress
+      )
+      setSavedBillingAddresses((current) => [...current, savedAddress])
+      setSelectedBillingAddressId(savedAddress.id)
+      setFullName("")
+      setAddressLine1("")
+      setAddressLine2("")
+      setCity("")
+      setBillingState("")
+      setZipcode("")
+      setPhoneNumber("")
+      setBillingFieldTouched({
+        fullName: false,
+        addressLine1: false,
+        city: false,
+        state: false,
+        zipcode: false,
+        phone: false,
+      })
+      setBillingAddressMode("summary")
+      return savedAddress
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Your billing address could not be saved. Please try again.",
+      })
+      return null
+    } finally {
+      setIsSavingBillingAddress(false)
+    }
+  }
 
-    const method: InstallmentPaymentMethod = {
-      id: `full-card-${Date.now()}`,
-      method: "CREDIT_DEBIT_CARD",
-      title: "Credit Card",
-      subtitle: "Stripe card",
-      cardNumber: getCardDigits(cardNumber).slice(-4),
-      saveDefaultPaymentMethod: saveCard,
+  const saveCardToAccount = async (billingAddress: SavedBillingAddress | null) => {
+    const stripe = stripeRef.current
+    const cardNumberElement = stripeCardNumberElementRef.current
+    if (!stripe || !cardNumberElement) return null
+
+    const setupIntentResponse = await CheckoutAPI.CreateCardSetupIntent()
+    const clientSecret = (setupIntentResponse.data as { clientSecret: string })
+      .clientSecret
+
+    const rawAddress = billingAddress?.raw
+    const setupResult = await stripe.confirmCardSetup(clientSecret, {
+      payment_method: {
+        card: cardNumberElement,
+        billing_details: {
+          name: cardName.trim(),
+          ...(rawAddress
+            ? {
+                phone: rawAddress.phoneNumber,
+                address: {
+                  line1: rawAddress.addressLine1,
+                  line2: rawAddress.addressLine2 ?? undefined,
+                  city: rawAddress.city,
+                  state: rawAddress.state ?? undefined,
+                  postal_code: rawAddress.postalCode,
+                  country: "US",
+                },
+              }
+            : {}),
+        },
+      },
+    })
+    if (setupResult.error) {
+      toast({
+        variant: "destructive",
+        title:
+          setupResult.error.message ||
+          "Your card could not be saved. Please try again.",
+      })
+      return null
     }
 
-    saveFullPaymentMethod(method)
-    setSavedCardNotification(
-      "Your card is ready and will be securely confirmed by Stripe when you review your order."
-    )
-    window.setTimeout(() => setSavedCardNotification(""), 5000)
+    const paymentMethodId = setupResult.setupIntent.payment_method
+    if (typeof paymentMethodId !== "string") return null
+
+    const saveResponse = await CheckoutAPI.SaveCard({
+      paymentMethodId,
+      ...(billingAddress ? { billingAddressId: billingAddress.id } : {}),
+      ...(saveCard ? { setAsDefault: true } : {}),
+    })
+    return saveResponse.data as {
+      id: string
+      brand: string
+      funding: string
+      last4: string
+    }
+  }
+
+  const handleSaveFullPaymentCard = async () => {
+    setHasAttemptedCardSubmit(true)
+    if (!isFullPaymentCardFormValid || isSavingCard) return
+    setIsSavingCard(true)
+    try {
+      let billingAddress: SavedBillingAddress | null =
+        savedBillingAddresses.find(
+          (address) => address.id === selectedBillingAddressId
+        ) ??
+        savedBillingAddresses[0] ??
+        null
+      if (billingAddressMode === "new") {
+        billingAddress = await saveNewBillingAddress()
+        if (!billingAddress) return
+      }
+
+      const savedCard = await saveCardToAccount(billingAddress)
+      if (!savedCard) return
+
+      const method: InstallmentPaymentMethod = {
+        id: `full-card-${savedCard.id}`,
+        method: "CREDIT_DEBIT_CARD",
+        title: "Credit Card",
+        subtitle: "Stripe card",
+        cardNumber: savedCard.last4,
+        brand: savedCard.brand,
+        funding: savedCard.funding,
+        saveDefaultPaymentMethod: saveCard,
+      }
+
+      saveFullPaymentMethod(method)
+      setSavedCardNotification("Your card was saved to your account.")
+      window.setTimeout(() => setSavedCardNotification(""), 5000)
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Your card could not be saved. Please try again.",
+      })
+    } finally {
+      setIsSavingCard(false)
+    }
   }
 
   const handleSaveFullPaymentBank = (options?: { resetForm?: boolean }) => {
@@ -4791,6 +5132,8 @@ export default function PaymentPage() {
       return (
         <CreditDebitCardArticle1
           cardNumber={method.cardNumber}
+          brand={method.brand}
+          funding={method.funding}
           saveDefaultPaymentMethod={method.saveDefaultPaymentMethod}
           onChange={options?.onEdit}
           onEdit={options?.onEdit}
@@ -4959,12 +5302,12 @@ export default function PaymentPage() {
             <Button variant="link" visual="gray" onClick={options?.onEdit}>
               Change
             </Button>
-            {options?.onSplit ? (
+            {/* {options?.onSplit ? (
               <Button variant="link" onClick={options.onSplit}>
                 <DivideSquare className="size-[15px]" />
                 Split Payment
               </Button>
-            ) : null}
+            ) : null} */}
           </div>
         </div>
       )
@@ -5016,12 +5359,12 @@ export default function PaymentPage() {
           <Button variant="link" visual="gray" onClick={options?.onEdit}>
             Change
           </Button>
-          {options?.onSplit ? (
+          {/* {options?.onSplit ? (
             <Button variant="link" onClick={options.onSplit}>
               <DivideSquare className="size-[15px]" />
               Split Payment
             </Button>
-          ) : null}
+          ) : null} */}
         </div>
       </div>
     )
@@ -6089,7 +6432,7 @@ export default function PaymentPage() {
                           Payment Method
                         </h3>
 
-                        {SPLIT_ELIGIBLE_METHOD_TYPES.includes(
+                        {/* {SPLIT_ELIGIBLE_METHOD_TYPES.includes(
                           fullPaymentMethods[0].method
                         ) ? (
                           <Button
@@ -6099,7 +6442,7 @@ export default function PaymentPage() {
                             <DivideSquare className="size-[15px]" />
                             Split Payment
                           </Button>
-                        ) : null}
+                        ) : null} */}
                       </div>
 
                       <div className="mt-5">
@@ -7234,11 +7577,11 @@ export default function PaymentPage() {
                         <h3 className="text-lg leading-[22px] font-bold text-dark-blue-400">
                           Billing Address
                         </h3>
-                        {billingAddressMode === "new" &&
-                        hasSavedBillingAddresses ? (
+                        {billingAddressMode === "new" ? (
                           <Button
                             className="text-xs leading-5 underline"
                             variant="link"
+                            disabled={!hasSavedBillingAddresses}
                             onClick={() => setBillingAddressMode("saved")}
                           >
                             Use a Saved Address
@@ -7247,18 +7590,21 @@ export default function PaymentPage() {
                       </div>
 
                       {billingAddressMode === "summary" ? (
-                        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)]">
+                        <div className="mt-6 rounded-[7px] border-2 border-gray-200 bg-white py-6 pl-6 pr-[35px]">
                           <div className="flex items-center justify-between gap-x-6">
-                            <div className="text-base leading-6 text-dark-blue-400">
-                              <p className="font-bold">
+                            <div className="space-y-1 text-base leading-5 text-[#122A4B]">
+                              <p className="font-semibold">
                                 {billingAddressSummary.fullName}
                               </p>
-                              <p>{billingAddressSummary.addressLine1}</p>
-                              <p>{billingAddressSummary.cityStateZip}</p>
-                              <p>United States</p>
-                              <p>{billingAddressSummary.phoneNumber}</p>
+                              <div>
+                                <p>{billingAddressSummary.addressLine1}</p>
+                                <p>{billingAddressSummary.cityStateZip}</p>
+                                <p>{billingAddressSummary.country}</p>
+                                <p>{billingAddressSummary.phoneNumber}</p>
+                              </div>
                             </div>
                             <Button
+                              className="text-xs"
                               variant="outlined"
                               visual="gray"
                               onClick={() => setBillingAddressMode("saved")}
@@ -7283,7 +7629,7 @@ export default function PaymentPage() {
                             </button>
                           </p>
                           <RadioGroup
-                            className="mt-6 space-y-3"
+                            className="mt-3 space-y-2"
                             value={selectedBillingAddressId}
                             onValueChange={setSelectedBillingAddressId}
                           >
@@ -7291,13 +7637,13 @@ export default function PaymentPage() {
                               <HeadlessRadioGroupItem
                                 key={address.id}
                                 value={address.id}
-                                className="group flex h-10 items-center gap-x-4 rounded-lg border border-transparent px-3 text-sm text-gray-500 focus-visible:outline-none data-[state=checked]:border-primary-500 data-[state=checked]:ring-1 data-[state=checked]:ring-primary-500"
+                                className="group flex w-full items-center gap-x-5 rounded-[7px] border-2 border-transparent px-[18px] py-2.5 text-left text-sm leading-[18px] text-gray-500 focus-visible:outline-none data-[state=checked]:border-primary-500"
                               >
-                                <span className="inline-flex size-5 items-center justify-center rounded-full border border-gray-300 group-data-[state=checked]:border-primary-500 group-data-[state=checked]:ring-4 group-data-[state=checked]:ring-primary-50">
-                                  <span className="hidden size-2.5 rounded-full bg-primary-500 group-data-[state=checked]:block" />
+                                <span className="inline-flex size-4 flex-none items-center justify-center rounded-full border-[1.5px] border-gray-300 group-data-[state=checked]:border-primary-500 group-data-[state=checked]:ring-4 group-data-[state=checked]:ring-primary-50">
+                                  <span className="hidden size-1.5 rounded-full bg-primary-500 group-data-[state=checked]:block" />
                                 </span>
                                 <span>
-                                  <span className="font-bold text-dark-blue-400">
+                                  <span className="font-semibold text-gray-800">
                                     {address.fullName},
                                   </span>{" "}
                                   {address.line}
@@ -7305,16 +7651,16 @@ export default function PaymentPage() {
                               </HeadlessRadioGroupItem>
                             ))}
                           </RadioGroup>
-                          <div className="mt-6 flex items-center gap-x-3">
+                          <div className="mt-3 flex items-center gap-x-3">
                             <Button
+                              className="text-xs"
                               variant="light"
-                              onClick={() =>
-                                setIsConfirmAddressDialogOpen(true)
-                              }
+                              onClick={() => setBillingAddressMode("summary")}
                             >
                               Use This Address
                             </Button>
                             <Button
+                              className="text-xs"
                               variant="outlined"
                               visual="gray"
                               onClick={() => setBillingAddressMode("new")}
@@ -7534,17 +7880,6 @@ export default function PaymentPage() {
                               </span>
                             ) : null}
                           </div>
-                          {hasAttemptedCardSubmit && !isBillingAddressValid ? (
-                            <span className="block text-xs leading-5 text-error-500">
-                              {!/^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
-                              zipcode.trim()
-                                ? "Please enter a valid zip code"
-                                : phoneNumber.trim() &&
-                                    getUsPhoneDigits(phoneNumber).length !== 10
-                                  ? "Please enter a valid US phone number"
-                                  : "Please complete all required billing address fields"}
-                            </span>
-                          ) : null}
                         </form>
                       ) : null}
 
@@ -7563,7 +7898,10 @@ export default function PaymentPage() {
                                     !isFullPaymentCardFormValid &&
                                       "pointer-events-none"
                                   )}
-                                  disabled={!isFullPaymentCardFormValid}
+                                  disabled={
+                                    !isFullPaymentCardFormValid ||
+                                    isSavingCard
+                                  }
                                   onClick={handleSaveFullPaymentCard}
                                 >
                                   Save Card
@@ -9409,11 +9747,12 @@ export default function PaymentPage() {
                 fullPaymentMethods.length < 1 ? (
                   <div className="mt-8 flex justify-center">
                     <CreditCardPreview
-                      cardNumber={cardNumber}
-                      cardName={cardName}
-                      expiry={expirationDate}
-                      cvv={cvv}
+                      cardNumber=""
+                      cardName=""
+                      expiry=""
+                      cvv=""
                       isBack={showCardBackPreview}
+                      activeField={activeCardField}
                     />
                   </div>
                 ) : null}

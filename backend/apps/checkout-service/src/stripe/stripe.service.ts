@@ -141,17 +141,36 @@ export class StripeService {
     return this.stripe.paymentMethods.retrieve(paymentMethodId);
   }
 
-  async createCustomer(params: {
-    userId: string;
-    email?: string;
-    name?: string;
-  }) {
-    return this.stripe.customers.create({
-      email: params.email,
-      name: params.name,
-      metadata: {
-        userId: params.userId,
+  async createCustomer(
+    params: {
+      userId: string;
+      email?: string;
+      name?: string;
+    },
+    idempotencyKey?: string,
+  ) {
+    return this.stripe.customers.create(
+      {
+        email: params.email,
+        name: params.name,
+        metadata: {
+          userId: params.userId,
+        },
       },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
+  }
+
+  async deleteCustomer(customerId: string) {
+    return this.stripe.customers.del(customerId);
+  }
+
+  async createCardSetupIntent(customerId: string, userId: string) {
+    return this.stripe.setupIntents.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+      metadata: { userId },
     });
   }
 }

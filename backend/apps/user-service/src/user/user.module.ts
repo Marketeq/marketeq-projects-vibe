@@ -21,11 +21,14 @@ import { TaxInfoService } from "../tax-info/tax-info.service";
 import { TaxInfoController } from "../tax-info/tax-info.controller";
 import { TaxDocumentService } from "../tax-info/tax-document.service";
 import { TinEncryptionService } from "../tax-info/tin-encryption.service";
+import { BillingAddress } from "../billing-addresses/billing-address.entity";
+import { BillingAddressesService } from "../billing-addresses/billing-addresses.service";
+import { BillingAddressesController } from "../billing-addresses/billing-addresses.controller";
 import { AuditModule } from "../audit/audit.module";
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Skill, TaxInfo]),
+    TypeOrmModule.forFeature([User, Skill, TaxInfo, BillingAddress]),
     AuditModule,
     ClientsModule.registerAsync([
       {
@@ -53,6 +56,7 @@ import { AuditModule } from "../audit/audit.module";
     TaxInfoService,
     TaxDocumentService,
     TinEncryptionService,
+    BillingAddressesService,
   ],
   controllers: [
     UserController,
@@ -62,6 +66,7 @@ import { AuditModule } from "../audit/audit.module";
     UserInternalController,
     UserInternalRpcController,
     TaxInfoController,
+    BillingAddressesController,
   ],
   exports: [UserService],
 })

@@ -72,6 +72,11 @@ export type UserProfileSummary = {
   rate: number | null;
 };
 
+export type UserContact = {
+  email: string;
+  name?: string;
+};
+
 export type OpenRoleRateRequest = {
   roleKey: string;
   roleTitle: string;
@@ -364,6 +369,30 @@ export class CheckoutSummaryService {
       this.logger.warn(`Failed to fetch user ${userId}: ${errorMessage(err)}`);
       return null;
     }
+  }
+
+  async fetchUserContact(userId: string): Promise<UserContact> {
+    let user: Record<string, any>;
+    try {
+      user = await this.call<Record<string, any>>(
+        this.users,
+        'user.profile.get',
+        { id: userId },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch contact for user ${userId}: ${errorMessage(err)}`,
+      );
+      throw new BadGatewayException('User service is unavailable');
+    }
+    const email = typeof user?.email === 'string' ? user.email.trim() : '';
+    if (!email) {
+      throw new BadGatewayException('User contact details are unavailable');
+    }
+    const name = [user?.firstName, user?.lastName]
+      .filter((part) => typeof part === 'string' && part.trim())
+      .join(' ');
+    return { email, name: name || undefined };
   }
 
   async assertUserExists(userId: string): Promise<void> {

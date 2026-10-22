@@ -23,6 +23,8 @@ import { CheckoutDraftCodeService } from "./checkout-draft-code.service";
 import { CheckoutDraftPricingService } from "./pricing/checkout-draft-pricing.service";
 import { CheckoutDraftSessionService } from "./checkout-draft-session.service";
 import { CheckoutPaymentMethodsService } from "./checkout-payment-methods.service";
+import { SavedCardsService } from "./saved-cards.service";
+import { SaveCardDto } from "./dto/save-card.dto";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
@@ -69,7 +71,27 @@ export class CheckoutController {
     private readonly checkoutDraftPricingService: CheckoutDraftPricingService,
     private readonly checkoutDraftSessionService: CheckoutDraftSessionService,
     private readonly checkoutPaymentMethodsService: CheckoutPaymentMethodsService,
+    private readonly savedCardsService: SavedCardsService,
   ) {}
+
+  @Post("cards/setup-intent")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  createCardSetupIntent(@ClientId() clientId: string) {
+    return this.savedCardsService.createSetupIntent(clientId);
+  }
+
+  @Post("cards")
+  @UseGuards(InternalTokenGuard)
+  saveCard(@Body() dto: SaveCardDto, @ClientId() clientId: string) {
+    return this.savedCardsService.saveCard(clientId, dto);
+  }
+
+  @Get("cards")
+  @UseGuards(InternalTokenGuard)
+  listCards(@ClientId() clientId: string) {
+    return this.savedCardsService.listCards(clientId);
+  }
 
   @Post("listings/:listingId/draft")
   @UseGuards(InternalTokenGuard)
@@ -392,10 +414,17 @@ export class CheckoutController {
 
   @Post('payment-intent')
   @UseGuards(JwtAuthGuard)
-  createPaymentIntent(@Body() dto: CreatePaymentIntentDto, @Req() req: any) {
+  async createPaymentIntent(
+    @Body() dto: CreatePaymentIntentDto,
+    @Req() req: any,
+  ) {
+    const customer = await this.savedCardsService.getOrCreateCustomer(
+      req.user.sub,
+      { email: req.user.email, name: req.user.name },
+    );
     return this.checkoutService.createCardPaymentIntent({
       clientId: req.user.sub,
-      customerId: req.user.stripeCustomerId,
+      customerId: customer.stripeCustomerId,
       email: req.user.email,
       name: req.user.name,
       amount: dto.amount,
@@ -461,10 +490,18 @@ export class CheckoutController {
 
   @Post("subscribe")
   @UseGuards(JwtAuthGuard)
-  createSubscription(@Body() dto: CreateSubscriptionDto, @Req() req: any) {
+  async createSubscription(
+    @Body() dto: CreateSubscriptionDto,
+    @Req() req: any,
+  ) {
+    const clientId = req.user.sub || dto.clientId;
+    const customer = await this.savedCardsService.getOrCreateCustomer(
+      clientId,
+      { email: req.user.email, name: req.user.name },
+    );
     return this.checkoutService.createSubscription({
-      clientId: req.user.sub || dto.clientId,
-      customerId: req.user.stripeCustomerId || dto.clientId,
+      clientId,
+      customerId: customer.stripeCustomerId,
       projectId: dto.projectId,
       contractId: dto.contractId,
       frequency: dto.installmentPlanOption,
@@ -583,10 +620,15 @@ export class CheckoutController {
 
   @Post("wallet/topup")
   @UseGuards(JwtAuthGuard)
-  topUpWallet(@Body() dto: WalletTopUpDto, @Req() req: any) {
+  async topUpWallet(@Body() dto: WalletTopUpDto, @Req() req: any) {
+    const userId = req.user.sub || dto.userId;
+    const customer = await this.savedCardsService.getOrCreateCustomer(userId, {
+      email: req.user.email,
+      name: req.user.name,
+    });
     return this.checkoutService.topUpWallet({
-      userId: req.user.sub || dto.userId,
-      customerId: req.user.stripeCustomerId || req.user.sub,
+      userId,
+      customerId: customer.stripeCustomerId,
       amount: dto.amount,
     });
   }

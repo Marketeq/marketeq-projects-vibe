@@ -1,6 +1,8 @@
 import {
+  BadGatewayException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -18,6 +20,7 @@ import {
 } from './entities/checkout-session.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
+import { SavedCardsService } from './saved-cards.service';
 import { CheckoutDraftService } from './checkout-draft.service';
 import { CheckoutDraftCodeService } from './checkout-draft-code.service';
 import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.service';
@@ -35,6 +38,8 @@ type FrozenCodes = {
 
 @Injectable()
 export class CheckoutDraftSessionService {
+  private readonly logger = new Logger(CheckoutDraftSessionService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly validationService: CheckoutDraftValidationService,
@@ -42,6 +47,7 @@ export class CheckoutDraftSessionService {
     private readonly draftService: CheckoutDraftService,
     private readonly codeService: CheckoutDraftCodeService,
     private readonly pricingService: CheckoutDraftPricingService,
+    private readonly savedCardsService: SavedCardsService,
   ) {}
 
   async getSession(clientId: string, sessionId: string) {
@@ -163,7 +169,7 @@ export class CheckoutDraftSessionService {
     draftId: string,
     dto: CreateDraftSessionDto,
   ) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const draft = await loadOwnedDraft(manager, clientId, draftId, {
         lock: true,
       });
@@ -195,6 +201,26 @@ export class CheckoutDraftSessionService {
       );
       return { sessionId };
     });
+    await this.ensureStripeCustomer(clientId);
+    return result;
+  }
+
+  private async ensureStripeCustomer(clientId: string): Promise<void> {
+    try {
+      if (await this.savedCardsService.findCustomer(clientId)) return;
+      const contact = await this.summaryService.fetchUserContact(clientId);
+      await this.savedCardsService.getOrCreateCustomer(clientId, contact);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to set up Stripe customer for ${clientId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      throw new BadGatewayException({
+        code: 'CUSTOMER_UNAVAILABLE',
+        message: 'Your payment account could not be set up',
+      });
+    }
   }
 
   private async resolveSession(

@@ -12,6 +12,7 @@ export class UserInternalRpcController {
       const user = await this.userService.getUserWithRelations(data.id);
       return {
         id: user.id,
+        email: (user as any).email ?? null,
         firstName: (user as any).firstName ?? null,
         lastName: (user as any).lastName ?? null,
         username: (user as any).username ?? null,

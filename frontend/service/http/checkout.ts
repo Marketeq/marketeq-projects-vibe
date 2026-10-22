@@ -224,6 +224,15 @@ export const CheckoutAPI = {
       `/v1/checkout/session/${sessionId}/apply-code/${encodeURIComponent(code)}`
     ),
 
+  CreateCardSetupIntent: () =>
+    AxiosRequest.post("/v1/checkout/cards/setup-intent", {}),
+
+  SaveCard: (data: {
+    paymentMethodId: string
+    billingAddressId?: string
+    setAsDefault?: boolean
+  }) => AxiosRequest.post("/v1/checkout/cards", data),
+
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
 

@@ -59,6 +59,18 @@ export class CheckoutDraftGatewayService {
     };
   }
 
+  async createCardSetupIntent(clientId: string) {
+    return this.forward('post', '/cards/setup-intent', clientId, 'start a card setup');
+  }
+
+  async saveCard(body: Record<string, unknown>, clientId: string) {
+    return this.forward('post', '/cards', clientId, 'save a card', { body });
+  }
+
+  async listCards(clientId: string) {
+    return this.forward('get', '/cards', clientId, 'list saved cards');
+  }
+
   async createDraft(listingId: string, clientId: string) {
     return this.forward('post', `/listings/${listingId}/draft`, clientId, `create checkout draft for ${listingId}`);
   }

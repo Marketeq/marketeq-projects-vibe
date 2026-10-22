@@ -9,7 +9,12 @@ import {
   Trash03,
   Trash2,
 } from "@blend-metrics/icons"
-import { MastercardDefault } from "@blend-metrics/icons/payment-methods"
+import {
+  DinersClubDefault,
+  Jcbdefault,
+  MastercardDefault,
+  UnionPayDefault,
+} from "@blend-metrics/icons/payment-methods"
 import { Control, useWatch } from "react-hook-form"
 import type { BillingAddressFormValues } from "@/types/checkout-core"
 import RmDialog from "@/components/ui/rm-dialog/rm-dialog"
@@ -25,20 +30,38 @@ import {
   IconButton,
 } from "@/components/ui"
 
+const stripeBrandKinds = [
+  "visa",
+  "mastercard",
+  "amex",
+  "discover",
+  "diners",
+  "jcb",
+  "unionpay",
+]
+
 export default function CreditDebitCardArticle1({
   onEdit,
   onRemove,
   cardNumber,
   saveDefaultPaymentMethod,
   onChange,
+  brand,
+  funding,
 }: {
   onEdit?: () => void
   onRemove?: () => void
   cardNumber?: string
   saveDefaultPaymentMethod?: boolean
   onChange?: () => void
+  brand?: string
+  funding?: string
 }) {
-  const kind = getCardType(cardNumber || "")
+  const kind: string = brand
+    ? stripeBrandKinds.includes(brand)
+      ? brand
+      : "unknown"
+    : getCardType(cardNumber || "")
   const cardBrand =
     kind === "visa"
       ? "Visa"
@@ -48,11 +71,18 @@ export default function CreditDebitCardArticle1({
           ? "Discover"
           : kind === "mastercard"
             ? "Mastercard"
-            : "Credit Card"
+            : kind === "diners"
+              ? "Diners Club"
+              : kind === "jcb"
+                ? "JCB"
+                : kind === "unionpay"
+                  ? "UnionPay"
+                  : "Credit Card"
+  const cardFunding = funding === "debit" ? "Debit" : "Credit"
   const cardLastFour = (cardNumber ?? "").slice(-4)
 
   return (
-    <div className="rounded-lg bg-white border border-gray-200 p-[15px] flex items-center justify-between">
+    <div className="rounded-lg bg-white border-2 border-[#efefef] p-[15px] flex items-center justify-between">
       <div className="flex items-center gap-x-3">
         {kind === "visa" ? (
           <Visa className="w-[46.5px] h-[31px]" />
@@ -62,6 +92,12 @@ export default function CreditDebitCardArticle1({
           <Discover className="w-[46.5px] h-[31px]" />
         ) : kind === "mastercard" ? (
           <MastercardDefault className="w-[46.5px] h-[31px]" />
+        ) : kind === "diners" ? (
+          <DinersClubDefault className="w-[46.5px] h-[31px]" />
+        ) : kind === "jcb" ? (
+          <Jcbdefault className="w-[46.5px] h-[31px]" />
+        ) : kind === "unionpay" ? (
+          <UnionPayDefault className="w-[46.5px] h-[31px]" />
         ) : (
           <div className="inline-flex items-center rounded-[4px] shrink-0 bg-white border border-gray-100 text-gray-500 justify-center w-[46.5px] h-[31px]">
             <CreditCard className="size-6" />
@@ -69,7 +105,7 @@ export default function CreditDebitCardArticle1({
         )}
         <div className="inline-flex flex-col gap-y-1">
           <div className="inline-flex items-center gap-x-2">
-            <span className="inline-block text-sm text-dark-blue-400">
+            <span className="inline-block text-sm font-medium text-[#122A4B]">
               {cardBrand}
             </span>
             {saveDefaultPaymentMethod && (
@@ -77,7 +113,9 @@ export default function CreditDebitCardArticle1({
             )}
           </div>
           <span className="inline-block text-xs text-[#858585] leading-none">
-            {cardLastFour ? `Credit ****${cardLastFour}` : "Credit card"}
+            {cardLastFour
+              ? `${cardFunding} ****${cardLastFour}`
+              : "Credit card"}
           </span>
         </div>
       </div>
@@ -96,7 +134,9 @@ export default function CreditDebitCardArticle1({
           onRemove={onRemove}
           title="Remove Payment Method?"
           description={`Are you sure you want to remove ${
-            cardLastFour ? `${cardBrand} Credit ****${cardLastFour}` : cardBrand
+            cardLastFour
+              ? `${cardBrand} ${cardFunding} ****${cardLastFour}`
+              : cardBrand
           } from your payment methods?`}
           trigger={({ isOpen, setIsOpen }) => (
             <IconButton
