@@ -147,6 +147,21 @@ export class IdentityVerificationController {
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
+  // The answer to a "Still traveling?" check-in: the active traveler saves a new duration.
+  // Only a saved duration (including "not_sure") is an answer; skipping or closing a
+  // check-in sends nothing. The new period starts now and the schedule restarts from it.
+  // Accepted only while Travel Mode is in force (otherwise 409 TRAVEL_MODE_NOT_ACTIVE and
+  // POST travel-duration is the activation); never while a home-country change is running.
+  @Post('travel-duration/update')
+  @HttpCode(HttpStatus.OK)
+  async updateActiveTravelDuration(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: TravelDurationRequestDto,
+  ): Promise<ProfileStatusResponseDto> {
+    const profile = await this.service.updateActiveTravelDuration(req.userId, dto.duration);
+    return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
   // Dashboard claim of the next Travel Mode reminder (day 3 / day 7). Acts only
   // for the authenticated caller: it reads no body, query, profile id or
   // timestamp. Always 200 with { claimed }; "nothing to claim" is claimed:false,

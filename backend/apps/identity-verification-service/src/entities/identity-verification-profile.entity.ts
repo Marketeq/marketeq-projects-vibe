@@ -92,6 +92,12 @@ export class IdentityVerificationProfile {
   @Column({ name: 'next_travel_reminder_at', type: 'timestamptz', nullable: true })
   nextTravelReminderAt!: Date | null;
 
+  // Duration answers saved by check-ins in the current Travel Mode cycle. 0 = the first
+  // check-in has not been answered (skipping or closing it is not an answer); a fresh
+  // activation and any end of Travel Mode reset it to 0.
+  @Column({ name: 'travel_check_in_count', type: 'smallint', default: 0 })
+  travelCheckInCount!: number;
+
   @Index('idx_ivp_identity_status')
   @Column({
     name: 'identity_verification_status',

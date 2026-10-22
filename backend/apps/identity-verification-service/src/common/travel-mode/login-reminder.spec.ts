@@ -286,3 +286,19 @@ describe('ProfileStatusResponseDto — the login reminder shows on the existing 
 function HOUR(): number {
   return 60 * MINUTE;
 }
+
+describe('deriveLoginReminderAt — the first check-in of a cycle only', () => {
+  const authMs = ACTIVATED.getTime() + DAY; // a login on day 1, Travel Mode already active
+
+  it('is offered while no duration answer has been saved in the cycle (absent, null or 0)', () => {
+    const expected = new Date(authMs + 5 * MINUTE);
+    expect(deriveLoginReminderAt(fields(), authMs, authMs)).toEqual(expected);
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 0 }), authMs, authMs)).toEqual(expected);
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: null }), authMs, authMs)).toEqual(expected);
+  });
+
+  it('is gone once the first check-in has been answered, whichever login it is', () => {
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 1 }), authMs, authMs)).toBeNull();
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 3 }), authMs, authMs + DAY)).toBeNull();
+  });
+});

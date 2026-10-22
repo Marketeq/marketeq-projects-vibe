@@ -85,6 +85,14 @@ export class ProfileStatusResponseDto {
   travelModeLocationMismatch?: boolean;
 
   /**
+   * Duration answers saved by check-ins in the current Travel Mode cycle. OMITTED while
+   * it is 0 (absent means 0 = the first check-in has not been answered); present and
+   * positive once an answer was saved, which is when later check-ins use the "asked
+   * before" copy. Skipping or closing a check-in never changes it.
+   */
+  travelCheckInCount?: number;
+
+  /**
    * An opaque key for THIS login (a one-way digest of the verified token's session id,
    * see common/travel-mode/login-session-key.ts), so the browser can remember per login
    * that a popup was shown or dismissed without ever seeing the session id. Stable for a
@@ -132,6 +140,7 @@ export class ProfileStatusResponseDto {
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
     if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
     if (travelModeLocationMismatch === true) dto.travelModeLocationMismatch = true;
+    if (profile.travelCheckInCount > 0) dto.travelCheckInCount = profile.travelCheckInCount;
     if (typeof loginSessionKey === 'string' && loginSessionKey.length > 0) dto.loginSessionKey = loginSessionKey;
     if (summary) {
       dto.nextAction = summary.nextAction;

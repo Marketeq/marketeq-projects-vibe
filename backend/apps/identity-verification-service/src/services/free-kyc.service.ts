@@ -1011,6 +1011,7 @@ export class FreeKycService {
     profile.travelModeActivatedAt = null;
     profile.nextTravelReminderAt = null;
     profile.lastTravelReminderSentAt = null;
+    profile.travelCheckInCount = 0;
     clearPendingRelocation(profile);
     signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId, hostedKycSessionId: session.id };
     return true;

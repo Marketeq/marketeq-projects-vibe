@@ -22,6 +22,13 @@ export interface TravelModeFields {
   travelModeActive?: boolean | null;
   travelModeActivatedAt?: unknown;
   declaredDuration?: unknown;
+  /** Saved check-in duration answers in this Travel Mode cycle (absent counts as 0). */
+  travelCheckInCount?: number | null;
+}
+
+/** The first check-in of this cycle has been answered (a duration answer was saved). */
+export function hasAnsweredFirstCheckIn(fields: TravelModeFields): boolean {
+  return typeof fields.travelCheckInCount === 'number' && fields.travelCheckInCount > 0;
 }
 
 export interface DerivedTravelMode {
@@ -125,7 +132,11 @@ export function deriveTravelReminderSchedule(
     claimedUpToMs = sent.getTime();
   }
 
-  const day = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt).find(
+  const day = travelReminderOccurrences(
+    fields.travelModeActivatedAt as Date,
+    endsAt,
+    fields.declaredDuration as DeclaredDuration,
+  ).find(
     (due) => due.getTime() > claimedUpToMs,
   );
   // The caller's own login-session reminder (5 minutes after authentication), already
@@ -160,7 +171,11 @@ export function deriveTravelReminderClaim(
 ): { latestDue: Date } | null {
   if (!deriveTravelReminderSchedule(fields, nowMs).due) return null;
   const { endsAt } = deriveTravelModeState(fields, nowMs);
-  const latestDue = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt as Date)
+  const latestDue = travelReminderOccurrences(
+    fields.travelModeActivatedAt as Date,
+    endsAt as Date,
+    fields.declaredDuration as DeclaredDuration,
+  )
     .filter((due) => due.getTime() <= nowMs)
     .pop();
   return latestDue ? { latestDue } : null;

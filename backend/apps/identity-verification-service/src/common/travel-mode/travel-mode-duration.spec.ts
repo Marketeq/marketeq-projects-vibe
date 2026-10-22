@@ -1,5 +1,5 @@
 import { DeclaredDuration } from '../../entities/enums/identity-verification.enums';
-import { DAY_MS, TRAVEL_REMINDER_DAYS, travelModeEndsAt, travelReminderOccurrences } from './travel-mode-duration';
+import { DAY_MS, travelModeEndsAt, travelReminderDays, travelReminderOccurrences } from './travel-mode-duration';
 
 describe('travelModeEndsAt', () => {
   const activatedAt = new Date('2026-06-01T12:00:00.000Z');
@@ -43,17 +43,27 @@ describe('travelModeEndsAt', () => {
     expect(travelModeEndsAt(activatedAt, null as unknown as DeclaredDuration)).toBeNull();
   });
 
-  it('the approved reminder days are 3 and 7', () => {
-    expect([...TRAVEL_REMINDER_DAYS]).toEqual([3, 7]);
+  it('the approved check-in days: 3 and 6 for "A few days", 3 and 7 for every other answer ("Not sure" included)', () => {
+    expect([...travelReminderDays(DeclaredDuration.A_FEW_DAYS)]).toEqual([3, 6]);
+    expect([...travelReminderDays(DeclaredDuration.ONE_TO_TWO_WEEKS)]).toEqual([3, 7]);
+    expect([...travelReminderDays(DeclaredDuration.MORE_THAN_TWO_WEEKS)]).toEqual([3, 7]);
+    expect([...travelReminderDays(DeclaredDuration.NOT_SURE)]).toEqual([3, 7]);
+  });
+
+  it('an unknown or missing duration falls back to day 3 and day 7', () => {
+    expect([...travelReminderDays(null)]).toEqual([3, 7]);
+    expect([...travelReminderDays('whatever' as DeclaredDuration)]).toEqual([3, 7]);
   });
 });
 
 describe('travelReminderOccurrences', () => {
   const activatedAt = new Date('2026-06-01T12:00:00.000Z');
   const occurrencesFor = (duration: DeclaredDuration) =>
-    travelReminderOccurrences(activatedAt, travelModeEndsAt(activatedAt, duration)!).map((d) => (d.getTime() - activatedAt.getTime()) / DAY_MS);
+    travelReminderOccurrences(activatedAt, travelModeEndsAt(activatedAt, duration)!, duration).map((d) => (d.getTime() - activatedAt.getTime()) / DAY_MS);
 
-  it('6 days: day 3 only (day 7 would land after the end)', () => {
+  // "A few days" is day 3 and day 6, but the 6-day period ends exactly on day 6 and a
+  // reminder at or after the end does not exist, so only day 3 can ever be due.
+  it('6 days: day 3 only (day 6 lands exactly on the end)', () => {
     expect(occurrencesFor(DeclaredDuration.A_FEW_DAYS)).toEqual([3]);
   });
 
@@ -65,16 +75,21 @@ describe('travelReminderOccurrences', () => {
 
   it('only times strictly before the end exist: a reminder exactly at the end does not', () => {
     const at = (days: number, offsetMs = 0) => new Date(activatedAt.getTime() + days * DAY_MS + offsetMs);
-    expect(travelReminderOccurrences(activatedAt, at(7, 1)).map((d) => d.getTime())).toEqual([at(3).getTime(), at(7).getTime()]);
-    expect(travelReminderOccurrences(activatedAt, at(7)).map((d) => d.getTime())).toEqual([at(3).getTime()]);
-    expect(travelReminderOccurrences(activatedAt, at(3, 1)).map((d) => d.getTime())).toEqual([at(3).getTime()]);
-    expect(travelReminderOccurrences(activatedAt, at(3))).toEqual([]);
+    const n = DeclaredDuration.NOT_SURE;
+    expect(travelReminderOccurrences(activatedAt, at(7, 1), n).map((d) => d.getTime())).toEqual([at(3).getTime(), at(7).getTime()]);
+    expect(travelReminderOccurrences(activatedAt, at(7), n).map((d) => d.getTime())).toEqual([at(3).getTime()]);
+    expect(travelReminderOccurrences(activatedAt, at(3, 1), n).map((d) => d.getTime())).toEqual([at(3).getTime()]);
+    expect(travelReminderOccurrences(activatedAt, at(3), n)).toEqual([]);
+    // "A few days" keeps day 6 only when the period is longer than 6 days.
+    const f = DeclaredDuration.A_FEW_DAYS;
+    expect(travelReminderOccurrences(activatedAt, at(6, 1), f).map((d) => d.getTime())).toEqual([at(3).getTime(), at(6).getTime()]);
+    expect(travelReminderOccurrences(activatedAt, at(6), f).map((d) => d.getTime())).toEqual([at(3).getTime()]);
   });
 
   it('is exactly the approved reminder days and never mutates its inputs', () => {
     const endsAt = new Date(activatedAt.getTime() + 30 * DAY_MS);
     const before = [activatedAt.getTime(), endsAt.getTime()];
-    expect(travelReminderOccurrences(activatedAt, endsAt)).toHaveLength(TRAVEL_REMINDER_DAYS.length);
+    expect(travelReminderOccurrences(activatedAt, endsAt, DeclaredDuration.MORE_THAN_TWO_WEEKS)).toHaveLength(2);
     expect([activatedAt.getTime(), endsAt.getTime()]).toEqual(before);
   });
 });

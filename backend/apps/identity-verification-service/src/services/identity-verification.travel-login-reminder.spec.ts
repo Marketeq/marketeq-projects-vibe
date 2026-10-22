@@ -80,6 +80,16 @@ describe('IdentityVerificationService — login-session Travel Mode reminder', (
           inserted.push(created);
           return [{ id: `claim-${claimRows.length}` }];
         }
+        if (/FOR SHARE/.test(sql) && /identity_verification_profiles/.test(sql)) {
+          // The claim re-reads the profile under a share lock (see claimWithLoginReminder).
+          return [
+            {
+              travel_mode_active: row.travelModeActive,
+              travel_mode_activated_at: row.travelModeActivatedAt,
+              travel_check_in_count: row.travelCheckInCount ?? 0,
+            },
+          ];
+        }
         throw new Error(`unexpected SQL in a claim transaction: ${sql}`);
       }),
       manager: {
