@@ -66,25 +66,67 @@ describe("the row looks interactive", () => {
     assert.equal(rowClass(storyGroup), ROW_CLASS)
   })
 
-  it("pointer cursor, full-width row, hover, focus and selected styling", () => {
+  it("Figma Default: 56px full-width row, white, light 1px border, 8px radius, xs shadow, 12/12/12/18 padding", () => {
     for (const c of [
-      "cursor-pointer",
+      "h-14",
       "w-full",
-      "hover:bg-gray-50",
-      "has-[:focus-visible]:ring-2",
-      "has-[[data-state=checked]]:bg-primary-25",
+      "rounded-lg",
+      "border",
+      "border-gray-200", // #EAECF0
+      "bg-white",
+      "py-3",
+      "pl-[18px]",
+      "pr-3",
+      "shadow-[0px_1px_4px_rgba(0,0,0,0.03)]",
     ]) {
       assert.ok(classes.includes(c), c)
     }
   })
 
-  it("disabled rows show it and stop reacting to hover", () => {
+  it("Figma Hover: darker border (#D0D5DD, 2px as border plus inset ring, so nothing shifts) and a pointer over the whole row", () => {
+    for (const c of [
+      "cursor-pointer",
+      "hover:border-gray-300",
+      "hover:ring-1",
+      "hover:ring-inset",
+      "hover:ring-gray-300",
+    ]) {
+      assert.ok(classes.includes(c), c)
+    }
+  })
+
+  it("focus-visible and selected use the design-system blue border and ring", () => {
+    for (const state of ["has-[:focus-visible]", "has-[[data-state=checked]]"]) {
+      for (const c of ["border-primary-500", "ring-1", "ring-inset", "ring-primary-500"]) {
+        assert.ok(classes.includes(`${state}:${c}`), `${state}:${c}`)
+      }
+    }
+  })
+
+  it("a selected row stays blue while hovered", () => {
+    for (const c of [
+      "has-[[data-state=checked]]:hover:border-primary-500",
+      "has-[[data-state=checked]]:hover:ring-primary-500",
+    ]) {
+      assert.ok(classes.includes(c), c)
+    }
+  })
+
+  it("disabled rows show it, keep the light border and stop reacting to hover", () => {
     for (const c of [
       "has-[:disabled]:cursor-not-allowed",
       "has-[:disabled]:opacity-50",
-      "has-[:disabled]:hover:bg-transparent",
+      "has-[:disabled]:hover:ring-0",
+      "has-[:disabled]:hover:border-gray-200",
+      "has-[:disabled]:has-[[data-state=checked]]:border-gray-200",
     ]) {
       assert.ok(classes.includes(c), c)
+    }
+  })
+
+  it("no reference-component extras: no Passport icon or chevron in the rows", () => {
+    for (const group of [pageGroup, storyGroup]) {
+      assert.ok(!/Passport|Chevron|ArrowDown|ArrowUp/.test(group))
     }
   })
 })

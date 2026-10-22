@@ -1148,7 +1148,7 @@ export default function TalentDashboard() {
             </div>
 
             <RadioGroup
-              className="mt-5 gap-y-0.5"
+              className="mt-6 gap-y-2.5"
               aria-label={durationCopyFor(checkIn.answerCount).title}
               value={checkInSelected}
               disabled={checkInSaving}
@@ -1158,7 +1158,7 @@ export default function TalentDashboard() {
                 <Label
                   key={label}
                   htmlFor={`check-in-duration-${index}`}
-                  className="flex w-full cursor-pointer items-center gap-x-3 rounded-[5px] -mx-2 px-2 py-1 text-xs font-medium text-dark-blue-400 transition-colors hover:bg-gray-50 has-[:focus-visible]:bg-gray-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-100 has-[[data-state=checked]]:bg-primary-25 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:disabled]:hover:bg-transparent has-[:disabled]:has-[[data-state=checked]]:bg-primary-25"
+                  className="flex h-14 w-full cursor-pointer items-center gap-x-5 rounded-lg border border-gray-200 bg-white py-3 pl-[18px] pr-3 text-xs font-medium text-dark-blue-400 shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors hover:border-gray-300 hover:ring-1 hover:ring-inset hover:ring-gray-300 has-[:focus-visible]:border-primary-500 has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-primary-500 has-[[data-state=checked]]:border-primary-500 has-[[data-state=checked]]:ring-1 has-[[data-state=checked]]:ring-inset has-[[data-state=checked]]:ring-primary-500 has-[[data-state=checked]]:hover:border-primary-500 has-[[data-state=checked]]:hover:ring-primary-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:disabled]:hover:ring-0 has-[:disabled]:hover:border-gray-200 has-[:disabled]:has-[[data-state=checked]]:border-gray-200 has-[:disabled]:has-[[data-state=checked]]:ring-0"
                 >
                   <RadioGroupItem value={label} id={`check-in-duration-${index}`} />
                   {label}
