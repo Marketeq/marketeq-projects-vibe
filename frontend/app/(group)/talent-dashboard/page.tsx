@@ -1148,21 +1148,23 @@ export default function TalentDashboard() {
             </div>
 
             <RadioGroup
-              className="mt-6 gap-y-2.5"
+              className="mt-6"
               aria-label={durationCopyFor(checkIn.answerCount).title}
               value={checkInSelected}
               disabled={checkInSaving}
               onValueChange={(label) => void handleCheckInAnswer(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <Label
-                  key={label}
-                  htmlFor={`check-in-duration-${index}`}
-                  className="flex h-14 w-full cursor-pointer items-center gap-x-5 rounded-lg border border-gray-200 bg-white py-3 pl-[18px] pr-3 text-xs font-medium text-dark-blue-400 shadow-[0px_1px_4px_rgba(0,0,0,0.03)] transition-colors hover:border-gray-300 hover:ring-1 hover:ring-inset hover:ring-gray-300 has-[:focus-visible]:border-primary-500 has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-inset has-[:focus-visible]:ring-primary-500 has-[[data-state=checked]]:border-primary-500 has-[[data-state=checked]]:ring-1 has-[[data-state=checked]]:ring-inset has-[[data-state=checked]]:ring-primary-500 has-[[data-state=checked]]:hover:border-primary-500 has-[[data-state=checked]]:hover:ring-primary-500 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:disabled]:hover:ring-0 has-[:disabled]:hover:border-gray-200 has-[:disabled]:has-[[data-state=checked]]:border-gray-200 has-[:disabled]:has-[[data-state=checked]]:ring-0"
-                >
-                  <RadioGroupItem value={label} id={`check-in-duration-${index}`} />
-                  {label}
-                </Label>
+                <div key={label} className="flex items-center gap-x-3">
+                  <RadioGroupItem
+                    className="cursor-pointer disabled:cursor-not-allowed"
+                    value={label}
+                    id={`check-in-duration-${index}`}
+                  />
+                  <Label htmlFor={`check-in-duration-${index}`}>
+                    {label}
+                  </Label>
+                </div>
               ))}
             </RadioGroup>
 

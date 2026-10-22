@@ -1,10 +1,15 @@
 // Run like travel-check-in.test.ts (from the frontend/ directory).
-// The duration screen: the whole row of each option is interactive.
+// The duration screen (Figma 13101-46818 and the first-time TravelingForm): a plain vertical
+// radio list. The radio and its text are both clickable through one accessible label.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { CHECK_IN_DURATION_LABELS } from "./travel-check-in"
+import {
+  CHECK_IN_COPY,
+  CHECK_IN_DURATION_LABELS,
+  durationCopyFor,
+} from "./travel-check-in"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const page = read("app", "(group)", "talent-dashboard", "page.tsx")
@@ -14,125 +19,84 @@ const between = (source: string, from: string, to: string) => {
   assert.ok(start >= 0, `missing: ${from}`)
   return source.slice(start, source.indexOf(to, start))
 }
-const rowClass = (group: string) => {
-  const m = /<Label\b[^>]*?className="([^"]+)"/.exec(group)
-  assert.ok(m, "row className")
-  return m[1]
-}
 const pageGroup = between(page, "<RadioGroup", "</RadioGroup>")
 const storyGroup = between(stories, "<RadioGroup", "</RadioGroup>")
-const ROW_CLASS = rowClass(pageGroup)
 
-describe("every option row is one label tied to its radio input", () => {
+describe("a simple vertical radio list with an accessible label per option", () => {
   for (const [where, group, prefix] of [
     ["dashboard", pageGroup, "check-in-duration-"],
     ["story", storyGroup, "check-in-duration-${answerCount}-"],
   ] as const) {
-    it(`${where}: the label wraps the radio and the text, and htmlFor matches the radio id`, () => {
+    it(`${where}: radio, then its Label (htmlFor = radio id), in an inline row`, () => {
       assert.ok(group.includes("CHECK_IN_DURATION_LABELS.map("))
-      assert.equal((group.match(/<Label\b/g) ?? []).length, 1) // one per mapped option
+      assert.equal((group.match(/<Label\b/g) ?? []).length, 1)
       assert.equal((group.match(/<RadioGroupItem\b/g) ?? []).length, 1)
-      // radio is inside the label, followed by the option text
-      assert.ok(group.indexOf("<Label") < group.indexOf("<RadioGroupItem"))
-      assert.ok(group.indexOf("<RadioGroupItem") < group.lastIndexOf("{label}"))
-      assert.ok(group.lastIndexOf("{label}") < group.indexOf("</Label>"))
+      // the same rows as the first-time TravelingForm story (Figma): flex row, gap-x-3, default Label
+      assert.ok(group.includes('className="flex items-center gap-x-3"'))
+      assert.ok(group.indexOf("<RadioGroupItem") < group.indexOf("<Label"))
       assert.ok(group.includes(`htmlFor={\`${prefix}\${index}\`}`))
       assert.ok(group.includes(`id={\`${prefix}\${index}\`}`))
-      assert.ok(group.includes(`className="${ROW_CLASS}"`))
+      assert.ok(group.includes("{label}"))
+      assert.ok(group.includes('className="mt-6"'))
+      assert.ok(!group.includes("space-y")) // the group's own gap-y-2.5 is the only spacing
+      assert.ok(!/<Label[^>]*className/.test(group)) // default Label: 12px/18px, medium
     })
 
-    it(`${where}: the group has an accessible name and no raw controls`, () => {
+    it(`${where}: the group is named, pointer on the radio, and no raw controls`, () => {
       assert.ok(group.includes("aria-label="))
+      assert.ok(
+        group.includes('className="cursor-pointer disabled:cursor-not-allowed"')
+      )
       assert.ok(!/<(button|input|label)\b/.test(group))
+    })
+
+    it(`${where}: no card, border, shadow, background, padding box or hover treatment`, () => {
+      assert.ok(
+        !/\b(border|shadow|bg-|ring|rounded|hover:|has-\[|px-|py-|pl-|pr-|h-14)/.test(
+          group.replace(/text-dark-blue-400/g, "")
+        ),
+        where
+      )
+      assert.ok(!/Passport|Chevron/.test(group))
     })
   }
 
-  it("all four options exist, so all four rows get this markup (first-time and later copy share it)", () => {
-    assert.deepEqual([...CHECK_IN_DURATION_LABELS], [
-      "A few days",
-      "1–2 weeks",
-      "More than 2 weeks",
-      "Not sure",
-    ])
-    assert.ok(storyGroup.includes("CHECK_IN_DURATION_LABELS.map("))
-    // one group serves both copies; only the title/body/alert differ
-    assert.equal((page.match(/<RadioGroup\b/g) ?? []).length, 1)
+  it("the four options, in order", () => {
+    assert.deepEqual(
+      [...CHECK_IN_DURATION_LABELS],
+      ["A few days", "1–2 weeks", "More than 2 weeks", "Not sure"]
+    )
   })
 })
 
-describe("the row looks interactive", () => {
-  const classes = ROW_CLASS.split(" ")
-  it("the dashboard and the story use the same row classes", () => {
-    assert.equal(rowClass(storyGroup), ROW_CLASS)
+describe("later-check-in copy and the Skip button", () => {
+  it("second/third time copy", () => {
+    const later = durationCopyFor(1)
+    assert.equal(later.title, "How much longer will you be traveling?")
+    assert.equal(
+      later.body,
+      "We’ve asked before, answering helps reduce these reminders."
+    )
+    assert.equal(
+      later.alert,
+      "You won’t be asked again for a while based on your selection."
+    )
+    assert.equal(durationCopyFor(2), later)
   })
 
-  it("Figma Default: 56px full-width row, white, light 1px border, 8px radius, xs shadow, 12/12/12/18 padding", () => {
-    for (const c of [
-      "h-14",
-      "w-full",
-      "rounded-lg",
-      "border",
-      "border-gray-200", // #EAECF0
-      "bg-white",
-      "py-3",
-      "pl-[18px]",
-      "pr-3",
-      "shadow-[0px_1px_4px_rgba(0,0,0,0.03)]",
-    ]) {
-      assert.ok(classes.includes(c), c)
-    }
-  })
-
-  it("Figma Hover: darker border (#D0D5DD, 2px as border plus inset ring, so nothing shifts) and a pointer over the whole row", () => {
-    for (const c of [
-      "cursor-pointer",
-      "hover:border-gray-300",
-      "hover:ring-1",
-      "hover:ring-inset",
-      "hover:ring-gray-300",
-    ]) {
-      assert.ok(classes.includes(c), c)
-    }
-  })
-
-  it("focus-visible and selected use the design-system blue border and ring", () => {
-    for (const state of ["has-[:focus-visible]", "has-[[data-state=checked]]"]) {
-      for (const c of ["border-primary-500", "ring-1", "ring-inset", "ring-primary-500"]) {
-        assert.ok(classes.includes(`${state}:${c}`), `${state}:${c}`)
-      }
-    }
-  })
-
-  it("a selected row stays blue while hovered", () => {
-    for (const c of [
-      "has-[[data-state=checked]]:hover:border-primary-500",
-      "has-[[data-state=checked]]:hover:ring-primary-500",
-    ]) {
-      assert.ok(classes.includes(c), c)
-    }
-  })
-
-  it("disabled rows show it, keep the light border and stop reacting to hover", () => {
-    for (const c of [
-      "has-[:disabled]:cursor-not-allowed",
-      "has-[:disabled]:opacity-50",
-      "has-[:disabled]:hover:ring-0",
-      "has-[:disabled]:hover:border-gray-200",
-      "has-[:disabled]:has-[[data-state=checked]]:border-gray-200",
-    ]) {
-      assert.ok(classes.includes(c), c)
-    }
-  })
-
-  it("no reference-component extras: no Passport icon or chevron in the rows", () => {
-    for (const group of [pageGroup, storyGroup]) {
-      assert.ok(!/Passport|Chevron|ArrowDown|ArrowUp/.test(group))
-    }
+  it("a full-width Skip, and no Confirm button, on the duration screen", () => {
+    const screen = between(page, 'checkIn?.phase === "duration"', "</DialogContent>")
+    assert.ok(screen.includes('<div className="mt-6 grid">'))
+    assert.ok(screen.includes("{CHECK_IN_COPY.skip}"))
+    assert.equal(CHECK_IN_COPY.skip, "Skip")
+    assert.equal((screen.match(/<Button\b/g) ?? []).length, 1)
+    assert.ok(!/Confirm/.test(screen))
+    assert.ok(!/Confirm/.test(stories))
   })
 })
 
-describe("one click submits once, and nothing is clickable while saving", () => {
-  it("the only submit path is the group's onValueChange; the label and the rows have no onClick", () => {
+describe("one selection submits once, and nothing is clickable while saving", () => {
+  it("the only submit path is the group's onValueChange; no onClick on the options", () => {
     assert.equal((pageGroup.match(/onValueChange=/g) ?? []).length, 1)
     assert.ok(!pageGroup.includes("onClick"))
     assert.ok(pageGroup.includes("void handleCheckInAnswer(label)"))
@@ -145,14 +109,11 @@ describe("one click submits once, and nothing is clickable while saving", () => 
       "const handleCheckInAnswer",
       "const outcome = await answerCheckIn("
     )
-    assert.ok(
-      handler.includes("if (!checkIn || checkInSavingRef.current) return")
-    )
+    assert.ok(handler.includes("if (!checkIn || checkInSavingRef.current) return"))
     assert.ok(handler.indexOf("checkInSavingRef.current = true") > 0)
   })
 
-  it("the group keeps the radio-group primitive, so arrow keys, Space and focus work natively", () => {
-    assert.ok(page.includes("RadioGroup,") || page.includes("RadioGroup\n"))
+  it("native radio-group keyboard behaviour is untouched", () => {
     assert.ok(!pageGroup.includes("onKeyDown"))
     assert.ok(!pageGroup.includes("tabIndex"))
   })
