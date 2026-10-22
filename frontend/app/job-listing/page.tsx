@@ -4321,13 +4321,7 @@ const ProjectInfo = ({
       title: "Marketeq Projects Network",
       badges: ["Design Phase"],
       icon: <MdOutlineAssignment className="size-6" />,
-      avatars: [
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        "+3",
-      ],
+      avatars: Array<string>(7).fill(DEFAULT_MEMBER_AVATAR_URL),
       workType: "project" as const,
     },
     {
@@ -4336,13 +4330,7 @@ const ProjectInfo = ({
       badges: ["Design Phase"],
       image:
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=160&q=80",
-      avatars: [
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        DEFAULT_MEMBER_AVATAR_URL,
-        "+5",
-      ],
+      avatars: Array<string>(9).fill(DEFAULT_MEMBER_AVATAR_URL),
       workType: "project" as const,
     },
     {
@@ -4386,10 +4374,6 @@ const ProjectInfo = ({
       ["disputed", "expired", "closed", "paused"].includes(normalizedStatus)
         ? formatContractStatusLabel(contract.status)
         : "";
-    const avatarUrls = contract.memberAvatars
-      .slice(0, 4)
-      .map((avatar) => avatar || DEFAULT_MEMBER_AVATAR_URL);
-    const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
     const isServiceContract = contract.type?.toLowerCase() === "service";
 
     return {
@@ -4400,11 +4384,14 @@ const ProjectInfo = ({
         isServiceContract ? "Service" : "",
         statusBadge,
       ].filter(Boolean),
-      icon: <MdOutlineAssignment className="size-6" />,
-      avatars:
-        overflowAvatarCount > 0
-          ? [...avatarUrls, `+${overflowAvatarCount}`]
-          : avatarUrls,
+      icon: isServiceContract ? (
+        <MdAutorenew className="size-6" />
+      ) : (
+        <MdOutlineAssignment className="size-6" />
+      ),
+      avatars: contract.memberAvatars.map(
+        (avatar) => avatar || DEFAULT_MEMBER_AVATAR_URL,
+      ),
       workType: isServiceContract ? "service" : "project",
       disabledReason: getContractDisabledReason(contract.status),
     };
@@ -4572,7 +4559,7 @@ const ProjectInfo = ({
                 </div>
 
                 {contractChoice === "existing" ? (
-                  <div className="mt-12 space-y-5">
+                  <div className="mt-16 space-y-5">
                     <div className="flex h-9 w-full items-start justify-between gap-3">
                       <p className="w-[520px] text-[18px] font-medium leading-7 text-dark-blue-400">
                         Choose project, service, or team which you want to add
@@ -4681,26 +4668,22 @@ const ProjectInfo = ({
                             </span>
 
                             <span className="hidden shrink-0 items-center md:flex">
-                              <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
-                                {option.avatars
-                                  .filter(Boolean)
-                                  .slice(0, 4)
-                                  .map((avatar, avatarIndex) => (
-                                    <Avatar
-                                      key={`${option.id}-${avatarIndex}-${avatar}`}
-                                      size="xs"
-                                      className="border-2 border-white hover:ring-0 active:ring-0"
-                                    >
-                                      <AvatarImage src={avatar} alt="" />
-                                    </Avatar>
-                                  ))}
-                                {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
-                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[11px] leading-none font-medium text-primary-500">
-                                    {option.avatars.find((avatar) =>
-                                      avatar.startsWith("+"),
-                                    )}
-                                  </span>
-                                ) : null}
+                              <AvatarGroup
+                                className="!cursor-default"
+                                size="xs"
+                                reverse={false}
+                                max={4}
+                                excess
+                              >
+                                {option.avatars.map((avatar, avatarIndex) => (
+                                  <Avatar
+                                    key={`${option.id}-${avatarIndex}`}
+                                    size="xs"
+                                    className="border-2 border-white hover:ring-0 active:ring-0"
+                                  >
+                                    <AvatarImage src={avatar} alt="" />
+                                  </Avatar>
+                                ))}
                               </AvatarGroup>
                             </span>
 
