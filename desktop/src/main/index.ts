@@ -14,6 +14,8 @@ import { logger } from './logger';
 import { initDatabase, closeDatabase } from './db/connection';
 import { runMigrations } from './db/migrate';
 import { registerIpcHandlers } from './ipc';
+import { registerCrashRecoveryIpc } from './ipc/crash-recovery';
+import { createCrashRecovery, type ClosedSession } from './services/timer/crash-recovery';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
@@ -174,6 +176,10 @@ async function bootstrap(): Promise<void> {
   // close enqueued once the outbox exists (Phase 4).
   let recoveredSessions: ReturnType<TimerService['restoreFromDb']>['closed'] =
     [];
+  // Assigned in Phase 4 once the outbox exists; used for crash-swept sessions
+  // and by the crash recovery prompt's Discard.
+  let enqueueSessionClose: ((s: ClosedSession) => void) | null = null;
+  let detachCrashRecoveryIpc: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -204,7 +210,17 @@ async function bootstrap(): Promise<void> {
     });
     // Close any session left open by a previous crash / force-kill. Never
     // silently resumes — the FSM stays Idle. Rows are kept (only ended_at set).
-    recoveredSessions = timerService.restoreFromDb().closed;
+    // The swept session is then held for the Recover / Discard prompt
+    // (DTT-US-131) instead of being reported closed to the backend.
+    const crashRecovery = createCrashRecovery({
+      repos,
+      timer: timerService,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+      enqueueClose: () => enqueueSessionClose,
+      logger,
+    });
+    recoveredSessions = crashRecovery.holdSweptSessions(timerService.restoreFromDb().closed);
+    detachCrashRecoveryIpc = registerCrashRecoveryIpc(crashRecovery);
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
     logger.info('phase 2 timer service wired');
   } catch (err) {
@@ -613,12 +629,12 @@ async function bootstrap(): Promise<void> {
       }).detach;
     }
 
-    // Push a close to the backend for every crash-swept session. If the
+    // Push a close to the backend for a crash-swept session. If the
     // backend never knew about it (session.start hadn't synced yet), this
     // 404s and the outbox dead-letters it immediately — same idempotent,
     // non-retryable-4xx handling every other outbox write already relies on.
     // FIFO puts this after the original POST /sessions.
-    for (const s of recoveredSessions) {
+    enqueueSessionClose = (s) => {
       outbox.enqueue({
         kind: 'session.close',
         method: 'POST',
@@ -630,7 +646,10 @@ async function bootstrap(): Promise<void> {
           billableSeconds: s.billableSeconds,
         },
       });
-    }
+    };
+    // The session held for the Recover / Discard prompt is not in this list:
+    // its close is only sent if the user chooses Discard.
+    for (const s of recoveredSessions) enqueueSessionClose(s);
 
     stopSync = async () => {
       try {
@@ -938,6 +957,7 @@ async function bootstrap(): Promise<void> {
       // The session was already closed by closeSessionForQuit() above.
       timerService?.dispose();
       detachIpcHandlers?.();
+      detachCrashRecoveryIpc?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping timer service');
     }

@@ -37,6 +37,22 @@ export function createSessionRepo(db: DbHandle) {
       return one(db, SessionRow, `SELECT * FROM session WHERE id = ?`, [id]);
     },
 
+    /**
+     * Crash recovery (DTT-US-132): reopen a session the startup sweep closed,
+     * after the user chose Recover. Only a `crash_recover` row with no other
+     * session open can be reopened (one open session at a time).
+     */
+    reopenCrashRecovered(id: string): boolean {
+      const res = run(
+        db,
+        `UPDATE session SET ended_at = NULL, end_reason = NULL
+          WHERE id = ? AND end_reason = 'crash_recover'
+            AND NOT EXISTS (SELECT 1 FROM session WHERE ended_at IS NULL)`,
+        [id],
+      );
+      return res.changes === 1;
+    },
+
     insert(row: SessionRow): void {
       run(
         db,

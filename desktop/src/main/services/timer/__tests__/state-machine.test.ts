@@ -409,6 +409,27 @@ describe('timer state machine — transitions', () => {
       expect(r.effects.some((e) => e.kind === 'force_close_active')).toBe(false);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // RESTORE_SESSION (crash recovery, DTT-US-132)
+  // ---------------------------------------------------------------------------
+  describe('RESTORE_SESSION', () => {
+    const restore: TimerEvent = { type: 'RESTORE_SESSION', sessionId: 'ses_1' };
+
+    it('Idle -> Paused, never Running, with no session effects (the row is already reopened)', () => {
+      const r = transition('Idle', restore, ctxActive);
+      expect(r.next).toBe('Paused');
+      expect(r.effects.every((e) => e.kind === 'audit')).toBe(true);
+    });
+
+    it('is ignored from every other state', () => {
+      for (const s of ALL_STATES.filter((x) => x !== 'Idle')) {
+        const r = transition(s, restore, ctxActive);
+        expect(r.next, s).toBe(s);
+        expect(r.effects, s).toHaveLength(0);
+      }
+    });
+  });
 });
 
 // -----------------------------------------------------------------------------
