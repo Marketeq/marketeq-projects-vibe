@@ -839,8 +839,7 @@ export function IdentityVerificationFlow({
     }
   }
 
-  // Travel branch: persists what the unchanged travel screens collect. The
-  // classification request is kept so the duration is sent only after it.
+  // Travel branch: persists what the travel screens collect.
   const travelModeDeps = async (): Promise<TravelModeDeps> => {
     const { IdentityVerificationAPI } = await import(
       "@/service/http/identity-verification"
@@ -851,19 +850,34 @@ export function IdentityVerificationFlow({
       recordTravelDuration: (d) => IdentityVerificationAPI.recordTravelDuration(d),
     }
   }
-  const travelClassificationRef = useRef<Promise<void> | undefined>(undefined)
+  // Only "Permanently relocated" is saved at its click, and for an account that already
+  // has a verified home country the backend records nothing for it (the claim is created
+  // by the explicit country confirmation). "Temporarily traveling" saves nothing until a
+  // duration is confirmed.
   const persistTravelClassification = (
-    classification: "temporarily_traveling" | "permanently_relocated"
+    classification: "permanently_relocated"
   ) => {
-    travelClassificationRef.current = travelModeDeps().then((deps) =>
+    void travelModeDeps().then((deps) =>
       recordTravelClassification(deps, classification)
     )
   }
 
-  const activateTravelMode = () => {
-    void travelModeDeps().then((deps) =>
-      recordTravelDuration(deps, travelDuration, travelClassificationRef.current)
+  // Confirm / Skip. The duration request saves the whole Travel Mode activation in one
+  // atomic backend write, and the "Travel mode is on" confirmation and the close wait for
+  // it: a failed save leaves this screen open, with nothing saved, to try again.
+  const [activatingTravelMode, setActivatingTravelMode] = useState(false)
+  const activatingTravelModeRef = useRef(false)
+  const activateTravelMode = async () => {
+    if (activatingTravelModeRef.current) return
+    activatingTravelModeRef.current = true
+    setActivatingTravelMode(true)
+    const saved = await travelModeDeps().then((deps) =>
+      recordTravelDuration(deps, travelDuration)
     )
+    activatingTravelModeRef.current = false
+    if (!getIsMounted()) return
+    setActivatingTravelMode(false)
+    if (!saved) return
     setTravelModeNotificationOpen(true)
     onOpenChange(false)
   }
@@ -1742,7 +1756,8 @@ export function IdentityVerificationFlow({
                   onOpenChange(false)
                   return
                 }
-                persistTravelClassification("temporarily_traveling")
+                // Nothing is saved here: closing before a duration is chosen
+                // leaves the account exactly as it was.
                 send("NEXT")
               }}
               className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
@@ -1847,10 +1862,20 @@ export function IdentityVerificationFlow({
           </Alert>
 
           <div className="grid grid-cols-2 gap-x-3 mt-6">
-            <Button variant="outlined" visual="gray" onClick={activateTravelMode}>
+            <Button
+              variant="outlined"
+              visual="gray"
+              disabled={activatingTravelMode}
+              onClick={() => void activateTravelMode()}
+            >
               Skip
             </Button>
-            <Button onClick={activateTravelMode}>Confirm</Button>
+            <Button
+              disabled={activatingTravelMode}
+              onClick={() => void activateTravelMode()}
+            >
+              Confirm
+            </Button>
           </div>
         </DialogContent>
       )}

@@ -68,12 +68,39 @@ export class ProfileStatusResponseDto {
   retryAvailableAt?: string | null;
   hasActiveSession?: boolean;
 
+  // Home-country change (append-only, and OMITTED unless it applies, so every
+  // response for an account with no relocation claim keeps exactly its old keys).
+  // The country the account claimed it moved to, still awaiting Didit's approval;
+  // verifiedHomeCountry above is unchanged until an approval promotes it. Attempts
+  // and the cooldown are the ordinary fields (attemptsRemaining, retryAvailableAt).
+  pendingHomeCountry?: string;
+
+  /**
+   * An account in Travel Mode is detected in a country different from its verified
+   * home country (the "still traveling?" prompt's signal). OMITTED unless true, so
+   * every other response keeps exactly its old keys. Never stored; computed on GET
+   * /me only. Unlike locationMismatch it is only ever true while Travel Mode is in
+   * force.
+   */
+  travelModeLocationMismatch?: boolean;
+
+  /**
+   * An opaque key for THIS login (a one-way digest of the verified token's session id,
+   * see common/travel-mode/login-session-key.ts), so the browser can remember per login
+   * that a popup was shown or dismissed without ever seeing the session id. Stable for a
+   * login across refreshes; different for every new login and every account. OMITTED when
+   * the token has no valid session id. GET /me only.
+   */
+  loginSessionKey?: string;
+
   static fromEntity(
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
     nowMs: number = Date.now(),
     locationMismatch: boolean = false,
     loginReminderAt: Date | null = null,
+    travelModeLocationMismatch: boolean = false,
+    loginSessionKey: string | null = null,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -103,6 +130,9 @@ export class ProfileStatusResponseDto {
       profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
+    if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
+    if (travelModeLocationMismatch === true) dto.travelModeLocationMismatch = true;
+    if (typeof loginSessionKey === 'string' && loginSessionKey.length > 0) dto.loginSessionKey = loginSessionKey;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;

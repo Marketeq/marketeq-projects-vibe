@@ -38,6 +38,7 @@ describe('VpnProxyCheckGuard coverage: GET /me is open, advancing routes stay gu
       getOrCreateProfile: jest.fn(),
       getVerificationSummary: jest.fn(),
       getLocationMismatch: jest.fn(),
+      getTravelModeLocationMismatch: jest.fn().mockResolvedValue(false),
       getLoginReminderAt: jest.fn(),
       confirmHomeCountry: jest.fn(),
       recordTravelClassification: jest.fn(),

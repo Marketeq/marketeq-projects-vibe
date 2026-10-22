@@ -19,6 +19,7 @@ import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto'
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { readLoginSession } from '../common/travel-mode/login-reminder';
+import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
@@ -77,8 +78,18 @@ export class IdentityVerificationController {
     const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
     const locationMismatch = await this.service.getLocationMismatch(profile, ip);
+    const travelModeLocationMismatch = await this.service.getTravelModeLocationMismatch(profile, ip);
     const loginReminderAt = await this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
-    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt);
+    const loginSessionKey = readLoginSessionKey(req.user, req.userId);
+    return ProfileStatusResponseDto.fromEntity(
+      profile,
+      summary,
+      Date.now(),
+      locationMismatch,
+      loginReminderAt,
+      travelModeLocationMismatch,
+      loginSessionKey,
+    );
   }
 
   // Display-only location for the verification dialog. Uses the same
@@ -266,6 +277,19 @@ export class IdentityVerificationController {
   @UseGuards(VpnProxyCheckGuard)
   async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
     return this.freeKycService.startOrResume(req.userId);
+  }
+
+  // Home-country change: the explicit, separate start for an already fully
+  // verified account that declared a permanent relocation and confirmed the
+  // detected country (it is then PENDING). Ordinary kyc-sessions still refuses a
+  // verified account. Same VPN/proxy guard and throttle as session start; reads no
+  // body, query, country or session id: everything comes from the stored claim.
+  @Post('kyc-sessions/home-country-change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(VpnProxyCheckGuard)
+  async startHomeCountryChangeSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startHomeCountryChange(req.userId);
   }
 
   // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the

@@ -9,6 +9,7 @@
 // only ever re-reads authoritative status from our backend (GET /me).
 //
 // The travel branch ("No, I'm currently traveling") never calls any of this.
+import { markHomeCountryChange } from "./home-country-change-result"
 import {
   IDENTITY_STATUS_REFRESHED_EVENT,
   markAwaitingResult,
@@ -20,6 +21,11 @@ export interface FreeKycDeps {
   confirmHomeCountry: () => Promise<unknown>
   // POST /v1/identity-verification/kyc-sessions — VPN/proxy guarded.
   startFreeKyc: () => Promise<{ data: { url: string } }>
+  // POST /v1/identity-verification/kyc-sessions/home-country-change — VPN/proxy
+  // guarded. Used instead of startFreeKyc when the confirmation left a home-country
+  // change pending (the backend answers with pendingHomeCountry). Defaults to the
+  // real client, so callers that only know startFreeKyc keep working unchanged.
+  startHomeCountryChange?: () => Promise<{ data: { url: string } }>
   redirect: (url: string) => void
   // Re-read GET /v1/identity-verification/me. Defaults to the real client.
   refreshIdentityStatus?: () => Promise<string>
@@ -29,6 +35,10 @@ export interface FreeKycDeps {
   // Called just before the browser leaves for Didit, so the dashboard knows to
   // show a result when this browser comes back. Defaults to a localStorage flag.
   markAwaitingResult?: () => void
+  // Told whether the trip to Didit is a home-country change (true) or an ordinary
+  // verification (false), so the result can show the matching success alert. Defaults
+  // to a one-shot localStorage flag (see home-country-change-result.ts).
+  markHomeCountryChange?: (isChange: boolean) => void
 }
 
 const NOT_STARTABLE_CODE = "IDENTITY_VERIFICATION_NOT_STARTABLE"
@@ -48,10 +58,39 @@ function isNotStartable(error: unknown): boolean {
   )
 }
 
+// The confirmation answers with the account's status. An account that already has a
+// verified home country gets a PENDING country back (pendingHomeCountry) instead of
+// an overwrite: that is the home-country change, started on its own route. Anything
+// else (first-time verification, an unverified account) starts the ordinary session.
+function leftHomeCountryChangePending(confirmation: unknown): boolean {
+  const pending = (
+    confirmation as
+      | { data?: { pendingHomeCountry?: unknown } }
+      | null
+      | undefined
+  )?.data?.pendingHomeCountry
+  return typeof pending === "string" && pending.length > 0
+}
+
+async function defaultStartHomeCountryChange(): Promise<{
+  data: { url: string }
+}> {
+  const { IdentityVerificationAPI } =
+    await import("@/service/http/identity-verification")
+  return IdentityVerificationAPI.startHomeCountryChange()
+}
+
 async function defaultRefreshIdentityStatus(): Promise<string> {
   const { checkIdentityVerificationStatus } =
     await import("./identity-verification-status")
   return checkIdentityVerificationStatus()
+}
+
+function defaultMarkHomeCountryChange(isChange: boolean): void {
+  markHomeCountryChange(
+    typeof window === "undefined" ? undefined : window.localStorage,
+    isChange
+  )
 }
 
 function defaultMarkAwaitingResult(): void {
@@ -106,12 +145,18 @@ export async function confirmHomeCountryAndStartFreeKyc(
   deps: FreeKycDeps
 ): Promise<FreeKycOutcome> {
   try {
-    await deps.confirmHomeCountry()
-    const { data } = await deps.startFreeKyc()
+    const confirmation = await deps.confirmHomeCountry()
+    const isHomeCountryChange = leftHomeCountryChangePending(confirmation)
+    const { data } = isHomeCountryChange
+      ? await (deps.startHomeCountryChange ?? defaultStartHomeCountryChange)()
+      : await deps.startFreeKyc()
     if (!isDiditHostedUrl(data?.url)) {
       throw new Error("Free KYC returned an invalid redirect URL.")
     }
     ;(deps.markAwaitingResult ?? defaultMarkAwaitingResult)()
+    ;(deps.markHomeCountryChange ?? defaultMarkHomeCountryChange)(
+      isHomeCountryChange
+    )
     deps.redirect(data.url)
     return "redirected"
   } catch (error) {

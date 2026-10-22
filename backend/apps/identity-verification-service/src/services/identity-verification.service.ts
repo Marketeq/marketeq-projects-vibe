@@ -5,6 +5,7 @@ import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, LessThan, LessThanOrEqual, Or, Repository } from 'typeorm';
 import { isUUID } from 'class-validator';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
+import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
 import { IdentityDocument } from '../entities/identity-document.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
 import { PendingVerificationSession } from '../entities/pending-verification-session.entity';
@@ -12,6 +13,7 @@ import { AttemptReservation } from '../entities/attempt-reservation.entity';
 import {
   TravelClassification,
   DeclaredDuration,
+  HostedKycSessionStatus,
   IdentityVerificationStatus,
   LocationVerificationStatus,
   AttemptOutcome,
@@ -26,7 +28,7 @@ import {
   ProfileNotFoundException,
   DocumentNotFoundException,
   NoDetectedLocationException,
-  ClassificationRequiredException,
+  HomeCountryChangeInProgressException,
   TravelModeAlreadyActiveException,
   InvalidWebhookSignatureException,
   UnknownVendorSessionException,
@@ -73,12 +75,18 @@ import { IdentityVerificationEventType } from '../events/identity-verification-e
 import { getAccountWideAttemptCount, RETRY_LIMIT } from '../common/attempt-limit/account-wide-attempt-count';
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { NextAction } from '../common/status/verification-summary';
+import {
+  clearPendingRelocation,
+  hasPendingHomeCountryChange,
+  isRelocationUnfinished,
+  shouldHoldNewCountryAsPending,
+} from '../common/home-country-change/home-country-change';
 import { VerificationSummaryService } from './verification-summary.service';
 import {
   deriveTravelModeState,
   deriveTravelReminderClaim,
   expireTravelModeIfDue,
-  travelModeBlocksNewSession,
+  travelModeSuppressesLocationPrompt,
 } from '../common/travel-mode/travel-mode-state';
 import { deriveLoginReminderAt, LoginSession } from '../common/travel-mode/login-reminder';
 
@@ -196,7 +204,40 @@ export class IdentityVerificationService {
   ): Promise<boolean> {
     const home = profile.verifiedHomeCountry;
     if (!home || !ipAddress) return false;
-    if (travelModeBlocksNewSession(profile, nowMs)) return false;
+    // A home-country claim, or the Didit session behind it, is unfinished: the banner or
+    // gate carries the user through it, so no new-location prompt is offered.
+    if (isRelocationUnfinished(profile)) return false;
+    if (travelModeSuppressesLocationPrompt(profile, nowMs)) return false;
+    try {
+      const live = await this.locationProvider.resolve({ ipAddress });
+      const liveCountry = live?.countryCode;
+      if (!liveCountry) return false;
+      return liveCountry.toUpperCase() !== home.toUpperCase();
+    } catch (err) {
+      if (err instanceof LocationLookupUnavailableException) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * The active-traveler counterpart of getLocationMismatch: true only while Travel
+   * Mode is in force (a valid activation that has not ended, still flagged active),
+   * a verified home country exists, and the request's live IP country is known and
+   * DIFFERENT from it. getLocationMismatch deliberately stays false during Travel
+   * Mode, so a traveler is only ever offered the "still traveling?" prompt through
+   * this separate signal. It says nothing about WHEN to show it: the screen shows
+   * it once per login. Read-only, the same free local IP lookup, and an
+   * unavailable lookup, a missing IP or an unknown country is simply false.
+   */
+  async getTravelModeLocationMismatch(
+    profile: IdentityVerificationProfile,
+    ipAddress?: string | null,
+    nowMs: number = Date.now(),
+  ): Promise<boolean> {
+    const home = profile.verifiedHomeCountry;
+    if (!home || !ipAddress) return false;
+    if (isRelocationUnfinished(profile)) return false;
+    if (!profile.travelModeActive || deriveTravelModeState(profile, nowMs).state !== 'active') return false;
     try {
       const live = await this.locationProvider.resolve({ ipAddress });
       const liveCountry = live?.countryCode;
@@ -296,6 +337,23 @@ export class IdentityVerificationService {
     }
 
     const existing = await this.profileRepository.findOne({ where: { userId } });
+    // A claim whose Didit session is running or in review is neither cleared nor replaced
+    // by any confirmation (same country or another): the linked session's approval must
+    // still be able to promote it. Rejected before anything is read or written below.
+    if (existing) this.assertNoUnfinishedRelocation(existing);
+    // An already verified account (or one whose home-country change is already
+    // in flight) never has its verified home country overwritten by an IP
+    // reading, whatever route got here and whether or not a relocation was
+    // declared first: a DIFFERENT detected country becomes PENDING, and only a
+    // Didit approval replaces the verified one. Re-confirming the SAME country
+    // moves nothing: it falls through to the ordinary refresh below, which also
+    // drops any claim for another country.
+    if (existing && (await this.shouldHoldCountry(existing, detected.countryCode))) {
+      if (detected.countryCode !== existing.verifiedHomeCountry) {
+        return this.confirmPendingHomeCountry(existing, detected);
+      }
+      clearPendingRelocation(existing);
+    }
     const profile = existing ?? this.profileRepository.create({ userId });
     const previousCountry = profile.verifiedHomeCountry;
     const isFirstConfirmation = profile.locationVerificationStatus !== LocationVerificationStatus.VERIFIED;
@@ -336,6 +394,53 @@ export class IdentityVerificationService {
     return saved;
   }
 
+  /**
+   * Confirming a DIFFERENT country for an account that already has a verified home
+   * country. The detected country was resolved server-side from the request IP just
+   * now and the user explicitly confirmed it. verifiedHomeCountry, the location
+   * status and Travel Mode are NOT touched: the claim is stored as pending and only a
+   * Didit approval of the session linked to it promotes it (and ends Travel Mode).
+   *
+   * Re-confirming the SAME pending country refreshes the 15-minute basis and keeps
+   * its session link, so valid retries continue; a DIFFERENT country is a new claim
+   * and unlinks the old session. The identity status, its attempt cycle and its
+   * cooldown are never touched here.
+   */
+  private async confirmPendingHomeCountry(
+    profile: IdentityVerificationProfile,
+    detected: { countryCode: string; regionState?: string | null; city?: string | null },
+  ): Promise<IdentityVerificationProfile> {
+    // Travel Mode and the travel classification are left exactly as they are: only an
+    // approval of this claim's Didit session ends them (see FreeKycService).
+    profile.detectedCountry = detected.countryCode;
+    profile.detectedRegionState = (detected.regionState ?? null) as string | null;
+    profile.detectedCity = (detected.city ?? null) as string | null;
+
+    if (profile.pendingHomeCountry !== detected.countryCode) {
+      profile.pendingHomeCountry = detected.countryCode;
+      profile.pendingRelocationSessionId = null;
+    }
+    profile.pendingHomeCountryConfirmedAt = new Date();
+    return this.profileRepository.save(profile);
+  }
+
+  /**
+   * Whether confirming `detectedCountry` must be held as a pending claim instead of
+   * overwriting the verified home country. Besides the verified / claim-in-flight
+   * cases, an account whose identity was verified before (expired, or a Didit
+   * approval on record) is held too, so an abandoned or withdrawn relocation can
+   * never let a plain confirmation replace the country Didit vouched for. Looked up
+   * only for a verified home country that the detected country would change.
+   */
+  private async shouldHoldCountry(profile: IdentityVerificationProfile, detectedCountry: string): Promise<boolean> {
+    if (shouldHoldNewCountryAsPending(profile)) return true;
+    if (!profile.verifiedHomeCountry || detectedCountry === profile.verifiedHomeCountry) return false;
+    const everApproved = await this.dataSource
+      .getRepository(HostedKycSession)
+      .exist({ where: { profileId: profile.id, status: HostedKycSessionStatus.APPROVED } });
+    return shouldHoldNewCountryAsPending(profile, { everApproved });
+  }
+
   // --- Travel / Relocation ---
 
   async recordTravelClassification(
@@ -343,19 +448,38 @@ export class IdentityVerificationService {
     classification: TravelClassification,
   ): Promise<IdentityVerificationProfile> {
     const profile = await this.getOrCreateProfile(userId);
-    profile.travelClassification = classification;
 
-    // SVC-07: Permanently Relocated routes back through location/document
-    // proof verification rather than duration selection or Travel Mode — a
-    // relocation claim must be proved by a document before it replaces the
-    // verified home country (00 §3 item 4). Resetting location status here
-    // forces the existing home-country-confirm -> document flow to run
-    // again; Temporarily Traveling is unaffected.
     if (classification === TravelClassification.PERMANENTLY_RELOCATED) {
+      // An account with a verified home country keeps it, its location status and
+      // its Travel Mode while the claim is pending: nothing is recorded by this click.
+      // The claim is created only by the explicit country confirmation, and nothing
+      // is replaced until Didit approves the change.
+      if (shouldHoldNewCountryAsPending(profile)) return profile;
+      // Any other account has no verified home country to protect: the relocation
+      // routes back through location verification (SVC-07, 00 §3 item 4).
+      profile.travelClassification = classification;
       profile.locationVerificationStatus = LocationVerificationStatus.NOT_VERIFIED;
+      return this.profileRepository.save(profile);
     }
 
+    // Choosing "traveling" withdraws a pending relocation claim, so an old
+    // home-country-change session can never promote it afterwards. Never while that
+    // claim's Didit session is running or in review: it would strand the account.
+    this.assertNoUnfinishedRelocation(profile);
+    clearPendingRelocation(profile);
+    profile.travelClassification = classification;
     return this.profileRepository.save(profile);
+  }
+
+  // A claim whose Didit session is running or waiting for a decision is not withdrawn.
+  private assertNoUnfinishedRelocation(profile: IdentityVerificationProfile): void {
+    if (
+      hasPendingHomeCountryChange(profile) &&
+      (profile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS ||
+        profile.identityVerificationStatus === IdentityVerificationStatus.PENDING)
+    ) {
+      throw new HomeCountryChangeInProgressException();
+    }
   }
 
   async recordTravelDuration(
@@ -367,9 +491,10 @@ export class IdentityVerificationService {
     // has nothing stored yet and is created here.
     const stored = await this.profileRepository.findOne({ where: { userId } });
     const found = stored ?? (await this.getOrCreateProfile(userId));
-    if (found.travelClassification !== TravelClassification.TEMPORARILY_TRAVELING) {
-      throw new ClassificationRequiredException();
-    }
+    // The classification is saved together with the duration (below), never before it,
+    // so there is no "classified but no duration" state to require or to strand in.
+    // A running or in-review home-country change is not talked over by Travel Mode.
+    this.assertNoUnfinishedRelocation(found);
 
     // Extending or shortening Travel Mode while it is in force is not
     // supported: only the first duration, or a new one after the previous
@@ -386,9 +511,6 @@ export class IdentityVerificationService {
     // Untrustworthy active data fails closed: it is now deactivated, but this
     // request does not activate anything. A later retry may proceed.
     if (state === 'invalid') throw new TravelModeAlreadyActiveException();
-    if (profile.travelClassification !== TravelClassification.TEMPORARILY_TRAVELING) {
-      throw new ClassificationRequiredException();
-    }
     if (deriveTravelModeState(profile, nowMs).state === 'active') throw new TravelModeAlreadyActiveException();
 
     // Compare-and-set on what this request observed AFTER expiry: not active,
@@ -401,14 +523,24 @@ export class IdentityVerificationService {
       profile.travelModeActivatedAt instanceof Date && Number.isFinite(profile.travelModeActivatedAt.getTime())
         ? profile.travelModeActivatedAt
         : IsNull();
+    // Choosing "traveling" withdraws an old claim that has no unfinished session (the
+    // guard above refused one that has), in this same write.
+    const withdrawsClaim = hasPendingHomeCountryChange(profile);
     const result = await this.profileRepository.update(
       {
         id: profile.id,
         travelModeActive: false,
         travelModeActivatedAt: observedActivation,
         declaredDuration: profile.declaredDuration ?? IsNull(),
+        // The claim guard held against this status; if a relocation session started
+        // meanwhile the write does not match and is rejected.
+        ...(withdrawsClaim ? { identityVerificationStatus: profile.identityVerificationStatus } : {}),
       },
       {
+        travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+        ...(withdrawsClaim
+          ? { pendingHomeCountry: null, pendingHomeCountryConfirmedAt: null, pendingRelocationSessionId: null }
+          : {}),
         declaredDuration: duration,
         travelModeActive: true,
         travelModeActivatedAt: now,
@@ -418,8 +550,12 @@ export class IdentityVerificationService {
         nextTravelReminderAt: firstReminderAt,
       },
     );
-    if (result.affected !== 1) throw new TravelModeAlreadyActiveException();
+    if (result.affected !== 1) {
+      throw withdrawsClaim ? new HomeCountryChangeInProgressException() : new TravelModeAlreadyActiveException();
+    }
 
+    profile.travelClassification = TravelClassification.TEMPORARILY_TRAVELING;
+    if (withdrawsClaim) clearPendingRelocation(profile);
     profile.declaredDuration = duration;
     profile.travelModeActive = true;
     profile.travelModeActivatedAt = now;
