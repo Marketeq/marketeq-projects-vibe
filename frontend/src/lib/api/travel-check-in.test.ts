@@ -917,11 +917,13 @@ describe("Storybook: the two supplied states have stories that share the dashboa
     assert.ok(stories.includes('title: "Identity Verification Check-In"'))
     assert.ok(stories.includes("export const CheckIn = "))
     assert.ok(stories.includes("export const DurationAskedBefore = "))
+    assert.ok(stories.includes("export const DurationFirstTime = "))
   })
 
   it("uses the same copy module and design-system parts as the page, and no raw controls", () => {
     assert.ok(stories.includes('from "@/src/lib/api/travel-check-in"'))
-    assert.ok(stories.includes("durationCopyFor(1)"))
+    assert.ok(stories.includes("durationCopyFor(answerCount)"))
+    assert.ok(stories.includes("<DurationQuestion answerCount={1} />"))
     assert.ok(stories.includes("{copy.alert}"))
     assert.ok(stories.includes("CHECK_IN_COPY.prompt.updateHomeCountry"))
     assert.ok(!/<(button|input|textarea|select|dialog|label)\b/.test(stories))

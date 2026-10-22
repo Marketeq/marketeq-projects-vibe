@@ -1,3 +1,4 @@
+import { useState } from "react"
 import {
   CHECK_IN_COPY,
   CHECK_IN_DURATION_LABELS,
@@ -68,8 +69,13 @@ export const CheckIn = () => {
   )
 }
 
-export const DurationAskedBefore = () => {
-  const copy = durationCopyFor(1)
+// The duration question. Every row is one label tied to its radio: the circle, the text and
+// the space around them select it, and a choice is the answer. The story keeps the choice and
+// counts submissions so a click on the text can be seen to submit exactly once.
+const DurationQuestion = ({ answerCount }: { answerCount: number }) => {
+  const copy = durationCopyFor(answerCount)
+  const [selected, setSelected] = useState<string | undefined>(undefined)
+  const [submissions, setSubmissions] = useState(0)
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -100,19 +106,32 @@ export const DurationAskedBefore = () => {
           </DialogDescription>
         </div>
 
-        <RadioGroup className="mt-6 space-y-2.5">
+        <RadioGroup
+          className="mt-5 gap-y-0.5"
+          aria-label={copy.title}
+          value={selected}
+          onValueChange={(label) => {
+            setSelected(label)
+            setSubmissions((n) => n + 1)
+          }}
+        >
           {CHECK_IN_DURATION_LABELS.map((label, index) => (
-            <div key={label} className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value={label} id={`check-in-duration-${index}`} />
-              <Label
-                htmlFor={`check-in-duration-${index}`}
-                className="text-xs font-medium text-dark-blue-400"
-              >
-                {label}
-              </Label>
-            </div>
+            <Label
+              key={label}
+              htmlFor={`check-in-duration-${answerCount}-${index}`}
+              className="flex w-full cursor-pointer items-center gap-x-3 rounded-[5px] -mx-2 px-2 py-1 text-xs font-medium text-dark-blue-400 transition-colors hover:bg-gray-50 has-[:focus-visible]:bg-gray-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-100 has-[[data-state=checked]]:bg-primary-25 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:disabled]:hover:bg-transparent has-[:disabled]:has-[[data-state=checked]]:bg-primary-25"
+            >
+              <RadioGroupItem
+                value={label}
+                id={`check-in-duration-${answerCount}-${index}`}
+              />
+              {label}
+            </Label>
           ))}
         </RadioGroup>
+        <p className="sr-only" aria-live="polite" data-testid="submissions">
+          Submissions: {submissions}
+        </p>
 
         <Alert className="mt-6">
           <AlertIcon>
@@ -132,3 +151,7 @@ export const DurationAskedBefore = () => {
     </Dialog>
   )
 }
+
+export const DurationFirstTime = () => <DurationQuestion answerCount={0} />
+
+export const DurationAskedBefore = () => <DurationQuestion answerCount={1} />

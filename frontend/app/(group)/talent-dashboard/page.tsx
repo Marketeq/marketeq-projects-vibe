@@ -1148,21 +1148,21 @@ export default function TalentDashboard() {
             </div>
 
             <RadioGroup
-              className="mt-6 space-y-2.5"
+              className="mt-5 gap-y-0.5"
+              aria-label={durationCopyFor(checkIn.answerCount).title}
               value={checkInSelected}
               disabled={checkInSaving}
               onValueChange={(label) => void handleCheckInAnswer(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <div key={label} className="inline-flex items-center gap-x-3">
+                <Label
+                  key={label}
+                  htmlFor={`check-in-duration-${index}`}
+                  className="flex w-full cursor-pointer items-center gap-x-3 rounded-[5px] -mx-2 px-2 py-1 text-xs font-medium text-dark-blue-400 transition-colors hover:bg-gray-50 has-[:focus-visible]:bg-gray-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-100 has-[[data-state=checked]]:bg-primary-25 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50 has-[:disabled]:hover:bg-transparent has-[:disabled]:has-[[data-state=checked]]:bg-primary-25"
+                >
                   <RadioGroupItem value={label} id={`check-in-duration-${index}`} />
-                  <Label
-                    htmlFor={`check-in-duration-${index}`}
-                    className="text-xs font-medium text-dark-blue-400"
-                  >
-                    {label}
-                  </Label>
-                </div>
+                  {label}
+                </Label>
               ))}
             </RadioGroup>
 
