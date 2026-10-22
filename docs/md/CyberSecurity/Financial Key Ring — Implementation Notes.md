@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-20
 **Audience:** whoever operates payout-service, and whoever runs the first key rotation.
-**Status:** implemented on branch `security/gateway-rate-limiting`, **uncommitted and unpushed.** Requires migration `014_encryption_key_rotations.sql` before deploy.
+**Status:** committed on branch `security/gateway-rate-limiting` as `f674407e`, **not yet pushed, no PR open.** Requires migration `017_encryption_key_rotations.sql` before deploy.
 **Why it exists:** closes `AC-1.3.3` of `CS-1.3` / `US-1.3` / PMCM-739. Rationale and the wider inventory live in `Encryption Key Management — Audit and KMS Plan.md` §5; this document is the operating reference.
 
 ---
@@ -57,7 +57,7 @@ Same shape for `OAUTH_TOKEN_ENCRYPTION_KEY` and `CRYPTO_ADDRESS_ENCRYPTION_KEY`.
 
 ## **4. What records the change**
 
-`encryption_key_rotations`, created by migration `014`. `KeyRotationRecorderService` compares the current key for each ring against the last one recorded at startup, and appends a row when they differ:
+`encryption_key_rotations`, created by migration `017`. `KeyRotationRecorderService` compares the current key for each ring against the last one recorded at startup, and appends a row when they differ:
 
 | Column | Holds |
 |---|---|
@@ -140,7 +140,7 @@ npx jest --rootDir apps/payout-service/src
 
 1. Apply the migration. New table only, no change to any existing table, safe against a live database.
    ```
-   docker exec -i marketeq-db psql -U postgres -d payout_db < migrations/014_encryption_key_rotations.sql
+   docker exec -i marketeq-db psql -U postgres -d payout_db < migrations/017_encryption_key_rotations.sql
    ```
 2. Deploy. No environment change needed; the existing single-key variables keep working.
 3. Check the logs for `Recorded the first encryption key for ring …` three times, once per ring. That confirms the recorder reached the table.
@@ -148,5 +148,6 @@ npx jest --rootDir apps/payout-service/src
 
 ## **9. Change Log**
 
+- **2026-10-21** — Merged `dev-main` (26 commits, no conflicts). Migration renumbered `014` → `017`: `dev-main` had meanwhile added its own `014`, a second `014`, a `015` and a `016`, so the original number was no longer the newest and no longer unique. No code references the file — `data-source.ts` only auto-runs `.ts`/`.js` migrations, so these `.sql` files are applied by hand and the number is read by a person.
 - **2026-10-20** — Written. Should have accompanied the implementation; it did not, which left the rotation procedure in code comments and a chat log.
 - **2026-10-19** — Key ring, rotation record table and recorder added; bank, OAuth-token and crypto-address encryption moved onto it. Closes `AC-1.3.3`. Also fixed the hex-validation gap in `AC-1.3.1`, where a 64-character non-hex key passed startup and failed later at the first encrypt.
