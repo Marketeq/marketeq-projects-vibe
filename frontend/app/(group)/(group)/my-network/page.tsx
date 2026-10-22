@@ -56,6 +56,7 @@ import {
 import type { Company } from "@/types/company"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Grid, List, SortAs } from "@/components/icons"
+import { OfferDialog } from "@/components/hire-me-button"
 import { InviteAcceptedNotification } from "@/components/invite-sent-notification"
 import { InviteWindowTrigger } from "@/components/invite-window"
 import NextLink from "@/components/next-link"
@@ -117,6 +118,16 @@ import {
 const CONFIRMATION_TOAST_CLASS = "pr-[18px]"
 const CONFIRMATION_TOAST_UNDO_CLASS =
   "-ml-1 !flex !h-5 border-0 bg-transparent px-0 !text-xs !font-semibold !leading-5 text-success-500 underline hover:no-underline focus:outline-none"
+
+/**
+ * How long an undoable confirmation holds its request before sending it.
+ * AC-17.4 (R3-09): "A resend is held until the ... toast closes. Undo drops
+ * it: nothing goes out and the old link and expiry stay as they were." The
+ * Toaster keeps a toast carrying an action on screen for 8s
+ * (`toaster.tsx`: `duration={action ? 8000 : undefined}`), so that window is
+ * the undo window — these must stay in step.
+ */
+const UNDOABLE_CONFIRMATION_MS = 8000
 
 const GRID_LAYOUT = "GRID"
 const LIST_LAYOUT = "LIST"
@@ -876,10 +887,15 @@ const AddTalentMemberModal = ({
   open,
   onClose,
   talentMembers,
+  onSendOffer,
 }: {
   open: boolean
   onClose: () => void
   talentMembers: TalentMember[]
+  /** Hands the revalidated recipient up to the page, which opens the existing
+   *  Hire Me offer modal. 04 Frontend Specs §S17 and AC-26.5: Continue hands
+   *  off to that modal, it does not navigate. */
+  onSendOffer: (member: TalentMember) => void
 }) => {
   const router = useRouter()
   const [step, setStep] = useState<"choose" | "recipient">("choose")
@@ -948,7 +964,7 @@ const AddTalentMemberModal = ({
     logHireFlowInitiated(recipient.id).catch(() => {
       // Audit only — never block the hand-off on it.
     })
-    router.push(`/talent-checkout/${encodeURIComponent(recipient.username)}`)
+    onSendOffer(current)
   }
 
   const chooseRecipient = (member: TalentMember) => {
@@ -970,7 +986,15 @@ const AddTalentMemberModal = ({
         if (!isOpen) onClose()
       }}
     >
-      <DialogContent className="p-0 gap-0 max-w-[582px] w-[582px] overflow-hidden rounded-xl">
+      {/* Figma (S16/S17 card): 582px wide, 12px radius, Shadow/3xl
+          `0px 32px 64px -12px rgba(16,24,40,0.14)`. DialogContent's default
+          variant ships Tailwind's `shadow-xl`, and the config defines no 3xl
+          token, so the exact value is set here and twMerge drops the base. */}
+      {/* No `overflow-hidden`: overflow clips absolutely-positioned
+          descendants, which trapped the S17 recipient dropdown inside the
+          card. The white fill and radius sit on DialogContent itself and no
+          child paints to the corners, so nothing needs clipping. */}
+      <DialogContent className="p-0 gap-0 max-w-[582px] w-[582px] rounded-xl shadow-[0px_32px_64px_-12px_rgba(16,24,40,0.14)]">
         <div className="flex items-center gap-4 px-5 py-5">
           <DialogTitle className="flex-1 text-[20px] font-bold leading-normal text-dark-blue-400">
             {step === "choose"
@@ -1144,8 +1168,8 @@ const AddTalentMemberModal = ({
 
                 {staleRecipient && (
                   <p className="text-[13px] leading-5 text-error-500">
-                    This person is no longer available to receive an offer.
-                    Remove them and choose someone else.
+                    This user has no availability for new projects or services
+                    right now. Please select someone else to continue.
                   </p>
                 )}
               </div>
@@ -1284,6 +1308,11 @@ export default function MyTeam() {
   const isGrid = getFirstItem(value) === GRID_LAYOUT
   const [activeTab, setActiveTab] = useState(TALENT_NETWORK_TAB)
   const [isAddTalentOpen, setIsAddTalentOpen] = useState(false)
+  // Recipient chosen in S17. Holding the member (rather than a boolean) keeps
+  // the offer modal mounted with their profile after the picker has closed.
+  const [offerRecipient, setOfferRecipient] = useState<TalentMember | null>(
+    null
+  )
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [talentMembers, setTalentMembers] = useState<TalentMember[]>([])
@@ -1463,48 +1492,85 @@ export default function MyTeam() {
   const resendInvitation = useResendInvitation()
   const cancelInvitation = useCancelInvitation()
 
-  const handleResend = async (id: string) => {
-    try {
-      await resendInvitation.mutateAsync(id)
-      toast({
-        title: "Your invitation has been resent",
-        variant: "success",
-        className: CONFIRMATION_TOAST_CLASS,
-        action: (
-          <ToastAction altText="Undo" className={CONFIRMATION_TOAST_UNDO_CLASS}>
-            Undo
-          </ToastAction>
-        ),
+  // Requests held open for Undo. Kept in a ref so a re-render cannot lose a
+  // timer and strand the request.
+  const pendingUndos = useRef<
+    { timer: ReturnType<typeof setTimeout>; run: () => void }[]
+  >([])
+
+  useEffect(
+    () => () => {
+      // Unmounting is not an Undo — the client never asked to drop these, so
+      // flush anything still waiting instead of silently discarding it.
+      pendingUndos.current.forEach(({ timer, run }) => {
+        clearTimeout(timer)
+        run()
       })
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to resend",
-        description: err?.response?.data?.message ?? "Please try again.",
-      })
+      pendingUndos.current = []
+    },
+    []
+  )
+
+  /**
+   * Confirmation whose Undo drops the request outright (AC-17.4 / R3-09).
+   * The toast appears at once and `run` is held until it closes; pressing
+   * Undo clears it so nothing reaches the backend at all. Radix's
+   * ToastAction closes the toast itself, so Undo only has to cancel the
+   * timer.
+   */
+  const confirmWithUndo = (title: string, run: () => void) => {
+    const forget = () => {
+      pendingUndos.current = pendingUndos.current.filter(
+        (entry) => entry.timer !== timer
+      )
     }
+    const timer = setTimeout(() => {
+      forget()
+      run()
+    }, UNDOABLE_CONFIRMATION_MS)
+    pendingUndos.current.push({ timer, run })
+
+    toast({
+      title,
+      variant: "success",
+      className: CONFIRMATION_TOAST_CLASS,
+      action: (
+        <ToastAction
+          altText="Undo"
+          className={CONFIRMATION_TOAST_UNDO_CLASS}
+          onClick={() => {
+            clearTimeout(timer)
+            forget()
+          }}
+        >
+          Undo
+        </ToastAction>
+      ),
+    })
   }
 
-  const handleCancel = async (id: string) => {
-    try {
-      await cancelInvitation.mutateAsync(id)
-      toast({
-        title: "Your invitation has been canceled",
-        variant: "success",
-        className: CONFIRMATION_TOAST_CLASS,
-        action: (
-          <ToastAction altText="Undo" className={CONFIRMATION_TOAST_UNDO_CLASS}>
-            Undo
-          </ToastAction>
-        ),
+  const handleResend = (id: string) => {
+    confirmWithUndo("Your invitation has been resent", () => {
+      resendInvitation.mutateAsync(id).catch((err: any) => {
+        toast({
+          variant: "destructive",
+          title: "Failed to resend",
+          description: err?.response?.data?.message ?? "Please try again.",
+        })
       })
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Failed to remove",
-        description: err?.response?.data?.message ?? "Please try again.",
+    })
+  }
+
+  const handleCancel = (id: string) => {
+    confirmWithUndo("Your invitation has been canceled", () => {
+      cancelInvitation.mutateAsync(id).catch((err: any) => {
+        toast({
+          variant: "destructive",
+          title: "Failed to remove",
+          description: err?.response?.data?.message ?? "Please try again.",
+        })
       })
-    }
+    })
   }
 
   // Edit Permissions opens for accepted members tied to a company, and writes
@@ -1937,9 +2003,12 @@ export default function MyTeam() {
           title="Edit Permissions"
           value={editingMember.permissions}
           onApply={(roleIds) => {
-            if (editingMember.userId) {
+            // Captured before the panel closes: Undo needs the roles the
+            // member held going in, and `editingMember` is cleared below.
+            const { userId, permissions: previousRoleIds } = editingMember
+            if (userId) {
               updateCompanyMember.mutate(
-                { userId: editingMember.userId, dto: { permissions: roleIds } },
+                { userId, dto: { permissions: roleIds } },
                 {
                   onSuccess: () =>
                     toast({
@@ -1950,6 +2019,16 @@ export default function MyTeam() {
                         <ToastAction
                           altText="Undo"
                           className={CONFIRMATION_TOAST_UNDO_CLASS}
+                          onClick={() =>
+                            // R2-25: a permission change applies immediately,
+                            // so Undo writes the previous roles back rather
+                            // than dropping a held request the way the
+                            // resend and cancel confirmations do.
+                            updateCompanyMember.mutate({
+                              userId,
+                              dto: { permissions: previousRoleIds },
+                            })
+                          }
                         >
                           Undo
                         </ToastAction>
@@ -1982,7 +2061,23 @@ export default function MyTeam() {
         open={isAddTalentOpen}
         onClose={() => setIsAddTalentOpen(false)}
         talentMembers={talentMembers}
+        onSendOffer={setOfferRecipient}
       />
+
+      {offerRecipient && (
+        <OfferDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setOfferRecipient(null)
+          }}
+          profile={{
+            id: offerRecipient.id,
+            username: offerRecipient.username,
+            firstName: offerRecipient.name,
+            avatarUrl: offerRecipient.avatarSrc,
+          }}
+        />
+      )}
     </div>
   )
 }
