@@ -16,7 +16,8 @@ import { NewTaskForm } from "./new-task-form"
 import { ManualTimeForm } from "./manual-time-form"
 import { deriveUiRunningPaused, computeDisplayedElapsedSec, decideActiveTaskAction } from "./timer-ui-state"
 import { IdleResolutionModal } from "../../views/IdleResolutionModal"
-import type { IdleResolutionNeededPayload, TimerSnapshotDTO } from "../../../shared/ipc-contracts"
+import { CrashRecoveryModal } from "../../views/CrashRecoveryModal"
+import type { CrashRecoveryDTO, IdleResolutionNeededPayload, TimerSnapshotDTO } from "../../../shared/ipc-contracts"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -677,6 +678,9 @@ export function TimeTrackerApp({
   // Idle event the backend is waiting on the user to resolve (Keep / Discard /
   // Convert to break). Non-null renders the IdleResolutionModal below.
   const [pendingIdle, setPendingIdle] = React.useState<IdleResolutionNeededPayload | null>(null)
+  // Unfinished session from an unclean shutdown awaiting Recover / Discard
+  // (DTT-US-131). Non-null renders the blocking CrashRecoveryModal below.
+  const [crashRecovery, setCrashRecovery] = React.useState<CrashRecoveryDTO | null>(null)
   // Offline-first status: tracking never stops for a lost connection; work is
   // queued locally and uploads on reconnect. `catchingUp` stays true from a
   // reconnect until the queue is empty, so the talent sees it sync.
@@ -897,6 +901,14 @@ export function TimeTrackerApp({
   React.useEffect(() => {
     const off = window.dtt?.timer?.onIdleResolutionNeeded?.((payload) => setPendingIdle(payload))
     return () => { off?.() }
+  }, [])
+
+  // Crash recovery prompt — asked once on load (the main process holds the
+  // unfinished session until the talent answers, across restarts).
+  React.useEffect(() => {
+    window.dtt?.timer?.getCrashRecovery?.()
+      .then((info) => { if (info) setCrashRecovery(info) })
+      .catch((err: unknown) => console.error("getCrashRecovery failed:", err))
   }, [])
 
   React.useEffect(() => {
@@ -1884,6 +1896,32 @@ export function TimeTrackerApp({
               setPendingIdle(null)
             }
           }}
+        />,
+        document.body
+      )}
+
+      {crashRecovery && ReactDOM.createPortal(
+        <CrashRecoveryModal
+          info={crashRecovery}
+          onRecover={async () => {
+            try {
+              // The restored Paused snapshot arrives through onStateChanged,
+              // which already restores the task header from pickedContract.
+              return (await window.dtt?.timer?.recoverCrash?.()) ?? false
+            } catch (err) {
+              console.error("recoverCrash failed:", err)
+              return false
+            }
+          }}
+          onDiscard={async () => {
+            try {
+              return (await window.dtt?.timer?.discardCrash?.()) ?? false
+            } catch (err) {
+              console.error("discardCrash failed:", err)
+              return false
+            }
+          }}
+          onDone={() => setCrashRecovery(null)}
         />,
         document.body
       )}

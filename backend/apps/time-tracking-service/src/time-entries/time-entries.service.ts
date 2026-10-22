@@ -23,6 +23,7 @@ export class TimeEntriesService {
       endedAt: dto.endedAt ? new Date(dto.endedAt) : null,
       durationSeconds: dto.durationSeconds ?? 0,
       idempotencyKey: dto.idempotencyKey ?? null,
+      source: dto.source ?? 'live',
     });
     return this.repo.save(entry);
   }

@@ -8,5 +8,7 @@ export class TimeEntry {
   @Column({ name: 'ended_at', type: 'timestamptz', nullable: true }) endedAt!: Date | null;
   @Column({ name: 'duration_seconds', type: 'int', default: 0 }) durationSeconds!: number;
   @Column({ name: 'idempotency_key', type: 'text', nullable: true, unique: true }) idempotencyKey!: string | null;
+  /** live | manual | recovered — 'recovered' = pre-crash slice the talent chose to Recover (DTT-US-132). */
+  @Column({ type: 'text', default: 'live' }) source!: 'live' | 'manual' | 'recovered';
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' }) createdAt!: Date;
 }

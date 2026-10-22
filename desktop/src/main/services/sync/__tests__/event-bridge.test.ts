@@ -112,3 +112,34 @@ describe('event-bridge — activity minutes', () => {
     expect(activityRows(enqueue)).toHaveLength(0);
   });
 });
+
+describe('event-bridge — time entries on session close (crash recovery source tag)', () => {
+  it("tags only crash-recovered entries with source 'recovered'; normal entries are unchanged", () => {
+    const { outbox, enqueue } = makeOutbox();
+    let emit: ((evt: unknown) => void) | null = null;
+    const timer = {
+      attachEventBus: vi.fn((cb: (evt: unknown) => void) => { emit = cb; return () => undefined; }),
+      getSnapshot: vi.fn(() => ({ activeSessionId: null, pickedContract: null, elapsedSec: 0 })),
+    } as unknown as TimerService;
+    createEventBridge({
+      outbox,
+      timer,
+      getDeviceId: () => 'dev_1',
+      getSessionById: () => ({ ended_at: 2_000_000, end_reason: 'user_stop', billable_seconds: 600 }),
+      listTimeEntriesForSession: () => [
+        { id: 'ent_pre', started_at: 1_000_000, ended_at: 1_300_000, duration_seconds: 300, source: 'recovered' as const },
+        { id: 'ent_post', started_at: 1_700_000, ended_at: 2_000_000, duration_seconds: 300, source: 'live' as const },
+      ],
+    });
+
+    const state = (activeSessionId: string | null) =>
+      emit!({ channel: 'timer:state-changed', payload: { activeSessionId, pickedContract: null, elapsedSec: 0, updatedAt: 0 } });
+    state('ses_crash');
+    state(null); // session closed
+
+    const entries = enqueue.mock.calls.map(([row]) => row).filter((r) => r.kind === 'time-entry.create');
+    expect(entries.map((r) => r.payload.id)).toEqual(['ent_pre', 'ent_post']);
+    expect(entries[0].payload.source).toBe('recovered');
+    expect('source' in entries[1].payload).toBe(false);
+  });
+});
