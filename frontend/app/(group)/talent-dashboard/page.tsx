@@ -103,11 +103,11 @@ import {
   checkInAnswerCount,
   checkInHasPriority,
   checkInScope,
-  checkInToShow,
   createCheckInDismissals,
   createCheckInTimer,
   durationCopyFor,
-  isCheckInStale,
+  reconcileCheckIn,
+  recordCheckInAnswerOutcome,
   shouldRecheckOnVisibility,
 } from "@/src/lib/api/travel-check-in"
 import {
@@ -611,19 +611,17 @@ export default function TalentDashboard() {
   // Opens the modal for the due occurrence, and closes one that /me no longer calls due
   // (answered in another tab, Travel Mode ended, replaced by another occurrence).
   useEffect(() => {
-    const next = checkInToShow({
-      summary: travelSummary,
-      scope: checkInScopeKey,
-      dismissals: checkInDismissalsRef.current,
-      busy: identityFlowOpen,
-    })
     setCheckIn((current) => {
-      if (current && !isCheckInStale(current.occurrence, travelSummary)) {
-        return current
-      }
-      if (!next) return null
+      const occurrence = reconcileCheckIn(current?.occurrence ?? null, {
+        summary: travelSummary,
+        scope: checkInScopeKey,
+        dismissals: checkInDismissalsRef.current,
+        busy: identityFlowOpen,
+      })
+      if (current && occurrence === current.occurrence) return current
+      if (!occurrence) return null
       return {
-        occurrence: next,
+        occurrence,
         answerCount: checkInAnswerCount(travelSummary),
         phase: "prompt",
       }
@@ -672,7 +670,7 @@ export default function TalentDashboard() {
     const previous = checkInUserRef.current
     checkInUserRef.current = user?.id
     if (previous === undefined) return // the first user to load, not a switch
-    checkInDismissalsRef.current.clear()
+    checkInDismissalsRef.current.reset()
     checkInRetriesRef.current.clear()
     setCheckIn(null)
     setTravelSummary(null)
@@ -880,6 +878,14 @@ export default function TalentDashboard() {
           setCheckInSelected(undefined)
           return
         }
+        // Resolve the occurrence locally first: no render, and no summary read before the
+        // answer was saved, may reopen the modal while /me is read again below.
+        recordCheckInAnswerOutcome({
+          outcome,
+          scope: checkInScopeKey,
+          occurrence,
+          dismissals: checkInDismissalsRef.current,
+        })
         setCheckIn(null)
         if (outcome === "in_progress") {
           // A home-country change owns the account now: follow the state /me returns.
@@ -893,7 +899,7 @@ export default function TalentDashboard() {
         setCheckInSaving(false)
       }
     },
-    [checkIn, readTravelSummary, runIdentityVerificationCheck]
+    [checkIn, checkInScopeKey, readTravelSummary, runIdentityVerificationCheck]
   )
 
   // "Update my home country" enters the existing home-country flow: the current location

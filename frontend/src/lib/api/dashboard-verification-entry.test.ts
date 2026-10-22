@@ -171,7 +171,7 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     assert.equal(count("createCheckInTimer({"), 1)
     assert.ok(page.includes("timer.update(travelSummary)"))
     assert.ok(page.includes("return () => timer.dispose()"))
-    assert.ok(page.includes("checkInToShow({"))
+    assert.ok(page.includes("reconcileCheckIn("))
     assert.ok(page.includes("summary: travelSummary"))
   })
 

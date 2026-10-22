@@ -98,21 +98,39 @@ export function dueCheckInOccurrence(summary: DueFields | null): string | null {
  * another scope never hides this one. It exists only to stop a closed modal reopening on the
  * very next render; every real re-check (load, a visible tab, the timer) calls clear(), and
  * the occurrence, still due on the server, opens again. Memory only, nothing is persisted.
+ *
+ * It also remembers occurrences this page has just ANSWERED. That mark is not cleared by a
+ * re-check: a summary that was read before the answer was saved (a slow visibility or timer
+ * read, a retry) can still arrive afterwards and call the same occurrence due, and it must
+ * not reopen the modal. An answered occurrence can never legitimately be due again (the answer
+ * restarts the schedule at new times), so keeping the mark is safe. reset() forgets everything
+ * (another account took over the page).
  */
 export interface CheckInDismissals {
   dismiss(scope: string, occurrence: string): void
   isDismissed(scope: string, occurrence: string): boolean
+  markAnswered(scope: string, occurrence: string): void
+  isAnswered(scope: string, occurrence: string): boolean
   clear(): void
+  reset(): void
 }
 
 export function createCheckInDismissals(): CheckInDismissals {
   const dismissed = new Set<string>()
+  const answered = new Set<string>()
   const key = (scope: string, occurrence: string) =>
     JSON.stringify([scope, occurrence])
   return {
     dismiss: (scope, occurrence) => void dismissed.add(key(scope, occurrence)),
     isDismissed: (scope, occurrence) => dismissed.has(key(scope, occurrence)),
+    markAnswered: (scope, occurrence) =>
+      void answered.add(key(scope, occurrence)),
+    isAnswered: (scope, occurrence) => answered.has(key(scope, occurrence)),
     clear: () => dismissed.clear(),
+    reset: () => {
+      dismissed.clear()
+      answered.clear()
+    },
   }
 }
 
@@ -126,8 +144,10 @@ export function checkInScope(
 
 /**
  * The occurrence the modal should be showing right now, or null for none. A due occurrence
- * that was closed in this page is not offered again until a re-check clears the dismissals;
- * `busy` (another verification dialog owns the screen) holds it back without dismissing it.
+ * that was closed in this page is not offered again until a re-check clears the dismissals,
+ * and one this page just answered is not offered again at all, even if a summary read before
+ * the answer was saved arrives later; `busy` (another verification dialog owns the screen)
+ * holds it back without dismissing it.
  */
 export function checkInToShow(input: {
   summary: DueFields | null
@@ -137,9 +157,47 @@ export function checkInToShow(input: {
 }): string | null {
   const occurrence = dueCheckInOccurrence(input.summary)
   if (!occurrence || input.busy) return null
+  if (input.dismissals.isAnswered(input.scope, occurrence)) return null
   return input.dismissals.isDismissed(input.scope, occurrence)
     ? null
     : occurrence
+}
+
+/**
+ * The one decision the page's effect makes on every summary update: which occurrence the modal
+ * should show now. An open modal stays open while /me still names its occurrence as the due one;
+ * once it does not (answered here or in another tab, Travel Mode ended, replaced) it closes, and
+ * only an occurrence that is due, not closed in this page and not already answered here is
+ * opened in its place.
+ */
+export function reconcileCheckIn(
+  open: string | null,
+  input: Parameters<typeof checkInToShow>[0]
+): string | null {
+  if (open !== null && !isCheckInStale(open, input.summary)) return open
+  return checkInToShow(input)
+}
+
+/**
+ * What the page records the moment an answer attempt has an outcome, BEFORE it re-reads /me,
+ * so no render in between (and no stale summary arriving later) can reopen the modal:
+ *  - saved: the occurrence is answered for good in this page;
+ *  - stale / in_progress: the server did not take this answer, and /me may still call the same
+ *    occurrence due; it is only kept from reopening right away, and returns on the next real
+ *    re-check (it stays due on the server);
+ *  - failed: nothing is recorded, the screen stays open to try again.
+ */
+export function recordCheckInAnswerOutcome(input: {
+  outcome: CheckInAnswerOutcome
+  scope: string
+  occurrence: string
+  dismissals: CheckInDismissals
+}): void {
+  if (input.outcome === "saved") {
+    input.dismissals.markAnswered(input.scope, input.occurrence)
+  } else if (input.outcome === "stale" || input.outcome === "in_progress") {
+    input.dismissals.dismiss(input.scope, input.occurrence)
+  }
 }
 
 /**

@@ -17,6 +17,8 @@ import {
   dueCheckInOccurrence,
   durationCopyFor,
   isCheckInStale,
+  reconcileCheckIn,
+  recordCheckInAnswerOutcome,
   shouldRecheckOnVisibility,
 } from "./travel-check-in"
 import {
@@ -329,12 +331,10 @@ describe("answer outcomes: stale two-tab 409 and a home-country change in progre
     assert.equal(isCheckInStale(AT, null), true)
     const effect = between(
       page,
-      "const next = checkInToShow({",
+      "const occurrence = reconcileCheckIn(",
       "}, [travelSummary, checkInScopeKey, identityFlowOpen])"
     )
-    assert.ok(
-      effect.includes("isCheckInStale(current.occurrence, travelSummary)")
-    )
+    assert.ok(effect.includes("reconcileCheckIn(current?.occurrence ?? null"))
   })
 })
 
@@ -746,7 +746,7 @@ describe("priority: the check-in goes before the traveler location prompt and th
   it("the check-in modal itself ignores every other dialog's priority except a flow already on screen", () => {
     const effect = between(
       page,
-      "const next = checkInToShow({",
+      "const occurrence = reconcileCheckIn(",
       "}, [travelSummary, checkInScopeKey, identityFlowOpen])"
     )
     assert.ok(effect.includes("busy: identityFlowOpen"))
@@ -858,7 +858,7 @@ describe("account and session isolation", () => {
 
   it("the page forgets the check-in when another account takes over the mounted page", () => {
     const effect = between(page, "const checkInUserRef", "// Closing the popup")
-    assert.ok(effect.includes("checkInDismissalsRef.current.clear()"))
+    assert.ok(effect.includes("checkInDismissalsRef.current.reset()"))
     assert.ok(effect.includes("setCheckIn(null)"))
     assert.ok(effect.includes("setTravelSummary(null)"))
     assert.ok(
@@ -925,5 +925,199 @@ describe("Storybook: the two supplied states have stories that share the dashboa
     assert.ok(stories.includes("{copy.alert}"))
     assert.ok(stories.includes("CHECK_IN_COPY.prompt.updateHomeCountry"))
     assert.ok(!/<(button|input|textarea|select|dialog|label)\b/.test(stories))
+  })
+})
+
+describe("regression: a saved answer must not reopen the same modal (first manual test)", () => {
+  // The page's effect runs reconcileCheckIn on every summary update and keeps the modal in state;
+  // this drives that exact function through the sequence the page goes through.
+  const scope = checkInScope("user-1", KEY_A)
+  const due = () => summary() // /me before the answer: AT is due
+  const answered = () =>
+    // /me after the answer: the schedule restarted, nothing is due, the count went up
+    summary({
+      travelReminderDue: false,
+      travelReminderAvailableAt: "2026-10-24T12:00:00.000Z",
+      travelCheckInCount: 1,
+    })
+  const tick = (
+    open: string | null,
+    s: ReturnType<typeof summary>,
+    dismissals: ReturnType<typeof createCheckInDismissals>
+  ) => reconcileCheckIn(open, { summary: s, scope, dismissals })
+
+  it("successful answer -> stale summary arrives -> the modal does not reopen", async () => {
+    const dismissals = createCheckInDismissals()
+    let open = tick(null, due(), dismissals)
+    assert.equal(open, AT, "the modal opens for the due occurrence")
+
+    const posted: Array<[string, string]> = []
+    const outcome = await answerCheckIn(
+      { post: async (d, at) => void posted.push([d, at]) },
+      "Not sure",
+      open
+    )
+    assert.equal(outcome, "saved")
+    assert.deepEqual(posted, [["not_sure", AT]])
+
+    // the page records the outcome first, then closes the modal, then re-reads /me
+    recordCheckInAnswerOutcome({ outcome, scope, occurrence: AT, dismissals })
+    open = null
+
+    // a summary READ BEFORE the answer was saved arrives now (slow visibility/timer read): still "due"
+    assert.equal(
+      tick(open, due(), dismissals),
+      null,
+      "stale summary must not reopen it"
+    )
+    // the real re-read arrives
+    assert.equal(tick(open, answered(), dismissals), null)
+    // a visibility re-check clears the dismissals and a stale read arrives yet again
+    dismissals.clear()
+    assert.equal(
+      tick(open, due(), dismissals),
+      null,
+      "an answered occurrence stays answered after a re-check"
+    )
+    assert.equal(tick(open, answered(), dismissals), null)
+  })
+
+  it("after a refresh the answered occurrence is not due on the server, so nothing opens", () => {
+    // a reload has no memory: it only has /me, which no longer calls anything due
+    assert.equal(tick(null, answered(), createCheckInDismissals()), null)
+    assert.equal(dueCheckInOccurrence(answered()), null)
+    assert.equal(checkInAnswerCount(answered()), 1)
+  })
+
+  it("the next occurrence after an answer is a different one and does open when it is due", () => {
+    const dismissals = createCheckInDismissals()
+    recordCheckInAnswerOutcome({
+      outcome: "saved",
+      scope,
+      occurrence: AT,
+      dismissals,
+    })
+    const later = summary({
+      travelReminderAvailableAt: "2026-10-24T12:00:00.000Z",
+      travelCheckInCount: 1,
+    })
+    assert.equal(tick(null, later, dismissals), "2026-10-24T12:00:00.000Z")
+  })
+
+  it("an open modal closes when a fresh summary no longer calls its occurrence due", () => {
+    const dismissals = createCheckInDismissals()
+    assert.equal(tick(AT, due(), dismissals), AT, "still due: stays open")
+    assert.equal(
+      tick(AT, answered(), dismissals),
+      null,
+      "answered elsewhere: closes"
+    )
+  })
+
+  it("a rejected answer (409 stale) does not bounce straight back to the same modal, but stays due", async () => {
+    const dismissals = createCheckInDismissals()
+    const outcome = await answerCheckIn(
+      {
+        post: async () =>
+          Promise.reject({
+            response: { data: { code: "TRAVEL_CHECK_IN_ALREADY_ANSWERED" } },
+          }),
+      },
+      "Not sure",
+      AT
+    )
+    assert.equal(outcome, "stale")
+    recordCheckInAnswerOutcome({ outcome, scope, occurrence: AT, dismissals })
+    // /me is re-read and the server still calls the same occurrence due: not reopened at once ...
+    assert.equal(tick(null, due(), dismissals), null)
+    assert.equal(
+      dueCheckInOccurrence(due()),
+      AT,
+      "it is still due on the server"
+    )
+    // ... and it returns on the next real re-check (load, a visible tab, the timer)
+    dismissals.clear()
+    assert.equal(tick(null, due(), dismissals), AT)
+  })
+
+  it("a home-country change in progress is held back the same way", () => {
+    const dismissals = createCheckInDismissals()
+    recordCheckInAnswerOutcome({
+      outcome: "in_progress",
+      scope,
+      occurrence: AT,
+      dismissals,
+    })
+    assert.equal(tick(null, due(), dismissals), null)
+  })
+
+  it("a failed answer records nothing: the modal stays open for another try", () => {
+    const dismissals = createCheckInDismissals()
+    recordCheckInAnswerOutcome({
+      outcome: "failed",
+      scope,
+      occurrence: AT,
+      dismissals,
+    })
+    assert.equal(dismissals.isAnswered(scope, AT), false)
+    assert.equal(dismissals.isDismissed(scope, AT), false)
+    assert.equal(tick(AT, due(), dismissals), AT)
+  })
+
+  it("Skip / X / Escape / outside click still leave the occurrence due and reopen on the next re-check", () => {
+    const dismissals = createCheckInDismissals()
+    dismissals.dismiss(scope, AT) // what handleCheckInDismiss does
+    assert.equal(
+      tick(null, due(), dismissals),
+      null,
+      "not reopened in a render loop"
+    )
+    dismissals.clear() // load / visible tab / timer
+    assert.equal(
+      tick(null, due(), dismissals),
+      AT,
+      "returns, because it was never resolved"
+    )
+    assert.equal(dismissals.isAnswered(scope, AT), false)
+  })
+
+  it("an answer in one account or login does not hide the same time in another; reset() forgets everything", () => {
+    const dismissals = createCheckInDismissals()
+    recordCheckInAnswerOutcome({
+      outcome: "saved",
+      scope,
+      occurrence: AT,
+      dismissals,
+    })
+    const other = reconcileCheckIn(null, {
+      summary: summary({ loginSessionKey: KEY_B }),
+      scope: checkInScope("user-1", KEY_B),
+      dismissals,
+    })
+    assert.equal(other, AT)
+    dismissals.reset()
+    assert.equal(tick(null, due(), dismissals), AT)
+  })
+
+  it("the page records the outcome before closing and before re-reading /me, and uses the shared decision", () => {
+    const handler = between(
+      page,
+      "const handleCheckInAnswer",
+      '// "Update my home country" enters'
+    )
+    const record = handler.indexOf("recordCheckInAnswerOutcome({")
+    assert.ok(record > handler.indexOf("await answerCheckIn("))
+    assert.ok(record < handler.indexOf("setCheckIn(null)"))
+    assert.ok(
+      handler.indexOf("setCheckIn(null)") <
+        handler.indexOf("await readTravelSummary(false)")
+    )
+    assert.ok(handler.includes("dismissals: checkInDismissalsRef.current"))
+    const effect = between(
+      page,
+      "const occurrence = reconcileCheckIn(",
+      "}, [travelSummary, checkInScopeKey, identityFlowOpen])"
+    )
+    assert.ok(effect.includes("dismissals: checkInDismissalsRef.current"))
   })
 })
