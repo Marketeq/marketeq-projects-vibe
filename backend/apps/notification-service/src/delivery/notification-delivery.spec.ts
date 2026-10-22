@@ -64,7 +64,7 @@ function rig(opts: { save?: jest.Mock } = {}) {
   const service = new NotificationService(notifRepo, prefRepo, idempotencyRepo, { isEnabled: () => false } as any, {} as any);
   const monitor = new NotificationDeliveryMonitor();
   const delivery = new NotificationDeliveryService(service, monitor);
-  const controller = new NotificationController(service, {} as any, delivery, monitor);
+  const controller = new NotificationController(service, {} as any, delivery, monitor, {} as any);
   // Consume the main queue like the transport does: parse, hand to the controller with a context.
   const drain = async () => {
     let guard = 0;

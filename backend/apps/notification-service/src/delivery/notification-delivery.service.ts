@@ -14,6 +14,11 @@ import { RmqContext } from '@nestjs/microservices';
 import { NotificationPayload, NotificationService } from '../services/notification.service';
 import { NotificationDeliveryMonitor } from './notification-delivery-monitor';
 import {
+  PersistentStatusAlertPayload,
+  PersistentStatusAlertService,
+  persistentStatusAlertPayloadProblem,
+} from '../services/persistent-status-alert.service';
+import {
   ATTEMPT_HEADER,
   DEAD_LETTER_QUEUE,
   FAILED_AT_HEADER,
@@ -49,6 +54,7 @@ export class NotificationDeliveryService {
   constructor(
     private readonly notifications: NotificationService,
     private readonly monitor: NotificationDeliveryMonitor,
+    private readonly statusAlerts?: PersistentStatusAlertService,
   ) {}
 
   /** Declares the retry and dead-letter queues on this channel (idempotent; new channel after a reconnect). */
@@ -106,24 +112,84 @@ export class NotificationDeliveryService {
     channel.ack(message);
   }
 
-  private async retry(channel: any, message: any, attempt: number, reason: string, payload: NotificationPayload, key: string | null) {
+  async handleStatusAlert(
+    payload: PersistentStatusAlertPayload,
+    context: RmqContext,
+  ): Promise<void> {
+    const channel = context.getChannelRef();
+    const message = context.getMessage();
+    const attempt =
+      Number(message.properties?.headers?.[ATTEMPT_HEADER] ?? 0) || 0;
+    const key = payload
+      ? `${payload.type}:${payload.recipientId}:${payload.occurrenceKey}`
+      : null;
+    const problem = persistentStatusAlertPayloadProblem(payload);
+    if (problem) {
+      await this.deadLetter(
+        channel,
+        message,
+        attempt,
+        `malformed: ${problem}`,
+        payload,
+        key,
+      );
+      return;
+    }
+
+    try {
+      if (!this.statusAlerts) {
+        throw new Error('PersistentStatusAlertService is unavailable');
+      }
+      await this.statusAlerts.upsert(payload);
+    } catch (error) {
+      const reason = describe(error);
+      if (attempt + 1 >= MAX_DELIVERY_ATTEMPTS) {
+        await this.deadLetter(
+          channel,
+          message,
+          attempt + 1,
+          reason,
+          payload,
+          key,
+        );
+      } else {
+        await this.retry(
+          channel,
+          message,
+          attempt,
+          reason,
+          payload,
+          key,
+        );
+      }
+      return;
+    }
+    channel.ack(message);
+  }
+
+  private async retry(channel: any, message: any, attempt: number, reason: string, payload: NotificationPayload | PersistentStatusAlertPayload, key: string | null) {
     const queue = attempt < 2 ? RETRY_QUEUE_SHORT : RETRY_QUEUE_LONG;
     try {
       await this.ensureTopology(channel);
       await this.publish(channel, queue, message, { ...(message.properties?.headers ?? {}), [ATTEMPT_HEADER]: attempt + 1, [FAILURE_HEADER]: reason });
     } catch (err) {
       // The retry could not be stored: keep the original, let the broker redeliver it.
-      this.logger.error(`Could not schedule a retry for notification ${payload?.event} (key ${key}): ${describe(err)} - requeueing the original`);
+      this.logger.error(`Could not schedule a retry for notification ${'event' in payload ? payload.event : payload.type} (key ${key}): ${describe(err)} - requeueing the original`);
       channel.nack(message, false, true);
       return;
     }
     this.monitor.recordRetry();
-    this.logger.warn(`Notification ${payload?.event} (key ${key}) failed on attempt ${attempt + 1}/${MAX_DELIVERY_ATTEMPTS}: ${reason} - retry queued`);
+    this.logger.warn(`Notification ${'event' in payload ? payload.event : payload.type} (key ${key}) failed on attempt ${attempt + 1}/${MAX_DELIVERY_ATTEMPTS}: ${reason} - retry queued`);
     channel.ack(message);
   }
 
   private async deadLetter(channel: any, message: any, attempts: number, reason: string, payload: any, key: string | null) {
-    const event = typeof payload?.event === 'string' ? payload.event : null;
+    const event =
+      typeof payload?.event === 'string'
+        ? payload.event
+        : typeof payload?.type === 'string'
+          ? payload.type
+          : null;
     try {
       await this.ensureTopology(channel);
       await this.publish(channel, DEAD_LETTER_QUEUE, message, {

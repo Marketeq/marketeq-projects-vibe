@@ -35,7 +35,7 @@ function world() {
   const brevo = {};
   const service = new NotificationService(notifRepo as any, prefRepo as any, idempotencyRepo as any, ably as any, brevo as any);
   const monitor = new NotificationDeliveryMonitor();
-  const controller0 = new NotificationController(service, brevo as any, new NotificationDeliveryService(service, monitor), monitor);
+  const controller0 = new NotificationController(service, brevo as any, new NotificationDeliveryService(service, monitor), monitor, {} as any);
   const channel = { ack: jest.fn(), nack: jest.fn(), assertQueue: jest.fn(), sendToQueue: jest.fn() };
   // Same handler the broker calls, with the acknowledgment context the transport supplies.
   const controller = {
