@@ -1,0 +1,470 @@
+name: Dependency Scan (SCA)
+
+# Software Composition Analysis — PHASE 1: BASELINE, REPORT ONLY.
+#
+# This workflow CANNOT fail a build. Every scan step carries
+# `continue-on-error`, and the final step always exits 0. That is deliberate:
+# the repository has ~3,300 resolved packages across two lockfiles and has
+# never been scanned, so the first run will almost certainly surface a
+# backlog. A gate that goes red on every pull request from day one gets
+# switched off within a week, and then there is no scanning at all.
+#
+# The order is: see the backlog (phase 1) → triage it (phase 2) → fail only on
+# NEW findings measured against the base branch (phase 3). Blocking belongs in
+# phase 3 and nowhere earlier.
+#
+# WHAT IS SCANNED
+#   The three real install roots. There are 30 further package.json files
+#   under backend/apps/, but they have no lockfiles and are not separately
+#   installed — the monorepo installs from backend/package.json. Pointing a
+#   scanner at the repository root would walk all 33 manifests and report
+#   unresolved duplicates, which is the fastest way to make the output
+#   unreadable. Each lockfile is named explicitly instead.
+#
+#   The base image is scanned too. node:20-alpine carries OS packages that npm
+#   knows nothing about, and they ship to production in the same container.
+#
+# TWO PASSES PER LOCKFILE
+#   Roughly 40% of the backend tree and 58% of the frontend tree is dev-only —
+#   test runners, type definitions, bundlers — none of which an attacker can
+#   reach. Trivy excludes dev dependencies by default, so the default pass is
+#   the number that could eventually gate a merge, and the second pass is the
+#   full picture for completeness. Reporting one number for both is how a
+#   scanner earns a reputation for crying wolf.
+#
+# OUTPUT
+#   1. A table in the run summary — always works, needs nothing enabled.
+#   2. JSON artifacts, 90-day retention — the durable baseline to diff against.
+#   3. SARIF to GitHub code scanning — best-effort. On a private repository
+#      this needs GitHub Advanced Security; the step is allowed to fail and
+#      says so rather than breaking the run.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    # Both spellings: the workflows in this repo disagree about whether the
+    # production branch is `live` or `live-mvp`. Listing both is harmless —
+    # a push trigger for a branch that does not exist simply never fires.
+    branches: [dev-main, staging, live, live-mvp]
+  schedule:
+    # Mondays 06:17 UTC. The scheduled run is the point of the whole exercise:
+    # a pull request scan only sees dependencies you are changing, so it can
+    # never tell you that a CVE was published against a package you installed
+    # last year and have not touched since. Offset from the hour because
+    # on-the-hour schedules queue behind everyone else's, and away from
+    # stale-branch-cleanup (14:00 Mondays).
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # SARIF upload to code scanning
+  actions: read
+  issues: write            # the weekly tracking issue (phase 4)
+
+concurrency:
+  group: sca-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Verify and bump this. If the pinned release is unavailable the install
+  # step falls back to the latest and says loudly which it used — a stale pin
+  # should degrade to a scan, not to no scan at all. Once a version has been
+  # seen working, keep it pinned: unpinned security tooling changes findings
+  # underneath you and makes "is this new?" unanswerable.
+  TRIVY_VERSION: '0.58.2'
+
+  # The gate (phase 3). `enforce` fails a pull request that INTRODUCES a new
+  # high or critical finding in a runtime dependency. Set to `monitor` to
+  # report without failing — a rollback switch, not a destination.
+  #
+  # It defaults to enforce rather than easing in, because the comparison is
+  # against the base branch: the gate cannot fire on the existing backlog,
+  # only on what a change adds. There is nothing to ease into.
+  SCA_GATE_MODE: 'enforce'
+
+jobs:
+  # ── The one job here that is allowed to fail a build ──
+  # It does not judge third-party code. It checks OUR OWN record of what we
+  # decided to tolerate: every accepted finding needs a reason, an owner and
+  # an expiry, and nothing may be accepted for more than 90 days at a time.
+  #
+  # An accepted risk that quietly outlives its expiry is exactly the failure
+  # this whole exercise exists to prevent, so it is the one thing that should
+  # stop a merge — even in phase 1, where the scan itself never does.
+  # It cannot fail today: the ignore file is empty.
+  ignore-hygiene:
+    name: Accepted findings are documented and current
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate .trivyignore.yaml
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 .github/scripts/check-sca-ignores.py
+
+  dependencies:
+    name: Lockfile — ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: backend
+            lockfile: backend/package-lock.json
+          - label: frontend
+            lockfile: frontend/package-lock.json
+          - label: cms-service
+            lockfile: backend/apps/cms-service/package-lock.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Trivy
+        run: |
+          set -euo pipefail
+          install_trivy() {
+            local v="$1"
+            curl -sSfL --retry 3 --max-time 180 \
+              "https://github.com/aquasecurity/trivy/releases/download/v${v}/trivy_${v}_Linux-64bit.tar.gz" \
+              | tar -xz -C /usr/local/bin trivy
+          }
+          if install_trivy "${TRIVY_VERSION}"; then
+            echo "Using pinned Trivy ${TRIVY_VERSION}"
+          else
+            echo "::warning::Pinned Trivy ${TRIVY_VERSION} unavailable — falling back to latest. Update TRIVY_VERSION in this workflow."
+            LATEST="$(curl -sSfL https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+            install_trivy "${LATEST}"
+            echo "Using Trivy ${LATEST}"
+          fi
+          trivy --version
+
+      # The lockfile and its package.json are copied into an empty directory
+      # and scanned there. Scanning backend/ in place would walk apps/ and its
+      # 30 lockfile-less manifests; scanning a bare file path is not supported
+      # consistently across Trivy versions. An isolated directory is exact and
+      # version-proof: one manifest pair, nothing else to find.
+      - name: Stage the manifest pair
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          cp "${{ matrix.lockfile }}" target/package-lock.json
+          cp "$(dirname "${{ matrix.lockfile }}")/package.json" target/package.json
+          ls -la target
+
+      - name: Scan — runtime dependencies
+        id: runtime
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          trivy fs --scanners vuln --format json \
+            --ignorefile .trivyignore.yaml \
+            --output "runtime-${{ matrix.label }}.json" \
+            --exit-code 0 target || true
+          trivy fs --scanners vuln --format sarif \
+            --ignorefile .trivyignore.yaml \
+            --output "runtime-${{ matrix.label }}.sarif" \
+            --exit-code 0 target || true
+
+      # --include-dev-deps is not present in older Trivy builds. If it is
+      # rejected the file is simply absent and the summary shows "-", which is
+      # the right failure: a missing number, not a wrong one.
+      - name: Scan — including dev dependencies
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          trivy fs --scanners vuln --include-dev-deps --format json \
+            --ignorefile .trivyignore.yaml \
+            --output "all-${{ matrix.label }}.json" \
+            --exit-code 0 target || true
+
+      - name: Summarise
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          count() {
+            local file="$1" sev="$2"
+            [ -f "$file" ] || { echo "-"; return; }
+            jq --arg s "$sev" '[.Results[]?.Vulnerabilities[]? | select(.Severity == $s)] | length' "$file" 2>/dev/null || echo "?"
+          }
+          {
+            echo "### ${{ matrix.label }} — \`${{ matrix.lockfile }}\`"
+            echo ""
+            echo "| Scope | Critical | High | Medium | Low |"
+            echo "|---|---|---|---|---|"
+            echo "| **Runtime** (ships to production) | $(count runtime-${{ matrix.label }}.json CRITICAL) | $(count runtime-${{ matrix.label }}.json HIGH) | $(count runtime-${{ matrix.label }}.json MEDIUM) | $(count runtime-${{ matrix.label }}.json LOW) |"
+            echo "| Including dev (build-time only) | $(count all-${{ matrix.label }}.json CRITICAL) | $(count all-${{ matrix.label }}.json HIGH) | $(count all-${{ matrix.label }}.json MEDIUM) | $(count all-${{ matrix.label }}.json LOW) |"
+            echo ""
+            echo "Runtime is the row that matters. Dev-only findings are in packages an attacker cannot reach from the internet."
+            echo ""
+            if [ -f "runtime-${{ matrix.label }}.json" ]; then
+              HIGHEST=$(jq -r '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL" or .Severity=="HIGH")]
+                | sort_by(.Severity) | .[0:10][]
+                | "| \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "no fix published") | \(.Severity) | \(.VulnerabilityID) |"' \
+                "runtime-${{ matrix.label }}.json" 2>/dev/null || true)
+              if [ -n "$HIGHEST" ]; then
+                echo "<details><summary>Top runtime findings</summary>"
+                echo ""
+                echo "| Package | Installed | Fixed in | Severity | ID |"
+                echo "|---|---|---|---|---|"
+                echo "$HIGHEST"
+                echo ""
+                echo "</details>"
+              fi
+            fi
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        continue-on-error: true   # private repos need GitHub Advanced Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: runtime-${{ matrix.label }}.sarif
+          category: sca-${{ matrix.label }}
+
+      - name: Keep the raw results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-${{ matrix.label }}
+          path: |
+            runtime-${{ matrix.label }}.json
+            all-${{ matrix.label }}.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  base-image:
+    name: Base image — node:20-alpine
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Trivy
+        run: |
+          set -euo pipefail
+          V="${TRIVY_VERSION}"
+          curl -sSfL --retry 3 --max-time 180 \
+            "https://github.com/aquasecurity/trivy/releases/download/v${V}/trivy_${V}_Linux-64bit.tar.gz" \
+            | tar -xz -C /usr/local/bin trivy \
+          || {
+            echo "::warning::Pinned Trivy unavailable — using latest."
+            LATEST="$(curl -sSfL https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+            curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/v${LATEST}/trivy_${LATEST}_Linux-64bit.tar.gz" | tar -xz -C /usr/local/bin trivy
+          }
+          trivy --version
+
+      # The image is scanned by name rather than built. Dockerfile.all takes
+      # about 13 minutes, and this answers the question that matters — what
+      # the base we ship on is carrying — in seconds.
+      - name: Scan the base image
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          trivy image --scanners vuln --format json --output base-image.json --exit-code 0 node:20-alpine || true
+
+      - name: Summarise
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          count() {
+            [ -f base-image.json ] || { echo "-"; return; }
+            jq --arg s "$1" '[.Results[]?.Vulnerabilities[]? | select(.Severity == $s)] | length' base-image.json 2>/dev/null || echo "?"
+          }
+          {
+            echo "### Base image — \`node:20-alpine\`"
+            echo ""
+            echo "| Critical | High | Medium | Low |"
+            echo "|---|---|---|---|"
+            echo "| $(count CRITICAL) | $(count HIGH) | $(count MEDIUM) | $(count LOW) |"
+            echo ""
+            echo "These are OS and runtime packages, not npm packages. They are fixed by rebuilding on a newer base image, not by changing a lockfile."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the raw results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-base-image
+          path: base-image.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ── Phase 3: the gate ──
+  # Fails a pull request that introduces a vulnerable dependency. Compares
+  # against the base branch, never against zero, so the pre-existing backlog
+  # cannot fail anyone's build — only what this change adds.
+  #
+  # A pull request that touches no lockfile therefore cannot fail here. That
+  # is correct: catching newly-published advisories against unchanged code is
+  # the weekly scan's job.
+  gate:
+    name: No new vulnerable dependencies
+    if: >-
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'sca-override')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with history
+        uses: actions/checkout@v4
+        with:
+          # Both the pull request head and its base commit have to be
+          # readable, so the full history is needed.
+          fetch-depth: 0
+
+      - name: Install Trivy
+        run: |
+          set -euo pipefail
+          install_trivy() {
+            curl -sSfL --retry 3 --max-time 180 \
+              "https://github.com/aquasecurity/trivy/releases/download/v$1/trivy_$1_Linux-64bit.tar.gz" \
+              | tar -xz -C /usr/local/bin trivy
+          }
+          install_trivy "${TRIVY_VERSION}" || {
+            echo "::warning::Pinned Trivy unavailable — using latest."
+            LATEST="$(curl -sSfL https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+            install_trivy "${LATEST}"
+          }
+          trivy --version
+
+      - name: Scan head and base for each lockfile
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          # label:path
+          TARGETS="backend:backend/package-lock.json frontend:frontend/package-lock.json cms-service:backend/apps/cms-service/package-lock.json"
+
+          scan() {   # scan <dir> <output>
+            trivy fs --scanners vuln --format json \
+              --ignorefile .trivyignore.yaml \
+              --output "$2" --exit-code 0 "$1" >/dev/null 2>&1 || true
+          }
+
+          for entry in $TARGETS; do
+            label="${entry%%:*}"; lock="${entry#*:}"
+            pkg="$(dirname "$lock")/package.json"
+            echo "::group::$label"
+
+            if [ ! -f "$lock" ]; then echo "no lockfile at $lock"; echo "::endgroup::"; continue; fi
+
+            # If the lockfile is byte-identical to the base, no dependency can
+            # have changed, so neither can the findings. Skip two scans.
+            if git cat-file -e "${BASE_SHA}:${lock}" 2>/dev/null \
+               && git show "${BASE_SHA}:${lock}" | cmp -s - "$lock"; then
+              echo "lockfile unchanged since base — nothing to compare"
+              echo "::endgroup::"; continue
+            fi
+
+            rm -rf head base && mkdir -p head base
+            cp "$lock" head/package-lock.json
+            cp "$pkg"  head/package.json
+            scan head "head-${label}.json"
+
+            if git cat-file -e "${BASE_SHA}:${lock}" 2>/dev/null; then
+              git show "${BASE_SHA}:${lock}" > base/package-lock.json
+              git show "${BASE_SHA}:${pkg}"  > base/package.json 2>/dev/null || cp "$pkg" base/package.json
+              scan base "base-${label}.json"
+            else
+              echo "no lockfile at base — new install root, reported but not gated"
+            fi
+            echo "::endgroup::"
+          done
+
+          ls -la head-*.json base-*.json 2>/dev/null || echo "nothing to compare"
+
+      - name: Compare against the base branch
+        run: |
+          set -uo pipefail
+          ARGS=""
+          for label in backend frontend cms-service; do
+            if [ -f "head-${label}.json" ]; then
+              ARGS="$ARGS --target ${label} head-${label}.json base-${label}.json"
+            fi
+          done
+          if [ -z "$ARGS" ]; then
+            echo "No lockfile changed in this pull request — nothing for the gate to check." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 .github/scripts/sca-gate.py $ARGS
+
+      - name: Keep the comparison inputs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sca-gate-comparison
+          path: |
+            head-*.json
+            base-*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ── Phase 4: sustain ──
+  # Phases 1 to 3 made the scanning happen. None of them make anyone LOOK.
+  # A weekly job writing a table into a run summary nobody opens produces the
+  # appearance of monitoring without the thing monitoring is for.
+  #
+  # This maintains ONE tracking issue and comments only when the finding set
+  # actually moves. A notification that says the same thing every Monday gets
+  # muted within a month — and then so does the Monday it finally matters.
+  weekly-report:
+    name: Weekly report
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Reuses the scans this same run already produced, rather than
+      # re-scanning or digging artifacts out of previous runs.
+      - name: Collect this run's scans
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sca-*
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Post the report
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          python3 -m pip install --quiet pyyaml
+          ARGS=""
+          for label in backend frontend cms-service; do
+            [ -f "runtime-${label}.json" ] && ARGS="$ARGS --scan ${label} runtime-${label}.json"
+          done
+          if [ -z "$ARGS" ]; then
+            echo "::warning::no scan results to report on"
+            exit 0
+          fi
+          python3 .github/scripts/sca-weekly-report.py $ARGS
+
+  report:
+    name: Baseline recorded
+    runs-on: ubuntu-latest
+    needs: [ignore-hygiene, dependencies, base-image]
+    if: always()
+    steps:
+      # Phase 1 never fails. When the gate arrives in phase 3 it replaces this
+      # step, and it compares against the base branch rather than against zero.
+      - name: Always pass
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo "**Phase 1 — report only.** This workflow does not fail builds."
+            echo "Raw results are attached as artifacts (90 days) and are the baseline for phase 2 triage."
+            echo "See \`docs/md/CyberSecurity/Software Composition Analysis — Phase 1 (Baseline).md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "SCA phase 1 complete — report only, never fails."
