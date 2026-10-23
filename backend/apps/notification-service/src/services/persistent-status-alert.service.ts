@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import {
   PERSISTENT_STATUS_ALERT_TYPES,
   PersistentStatusAlert,
@@ -19,6 +19,12 @@ export interface PersistentStatusAlertPayload {
   body: string;
   link?: string | null;
   metadata?: Record<string, unknown> | null;
+  /**
+   * Types whose active alerts this occurrence replaces for the same user (Verified
+   * replaces Submitted for Review; an approved home-country change replaces Travel
+   * Mode). Applied once, in the same transaction that stores the new occurrence.
+   */
+  supersedes?: PersistentStatusAlertType[];
 }
 
 export interface PersistentStatusAlertView {
@@ -55,6 +61,17 @@ export function persistentStatusAlertPayloadProblem(
     }
   }
   if (!allowedTypes.has(String(payload.type))) return 'invalid type';
+  if (payload.supersedes != null) {
+    if (
+      !Array.isArray(payload.supersedes) ||
+      payload.supersedes.length > PERSISTENT_STATUS_ALERT_TYPES.length ||
+      payload.supersedes.some(
+        (type) => !allowedTypes.has(String(type)) || type === payload.type,
+      )
+    ) {
+      return 'invalid supersedes';
+    }
+  }
   return null;
 }
 
@@ -136,17 +153,30 @@ export class PersistentStatusAlertService {
     const existing = await this.alerts.findOne({ where: identity });
     if (existing) return this.present(existing);
 
+    const supersedes = [...new Set(payload.supersedes ?? [])];
     try {
-      const saved = await this.alerts.save(
-        this.alerts.create({
-          ...identity,
-          title,
-          body,
-          link,
-          metadata: payload.metadata ?? null,
-          dismissedAt: null,
-        }),
-      );
+      // Stored and superseding in one transaction, only when this occurrence is new:
+      // a redelivery returns early above, so it can never dismiss a later alert.
+      const saved = await this.alerts.manager.transaction(async (manager) => {
+        const repo = manager.getRepository(PersistentStatusAlert);
+        const created = await repo.save(
+          repo.create({
+            ...identity,
+            title,
+            body,
+            link,
+            metadata: payload.metadata ?? null,
+            dismissedAt: null,
+          }),
+        );
+        if (supersedes.length) {
+          await repo.update(
+            { userId: recipientId, type: In(supersedes), dismissedAt: IsNull() },
+            { dismissedAt: new Date() },
+          );
+        }
+        return created;
+      });
       return this.present(saved);
     } catch (error: any) {
       if (error?.code !== '23505') throw error;

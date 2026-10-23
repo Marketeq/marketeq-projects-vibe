@@ -184,6 +184,12 @@ describe('Home-country change sessions (PMCM-650)', () => {
     const events = { publish: jest.fn(async () => undefined) };
     // The in-app notification hand-off (notification-service's notification.send).
     const notifications = { homeCountryUpdated: jest.fn(async (_n: { userId: string; hostedKycSessionId: string }) => true) };
+    // Persistent dashboard alerts (PMCM-651).
+    const alerts = {
+      verified: jest.fn(async (_u: string, _s: string) => true),
+      submittedForReview: jest.fn(async (_u: string, _s: string) => true),
+      homeCountryUpdated: jest.fn(async (_u: string, _s: string) => true),
+    };
     const service = new FreeKycService(
       profileRepository as any,
       sessionRepository as any,
@@ -195,6 +201,7 @@ describe('Home-country change sessions (PMCM-650)', () => {
       provider as any,
       (init.noEvents ? undefined : events) as any,
       notifications as any,
+      alerts as any,
     );
     jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     jest.spyOn((service as any).logger, 'debug').mockImplementation(() => undefined);
@@ -235,7 +242,7 @@ describe('Home-country change sessions (PMCM-650)', () => {
       return sessions[sessions.length - 1].diditSessionId as string;
     };
 
-    return { service, profile, sessions, attempts, provider, events, notifications, dataSource, decisions, advance, reconfirmPending, send, startChange };
+    return { service, profile, sessions, attempts, provider, events, notifications, alerts, dataSource, decisions, advance, reconfirmPending, send, startChange };
   }
 
   type World = ReturnType<typeof world>;
@@ -1302,6 +1309,58 @@ describe('Home-country change sessions (PMCM-650)', () => {
         await w.send(s1, 'Approved');
         expect(notified(w)).toHaveLength(1);
       });
+    });
+  });
+
+  // PMCM-651: the persistent dashboard alerts ride the same post-commit signal as the events.
+  describe('persistent status alerts', () => {
+    it('In Review stores one Submitted alert keyed by the session; a replay or a second In Review stores nothing more', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'In Review', { eventId: 'evt-r1' });
+      await w.send(s1, 'In Review', { eventId: 'evt-r1' });
+      await w.send(s1, 'In Review', { eventId: 'evt-r2' });
+
+      expect(w.alerts.submittedForReview).toHaveBeenCalledTimes(1);
+      expect(w.alerts.submittedForReview).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+      expect(w.alerts.verified).not.toHaveBeenCalled();
+    });
+
+    it('Approved after review stores Verified and Home Country Updated with the same session key', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'In Review');
+      await w.send(s1, 'Approved');
+
+      expect(w.alerts.verified).toHaveBeenCalledTimes(1);
+      expect(w.alerts.verified).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+    });
+
+    it('a duplicate approval stores each alert once', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      await w.send(s1, 'Approved', { eventId: 'evt-a' });
+      await w.send(s1, 'Approved', { eventId: 'evt-a' });
+
+      expect(w.alerts.verified).toHaveBeenCalledTimes(1);
+      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+    });
+
+    it('a declined or stale session announces no alert at all', async () => {
+      const w = world();
+      await w.send(await w.startChange(), 'Declined');
+      expect(w.alerts.verified).not.toHaveBeenCalled();
+      expect(w.alerts.homeCountryUpdated).not.toHaveBeenCalled();
+      expect(w.alerts.submittedForReview).not.toHaveBeenCalled();
+    });
+
+    it('a missing alert publisher never breaks the approval', async () => {
+      const w = world();
+      (w.service as any).statusAlerts = undefined;
+      await w.send(await w.startChange(), 'Approved');
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
     });
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import { GpsLocationResponseDto } from '../dto/response/gps-location.response.dto';
 import { countryNameFromCode } from '../dto/response/detected-location.response.dto';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
@@ -84,6 +84,7 @@ import {
   shouldHoldNewCountryAsPending,
 } from '../common/home-country-change/home-country-change';
 import { VerificationSummaryService } from './verification-summary.service';
+import { StatusAlertPublisher } from '../events/status-alert.publisher';
 import {
   deriveTravelModeState,
   deriveTravelReminderSchedule,
@@ -149,6 +150,10 @@ export class IdentityVerificationService {
     private readonly events: NotificationEventPublisher,
     // Appended last so every earlier constructor position is unchanged.
     private readonly verificationSummary: VerificationSummaryService,
+    // Appended after `verificationSummary` so no earlier position moves. Optional so a missing
+    // publisher can never break a Travel Mode activation (PMCM-651).
+    @Optional()
+    private readonly statusAlerts?: StatusAlertPublisher,
   ) {}
 
   // --- Profile lifecycle ---
@@ -574,6 +579,9 @@ export class IdentityVerificationService {
       userId,
       occurredAt: now.toISOString(),
     });
+    // One persistent alert per activation, keyed by the activation time (a new activation
+    // is a new key, so it shows again after the previous one was dismissed).
+    await this.statusAlerts?.travelMode(userId, now);
     return profile;
   }
 

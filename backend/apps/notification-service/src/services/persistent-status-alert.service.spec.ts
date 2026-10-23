@@ -54,6 +54,17 @@ function setup(initial: PersistentStatusAlert[] = []) {
     }),
     update: jest.fn(
       async (where: any, updates: Partial<PersistentStatusAlert>) => {
+        if (where.type && !where.id) {
+          const types: string[] = where.type.value ?? [];
+          const hit = rows.filter(
+            (item) =>
+              item.userId === where.userId &&
+              types.includes(item.type) &&
+              !item.dismissedAt,
+          );
+          hit.forEach((item) => Object.assign(item, updates));
+          return { affected: hit.length };
+        }
         const candidate = rows.find(
           (item) => item.id === where.id && item.userId === where.userId,
         );
@@ -62,6 +73,11 @@ function setup(initial: PersistentStatusAlert[] = []) {
       },
     ),
   };
+  const manager = {
+    getRepository: () => repo,
+    transaction: async (work: (m: any) => Promise<unknown>) => work(manager),
+  };
+  (repo as any).manager = manager;
   return {
     service: new PersistentStatusAlertService(repo as any),
     repo,
@@ -201,5 +217,48 @@ describe('PersistentStatusAlertService', () => {
     expect(repo.find).toHaveBeenCalledWith(
       expect.objectContaining({ take: ACTIVE_STATUS_ALERT_LIMIT }),
     );
+  });
+
+  describe('supersession', () => {
+    it('Verified dismisses the same user\'s active Submitted alert, not another user\'s', async () => {
+      const { service, rows } = setup([
+        row({ id: 's1', type: 'submitted_for_review', occurrenceKey: 'sess-1' }),
+        row({ id: 's2', userId: 'user-2', type: 'submitted_for_review', occurrenceKey: 'sess-9' }),
+      ]);
+      await service.upsert({
+        ...payload(),
+        type: 'verified',
+        occurrenceKey: 'identity-verified:sess-1',
+        supersedes: ['submitted_for_review'],
+      });
+      expect(rows.find((r) => r.id === 's1')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 's2')?.dismissedAt).toBeNull();
+      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual(['verified']);
+    });
+
+    it('a redelivered occurrence supersedes nothing a second time', async () => {
+      const { service, rows } = setup();
+      const verified = {
+        ...payload(),
+        type: 'verified' as const,
+        occurrenceKey: 'identity-verified:sess-1',
+        supersedes: ['submitted_for_review' as const],
+      };
+      await service.upsert(verified);
+      rows.push(row({ id: 'later', type: 'submitted_for_review', occurrenceKey: 'sess-2' }));
+      await service.upsert(verified);
+      expect(rows.find((r) => r.id === 'later')?.dismissedAt).toBeNull();
+    });
+
+    it('rejects an unknown or self-referencing supersedes list before storing', async () => {
+      const { service, repo } = setup();
+      await expect(
+        service.upsert({ ...payload(), supersedes: ['bogus' as any] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.upsert({ ...payload(), supersedes: [payload().type] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
   });
 });
