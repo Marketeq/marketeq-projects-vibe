@@ -69,3 +69,47 @@ export class CreateBillingAddressDto {
   })
   phoneNumber: string;
 }
+
+export class ValidateBillingAddressDto {
+  @ApiProperty()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(160)
+  addressLine1: string;
+
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  addressLine2?: string;
+
+  @ApiProperty()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  city: string;
+
+  @ApiPropertyOptional()
+  @Transform(trim)
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  state?: string;
+
+  @ApiProperty()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  postalCode: string;
+
+  @ApiProperty()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  country: string;
+}

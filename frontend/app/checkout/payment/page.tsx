@@ -25,6 +25,8 @@ import { UserAPI } from "@/service/http/user"
 import {
   BillingAddressesAPI,
   type BillingAddress,
+  type BillingAddressValidation,
+  type RecommendedBillingAddress,
 } from "@/service/http/billing-addresses"
 import { apiFetch } from "@/src/lib/api"
 import { cn } from "@/utils/functions"
@@ -74,6 +76,8 @@ import CreditDebitCardArticle1, {
 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
 import { HelperText } from "@/components/ui/helper-text"
 import { PhoneNumberInput } from "@/components/phone-number-input"
+import { CountriesCombobox } from "@/components/own-combobox"
+import { resolveCountryCodeByName } from "@/src/lib/api/resolve-country-code"
 import { defaultCountries } from "react-international-phone"
 import { inputVariants } from "@/components/ui/input"
 import {
@@ -141,6 +145,7 @@ import {
   SelectTrigger,
   SelectValue,
   RadioGroup,
+  RadioGroupItem,
   RadioGroupItemSelector,
   RmDialog,
   Switch,
@@ -205,6 +210,7 @@ type StripeCardFieldState = {
 type BillingField =
   | "fullName"
   | "addressLine1"
+  | "country"
   | "city"
   | "state"
   | "zipcode"
@@ -1749,6 +1755,8 @@ export default function PaymentPage() {
   const [addressLine2, setAddressLine2] = React.useState("")
   const [city, setCity] = React.useState("")
   const [billingState, setBillingState] = React.useState("")
+  const [billingCountry, setBillingCountry] = React.useState("United States")
+  const isUnitedStatesBilling = billingCountry === "United States"
   const [zipcode, setZipcode] = React.useState("")
   const [phoneNumber, setPhoneNumber] = React.useState("")
   const [billingFieldTouched, setBillingFieldTouched] = React.useState<
@@ -1756,6 +1764,7 @@ export default function PaymentPage() {
   >({
     fullName: false,
     addressLine1: false,
+    country: false,
     city: false,
     state: false,
     zipcode: false,
@@ -1769,6 +1778,12 @@ export default function PaymentPage() {
     React.useState(savedBillingAddresses[0]?.id ?? "")
   const [isConfirmAddressDialogOpen, setIsConfirmAddressDialogOpen] =
     React.useState(false)
+  const [confirmAddressChoice, setConfirmAddressChoice] = React.useState<
+    "recommended" | "provided"
+  >("recommended")
+  const [recommendedBillingAddress, setRecommendedBillingAddress] =
+    React.useState<RecommendedBillingAddress | null>(null)
+  const [isValidatingAddress, setIsValidatingAddress] = React.useState(false)
   const [isSavingBillingAddress, setIsSavingBillingAddress] =
     React.useState(false)
   const [isSavingCard, setIsSavingCard] = React.useState(false)
@@ -3685,11 +3700,24 @@ export default function PaymentPage() {
     fullName: fullName || selectedBillingAddress.fullName,
     addressLine1: addressLine1 || selectedBillingAddress.addressLine1,
     cityStateZip:
-      city && billingState && zipcode
-        ? `${city}, ${billingState} ${zipcode}`
+      city && zipcode && (billingState || !isUnitedStatesBilling)
+        ? `${city}, ${[isUnitedStatesBilling ? billingState : "", zipcode]
+            .filter(Boolean)
+            .join(" ")}`
         : selectedBillingAddress.cityStateZip,
     phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
     country: selectedBillingAddress.country,
+  }
+  const confirmAddressDetails = {
+    ...billingAddressSummary,
+    addressLine1:
+      billingAddressMode === "new" && addressLine2.trim()
+        ? `${billingAddressSummary.addressLine1}, ${addressLine2.trim()}`
+        : billingAddressSummary.addressLine1,
+    country:
+      billingAddressMode === "new"
+        ? billingCountry
+        : billingAddressSummary.country,
   }
   const cardNumberError = getCardNumberError(cardNumber)
   const cardNameError = getCardNameError(cardName)
@@ -3734,23 +3762,31 @@ export default function PaymentPage() {
           : "border-primary-500 ring-2 ring-primary-50")
     )
   }
+  const isBillingZipValid = isUnitedStatesBilling
+    ? /^\d{5}(?:-\d{4})?$/.test(zipcode.trim())
+    : zipcode.trim().length > 0
   const isBillingAddressValid =
     billingAddressMode !== "new" ||
     (fullName.trim().length >= 2 &&
       addressLine1.trim().length > 0 &&
       city.trim().length > 0 &&
-      billingState.trim().length > 0 &&
-      /^\d{5}(?:-\d{4})?$/.test(zipcode.trim()) &&
+      billingCountry.trim().length > 0 &&
+      (!isUnitedStatesBilling || billingState.trim().length > 0) &&
+      isBillingZipValid &&
       getUsPhoneDigits(phoneNumber).length === 10)
   const billingFieldErrors: Record<BillingField, string> = {
     fullName:
       fullName.trim().length >= 2 ? "" : "Please enter your full name",
     addressLine1: addressLine1.trim() ? "" : "Please enter your address",
     city: city.trim() ? "" : "Please enter your city",
-    state: billingState.trim() ? "" : "Please select your state",
+    country: billingCountry.trim() ? "" : "Please select your country",
+    state:
+      !isUnitedStatesBilling || billingState.trim()
+        ? ""
+        : "Please select your state",
     zipcode: !zipcode.trim()
       ? "Please enter your zip code"
-      : /^\d{5}(?:-\d{4})?$/.test(zipcode.trim())
+      : isBillingZipValid
         ? ""
         : "Please enter a valid zip code",
     phone: !phoneNumber.trim()
@@ -4106,11 +4142,13 @@ export default function PaymentPage() {
     setAddressLine2("")
     setCity("")
     setBillingState("")
+    setBillingCountry("United States")
     setZipcode("")
     setPhoneNumber("")
     setBillingFieldTouched({
       fullName: false,
       addressLine1: false,
+      country: false,
       city: false,
       state: false,
       zipcode: false,
@@ -4149,17 +4187,24 @@ export default function PaymentPage() {
     setSplitPaymentError("")
   }
 
-  const saveNewBillingAddress = async () => {
+  const saveNewBillingAddress = async (
+    override?: RecommendedBillingAddress | null
+  ) => {
     setIsSavingBillingAddress(true)
     try {
+      const addressLine2Value = override
+        ? override.addressLine2 ?? ""
+        : addressLine2.trim()
       const response = await BillingAddressesAPI.create({
         fullName: fullName.trim(),
-        addressLine1: addressLine1.trim(),
-        ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
-        city: city.trim(),
-        state: billingState,
-        postalCode: zipcode.trim(),
-        country: "United States",
+        addressLine1: override ? override.addressLine1 : addressLine1.trim(),
+        ...(addressLine2Value ? { addressLine2: addressLine2Value } : {}),
+        city: override ? override.city : city.trim(),
+        ...(isUnitedStatesBilling
+          ? { state: override?.state || billingState }
+          : {}),
+        postalCode: override ? override.postalCode : zipcode.trim(),
+        country: billingCountry,
         phoneNumber: `+1${getUsPhoneDigits(phoneNumber)}`,
       })
       const savedAddress = toSavedBillingAddress(
@@ -4172,11 +4217,13 @@ export default function PaymentPage() {
       setAddressLine2("")
       setCity("")
       setBillingState("")
+      setBillingCountry("United States")
       setZipcode("")
       setPhoneNumber("")
       setBillingFieldTouched({
         fullName: false,
         addressLine1: false,
+        country: false,
         city: false,
         state: false,
         zipcode: false,
@@ -4219,7 +4266,11 @@ export default function PaymentPage() {
                   city: rawAddress.city,
                   state: rawAddress.state ?? undefined,
                   postal_code: rawAddress.postalCode,
-                  country: "US",
+                  country:
+                    rawAddress.country === "United States"
+                      ? "US"
+                      : (resolveCountryCodeByName(rawAddress.country) ??
+                        undefined),
                 },
               }
             : {}),
@@ -4252,7 +4303,35 @@ export default function PaymentPage() {
     }
   }
 
-  const handleSaveFullPaymentCard = async () => {
+  const handleValidateBillingAddress = async () => {
+    setIsValidatingAddress(true)
+    try {
+      const response = await BillingAddressesAPI.validate({
+        addressLine1: addressLine1.trim(),
+        ...(addressLine2.trim() ? { addressLine2: addressLine2.trim() } : {}),
+        city: city.trim(),
+        ...(isUnitedStatesBilling ? { state: billingState } : {}),
+        postalCode: zipcode.trim(),
+        country: billingCountry,
+      })
+      const validation = response.data as BillingAddressValidation
+      if (validation.status === "corrected" && validation.recommended) {
+        setRecommendedBillingAddress(validation.recommended)
+        setConfirmAddressChoice("recommended")
+        setIsConfirmAddressDialogOpen(true)
+        return
+      }
+    } catch {
+      setRecommendedBillingAddress(null)
+    } finally {
+      setIsValidatingAddress(false)
+    }
+    handleSaveFullPaymentCard()
+  }
+
+  const handleSaveFullPaymentCard = async (
+    override?: RecommendedBillingAddress | null
+  ) => {
     setHasAttemptedCardSubmit(true)
     if (!isFullPaymentCardFormValid || isSavingCard) return
     setIsSavingCard(true)
@@ -4264,7 +4343,7 @@ export default function PaymentPage() {
         savedBillingAddresses[0] ??
         null
       if (billingAddressMode === "new") {
-        billingAddress = await saveNewBillingAddress()
+        billingAddress = await saveNewBillingAddress(override)
         if (!billingAddress) return
       }
 
@@ -7616,20 +7695,20 @@ export default function PaymentPage() {
                       ) : null}
 
                       {billingAddressMode === "saved" ? (
-                        <div className="mt-6">
-                          <p className="text-sm text-gray-500">
+                        <div className="mt-3">
+                          <p className="text-xs text-gray-500">
                             Please choose a billing address from your address
                             book below, or{" "}
                             <button
                               type="button"
-                              className="font-semibold text-primary-500 underline"
+                              className="text-xs font-semibold leading-5 text-primary-500 underline"
                               onClick={() => setBillingAddressMode("new")}
                             >
                               add a new billing address
                             </button>
                           </p>
                           <RadioGroup
-                            className="mt-3 space-y-2"
+                            className="mt-6 gap-y-2"
                             value={selectedBillingAddressId}
                             onValueChange={setSelectedBillingAddressId}
                           >
@@ -7651,7 +7730,7 @@ export default function PaymentPage() {
                               </HeadlessRadioGroupItem>
                             ))}
                           </RadioGroup>
-                          <div className="mt-3 flex items-center gap-x-3">
+                          <div className="mt-6 flex items-center gap-x-3">
                             <Button
                               className="text-xs"
                               variant="light"
@@ -7744,7 +7823,42 @@ export default function PaymentPage() {
                               onChange={(e) => setAddressLine2(e.target.value)}
                             />
                           </div>
-                          <div className="gap-x-3 grid grid-cols-3">
+                          <div className="space-y-1.5">
+                            <Label size="sm" className="text-gray-700">
+                              Country
+                            </Label>
+                            <CountriesCombobox
+                              value={billingCountry}
+                              placeholder="Select"
+                              onValueChange={(country) => {
+                                setBillingCountry(country)
+                                if (country !== "United States") {
+                                  setBillingState("")
+                                }
+                                touchBillingField("country")
+                              }}
+                              triggerClassName={cn(
+                                "h-11 w-full justify-start gap-x-2 border-solid border-gray-300 bg-white px-[14px] py-3 shadow-xs [&>svg]:ml-auto [&>svg]:inline-block [&_span.truncate]:max-w-none [&_span.truncate]:text-base [&_span.truncate]:font-normal [&_span.truncate]:leading-normal [&_span.truncate]:text-gray-black",
+                                shouldShowBillingFieldError("country") &&
+                                  "border-error-300"
+                              )}
+                              contentClassName="w-[var(--radix-popover-trigger-width)]"
+                              contentSideOffset={4}
+                            />
+                            {shouldShowBillingFieldError("country") ? (
+                              <span className="block text-xs leading-5 text-error-500">
+                                {billingFieldErrors.country}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            className={cn(
+                              "gap-x-3 grid",
+                              isUnitedStatesBilling
+                                ? "grid-cols-3"
+                                : "grid-cols-2"
+                            )}
+                          >
                             <div className="space-y-1.5">
                               <Label
                                 size="sm"
@@ -7769,6 +7883,7 @@ export default function PaymentPage() {
                                 </span>
                               ) : null}
                             </div>
+                            {isUnitedStatesBilling ? (
                             <div className="space-y-1.5">
                               <Label
                                 size="sm"
@@ -7811,23 +7926,28 @@ export default function PaymentPage() {
                                 </span>
                               ) : null}
                             </div>
+                            ) : null}
                             <div className="space-y-1.5">
                               <Label
                                 size="sm"
                                 htmlFor="zipcode"
                                 className="text-gray-700"
                               >
-                                Zipcode
+                                {isUnitedStatesBilling ? "Zipcode" : "Postal code"}
                               </Label>
                               <Input
-                                placeholder="12345"
+                                placeholder={
+                                  isUnitedStatesBilling ? "12345" : "Postal code"
+                                }
                                 id="zipcode"
                                 name="zipcode"
                                 autoComplete="postal-code"
                                 value={zipcode}
                                 onChange={(e) =>
                                   setZipcode(
-                                    e.target.value.replace(/[^\d-]/g, "")
+                                    isUnitedStatesBilling
+                                      ? e.target.value.replace(/[^\d-]/g, "")
+                                      : e.target.value
                                   )
                                 }
                                 onBlur={() => touchBillingField("zipcode")}
@@ -7900,9 +8020,23 @@ export default function PaymentPage() {
                                   )}
                                   disabled={
                                     !isFullPaymentCardFormValid ||
-                                    isSavingCard
+                                    isSavingCard ||
+                                    isValidatingAddress
                                   }
-                                  onClick={handleSaveFullPaymentCard}
+                                  onClick={() => {
+                                    setHasAttemptedCardSubmit(true)
+                                    if (
+                                      !isFullPaymentCardFormValid ||
+                                      isSavingCard ||
+                                      isValidatingAddress
+                                    )
+                                      return
+                                    if (billingAddressMode !== "new") {
+                                      handleSaveFullPaymentCard()
+                                      return
+                                    }
+                                    handleValidateBillingAddress()
+                                  }}
                                 >
                                   Save Card
                                 </Button>
@@ -7920,74 +8054,122 @@ export default function PaymentPage() {
                       open={isConfirmAddressDialogOpen}
                       onOpenChange={setIsConfirmAddressDialogOpen}
                     >
-                      <DialogContent className="max-w-[640px] p-6">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h2 className="text-lg font-semibold text-dark-blue-400">
-                              Confirm Address
-                            </h2>
-                            <p className="mt-2 max-w-[386px] text-sm leading-5 text-gray-500">
-                              The address you provided doesn&apos;t match
-                              official postal records. Here&apos;s a suggested
-                              alternative.
-                            </p>
-                          </div>
-                          <DialogClose asChild>
-                            <IconButton variant="ghost" visual="gray">
-                              <X className="size-5" />
-                            </IconButton>
-                          </DialogClose>
+                      <DialogContent className="flex max-w-[702px] flex-col gap-[50px] p-6">
+                        <div className="flex flex-col gap-2">
+                          <DialogTitle className="text-lg font-semibold leading-7 text-dark-blue-400">
+                            Confirm Address
+                          </DialogTitle>
+                          <DialogDescription className="text-sm leading-5 text-gray-500">
+                            The address you provided doesn&apos;t match official
+                            postal records.
+                            <br />
+                            Here&apos;s a suggested alternative.
+                          </DialogDescription>
                         </div>
+                        <DialogClose asChild>
+                          <IconButton
+                            variant="ghost"
+                            visual="gray"
+                            className="absolute right-6 top-6"
+                          >
+                            <X className="size-5" />
+                          </IconButton>
+                        </DialogClose>
 
-                        <div className="mt-8 grid grid-cols-2 gap-x-12">
-                          {["We Recommend", "You Provided"].map(
-                            (title, index) => (
-                              <button
-                                key={title}
-                                type="button"
-                                className="flex items-start gap-x-4 text-left"
-                              >
-                                <span
-                                  className={cn(
-                                    "mt-0.5 inline-flex size-5 items-center justify-center rounded-full border",
-                                    index === 0
-                                      ? "border-primary-500 ring-4 ring-primary-50"
-                                      : "border-gray-300"
-                                  )}
-                                >
-                                  {index === 0 ? (
-                                    <span className="size-2.5 rounded-full bg-primary-500" />
-                                  ) : null}
-                                </span>
-                                <span className="text-sm leading-5 text-dark-blue-400">
-                                  <span className="block font-bold">
-                                    {title}
-                                  </span>
-                                  <span className="block">
-                                    {billingAddressSummary.fullName}
-                                  </span>
-                                  <span className="block font-bold">
-                                    {billingAddressSummary.addressLine1}
-                                  </span>
-                                  <span className="block">
-                                    {billingAddressSummary.cityStateZip}
-                                  </span>
-                                  <span className="block">United States</span>
-                                  <span className="block">
-                                    {billingAddressSummary.phoneNumber}
-                                  </span>
-                                </span>
-                              </button>
+                        <RadioGroup
+                          className="flex items-start gap-x-[14px]"
+                          value={confirmAddressChoice}
+                          onValueChange={(value) =>
+                            setConfirmAddressChoice(
+                              value as "recommended" | "provided"
                             )
+                          }
+                        >
+                          {(["recommended", "provided"] as const).map(
+                            (option) => {
+                              const isRecommended = option === "recommended"
+                              const optionDetails =
+                                isRecommended && recommendedBillingAddress
+                                  ? {
+                                      ...confirmAddressDetails,
+                                      addressLine1: [
+                                        recommendedBillingAddress.addressLine1,
+                                        recommendedBillingAddress.addressLine2,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(", "),
+                                      cityStateZip: `${recommendedBillingAddress.city}, ${[
+                                        recommendedBillingAddress.state,
+                                        recommendedBillingAddress.postalCode,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" ")}`,
+                                    }
+                                  : confirmAddressDetails
+                              const cityStateZip = optionDetails.cityStateZip
+                              const zipStart = cityStateZip.lastIndexOf(" ") + 1
+                              return (
+                                <div
+                                  key={option}
+                                  className="flex w-[320px] items-start gap-x-4"
+                                >
+                                  <RadioGroupItem
+                                    size="lg"
+                                    id={`confirm-address-${option}`}
+                                    value={option}
+                                  />
+                                  <Label
+                                    htmlFor={`confirm-address-${option}`}
+                                    className={cn(
+                                      "flex min-w-px flex-1 flex-col text-base font-normal leading-6 text-dark-blue-400",
+                                      isRecommended && "gap-1"
+                                    )}
+                                  >
+                                    <span className="font-bold">
+                                      {isRecommended
+                                        ? "We Recommend"
+                                        : "You Provided"}
+                                    </span>
+                                    <span>
+                                      {optionDetails.fullName}
+                                      <br />
+                                      <span
+                                        className={cn(
+                                          isRecommended && "font-bold"
+                                        )}
+                                      >
+                                        {optionDetails.addressLine1}
+                                      </span>
+                                      <br />
+                                      {cityStateZip.slice(0, zipStart)}
+                                      <span
+                                        className={cn(
+                                          isRecommended && "font-bold"
+                                        )}
+                                      >
+                                        {cityStateZip.slice(zipStart)}
+                                      </span>
+                                      <br />
+                                      {confirmAddressDetails.country}
+                                      <br />
+                                      {confirmAddressDetails.phoneNumber}
+                                    </span>
+                                  </Label>
+                                </div>
+                              )
+                            }
                           )}
-                        </div>
+                        </RadioGroup>
 
-                        <div className="mt-8 flex justify-end">
+                        <div className="flex justify-end gap-3">
                           <Button
-                            size="lg"
                             onClick={() => {
                               setIsConfirmAddressDialogOpen(false)
-                              setBillingAddressMode("summary")
+                              handleSaveFullPaymentCard(
+                                confirmAddressChoice === "recommended"
+                                  ? recommendedBillingAddress
+                                  : null
+                              )
                             }}
                           >
                             Use this address

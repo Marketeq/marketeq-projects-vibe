@@ -24,6 +24,7 @@ import { TinEncryptionService } from "../tax-info/tin-encryption.service";
 import { BillingAddress } from "../billing-addresses/billing-address.entity";
 import { BillingAddressesService } from "../billing-addresses/billing-addresses.service";
 import { BillingAddressesController } from "../billing-addresses/billing-addresses.controller";
+import { MelissaAddressService } from "../billing-addresses/melissa-address.service";
 import { AuditModule } from "../audit/audit.module";
 
 @Module({
@@ -57,6 +58,7 @@ import { AuditModule } from "../audit/audit.module";
     TaxDocumentService,
     TinEncryptionService,
     BillingAddressesService,
+    MelissaAddressService,
   ],
   controllers: [
     UserController,
