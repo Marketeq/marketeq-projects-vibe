@@ -196,7 +196,9 @@ function describeError(err: unknown): string {
   if (err instanceof Error) return err.message || err.name || String(err);
   if (typeof err === 'string') return err;
   try {
-    return JSON.stringify(err) ?? String(err);
+    // A broker connect failure serializes as { err, url }, and a hosted broker's
+    // URL carries its password: drop the credentials before this reaches a log.
+    return (JSON.stringify(err) ?? String(err)).replace(/(amqps?:\/\/)[^@\s"/]+@/gi, '$1');
   } catch {
     return String(err);
   }
