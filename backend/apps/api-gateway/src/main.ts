@@ -154,11 +154,22 @@ async function bootstrap() {
     logger.warn('RABBITMQ_URL not set — cms.events consumers disabled')
   }
 
-  await app.startAllMicroservices()
-
   const port = process.env.PORT || 4000
   const host = process.env.HOST || '0.0.0.0'
+  // Listen before starting the RMQ consumers, and don't wait for them.
+  // startAllMicroservices() only resolves once every consumer has a broker
+  // connection, and the RMQ transport retries forever. During a Render deploy
+  // the old instance still holds most of the broker plan's 40 connections, so
+  // awaiting it first meant the new gateway never answered /health and the
+  // deploy failed (2026-10-23). The consumers keep retrying in the background
+  // and attach once the old instance shuts down and frees its connections.
   await app.listen(port, host)
   logger.log(`api-gateway running on ${host}:${port}`)
+
+  app.startAllMicroservices().catch((err: unknown) => {
+    // Same redaction as shared/utils redactRabbitMqUrl(): a broker URL carries its password.
+    const message = (err instanceof Error ? err.message : String(err)).replace(/(amqps?:\/\/)[^@\s/]+@/gi, '$1')
+    logger.error(`cms.events consumers failed to start: ${message}`)
+  })
 }
 bootstrap()

@@ -22,7 +22,10 @@ import {
 // POST /v1/identity-verification/travel-reminder/claim over HTTP: the REAL bearer
 // guard (with a signed test token), the real controller, filter and service, over a
 // stateful fake repository that evaluates the real TypeORM operators.
-describe('POST /v1/identity-verification/travel-reminder/claim', () => {
+// The route keeps its old name for clients that still call it, but it is READ-ONLY now:
+// { claimed: true } means "a check-in is due", and asking never consumes anything. A
+// check-in is resolved only by a saved duration answer or a started home-country flow.
+describe('POST /v1/identity-verification/travel-reminder/claim (read-only: reports a due check-in)', () => {
   const DAY = 24 * 60 * 60 * 1000;
   const CLAIM = '/v1/identity-verification/travel-reminder/claim';
   const ME = '/v1/identity-verification/me';
@@ -144,13 +147,13 @@ describe('POST /v1/identity-verification/travel-reminder/claim', () => {
       expect(Object.keys(res.body)).toEqual(['claimed']);
     });
 
-    it('a duplicate returns exactly { claimed: false } with HTTP 200, never an error', async () => {
+    it('asking again returns exactly { claimed: true } again: showing a check-in does not consume it', async () => {
       await build(dueDay3());
-      await claim().expect(200);
-
-      const res = await claim().expect(200);
-
-      expect(res.body).toEqual({ claimed: false });
+      for (let i = 0; i < 3; i += 1) {
+        const res = await claim().expect(200);
+        expect(res.body).toEqual({ claimed: true });
+      }
+      expect(row!.lastTravelReminderSentAt).toBeNull();
     });
 
     it('nothing due yet, no profile, and expired all return 200 { claimed: false }', async () => {
@@ -214,8 +217,8 @@ describe('POST /v1/identity-verification/travel-reminder/claim', () => {
       expect(res.body).toEqual({ claimed: true });
       expect(findOne).toHaveBeenCalledTimes(1);
       expect(findOne).toHaveBeenCalledWith({ where: { userId: 'user-1' } }); // always the token's user
-      expect(update.mock.calls[0][0].id).toBe('profile-1');
-      expect(row!.lastTravelReminderSentAt.getTime()).toBeLessThan(Date.now() + 1000); // not the client's timestamp
+      expect(update).not.toHaveBeenCalled();
+      expect(row!.lastTravelReminderSentAt).toBeNull(); // nothing from the client was written
     });
 
     it('another user’s profile is never read for this caller', async () => {
@@ -225,7 +228,7 @@ describe('POST /v1/identity-verification/travel-reminder/claim', () => {
       expect(res.body).toEqual({ claimed: false }); // that user has no profile
       expect(findOne).toHaveBeenCalledWith({ where: { userId: 'someone-else' } });
       expect(update).not.toHaveBeenCalled();
-      expect(row!.lastTravelReminderSentAt).toBeNull(); // user-1's reminder was not consumed
+      expect(row!.lastTravelReminderSentAt).toBeNull(); // user-1's check-in is untouched
     });
   });
 
@@ -246,65 +249,100 @@ describe('POST /v1/identity-verification/travel-reminder/claim', () => {
     });
   });
 
-  describe('concurrency over HTTP', () => {
-    it('two simultaneous requests: one true, one false', async () => {
+  describe('concurrent requests', () => {
+    it('two simultaneous requests both just report the same due check-in', async () => {
       await build(dueDay3());
 
       const [a, b] = await Promise.all([claim(), claim()]);
 
       expect([a.status, b.status]).toEqual([200, 200]);
-      expect([a.body.claimed, b.body.claimed].sort()).toEqual([false, true]);
+      expect([a.body.claimed, b.body.claimed]).toEqual([true, true]);
+      expect(row!.lastTravelReminderSentAt).toBeNull();
     });
   });
 
-  describe('only lastTravelReminderSentAt changes; no cursor update and no event', () => {
-    it('writes one field and publishes nothing', async () => {
+  describe('it writes nothing and publishes nothing', () => {
+    it('no update, no event, no field changes', async () => {
       await build(dueDay3());
       const before = JSON.parse(JSON.stringify(row));
 
       await claim().expect(200);
 
-      expect(Object.keys(update.mock.calls[0][1])).toEqual(['lastTravelReminderSentAt']);
-      const after = JSON.parse(JSON.stringify(row));
-      expect(Object.keys(after).filter((k) => JSON.stringify(after[k]) !== JSON.stringify(before[k]))).toEqual(['lastTravelReminderSentAt']);
-      expect(row!.nextTravelReminderAt.getTime()).toBe(new Date(before.nextTravelReminderAt).getTime()); // the job's cursor
+      expect(update).not.toHaveBeenCalled();
+      expect(JSON.parse(JSON.stringify(row))).toEqual(before);
       expect(publish).not.toHaveBeenCalled();
     });
   });
 
-  describe('GET /me stays correct after a claim', () => {
-    const me = () => request(app.getHttpServer()).get(ME).set(auth()).expect(200);
+  describe('GET /me reports the same check-in until it is resolved', () => {
+    const me = () =>
+      request(app.getHttpServer()).get(ME).set(auth()).expect(200);
 
-    it('13 days: before the claim day 3 is due; after it the next read returns day 7 and everything else is unchanged', async () => {
+    it('13 days: day 3 stays due (same time) after any number of claims and /me reads; resolving it moves /me to day 7', async () => {
       await build(dueDay3());
       const first = (await me()).body;
-      expect(first).toMatchObject({ travelModeActive: true, travelReminderDue: true });
-      expect(first.travelReminderAvailableAt).toBe(new Date(row!.travelModeActivatedAt.getTime() + 3 * DAY).toISOString());
+      expect(first).toMatchObject({
+        travelModeActive: true,
+        travelReminderDue: true,
+      });
+      const day3 = new Date(
+        row!.travelModeActivatedAt.getTime() + 3 * DAY,
+      ).toISOString();
+      expect(first.travelReminderAvailableAt).toBe(day3);
 
       await claim().expect(200);
+      await claim().expect(200);
       const second = (await me()).body;
+      expect(second).toEqual(first);
 
-      expect(second.travelReminderDue).toBe(false);
-      expect(second.travelReminderAvailableAt).toBe(new Date(row!.travelModeActivatedAt.getTime() + 7 * DAY).toISOString());
-      for (const key of ['travelModeActive', 'travelModeEndsAt', 'travelModeExpired', 'travelClassification', 'declaredDuration', 'nextAction', 'identityVerificationStatus']) {
-        expect(second[key]).toEqual(first[key]);
+      // What a saved answer or a started home-country flow records: the occurrence is resolved.
+      row!.lastTravelReminderSentAt = new Date();
+      const third = (await me()).body;
+      expect(third.travelReminderDue).toBe(false);
+      expect(third.travelReminderAvailableAt).toBe(
+        new Date(row!.travelModeActivatedAt.getTime() + 7 * DAY).toISOString(),
+      );
+      for (const key of [
+        'travelModeActive',
+        'travelModeEndsAt',
+        'travelModeExpired',
+        'travelClassification',
+        'declaredDuration',
+        'nextAction',
+        'identityVerificationStatus',
+      ]) {
+        expect(third[key]).toEqual(first[key]);
       }
     });
 
-    it('6 days: after the day-3 claim there is nothing further', async () => {
+    it('"A few days" (7 days): day 3, then day 6, then nothing', async () => {
       await build(dueDay3({ declaredDuration: DeclaredDuration.A_FEW_DAYS }));
+      const activated = row!.travelModeActivatedAt.getTime();
 
-      await claim().expect(200);
-      const after = (await me()).body;
-
-      expect(after).toMatchObject({ travelModeActive: true, travelReminderDue: false, travelReminderAvailableAt: null });
+      expect((await me()).body).toMatchObject({
+        travelReminderDue: true,
+        travelReminderAvailableAt: new Date(activated + 3 * DAY).toISOString(),
+      });
+      row!.lastTravelReminderSentAt = new Date(activated + 3 * DAY + 2000);
+      expect((await me()).body).toMatchObject({
+        travelReminderDue: false,
+        travelReminderAvailableAt: new Date(activated + 6 * DAY).toISOString(),
+      });
+      row!.lastTravelReminderSentAt = new Date(activated + 6 * DAY + 2000);
+      expect((await me()).body).toMatchObject({
+        travelModeActive: true,
+        travelReminderDue: false,
+        travelReminderAvailableAt: null,
+      });
     });
 
-    it('a late login after day 7: one claim consumes both and /me then reports nothing left', async () => {
+    it('a late login after day 7: still due, and a single resolution covers both', async () => {
       await build(profile(9 * DAY));
       expect((await me()).body.travelReminderDue).toBe(true);
-
       expect((await claim().expect(200)).body).toEqual({ claimed: true });
+      expect((await me()).body.travelReminderDue).toBe(true);
+
+      row!.lastTravelReminderSentAt = new Date();
 
       expect((await me()).body).toMatchObject({ travelReminderDue: false, travelReminderAvailableAt: null });
       expect((await claim().expect(200)).body).toEqual({ claimed: false });

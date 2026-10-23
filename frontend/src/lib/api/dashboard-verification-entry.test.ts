@@ -49,7 +49,9 @@ describe("dashboard verification entry: nothing opens on page load", () => {
       "const openFlowFromMismatch = useCallback(",
     ]) {
       const from = page.indexOf(owner)
-      const next = page.indexOf("\n  }, [", from)
+      const next = owner.includes("openFlowFromMismatch")
+        ? page.indexOf("const handleIdentityFlowOpenChange", from)
+        : page.indexOf("\n  }, [", from)
       assert.ok(from > -1 && page.slice(from, next).includes("setIdentityFlowOpen(true)"), owner)
     }
   })
@@ -111,7 +113,8 @@ describe("dashboard verification entry: return from Didit", () => {
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("clearAwaitingResult", at), at).includes("setProfileBannerShown(false)"))
     assert.ok(page.includes("setVerifiedModalOpen(false)\n    setSuccessAlertOpen(true)"))
-    assert.equal(count("setSuccessAlertOpen(true)"), 1)
+    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
+    assert.equal(count("setSuccessAlertOpen(true)"), 2)
   })
 })
 
@@ -152,8 +155,8 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     const at = page.indexOf('setTravelPopup("expiry")')
     const guard = page.slice(page.lastIndexOf("shouldShowTravelExpiryPopup({", at), at)
     assert.ok(guard.includes("expired: travelSummary.travelModeExpired"))
-    assert.ok(guard.includes("sessionId: readSessionId()"))
-    const base = { expired: true, sessionId: "s1" }
+    assert.ok(guard.includes("loginSessionKey: travelSummary.loginSessionKey"))
+    const base = { expired: true, loginSessionKey: "k".repeat(64) }
     const store = new Map<string, string>()
     const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k), key: (i: number) => [...store.keys()][i] ?? null, get length() { return store.size } }
     assert.equal(shouldShowTravelExpiryPopup({ ...base, expired: false, storage }), false)
@@ -161,22 +164,22 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     assert.equal(shouldShowTravelExpiryPopup({ ...base, storage }), true)
   })
 
-  it("the reminder popup opens only after the backend claim says claimed, from one scheduler", () => {
-    assert.equal(count('setTravelPopup("reminder")'), 1)
-    const at = page.indexOf('setTravelPopup("reminder")')
-    const before = page.slice(page.lastIndexOf("createTravelReminderScheduler({", at), at)
-    assert.ok(before.includes("claim: () => claimTravelReminder()"))
-    assert.ok(before.includes("onClaimed:"))
-    assert.equal(count("createTravelReminderScheduler({"), 1)
-    assert.ok(page.includes("due: travelSummary.travelReminderDue"))
-    assert.ok(page.includes("availableAt: travelSummary.travelReminderAvailableAt"))
-    assert.ok(page.includes("return () => scheduler.dispose()"))
+  it("a due Travel Mode occurrence opens the check-in modal from /me, not a claim: one timer, no scheduler", () => {
+    // PMCM-641 retired the claim-and-toast path: the small alert has no trigger of its own now.
+    assert.equal(count('setTravelPopup("reminder")'), 0)
+    assert.equal(count("createTravelReminderScheduler"), 0)
+    assert.equal(count("claimTravelReminder"), 0)
+    assert.equal(count("createCheckInTimer({"), 1)
+    assert.ok(page.includes("timer.update(travelSummary)"))
+    assert.ok(page.includes("return () => timer.dispose()"))
+    assert.ok(page.includes("reconcileCheckIn("))
+    assert.ok(page.includes("summary: travelSummary"))
   })
 
   it("closing a reminder spends it; closing the expiry popup is remembered for this login only", () => {
     const close = page.slice(page.indexOf("const handleTravelPopupClose"), page.indexOf("const handleTravelUpdate"))
     assert.ok(close.includes('if (travelPopup === "expiry")'))
-    assert.ok(close.includes("dismissTravelExpiryPopup(readSessionId(), window.localStorage)"))
+    assert.ok(close.includes("dismissTravelExpiryPopup(travelSummary?.loginSessionKey ?? null, window.localStorage)"))
   })
 })
 
@@ -201,23 +204,20 @@ describe("Travel Mode and location actions route correctly", () => {
     assert.equal(shouldShowLocationMismatchPrompt(null), false)
   })
 
-  it("'I’m currently traveling' records temporarily_traveling and opens the duration screen", async () => {
-    assert.ok(page.includes("I’m currently traveling"))
-    assert.ok(page.includes("openFlowFromMismatch(await startStillTraveling())"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+  it("'I’m still traveling' (Storybook ChangeLocation) opens the duration screen and saves nothing", async () => {
+    assert.ok(page.includes("I’m still traveling"))
+    assert.ok(!page.includes("I’m currently traveling"))
+    assert.ok(page.includes('openFlowFromMismatch(await startStillTraveling(), "traveling")'))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startStillTraveling(deps)
-    assert.deepEqual(seen, ["temporarily_traveling"])
     assert.equal(launch.initialState, "traveling-showcase")
   })
 
-  it("'Change my home country' records permanently_relocated and starts from the top", async () => {
+  it("'Change my home country' starts from the top and saves nothing", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes("openFlowFromMismatch(await startChangeHomeCountry())"))
-    const seen: string[] = []
-    const deps = { recordTravelClassification: async (c: string) => void seen.push(c), getDetectedLocation: async () => ({ country: "PT" }) } as never
+    assert.ok(page.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
+    const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)
-    assert.deepEqual(seen, ["permanently_relocated"])
     assert.equal(launch.initialState, undefined)
   })
 

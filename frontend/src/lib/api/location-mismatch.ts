@@ -8,17 +8,23 @@
 //   shown      locationMismatch === true, and no other verification surface owns the
 //              screen (the first-time gate or the "three attempts" dialog). The
 //              first-time flow is never touched by this prompt.
-//   "I'm currently traveling" records Temporarily traveling, then opens the EXISTING flow on
-//              its "How long are you traveling?" screen. If recording fails the flow opens
-//              on "Tell us more about your current location", whose own Temporarily
-//              traveling button records it again, so the duration step never runs without
-//              a classification.
-//   "Change my home country"  records Permanently relocated (which the backend answers by
-//              resetting location verification), then opens the EXISTING flow from the top
-//              so the home country is confirmed again. A failed record is only logged: the
-//              flow's own confirmation is the real work.
-// The location behind the flow is the server's (no browser location permission here).
-import { type DetectedLocation, getDetectedLocation } from "./detected-location"
+//   "I'm still traveling" (returning user, no Travel Mode in force) opens the EXISTING
+//              flow on its "How long are you traveling?" screen and SAVES NOTHING. The
+//              duration screen's Confirm/Skip is what saves: the backend sets the
+//              classification and the whole Travel Mode activation in one atomic write,
+//              so closing the screen leaves the account exactly as it was.
+//   "Change my home country"  opens the EXISTING flow from the top so the home country
+//              is confirmed again, and SAVES NOTHING either. Closing the confirmation
+//              changes no account state; the pending claim is created only by the
+//              explicit "Yes, this is my home country" confirmation.
+// The location behind "Change my home country" is loaded exactly as the first-time flow
+// loads it (the browser's position on that explicit click, reverse-geocoded and checked by
+// the server against the request country); "I'm still traveling" shows no location.
+import {
+  type DetectedLocation,
+  type GetDetectedLocationOptions,
+  getDetectedLocation,
+} from "./detected-location"
 import { cooldownRetryAt, shouldOpenFirstTimeGate } from "./identity-next-step"
 import type { IdentityVerificationSummaryView } from "./identity-verification-state"
 
@@ -33,58 +39,75 @@ export interface MismatchLaunch {
 }
 
 export interface MismatchDeps {
-  recordTravelClassification: (
-    classification: "temporarily_traveling" | "permanently_relocated"
-  ) => Promise<unknown>
-  getDetectedLocation: () => Promise<DetectedLocation>
-}
-
-async function defaultRecord(
-  classification: "temporarily_traveling" | "permanently_relocated"
-): Promise<unknown> {
-  const { IdentityVerificationAPI } =
-    await import("@/service/http/identity-verification")
-  return IdentityVerificationAPI.recordTravelClassification(classification)
+  getDetectedLocation: (
+    options?: GetDetectedLocationOptions
+  ) => Promise<DetectedLocation>
 }
 
 const defaultDeps: MismatchDeps = {
-  recordTravelClassification: defaultRecord,
-  getDetectedLocation: () => getDetectedLocation(),
+  getDetectedLocation: (options) => getDetectedLocation(options),
+}
+
+/**
+ * Whether another verification surface owns the screen. The first-time gate does, except
+ * for a returning user whose home-country claim has no live session: the backend sends
+ * pendingHomeCountry for that claim, which a first-time user never has, and it only
+ * reaches the prompts when nothing is running or in review (an abandoned or expired
+ * session). That user is offered the decision again instead of being locked behind the
+ * gate. The "three attempts" dialog always owns the screen.
+ */
+function otherSurfaceOwnsScreen(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  if (cooldownRetryAt(summary) !== null) return true
+  if (summary?.pendingHomeCountry) return false
+  return shouldOpenFirstTimeGate(summary)
 }
 
 export function shouldShowLocationMismatchPrompt(
   summary: IdentityVerificationSummaryView | null
 ): boolean {
   if (summary?.locationMismatch !== true) return false
-  return !shouldOpenFirstTimeGate(summary) && cooldownRetryAt(summary) === null
+  return !otherSurfaceOwnsScreen(summary)
+}
+
+/**
+ * The "still traveling?" prompt for an account whose Travel Mode is in force: the
+ * backend says it was detected in a country other than its verified home country
+ * (travelModeLocationMismatch). It uses the same ChangeLocation dialog and the same
+ * exclusions as the returning-user prompt (no other verification surface owns the
+ * screen). WHEN to show it (once per login) is decided in travel-location-prompt.ts.
+ */
+export function shouldShowTravelerLocationPrompt(
+  summary: IdentityVerificationSummaryView | null
+): boolean {
+  if (summary?.travelModeLocationMismatch !== true) return false
+  return !otherSurfaceOwnsScreen(summary)
 }
 
 export async function startStillTraveling(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  let recorded = true
-  try {
-    await deps.recordTravelClassification("temporarily_traveling")
-  } catch {
-    recorded = false
-  }
-  const location = await deps.getDetectedLocation()
   return {
-    location,
-    initialState: recorded ? "traveling-showcase" : "current-location-showcase",
+    location: await deps.getDetectedLocation(),
+    initialState: "traveling-showcase",
   }
 }
 
+/**
+ * "Change my home country" opens the SAME detected-location confirmation the first-time
+ * flow does, loaded the same way: Verify My Account asks for the browser's position (an
+ * explicit user action, and so is this click), the backend reverse-geocodes it, accepts it
+ * only if its country matches the server-derived request country, and the screen shows the
+ * city, region and country with the real map. Anything short of that (denied, unavailable,
+ * a country-only IP result) falls back exactly as it does for a first-time user. The
+ * country that is eventually recorded is resolved by the backend from the request again,
+ * never taken from this view.
+ */
 export async function startChangeHomeCountry(
   deps: MismatchDeps = defaultDeps
 ): Promise<MismatchLaunch> {
-  try {
-    await deps.recordTravelClassification("permanently_relocated")
-  } catch (error) {
-    console.error(
-      "[identity-verification] relocation classification failed",
-      error
-    )
+  return {
+    location: await deps.getDetectedLocation({ useBrowserLocation: true }),
   }
-  return { location: await deps.getDetectedLocation() }
 }

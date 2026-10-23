@@ -24,8 +24,10 @@ const fields = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const endsAt = (f: ReturnType<typeof fields>) =>
-  ACTIVATED.getTime() + (f.declaredDuration === DeclaredDuration.A_FEW_DAYS ? 6 : 13) * DAY;
-const at = (days: number, offsetMs = 0) => new Date(ACTIVATED.getTime() + days * DAY + offsetMs);
+  ACTIVATED.getTime() +
+  (f.declaredDuration === DeclaredDuration.A_FEW_DAYS ? 7 : 13) * DAY;
+const at = (days: number, offsetMs = 0) =>
+  new Date(ACTIVATED.getTime() + days * DAY + offsetMs);
 
 describe('readLoginSession — the verified token’s login identity', () => {
   const user = (over: Record<string, unknown> = {}) => ({
@@ -148,10 +150,18 @@ describe('deriveLoginReminderAt — exactly 5 minutes after authentication', () 
       );
     });
 
-    it('applies to the 6-day option: a login on day 5 has one, a login in the last minutes does not', () => {
-      const six = fields({ declaredDuration: DeclaredDuration.A_FEW_DAYS });
-      expect(deriveLoginReminderAt(six, login(5), login(5, MINUTE))).toEqual(at(5, 5 * MINUTE));
-      expect(deriveLoginReminderAt(six, login(6, -3 * MINUTE), login(6, -2 * MINUTE))).toBeNull();
+    it('applies to the 7-day "A few days" option: a login on day 5 has one, a login in the last minutes does not', () => {
+      const few = fields({ declaredDuration: DeclaredDuration.A_FEW_DAYS });
+      expect(deriveLoginReminderAt(few, login(5), login(5, MINUTE))).toEqual(
+        at(5, 5 * MINUTE),
+      );
+      expect(
+        deriveLoginReminderAt(
+          few,
+          login(7, -3 * MINUTE),
+          login(7, -2 * MINUTE),
+        ),
+      ).toBeNull();
     });
   });
 
@@ -216,10 +226,17 @@ describe('deriveTravelReminderSchedule with a login occurrence — day 3 / day 7
   });
 
   it('still reports the login reminder after every day occurrence is claimed or does not exist', () => {
-    const six = fields({ declaredDuration: DeclaredDuration.A_FEW_DAYS, lastTravelReminderSentAt: at(3, MINUTE) });
-    const loginAt = at(5);
-    expect(deriveTravelReminderSchedule(six, at(4).getTime(), null)).toEqual({ due: false, availableAt: null });
-    expect(deriveTravelReminderSchedule(six, at(4).getTime(), loginAt)).toEqual({ due: false, availableAt: loginAt });
+    const few = fields({
+      declaredDuration: DeclaredDuration.A_FEW_DAYS,
+      lastTravelReminderSentAt: at(6, MINUTE),
+    });
+    const loginAt = at(6, 2 * MINUTE);
+    expect(
+      deriveTravelReminderSchedule(few, at(6, MINUTE).getTime(), null),
+    ).toEqual({ due: false, availableAt: null });
+    expect(
+      deriveTravelReminderSchedule(few, at(6, MINUTE).getTime(), loginAt),
+    ).toEqual({ due: false, availableAt: loginAt });
   });
 
   it('ignores a login occurrence at or after the end of the period', () => {
@@ -286,3 +303,50 @@ describe('ProfileStatusResponseDto — the login reminder shows on the existing 
 function HOUR(): number {
   return 60 * MINUTE;
 }
+
+describe('deriveLoginReminderAt — the first check-in of a cycle only', () => {
+  const authMs = ACTIVATED.getTime() + DAY; // a login on day 1, Travel Mode already active
+
+  it('is offered while no duration answer has been saved in the cycle (absent, null or 0)', () => {
+    const expected = new Date(authMs + 5 * MINUTE);
+    expect(deriveLoginReminderAt(fields(), authMs, authMs)).toEqual(expected);
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 0 }), authMs, authMs)).toEqual(expected);
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: null }), authMs, authMs)).toEqual(expected);
+  });
+
+  it('is gone once the first check-in has been answered, whichever login it is', () => {
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 1 }), authMs, authMs)).toBeNull();
+    expect(deriveLoginReminderAt(fields({ travelCheckInCount: 3 }), authMs, authMs + DAY)).toBeNull();
+  });
+});
+
+describe('the login occurrence is resolved by an answer or a started home-country flow, never by being shown', () => {
+  const authMs = ACTIVATED.getTime() + DAY;
+  const dueAt = authMs + 5 * MINUTE;
+
+  it('stays reported (same time) while nothing resolved it, however often it is asked', () => {
+    for (let i = 0; i < 3; i += 1)
+      expect(
+        deriveLoginReminderAt(fields(), authMs, dueAt + i * MINUTE),
+      ).toEqual(new Date(dueAt));
+  });
+
+  it('is resolved once the resolved-up-to time reaches it, for that login only', () => {
+    const resolved = fields({ lastTravelReminderSentAt: new Date(dueAt) });
+    expect(deriveLoginReminderAt(resolved, authMs, dueAt + MINUTE)).toBeNull();
+    const nextLoginMs = authMs + 2 * DAY;
+    expect(
+      deriveLoginReminderAt(resolved, nextLoginMs, nextLoginMs + 6 * MINUTE),
+    ).toEqual(new Date(nextLoginMs + 5 * MINUTE));
+  });
+
+  it('a resolved-up-to time before it does not hide it', () => {
+    expect(
+      deriveLoginReminderAt(
+        fields({ lastTravelReminderSentAt: new Date(dueAt - 1) }),
+        authMs,
+        dueAt,
+      ),
+    ).toEqual(new Date(dueAt));
+  });
+});

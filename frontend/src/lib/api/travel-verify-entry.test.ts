@@ -35,7 +35,7 @@ function run(body: string, activeTravelModeUpdate: boolean) {
   new Function(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }
-const temporarily = handlerBefore('persistTravelClassification("temporarily_traveling")')
+const temporarily = handlerBefore('Nothing is saved here: closing before a duration is chosen')
 const relocated = handlerBefore('persistTravelClassification("permanently_relocated")')
 
 describe("isTravelModeInForce", () => {
@@ -76,21 +76,21 @@ describe("active traveler (verified or unverified) → Temporarily traveling", (
     })
   }
   it("the period and reminders are untouched: no classification, duration or update call exists on that path", () => {
-    assert.ok(!temporarily.split("persistTravelClassification")[0].includes("activateTravelMode"))
-    const branch = temporarily.split("persistTravelClassification")[0]
+    assert.ok(!temporarily.includes("activateTravelMode"))
+    const branch = temporarily
     assert.ok(!branch.includes("recordTravel") && !branch.includes("IdentityVerificationAPI"))
     assert.equal((flow.match(/IdentityVerificationAPI\.recordTravelDuration\(/g) ?? []).length, 1)
   })
 })
 
 describe("first-time activation is unchanged", () => {
-  it("no activation → flag false → records the classification and goes on to the duration screen", () => {
+  it("no activation → flag false → saves nothing and goes on to the duration screen", () => {
     const calls = run(temporarily, isTravelModeInForce({ travelModeEndsAt: null, travelModeExpired: false }))
-    assert.deepEqual(calls, ["persist:temporarily_traveling", "send:NEXT"])
+    assert.deepEqual(calls, ["send:NEXT"])
   })
   it("an expired Travel Mode also starts a new period through the duration screen", () => {
     const calls = run(temporarily, isTravelModeInForce({ travelModeEndsAt: "2026-10-01T00:00:00.000Z", travelModeExpired: true }))
-    assert.deepEqual(calls, ["persist:temporarily_traveling", "send:NEXT"])
+    assert.deepEqual(calls, ["send:NEXT"])
   })
 })
 

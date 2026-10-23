@@ -93,8 +93,14 @@ describe("nextAction → internal state (one centralized mapping)", () => {
       travelModeExpired: null,
       travelReminderDue: null,
       travelReminderAvailableAt: null,
+      // the append-only check-in answer count: absent from this body, so null
+      travelCheckInCount: null,
       // the append-only returning-user new-location signal: absent from this body, so null
       locationMismatch: null,
+      travelModeLocationMismatch: null,
+      pendingHomeCountry: null,
+      // the opaque per-login key: absent from this body, so null
+      loginSessionKey: null,
     })
   })
 

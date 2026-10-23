@@ -65,7 +65,11 @@ export type TimerEvent =
   | { type: 'SYSTEM_RESUME' }
   | { type: 'SYSTEM_LOCK' }
   | { type: 'SYSTEM_UNLOCK' }
-  | { type: 'APP_QUIT' };
+  | { type: 'APP_QUIT' }
+  // Crash recovery (doc 01 §18, DTT-US-132): the user chose Recover for a
+  // session an unclean shutdown left behind. It comes back Paused — never
+  // Running — so continuing needs an explicit Resume.
+  | { type: 'RESTORE_SESSION'; sessionId: string };
 
 export type TimerEventType = TimerEvent['type'];
 
@@ -148,6 +152,9 @@ export function transition(
   switch (state) {
     case 'Idle':
       if (event.type === 'PICK_CONTRACT') return simple('Counting', state, event);
+      // The orchestrator has already reopened the session row and loaded its
+      // context; the machine only moves to Paused (no session effects).
+      if (event.type === 'RESTORE_SESSION') return simple('Paused', state, event);
       return ignore(state);
 
     case 'Counting':

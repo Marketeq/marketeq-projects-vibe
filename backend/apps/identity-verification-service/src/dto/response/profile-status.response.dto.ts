@@ -27,9 +27,15 @@ export class ProfileStatusResponseDto {
   travelModeEndsAt!: string | null;
   /** A valid activation exists and its end has passed. */
   travelModeExpired!: boolean;
-  /** An unclaimed day-3 or day-7 reminder is due now. */
+  /**
+   * A Travel Mode check-in is due now and unresolved: it stays true (with the same
+   * travelReminderAvailableAt) until a duration answer is saved or the home-country update
+   * flow is started, however often it was shown, closed or refreshed. False while a
+   * home-country change is running or in review. Independent of travelModeLocationMismatch:
+   * both can be true at once.
+   */
   travelReminderDue!: boolean;
-  /** Time of the earliest unclaimed reminder; null when none is left or Travel Mode is not active. */
+  /** Time of the earliest unresolved check-in; null when none is left or Travel Mode is not active. */
   travelReminderAvailableAt!: string | null;
 
   identityVerificationStatus!: IdentityVerificationStatus;
@@ -68,12 +74,47 @@ export class ProfileStatusResponseDto {
   retryAvailableAt?: string | null;
   hasActiveSession?: boolean;
 
+  // Home-country change (append-only, and OMITTED unless it applies, so every
+  // response for an account with no relocation claim keeps exactly its old keys).
+  // The country the account claimed it moved to, still awaiting Didit's approval;
+  // verifiedHomeCountry above is unchanged until an approval promotes it. Attempts
+  // and the cooldown are the ordinary fields (attemptsRemaining, retryAvailableAt).
+  pendingHomeCountry?: string;
+
+  /**
+   * An account in Travel Mode is detected in a country different from its verified
+   * home country (the "still traveling?" prompt's signal). OMITTED unless true, so
+   * every other response keeps exactly its old keys. Never stored; computed on GET
+   * /me only. Unlike locationMismatch it is only ever true while Travel Mode is in
+   * force.
+   */
+  travelModeLocationMismatch?: boolean;
+
+  /**
+   * Duration answers saved by check-ins in the current Travel Mode cycle. OMITTED while
+   * it is 0 (absent means 0 = the first check-in has not been answered); present and
+   * positive once an answer was saved, which is when later check-ins use the "asked
+   * before" copy. Skipping or closing a check-in never changes it.
+   */
+  travelCheckInCount?: number;
+
+  /**
+   * An opaque key for THIS login (a one-way digest of the verified token's session id,
+   * see common/travel-mode/login-session-key.ts), so the browser can remember per login
+   * that a popup was shown or dismissed without ever seeing the session id. Stable for a
+   * login across refreshes; different for every new login and every account. OMITTED when
+   * the token has no valid session id. GET /me only.
+   */
+  loginSessionKey?: string;
+
   static fromEntity(
     profile: IdentityVerificationProfile,
     summary?: VerificationSummary,
     nowMs: number = Date.now(),
     locationMismatch: boolean = false,
     loginReminderAt: Date | null = null,
+    travelModeLocationMismatch: boolean = false,
+    loginSessionKey: string | null = null,
   ): ProfileStatusResponseDto {
     const dto = new ProfileStatusResponseDto();
     dto.verifiedHomeCountry = profile.verifiedHomeCountry;
@@ -103,6 +144,10 @@ export class ProfileStatusResponseDto {
       profile.identityVerificationStatus === IdentityVerificationStatus.VERIFIED &&
       profile.locationVerificationStatus === LocationVerificationStatus.VERIFIED;
     dto.gateOpen = computeGateState(profile, nowMs).gateOpen;
+    if (profile.pendingHomeCountry) dto.pendingHomeCountry = profile.pendingHomeCountry;
+    if (travelModeLocationMismatch === true) dto.travelModeLocationMismatch = true;
+    if (profile.travelCheckInCount > 0) dto.travelCheckInCount = profile.travelCheckInCount;
+    if (typeof loginSessionKey === 'string' && loginSessionKey.length > 0) dto.loginSessionKey = loginSessionKey;
     if (summary) {
       dto.nextAction = summary.nextAction;
       dto.attemptsUsed = summary.attemptsUsed;

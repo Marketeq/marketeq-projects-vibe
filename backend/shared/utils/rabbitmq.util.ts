@@ -7,6 +7,14 @@ export function getRabbitMqUrl(): string {
   return process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 }
 
+/**
+ * The broker URL without its credentials, for logs and error messages. A hosted
+ * broker's URL carries its password (amqps://user:password@host/vhost).
+ */
+export function redactRabbitMqUrl(urlString: string): string {
+  return urlString.replace(/(amqps?:\/\/)[^@\s/]+@/i, '$1');
+}
+
 export function shouldRequireRabbitMq(): boolean {
   const rawRequired = String(process.env.RABBITMQ_REQUIRED ?? '').toLowerCase();
 

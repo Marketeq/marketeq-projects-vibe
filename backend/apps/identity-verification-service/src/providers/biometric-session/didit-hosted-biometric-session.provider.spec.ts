@@ -162,7 +162,7 @@ describe('DiditHostedBiometricSessionProvider', () => {
     const input = { workflowId: 'wf_kyc', vendorData: 'ref-1', callbackUrl: 'http://localhost:3000/talent-dashboard' };
     const created = { session_id: 'sess_1', url: 'https://verify.didit.me/session/abc', status: 'Not Started' };
 
-    it('POSTs workflow_id, vendor_data and callback to /v3/session/ with x-api-key — and no portrait or sandbox_scenario', async () => {
+    it('POSTs workflow_id, vendor_data, callback and callback_method both to /v3/session/ with x-api-key — and no portrait or sandbox_scenario', async () => {
       fetchMock.mockResolvedValue(jsonResponse(created, 201));
       await provider.createKycSession(input);
 
@@ -174,6 +174,7 @@ describe('DiditHostedBiometricSessionProvider', () => {
         workflow_id: 'wf_kyc',
         vendor_data: 'ref-1',
         callback: 'http://localhost:3000/talent-dashboard',
+        callback_method: 'both',
       });
     });
 

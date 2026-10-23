@@ -11,7 +11,7 @@ import {
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 import {
   DAY_MS,
-  TRAVEL_REMINDER_DAYS,
+  travelReminderDays,
   travelModeEndsAt,
 } from '../common/travel-mode/travel-mode-duration';
 import { expireTravelModeIfDue } from '../common/travel-mode/travel-mode-state';
@@ -118,11 +118,11 @@ export class TravelModeReminderJob {
       return;
     }
 
-    // Day 3 and day 7 after activation; a reminder that would fall at or
-    // after expiry (day 7 of the 6-day duration) does not exist.
-    const remaining = TRAVEL_REMINDER_DAYS.map((day) => this.dayOffset(activatedAt, day)).filter(
-      (due) => due.getTime() < endsAt.getTime() && due.getTime() >= cursor.getTime(),
-    );
+    // The duration's check-in days after activation (3 and 7, or 3 and 6 for "A few
+    // days"); a reminder that would fall at or after expiry does not exist.
+    const remaining = travelReminderDays(profile.declaredDuration)
+      .map((day) => this.dayOffset(activatedAt, day))
+      .filter((due) => due.getTime() < endsAt.getTime() && due.getTime() >= cursor.getTime());
     const dueNow = remaining.filter((due) => due.getTime() <= now.getTime());
     const next = remaining.find((due) => due.getTime() > now.getTime()) ?? null;
 

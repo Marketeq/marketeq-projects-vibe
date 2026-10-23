@@ -62,6 +62,7 @@ export interface EventBridgeDeps {
     started_at: number;
     ended_at: number | null;
     duration_seconds: number;
+    source?: 'live' | 'manual' | 'recovered';
   }>;
   logger?: Logger;
 }
@@ -136,6 +137,10 @@ export function createEventBridge(deps: EventBridgeDeps) {
             startedAt: new Date(entry.started_at).toISOString(),
             endedAt: new Date(entry.ended_at).toISOString(),
             durationSeconds: entry.duration_seconds,
+            // Only crash-recovered entries carry `source` (DTT-US-132) — a
+            // normal entry's payload is unchanged, so it stays valid against
+            // a backend that predates the field.
+            ...(entry.source === 'recovered' ? { source: 'recovered' } : {}),
           },
         });
       }

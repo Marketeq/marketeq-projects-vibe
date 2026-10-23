@@ -14,6 +14,8 @@ import { logger } from './logger';
 import { initDatabase, closeDatabase } from './db/connection';
 import { runMigrations } from './db/migrate';
 import { registerIpcHandlers } from './ipc';
+import { registerCrashRecoveryIpc } from './ipc/crash-recovery';
+import { createCrashRecovery, type ClosedSession } from './services/timer/crash-recovery';
 import { createRepos } from './db/repos';
 import {
   createTimerService,
@@ -71,6 +73,10 @@ import { createTrayService } from './services/tray/tray-service';
 import { createNotificationService } from './services/notifications/notification-service';
 
 const isDev = !app.isPackaged;
+// Hard limit on quitting once the user has confirmed (see before-quit).
+const QUIT_TIMEOUT_MS = 3_000;
+// Extra time the last-resort force exit allows for the ordered teardown.
+const QUIT_FORCE_EXIT_MARGIN_MS = 500;
 let windowManager: WindowManager | null = null;
 
 // The Marketeq logo ships next to the app (extraResources) when packaged and
@@ -174,6 +180,10 @@ async function bootstrap(): Promise<void> {
   // close enqueued once the outbox exists (Phase 4).
   let recoveredSessions: ReturnType<TimerService['restoreFromDb']>['closed'] =
     [];
+  // Assigned in Phase 4 once the outbox exists; used for crash-swept sessions
+  // and by the crash recovery prompt's Discard.
+  let enqueueSessionClose: ((s: ClosedSession) => void) | null = null;
+  let detachCrashRecoveryIpc: (() => void) | null = null;
   try {
     const db = initDatabase();
     const repos = createRepos(db);
@@ -204,7 +214,17 @@ async function bootstrap(): Promise<void> {
     });
     // Close any session left open by a previous crash / force-kill. Never
     // silently resumes — the FSM stays Idle. Rows are kept (only ended_at set).
-    recoveredSessions = timerService.restoreFromDb().closed;
+    // The swept session is then held for the Recover / Discard prompt
+    // (DTT-US-131) instead of being reported closed to the backend.
+    const crashRecovery = createCrashRecovery({
+      repos,
+      timer: timerService,
+      getUserId: () => authService?.getCurrentUser()?.id ?? null,
+      enqueueClose: () => enqueueSessionClose,
+      logger,
+    });
+    recoveredSessions = crashRecovery.holdSweptSessions(timerService.restoreFromDb().closed);
+    detachCrashRecoveryIpc = registerCrashRecoveryIpc(crashRecovery);
     detachIpcHandlers = registerIpcHandlers({ timer: timerService });
     logger.info('phase 2 timer service wired');
   } catch (err) {
@@ -538,6 +558,9 @@ async function bootstrap(): Promise<void> {
   // Shared with phase 6 so the tray and notifications can follow sync state.
   let networkMonitor: ReturnType<typeof createNetworkMonitor> | null = null;
   let syncWorker: ReturnType<typeof createSyncWorker> | null = null;
+  // Cancels every open backend request at once. Used when quitting runs out
+  // of time, so a hung backend can't hold the app open.
+  let abortSync: (() => void) | null = null;
   let detachSyncIpc: (() => void) | null = null;
   let detachEventBridge: (() => void) | null = null;
   let realtimeClient: ReturnType<typeof createRealtimeClient> | null = null;
@@ -559,6 +582,9 @@ async function bootstrap(): Promise<void> {
       store: createSqliteOutboxStore(db),
       logger,
     });
+    // Rows a previous run left mid-request go back in the queue before the
+    // worker starts (a quit that hit its time limit leaves them 'inflight').
+    outbox.recoverInflight();
     // Wire the auth token into the API client so sync requests are authenticated
     if (authService) {
       authService.setApiClient({ setAuthToken: (t) => api.setAuthToken(t) });
@@ -613,12 +639,12 @@ async function bootstrap(): Promise<void> {
       }).detach;
     }
 
-    // Push a close to the backend for every crash-swept session. If the
+    // Push a close to the backend for a crash-swept session. If the
     // backend never knew about it (session.start hadn't synced yet), this
     // 404s and the outbox dead-letters it immediately — same idempotent,
     // non-retryable-4xx handling every other outbox write already relies on.
     // FIFO puts this after the original POST /sessions.
-    for (const s of recoveredSessions) {
+    enqueueSessionClose = (s) => {
       outbox.enqueue({
         kind: 'session.close',
         method: 'POST',
@@ -630,7 +656,10 @@ async function bootstrap(): Promise<void> {
           billableSeconds: s.billableSeconds,
         },
       });
-    }
+    };
+    // The session held for the Recover / Discard prompt is not in this list:
+    // its close is only sent if the user chooses Discard.
+    for (const s of recoveredSessions) enqueueSessionClose(s);
 
     stopSync = async () => {
       try {
@@ -658,6 +687,13 @@ async function bootstrap(): Promise<void> {
       } catch {
         /* ignore */
       }
+      try {
+        api.close();
+      } catch {
+        /* ignore */
+      }
+    };
+    abortSync = () => {
       try {
         api.close();
       } catch {
@@ -726,7 +762,9 @@ async function bootstrap(): Promise<void> {
       onSyncNow: () => undefined,
       onLogout: () => undefined,
       onQuit: () => {
-        windowManager?.prepareToQuit();
+        // Goes through before-quit's confirm-before-quit flow, same as any
+        // other quit (DTT-AC-152.1). Calling prepareToQuit() here first used
+        // to mark the app as already quitting, which skipped the confirm.
         app.quit();
       },
     });
@@ -871,6 +909,37 @@ async function bootstrap(): Promise<void> {
     }
   };
 
+  // Quitting has a hard time limit. The clock starts once the user has
+  // confirmed (time spent on the confirm dialog doesn't count). Closing the
+  // session and the final sync share the budget; whatever the backend is
+  // doing, the app is gone by then. Anything not yet sent stays in the
+  // SQLite outbox and goes out on the next launch (outbox.recoverInflight).
+  // Electron has no force-kill timer of its own, so without this a hung
+  // request could hold the quit open.
+  let quitDeadline: number | null = null;
+  const startQuitClock = () => {
+    if (quitDeadline !== null) return;
+    quitDeadline = Date.now() + QUIT_TIMEOUT_MS;
+    // Last resort if something unexpected hangs past the deadline; the
+    // margin leaves room for the ordered teardown below to finish first.
+    setTimeout(() => {
+      logger.warn('quit: still running after the time limit — forcing exit');
+      app.exit(0);
+    }, QUIT_TIMEOUT_MS + QUIT_FORCE_EXIT_MARGIN_MS).unref();
+  };
+  // Resolves true if the deadline passed before `work` finished.
+  const raceQuitDeadline = (work: Promise<unknown>): Promise<boolean> => {
+    const remaining = Math.max(0, (quitDeadline ?? Date.now()) - Date.now());
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), remaining);
+    });
+    return Promise.race([work.then(() => false), deadline]).finally(() =>
+      clearTimeout(timer),
+    );
+  };
+  let shutdownStarted = false;
+
   app.on('before-quit', (evt) => {
     // Confirm-before-quit when there's an active session.
     if (windowManager && !windowManager.isQuitting()) {
@@ -878,7 +947,8 @@ async function bootstrap(): Promise<void> {
       void (async () => {
         const ok = await windowManager!.confirmQuit();
         if (!ok) return;
-        await closeSessionForQuit();
+        startQuitClock();
+        await raceQuitDeadline(closeSessionForQuit());
         windowManager!.prepareToQuit();
         app.quit();
       })();
@@ -889,18 +959,36 @@ async function bootstrap(): Promise<void> {
     // window manager): hold the quit once to close the session first.
     if (!sessionClosedForQuit && timerService?.getSnapshot().activeSessionId) {
       evt.preventDefault();
-      void closeSessionForQuit().then(() => app.quit());
+      startQuitClock();
+      void raceQuitDeadline(closeSessionForQuit()).then(() => app.quit());
       return;
     }
 
+    // Hold the quit while the sync pipeline gets its last chance to send,
+    // bounded by the deadline, then tear down and exit.
+    evt.preventDefault();
+    if (shutdownStarted) return;
+    shutdownStarted = true;
+    startQuitClock();
+    void (async () => {
+      const stopping = stopSync
+        ? stopSync().catch((err) =>
+            logger.warn({ err }, 'error while stopping sync pipeline'),
+          )
+        : Promise.resolve();
+      if (await raceQuitDeadline(stopping)) {
+        logger.warn(
+          { timeoutMs: QUIT_TIMEOUT_MS },
+          'quit: sync did not finish in time — cancelling open requests; unsent items stay queued for next launch',
+        );
+        abortSync?.();
+      }
+      teardownForQuit();
+      app.exit(0);
+    })();
+  });
 
-    // Fire off the async sync shutdown but don't block the quit path —
-    // Electron gives us ~2 s before force-killing anyway.
-    if (stopSync) {
-      void stopSync().catch((err) =>
-        logger.warn({ err }, 'error while stopping sync pipeline'),
-      );
-    }
+  const teardownForQuit = () => {
     try {
       stopCaptureIpc?.();
       captureSupervisor?.stop();
@@ -938,6 +1026,7 @@ async function bootstrap(): Promise<void> {
       // The session was already closed by closeSessionForQuit() above.
       timerService?.dispose();
       detachIpcHandlers?.();
+      detachCrashRecoveryIpc?.();
     } catch (err) {
       logger.warn({ err }, 'error while stopping timer service');
     }
@@ -959,7 +1048,7 @@ async function bootstrap(): Promise<void> {
     } catch (err) {
       logger.warn({ err }, 'error while closing database on quit');
     }
-  });
+  };
 
   logger.info('waiting for app.whenReady()...');
   await app.whenReady();

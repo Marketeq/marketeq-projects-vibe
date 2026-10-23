@@ -58,4 +58,9 @@ regexes = [
   # credential. generic-api-key matches the "...Key = ..." shape of the
   # assignment and reports the source text "dto.briefR2Key" as the secret.
   '''^dto\.briefR2Key$''',
+  # identity-verification's login-session-key controller spec sets ACCESS_TOKEN to a
+  # short, fake JWT-shaped string to prove the raw token never reaches the GET /me
+  # response. It is test data, not a credential; generic-api-key matches the
+  # "..._TOKEN = ..." assignment.
+  '''^eyJhbGciOi\.eyJzdWIiOiJ1c2VyLTEi\.c2lnbmF0dXJl$''',
 ]
