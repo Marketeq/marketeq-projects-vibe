@@ -327,6 +327,7 @@ export class GroupsService {
       ({ group, status, members }) => ({
         id: group.id,
         name: group.name ?? group.contracts[0]?.title ?? '',
+        type: group.type,
         status,
         phase: group.phase,
         // One entry per member, same order and length as memberCount; null

@@ -6,6 +6,9 @@
 export class AddableContractDto {
   id: string;
   name: string;
+  // The group's own type ('project' | 'service' | 'team' | 'job'); lets the
+  // selector tag service contracts.
+  type: string;
   status: string;
   phase: string | null;
   memberAvatars: Array<string | null>;

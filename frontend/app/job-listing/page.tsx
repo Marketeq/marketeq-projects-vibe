@@ -95,6 +95,7 @@ import {
   Plus,
   Plus2,
   RefreshCcw05,
+  RefreshCw,
   SearchMd,
   Send,
   Trash01,
@@ -3493,6 +3494,8 @@ const scrollToPublishField = (targetId: string) => {
   });
 };
 
+const DEFAULT_MEMBER_AVATAR_URL =
+  "https://images.unsplash.com/vector-1742875355318-00d715aec3e8?q=80&w=1480&auto=format&fit=crop";
 const TITLE_MAX_LENGTH = 100;
 const SHORT_DESCRIPTION_MAX_LENGTH = 300;
 const FULL_DESCRIPTION_MAX_LENGTH = 5000;
@@ -4318,7 +4321,7 @@ const ProjectInfo = ({
       title: "Marketeq Projects Network",
       badges: ["Design Phase"],
       icon: <MdOutlineAssignment className="size-6" />,
-      avatars: ["AK", "NS", "RP", "+3"],
+      avatars: Array<string>(7).fill(DEFAULT_MEMBER_AVATAR_URL),
       workType: "project" as const,
     },
     {
@@ -4327,7 +4330,7 @@ const ProjectInfo = ({
       badges: ["Design Phase"],
       image:
         "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=160&q=80",
-      avatars: ["MJ", "CT", "AL", "+5"],
+      avatars: Array<string>(9).fill(DEFAULT_MEMBER_AVATAR_URL),
       workType: "project" as const,
     },
     {
@@ -4335,7 +4338,7 @@ const ProjectInfo = ({
       title: "E-commerce Website Build with React JS",
       badges: ["Development Phase", "Service"],
       icon: <MdAutorenew className="size-6" />,
-      avatars: ["RK", "SB"],
+      avatars: [DEFAULT_MEMBER_AVATAR_URL, DEFAULT_MEMBER_AVATAR_URL],
       workType: "service" as const,
     },
   ];
@@ -4371,22 +4374,25 @@ const ProjectInfo = ({
       ["disputed", "expired", "closed", "paused"].includes(normalizedStatus)
         ? formatContractStatusLabel(contract.status)
         : "";
-    const avatarUrls = contract.memberAvatars.filter(Boolean).slice(0, 4);
-    const overflowAvatarCount = Math.max(contract.memberCount - 4, 0);
+    const isServiceContract = contract.type?.toLowerCase() === "service";
 
     return {
       id: contract.id,
       title: contract.name || "Untitled contract",
       badges: [
         formatContractPhaseLabel(contract.phase),
+        isServiceContract ? "Service" : "",
         statusBadge,
       ].filter(Boolean),
-      icon: <Copy className="size-5" />,
-      avatars:
-        overflowAvatarCount > 0
-          ? [...avatarUrls, `+${overflowAvatarCount}`]
-          : avatarUrls,
-      workType: "project",
+      icon: isServiceContract ? (
+        <MdAutorenew className="size-6" />
+      ) : (
+        <MdOutlineAssignment className="size-6" />
+      ),
+      avatars: contract.memberAvatars.map(
+        (avatar) => avatar || DEFAULT_MEMBER_AVATAR_URL,
+      ),
+      workType: isServiceContract ? "service" : "project",
       disabledReason: getContractDisabledReason(contract.status),
     };
   };
@@ -4553,7 +4559,7 @@ const ProjectInfo = ({
                 </div>
 
                 {contractChoice === "existing" ? (
-                  <div className="mt-12 space-y-5">
+                  <div className="mt-16 space-y-5">
                     <div className="flex h-9 w-full items-start justify-between gap-3">
                       <p className="w-[520px] text-[18px] font-medium leading-7 text-dark-blue-400">
                         Choose project, service, or team which you want to add
@@ -4649,7 +4655,7 @@ const ProjectInfo = ({
                                     >
                                       {badge === "Service" ? (
                                         <span className="inline-flex items-center gap-x-1">
-                                          <MdAutorenew className="size-3.5 shrink-0 text-primary-500" />
+                                          <RefreshCw className="size-3.5 shrink-0 text-primary-500" />
                                           <span>Service</span>
                                         </span>
                                       ) : (
@@ -4662,26 +4668,23 @@ const ProjectInfo = ({
                             </span>
 
                             <span className="hidden shrink-0 items-center md:flex">
-                              <AvatarGroup className="!cursor-default" size="xs" reverse={false}>
-                                {option.avatars
-                                  .filter(Boolean)
-                                  .slice(0, 4)
-                                  .map((avatar, avatarIndex) => (
-                                    <Avatar
-                                      key={`${option.id}-${avatarIndex}-${avatar}`}
-                                      size="xs"
-                                      className="border-2 border-white hover:ring-0 active:ring-0"
-                                    >
-                                      <AvatarImage src={avatar} alt="" />
-                                    </Avatar>
-                                  ))}
-                                {option.avatars.find((avatar) => avatar.startsWith("+")) ? (
-                                  <span className="inline-flex size-6 items-center justify-center rounded-full border-2 border-primary-500 bg-white text-[10px] leading-none font-semibold text-primary-500">
-                                    {option.avatars.find((avatar) =>
-                                      avatar.startsWith("+"),
-                                    )}
-                                  </span>
-                                ) : null}
+                              <AvatarGroup
+                                className="!cursor-default -space-x-1.5"
+                                size="xs"
+                                reverse={false}
+                                max={4}
+                                excess
+                                excessClassName="box-content"
+                              >
+                                {option.avatars.map((avatar, avatarIndex) => (
+                                  <Avatar
+                                    key={`${option.id}-${avatarIndex}`}
+                                    size="xs"
+                                    className="box-content border-2 border-white hover:ring-0 active:ring-0"
+                                  >
+                                    <AvatarImage src={avatar} alt="" />
+                                  </Avatar>
+                                ))}
                               </AvatarGroup>
                             </span>
 
