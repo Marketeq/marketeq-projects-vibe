@@ -82,23 +82,20 @@ describe("placement: nothing existing moved", () => {
   })
 })
 
-describe("a reminder is shown only after a claim", () => {
-  it("the 'reminder' popup opens from exactly one place: the claim's onClaimed callback", () => {
-    assert.equal((page.match(/setTravelPopup\("reminder"\)/g) ?? []).length, 1)
-    assert.match(page, /onClaimed: \(\) => setTravelPopup\("reminder"\)/)
+describe("the day-3 / day-7 reminders are the check-in modal now (PMCM-641)", () => {
+  it("the small alert is no longer opened by a claim: it has no 'reminder' trigger left", () => {
+    assert.equal((page.match(/setTravelPopup\("reminder"\)/g) ?? []).length, 0)
+    assert.ok(!page.includes("claimTravelReminder"))
+    assert.ok(!page.includes("createTravelReminderScheduler"))
   })
 
-  it("the scheduler is rebuilt whenever the backend answer changes and cleaned up on unmount", () => {
-    assert.match(page, /scheduler\.update\(\{\s+due: travelSummary\.travelReminderDue,\s+availableAt: travelSummary\.travelReminderAvailableAt,\s+\}\)\s+return \(\) => scheduler\.dispose\(\)\s+\}, \[travelSummary\]\)/)
+  it("the small alert is held back while the check-in is due or open", () => {
+    assert.match(page, /open=\{travelPopup !== null && !checkInHasPriorityNow\}/)
   })
 
-  it("after a definitive claim answer the next occurrence comes from a fresh /me read", () => {
-    assert.match(page, /onSettled: \(\) => \{\s+void fetchIdentityVerificationSummary\(\)\.then\(\(next\) => \{\s+if \(next\) setTravelSummary\(next\)/)
-  })
-
-  it("the claim and the client come from the new modules", () => {
-    assert.ok(page.includes('from "@/src/lib/api/travel-reminder"'))
+  it("the expiry popup client still comes from its own module", () => {
     assert.ok(page.includes('from "@/src/lib/api/travel-expiry-popup"'))
+    assert.ok(page.includes('from "@/src/lib/api/travel-check-in"'))
   })
 })
 

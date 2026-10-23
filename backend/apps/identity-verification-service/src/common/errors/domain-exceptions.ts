@@ -101,6 +101,26 @@ export class TravelModeAlreadyActiveException extends DomainException {
   }
 }
 
+// An active-traveler duration update (a check-in answer) found no Travel Mode in force:
+// never activated, already ended, or cleared meanwhile. The caller starts a normal
+// activation instead (POST travel-duration), which is accepted exactly then.
+export class TravelModeNotActiveException extends DomainException {
+  readonly code = 'TRAVEL_MODE_NOT_ACTIVE';
+  constructor(details?: Record<string, unknown>) {
+    super('Travel Mode is not active.', HttpStatus.CONFLICT, details);
+  }
+}
+
+// Another request answered the same check-in first: Travel Mode is still active but the
+// period this request observed has been replaced. Nothing was written; the caller
+// re-reads GET /me.
+export class TravelCheckInAlreadyAnsweredException extends DomainException {
+  readonly code = 'TRAVEL_CHECK_IN_ALREADY_ANSWERED';
+  constructor(details?: Record<string, unknown>) {
+    super('This check-in was already answered.', HttpStatus.CONFLICT, details);
+  }
+}
+
 // A home-country change is unfinished (its Didit session is running or waiting for a
 // decision). Travel Mode is not changed underneath it: the user finishes or abandons
 // that session first.

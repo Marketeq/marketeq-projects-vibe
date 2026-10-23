@@ -170,6 +170,31 @@ export const IdentityVerificationAPI = {
   ) =>
     AxiosRequest.post("/v1/identity-verification/travel-duration", { duration }),
 
+  // The answer to a "Still traveling?" check-in: the new duration, with `checkInAt` = the
+  // travelReminderAvailableAt the check-in was shown for (captured when it opened, never
+  // re-read at submit). Only this call is an answer: skipping or closing sends nothing.
+  // 409 TRAVEL_CHECK_IN_ALREADY_ANSWERED / TRAVEL_MODE_NOT_ACTIVE / HOME_COUNTRY_CHANGE_IN_PROGRESS
+  // are handled by src/lib/api/travel-check-in.ts.
+  updateActiveTravelDuration: (
+    duration: "a_few_days" | "one_to_two_weeks" | "more_than_two_weeks" | "not_sure",
+    checkInAt: string
+  ) =>
+    AxiosRequest.post("/v1/identity-verification/travel-duration/update", {
+      duration,
+      checkInAt,
+    }),
+
+  // A revision of the answer that was just saved (the confirmation's Back, then a different
+  // duration): the same endpoint WITHOUT checkInAt. The backend updates the duration and
+  // restarts the schedule but does not count another check-in; the original occurrence stays
+  // resolved. src/lib/api/travel-check-in.ts (reviseCheckIn) is the only caller.
+  reviseActiveTravelDuration: (
+    duration: "a_few_days" | "one_to_two_weeks" | "more_than_two_weeks" | "not_sure"
+  ) =>
+    AxiosRequest.post("/v1/identity-verification/travel-duration/update", {
+      duration,
+    }),
+
   // Claims the next due Travel Mode reminder (day 3 / day 7) for the CALLER only:
   // no body, no query, no id, no timestamp. The backend answers exactly
   // { claimed: boolean }; typed unknown here on purpose so the only reader is

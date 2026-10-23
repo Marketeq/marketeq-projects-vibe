@@ -124,13 +124,25 @@ describe('TravelModeReminderJob reminder schedule (day 3 and day 7)', () => {
     }
   });
 
-  it('day 3 of the 6-day duration clears the cursor: there is no day 7', async () => {
-    const { run, events, update } = buildJob();
+  it('day 3 of "A few days" (7 days) moves the cursor to day 6, which then sends and clears it', async () => {
+    const day3 = buildJob();
+    await day3.run(
+      buildProfile({ declaredDuration: DeclaredDuration.A_FEW_DAYS }),
+      at(3),
+    );
+    expect(day3.events.publish).toHaveBeenCalledTimes(1);
+    expect(cursorWrites(day3.update)).toEqual([at(6)]);
 
-    await run(buildProfile({ declaredDuration: DeclaredDuration.A_FEW_DAYS }), at(3));
-
-    expect(events.publish).toHaveBeenCalledTimes(1);
-    expect(cursorWrites(update)).toEqual([null]);
+    const day6 = buildJob();
+    await day6.run(
+      buildProfile({
+        declaredDuration: DeclaredDuration.A_FEW_DAYS,
+        nextTravelReminderAt: at(6),
+      }),
+      at(6),
+    );
+    expect(day6.events.publish).toHaveBeenCalledTimes(1);
+    expect(cursorWrites(day6.update)).toEqual([null]);
   });
 
   it('day 7 sends one reminder and clears the cursor', async () => {
@@ -142,7 +154,7 @@ describe('TravelModeReminderJob reminder schedule (day 3 and day 7)', () => {
     expect(cursorWrites(update)).toEqual([null]);
   });
 
-  it('never sends a day-7 reminder for the 6-day duration, even from a stale day-7 cursor', async () => {
+  it('never sends a day-7 reminder for "A few days" (its day 7 is its end), even from a stale day-7 cursor', async () => {
     const { run, events, update } = buildJob();
 
     await run(buildProfile({ declaredDuration: DeclaredDuration.A_FEW_DAYS, nextTravelReminderAt: at(7) }), at(7));
@@ -161,7 +173,7 @@ describe('TravelModeReminderJob reminder schedule (day 3 and day 7)', () => {
   });
 
   it('a late day-3 run is still sent 1 ms before expiry, and nothing is sent exactly at expiry', async () => {
-    const endsAt = at(6);
+    const endsAt = at(7);
     const sixDay = { declaredDuration: DeclaredDuration.A_FEW_DAYS };
 
     const before = buildJob();
@@ -182,7 +194,7 @@ describe('TravelModeReminderJob reminder schedule (day 3 and day 7)', () => {
 
   it('sends nothing at or after expiry for any duration', async () => {
     const expiries: Array<[DeclaredDuration, number]> = [
-      [DeclaredDuration.A_FEW_DAYS, 6],
+      [DeclaredDuration.A_FEW_DAYS, 7],
       [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
       [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
       [DeclaredDuration.NOT_SURE, 30],
@@ -317,7 +329,7 @@ describe('TravelModeReminderJob daily expiry backstop', () => {
     travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
     travelModeActive: true,
     travelModeActivatedAt: activatedAt,
-    declaredDuration: DeclaredDuration.A_FEW_DAYS, // 6 days
+    declaredDuration: DeclaredDuration.A_FEW_DAYS, // 7 days
     lastTravelReminderSentAt: new Date('2026-06-04T09:00:00.000Z'),
     nextTravelReminderAt: at(3),
     ...over,
@@ -383,7 +395,7 @@ describe('TravelModeReminderJob daily expiry backstop', () => {
     const original = row('p1');
     const { job, rows, repository } = build([original]);
 
-    await sweepAt(at(7), job); // the 6-day period ended a day ago
+    await sweepAt(at(8), job); // the 7-day period ended a day ago
 
     expect(rows[0].travelModeActive).toBe(false);
     expect(rows[0].nextTravelReminderAt).toBeNull();
@@ -405,7 +417,7 @@ describe('TravelModeReminderJob daily expiry backstop', () => {
   });
 
   it('expires exactly at the boundary and not 1 ms before it', async () => {
-    const endsAt = at(6);
+    const endsAt = at(7);
 
     const exactly = build([row('p1')]);
     await sweepAt(endsAt, exactly.job);
@@ -418,7 +430,7 @@ describe('TravelModeReminderJob daily expiry backstop', () => {
   });
 
   it.each([
-    [DeclaredDuration.A_FEW_DAYS, 6],
+    [DeclaredDuration.A_FEW_DAYS, 7],
     [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
     [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
     [DeclaredDuration.NOT_SURE, 30],
@@ -565,8 +577,13 @@ describe('TravelModeReminderJob daily expiry backstop', () => {
       expect(rows[0].nextTravelReminderAt).toBeNull();
     });
 
-    it('never sends a day-7 reminder for the 6-day duration', async () => {
-      const { job, events } = build([row('p1', { declaredDuration: DeclaredDuration.A_FEW_DAYS, nextTravelReminderAt: at(7) })]);
+    it('never sends a day-7 reminder for "A few days" (its day 7 is its end)', async () => {
+      const { job, events } = build([
+        row('p1', {
+          declaredDuration: DeclaredDuration.A_FEW_DAYS,
+          nextTravelReminderAt: at(7),
+        }),
+      ]);
 
       await sweepAt(at(7), job);
 

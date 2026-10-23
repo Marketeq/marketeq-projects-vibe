@@ -45,7 +45,7 @@ describe('persisted lazy expiry: GET /me, internal status and the shared state',
     travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
     travelModeActive: true,
     travelModeActivatedAt: new Date(Date.now() - 7 * DAY),
-    declaredDuration: DeclaredDuration.A_FEW_DAYS, // 6 days: ended a day ago
+    declaredDuration: DeclaredDuration.A_FEW_DAYS, // 7 days: ends exactly now
     lastTravelReminderSentAt: new Date(Date.now() - 4 * DAY),
     nextTravelReminderAt: new Date(Date.now() - 1 * DAY),
     createdAt: new Date('2026-01-01'),
@@ -168,7 +168,9 @@ describe('persisted lazy expiry: GET /me, internal status and the shared state',
 
     expect(res.body).toMatchObject({
       travelModeExpired: true,
-      travelModeEndsAt: new Date(original.travelModeActivatedAt.getTime() + 6 * DAY).toISOString(),
+      travelModeEndsAt: new Date(
+        original.travelModeActivatedAt.getTime() + 7 * DAY,
+      ).toISOString(),
       travelReminderDue: false,
       travelReminderAvailableAt: null,
     });

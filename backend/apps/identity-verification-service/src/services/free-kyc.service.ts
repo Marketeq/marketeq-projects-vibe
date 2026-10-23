@@ -359,6 +359,10 @@ export class FreeKycService {
     if (profile.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
       profile.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
     }
+    // Starting the home-country update flow resolves the Travel Mode check-in that led here:
+    // every check-in due so far is resolved (a later one is not). Opening or abandoning the
+    // check-in beforehand resolved nothing; this is the one point where the flow really starts.
+    if (profile.travelModeActive) profile.lastTravelReminderSentAt = new Date();
     await this.profileRepository.save(profile);
     return { url };
   }
@@ -1011,6 +1015,7 @@ export class FreeKycService {
     profile.travelModeActivatedAt = null;
     profile.nextTravelReminderAt = null;
     profile.lastTravelReminderSentAt = null;
+    profile.travelCheckInCount = 0;
     clearPendingRelocation(profile);
     signal.homeCountryUpdated = { profileId: profile.id, userId: profile.userId, hostedKycSessionId: session.id };
     return true;

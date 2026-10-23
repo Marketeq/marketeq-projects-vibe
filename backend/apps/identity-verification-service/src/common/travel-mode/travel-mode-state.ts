@@ -4,7 +4,14 @@ import {
   TravelClassification,
 } from '../../entities/enums/identity-verification.enums';
 import { IdentityVerificationProfile } from '../../entities/identity-verification-profile.entity';
-import { travelModeEndsAt, travelReminderOccurrences } from './travel-mode-duration';
+import {
+  HomeCountryChangeFields,
+  isRelocationUnfinished,
+} from '../home-country-change/home-country-change';
+import {
+  travelModeEndsAt,
+  travelReminderOccurrences,
+} from './travel-mode-duration';
 
 // What a profile's stored Travel Mode fields mean at a given instant.
 //
@@ -22,6 +29,13 @@ export interface TravelModeFields {
   travelModeActive?: boolean | null;
   travelModeActivatedAt?: unknown;
   declaredDuration?: unknown;
+  /** Saved check-in duration answers in this Travel Mode cycle (absent counts as 0). */
+  travelCheckInCount?: number | null;
+}
+
+/** The first check-in of this cycle has been answered (a duration answer was saved). */
+export function hasAnsweredFirstCheckIn(fields: TravelModeFields): boolean {
+  return typeof fields.travelCheckInCount === 'number' && fields.travelCheckInCount > 0;
 }
 
 export interface DerivedTravelMode {
@@ -80,34 +94,40 @@ export function travelModeSuppressesLocationPrompt(fields: TravelModeFields, now
   );
 }
 
-export interface TravelReminderFields extends TravelModeFields {
+export interface TravelReminderFields
+  extends TravelModeFields, HomeCountryChangeFields {
+  /**
+   * The time up to which check-in occurrences are RESOLVED (not "shown"): written only by a
+   * saved duration answer (which restarts the schedule and clears it) or by starting the
+   * home-country update flow. Opening, closing, skipping or refreshing never moves it.
+   */
   lastTravelReminderSentAt?: unknown;
 }
 
 export interface TravelReminderSchedule {
-  /** An unclaimed reminder is due now. */
+  /** An unresolved check-in is due now. */
   due: boolean;
-  /** The time of the earliest unclaimed reminder; null when nothing is left to claim. */
+  /** The time of the earliest unresolved check-in; null when nothing is left. */
   availableAt: Date | null;
 }
 
 /**
- * When the dashboard may claim the next Travel Mode reminder (day 3, then
- * day 7). Pure, from the activation, the duration, the last claim time, the
- * effective state and the caller's clock; the job's reminder cursor is never
- * read.
+ * When the next "Still traveling?" check-in is due (day 3, then day 6 or 7 of the duration,
+ * counted from the activation or the latest saved answer). Pure, from the activation, the
+ * duration, the resolved-up-to time, the effective state and the caller's clock; the job's
+ * reminder cursor is never read.
  *
- * A claim at time T consumes every reminder due at or before T, so a reminder
- * is already claimed when `lastTravelReminderSentAt >= its time`. The result
- * is the earliest reminder not yet claimed: still in the future (due false), or
- * due now and unclaimed (due true, and it keeps that reminder's own time until
- * it is claimed or Travel Mode ends). Anything that is not an active period
- * (expired, inactive, invalid, pending or none), a completed schedule, or an
- * unusable last-claim time yields due false and no time (fail closed).
+ * An occurrence is resolved when `lastTravelReminderSentAt >= its time`. Showing it does
+ * not resolve it, so it stays due (with its own time) until a duration answer is saved or
+ * the home-country update flow is started: a closed, skipped or refreshed check-in is
+ * reported again. Anything that is not an active period (expired, inactive, invalid,
+ * pending or none), a completed schedule, an unusable resolved-up-to time, or a
+ * home-country change that is running or waiting for a decision (it owns the screen and
+ * refuses a duration answer) yields due false and no time (fail closed).
  *
- * `loginReminderAt` (optional) adds the caller's login-session occurrence; the
- * earliest unclaimed of the two is reported. Omitted, the result is exactly the
- * day 3 / day 7 schedule.
+ * `loginReminderAt` (optional) adds the caller's login occurrence (authentication + 5
+ * minutes, see deriveLoginReminderAt); the earliest unresolved of the two is reported.
+ * Omitted, the result is exactly the day schedule.
  */
 export function deriveTravelReminderSchedule(
   fields: TravelReminderFields,
@@ -117,53 +137,32 @@ export function deriveTravelReminderSchedule(
   const none: TravelReminderSchedule = { due: false, availableAt: null };
   const { state, endsAt } = deriveTravelModeState(fields, nowMs);
   if (state !== 'active' || !fields.travelModeActive || !endsAt) return none;
+  if (isRelocationUnfinished(fields)) return none;
 
-  let claimedUpToMs = Number.NEGATIVE_INFINITY;
-  const sent = fields.lastTravelReminderSentAt;
-  if (sent !== null && sent !== undefined) {
-    if (!(sent instanceof Date) || !Number.isFinite(sent.getTime())) return none;
-    claimedUpToMs = sent.getTime();
+  let resolvedUpToMs = Number.NEGATIVE_INFINITY;
+  const resolved = fields.lastTravelReminderSentAt;
+  if (resolved !== null && resolved !== undefined) {
+    if (!(resolved instanceof Date) || !Number.isFinite(resolved.getTime()))
+      return none;
+    resolvedUpToMs = resolved.getTime();
   }
 
-  const day = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt).find(
-    (due) => due.getTime() > claimedUpToMs,
-  );
-  // The caller's own login-session reminder (5 minutes after authentication), already
-  // checked and known to be unclaimed for THIS session. It is a separate occurrence: it
-  // never reads or moves the day cursor above, and it never outlives the period.
+  const day = travelReminderOccurrences(
+    fields.travelModeActivatedAt as Date,
+    endsAt,
+    fields.declaredDuration as DeclaredDuration,
+  ).find((due) => due.getTime() > resolvedUpToMs);
+  // The caller's own login occurrence, already checked to be unresolved for THIS login. It
+  // never outlives the period.
   const login =
     loginReminderAt instanceof Date &&
     Number.isFinite(loginReminderAt.getTime()) &&
-    loginReminderAt.getTime() < endsAt.getTime()
+    loginReminderAt.getTime() < endsAt.getTime() &&
+    loginReminderAt.getTime() > resolvedUpToMs
       ? loginReminderAt
       : null;
   const next = day && login ? (login.getTime() < day.getTime() ? login : day) : (day ?? login);
   return next ? { due: next.getTime() <= nowMs, availableAt: next } : none;
-}
-
-/**
- * What a claim of the dashboard reminder would consume, or null when nothing
- * can be claimed right now. Built on the schedule above, so it is claimable
- * only while Travel Mode is effectively active and before its exact end, and
- * only when an unclaimed reminder is due.
- *
- * `latestDue` is the latest reminder time at or before now. A claim records the
- * current time, which is at or after every reminder due so far, so a single
- * claim consumes all of them (day 3 and day 7 together after a late login).
- * The atomic write requires the stored last-claim time to be null or earlier
- * than `latestDue`, which can hold for exactly one of any number of concurrent
- * claims.
- */
-export function deriveTravelReminderClaim(
-  fields: TravelReminderFields,
-  nowMs: number,
-): { latestDue: Date } | null {
-  if (!deriveTravelReminderSchedule(fields, nowMs).due) return null;
-  const { endsAt } = deriveTravelModeState(fields, nowMs);
-  const latestDue = travelReminderOccurrences(fields.travelModeActivatedAt as Date, endsAt as Date)
-    .filter((due) => due.getTime() <= nowMs)
-    .pop();
-  return latestDue ? { latestDue } : null;
 }
 
 // Fixed text only: never an identifier or a stored value.

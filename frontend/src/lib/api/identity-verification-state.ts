@@ -86,6 +86,10 @@ export interface IdentityVerificationSummaryView {
   travelModeExpired: boolean | null
   travelReminderDue: boolean | null
   travelReminderAvailableAt: string | null
+  // Duration answers saved by "Still traveling?" check-ins in this Travel Mode cycle,
+  // exactly as the backend sent it. The backend omits the key while it is 0, so null means
+  // "no answer yet" (the first-time copy); 1 or more means the "asked before" copy.
+  travelCheckInCount: number | null
   // Returning-user new-location signal, exactly as the backend sent it (null when
   // absent or malformed, which shows nothing). The backend alone decides it: a
   // verified home country, a known and different live country, no Travel Mode.
@@ -140,6 +144,7 @@ export function parseIdentityVerificationSummary(
     travelModeExpired: bool(body.travelModeExpired),
     travelReminderDue: bool(body.travelReminderDue),
     travelReminderAvailableAt: isoTime(body.travelReminderAvailableAt),
+    travelCheckInCount: count(body.travelCheckInCount),
     locationMismatch: bool(body.locationMismatch),
     travelModeLocationMismatch: bool(body.travelModeLocationMismatch),
     pendingHomeCountry:
