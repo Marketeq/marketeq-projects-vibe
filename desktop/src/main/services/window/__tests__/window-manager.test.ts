@@ -164,6 +164,25 @@ describe('window-manager', () => {
     expect(await wm.confirmQuit()).toBe(false);
   });
 
+  it('confirmQuit shows dialog for Paused and both break states', async () => {
+    for (const state of ['Paused', 'OnBreakPaid', 'OnBreakUnpaid']) {
+      showMessageBox.mockClear();
+      showMessageBox.mockResolvedValueOnce({ response: 1, checkboxChecked: false });
+      const wm = make({ getTimerState: () => state });
+      expect(await wm.confirmQuit()).toBe(false);
+      expect(showMessageBox).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('confirmQuit does not ask when no session is active', async () => {
+    for (const state of ['Idle', 'Counting', 'OfflineStopped']) {
+      showMessageBox.mockClear();
+      const wm = make({ getTimerState: () => state });
+      expect(await wm.confirmQuit()).toBe(true);
+      expect(showMessageBox).not.toHaveBeenCalled();
+    }
+  });
+
   it('hideMainWindow is a no-op when the window is not visible', async () => {
     const wm = make();
     await wm.ensureMainWindow();
