@@ -53,7 +53,12 @@ async function bootstrap() {
     }, express.static(path.join(process.cwd(), 'screenshot-uploads')));
   }
 
-  const rabbitmqUrl = process.env.RABBITMQ_URI ?? process.env.RABBITMQ_URL;
+  // boot-all.js sets RABBITMQ_INBOX_ENABLED=false: nothing publishes to this
+  // queue, and the consumer would hold one of the broker's 40 connections.
+  // The contract-parties client and the event/notification modules keep their
+  // own connections and are unaffected.
+  const inboxDisabled = process.env.RABBITMQ_INBOX_ENABLED === 'false';
+  const rabbitmqUrl = inboxDisabled ? undefined : process.env.RABBITMQ_URI ?? process.env.RABBITMQ_URL;
   if (rabbitmqUrl) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
@@ -64,7 +69,7 @@ async function bootstrap() {
       },
     });
   } else {
-    Logger.warn('RABBITMQ_URI not set; RMQ consumer disabled', 'Bootstrap');
+    Logger.warn(`${inboxDisabled ? 'RABBITMQ_INBOX_ENABLED=false' : 'RABBITMQ_URI not set'}; RMQ consumer disabled`, 'Bootstrap');
   }
 
   const port = process.env.PORT ?? 3017;

@@ -9,7 +9,10 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }))
   app.enableCors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true })
 
-  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL
+  // boot-all.js sets RABBITMQ_INBOX_ENABLED=false: nothing publishes to this
+  // queue, and the consumer would hold one of the broker's 40 connections.
+  const inboxDisabled = process.env.RABBITMQ_INBOX_ENABLED === 'false'
+  const rabbitmqUrl = inboxDisabled ? undefined : process.env.RABBITMQ_URI || process.env.RABBITMQ_URL
   if (rabbitmqUrl) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
@@ -20,7 +23,7 @@ async function bootstrap() {
       },
     })
   } else {
-    logger.warn('RABBITMQ_URI not set; RMQ consumer disabled')
+    logger.warn(`${inboxDisabled ? 'RABBITMQ_INBOX_ENABLED=false' : 'RABBITMQ_URI not set'}; RMQ consumer disabled`)
   }
 
   const port = process.env.PORT || 3007

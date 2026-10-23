@@ -12,7 +12,10 @@ async function bootstrap() {
     : ['http://localhost:3000'];
   app.enableCors({ origin: allowedOrigins, credentials: true });
 
-  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  // boot-all.js sets RABBITMQ_INBOX_ENABLED=false: nothing publishes to this
+  // queue, and the consumer would hold one of the broker's 40 connections.
+  const inboxDisabled = process.env.RABBITMQ_INBOX_ENABLED === 'false';
+  const rabbitmqUrl = inboxDisabled ? undefined : process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
   if (rabbitmqUrl) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
@@ -24,7 +27,7 @@ async function bootstrap() {
     });
   } else {
     const { Logger } = require('@nestjs/common');
-    new Logger('BillingService').warn('RABBITMQ_URI not set; RMQ consumer disabled');
+    new Logger('BillingService').warn(`${inboxDisabled ? 'RABBITMQ_INBOX_ENABLED=false' : 'RABBITMQ_URI not set'}; RMQ consumer disabled`);
   }
 
   const port = process.env.PORT || 3027;
