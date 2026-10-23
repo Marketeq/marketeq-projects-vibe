@@ -184,6 +184,84 @@ describe('FreeKycService', () => {
     return null;
   };
 
+  // ------------------------------------------------------- callback origin
+  // FRONTEND_URL on the shared backend lists every frontend (live, staging, dev, ...). Didit's
+  // callback must be the request's own origin, accepted only from that list.
+  describe('startOrResume — Didit callback origin (comma-separated FRONTEND_URL)', () => {
+    const LIVE = 'https://live-marketeq-projects.vercel.app';
+    const STAGING = 'https://staging-marketeq-projects.vercel.app';
+    const LIST = `${LIVE},${STAGING},https://dev-marketeq-projects.vercel.app,http://localhost:3000`;
+    beforeEach(() => {
+      process.env.FRONTEND_URL = LIST;
+    });
+    const callbackSent = (provider: { createKycSession: jest.Mock }) =>
+      (provider.createKycSession.mock.calls[0] as any[])[0].callbackUrl;
+
+    it('staging request: Didit returns the browser to staging, even though production is listed first', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', STAGING);
+      expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+      expect(callbackSent(provider)).toBe(`${STAGING}/talent-dashboard`);
+    });
+
+    it('production request: Didit returns the browser to production', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', LIVE);
+      expect(callbackSent(provider)).toBe(`${LIVE}/talent-dashboard`);
+    });
+
+    it('the callback is always a single URL, never the configured list', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', `${STAGING}/`);
+      const callback = callbackSent(provider);
+      expect(callback).not.toContain(',');
+      expect(() => new URL(callback)).not.toThrow();
+      expect(callback).toBe(`${STAGING}/talent-dashboard`);
+    });
+
+    it.each([
+      ['an origin that is not configured', 'https://evil.example'],
+      ['a look-alike of a configured origin', `${STAGING}.evil.com`],
+      ['a configured origin with a path', `${STAGING}/steal`],
+      ['the wrong scheme', 'http://staging-marketeq-projects.vercel.app'],
+      ['javascript:', 'javascript:alert(1)'],
+      ['the whole list', LIST],
+    ])('rejects %s before anything is created', async (_label, origin) => {
+      const { service, provider, sessionRepository, profile } = build();
+      const before = profile.identityVerificationStatus;
+      const outcome = await reasonOf(service.startOrResume('user-1', origin));
+      expect(outcome?.type).toBeInstanceOf(BadRequestException);
+      expect((outcome?.type as any).getResponse().code).toBe('INVALID_RETURN_ORIGIN');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+      expect(sessionRepository.save).not.toHaveBeenCalled();
+      expect(profile.identityVerificationStatus).toBe(before);
+    });
+
+    it('several origins configured and none sent: refuses (never falls back to the first one)', async () => {
+      const { service, provider, sessionRepository } = build();
+      const outcome = await reasonOf(service.startOrResume('user-1'));
+      expect(outcome?.type).toBeInstanceOf(BadRequestException);
+      expect((outcome?.type as any).getResponse().code).toBe('RETURN_ORIGIN_REQUIRED');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+      expect(sessionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('a single configured origin still works without one (local development)', async () => {
+      process.env.FRONTEND_URL = 'http://localhost:3000/';
+      const { service, provider } = build();
+      await service.startOrResume('user-1');
+      expect(callbackSent(provider)).toBe('http://localhost:3000/talent-dashboard');
+    });
+
+    it('a missing FRONTEND_URL is still reported as not configured, not as a bad request', async () => {
+      delete process.env.FRONTEND_URL;
+      const { service, provider } = build();
+      const outcome = await reasonOf(service.startOrResume('user-1', STAGING));
+      expect(outcome?.reason).toBe('free_kyc_not_configured');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+    });
+  });
+
   // ------------------------------------------------------------------ start
   describe('startOrResume — new session', () => {
     it('creates one hosted session: workflow from config, opaque vendor reference, callback to /talent-dashboard', async () => {
