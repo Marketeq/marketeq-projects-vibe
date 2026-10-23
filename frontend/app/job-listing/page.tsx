@@ -3495,7 +3495,7 @@ const scrollToPublishField = (targetId: string) => {
 };
 
 const DEFAULT_MEMBER_AVATAR_URL =
-  "https://images.unsplash.com/vector-1742875355318-00d715aec3e8?q=80&w=1480&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=NHwxMjA3fDA%3D";
+  "https://images.unsplash.com/vector-1742875355318-00d715aec3e8?q=80&w=1480&auto=format&fit=crop";
 const TITLE_MAX_LENGTH = 100;
 const SHORT_DESCRIPTION_MAX_LENGTH = 300;
 const FULL_DESCRIPTION_MAX_LENGTH = 5000;
@@ -4655,7 +4655,7 @@ const ProjectInfo = ({
                                     >
                                       {badge === "Service" ? (
                                         <span className="inline-flex items-center gap-x-1">
-                                          <RefreshCw className="size-[14px] shrink-0 text-primary-500" />
+                                          <RefreshCw className="size-3.5 shrink-0 text-primary-500" />
                                           <span>Service</span>
                                         </span>
                                       ) : (
@@ -4669,17 +4669,18 @@ const ProjectInfo = ({
 
                             <span className="hidden shrink-0 items-center md:flex">
                               <AvatarGroup
-                                className="!cursor-default"
+                                className="!cursor-default -space-x-1.5"
                                 size="xs"
                                 reverse={false}
                                 max={4}
                                 excess
+                                excessClassName="box-content"
                               >
                                 {option.avatars.map((avatar, avatarIndex) => (
                                   <Avatar
                                     key={`${option.id}-${avatarIndex}`}
                                     size="xs"
-                                    className="border-2 border-white hover:ring-0 active:ring-0"
+                                    className="box-content border-2 border-white hover:ring-0 active:ring-0"
                                   >
                                     <AvatarImage src={avatar} alt="" />
                                   </Avatar>
