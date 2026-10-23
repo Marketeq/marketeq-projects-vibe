@@ -1112,7 +1112,7 @@ export default function PaymentPage() {
       ? `${checkoutProjectTeamCount} team member${checkoutProjectTeamCount === 1 ? "" : "s"}`
       : "Team Details Unavailable"
   const checkoutProjectDateRange =
-    getDraftDateRangeLabel(checkoutSession?.durationDays ?? null) ||
+    getDraftDateRangeLabel(checkoutSession?.durationDays ?? null, true) ||
     "Timeline Unavailable"
   const checkoutProjectDuration =
     getDraftDurationLabel(checkoutSession?.durationDays ?? null) || "0 Weeks"

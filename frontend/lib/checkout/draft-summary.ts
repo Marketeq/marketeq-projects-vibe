@@ -37,6 +37,12 @@ const monthYearFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 })
 
+const shortMonthYearFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+})
+
 const getStatus = (error: unknown): number | undefined =>
   (error as { response?: { status?: number } })?.response?.status
 
@@ -73,10 +79,14 @@ export const getDraftDurationLabel = (days: number | null): string | null => {
   return `${weeks} Week${weeks !== 1 ? "s" : ""}`
 }
 
-export const getDraftDateRangeLabel = (days: number | null): string | null => {
+export const getDraftDateRangeLabel = (
+  days: number | null,
+  shortMonth = false
+): string | null => {
   if (!days || days <= 0) return null
   const start = new Date()
   const end = new Date(start)
   end.setUTCDate(end.getUTCDate() + workingDaysToCalendarDays(days))
-  return `${monthYearFormatter.format(start)} - ${monthYearFormatter.format(end)}`
+  const formatter = shortMonth ? shortMonthYearFormatter : monthYearFormatter
+  return `${formatter.format(start)} - ${formatter.format(end)}`
 }
