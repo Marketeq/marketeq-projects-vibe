@@ -7066,23 +7066,7 @@ export default function ProjectDetails({
                       </DialogClose>
                       <Button
                         onClick={() => {
-                          // PMCM-259/AC2: pass the buyer's selected Budget
-                          // Calculator period + the amount they saw for it
-                          // along to checkout (which had no existing
-                          // mechanism to receive this) — mirrors the
-                          // existing per-period cost lookup used for the
-                          // sidebar display above.
-                          const activePeriod =
-                            sidebarPricing?.periodOptions.find(
-                              (p) => p.value === selectedPeriod
-                            ) ?? sidebarPricing?.periodOptions[0]
-                          const amount =
-                            activePeriod?.cost ?? sidebarPricing?.totalCost
                           const qs = new URLSearchParams()
-                          qs.set("period", selectedPeriod)
-                          if (amount != null && amount > 0) {
-                            qs.set("periodAmount", String(Math.round(amount)))
-                          }
                           qs.set("listingId", String(project?.id ?? ""))
                           router.push(
                             `/checkout/project-details?${qs.toString()}`
