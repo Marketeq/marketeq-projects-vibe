@@ -416,7 +416,15 @@ function CheckoutPageInner() {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const slug = params.slug as string
+  // PMCM-402/D3: the non-talent flow has no [slug] route segment at all
+  // (app/checkout/project-details/page.tsx is a static path, confirmed no
+  // sibling [slug] folder under app/checkout/) — params.slug is always
+  // undefined there. Only the talent-checkout re-export
+  // (app/talent-checkout/[slug]/project-details/page.tsx) has a real
+  // dynamic segment. The project/listing flow identifies the listing via
+  // the ?listingId= query param instead (what job-details/[slug]/page.tsx
+  // and project-details/[slug]/page.tsx's Continue to Checkout both send).
+  const slug = (params.slug as string) || searchParams.get("listingId") || ""
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)

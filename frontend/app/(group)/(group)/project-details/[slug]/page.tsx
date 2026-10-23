@@ -2093,6 +2093,16 @@ export default function ProjectDetails({
   const [lightboxOpen, setLightboxOpen] = React.useState(false)
   const [selectedMediaIndex, setSelectedMediaIndex] = React.useState(0)
   const toggleShareWindow = useShareWindowStore((s) => s.toggle)
+  // PMCM-402/D2: single shared handler for every Share entry point on this
+  // page, so they can't drift out of sync — gated behind sign-in like Save,
+  // resumes automatically post-login via the same promptSignIn queue.
+  const handleShareClick = () => {
+    if (!user?.id) {
+      promptSignIn(() => toggleShareWindow(true, project.title))
+      return
+    }
+    toggleShareWindow(true, project.title)
+  }
   const toggleReportWindow = useReportWindowStore((s) => s.toggle)
   const { isOnline } = useOnlineUsers()
 
@@ -2281,6 +2291,11 @@ export default function ProjectDetails({
   // toggles again before the first request settles — only the latest
   // request's outcome is allowed to revert/toast.
   const favoriteRequestIdRef = React.useRef(0)
+  // PMCM-402/D1: a toggle in flight owns `isFavorited` until it settles —
+  // the separate login-triggered re-sync effect below must defer to it
+  // instead of overwriting it with pre-write server state (see that
+  // effect's comment for the exact race this prevents).
+  const favoriteToggleInFlightRef = React.useRef(false)
   // PMCM-258/AC5: default is "biweekly" per spec; the stored
   // project.pricingPeriod (the seller's choice) wins when present and still
   // valid for this listing's duration. The toggle itself stays local/
@@ -2395,7 +2410,18 @@ export default function ProjectDetails({
       setIsFavorited(false)
       return
     }
+    // PMCM-402/D1: this effect and the resume-queue effect (~1998) both
+    // depend on user?.id and both fire on the same post-login render. The
+    // resume effect runs first (declared earlier) and, when the queued
+    // action is a Save, starts an addFavorite() write — but this GET below
+    // reads favorite status from BEFORE that write lands. Applying its
+    // result unconditionally raced the optimistic setIsFavorited(true) and
+    // usually won (the GET has nothing to wait on), silently reverting the
+    // star and making Save look like it needs a second click. A toggle in
+    // flight now owns the state; this effect defers to it instead.
+    if (favoriteToggleInFlightRef.current) return
     findFavoriteByItemId(String(project.id)).then((fav) => {
+      if (favoriteToggleInFlightRef.current) return
       setIsFavorited(!!fav)
     })
   }, [project?.id, user?.id])
@@ -2413,6 +2439,7 @@ export default function ProjectDetails({
     const previous = isFavorited
     setIsFavorited(pressed)
     const requestId = ++favoriteRequestIdRef.current
+    favoriteToggleInFlightRef.current = true
     const itemId = String(project.id)
     const type = project.listingType === "service" ? "service" : "project"
     let succeeded = false
@@ -2425,6 +2452,13 @@ export default function ProjectDetails({
       }
     } catch {
       succeeded = false
+    } finally {
+      // Only the latest toggle clears the flag — an older, already-
+      // superseded request finishing late must not let the sync effect
+      // start overwriting state a newer toggle still owns.
+      if (favoriteRequestIdRef.current === requestId) {
+        favoriteToggleInFlightRef.current = false
+      }
     }
     // A later toggle has already superseded this request — its own
     // result (not this stale one) owns the UI state, so do nothing.
@@ -3553,16 +3587,7 @@ export default function ProjectDetails({
                           variant="outlined"
                           visual="gray"
                           size="md"
-                          onClick={() => {
-                            if (!user?.id) {
-                              // PMCM-402/AC2-AC3: Share is gated behind
-                              // sign-in like Save, and resumes automatically
-                              // post-login via the same promptSignIn queue.
-                              promptSignIn(() => toggleShareWindow(true, project.title))
-                              return
-                            }
-                            toggleShareWindow(true, project.title)
-                          }}
+                          onClick={handleShareClick}
                         >
                           <Share className="size-[20px]" />
                         </IconButton>
@@ -7192,6 +7217,13 @@ export default function ProjectDetails({
                           // mechanism to receive this) — mirrors the
                           // existing per-period cost lookup used for the
                           // sidebar display above.
+                          // PMCM-402/D3: PMCM-216's checkout rework replaced
+                          // the old dynamic /checkout/[slug] route with the
+                          // static /checkout/project-details?listingId=<slug>
+                          // (confirmed: no [slug] folder remains under
+                          // app/checkout/ at all — the old route 404s).
+                          // Matches job-details/[slug]/page.tsx's existing
+                          // link to the same route.
                           const activePeriod =
                             sidebarPricing?.periodOptions.find(
                               (p) => p.value === selectedPeriod
@@ -7199,12 +7231,13 @@ export default function ProjectDetails({
                           const amount =
                             activePeriod?.cost ?? sidebarPricing?.totalCost
                           const qs = new URLSearchParams()
+                          qs.set("listingId", String(params.slug))
                           qs.set("period", selectedPeriod)
                           if (amount != null && amount > 0) {
                             qs.set("periodAmount", String(Math.round(amount)))
                           }
                           router.push(
-                            `/checkout/${params.slug}?${qs.toString()}`
+                            `/checkout/project-details?${qs.toString()}`
                           )
                         }}
                       >
@@ -7231,7 +7264,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => toggleShareWindow(true, project.title)}
+                    onClick={handleShareClick}
                   >
                     <Share06 className="size-5" />
                   </IconButton>
@@ -7256,7 +7289,7 @@ export default function ProjectDetails({
                     size="lg"
                     variant="outlined"
                     visual="gray"
-                    onClick={() => toggleShareWindow(true, project.title)}
+                    onClick={handleShareClick}
                   >
                     <Share06 className="size-5" />
                   </IconButton>
@@ -7328,7 +7361,7 @@ export default function ProjectDetails({
               {project.shareButtonEnabled !== false && (
                 <div
                   className="inline-flex items-center gap-x-2 cursor-pointer"
-                  onClick={() => toggleShareWindow(true, project.title)}
+                  onClick={handleShareClick}
                 >
                   <Share06 className="size-[15px] text-gray-500" />
                   <span className="text-sm font-extralight leading-5 text-gray-500 hover:underline cursor-pointer">
