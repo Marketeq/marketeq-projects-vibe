@@ -110,6 +110,9 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
   let lastSyncAt: number | null = null;
   let lastError: string | null = null;
   let shutdownPromise: Promise<void> | null = null;
+  // Set by stop() once the final-drain grace period is over: a drain still
+  // running finishes the row it is on but claims no new batch.
+  let stopping = false;
 
   // Doc 16 §4: flush only when the probe says Online. 'Degraded' (one or two
   // failed probes) still reports online=true, and draining then is what used
@@ -256,6 +259,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
           log?.info('network dropped mid-drain — pausing');
           break;
         }
+        if (stopping) break;
         const batch = deps.outbox.claimNext(batchSize);
         if (batch.length === 0) break;
         let gateHeld = false;
@@ -344,6 +348,7 @@ export function createSyncWorker(deps: SyncWorkerDeps) {
           log?.warn({ err }, 'final drain errored');
         }
       }
+      stopping = true;
       log?.info('sync-worker stopped');
     })();
     return shutdownPromise;

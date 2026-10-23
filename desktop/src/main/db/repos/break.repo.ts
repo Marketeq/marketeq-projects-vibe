@@ -34,6 +34,14 @@ export function createBreakRepo(db: DbHandle) {
         id,
       ]);
     },
+    /** Crash recovery: end any break the crash left open, at the crash point (doc 05 CRASH.03). */
+    closeOpenForSession(sessionId: string, endedAt: number): void {
+      run(
+        db,
+        `UPDATE break_event SET ended_at = MAX(started_at, ?) WHERE session_id = ? AND ended_at IS NULL`,
+        [endedAt, sessionId],
+      );
+    },
   };
 }
 export type BreakRepo = ReturnType<typeof createBreakRepo>;

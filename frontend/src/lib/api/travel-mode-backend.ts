@@ -5,8 +5,8 @@
 // Backend value names are the exact enum values identity-verification-service
 // accepts (TravelClassification / DeclaredDuration).
 //
-// Failures are logged and never block the UI — the screens behave exactly as
-// they did before this persistence existed.
+// A failed classification is logged and never blocks the UI. A failed duration save is
+// reported to the caller (see recordTravelDuration), which keeps the screen open.
 
 export type TravelClassificationValue =
   | "temporarily_traveling"
@@ -42,20 +42,22 @@ export async function recordTravelClassification(
   }
 }
 
-// `pendingClassification` is the still-running classification request from
-// the earlier click, so duration is never sent before it. "Skip" (no
-// duration chosen) is recorded as the screen's own "Not sure" option.
+// Saves the whole Travel Mode activation: the backend sets the classification and the
+// duration in ONE atomic write, so nothing is saved before this call and nothing is
+// half-saved if it fails. Resolves true only when the backend accepted it; a failure is
+// logged and resolves false so the caller can keep its screen open. "Skip" (no duration
+// chosen) is recorded as the screen's own "Not sure" option.
 export async function recordTravelDuration(
   deps: TravelModeDeps,
-  duration: string | null,
-  pendingClassification?: Promise<void>
-): Promise<void> {
+  duration: string | null
+): Promise<boolean> {
   try {
-    await pendingClassification
     await deps.recordTravelDuration(
       (duration && TRAVEL_DURATION_TO_BACKEND[duration]) || "not_sure"
     )
+    return true
   } catch (error) {
     console.error("[identity-verification] travel duration failed", error)
+    return false
   }
 }

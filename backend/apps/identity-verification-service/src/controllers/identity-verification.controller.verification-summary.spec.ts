@@ -85,7 +85,7 @@ describe('ProfileStatusResponseDto (backward-compatible summary)', () => {
 
 describe('GET /v1/identity-verification/me (HTTP)', () => {
   let app: INestApplication;
-  const ivs = { getOrCreateProfile: jest.fn(), getVerificationSummary: jest.fn(), getLocationMismatch: jest.fn(), getLoginReminderAt: jest.fn() };
+  const ivs = { getOrCreateProfile: jest.fn(), getVerificationSummary: jest.fn(), getLocationMismatch: jest.fn(), getTravelModeLocationMismatch: jest.fn(), getLoginReminderAt: jest.fn() };
 
   beforeEach(async () => {
     ivs.getOrCreateProfile.mockReset().mockResolvedValue(profile({ identityVerificationStatus: I.FAILED, locationVerificationStatus: L.VERIFIED }));
@@ -93,6 +93,7 @@ describe('GET /v1/identity-verification/me (HTTP)', () => {
       buildVerificationSummary(summaryInput({ identityStatus: I.FAILED, hostedCycleAttempts: 2 })),
     );
     ivs.getLocationMismatch.mockReset().mockResolvedValue(false);
+    ivs.getTravelModeLocationMismatch.mockReset().mockResolvedValue(false);
     ivs.getLoginReminderAt.mockReset().mockResolvedValue(null);
     const moduleRef = await Test.createTestingModule({
       controllers: [IdentityVerificationController],

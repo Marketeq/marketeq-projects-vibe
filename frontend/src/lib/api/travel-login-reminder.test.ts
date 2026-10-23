@@ -172,11 +172,14 @@ describe("the client never touches the token's session or authentication time", 
     }
   })
 
-  it("the dashboard page only passes the backend's two reminder fields to the scheduler", () => {
+  it("the dashboard page hands the whole /me summary to the check-in helpers and never reads the token", () => {
     const page = read("app", "(group)", "talent-dashboard", "page.tsx")
-    assert.ok(page.includes("due: travelSummary.travelReminderDue"))
-    assert.ok(page.includes("availableAt: travelSummary.travelReminderAvailableAt"))
+    // travelReminderDue / travelReminderAvailableAt are read inside travel-check-in.ts only.
+    assert.ok(page.includes("timer.update(travelSummary)"))
+    assert.ok(page.includes("checkInHasPriority(\n    travelSummary,"))
     assert.ok(!/auth_time|authTime/.test(page))
+    const lib = read("src", "lib", "api", "travel-check-in.ts")
+    assert.ok(!/auth_time|authTime|access_token|refresh_token|document\.cookie/.test(lib))
   })
 
   it("the claim request still carries no body, query, id or timestamp", () => {

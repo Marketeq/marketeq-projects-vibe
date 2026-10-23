@@ -111,7 +111,9 @@ function describeError(err: unknown): string {
   try {
     // JSON.stringify returns undefined for undefined/function inputs, and
     // throws on circular ones — both fall back to String().
-    return JSON.stringify(err) ?? String(err);
+    // A broker connect failure serializes as { err, url }, and a hosted broker's
+    // URL carries its password: drop the credentials before this reaches a log.
+    return (JSON.stringify(err) ?? String(err)).replace(/(amqps?:\/\/)[^@\s"/]+@/gi, '$1');
   } catch {
     return String(err);
   }

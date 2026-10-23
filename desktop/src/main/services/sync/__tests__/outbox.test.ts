@@ -327,4 +327,30 @@ describe('outbox', () => {
       expect(outbox.findById(http.id)!.status).toBe('dead_letter');
     });
   });
+
+  it('recoverInflight returns rows a previous run left inflight to pending', () => {
+    const a = outbox.enqueue({ kind: 'session.start', method: 'POST', path: '/a', payload: {} });
+    const b = outbox.enqueue({ kind: 'session.start', method: 'POST', path: '/b', payload: {} });
+    const c = outbox.enqueue({ kind: 'session.start', method: 'POST', path: '/c', payload: {} });
+    const d = outbox.enqueue({ kind: 'session.start', method: 'POST', path: '/d', payload: {} });
+    outbox.claimNext(4);
+    outbox.markDone(c.id);
+    outbox.markFailed(d.id, 'HTTP 400', { retryable: false });
+    // a and b are still inflight, as if the app quit mid-request.
+    expect(outbox.stats().inflight).toBe(2);
+
+    expect(outbox.recoverInflight()).toBe(2);
+
+    expect(store.findById(a.id)!.status).toBe('pending');
+    expect(store.findById(b.id)!.status).toBe('pending');
+    expect(store.findById(c.id)!.status).toBe('completed');
+    expect(store.findById(d.id)!.status).toBe('dead_letter');
+    expect(outbox.claimNext(10).map((r) => r.id)).toEqual([a.id, b.id]);
+  });
+
+  it('recoverInflight is a no-op when nothing is inflight', () => {
+    outbox.enqueue({ kind: 'session.start', method: 'POST', path: '/a', payload: {} });
+    expect(outbox.recoverInflight()).toBe(0);
+    expect(outbox.stats().pending).toBe(1);
+  });
 });

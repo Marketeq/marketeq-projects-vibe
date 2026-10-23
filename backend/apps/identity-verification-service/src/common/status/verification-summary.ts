@@ -84,6 +84,12 @@ export interface VerificationSummaryInput {
   // in force (see common/travel-mode/travel-mode-state.ts). Absent means null.
   travelModeActivatedAt?: unknown;
   declaredDuration?: unknown;
+  // A home-country change in flight (see common/home-country-change): the country
+  // being claimed and when the user confirmed it. While one is pending, the start
+  // rules (and so nextAction) use ITS confirmation time instead of the verified
+  // country's. Absent or null for every account without a pending claim.
+  pendingHomeCountry?: string | null;
+  pendingHomeCountryConfirmedAt?: unknown;
   nowMs: number;
 }
 
@@ -97,9 +103,15 @@ export interface VerificationSummaryInput {
 export function newSessionRequirementsMet(input: VerificationSummaryInput): boolean {
   if (input.locationStatus !== LocationVerificationStatus.VERIFIED) return false;
   if (!input.verifiedHomeCountry) return false;
-  const confirmedAt = input.verifiedHomeCountryConfirmedAt;
+  // A pending home-country change is started with ITS confirmation (the 15-minute
+  // rule applies to the country being claimed, not to the verified one).
+  const confirmedAt = input.pendingHomeCountry
+    ? input.pendingHomeCountryConfirmedAt
+    : input.verifiedHomeCountryConfirmedAt;
   if (!(confirmedAt instanceof Date) || !Number.isFinite(confirmedAt.getTime())) return false;
-  if (travelModeBlocksNewSession(input, input.nowMs)) return false;
+  // Travel Mode does not stand in the way of the claim itself: the account keeps it
+  // through the whole re-verification and only an approval ends it.
+  if (!input.pendingHomeCountry && travelModeBlocksNewSession(input, input.nowMs)) return false;
   return input.nowMs - confirmedAt.getTime() <= HOME_COUNTRY_CONFIRMATION_WINDOW_MS;
 }
 
@@ -139,9 +151,12 @@ function nextActionFor(
   input: VerificationSummaryInput,
   state: { fullyVerified: boolean; coolingDown: boolean; cooldownElapsed: boolean },
 ): NextAction {
-  if (state.fullyVerified) return 'complete';
+  // A verified account with a home-country change pending is not done: it still has
+  // to re-verify, so it continues below like any account that needs a new session.
+  const changePending = state.fullyVerified && !!input.pendingHomeCountry;
+  if (state.fullyVerified && !changePending) return 'complete';
   // Identity is done but location is not: only the location needs confirming.
-  if (input.identityStatus === IdentityVerificationStatus.VERIFIED) return 'confirm_location';
+  if (input.identityStatus === IdentityVerificationStatus.VERIFIED && !changePending) return 'confirm_location';
   if (state.coolingDown) return 'wait_for_retry';
   switch (input.identityStatus) {
     case IdentityVerificationStatus.BLOCKED_DUPLICATE:

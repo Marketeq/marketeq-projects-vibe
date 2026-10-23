@@ -61,6 +61,10 @@ export const IPC = {
   timerBreakEnd: 'timer:break-end',
   timerGetState: 'timer:get-state',
   idleResolve: 'idle:resolve',
+  // Crash recovery prompt (DTT-US-131/132/133)
+  crashRecoveryGet: 'crash-recovery:get',
+  crashRecoveryRecover: 'crash-recovery:recover',
+  crashRecoveryDiscard: 'crash-recovery:discard',
 
   // --- Phase 2 timer broadcast events (main → renderer) ---
   timerStateChanged: 'timer:state-changed',
@@ -286,6 +290,17 @@ export interface TimerBreakStartArgs {
 
 export interface IdleResolveArgs {
   resolution: IdleResolution;
+}
+
+/** An unfinished session from an unclean shutdown, awaiting Recover / Discard. */
+export interface CrashRecoveryDTO {
+  sessionId: string;
+  taskName: string | null;
+  contractName: string | null;
+  /** Tracked seconds at the last checkpoint. */
+  elapsedSec: number;
+  /** False when the contract is no longer active — only Discard is offered. */
+  canRecover: boolean;
 }
 
 export interface TimerTickPayload {

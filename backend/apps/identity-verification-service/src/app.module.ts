@@ -53,6 +53,11 @@ import { DiditStandaloneIdVerificationProvider } from './providers/document-veri
 import { HOSTED_BIOMETRIC_SESSION_PROVIDER } from './providers/biometric-session/hosted-biometric-session-provider.interface';
 import { DiditHostedBiometricSessionProvider } from './providers/biometric-session/didit-hosted-biometric-session.provider';
 import { NOTIFICATION_EVENT_PUBLISHER } from './events/notification-event-publisher.interface';
+import {
+  HomeCountryUpdatedNotificationPublisher,
+  NOTIFICATIONS_CLIENT,
+  NOTIFICATION_SERVICE_QUEUE,
+} from './events/home-country-updated-notification.publisher';
 import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notification-event-publisher';
 import { MetricsModule } from './metrics/metrics.module';
 import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
@@ -99,6 +104,18 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
         options: {
           urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
           queue: PAYOUT_GATE_QUEUE,
+          queueOptions: { durable: true },
+        },
+      },
+      // PMCM-650: tells the account holder an approved home-country change was applied.
+      // notification-service's own durable queue; fire-and-forget (the same pattern as the
+      // gate clients above and payout-service's notification publisher).
+      {
+        name: NOTIFICATIONS_CLIENT,
+        transport: Transport.RMQ,
+        options: {
+          urls: [process.env.RABBITMQ_URI || process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          queue: NOTIFICATION_SERVICE_QUEUE,
           queueOptions: { durable: true },
         },
       },
@@ -152,6 +169,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     { provide: STANDALONE_ID_VERIFICATION_PROVIDER, useClass: DiditStandaloneIdVerificationProvider },
     { provide: HOSTED_BIOMETRIC_SESSION_PROVIDER, useClass: DiditHostedBiometricSessionProvider },
     { provide: NOTIFICATION_EVENT_PUBLISHER, useClass: RabbitMqNotificationEventPublisher },
+    HomeCountryUpdatedNotificationPublisher,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })

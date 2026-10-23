@@ -4,7 +4,7 @@
 // it is back — never dropped. Uses the in-memory outbox and a fake network /
 // api so no Electron, axios network or SQLite is involved.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { AxiosError } from 'axios';
 import {
@@ -461,5 +461,108 @@ describe('sync-worker - G8 closed gate (403 VERIFICATION_REQUIRED)', () => {
     expect(isVerificationRequired({ error: 'IDENTITY_VERIFICATION_UNAVAILABLE' })).toBe(false);
     expect(isVerificationRequired(undefined)).toBe(false);
     expect(isVerificationRequired('VERIFICATION_REQUIRED_NOT')).toBe(false);
+  });
+});
+
+// Quit against a hung backend (DTT-US-210): stop() must return within its
+// grace period, and a row whose request is then cancelled must stay queued
+// (pending) for the next launch.
+describe('sync-worker - quit against a hung backend', () => {
+  // An api whose requests hang until close() aborts them, like a hung backend.
+  function makeHangingApi() {
+    const controller = new AbortController();
+    const raw = vi.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          controller.signal.addEventListener('abort', () => reject(new Error('canceled')));
+        }),
+    );
+    return { api: { raw } as unknown as ApiClient, raw, close: () => controller.abort() };
+  }
+
+  function enqueueRows(outbox: ReturnType<typeof createOutbox>, n: number): string[] {
+    const ids: string[] = [];
+    for (let i = 0; i < n; i++) {
+      ids.push(outbox.enqueue({ kind: 'session.start', method: 'POST', path: `/r${i}`, payload: {} }).id);
+    }
+    return ids;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('stop() gives up on a hung final send after its 2 s grace period', async () => {
+    vi.useFakeTimers();
+    const outbox = createOutbox({ store: createInMemoryOutboxStore() });
+    enqueueRows(outbox, 1);
+    const hung = makeHangingApi();
+    const worker = createSyncWorker({
+      api: hung.api,
+      outbox,
+      network: makeNetwork('Online') as unknown as NetworkMonitor,
+    });
+
+    // Not started, so the request in flight is stop()'s own final send.
+    let stopped = false;
+    void worker.stop().then(() => {
+      stopped = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(stopped).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(stopped).toBe(true);
+    hung.close();
+  });
+
+  it('a request cancelled at quit leaves its row pending, and later rows untouched', async () => {
+    vi.useFakeTimers();
+    const store = createInMemoryOutboxStore();
+    const outbox = createOutbox({ store });
+    const ids = enqueueRows(outbox, 3);
+    const hung = makeHangingApi();
+    const worker = createSyncWorker({
+      api: hung.api,
+      outbox,
+      network: makeNetwork('Online') as unknown as NetworkMonitor,
+      batchSize: 1,
+    });
+
+    worker.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hung.raw).toHaveBeenCalledTimes(1);
+
+    const stopping = worker.stop();
+    await vi.advanceTimersByTimeAsync(2_000);
+    await stopping;
+
+    // What index.ts does when the quit deadline passes.
+    hung.close();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The cancelled request is back in the queue, and no new batch was
+    // claimed after stop(), so nothing else was sent or left inflight.
+    expect(hung.raw).toHaveBeenCalledTimes(1);
+    for (const id of ids) expect(store.findById(id)!.status).toBe('pending');
+    expect(outbox.stats().inflight).toBe(0);
+  });
+
+  it('still makes its final send on stop() when the backend answers', async () => {
+    const store = createInMemoryOutboxStore();
+    const outbox = createOutbox({ store });
+    const ids = enqueueRows(outbox, 2);
+    const raw = vi.fn().mockResolvedValue({ status: 200, data: {} });
+    const worker = createSyncWorker({
+      api: { raw } as unknown as ApiClient,
+      outbox,
+      network: makeNetwork('Online') as unknown as NetworkMonitor,
+    });
+
+    // Not started, so stop()'s final drain is the only send.
+    await worker.stop();
+
+    expect(raw).toHaveBeenCalledTimes(2);
+    for (const id of ids) expect(store.findById(id)!.status).toBe('completed');
   });
 });

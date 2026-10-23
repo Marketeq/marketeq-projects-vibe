@@ -2,10 +2,11 @@ import { IsNull } from 'typeorm';
 import { IdentityVerificationService } from './identity-verification.service';
 import {
   DeclaredDuration,
+  IdentityVerificationStatus,
   TravelClassification,
 } from '../entities/enums/identity-verification.enums';
 import {
-  ClassificationRequiredException,
+  HomeCountryChangeInProgressException,
   TravelModeAlreadyActiveException,
 } from '../common/errors/domain-exceptions';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
@@ -111,11 +112,15 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       expect(update).toHaveBeenCalledWith(
         { id: 'p1', travelModeActive: false, travelModeActivatedAt: IsNull(), declaredDuration: IsNull() },
         {
+          // The classification is saved in this same write as the activation.
+          travelClassification: TRAVELING,
           declaredDuration: DeclaredDuration.A_FEW_DAYS,
           travelModeActive: true,
           travelModeActivatedAt: new Date(NOW),
           lastTravelReminderSentAt: null,
           nextTravelReminderAt: new Date(NOW + 3 * DAY_MS),
+          // A new activation is a new cycle: its first check-in is unanswered.
+          travelCheckInCount: 0,
         },
       );
       expect(saved).toMatchObject({ id: 'p1', travelModeActive: true, declaredDuration: DeclaredDuration.A_FEW_DAYS, travelClassification: TRAVELING });
@@ -237,18 +242,18 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       expect(events.publish).not.toHaveBeenCalled();
     });
 
-    it('a lost expiry compare-and-set that reloads a cleared profile still requires a classification', async () => {
+    it('a lost expiry compare-and-set that reloads a cleared profile still activates, saving the classification with it', async () => {
       build(inForce(NOW - 13 * DAY_MS));
       update.mockImplementationOnce(async () => {
         Object.assign(row!, pending({ travelClassification: null }));
         return { affected: 0 };
       });
 
-      const error = await reject(service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS));
+      const saved = await service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS);
 
-      expect(error).toBeInstanceOf(ClassificationRequiredException);
-      expect(update).toHaveBeenCalledTimes(1);
-      expect(events.publish).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledTimes(2);
+      expect(saved).toMatchObject({ travelModeActive: true, travelClassification: TRAVELING });
+      expect(row).toMatchObject({ travelModeActive: true, travelClassification: TRAVELING, declaredDuration: DeclaredDuration.A_FEW_DAYS });
     });
   });
 
@@ -341,18 +346,96 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
     });
   });
 
-  describe('the classification requirement keeps its precedence', () => {
-    it.each([
-      ['no profile data', pending({ travelClassification: null })],
-      ['an active Travel Mode with another classification', inForce(NOW - DAY_MS, { travelClassification: TravelClassification.PERMANENTLY_RELOCATED })],
-      ['invalid active data with no classification', inForce(NOW - DAY_MS, { travelClassification: null, declaredDuration: null })],
-    ])('%s: CLASSIFICATION_REQUIRED, nothing written', async (_label, initial) => {
-      build(initial);
+  describe('the duration save carries the classification (nothing is saved before it)', () => {
+    it('an account with no classification at all activates in ONE write that sets it', async () => {
+      build(pending({ travelClassification: null }));
+
+      const saved = await service.recordTravelDuration('u1', DeclaredDuration.ONE_TO_TWO_WEEKS);
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][1]).toMatchObject({ travelClassification: TRAVELING, travelModeActive: true, declaredDuration: DeclaredDuration.ONE_TO_TWO_WEEKS });
+      expect(saved).toMatchObject({ travelClassification: TRAVELING, travelModeActive: true });
+    });
+
+    it('a stranded row (classified, no duration) activates exactly like a fresh account', async () => {
+      build(pending());
+
+      await service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS);
+
+      expect(row).toMatchObject({ travelClassification: TRAVELING, travelModeActive: true });
+    });
+
+    it('an active Travel Mode with another classification is not changed: already active, nothing written', async () => {
+      build(inForce(NOW - DAY_MS, { travelClassification: TravelClassification.PERMANENTLY_RELOCATED }));
 
       const error = await reject(service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS));
 
-      expect(error).toBeInstanceOf(ClassificationRequiredException);
+      expect(error).toBeInstanceOf(TravelModeAlreadyActiveException);
       expect(update).not.toHaveBeenCalled();
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('invalid active data with no classification fails closed: no activation', async () => {
+      build(inForce(NOW - DAY_MS, { travelClassification: null, declaredDuration: null }));
+
+      const error = await reject(service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS));
+
+      expect(error).toBeInstanceOf(TravelModeAlreadyActiveException);
+      expect(row!.declaredDuration).toBeNull();
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('a home-country change is not talked over', () => {
+    const claim = (over: Row = {}): Row =>
+      pending({
+        travelClassification: null,
+        verifiedHomeCountry: 'US',
+        pendingHomeCountry: 'CA',
+        pendingHomeCountryConfirmedAt: new Date(NOW - 60_000),
+        pendingRelocationSessionId: 'session-row-1',
+        identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+        locationVerificationStatus: 'verified',
+        ...over,
+      });
+
+    it.each([
+      ['running', IdentityVerificationStatus.IN_PROGRESS],
+      ['in review', IdentityVerificationStatus.PENDING],
+    ])('a claim whose Didit session is %s refuses the duration: nothing written, claim intact', async (_label, status) => {
+      build(claim({ identityVerificationStatus: status }));
+
+      const error = await reject(service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS));
+
+      expect(error).toBeInstanceOf(HomeCountryChangeInProgressException);
+      expect(update).not.toHaveBeenCalled();
+      expect(row).toMatchObject({ pendingHomeCountry: 'CA', pendingRelocationSessionId: 'session-row-1', travelModeActive: false });
+      expect(events.publish).not.toHaveBeenCalled();
+    });
+
+    it('an abandoned claim (no unfinished session) is withdrawn in the same write that activates Travel Mode', async () => {
+      build(claim());
+
+      const saved = await service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS);
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][1]).toMatchObject({
+        travelClassification: TRAVELING,
+        travelModeActive: true,
+        pendingHomeCountry: null,
+        pendingHomeCountryConfirmedAt: null,
+        pendingRelocationSessionId: null,
+      });
+      expect(saved).toMatchObject({ travelModeActive: true, pendingHomeCountry: null, verifiedHomeCountry: 'US' });
+    });
+
+    it('a relocation session that starts between the check and the write loses: nothing is activated', async () => {
+      build(claim());
+      update.mockImplementationOnce(async () => ({ affected: 0 }));
+
+      const error = await reject(service.recordTravelDuration('u1', DeclaredDuration.A_FEW_DAYS));
+
+      expect(error).toBeInstanceOf(HomeCountryChangeInProgressException);
       expect(events.publish).not.toHaveBeenCalled();
     });
   });

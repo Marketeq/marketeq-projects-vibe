@@ -91,6 +91,8 @@ export const TimeEntryRow = z.object({
   ended_at: Millis.nullable(),
   duration_seconds: z.number().int().nonnegative(),
   synced_at: Millis.nullable(),
+  /** 'recovered' = the pre-crash slice of a session the user chose to Recover (migration 008). */
+  source: z.enum(['live', 'manual', 'recovered']).optional(),
 });
 export type TimeEntryRow = z.infer<typeof TimeEntryRow>;
 

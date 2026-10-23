@@ -65,7 +65,7 @@ describe('VerificationSummaryService (hosted Free KYC data only, read-only)', ()
     it('active Travel Mode asks for confirm_location, then is startable exactly at the end', async () => {
       const { service } = build();
       const activated = NOW - DAY;
-      const endsAt = activated + 6 * DAY;
+      const endsAt = activated + 7 * DAY;
       expect((await service.summarize(travelling(activated), endsAt - 1)).nextAction).toBe('confirm_location');
       expect((await service.summarize(travelling(activated, { verifiedHomeCountryConfirmedAt: new Date(endsAt - 60_000) }), endsAt)).nextAction).toBe('start_identity');
     });

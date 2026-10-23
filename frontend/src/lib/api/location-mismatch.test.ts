@@ -37,14 +37,14 @@ const LOCATION: DetectedLocation = {
   serviceUnavailable: false,
 }
 
-const deps = (failRecord = false) => {
+const deps = (failLocation = false) => {
   const calls: string[] = []
   const d: MismatchDeps = {
-    recordTravelClassification: async (c) => {
-      calls.push(c)
-      if (failRecord) throw new Error("offline")
+    getDetectedLocation: async () => {
+      calls.push("detected-location")
+      if (failLocation) throw new Error("offline")
+      return LOCATION
     },
-    getDetectedLocation: async () => LOCATION,
   }
   return { d, calls }
 }
@@ -132,48 +132,38 @@ describe("when the prompt shows", () => {
   })
 })
 
-describe("I’m currently traveling", () => {
-  it("records Temporarily traveling, then opens the existing duration screen", async () => {
+describe("I’m still traveling (returning user, no Travel Mode in force)", () => {
+  it("opens the existing duration screen and saves NOTHING (only the display lookup runs)", async () => {
     const { d, calls } = deps()
     const launch = await startStillTraveling(d)
-    assert.deepEqual(calls, ["temporarily_traveling"])
+    assert.deepEqual(calls, ["detected-location"])
     assert.equal(launch.initialState, "traveling-showcase")
     assert.equal(launch.location, LOCATION)
   })
 
-  it("falls back to the screen that records it itself when recording fails", async () => {
-    const { d, calls } = deps(true)
-    const launch = await startStillTraveling(d)
-    assert.deepEqual(calls, ["temporarily_traveling"])
-    assert.equal(launch.initialState, "current-location-showcase")
+  it("a failed lookup rejects, so the page keeps the prompt open to try again", async () => {
+    const { d } = deps(true)
+    await assert.rejects(startStillTraveling(d))
   })
 })
 
 describe("Change my home country", () => {
-  it("records Permanently relocated and opens the existing flow from the top", async () => {
+  it("opens the existing flow from the top and saves NOTHING", async () => {
     const { d, calls } = deps()
     const launch = await startChangeHomeCountry(d)
-    assert.deepEqual(calls, ["permanently_relocated"])
+    assert.deepEqual(calls, ["detected-location"])
     assert.equal(launch.initialState, undefined)
     assert.equal(launch.location, LOCATION)
   })
 
-  it("still opens the flow when recording fails (its own confirmation is the real work)", async () => {
+  it("a failed lookup rejects, so the page keeps the prompt open to try again", async () => {
     const { d } = deps(true)
-    const original = console.error
-    console.error = () => {}
-    try {
-      const launch = await startChangeHomeCountry(d)
-      assert.equal(launch.initialState, undefined)
-      assert.equal(launch.location, LOCATION)
-    } finally {
-      console.error = original
-    }
+    await assert.rejects(startChangeHomeCountry(d))
   })
 })
 
 describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
-  const start = page.indexOf("open={locationMismatchOpen}")
+  const start = page.indexOf("open={locationMismatchOpen || travelerPromptOpen}")
   const dialog = page.slice(
     page.lastIndexOf("<Dialog", start),
     page.indexOf("</Dialog>", start)
@@ -188,7 +178,7 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
     assert.ok(dialog.includes("checking if you’re still away."))
     assert.match(
       dialog,
-      /onClick=\{\(\) => void handleStillTraveling\(\)\}[\s\S]*I’m currently traveling/
+      /void handleStillTraveling\(\)[\s\S]*I’m still traveling/
     )
     assert.match(
       dialog,
@@ -216,10 +206,15 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
       )
     )
     assert.ok(page.includes("setDetectedLocation(launch.location)"))
-    assert.ok(
-      !helper.includes("useBrowserLocation"),
-      "no browser location permission is requested"
+    // Only "Change my home country" asks for the browser position (an explicit click, the
+    // same load as Verify My Account); "still traveling" shows no location and asks nothing.
+    const stillTraveling = helper.slice(
+      helper.indexOf("export async function startStillTraveling"),
+      helper.indexOf("export async function startChangeHomeCountry")
     )
+    const changeCountry = helper.slice(helper.indexOf("export async function startChangeHomeCountry"))
+    assert.ok(!stillTraveling.includes("useBrowserLocation"))
+    assert.ok(changeCountry.includes("useBrowserLocation: true"))
   })
 })
 

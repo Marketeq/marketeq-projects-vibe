@@ -19,9 +19,11 @@ import { KycSessionResponseDto } from '../dto/response/kyc-session.response.dto'
 import { BearerAuthGuard } from '../common/guards/bearer-auth.guard';
 import { VpnProxyCheckGuard } from '../common/guards/vpn-proxy-check.guard';
 import { readLoginSession } from '../common/travel-mode/login-reminder';
+import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
+import { TravelCheckInAnswerRequestDto } from '../dto/request/travel-check-in-answer.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
 import { AcceptedDocumentsRequestDto } from '../dto/request/accepted-documents.request.dto';
@@ -77,8 +79,18 @@ export class IdentityVerificationController {
     const profile = await this.service.getOrCreateProfile(req.userId, ip);
     const summary = await this.service.getVerificationSummary(profile);
     const locationMismatch = await this.service.getLocationMismatch(profile, ip);
-    const loginReminderAt = await this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
-    return ProfileStatusResponseDto.fromEntity(profile, summary, Date.now(), locationMismatch, loginReminderAt);
+    const travelModeLocationMismatch = await this.service.getTravelModeLocationMismatch(profile, ip);
+    const loginReminderAt = this.service.getLoginReminderAt(profile, readLoginSession(req.user, Date.now()));
+    const loginSessionKey = readLoginSessionKey(req.user, req.userId);
+    return ProfileStatusResponseDto.fromEntity(
+      profile,
+      summary,
+      Date.now(),
+      locationMismatch,
+      loginReminderAt,
+      travelModeLocationMismatch,
+      loginSessionKey,
+    );
   }
 
   // Display-only location for the verification dialog. Uses the same
@@ -136,17 +148,42 @@ export class IdentityVerificationController {
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
-  // Dashboard claim of the next Travel Mode reminder (day 3 / day 7). Acts only
-  // for the authenticated caller: it reads no body, query, profile id or
-  // timestamp. Always 200 with { claimed }; "nothing to claim" is claimed:false,
-  // never an error. Not guarded by VpnProxyCheckGuard: it advances no
-  // verification.
+  // The answer to a "Still traveling?" check-in: the active traveler saves a new duration.
+  // Only a saved duration (including "not_sure") is an answer; opening, skipping, closing or
+  // refreshing a check-in sends nothing and leaves it due. The new period starts now and the
+  // schedule restarts from it. `checkInAt` (the travelReminderAvailableAt the client was
+  // shown) makes it one answer per occurrence across tabs. Accepted only while Travel Mode
+  // is in force (otherwise 409 TRAVEL_MODE_NOT_ACTIVE and POST travel-duration is the
+  // activation); never while a home-country change is running.
+  @Post('travel-duration/update')
+  @HttpCode(HttpStatus.OK)
+  async updateActiveTravelDuration(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: TravelCheckInAnswerRequestDto,
+  ): Promise<ProfileStatusResponseDto> {
+    const profile = await this.service.updateActiveTravelDuration(
+      req.userId,
+      dto.duration,
+      {
+        checkInAt: dto.checkInAt ? new Date(dto.checkInAt) : null,
+        session: readLoginSession(req.user, Date.now()),
+      },
+    );
+    return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
+  // Whether a Travel Mode check-in is due for the authenticated caller right now. Kept
+  // under its old name for clients that still call it, but it NO LONGER CLAIMS OR CONSUMES
+  // anything: { claimed: true } just means "due", it is read-only, and a check-in stays due
+  // until a duration answer is saved or the home-country update flow is started (GET /me
+  // reports the same thing as travelReminderDue). It reads no body, query, profile id or
+  // timestamp. Always 200 with { claimed }; "nothing due" is claimed:false, never an
+  // error. Not guarded by VpnProxyCheckGuard: it advances no verification.
   @Post('travel-reminder/claim')
   @HttpCode(HttpStatus.OK)
   async claimTravelReminder(@Req() req: AuthenticatedRequest): Promise<TravelReminderClaimResponseDto> {
-    return TravelReminderClaimResponseDto.from(
-      await this.service.claimTravelReminder(req.userId, readLoginSession(req.user, Date.now())),
-    );
+    const { due } = await this.service.isTravelCheckInDue(req.userId, readLoginSession(req.user, Date.now()));
+    return TravelReminderClaimResponseDto.from({ claimed: due });
   }
 
   // Document-selection screen calls this after the user picks (or the flow
@@ -266,6 +303,19 @@ export class IdentityVerificationController {
   @UseGuards(VpnProxyCheckGuard)
   async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
     return this.freeKycService.startOrResume(req.userId);
+  }
+
+  // Home-country change: the explicit, separate start for an already fully
+  // verified account that declared a permanent relocation and confirmed the
+  // detected country (it is then PENDING). Ordinary kyc-sessions still refuses a
+  // verified account. Same VPN/proxy guard and throttle as session start; reads no
+  // body, query, country or session id: everything comes from the stored claim.
+  @Post('kyc-sessions/home-country-change')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(VpnProxyCheckGuard)
+  async startHomeCountryChangeSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startHomeCountryChange(req.userId);
   }
 
   // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the
