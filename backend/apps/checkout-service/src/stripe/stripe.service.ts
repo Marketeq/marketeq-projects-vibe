@@ -141,6 +141,13 @@ export class StripeService {
     return this.stripe.paymentMethods.retrieve(paymentMethodId);
   }
 
+  async updatePaymentMethod(
+    paymentMethodId: string,
+    params: Stripe.PaymentMethodUpdateParams,
+  ) {
+    return this.stripe.paymentMethods.update(paymentMethodId, params);
+  }
+
   async createCustomer(
     params: {
       userId: string;

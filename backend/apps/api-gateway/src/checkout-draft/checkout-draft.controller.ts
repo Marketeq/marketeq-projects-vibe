@@ -48,6 +48,28 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.listCards(clientId);
   }
 
+  @Get('cards/:cardId')
+  @UseGuards(JwtAuthGuard)
+  getCard(@Param('cardId') cardId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.getCard(cardId, clientId);
+  }
+
+  @Patch('cards/:cardId')
+  @UseGuards(JwtAuthGuard)
+  updateCard(
+    @Param('cardId') cardId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.updateCard(cardId, body, clientId);
+  }
+
+  @Delete('cards/:cardId')
+  @UseGuards(JwtAuthGuard)
+  deleteCard(@Param('cardId') cardId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.deleteCard(cardId, clientId);
+  }
+
   @Post('listings/:listingId/draft')
   @UseGuards(JwtAuthGuard)
   createDraft(@Param('listingId') listingId: string, @UserId() clientId: string) {

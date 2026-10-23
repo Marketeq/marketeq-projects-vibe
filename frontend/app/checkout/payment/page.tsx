@@ -43,6 +43,7 @@ import {
   Edit03,
   HelpCircle,
   Lock,
+  MoreHorizontal,
   Plus,
   RefreshCcw,
   SwitchHorizontal01,
@@ -71,9 +72,7 @@ import {
   getDraftDateRangeLabel,
   getDraftDurationLabel,
 } from "@/lib/checkout/draft-summary"
-import CreditDebitCardArticle1, {
-  CreditDebitCardArticle3,
-} from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
+import { CreditDebitCardArticle3 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
 import { HelperText } from "@/components/ui/helper-text"
 import { PhoneNumberInput } from "@/components/phone-number-input"
 import { CountriesCombobox } from "@/components/own-combobox"
@@ -130,6 +129,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   HeadlessRadioGroupItem,
   IconButton,
   Input,
@@ -972,6 +975,31 @@ const STRIPE_CARD_BRAND_ICONS: Record<
   unionpay: UnionPayDefault,
 }
 
+const SAVED_CARD_BRAND_NAMES: Record<string, string> = {
+  visa: "Visa",
+  mastercard: "Mastercard",
+  amex: "American Express",
+  discover: "Discover",
+  diners: "Diners Club",
+  jcb: "JCB",
+  unionpay: "UnionPay",
+}
+
+type SavedCardSummary = {
+  id: string
+  brand: string
+  funding: string
+  last4: string
+  isDefault: boolean
+}
+
+type SavedCardDetail = SavedCardSummary & {
+  expMonth: number
+  expYear: number
+  billingAddressId: string | null
+  cardholderName: string | null
+}
+
 const getStripeCardFieldError = (
   field: StripeCardField,
   fieldState: StripeCardFieldState
@@ -1787,6 +1815,20 @@ export default function PaymentPage() {
   const [isSavingBillingAddress, setIsSavingBillingAddress] =
     React.useState(false)
   const [isSavingCard, setIsSavingCard] = React.useState(false)
+  const [isSavedCardsLoading, setIsSavedCardsLoading] = React.useState(true)
+  const [savedCards, setSavedCards] = React.useState<SavedCardSummary[]>([])
+  const [duplicateCardError, setDuplicateCardError] = React.useState("")
+  const [cardPendingDeletion, setCardPendingDeletion] = React.useState<{
+    id: string
+    label: string
+  } | null>(null)
+  const [isDeletingCard, setIsDeletingCard] = React.useState(false)
+  const [editingCard, setEditingCard] = React.useState<SavedCardDetail | null>(
+    null
+  )
+  const [isLoadingEditCard, setIsLoadingEditCard] = React.useState(false)
+  const [isChangeCardPanelOpen, setIsChangeCardPanelOpen] =
+    React.useState(false)
 
   React.useEffect(() => {
     let isActive = true
@@ -1806,6 +1848,59 @@ export default function PaymentPage() {
       isActive = false
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!savedCardNotification) return
+    toast({ variant: "success", title: savedCardNotification })
+  }, [savedCardNotification])
+
+  React.useEffect(() => {
+    let isActive = true
+    CheckoutAPI.ListSavedCards()
+      .then((response) => {
+        if (!isActive) return
+        const cards = response.data as SavedCardSummary[]
+        setSavedCards(cards)
+        const defaultCard = cards.find((card) => card.isDefault)
+        if (!defaultCard) return
+        setFullPaymentMethods((current) =>
+          current.length > 0
+            ? current
+            : [
+                {
+                  id: `full-card-${defaultCard.id}`,
+                  method: "CREDIT_DEBIT_CARD",
+                  title: "Credit Card",
+                  subtitle: "Stripe card",
+                  cardNumber: defaultCard.last4,
+                  brand: defaultCard.brand,
+                  funding: defaultCard.funding,
+                  saveDefaultPaymentMethod: true,
+                },
+              ]
+        )
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (isActive) setIsSavedCardsLoading(false)
+      })
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!isChangeCardPanelOpen) return
+    let isActive = true
+    CheckoutAPI.ListSavedCards()
+      .then((response) => {
+        if (isActive) setSavedCards(response.data as SavedCardSummary[])
+      })
+      .catch(() => {})
+    return () => {
+      isActive = false
+    }
+  }, [isChangeCardPanelOpen])
 
   // Bank account
   const [accountType, setAccountType] = React.useState("")
@@ -2268,7 +2363,8 @@ export default function PaymentPage() {
     paymentMethod === "item-0" &&
     (pay !== "AT_ONCE" ||
       fullPaymentMethods.length < 1 ||
-      isAddingSplitPaymentMethod)
+      isAddingSplitPaymentMethod ||
+      editingCard !== null)
   const isGooglePaySelectedWithoutSavedMethod =
     isGooglePaySelected && !hasGooglePayPaymentMethod
   const isApplePaySelectedWithoutSavedMethod =
@@ -3565,6 +3661,7 @@ export default function PaymentPage() {
     }
 
     let isActive = true
+    const isEditingCard = editingCard !== null
 
     setStripeLoadFailed(false)
 
@@ -3575,37 +3672,46 @@ export default function PaymentPage() {
       setIsStripeReady(true)
 
       if (
-        !stripeCardNumberMountRef.current ||
-        !stripeCardExpiryMountRef.current ||
         !stripeCardCvcMountRef.current ||
-        stripeCardNumberElementRef.current
+        (!isEditingCard &&
+          (!stripeCardNumberMountRef.current ||
+            !stripeCardExpiryMountRef.current)) ||
+        stripeCardCvcElementRef.current
       ) {
         return
       }
 
       const elements = stripe.elements()
-      const cardNumberElement = elements.create("cardNumber", {
-        style: stripeElementStyle,
-        placeholder: "0000 0000 0000 0000",
-        disableLink: true,
-      })
-      const cardExpiryElement = elements.create("cardExpiry", {
-        style: stripeElementStyle,
-        placeholder: "MM/YY",
-      })
+      const cardNumberElement = isEditingCard
+        ? null
+        : elements.create("cardNumber", {
+            style: stripeElementStyle,
+            placeholder: "0000 0000 0000 0000",
+            disableLink: true,
+          })
+      const cardExpiryElement = isEditingCard
+        ? null
+        : elements.create("cardExpiry", {
+            style: stripeElementStyle,
+            placeholder: "MM/YY",
+          })
       const cardCvcElement = elements.create("cardCvc", {
         style: stripeElementStyle,
         placeholder: "3 or 4 digits",
       })
 
-      cardNumberElement.mount(stripeCardNumberMountRef.current)
-      cardExpiryElement.mount(stripeCardExpiryMountRef.current)
+      if (cardNumberElement && stripeCardNumberMountRef.current) {
+        cardNumberElement.mount(stripeCardNumberMountRef.current)
+      }
+      if (cardExpiryElement && stripeCardExpiryMountRef.current) {
+        cardExpiryElement.mount(stripeCardExpiryMountRef.current)
+      }
       cardCvcElement.mount(stripeCardCvcMountRef.current)
 
       stripeCardNumberElementRef.current = cardNumberElement
       stripeCardExpiryElementRef.current = cardExpiryElement
       stripeCardCvcElementRef.current = cardCvcElement
-      setStripeCardBrand("unknown")
+      if (!isEditingCard) setStripeCardBrand("unknown")
       setStripeCardFieldStates({
         cardNumber: { empty: true, complete: false },
         expirationDate: { empty: true, complete: false },
@@ -3638,17 +3744,18 @@ export default function PaymentPage() {
         setCardFieldTouched((current) => ({ ...current, [field]: true }))
       }
 
-      cardNumberElement.on("change", (event) => {
+      cardNumberElement?.on("change", (event) => {
         handleChange("cardNumber")(event)
+        setDuplicateCardError("")
         setStripeCardBrand(event.brand)
       })
-      cardExpiryElement.on("change", handleChange("expirationDate"))
+      cardExpiryElement?.on("change", handleChange("expirationDate"))
       cardCvcElement.on("change", handleChange("cvv"))
-      cardNumberElement.on("focus", handleFocus("cardNumber"))
-      cardExpiryElement.on("focus", handleFocus("expirationDate"))
+      cardNumberElement?.on("focus", handleFocus("cardNumber"))
+      cardExpiryElement?.on("focus", handleFocus("expirationDate"))
       cardCvcElement.on("focus", handleFocus("cvv"))
-      cardNumberElement.on("blur", handleBlur("cardNumber"))
-      cardExpiryElement.on("blur", handleBlur("expirationDate"))
+      cardNumberElement?.on("blur", handleBlur("cardNumber"))
+      cardExpiryElement?.on("blur", handleBlur("expirationDate"))
       cardCvcElement.on("blur", handleBlur("cvv"))
     }
 
@@ -3675,7 +3782,7 @@ export default function PaymentPage() {
         stripeRef.current = null
       }
     }
-  }, [paymentMethod, stripeLoadAttempt])
+  }, [paymentMethod, stripeLoadAttempt, editingCard?.id])
 
   const handleCustomBalanceSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -3737,9 +3844,15 @@ export default function PaymentPage() {
   )
   const StripeCardBrandIcon = STRIPE_CARD_BRAND_ICONS[stripeCardBrand]
   const cardFieldErrors: Record<CardField, string> = {
-    cardNumber: stripeCardNumberError,
+    cardNumber: editingCard
+      ? duplicateCardError
+      : stripeCardNumberError || duplicateCardError,
     cardName: cardNameError,
-    expirationDate: stripeExpirationDateError,
+    expirationDate: editingCard
+      ? expirationDate.trim()
+        ? expirationDateError
+        : ""
+      : stripeExpirationDateError,
     cvv: stripeCvvError,
   }
   const shouldShowCardFieldError = (field: CardField) =>
@@ -3766,7 +3879,7 @@ export default function PaymentPage() {
     ? /^\d{5}(?:-\d{4})?$/.test(zipcode.trim())
     : zipcode.trim().length > 0
   const isBillingAddressValid =
-    billingAddressMode !== "new" ||
+    (billingAddressMode !== "new" && billingAddressMode !== "saved") ||
     (fullName.trim().length >= 2 &&
       addressLine1.trim().length > 0 &&
       city.trim().length > 0 &&
@@ -3800,12 +3913,15 @@ export default function PaymentPage() {
     Boolean(billingFieldErrors[field])
   const touchBillingField = (field: BillingField) =>
     setBillingFieldTouched((current) => ({ ...current, [field]: true }))
-  const isFullPaymentCardFormValid =
-    !stripeCardNumberError &&
-    !cardNameError &&
-    !stripeExpirationDateError &&
-    !stripeCvvError &&
-    isBillingAddressValid
+  const isCardDetailsValid = editingCard
+    ? !cardNameError &&
+      !stripeCvvError &&
+      !(expirationDate.trim() && expirationDateError)
+    : !stripeCardNumberError &&
+      !cardNameError &&
+      !stripeExpirationDateError &&
+      !stripeCvvError
+  const isFullPaymentCardFormValid = isCardDetailsValid && isBillingAddressValid
   const showCardBackPreview = activeCardField === "cvv"
   const recurringPaymentFrequencyMeasureRef =
     React.useRef<HTMLSpanElement>(null)
@@ -4247,6 +4363,7 @@ export default function PaymentPage() {
     const cardNumberElement = stripeCardNumberElementRef.current
     if (!stripe || !cardNumberElement) return null
 
+    setDuplicateCardError("")
     const setupIntentResponse = await CheckoutAPI.CreateCardSetupIntent()
     const clientSecret = (setupIntentResponse.data as { clientSecret: string })
       .clientSecret
@@ -4290,11 +4407,21 @@ export default function PaymentPage() {
     const paymentMethodId = setupResult.setupIntent.payment_method
     if (typeof paymentMethodId !== "string") return null
 
-    const saveResponse = await CheckoutAPI.SaveCard({
-      paymentMethodId,
-      ...(billingAddress ? { billingAddressId: billingAddress.id } : {}),
-      ...(saveCard ? { setAsDefault: true } : {}),
-    })
+    let saveResponse
+    try {
+      saveResponse = await CheckoutAPI.SaveCard({
+        paymentMethodId,
+        ...(billingAddress ? { billingAddressId: billingAddress.id } : {}),
+        ...(saveCard ? { setAsDefault: true } : {}),
+      })
+    } catch (error) {
+      const failure = error as { response?: { data?: { code?: string } } }
+      if (failure.response?.data?.code === "CARD_ALREADY_SAVED") {
+        setDuplicateCardError("This credit card has already been added")
+        return null
+      }
+      throw error
+    }
     return saveResponse.data as {
       id: string
       brand: string
@@ -4329,9 +4456,166 @@ export default function PaymentPage() {
     handleSaveFullPaymentCard()
   }
 
+  const resetCardFormAfterSave = () => {
+    resetInstallmentCardForm()
+    setDuplicateCardError("")
+    setStripeCardBrand("unknown")
+    setActiveCardField(null)
+    setStripeFocusedField(null)
+    setStripeCardFieldStates({
+      cardNumber: { empty: true, complete: false },
+      expirationDate: { empty: true, complete: false },
+      cvv: { empty: true, complete: false },
+    })
+  }
+
+  const handleStartEditCard = async () => {
+    const current = fullPaymentMethods[0]
+    if (!current || isLoadingEditCard) return
+    setIsLoadingEditCard(true)
+    try {
+      const response = await CheckoutAPI.GetSavedCard(
+        current.id.replace("full-card-", "")
+      )
+      const card = response.data as SavedCardDetail
+      resetCardFormAfterSave()
+      setCardName(card.cardholderName ?? "")
+      setSaveCard(card.isDefault)
+      setStripeCardBrand(card.brand)
+      const linkedAddress = savedBillingAddresses.find(
+        (address) => address.id === card.billingAddressId
+      )
+      setSelectedBillingAddressId(
+        linkedAddress?.id ?? savedBillingAddresses[0]?.id ?? ""
+      )
+      setBillingAddressMode(savedBillingAddresses.length > 0 ? "summary" : "new")
+      setIsChangeCardPanelOpen(false)
+      setEditingCard(card)
+      setPaymentMethod("item-0")
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "The card could not be loaded. Please try again.",
+      })
+    } finally {
+      setIsLoadingEditCard(false)
+    }
+  }
+
+  const handleCancelEditCard = () => {
+    setEditingCard(null)
+    resetCardFormAfterSave()
+    setPaymentMethod("")
+  }
+
+  const handleSaveEditedCard = async (
+    override?: RecommendedBillingAddress | null
+  ) => {
+    if (!editingCard || isSavingCard) return
+    setHasAttemptedCardSubmit(true)
+    if (!isFullPaymentCardFormValid) return
+    setIsSavingCard(true)
+    try {
+      let billingAddress: SavedBillingAddress | null =
+        savedBillingAddresses.find(
+          (address) => address.id === selectedBillingAddressId
+        ) ??
+        savedBillingAddresses[0] ??
+        null
+      if (billingAddressMode === "new") {
+        billingAddress = await saveNewBillingAddress(override)
+        if (!billingAddress) return
+      }
+
+      const rawAddress = billingAddress?.raw
+      const countryCode = rawAddress
+        ? rawAddress.country === "United States"
+          ? "US"
+          : resolveCountryCodeByName(rawAddress.country)
+        : undefined
+      const expiryMatch = expirationDate
+        .trim()
+        .match(/^(\d{2})\/(\d{2}|\d{4})$/)
+
+      let response
+      try {
+        response = await CheckoutAPI.UpdateSavedCard(editingCard.id, {
+          cardholderName: cardName.trim(),
+          ...(expiryMatch
+            ? {
+                expMonth: Number(expiryMatch[1]),
+                expYear:
+                  expiryMatch[2].length === 2
+                    ? 2000 + Number(expiryMatch[2])
+                    : Number(expiryMatch[2]),
+              }
+            : {}),
+          ...(billingAddress ? { billingAddressId: billingAddress.id } : {}),
+          ...(rawAddress && countryCode
+            ? {
+                billingDetails: {
+                  phone: rawAddress.phoneNumber,
+                  address: {
+                    line1: rawAddress.addressLine1,
+                    ...(rawAddress.addressLine2
+                      ? { line2: rawAddress.addressLine2 }
+                      : {}),
+                    city: rawAddress.city,
+                    ...(rawAddress.state ? { state: rawAddress.state } : {}),
+                    postalCode: rawAddress.postalCode,
+                    country: countryCode,
+                  },
+                },
+              }
+            : {}),
+          ...(saveCard ? { setAsDefault: true } : {}),
+        })
+      } catch (error) {
+        const failure = error as { response?: { data?: { code?: string } } }
+        if (failure.response?.data?.code === "CARD_ALREADY_SAVED") {
+          setDuplicateCardError("This credit card has already been added")
+          return
+        }
+        throw error
+      }
+
+      const updated = response.data as SavedCardDetail
+      saveFullPaymentMethod({
+        id: `full-card-${updated.id}`,
+        method: "CREDIT_DEBIT_CARD",
+        title: "Credit Card",
+        subtitle: "Stripe card",
+        cardNumber: updated.last4,
+        brand: updated.brand,
+        funding: updated.funding,
+        saveDefaultPaymentMethod: updated.isDefault,
+      })
+      setEditingCard(null)
+      resetCardFormAfterSave()
+      CheckoutAPI.ListSavedCards()
+        .then((listResponse) =>
+          setSavedCards(listResponse.data as SavedCardSummary[])
+        )
+        .catch(() => {})
+      setSavedCardNotification("Your card was updated.")
+      window.setTimeout(() => setSavedCardNotification(""), 5000)
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Your card could not be updated. Please try again.",
+      })
+    } finally {
+      setIsSavingCard(false)
+    }
+  }
+
   const handleSaveFullPaymentCard = async (
     override?: RecommendedBillingAddress | null
   ) => {
+    if (editingCard) {
+      await handleSaveEditedCard(override)
+      return
+    }
     setHasAttemptedCardSubmit(true)
     if (!isFullPaymentCardFormValid || isSavingCard) return
     setIsSavingCard(true)
@@ -4362,6 +4646,7 @@ export default function PaymentPage() {
       }
 
       saveFullPaymentMethod(method)
+      resetCardFormAfterSave()
       setSavedCardNotification("Your card was saved to your account.")
       window.setTimeout(() => setSavedCardNotification(""), 5000)
     } catch {
@@ -5099,6 +5384,138 @@ export default function PaymentPage() {
     )
   }
 
+  const handleSelectSavedCard = (card: SavedCardSummary) => {
+    saveFullPaymentMethod({
+      id: `full-card-${card.id}`,
+      method: "CREDIT_DEBIT_CARD",
+      title: "Credit Card",
+      subtitle: "Stripe card",
+      cardNumber: card.last4,
+      brand: card.brand,
+      funding: card.funding,
+      saveDefaultPaymentMethod: card.isDefault,
+    })
+    setIsChangeCardPanelOpen(false)
+  }
+
+  const handleConfirmDeleteCard = async () => {
+    if (!cardPendingDeletion || isDeletingCard) return
+    setIsDeletingCard(true)
+    try {
+      try {
+        await CheckoutAPI.DeleteSavedCard(cardPendingDeletion.id)
+      } catch (error) {
+        const failure = error as { response?: { status?: number } }
+        if (failure.response?.status !== 404) throw error
+      }
+      const response = await CheckoutAPI.ListSavedCards()
+      const cards = response.data as SavedCardSummary[]
+      setSavedCards(cards)
+      setCardPendingDeletion(null)
+      const defaultCard = cards.find((card) => card.isDefault)
+      if (defaultCard) {
+        handleSelectSavedCard(defaultCard)
+      } else {
+        handleEditPrimaryFullPaymentMethod("")
+      }
+      toast({
+        variant: "success",
+        title: "Your card was removed from your account.",
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "The card could not be removed. Please try again.",
+      })
+    } finally {
+      setIsDeletingCard(false)
+    }
+  }
+
+  const renderSavedCardIdentity = (
+    brand?: string,
+    funding?: string,
+    lastFour?: string,
+    isDefault?: boolean
+  ) => {
+    const brandKey = brand && SAVED_CARD_BRAND_NAMES[brand] ? brand : ""
+    const BrandIcon = STRIPE_CARD_BRAND_ICONS[brandKey]
+
+    return (
+      <div className="flex items-center gap-x-3">
+        {BrandIcon ? (
+          <BrandIcon className="h-[30px] w-[45px] shrink-0 rounded-[4px]" />
+        ) : (
+          <div className="inline-flex h-[30px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-gray-100 bg-white text-gray-500">
+            <CreditCard className="size-6" />
+          </div>
+        )}
+        <div className="flex flex-col">
+          <div className="-mb-[2.5px] flex items-center gap-x-2">
+            <span className="text-sm font-medium leading-[normal] text-dark-blue-400">
+              {brandKey ? SAVED_CARD_BRAND_NAMES[brandKey] : "Credit Card"}
+            </span>
+            {isDefault ? <Badge visual="primary">Default</Badge> : null}
+          </div>
+          <span className="text-xs leading-[18px] text-[#858585]">
+            {lastFour
+              ? `${funding === "debit" ? "Debit" : "Credit"} ****${lastFour}`
+              : "Credit card"}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSavedCardRow = (
+    method: InstallmentPaymentMethod,
+    onChange?: () => void,
+    onDelete?: () => void,
+    onEditCard?: () => void
+  ) => {
+    return (
+      <Card className="py-[15px] pl-[15px] pr-[25px]">
+        {renderSavedCardIdentity(
+          method.brand,
+          method.funding,
+          (method.cardNumber ?? "").slice(-4)
+        )}
+
+        <div className="flex items-center gap-x-5">
+          <Button
+            className="text-xs"
+            variant="link"
+            visual="gray"
+            type="button"
+            onClick={onChange}
+          >
+            Change
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                className="h-[23px] w-[27px] p-0 text-gray-500"
+                variant="ghost"
+                visual="gray"
+                type="button"
+              >
+                <MoreHorizontal className="size-[15px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[165px]" align="end">
+              <DropdownMenuItem onSelect={onEditCard}>
+                <Edit03 className="h-4 w-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem visual="destructive" onSelect={onDelete}>
+                <Trash03 className="h-4 w-4" /> Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </Card>
+    )
+  }
+
   const renderFullPaymentMethodRow = (
     method: InstallmentPaymentMethod,
     options?: {
@@ -5106,6 +5523,9 @@ export default function PaymentPage() {
       splitAmountValue?: string
       isAutoSplitEnabled?: boolean
       onEdit?: () => void
+      onChange?: () => void
+      onDelete?: () => void
+      onEditCard?: () => void
       onSplit?: () => void
       onSplitAmountChange?: (value: string) => void
       onRemove?: () => void
@@ -5208,16 +5628,11 @@ export default function PaymentPage() {
         )
       }
 
-      return (
-        <CreditDebitCardArticle1
-          cardNumber={method.cardNumber}
-          brand={method.brand}
-          funding={method.funding}
-          saveDefaultPaymentMethod={method.saveDefaultPaymentMethod}
-          onChange={options?.onEdit}
-          onEdit={options?.onEdit}
-          onRemove={options?.onRemove}
-        />
+      return renderSavedCardRow(
+        method,
+        options?.onChange,
+        options?.onDelete,
+        options?.onEditCard
       )
     }
 
@@ -5588,13 +6003,6 @@ export default function PaymentPage() {
             isTalentCheckout ? "Contract Details" : "Project Details"
           }
         />
-
-        {savedCardNotification ? (
-          <div className="fixed bottom-6 left-6 z-50 flex items-center gap-x-3 rounded-md bg-black px-4 py-3 text-sm font-semibold text-white shadow-lg">
-            <CheckCircle className="size-5 text-success-500" />
-            {savedCardNotification}
-          </div>
-        ) : null}
 
         {isStripeLinkDialogOpen ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#667085]/75 px-4">
@@ -6437,7 +6845,7 @@ export default function PaymentPage() {
                       <h3 className="text-base leading-[.703] font-bold text-[#122A4B]">
                         Select payment method
                       </h3>
-                      {isPaymentMethodsLoading ? (
+                      {isPaymentMethodsLoading || isSavedCardsLoading ? (
                         <div className="mt-5">
                           <Spinner size={24} strokeWidth={3} />
                         </div>
@@ -6504,10 +6912,11 @@ export default function PaymentPage() {
 
                 {pay === "AT_ONCE" &&
                   fullPaymentMethods.length > 0 &&
-                  !hasSplitFullPayment && (
+                  !hasSplitFullPayment &&
+                  !editingCard && (
                     <div className="mt-6">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-lg leading-none font-bold text-dark-blue-400">
+                        <h3 className="text-base leading-[.703] font-bold text-dark-blue-400">
                           Payment Method
                         </h3>
 
@@ -6524,8 +6933,97 @@ export default function PaymentPage() {
                         ) : null} */}
                       </div>
 
+                      {isChangeCardPanelOpen ? (
+                        <Card className="mt-5 flex-col items-stretch justify-center gap-5 p-5">
+                          <div className="flex w-full items-center justify-between">
+                            <h3 className="text-base font-bold leading-[.703] text-dark-blue-400">
+                              Select a payment method
+                            </h3>
+                            <Button
+                              className="gap-x-1 text-xs"
+                              variant="link"
+                              visual="primary"
+                              type="button"
+                              onClick={() => setIsChangeCardPanelOpen(false)}
+                            >
+                              <X className="size-[15px]" /> Cancel
+                            </Button>
+                          </div>
+
+                          <div className="flex flex-col gap-y-2.5">
+                            {savedCards.map((card) => {
+                              const isSelectedCard =
+                                fullPaymentMethods[0]?.id ===
+                                `full-card-${card.id}`
+                              return (
+                                <Card
+                                  key={card.id}
+                                  className={cn(
+                                    "p-[15px]",
+                                    isSelectedCard
+                                      ? "h-[65px] border-2 border-primary-500 pr-[25px]"
+                                      : "h-[66px] border-gray-300 bg-gray-50"
+                                  )}
+                                >
+                                  {renderSavedCardIdentity(
+                                    card.brand,
+                                    card.funding,
+                                    card.last4,
+                                    card.isDefault
+                                  )}
+                                  {isSelectedCard ? (
+                                    <div className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-500">
+                                      <Check className="size-[16.4px] text-white" />
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      className="bg-white text-xs"
+                                      variant="outlined"
+                                      visual="gray"
+                                      type="button"
+                                      onClick={() =>
+                                        handleSelectSavedCard(card)
+                                      }
+                                    >
+                                      Use This
+                                    </Button>
+                                  )}
+                                </Card>
+                              )
+                            })}
+                          </div>
+
+                          <Button
+                            className="self-start text-xs"
+                            variant="link"
+                            visual="gray"
+                            type="button"
+                            onClick={() => {
+                              setIsChangeCardPanelOpen(false)
+                              handleEditPrimaryFullPaymentMethod("")
+                            }}
+                          >
+                            <Plus className="size-[15px]" /> Add Payment Method
+                          </Button>
+                        </Card>
+                      ) : (
                       <div className="mt-5">
                         {renderFullPaymentMethodRow(fullPaymentMethods[0], {
+                          onChange: () => setIsChangeCardPanelOpen(true),
+                          onEditCard: handleStartEditCard,
+                          onDelete: () => {
+                            const current = fullPaymentMethods[0]
+                            setCardPendingDeletion({
+                              id: current.id.replace("full-card-", ""),
+                              label: `${
+                                (current.brand &&
+                                  SAVED_CARD_BRAND_NAMES[current.brand]) ||
+                                "Credit Card"
+                              } ${
+                                current.funding === "debit" ? "Debit" : "Credit"
+                              } ****${(current.cardNumber ?? "").slice(-4)}`,
+                            })
+                          },
                           onEdit: () =>
                             handleEditPrimaryFullPaymentMethod(
                               fullPaymentMethods[0].method === "BANK_ACCOUNT"
@@ -6550,6 +7048,52 @@ export default function PaymentPage() {
                             ),
                         })}
                       </div>
+                      )}
+
+                      <Dialog
+                        open={cardPendingDeletion !== null}
+                        onOpenChange={(open) => {
+                          if (!open && !isDeletingCard) {
+                            setCardPendingDeletion(null)
+                          }
+                        }}
+                      >
+                        <DialogContent className="max-w-[400px]">
+                          <DialogHeader>
+                            <div className="flex flex-col gap-y-2">
+                              <DialogTitle>Remove Payment Method?</DialogTitle>
+                              <DialogDescription>
+                                Are you sure you want to remove{" "}
+                                <span className="font-bold">
+                                  {cardPendingDeletion?.label}
+                                </span>{" "}
+                                from your payment methods?
+                              </DialogDescription>
+                            </div>
+                          </DialogHeader>
+
+                          <DialogFooter className="mt-8 gap-x-3">
+                            <DialogClose asChild>
+                              <Button
+                                variant="outlined"
+                                visual="gray"
+                                type="button"
+                                disabled={isDeletingCard}
+                              >
+                                Cancel
+                              </Button>
+                            </DialogClose>
+                            <Button
+                              visual="error"
+                              type="button"
+                              loading={isDeletingCard}
+                              onClick={handleConfirmDeleteCard}
+                            >
+                              Yes, Remove
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   )}
 
@@ -7448,9 +7992,24 @@ export default function PaymentPage() {
                 {/* Credit / Debit Card Form */}
                 {shouldShowFullPaymentCardForm && (
                   <div className="mt-[50px]">
-                    <h1 className="text-lg leading-[22px] font-bold text-dark-blue-400">
-                      Add Your Credit / Debit Card
-                    </h1>
+                    <div className="flex items-start justify-between">
+                      <h1 className="text-lg leading-[22px] font-bold text-dark-blue-400">
+                        {editingCard
+                          ? "Change Your Credit / Debit Card"
+                          : "Add Your Credit / Debit Card"}
+                      </h1>
+                      {editingCard ? (
+                        <Button
+                          className="gap-x-1 text-xs"
+                          variant="link"
+                          visual="primary"
+                          type="button"
+                          onClick={handleCancelEditCard}
+                        >
+                          <X className="size-[15px]" /> Cancel
+                        </Button>
+                      ) : null}
+                    </div>
                     <p className="mt-3 text-gray-500 text-xs leading-none flex items-center gap-x-1">
                       <Lock className="size-4" /> Your payment is secure. Your
                       card details will not be shared.
@@ -7496,15 +8055,32 @@ export default function PaymentPage() {
                           Card Number
                         </Label>
                         <InputGroup>
-                          <div
-                            id="card-number"
-                            ref={stripeCardNumberMountRef}
-                            aria-invalid={shouldShowCardFieldError("cardNumber")}
-                            className={getStripeFieldClassName(
-                              "cardNumber",
-                              "pl-[52px]"
-                            )}
-                          />
+                          {editingCard ? (
+                            <Input
+                              id="card-number"
+                              type="text"
+                              value={`**** **** **** ${editingCard.last4}`}
+                              readOnly
+                              disabled
+                              className="pl-[52px]"
+                              aria-invalid={shouldShowCardFieldError(
+                                "cardNumber"
+                              )}
+                              isInvalid={shouldShowCardFieldError("cardNumber")}
+                            />
+                          ) : (
+                            <div
+                              id="card-number"
+                              ref={stripeCardNumberMountRef}
+                              aria-invalid={shouldShowCardFieldError(
+                                "cardNumber"
+                              )}
+                              className={getStripeFieldClassName(
+                                "cardNumber",
+                                "pl-[52px]"
+                              )}
+                            />
+                          )}
                           <InputLeftElement className="w-[52px]">
                             {StripeCardBrandIcon ? (
                               <StripeCardBrandIcon />
@@ -7517,7 +8093,7 @@ export default function PaymentPage() {
                         </InputGroup>
                         {shouldShowCardFieldError("cardNumber") ? (
                           <span className="block text-xs leading-5 text-error-500">
-                            {stripeCardNumberError}
+                            {cardFieldErrors.cardNumber}
                           </span>
                         ) : null}
                       </div>
@@ -7566,17 +8142,50 @@ export default function PaymentPage() {
                           >
                             Expiration Date
                           </Label>
-                          <div
-                            id="expiration-date"
-                            ref={stripeCardExpiryMountRef}
-                            aria-invalid={shouldShowCardFieldError(
-                              "expirationDate"
-                            )}
-                            className={getStripeFieldClassName("expirationDate")}
-                          />
+                          {editingCard ? (
+                            <Input
+                              id="expiration-date"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="MM/YY"
+                              value={expirationDate}
+                              maxLength={5}
+                              onFocus={() => setActiveCardField("expirationDate")}
+                              onChange={(e) =>
+                                setExpirationDate(
+                                  formatExpiryInput(
+                                    e.target.value.replace(/\D/g, "").slice(0, 4)
+                                  )
+                                )
+                              }
+                              onBlur={() =>
+                                setCardFieldTouched((current) => ({
+                                  ...current,
+                                  expirationDate: true,
+                                }))
+                              }
+                              aria-invalid={shouldShowCardFieldError(
+                                "expirationDate"
+                              )}
+                              isInvalid={shouldShowCardFieldError(
+                                "expirationDate"
+                              )}
+                            />
+                          ) : (
+                            <div
+                              id="expiration-date"
+                              ref={stripeCardExpiryMountRef}
+                              aria-invalid={shouldShowCardFieldError(
+                                "expirationDate"
+                              )}
+                              className={getStripeFieldClassName(
+                                "expirationDate"
+                              )}
+                            />
+                          )}
                           {shouldShowCardFieldError("expirationDate") ? (
                             <span className="block text-xs leading-5 text-error-500">
-                              {stripeExpirationDateError}
+                              {cardFieldErrors.expirationDate}
                             </span>
                           ) : null}
                         </div>
@@ -8043,7 +8652,10 @@ export default function PaymentPage() {
                               </span>
                             </TooltipTrigger>
                             <TooltipContent visual="gray">
-                              Please fill in the required fields
+                              {billingAddressMode === "saved" &&
+                              isCardDetailsValid
+                                ? "Please select a billing address"
+                                : "Please fill in the required fields"}
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

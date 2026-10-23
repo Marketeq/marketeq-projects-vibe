@@ -233,6 +233,17 @@ export const CheckoutAPI = {
     setAsDefault?: boolean
   }) => AxiosRequest.post("/v1/checkout/cards", data),
 
+  ListSavedCards: () => AxiosRequest.get("/v1/checkout/cards"),
+
+  GetSavedCard: (cardId: string) =>
+    AxiosRequest.get(`/v1/checkout/cards/${cardId}`),
+
+  UpdateSavedCard: (cardId: string, data: Record<string, unknown>) =>
+    AxiosRequest.patch(`/v1/checkout/cards/${cardId}`, data),
+
+  DeleteSavedCard: (cardId: string) =>
+    AxiosRequest.del(`/v1/checkout/cards/${cardId}`),
+
   GetListingSummary: (listingId: string) =>
     AxiosRequest.get(`/v1/checkout/listings/${listingId}/summary`),
 

@@ -71,6 +71,18 @@ export class CheckoutDraftGatewayService {
     return this.forward('get', '/cards', clientId, 'list saved cards');
   }
 
+  async getCard(cardId: string, clientId: string) {
+    return this.forward('get', `/cards/${encodeURIComponent(cardId)}`, clientId, 'get a saved card');
+  }
+
+  async updateCard(cardId: string, body: Record<string, unknown>, clientId: string) {
+    return this.forward('patch', `/cards/${encodeURIComponent(cardId)}`, clientId, 'update a saved card', { body });
+  }
+
+  async deleteCard(cardId: string, clientId: string) {
+    return this.forward('delete', `/cards/${encodeURIComponent(cardId)}`, clientId, 'delete a saved card');
+  }
+
   async createDraft(listingId: string, clientId: string) {
     return this.forward('post', `/listings/${listingId}/draft`, clientId, `create checkout draft for ${listingId}`);
   }

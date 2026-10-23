@@ -25,6 +25,7 @@ import { CheckoutDraftSessionService } from "./checkout-draft-session.service";
 import { CheckoutPaymentMethodsService } from "./checkout-payment-methods.service";
 import { SavedCardsService } from "./saved-cards.service";
 import { SaveCardDto } from "./dto/save-card.dto";
+import { UpdateCardDto } from "./dto/update-card.dto";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
@@ -91,6 +92,34 @@ export class CheckoutController {
   @UseGuards(InternalTokenGuard)
   listCards(@ClientId() clientId: string) {
     return this.savedCardsService.listCards(clientId);
+  }
+
+  @Get("cards/:cardId")
+  @UseGuards(InternalTokenGuard)
+  getCard(
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.savedCardsService.getCard(clientId, cardId);
+  }
+
+  @Patch("cards/:cardId")
+  @UseGuards(InternalTokenGuard)
+  updateCard(
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @Body() dto: UpdateCardDto,
+    @ClientId() clientId: string,
+  ) {
+    return this.savedCardsService.updateCard(clientId, cardId, dto);
+  }
+
+  @Delete("cards/:cardId")
+  @UseGuards(InternalTokenGuard)
+  deleteCard(
+    @Param("cardId", ParseUUIDPipe) cardId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.savedCardsService.deleteCard(clientId, cardId);
   }
 
   @Post("listings/:listingId/draft")
@@ -475,7 +504,11 @@ export class CheckoutController {
       req.rawBody!,
       signature,
     );
-    await this.checkoutService.handleWebhookEvent(event as any);
+    if (event.type.startsWith("payment_method.")) {
+      await this.savedCardsService.handleCardEvent(event as any);
+    } else {
+      await this.checkoutService.handleWebhookEvent(event as any);
+    }
     return { received: true };
   }
 

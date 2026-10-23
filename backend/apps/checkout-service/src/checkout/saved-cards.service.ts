@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -7,11 +8,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import Stripe from 'stripe';
 import { Repository } from 'typeorm';
 import { StripeService } from '../stripe/stripe.service';
 import { SavedCard } from './entities/saved-card.entity';
 import { StripeCustomer } from './entities/stripe-customer.entity';
 import { SaveCardDto } from './dto/save-card.dto';
+import { UpdateCardDto } from './dto/update-card.dto';
+
+export interface SavedCardDetailView extends SavedCardView {
+  cardholderName: string | null;
+}
 
 export interface SavedCardView {
   id: string;
@@ -149,12 +156,7 @@ export class SavedCardsService {
     const fingerprint = card.fingerprint ?? null;
     if (fingerprint) {
       const duplicateByCard = await this.cards.findOne({
-        where: {
-          userId,
-          fingerprint,
-          expMonth: card.exp_month,
-          expYear: card.exp_year,
-        },
+        where: { userId, fingerprint },
       });
       if (duplicateByCard) {
         await this.stripeService
@@ -164,13 +166,10 @@ export class SavedCardsService {
               `Could not detach duplicate card ${dto.paymentMethodId}: ${error?.message}`,
             );
           });
-        return toView(
-          await this.withDefault(
-            userId,
-            await this.relink(duplicateByCard, dto.billingAddressId),
-            dto.setAsDefault,
-          ),
-        );
+        throw new ConflictException({
+          code: 'CARD_ALREADY_SAVED',
+          message: 'This credit card has already been added',
+        });
       }
     }
 
@@ -188,6 +187,225 @@ export class SavedCardsService {
       }),
     );
     return toView(await this.withDefault(userId, saved, dto.setAsDefault));
+  }
+
+  async getCard(userId: string, cardId: string): Promise<SavedCardDetailView> {
+    const card = await this.findOwnedCard(userId, cardId);
+    let cardholderName: string | null = null;
+    try {
+      const paymentMethod = await this.stripeService.retrievePaymentMethod(
+        card.stripePaymentMethodId,
+      );
+      cardholderName = paymentMethod.billing_details?.name ?? null;
+    } catch (error) {
+      this.logger.warn(
+        `Could not read card ${card.stripePaymentMethodId} from Stripe: ${error?.message}`,
+      );
+      throw new BadGatewayException({
+        code: 'STRIPE_UNAVAILABLE',
+        message: 'The card could not be loaded. Please try again.',
+      });
+    }
+    return { ...toView(card), cardholderName };
+  }
+
+  async updateCard(
+    userId: string,
+    cardId: string,
+    dto: UpdateCardDto,
+  ): Promise<SavedCardView> {
+    const card = await this.findOwnedCard(userId, cardId);
+
+    const expMonth = dto.expMonth ?? card.expMonth;
+    const expYear = dto.expYear ?? card.expYear;
+    const now = new Date();
+    if (
+      expYear < now.getUTCFullYear() ||
+      (expYear === now.getUTCFullYear() && expMonth < now.getUTCMonth() + 1)
+    ) {
+      throw new BadRequestException({
+        code: 'CARD_EXPIRED',
+        message: 'The expiration date is in the past',
+      });
+    }
+
+    const expiryChanged =
+      expMonth !== card.expMonth || expYear !== card.expYear;
+    if (expiryChanged && card.fingerprint) {
+      const sameCard = await this.cards.findOne({
+        where: {
+          userId,
+          fingerprint: card.fingerprint,
+          expMonth,
+          expYear,
+        },
+      });
+      if (sameCard && sameCard.id !== card.id) {
+        throw new ConflictException({
+          code: 'CARD_ALREADY_SAVED',
+          message: 'This credit card has already been added',
+        });
+      }
+    }
+
+    const billingDetails: Record<string, unknown> = {};
+    if (dto.cardholderName) billingDetails.name = dto.cardholderName;
+    if (dto.billingDetails) {
+      if (dto.billingDetails.phone) {
+        billingDetails.phone = dto.billingDetails.phone;
+      }
+      const { address } = dto.billingDetails;
+      billingDetails.address = {
+        line1: address.line1,
+        line2: address.line2 ?? '',
+        city: address.city,
+        state: address.state ?? '',
+        postal_code: address.postalCode,
+        country: address.country.toUpperCase(),
+      };
+    }
+
+    try {
+      await this.stripeService.updatePaymentMethod(card.stripePaymentMethodId, {
+        ...(expiryChanged
+          ? { card: { exp_month: expMonth, exp_year: expYear } }
+          : {}),
+        ...(Object.keys(billingDetails).length > 0
+          ? { billing_details: billingDetails }
+          : {}),
+      });
+    } catch (error) {
+      const message: string = error?.message ?? '';
+      this.logger.warn(
+        `Could not update card ${card.stripePaymentMethodId}: ${message}`,
+      );
+      if (error?.type === 'StripeInvalidRequestError') {
+        throw new BadRequestException({
+          code: 'CARD_UPDATE_REJECTED',
+          message: 'Stripe rejected the card details',
+        });
+      }
+      throw new BadGatewayException({
+        code: 'STRIPE_UNAVAILABLE',
+        message: 'The card could not be updated. Please try again.',
+      });
+    }
+
+    card.expMonth = expMonth;
+    card.expYear = expYear;
+    if (dto.billingAddressId) card.billingAddressId = dto.billingAddressId;
+    const saved = await this.cards.save(card);
+    return toView(await this.withDefault(userId, saved, dto.setAsDefault));
+  }
+
+  private async findOwnedCard(
+    userId: string,
+    cardId: string,
+  ): Promise<SavedCard> {
+    const card = await this.cards.findOne({ where: { id: cardId } });
+    if (!card) throw new NotFoundException('Card was not found');
+    if (card.userId !== userId) {
+      throw new ForbiddenException('This card does not belong to this client');
+    }
+    return card;
+  }
+
+  async deleteCard(
+    userId: string,
+    cardId: string,
+  ): Promise<{ id: string; defaultCardId: string | null }> {
+    const card = await this.cards.findOne({ where: { id: cardId } });
+    if (!card) throw new NotFoundException('Card was not found');
+    if (card.userId !== userId) {
+      throw new ForbiddenException('This card does not belong to this client');
+    }
+
+    try {
+      await this.stripeService.detachPaymentMethod(card.stripePaymentMethodId);
+    } catch (error) {
+      const message: string = error?.message ?? '';
+      const alreadyDetached =
+        error?.code === 'resource_missing' ||
+        message.includes('not attached to a customer');
+      if (!alreadyDetached) {
+        this.logger.warn(
+          `Could not detach card ${card.stripePaymentMethodId}: ${message}`,
+        );
+        throw new BadGatewayException({
+          code: 'STRIPE_UNAVAILABLE',
+          message: 'The card could not be removed. Please try again.',
+        });
+      }
+    }
+
+    const defaultCardId = await this.removeCardRow(userId, cardId);
+    return { id: cardId, defaultCardId };
+  }
+
+  async handleCardEvent(event: {
+    type: string;
+    data: { object: Stripe.PaymentMethod };
+  }): Promise<void> {
+    const paymentMethod = event.data.object;
+    if (paymentMethod?.object !== 'payment_method') return;
+
+    const row = await this.cards.findOne({
+      where: { stripePaymentMethodId: paymentMethod.id },
+    });
+    if (!row) return;
+
+    if (event.type === 'payment_method.detached') {
+      await this.removeCardRow(row.userId, row.id);
+      return;
+    }
+
+    if (
+      (event.type === 'payment_method.updated' ||
+        event.type === 'payment_method.automatically_updated') &&
+      paymentMethod.card
+    ) {
+      const { card } = paymentMethod;
+      row.brand = card.brand;
+      row.funding = card.funding;
+      row.last4 = card.last4;
+      row.expMonth = card.exp_month;
+      row.expYear = card.exp_year;
+      row.fingerprint = card.fingerprint ?? row.fingerprint;
+      await this.cards.save(row);
+    }
+  }
+
+  private async removeCardRow(
+    userId: string,
+    cardId: string,
+  ): Promise<string | null> {
+    return this.cards.manager.transaction(async (manager) => {
+      await manager
+        .getRepository(StripeCustomer)
+        .createQueryBuilder('customer')
+        .setLock('pessimistic_write')
+        .where('customer.userId = :userId', { userId })
+        .getOne();
+
+      const current = await manager.findOne(SavedCard, {
+        where: { id: cardId, userId },
+      });
+      if (!current) return null;
+      await manager.delete(SavedCard, { id: cardId, userId });
+
+      const existingDefault = await manager.findOne(SavedCard, {
+        where: { userId, isDefault: true },
+      });
+      if (existingDefault) return existingDefault.id;
+
+      const next = await manager.findOne(SavedCard, {
+        where: { userId },
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
+      if (!next) return null;
+      await manager.update(SavedCard, { id: next.id }, { isDefault: true });
+      return next.id;
+    });
   }
 
   private async withDefault(
