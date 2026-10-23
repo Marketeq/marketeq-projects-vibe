@@ -10,6 +10,7 @@ import {
   startStillTraveling,
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import { SKIPPED_TRAVEL_DURATION_LABEL } from "./travel-mode-backend"
 import {
   markTravelerPromptShown,
   shouldOfferTravelerPrompt,
@@ -205,11 +206,18 @@ describe("closing the duration screen saves nothing (close, refresh, navigation,
   })
 })
 
-describe("Confirm / Skip awaits the saved duration before showing success or closing", () => {
-  const start = flow.indexOf("const activateTravelMode = async () => {")
-  const body = flow.slice(start + "const activateTravelMode = async () => {".length, flow.indexOf("\n  }\n", start))
+describe("Confirm / Skip awaits the saved duration before showing the Travel Mode screen", () => {
+  const signature = "const activateTravelMode = async (skipped: boolean) => {"
+  const start = flow.indexOf(signature)
+  const body = flow.slice(start + signature.length, flow.indexOf("\n  }\n", start))
 
-  function run(opts: { fail?: boolean; mounted?: boolean; busy?: boolean }) {
+  function run(opts: {
+    fail?: boolean
+    mounted?: boolean
+    busy?: boolean
+    skipped?: boolean
+    selected?: string | null
+  }) {
     const calls: string[] = []
     const ref = { current: opts.busy === true }
     let release!: () => void
@@ -217,35 +225,80 @@ describe("Confirm / Skip awaits the saved duration before showing success or clo
     const stubs = {
       activatingTravelModeRef: ref,
       setActivatingTravelMode: (v: boolean) => calls.push(`busy:${v}`),
+      setTravelModeSaveFailed: (v: boolean) => calls.push(`failed:${v}`),
+      setTravelDurationSkipped: (v: boolean) => calls.push(`skipped:${v}`),
       travelModeDeps: async () => ({}),
-      recordTravelDuration: async () => {
-        calls.push("duration")
+      recordTravelDuration: async (_deps: unknown, duration: string) => {
+        calls.push(`duration:${duration}`)
         await gate
         return opts.fail !== true
       },
-      travelDuration: "A few days",
+      SKIPPED_TRAVEL_DURATION_LABEL,
+      travelDuration: opts.selected === undefined ? "A few days" : opts.selected,
       getIsMounted: () => opts.mounted !== false,
-      setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
-      onOpenChange: (v: boolean) => calls.push(`open:${v}`),
+      send: (e: string) => calls.push(`send:${e}`),
     }
-    const fn = new Function(...Object.keys(stubs), `return (async () => {${body}})()`)
-    const done = fn(...Object.values(stubs)) as Promise<void>
+    const fn = new Function(
+      ...Object.keys(stubs),
+      "skipped",
+      `return (async () => {${body}})()`
+    )
+    const done = fn(...Object.values(stubs), opts.skipped === true) as Promise<void>
     return { calls, release, done }
   }
 
-  it("success: nothing is shown or closed until the save returns, then the confirmation and the close", async () => {
+  it("Confirm success: nothing moves until the save returns, then the Travel Mode screen", async () => {
     const r = run({})
     await new Promise((x) => setTimeout(x, 5))
-    assert.deepEqual(r.calls, ["busy:true", "duration"]) // still saving: no success, no close
+    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
     r.release()
     await r.done
-    assert.deepEqual(r.calls, ["busy:true", "duration", "busy:false", "confirmation:true", "open:false"])
+    assert.deepEqual(r.calls, [
+      "busy:true",
+      "failed:false",
+      "duration:A few days",
+      "busy:false",
+      "skipped:false",
+      "send:NEXT",
+    ])
   })
-  it("failure: the screen stays open, no success, buttons re-enabled", async () => {
+  it("Confirm without a selection submits nothing at all (no implicit not_sure)", async () => {
+    const r = run({ selected: null })
+    r.release()
+    await r.done
+    assert.deepEqual(r.calls, [])
+  })
+  it("Skip submits an explicit Not sure and ignores an earlier selection", async () => {
+    const r = run({ skipped: true, selected: "More than 2 weeks" })
+    r.release()
+    await r.done
+    assert.deepEqual(r.calls, [
+      "busy:true",
+      "failed:false",
+      "duration:Not sure",
+      "busy:false",
+      "skipped:true",
+      "send:NEXT",
+    ])
+  })
+  it("Skip works with nothing selected", async () => {
+    const r = run({ skipped: true, selected: null })
+    r.release()
+    await r.done
+    assert.ok(r.calls.includes("duration:Not sure"))
+    assert.ok(r.calls.includes("skipped:true"))
+  })
+  it("failure: the screen stays open, says so, buttons re-enabled, nothing advances", async () => {
     const r = run({ fail: true })
     r.release()
     await r.done
-    assert.deepEqual(r.calls, ["busy:true", "duration", "busy:false"])
+    assert.deepEqual(r.calls, [
+      "busy:true",
+      "failed:false",
+      "duration:A few days",
+      "busy:false",
+      "failed:true",
+    ])
   })
   it("a second click while saving does nothing", async () => {
     const r = run({ busy: true })
@@ -253,14 +306,18 @@ describe("Confirm / Skip awaits the saved duration before showing success or clo
     await r.done
     assert.deepEqual(r.calls, [])
   })
-  it("unmounted before the save returns: no state is set and nothing closes", async () => {
+  it("unmounted before the save returns: no state is set and nothing advances", async () => {
     const r = run({ mounted: false })
     r.release()
     await r.done
-    assert.deepEqual(r.calls, ["busy:true", "duration"])
+    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
   })
-  it("both buttons are disabled while saving", () => {
-    assert.equal((screen().match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 2)
+  it("Skip is disabled only while saving; Confirm also until a duration is selected", () => {
+    const s = screen()
+    assert.ok(s.includes("disabled={activatingTravelMode || travelDuration === null}"))
+    assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 1)
+    assert.ok(s.includes("onClick={() => void activateTravelMode(true)}"))
+    assert.ok(s.includes("onClick={() => void activateTravelMode(false)}"))
   })
   function screen() {
     return flow.slice(flow.indexOf('{state === "traveling-showcase"'))
