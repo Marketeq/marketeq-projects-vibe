@@ -406,7 +406,7 @@ type TeamMemberChangeResponse = {
 const formatOpenRoleRate = (rate: number | null | undefined) =>
   rate === null || rate === undefined
     ? "N/A"
-    : `$${Number.isInteger(rate) ? rate.toFixed(0) : rate.toFixed(2)}/hr`
+    : `$${rate.toFixed(0)}/hr`
 
 const USER_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -1818,11 +1818,11 @@ function CheckoutPageInner() {
   )
   const formattedProjectCheckoutCost =
     projectCheckoutCost !== null
-      ? (isDraftPriced ? centsFormatter : formatter).format(projectCheckoutCost)
+      ? formatter.format(projectCheckoutCost)
       : "Pricing unavailable"
   const formattedProjectCardCost =
     projectCheckoutCost !== null
-      ? (isDraftPriced ? centsFormatter : formatter).format(projectCheckoutCost)
+      ? formatter.format(projectCheckoutCost)
       : "Pricing unavailable"
   const formattedProjectCheckoutTax = centsFormatter.format(
     projectCheckoutEstimatedTax
@@ -2114,7 +2114,7 @@ function CheckoutPageInner() {
   const formattedProjectCheckoutTotal =
     projectCheckoutAmountBeforeCredits !== null
       ? pricing
-        ? centsFormatter.format(pricing.total)
+        ? formatter.format(pricing.total)
         : formatter.format(
             Math.max(
               0,
@@ -3126,11 +3126,7 @@ function CheckoutPageInner() {
                 return
               }
               const dollars = rate.hourlyRateUsdCents / 100
-              const formattedRate = `$${
-                Number.isInteger(dollars)
-                  ? dollars.toFixed(0)
-                  : dollars.toFixed(2)
-              }/hr`
+              const formattedRate = `$${dollars.toFixed(0)}/hr`
               setTeamMembers((current) =>
                 current.map((m) =>
                   m.id === resolvedMemberId ? { ...m, rate: formattedRate } : m
@@ -4626,7 +4622,7 @@ function CheckoutPageInner() {
                             ) : (
                               <span className="text-xs text-dark-blue-400">
                                 {line.amount < 0 ? "- " : ""}
-                                {centsFormatter.format(Math.abs(line.amount))}
+                                {formatter.format(Math.abs(line.amount))}
                               </span>
                             )}
                           </li>
@@ -4911,7 +4907,7 @@ function CheckoutPageInner() {
                       <p className="text-xs font-light leading-normal">
                         Total gift card amount{" "}
                         <span className="font-bold">
-                          {centsFormatter.format(totalGiftCardAmount)}
+                          {formatter.format(totalGiftCardAmount)}
                         </span>
                       </p>
 
@@ -4955,7 +4951,7 @@ function CheckoutPageInner() {
                               <span className="whitespace-nowrap text-xs leading-normal">
                                 Amount:{" "}
                                 <span className="font-bold">
-                                  {centsFormatter.format(giftCard.amount)}
+                                  {formatter.format(giftCard.amount)}
                                 </span>
                               </span>
                             </div>
@@ -5071,7 +5067,7 @@ function CheckoutPageInner() {
                           &ldquo;{appliedPromoText}&rdquo; has been applied
                         </AlertTitle>
                         <span className="shrink-0 rounded-2xl bg-success-50 px-2 py-0.5 text-xs font-medium leading-[18px] text-success-700">
-                          -{centsFormatter.format(appliedPromoAmount)}
+                          -{formatter.format(appliedPromoAmount)}
                           {appliedPromoDiscount?.discountType === "percent"
                             ? ` (${appliedPromoDiscount.discountValue}% off)`
                             : null}
