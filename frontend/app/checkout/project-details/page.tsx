@@ -2067,9 +2067,7 @@ function CheckoutPageInner() {
   }
 
   const formatGiftCardRemovalAmount = (amount: number) =>
-    Number.isInteger(amount)
-      ? formatter.format(amount)
-      : centsFormatter.format(amount)
+    formatter.format(amount)
 
   const askRemoveGiftCard = (code: string, amount: number) => {
     setGiftCardRemoval({ code, amount })

@@ -296,15 +296,11 @@ const getBankFieldErrors = ({
 const sanitizeBalanceInput = (value: string): string => {
   const isNegative = value.trim().startsWith("-")
   const sanitized = value.replace(/[^0-9.]/g, "")
-  const [integerPart, ...decimalParts] = sanitized.split(".")
+  const [integerPart] = sanitized.split(".")
   const normalizedIntegerPart = integerPart.replace(/^0+(?=\d)/, "")
   const sign = isNegative ? "-" : ""
 
-  if (decimalParts.length === 0) {
-    return `${sign}${normalizedIntegerPart}`
-  }
-
-  return `${sign}${normalizedIntegerPart}.${decimalParts.join("").slice(0, 2)}`
+  return `${sign}${normalizedIntegerPart}`
 }
 
 const normalizeGiftCardCode = (value: string): string =>
@@ -427,7 +423,7 @@ const getPaymentMethodTypeFromSelection = (
 }
 
 const formatEditableCurrencyValue = (amount: number) =>
-  amount > 0 ? amount.toFixed(2) : ""
+  amount > 0 ? String(Math.floor(amount)) : ""
 
 const MasterCard01 = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -1559,9 +1555,7 @@ export default function PaymentPage() {
     (total, giftCard) => total + giftCard.amountUsed,
     0
   )
-  const priceFormatter = isTalentCheckout
-    ? formatter
-    : currencyWithCentsFormatter
+  const priceFormatter = formatter
   const fullAmount = Math.max(
     projectCost +
       estimatedProjectTax -
@@ -1586,9 +1580,9 @@ export default function PaymentPage() {
       : parsedCustomAmount < 1
         ? "Please enter an amount of at least $1"
         : parsedCustomAmount > availableBalance
-          ? `Amount cannot exceed your available balance of ${currencyWithCentsFormatter.format(availableBalance)}`
+          ? `Amount cannot exceed your available balance of ${formatter.format(availableBalance)}`
           : parsedCustomAmount > amountDueNow
-            ? `Amount cannot exceed your order total of ${currencyWithCentsFormatter.format(amountDueNow)}`
+            ? `Amount cannot exceed your order total of ${formatter.format(amountDueNow)}`
             : ""
   const hasValidCustomBalanceAmount =
     parsedCustomAmount !== undefined &&
@@ -1601,9 +1595,9 @@ export default function PaymentPage() {
       : parsedCustomAmountDraft < 1
         ? "Please enter an amount of at least $1"
         : parsedCustomAmountDraft > availableBalance
-          ? `Amount cannot exceed your available balance of ${currencyWithCentsFormatter.format(availableBalance)}`
+          ? `Amount cannot exceed your available balance of ${formatter.format(availableBalance)}`
           : parsedCustomAmountDraft > amountDueNow
-            ? `Amount cannot exceed your order total of ${currencyWithCentsFormatter.format(amountDueNow)}`
+            ? `Amount cannot exceed your order total of ${formatter.format(amountDueNow)}`
             : ""
   const hasValidCustomBalanceDraft =
     parsedCustomAmountDraft !== undefined &&
@@ -1847,7 +1841,7 @@ export default function PaymentPage() {
       : hasZeroSplitAllocation
         ? "Please enter an amount greater than $0.00 for each payment method."
         : splitRemainingAmount > 0.009
-          ? `You still have ${currencyWithCentsFormatter.format(splitRemainingAmount)} left to allocate. Please add or adjust your payment methods.`
+          ? `You still have ${formatter.format(splitRemainingAmount)} left to allocate. Please add or adjust your payment methods.`
           : splitRemainingAmount < -0.009
             ? "The total allocated amount exceeds the amount due. Please adjust your payment amounts."
             : ""
@@ -2189,7 +2183,7 @@ export default function PaymentPage() {
 
     return [
       "Marketeq Wire Transfer Instructions",
-      `Amount due: ${currencyWithCentsFormatter.format(details.amount)}`,
+      `Amount due: ${formatter.format(details.amount)}`,
       `Account name: ${instructions.accountName}`,
       `Bank name: ${instructions.bankName}`,
       `Bank address: ${instructions.bankAddress}`,
@@ -2736,7 +2730,7 @@ export default function PaymentPage() {
         id: intent.paymentIntentId,
         method: "KLARNA",
         title: "Klarna",
-        subtitle: `4 interest-free payments of ${currencyWithCentsFormatter.format(totalAmountToBePaid / 4)}`,
+        subtitle: `4 interest-free payments of ${formatter.format(totalAmountToBePaid / 4)}`,
       }
       saveFullPaymentMethod(method)
       navigateToReview()
@@ -2938,9 +2932,7 @@ export default function PaymentPage() {
   }
 
   const formatRedeemRemovalAmount = (amount: number) =>
-    Number.isInteger(amount)
-      ? formatter.format(amount)
-      : currencyWithCentsFormatter.format(amount)
+    formatter.format(amount)
 
   const askRemoveRedeemGiftCard = (code: string, amount: number) => {
     setRedeemGiftCardRemoval({ code, amount })
@@ -3177,7 +3169,7 @@ export default function PaymentPage() {
                       <p className="text-xs font-light leading-normal">
                         Total gift card amount{" "}
                         <span className="font-bold">
-                          {currencyWithCentsFormatter.format(
+                          {formatter.format(
                             sessionGiftCardAmount
                           )}
                         </span>
@@ -3223,7 +3215,7 @@ export default function PaymentPage() {
                               <span className="whitespace-nowrap text-xs leading-normal">
                                 Amount:{" "}
                                 <span className="font-bold">
-                                  {currencyWithCentsFormatter.format(
+                                  {formatter.format(
                                     giftCard.amountUsed
                                   )}
                                 </span>
@@ -4608,7 +4600,7 @@ export default function PaymentPage() {
               currency: "USD",
             }}
             placeholder="Enter amount"
-            decimalsLimit={20}
+            allowDecimals={false}
             defaultValue={defaultAmount}
           />
         </div>
@@ -4650,9 +4642,9 @@ export default function PaymentPage() {
               currency: "USD",
             }}
             value={options?.splitAmountValue ?? ""}
-            decimalsLimit={2}
+            allowDecimals={false}
             allowNegativeValue={false}
-            placeholder="$0.00"
+            placeholder="$0"
             onValueChange={(value) =>
               options?.onSplitAmountChange?.(sanitizeBalanceInput(value ?? ""))
             }
@@ -5556,7 +5548,7 @@ export default function PaymentPage() {
                               </span>
                             ) : (
                               <span className="mt-2 block text-xs leading-none text-gray-500">
-                                {currencyWithCentsFormatter.format(
+                                {formatter.format(
                                   Math.max(
                                     availableBalance -
                                       (hasValidCustomBalanceDraft
@@ -5590,12 +5582,12 @@ export default function PaymentPage() {
                             <Label size="sm">
                               Using{" "}
                               <span className="font-bold">
-                                {currencyWithCentsFormatter.format(
+                                {formatter.format(
                                   parsedCustomAmount ?? 0
                                 )}
                               </span>{" "}
                               of total available balance of{" "}
-                              {currencyWithCentsFormatter.format(
+                              {formatter.format(
                                 availableBalance
                               )}
                             </Label>
@@ -5635,7 +5627,7 @@ export default function PaymentPage() {
                             >
                               Use my{" "}
                               <span className="font-bold">
-                                {currencyWithCentsFormatter.format(availableBalance)}
+                                {formatter.format(availableBalance)}
                               </span>{" "}
                               available balance
                             </Label>
@@ -5840,7 +5832,7 @@ export default function PaymentPage() {
                                   <span>
                                     Amount:{" "}
                                     <span className="font-bold">
-                                      {currencyWithCentsFormatter.format(
+                                      {formatter.format(
                                         giftCard.amount
                                       )}
                                     </span>
@@ -6132,7 +6124,7 @@ export default function PaymentPage() {
                         {fullPaymentMethods.map((method) => (
                           <React.Fragment key={method.id}>
                             {renderFullPaymentMethodRow(method, {
-                              splitAmount: currencyWithCentsFormatter.format(
+                              splitAmount: formatter.format(
                                 getSplitMethodAmount(method.id)
                               ),
                               splitAmountValue:
@@ -6173,13 +6165,13 @@ export default function PaymentPage() {
                         <div className="space-y-1 text-sm">
                           <p className="text-dark-blue-400">
                             <span className="font-semibold">
-                              {currencyWithCentsFormatter.format(
+                              {formatter.format(
                                 splitAllocatedAmount
                               )}
                             </span>{" "}
                             allocated of{" "}
                             <span className="font-semibold">
-                              {currencyWithCentsFormatter.format(
+                              {formatter.format(
                                 totalAmountToBePaid
                               )}
                             </span>
@@ -6723,7 +6715,7 @@ export default function PaymentPage() {
                     <div className="mt-5 flex items-center justify-between border-y border-gray-200 py-4">
                       <span className="text-sm text-gray-500">Amount due</span>
                       <span className="text-xl font-bold text-dark-blue-400">
-                        {currencyWithCentsFormatter.format(totalAmountToBePaid)}
+                        {formatter.format(totalAmountToBePaid)}
                       </span>
                     </div>
 
@@ -6804,7 +6796,7 @@ export default function PaymentPage() {
                     <div className="mt-5 flex items-center justify-between border-y border-gray-200 py-4">
                       <span className="text-sm text-gray-500">Amount due</span>
                       <span className="text-xl font-bold text-dark-blue-400">
-                        {currencyWithCentsFormatter.format(totalAmountToBePaid)}
+                        {formatter.format(totalAmountToBePaid)}
                       </span>
                     </div>
 
@@ -6883,7 +6875,7 @@ export default function PaymentPage() {
                         </h3>
                         <p className="text-sm leading-5 text-gray-500">
                           4 interest-free payments of{" "}
-                          {currencyWithCentsFormatter.format(
+                          {formatter.format(
                             totalAmountToBePaid / 4
                           )}
                           .{" "}
@@ -6904,7 +6896,7 @@ export default function PaymentPage() {
                           Total through Klarna
                         </span>
                         <h4 className="mt-2 text-lg font-bold text-dark-blue-400">
-                          {currencyWithCentsFormatter.format(
+                          {formatter.format(
                             totalAmountToBePaid
                           )}
                         </h4>
@@ -9201,7 +9193,7 @@ export default function PaymentPage() {
                               Estimated tax *
                             </span>
                             <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                              {priceFormatter.format(estimatedProjectTax)}
+                              {currencyWithCentsFormatter.format(estimatedProjectTax)}
                             </span>
                           </div>
                           {pay === "IN_INSTALLMENTS" && (
@@ -9559,7 +9551,7 @@ export default function PaymentPage() {
                         </AlertTitle>
                         <span className="shrink-0 rounded-2xl bg-success-50 px-2 py-0.5 text-xs font-medium leading-[18px] text-success-700">
                           -
-                          {currencyWithCentsFormatter.format(
+                          {formatter.format(
                             appliedRedeemPromo.amount
                           )}
                           {appliedRedeemPromo.discountType === "percent"
