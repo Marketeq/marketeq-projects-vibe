@@ -23,6 +23,7 @@ import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
+import { KycSessionRequestDto } from '../dto/request/kyc-session.request.dto';
 import { TravelCheckInAnswerRequestDto } from '../dto/request/travel-check-in-answer.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
@@ -301,21 +302,27 @@ export class IdentityVerificationController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(VpnProxyCheckGuard)
-  async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
-    return this.freeKycService.startOrResume(req.userId);
+  async startKycSession(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: KycSessionRequestDto,
+  ): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startOrResume(req.userId, dto.returnOrigin);
   }
 
   // Home-country change: the explicit, separate start for an already fully
   // verified account that declared a permanent relocation and confirmed the
   // detected country (it is then PENDING). Ordinary kyc-sessions still refuses a
-  // verified account. Same VPN/proxy guard and throttle as session start; reads no
-  // body, query, country or session id: everything comes from the stored claim.
+  // verified account. Same VPN/proxy guard and throttle as session start; reads only the
+  // optional returnOrigin (no country or session id): everything else comes from the stored claim.
   @Post('kyc-sessions/home-country-change')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(VpnProxyCheckGuard)
-  async startHomeCountryChangeSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
-    return this.freeKycService.startHomeCountryChange(req.userId);
+  async startHomeCountryChangeSession(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: KycSessionRequestDto,
+  ): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startHomeCountryChange(req.userId, dto.returnOrigin);
   }
 
   // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the

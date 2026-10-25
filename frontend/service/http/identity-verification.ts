@@ -1,4 +1,5 @@
 import AxiosRequest from ".."
+import { kycReturnOriginBody } from "@/src/lib/api/kyc-return-origin"
 
 // Stable, append-only backend contract (see backend verification-summary.ts). The
 // frontend maps these in src/lib/api/identity-verification-state.ts and never
@@ -130,20 +131,23 @@ export const IdentityVerificationAPI = {
 
   // Free KYC: starts (or resumes) the Didit-hosted verification session.
   // Server-side it requires a fresh home-country confirmation and runs the
-  // VPN/proxy guard first. Returns only a Didit https URL to redirect to —
+  // VPN/proxy guard first. The body is only this browser's origin (see
+  // kyc-return-origin.ts) so Didit returns the user to the right frontend.
+  // Returns only a Didit https URL to redirect to —
   // see src/lib/api/free-kyc.ts, which validates it again before redirecting.
   startFreeKyc: () =>
-    AxiosRequest.post("/v1/identity-verification/kyc-sessions", {}) as Promise<{
+    AxiosRequest.post("/v1/identity-verification/kyc-sessions", kycReturnOriginBody()) as Promise<{
       data: { url: string }
     }>,
 
   // Home-country change: starts (or resumes) the Didit session for a pending home
   // country. Separate from startFreeKyc, which still refuses an account that is
-  // already verified. No body: the backend reads the pending country it stored when
-  // the user confirmed the detected location. Returns only a Didit https URL; see
+  // already verified. The body is only this browser's origin (see kyc-return-origin.ts):
+  // the backend reads the pending country it stored when the user confirmed the
+  // detected location. Returns only a Didit https URL; see
   // src/lib/api/free-kyc.ts, which validates it again before redirecting.
   startHomeCountryChange: () =>
-    AxiosRequest.post("/v1/identity-verification/kyc-sessions/home-country-change", {}) as Promise<{
+    AxiosRequest.post("/v1/identity-verification/kyc-sessions/home-country-change", kycReturnOriginBody()) as Promise<{
       data: { url: string }
     }>,
 

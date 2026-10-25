@@ -18,7 +18,12 @@ async function bootstrap() {
     credentials: true,
   });
 
-  const rabbitMqReachable = await isRabbitMqReachable(rabbitMqUrl);
+  // boot-all.js sets RABBITMQ_INBOX_ENABLED=false: nothing publishes to
+  // messaging_service_queue, and the consumer would hold one of the broker's 40
+  // connections. The blocks client (user_service_queue) keeps its own and is
+  // unaffected.
+  const inboxDisabled = process.env.RABBITMQ_INBOX_ENABLED === 'false';
+  const rabbitMqReachable = !inboxDisabled && (await isRabbitMqReachable(rabbitMqUrl));
   if (rabbitMqReachable) {
     app.connectMicroservice<MicroserviceOptions>({
       transport: Transport.RMQ,
@@ -28,6 +33,8 @@ async function bootstrap() {
         queueOptions: { durable: true },
       },
     });
+  } else if (inboxDisabled) {
+    logger.log('RABBITMQ_INBOX_ENABLED=false; messaging_service_queue consumer disabled');
   } else if (rabbitMqRequired) {
     throw new Error(`RabbitMQ is required but unreachable at ${rabbitMqLogUrl}`);
   } else {

@@ -68,8 +68,8 @@ describe("expired popup and first-time → Temporarily traveling: unchanged", ()
     assert.equal((flow.match(/recordTravelDuration\(deps,/g) ?? []).length, 1)
     assert.equal((flow.match(/IdentityVerificationAPI\.recordTravelDuration\(/g) ?? []).length, 1)
     const activate = flow.slice(flow.indexOf("const activateTravelMode"), flow.indexOf("const capturingRef"))
-    assert.ok(activate.includes("recordTravelDuration(deps, travelDuration)"))
-    assert.equal((flow.match(/onClick=\{\(\) => void activateTravelMode\(\)\}/g) ?? []).length, 2) // Skip and Confirm
+    assert.ok(activate.includes("recordTravelDuration(deps, duration)"))
+    assert.equal((flow.match(/onClick=\{\(\) => void activateTravelMode\((true|false)\)\}/g) ?? []).length, 2) // Skip and Confirm
   })
 
   it("the active branch can never reach activateTravelMode", () => {
