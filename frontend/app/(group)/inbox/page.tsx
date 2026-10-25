@@ -325,6 +325,15 @@ export default function InboxRoot() {
                   // from either" when this offer has never had a counter
                   // offer.
                   latestCounterOfferId,
+                  // BTB-367: the counter's OWN live status — real, live
+                  // signal only (same rule as offerStatus/realContractId
+                  // above), from the same getCounterOffer() call BTB-366
+                  // added. The parent offer's own offerStatus reverting to
+                  // PENDING is identical whether the counter was declined,
+                  // withdrawn, or expired-with-restore (confirmed against
+                  // counter-offers.service.ts's decline()/withdraw()) —
+                  // this is the one field that actually distinguishes them.
+                  latestCounterOfferStatus: latestCounterOfferTerms?.status,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,

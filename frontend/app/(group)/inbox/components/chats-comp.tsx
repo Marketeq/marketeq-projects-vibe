@@ -65,7 +65,7 @@ import { format, isSameDay, parseISO } from "date-fns"
 import { useMeasure, useToggle } from "react-use"
 import { Conversation } from "@/types/conversation"
 import { Message, MessageAttachment } from "@/types/message"
-import type { DeclineChip, OfferStatus } from "@/types/offer"
+import type { CounterOfferStatus, DeclineChip, OfferStatus } from "@/types/offer"
 import { User } from "@/types/user"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { toast } from "@/components/ui/toast/use-toast"
@@ -341,6 +341,13 @@ export interface OfferNotificationMessageData {
   // this, and neither does a pre-PMCM-376-backend-merge fetch. Never invent
   // one; a withdraw action must stay disabled/hidden when this is absent.
   latestCounterOfferId?: string
+  // BTB-367: the counter's OWN live status (DECLINED/WITHDRAWN/EXPIRED/
+  // etc.), sourced from getCounterOffer()'s own .status — distinct from
+  // offerStatus above, which is the PARENT offer's status and reverts to
+  // PENDING identically whether the counter was declined, withdrawn, or
+  // expired-with-restore. Undefined means "no live signal," same rule as
+  // every other live-only field here.
+  latestCounterOfferStatus?: CounterOfferStatus
   event: string
   title: string
   body: string
@@ -867,26 +874,39 @@ export function Chats({
       )
       .at(-1)
   }, [liveCounterOfferGone, offerNotificationMessages, selectedNotificationOffer])
-  // Disambiguation source: the refreshed notification list, not the Ably
-  // payload — offers.service.ts/counter-offers.service.ts publish the exact
-  // same { offer: { status: 'PENDING' }, counterOffer: null } shape for
-  // counter withdrawn, counter declined, and counter expired alike (verified
-  // against counter-offers.service.ts's decline/withdraw and
-  // expiry.processor.ts's expireCounterOffers — all three restore the parent
-  // offer to PENDING the same way), so the live payload alone cannot tell
-  // withdrawn from expired. offer.counter_expired and offer.counter_withdrawn
+  // BTB-367: latestCounterOfferStatus (BTB-366's getCounterOffer() call,
+  // which also carries the counter's own real .status) is the one real
+  // signal that actually distinguishes declined from withdrawn from
+  // expired — use it first. The notification-event fallback below
+  // (newestNotificationForOpenOffer) only remains for when that's
+  // unavailable (seeded fixtures, or the getCounterOffer() lookup failed),
+  // preserving the exact prior behavior for those cases.
+  //
+  // Disambiguation fallback source: the refreshed notification list, not
+  // the Ably payload — offers.service.ts/counter-offers.service.ts publish
+  // the exact same { offer: { status: 'PENDING' }, counterOffer: null }
+  // shape for counter withdrawn, counter declined, and counter expired
+  // alike (verified against counter-offers.service.ts's decline/withdraw
+  // and expiry.processor.ts's expireCounterOffers — all three restore the
+  // parent offer to PENDING the same way), so the live payload alone
+  // cannot tell them apart. offer.counter_expired and offer.counter_withdrawn
   // notification events already exist as first-class strings in this file
   // (see selectedNotificationOfferEventVariant above), so if the backend
   // ever creates one for this offer, use it. In production, no producer in
   // offer-service or notification-service currently emits a notification for
   // either event (confirmed: no OFFER_EXCHANGE consumer in notification-service
   // and no notification client in offer-service) — so newestNotificationForOpenOffer
-  // will not exist for real traffic, and this falls through to the withdrawn
-  // copy every time, per instruction, until a backend producer is added.
+  // will not exist for real traffic; latestCounterOfferStatus covers that gap.
+  const liveCounterStatus = selectedNotificationOffer?.latestCounterOfferStatus
+  const liveCounterDeclined =
+    liveCounterOfferGone && liveCounterStatus === "DECLINED"
   const liveCounterResolvedExpired =
     liveCounterOfferGone &&
-    newestNotificationForOpenOffer?.event === "offer.counter_expired"
-  const liveCounterWithdrawn = liveCounterOfferGone && !liveCounterResolvedExpired
+    (liveCounterStatus === "EXPIRED" ||
+      (liveCounterStatus === undefined &&
+        newestNotificationForOpenOffer?.event === "offer.counter_expired"))
+  const liveCounterWithdrawn =
+    liveCounterOfferGone && !liveCounterDeclined && !liveCounterResolvedExpired
   const liveOfferExpired =
     selectedNotificationOffer?.offerStatus === "EXPIRED" ||
     liveCounterResolvedExpired
@@ -897,11 +917,13 @@ export function Chats({
   // notice for "expired" so there's no third string for the same state.
   const liveTerminalNotice = liveOfferWithdrawn
     ? "This offer has been withdrawn."
-    : liveCounterWithdrawn
-      ? "This counter offer has been withdrawn."
-      : liveOfferExpired
-        ? "This offer has expired."
-        : undefined
+    : liveCounterDeclined
+      ? "This counter offer has been declined."
+      : liveCounterWithdrawn
+        ? "This counter offer has been withdrawn."
+        : liveOfferExpired
+          ? "This offer has expired."
+          : undefined
 
   const selectedNotificationOfferVariant: OfferFlowDialogVariant =
     notificationOfferStep === "accept"
@@ -3407,6 +3429,15 @@ export function Chats({
                       item.event === "offer.counter_edited")
                   )
                 const rateMatch = item.offerRate.match(/^(\$)([\d,.]+)(.*)$/)
+                // BTB-370: item.offerRate is real/live post-BTB-366 (sourced
+                // from getOffer()/getCounterOffer(), never notification
+                // metadata) for the vast majority of cases — this is a
+                // defensive backstop for the one path that still can't
+                // guarantee a number: the seeded-fixture fallback a few
+                // hundred lines below (metadata.offerRate, unvalidated).
+                // Hides the row rather than a label with nothing real to
+                // show, per the ticket's explicit instruction.
+                const hasOfferRate = rateMatch !== null || /\d/.test(item.offerRate)
                 const previousCreatedAt =
                   index > 0
                     ? conversationOfferNotifications[index - 1]?.createdAt
@@ -3854,38 +3885,47 @@ export function Chats({
                                 mutedTerms && "opacity-40"
                               )}
                             >
-                              <div className="flex w-[129px] items-center justify-center gap-1.5 whitespace-nowrap">
-                                <span className="flex items-center gap-0.5">
-                                  <DollarSign className="size-3 shrink-0 text-primary-400" />
-                                  <span>Offer Rate</span>
-                                </span>
-                                <span className="flex items-end text-dark-blue-400">
-                                  {rateMatch ? (
-                                    <>
-                                      <span
-                                        className="text-base font-medium leading-[18px]"
-                                      >
-                                        {rateMatch[1]}
-                                      </span>
-                                      <span
-                                        className="text-base font-semibold leading-[18px]"
-                                      >
-                                        {rateMatch[2]}
-                                      </span>
-                                      <span
-                                        className="text-xs font-light leading-[17px]"
-                                      >
-                                        {rateMatch[3]}
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <span className="font-semibold">
-                                      {item.offerRate}
+                              {/* BTB-370: never render a bare "/hr" with
+                              no number — hasOfferRate (computed above)
+                              hides this whole segment, including its own
+                              trailing divider, rather than showing a
+                              label with nothing real to show. */}
+                              {hasOfferRate ? (
+                                <>
+                                  <div className="flex w-[129px] items-center justify-center gap-1.5 whitespace-nowrap">
+                                    <span className="flex items-center gap-0.5">
+                                      <DollarSign className="size-3 shrink-0 text-primary-400" />
+                                      <span>Offer Rate</span>
                                     </span>
-                                  )}
-                                </span>
-                              </div>
-                              <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                                    <span className="flex items-end text-dark-blue-400">
+                                      {rateMatch ? (
+                                        <>
+                                          <span
+                                            className="text-base font-medium leading-[18px]"
+                                          >
+                                            {rateMatch[1]}
+                                          </span>
+                                          <span
+                                            className="text-base font-semibold leading-[18px]"
+                                          >
+                                            {rateMatch[2]}
+                                          </span>
+                                          <span
+                                            className="text-xs font-light leading-[17px]"
+                                          >
+                                            {rateMatch[3]}
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <span className="font-semibold">
+                                          {item.offerRate}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                                </>
+                              ) : null}
                               <div
                                 className="flex w-[120px] min-w-0 items-center justify-center gap-1.5 whitespace-nowrap"
                               >
@@ -6318,6 +6358,9 @@ export function Chats({
           liveCounterWithdrawn={
             notificationOfferStep === "event" && liveCounterWithdrawn
           }
+          liveCounterDeclined={
+            notificationOfferStep === "event" && liveCounterDeclined
+          }
           liveExpired={notificationOfferStep === "event" && liveOfferExpired}
           talentAskNowLabel={
             selectedTalentOfferExpiredOverThirtyDays
@@ -6740,16 +6783,29 @@ export function Chats({
             setSelectedNotificationOffer(null)
           }}
           onMessage={() => {
-            const firstName =
-              selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]
             setSelectedNotificationOffer(null)
             setSelectedTab("Messages")
-            setTextareaValue(
-              `Hi ${firstName}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
-            )
-            lastTypedAtRef.current = Date.now()
-            userTypedRef.current = true
-            sendTyping(true)
+            // BTB-371: the "still interested in the role" template below is
+            // talent-voiced (following up on a job) — wrong for a client
+            // responding to a counter, and just as wrong for a talent
+            // responding to their OWN sent counter. PMCM-380 AC-26.02
+            // specifies no template for this flow (confirmed — zero
+            // matches for "PMCM-380"/"AC-26.02" anywhere in
+            // .claude/memory or docs/), so per instruction: don't pre-fill
+            // the wrong words, open the thread with the composer empty and
+            // focused instead.
+            if (selectedNotificationOfferVariant === "counter-offer-details") {
+              setTextareaValue("")
+            } else {
+              const firstName =
+                selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]
+              setTextareaValue(
+                `Hi ${firstName}! I wanted to check in and see if the ${selectedNotificationOfferData.role} role for the project ${selectedNotificationOfferData.offerTitle} is still available. If so, I’m still interested.`
+              )
+              lastTypedAtRef.current = Date.now()
+              userTypedRef.current = true
+              sendTyping(true)
+            }
             requestAnimationFrame(() => composerRef.current?.focus())
           }}
         />
@@ -6831,7 +6887,20 @@ export function Chats({
                     size="sm"
                     className="w-[104px] px-2"
                     leftIcon={<MessageSquare className="size-4" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: this used to just close the dialog — no
+                      // tab switch, no composer prefill, no focus. Same
+                      // fix as the primary OfferFlowDialog's onMessage: no
+                      // template exists for a counter-related "Message"
+                      // (PMCM-380 AC-26.02 specifies none), so open the
+                      // thread with the composer empty and focused rather
+                      // than pre-filling the wrong (talent-"still
+                      // interested") words.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
@@ -7068,7 +7137,18 @@ export function Chats({
                     visual="gray"
                     size="sm"
                     leftIcon={<MessageSquare className="size-4" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: same fix as the sent/expired-counter
+                      // dialog above — this used to just close the
+                      // dialog. No template exists for a counter-related
+                      // "Message" (PMCM-380 AC-26.02 specifies none), so
+                      // open the thread with the composer empty and
+                      // focused.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
@@ -7462,7 +7542,20 @@ export function Chats({
                         size="sm"
                         className="w-[104px] px-2"
                         leftIcon={<MessageSquare className="size-[15px]" />}
-                        onClick={() => setSelectedNotificationOffer(null)}
+                        onClick={() => {
+                          // BTB-371: same fix as the other counter-offer
+                          // screens' "Message" button — this used to just
+                          // close the dialog. No template exists for a
+                          // counter-related "Message" (PMCM-380 AC-26.02
+                          // specifies none), so open the thread with the
+                          // composer empty and focused.
+                          setSelectedNotificationOffer(null)
+                          setSelectedTab("Messages")
+                          setTextareaValue("")
+                          requestAnimationFrame(() =>
+                            composerRef.current?.focus()
+                          )
+                        }}
                       >
                         Message
                       </Button>
