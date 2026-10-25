@@ -3,6 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ProjectAPI } from "@/service/http/project"
 
+// PMCM-254/PMCM-403: the title character limit — was a local, duplicated
+// const in edit-listing/[slug]/page.tsx (TITLE_MAX_LENGTH/
+// TITLE_MAX_LENGTH_ERROR) and a bare hardcoded 120 in my-listings/[slug]/
+// page.tsx's own title editor; also matches the backend's
+// UpsertProjectDraftDto `@MaxLength(120)`. Single shared source now so the
+// dashboard's inline rename (PMCM-403/AC1) uses the exact same rule as the
+// wizard's Basic Info step, not a third copy.
+export const TITLE_MAX_LENGTH = 120
+export const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
+export const TITLE_REQUIRED_ERROR = "Please enter a title"
+
 export const MY_LISTING_TYPES = ["project", "service"] as const
 
 export type MyListingType = (typeof MY_LISTING_TYPES)[number]
@@ -72,8 +83,31 @@ export interface MyListing {
   /** QA-195/PMCM-403: unresolved required-field validation error, computed
    * server-side (getMyProjects) regardless of status — true even for a
    * Published/Active listing whose content was edited below what's
-   * required after it went live. */
+   * required after it went live. PMCM-403/AC4: also true for a real,
+   * confirmed-producible backend rejection (status "rejected"/
+   * "publish_blocked" — the actual "needs update" signal for projects/
+   * services; a real `needs_update` status, as the job-listing module has,
+   * doesn't exist for these entity types) or "flagged" (part of the
+   * `ListingStatus` enum shared/enums/listing.enum.ts — kept for forward
+   * compatibility even though it's confirmed never actually written by the
+   * publish module this dashboard reads from; it belongs to a separate,
+   * legacy `projects` entity). */
   hasValidationError?: boolean
+  /** PMCM-403/F2: can the current user rename this listing — #714's editor
+   * authorization rule (any team member, same as isProjectMember/
+   * ensureProjectOwnership in listings-service). GET /publish/projects/mine
+   * (backing this whole array) scopes strictly to listings where the
+   * caller is the literal owner, so this is always true for every listing
+   * this function returns (owner is trivially also a team member). Kept
+   * explicit (default false elsewhere, e.g. a future "Shared With Me" data
+   * path) rather than assumed. */
+  canRename?: boolean
+  /** PMCM-403/F2: can the current user publish/unpublish this listing —
+   * stricter than canRename: owner or project lead only (listings-service's
+   * new `ensureCanPublish`, listings.project_members.isLead). Sourced from
+   * the backend's own `viewerCanPublish` field (publish.service.ts's
+   * getMyProjects) — computed server-side, never guessed client-side. */
+  canPublish?: boolean
 }
 
 export const MY_LISTINGS_STORAGE_KEY = "marketeq-project-drafts"
@@ -270,6 +304,10 @@ function normalizeDraftsFromStorage(): MyListing[] {
             : undefined,
         }),
         updatedAt: draft?.savedAt,
+        // PMCM-403: local drafts are always this browser's own in-progress
+        // listing, created (and so owned) by whoever is looking at it.
+        canRename: true,
+        canPublish: true,
       }
     })
   } catch (error) {
@@ -386,7 +424,18 @@ async function fetchBackendListings(): Promise<MyListing[]> {
     updatedAt: p.updatedAt || p.createdAt,
     datePublished: p.projectDatePublished ?? null,
     teamAvatars: Array.isArray(p.teamAvatars) ? p.teamAvatars : [],
-    hasValidationError: Boolean(p.hasValidationError),
+    // PMCM-403/AC4: see the MyListing.hasValidationError doc comment for
+    // exactly which statuses are real vs. forward-compat-only.
+    hasValidationError:
+      Boolean(p.hasValidationError) ||
+      p.status === "rejected" ||
+      p.status === "publish_blocked" ||
+      p.status === "flagged",
+    // PMCM-403/F2: every row from this owner-scoped endpoint is rename-able
+    // (owner is trivially a team member too, #714's rule).
+    canRename: true,
+    // PMCM-403/F2: server-computed owner-or-lead signal, not a client guess.
+    canPublish: Boolean(p.viewerCanPublish),
   }))
 }
 
@@ -519,5 +568,17 @@ export function useMyListings() {
     return () => window.removeEventListener("focus", onFocus)
   }, [refreshListings])
 
-  return { listings, isLoading, hasError, refreshListings }
+  // PMCM-403: lets the dashboard apply an instant optimistic patch (rename,
+  // Live/Draft toggle) to one listing without waiting on a full refetch,
+  // and revert it in place on failure.
+  const updateListing = useCallback(
+    (id: string, patch: Partial<MyListing>) => {
+      setListings((prev) =>
+        prev.map((l) => (l.id === id ? { ...l, ...patch } : l))
+      )
+    },
+    []
+  )
+
+  return { listings, isLoading, hasError, refreshListings, updateListing }
 }
