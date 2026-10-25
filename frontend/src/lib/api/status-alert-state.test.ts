@@ -420,3 +420,48 @@ describe("the inline unverified banner", () => {
     )
   })
 })
+
+describe("an approved home-country change ends Travel Mode", () => {
+  const live = (over: Partial<StatusAlertInputs> = {}) =>
+    base({
+      travelModeActive: true,
+      travelModeActivatedAt: at(60),
+      ...over,
+    })
+
+  it("the ongoing card no longer qualifies once a newer Home Country Updated alert exists, even from a stale profile", () => {
+    const stack = buildAlertStack(
+      live({ persistent: [alert(1, "home_country_updated", at(5))] })
+    )
+    assert.deepEqual(
+      stack.map((a) => a.type),
+      ["home_country_updated"]
+    )
+  })
+
+  it("a Travel Mode activated AFTER the home-country change shows its ongoing card again", () => {
+    const stack = buildAlertStack(
+      live({
+        travelModeActivatedAt: at(5),
+        persistent: [alert(1, "home_country_updated", at(60))],
+      })
+    )
+    assert.ok(stack.some((a) => a.type === "travel_mode_ongoing"))
+  })
+
+  it("the persistent Travel Mode alert is superseded by the newer home-country alert, and not by an older one", () => {
+    const out = applySupersession([
+      alert(1, "travel_mode", at(30)),
+      alert(2, "home_country_updated", at(5)),
+    ])
+    assert.deepEqual(
+      out.map((a) => a.type),
+      ["home_country_updated"]
+    )
+    const later = applySupersession([
+      alert(1, "home_country_updated", at(30)),
+      alert(2, "travel_mode", at(5)),
+    ])
+    assert.equal(later.length, 2)
+  })
+})

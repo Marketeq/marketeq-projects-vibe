@@ -786,7 +786,7 @@ describe('Home-country change sessions (PMCM-650)', () => {
   // ------------------------------------------------------------------
   describe('a rejected confirmation leaves the live claim intact for the linked approval', () => {
     // The REAL account-side service over the same profile row the session service uses.
-    const accountService = (w: World) =>
+    const accountService = (w: World, statusAlerts?: unknown) =>
       new IdentityVerificationService(
         {
           findOne: jest.fn(async () => w.profile),
@@ -813,6 +813,8 @@ describe('Home-country change sessions (PMCM-650)', () => {
         } as any,
         {} as any,
         { publish: jest.fn() } as any,
+        {} as any,
+        statusAlerts as any,
       );
     const snapshot = (w: World) =>
       JSON.stringify({
@@ -859,6 +861,31 @@ describe('Home-country change sessions (PMCM-650)', () => {
 
       expect(saved.pendingHomeCountry).toBeNull(); // returned to the verified country: claim dropped, as before
       expect(saved.verifiedHomeCountry).toBe('US');
+    });
+
+    it('confirming a first (or unchanged) home country publishes no status alert', async () => {
+      const w = world({
+        profile: {
+          verifiedHomeCountry: null,
+          verifiedHomeCountryConfirmedAt: null,
+          pendingHomeCountry: null,
+          pendingHomeCountryConfirmedAt: null,
+          pendingRelocationSessionId: null,
+          travelClassification: null,
+          locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED,
+          identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+        },
+      });
+      const alerts = {
+        verified: jest.fn(),
+        submittedForReview: jest.fn(),
+        homeCountryUpdated: jest.fn(),
+        travelMode: jest.fn(),
+      };
+      const saved: any = await accountService(w, alerts).confirmHomeCountry('user-1', '198.51.100.9');
+
+      expect(saved.verifiedHomeCountry).toBe('US'); // the first confirmation did happen
+      for (const fn of Object.values(alerts)) expect(fn).not.toHaveBeenCalled();
     });
   });
 
@@ -1382,6 +1409,18 @@ describe('Home-country change sessions (PMCM-650)', () => {
       (w.service as any).statusAlerts = undefined;
       await w.send(await w.startChange(), 'Approved');
       expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+    });
+  });
+
+  // PMCM-651: "Your home country was updated." is for an approved change only.
+  describe('the approved relocation is the only source of the persistent home-country alert', () => {
+    it('only the approved relocation session publishes it, once, keyed by that session', async () => {
+      const w = world();
+      const s1 = await w.startChange();
+      expect(w.alerts.homeCountryUpdated).not.toHaveBeenCalled();
+      await w.send(s1, 'Approved');
+      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledWith('user-1', w.sessions[0].id);
     });
   });
 });

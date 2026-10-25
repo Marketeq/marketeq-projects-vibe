@@ -161,17 +161,15 @@ describe("dismissing the Travel Mode alert", () => {
 })
 
 describe("what is rendered so far", () => {
-  it("not the types whose cards are not built yet, and never the live cards", () => {
+  it("only persistent alerts: the live cards are never part of the rendered list", () => {
     const stack = buildAlertStack({
-      persistent: [
-        alert(1, "travel_mode", 5),
-        alert(2, "home_country_updated", 9),
-      ],
+      persistent: [alert(1, "travel_mode", 5)],
       loginSessionKey: "l",
       nowMs: NOW,
       travelModeActive: true,
       fullyVerified: false,
     })
+    assert.ok(stack.some((a) => a.source === "live"))
     assert.deepEqual(
       stack.filter(isRenderedStatusAlert).map((a) => a.type),
       ["travel_mode"]
@@ -300,5 +298,52 @@ describe("the verified alert", () => {
     })
     assert.equal(failed.ok, false)
     assert.equal(stack(f.get()).filter(isRenderedStatusAlert).length, 2)
+  })
+})
+
+describe("the home-country-updated alert", () => {
+  const home = alert(20, "home_country_updated", 2)
+  const oldTravel = alert(21, "travel_mode", 30)
+  const stack = (state: DismissalState) =>
+    buildAlertStack({
+      persistent: [oldTravel, home],
+      ...state,
+      loginSessionKey: null,
+      nowMs: NOW,
+      travelModeActive: undefined,
+      fullyVerified: undefined,
+    })
+
+  it("is rendered and replaces the older persistent Travel Mode alert", () => {
+    assert.deepEqual(
+      stack(empty)
+        .filter(isRenderedStatusAlert)
+        .map((a) => a.type),
+      ["home_country_updated"]
+    )
+  })
+
+  it("dismisses through the persistent API, optimistically, and is restored on failure", async () => {
+    const s = holder()
+    const calls: string[] = []
+    const ok = await dismissPersistentAlertOptimistically({
+      alert: stack(s.get())[0] as PersistentDisplayAlert,
+      dismiss: async (id) => void calls.push(id),
+      update: s.update,
+    })
+    assert.deepEqual(ok, { ok: true })
+    assert.deepEqual(calls, [home.id])
+    assert.equal(stack(s.get()).length, 0)
+
+    const f = holder()
+    const failed = await dismissPersistentAlertOptimistically({
+      alert: stack(f.get())[0] as PersistentDisplayAlert,
+      dismiss: async () => {
+        throw new Error("500")
+      },
+      update: f.update,
+    })
+    assert.equal(failed.ok, false)
+    assert.equal(stack(f.get()).length, 1)
   })
 })

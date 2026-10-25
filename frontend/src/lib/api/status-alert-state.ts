@@ -106,6 +106,16 @@ export function applySupersession(alerts: StatusAlert[]): StatusAlert[] {
   })
 }
 
+function endedByHomeCountryUpdate(input: StatusAlertInputs): boolean {
+  const activatedAt = toMs(input.travelModeActivatedAt)
+  return input.persistent.some((a) => {
+    if (a.type !== "home_country_updated") return false
+    const ms = toMs(a.createdAt)
+    // Unknown activation time: any approved change counts, as it ends whatever is active.
+    return ms !== null && (activatedAt === null || ms >= activatedAt)
+  })
+}
+
 /** Every alert that should currently exist, newest first, before the visible cap. */
 export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
   const dismissedIds = input.dismissedPersistentIds ?? new Set<string>()
@@ -129,7 +139,11 @@ export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
 
   const session = input.loginSessionKey
   if (session) {
-    if (input.travelModeActive === true) {
+    // An approved home-country change ends Travel Mode. Even if the profile this page read
+    // still says active (it was read before the change), the ongoing card does not qualify
+    // once a Home Country Updated alert is newer than the activation.
+    const travelEnded = endedByHomeCountryUpdate(input)
+    if (input.travelModeActive === true && !travelEnded) {
       const key = liveAlertKey("travel_mode_ongoing", session)
       if (!dismissedLive.has(key)) {
         out.push({

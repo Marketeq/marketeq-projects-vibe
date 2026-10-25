@@ -178,7 +178,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     assert.match(card, /setStatusAlertDismissFailed\(true\)/)
   })
 
-  it("only the Travel Mode, submitted-for-review and verified alerts are rendered so far", () => {
+  it("the Travel Mode, submitted-for-review, verified and home-country-updated alerts are the rendered types", () => {
     assert.match(
       page,
       /RENDERED_STATUS_ALERT_TYPES as readonly string\[\]\)\.includes\(a\.type\)/
@@ -258,5 +258,44 @@ describe("Verified alert card (Figma node 13101-47566)", () => {
       /title: 'All set! Your identity and location are verified\.'/
     )
     assert.match(copy, /body: 'You now have full access to all features\.'/)
+  })
+})
+
+describe("Home Country Updated alert card (Figma node 13101-47577)", () => {
+  it("is the same single card markup, with the MarkerPin01 icon of the existing home-country toast at Figma's offset", () => {
+    assert.equal(page.split("data-status-alert={card.type}").length - 1, 1)
+    assert.match(card, /card\.type === "home_country_updated"/)
+    assert.match(
+      card,
+      /<MarkerPin01 className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>/
+    )
+    // The existing toast (kept unchanged) uses the same icon and offsets.
+    assert.match(
+      page,
+      /<MarkerPin01 className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>[\s\S]*HOME_COUNTRY_UPDATED_ALERT\.title/
+    )
+  })
+
+  it("has no action: the dismiss control is the only button", () => {
+    assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
+    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+  })
+
+  it("the backend sends the Figma copy from one source shared with the in-app notification", () => {
+    const publisher = readFileSync(
+      join(
+        __dirname,
+        "../../../../backend/apps/identity-verification-service/src/events/home-country-updated-notification.publisher.ts"
+      ),
+      "utf8"
+    )
+    assert.match(
+      publisher,
+      /HOME_COUNTRY_UPDATED_NOTIFICATION_TITLE = 'Your home country was updated\.'/
+    )
+    assert.match(
+      publisher,
+      /You can continue using the platform while away from your home\s+country\.'|'You can continue using the platform while away from your home country\.'/
+    )
   })
 })
