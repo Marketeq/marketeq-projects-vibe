@@ -2,9 +2,9 @@
 
 import { useEffect } from "react"
 import { usePathname } from "next/navigation"
-import { useIsEmbeddedTalentProfile } from "./embedded-profile-gate"
 import { useAuth } from "@/contexts/auth"
 import { AuthModal } from "@/components/auth/auth-modal"
+import { useIsEmbeddedTalentProfile } from "./embedded-profile-gate"
 
 export function GroupLayoutInner({
   children,

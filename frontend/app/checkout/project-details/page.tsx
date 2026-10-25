@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   notFound,
+  useParams,
   usePathname,
   useRouter,
   useSearchParams,
@@ -205,7 +206,6 @@ const EXPERIENCE_OPTIONS: {
   { value: "Guru", label: "Guru (10+ years)", icon: <Network4 /> },
 ]
 
-// Same editable-flag gating as PhaseCell/LocationCell below.
 const ExperienceCell = ({
   label,
   editable,
@@ -262,11 +262,9 @@ const ExperienceCell = ({
   )
 }
 
-// Shared box-model so the read-only badge and editable dropdown look the same.
 const PHASE_CELL_CLASSNAME =
   "h-auto max-w-full min-w-0 shrink bg-white border border-gray-200 rounded-[5px] px-2 py-[5px]"
 
-// Static badge unless `editable` is set — one prop swaps the two states.
 const PhaseCell = ({
   label,
   editable,
@@ -320,7 +318,6 @@ const PhaseCell = ({
   )
 }
 
-// Same editable-flag gating as PhaseCell above.
 const LocationCell = ({
   label,
   editable,
@@ -375,7 +372,6 @@ type CheckoutTeamMember = {
   handle: string
   role: string
   phases: string
-  // false = read-only badge (default); true = editable picker.
   phaseEditable?: boolean
   experience: string
   experienceEditable?: boolean
@@ -404,9 +400,7 @@ type TeamMemberChangeResponse = {
 }
 
 const formatOpenRoleRate = (rate: number | null | undefined) =>
-  rate === null || rate === undefined
-    ? "N/A"
-    : `$${rate.toFixed(0)}/hr`
+  rate === null || rate === undefined ? "N/A" : `$${rate.toFixed(0)}/hr`
 
 const USER_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -593,7 +587,6 @@ const safeDecodeSlug = (value: string): string => {
   }
 }
 
-// Maps the real project_members.status value onto the checkout status badge.
 const getTeamMemberStatus = (
   rawStatus: string | null
 ): CheckoutTeamMember["status"] => {
@@ -723,11 +716,12 @@ const getExperienceLabelFromYears = (years?: number | null): string => {
   return "Senior"
 }
 
-// Same profile fields the Favorites effect below maps by hand — used here so
-// the Talent Network effect doesn't duplicate that mapping.
 const mapProfileToTalentNetworkCandidate = (
   talentId: string,
-  profile: any
+  profile: UserProfile & {
+    rate?: number | string | null
+    experiences?: Array<{ startDate?: string | null; endDate?: string | null }>
+  }
 ): CheckoutTeamMember => {
   const name =
     profile?.firstName ||
@@ -758,9 +752,6 @@ const mapProfileToTalentNetworkCandidate = (
   }
 }
 
-// Maps a raw Algolia talent hit (GET /search?category=talent) into the same
-// replacement-candidate shape the Favorites/Talent Network tabs use — mirrors
-// the talent branch of hitToListingCardProps in app/(group)/(group)/(group)/search/page.tsx.
 const mapSearchHitToAllCandidate = (hit: SearchHit): CheckoutTeamMember => {
   const id = String(hit.objectID ?? hit.id ?? "")
   const username = hit.username ? String(hit.username) : ""
@@ -819,9 +810,13 @@ function CheckoutPageInner() {
   const pathname = usePathname()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const routeParams = useParams()
   const isTalentCheckout = pathname.startsWith("/talent-checkout/")
   const slugParamName = isTalentCheckout ? "username" : "listingId"
-  const slug = searchParams.get(slugParamName) ?? ""
+  const slug =
+    (routeParams?.slug as string | undefined) ??
+    searchParams.get(slugParamName) ??
+    ""
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
   const decodedSlug = safeDecodeSlug(slug)
   const safeSlugSegment = encodeURIComponent(decodedSlug)
@@ -1123,9 +1118,6 @@ function CheckoutPageInner() {
   >([])
   const [talentNetworkLoading, setTalentNetworkLoading] = React.useState(false)
 
-  // Switching tabs or typing a new search changes which rows are visible,
-  // so a selection made under the previous view would otherwise stay armed
-  // and "Replace" could fire against a candidate no longer shown as selected.
   React.useEffect(() => {
     setSelectedReplacementId(null)
   }, [replacementFilter, replacementSearch])
@@ -1531,8 +1523,6 @@ function CheckoutPageInner() {
     }
   }, [isTalentCheckout, draftSummary?.draftId])
 
-  // Real assignment lookup by id (`task.assigneeUserId`, set when the task
-  // was scoped and persisted through to the published scope snapshot).
   const teamMembersById = React.useMemo(() => {
     const map = new Map<
       string,
@@ -1603,7 +1593,6 @@ function CheckoutPageInner() {
     return `${phaseNames.size} Phase`
   }
 
-  // Options for the editable Phase picker: the project's real phase names.
   const scopePhaseNames = React.useMemo(
     () =>
       Array.from(
@@ -1950,7 +1939,6 @@ function CheckoutPageInner() {
     )
 
     if (!existingGiftCard) {
-      // Frontend-only preview values until gift-card redemption is connected.
       const previewAmounts = [1000, 2500, 2000]
       const amount =
         previewAmounts[appliedGiftCards.length % previewAmounts.length]
@@ -2077,7 +2065,6 @@ function CheckoutPageInner() {
       return
     }
 
-    // Frontend-only verification delay until promo redemption is connected.
     await new Promise((resolve) => window.setTimeout(resolve, 600))
     if (promoRequestIdRef.current !== requestId) return
 
@@ -2373,7 +2360,7 @@ function CheckoutPageInner() {
                 (task.experienceLevel ?? assignedMember?.experience ?? "")
                   .trim()
                   .toLowerCase()
-            ) ?? "") as any,
+            ) ?? "") as PhaseRow["experience"],
             duration: {
               value: task.estimatedHours ?? 0,
               type: "hours" as const,
@@ -2737,15 +2724,20 @@ function CheckoutPageInner() {
       nextSearchParams.set("schedule", selectedSchedule)
       nextSearchParams.set("duration", selectedDuration)
       nextSearchParams.set("paymentPlan", selectedTalentPaymentPlanId)
-      router.push(`${basePath}/payment?${nextSearchParams.toString()}`)
+      nextSearchParams.set("username", decodedSlug)
+      router.push(
+        `${basePath}/${safeSlugSegment}/payment?${nextSearchParams.toString()}`
+      )
       return
     }
 
     router.push(`${basePath}/payment?${slugQuery}`)
   }, [
     basePath,
+    decodedSlug,
     isTalentCheckout,
     router,
+    safeSlugSegment,
     slugQuery,
     searchParams,
     selectedDuration,
@@ -3340,8 +3332,7 @@ function CheckoutPageInner() {
                   <>
                     <AlertTitle>This checkout has already been paid</AlertTitle>
                     <AlertDescription className="mt-1">
-                      Please check your payment confirmation or contact
-                      support.
+                      Please check your payment confirmation or contact support.
                     </AlertDescription>
                   </>
                 ) : isNetworkFailure ? (

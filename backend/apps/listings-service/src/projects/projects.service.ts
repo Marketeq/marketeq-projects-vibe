@@ -388,8 +388,6 @@ export class ProjectsService {
         // as strings (not numbers) to avoid precision loss, so coerce here
         // rather than leaking that quirk to callers expecting a real number.
         let rate = u.rate != null ? Number(u.rate) : (u.rateMin ?? null);
-        // No profile rate on file — ask pricing-service for a role-based
-        // estimate instead of leaving the checkout page to invent one.
         if (rate == null) {
           const rateUsdCents = await this.roleRateService.getRateUsdCents(
             role,
@@ -426,31 +424,30 @@ export class ProjectsService {
     return { team, notShownToClients };
   }
 
-  // Total actual time-worked across a user's real work-experience rows
-  // (each entry's own duration summed, not the span from earliest start to
-  // latest end — overlapping/gapped entries must not inflate the total),
-  // bucketed into the same Student/Junior/Mediator/Senior/Guru brackets the
+  // Sum of actual work durations across a user's experience rows, bucketed
+  // into the same Student/Junior/Mediator/Senior/Guru brackets the
   // checkout page's Experience dropdown already offers (0-2/2-3/3-5/5-10/10+
-  // years) — see the Dropdown component in
-  // frontend/app/checkout/[slug]/page.tsx.
+  // years). Each entry contributes its own (end - start) individually so
+  // career gaps don't inflate the total.
   private resolveExperienceLevel(
     entries: Array<{ startDate: string | null; endDate: string | null }>,
   ): string | null {
-    const msPerYear = 1000 * 60 * 60 * 24 * 365.25;
+    const MS_PER_YEAR = 1000 * 60 * 60 * 24 * 365.25;
     let totalMs = 0;
-    let hasEntry = false;
+    let validEntries = 0;
+
     for (const entry of entries) {
       const start = entry.startDate ? Date.parse(entry.startDate) : NaN;
       if (Number.isNaN(start)) continue;
-      const end = entry.endDate ? Date.parse(entry.endDate) : NaN;
-      const resolvedEnd = Number.isNaN(end) ? Date.now() : end;
-      if (resolvedEnd <= start) continue;
-      hasEntry = true;
-      totalMs += resolvedEnd - start;
+      const end = entry.endDate ? Date.parse(entry.endDate) : Date.now();
+      if (end > start) {
+        totalMs += end - start;
+        validEntries++;
+      }
     }
-    if (!hasEntry) return null;
+    if (!validEntries) return null;
 
-    const years = totalMs / msPerYear;
+    const years = totalMs / MS_PER_YEAR;
 
     if (years < 2) return 'Student';
     if (years < 3) return 'Junior';

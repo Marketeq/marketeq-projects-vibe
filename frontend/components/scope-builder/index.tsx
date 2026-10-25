@@ -884,6 +884,14 @@ const getTaskSearchTargetId = (phaseIndex: number, rowIndex: number) =>
 const normalizeSearchText = (value?: string) =>
   (value ?? "").toLowerCase().replace(/\s+/g, " ").trim()
 
+const rowMatchesSearch = (
+  row: { task?: string; role?: string; location?: string },
+  query: string
+) =>
+  [row.task, row.role, row.location].some((value) =>
+    normalizeSearchText(value).includes(query)
+  )
+
 const getPhaseSearchMatch = (
   phase: Phase | undefined,
   query: string
@@ -892,7 +900,7 @@ const getPhaseSearchMatch = (
   if (!phase) return { visible: false, showAllTasks: false }
   const phaseMatches = normalizeSearchText(phase.phaseName).includes(query)
   const hasTaskMatch = (phase.rows ?? []).some((row) =>
-    normalizeSearchText(row.task).includes(query)
+    rowMatchesSearch(row, query)
   )
   return {
     visible: phaseMatches || hasTaskMatch,
@@ -3274,8 +3282,7 @@ const PhaseTable = ({
               .getRowModel()
               .rows.filter(
                 (row) =>
-                  !searchQuery ||
-                  normalizeSearchText(row.original.task).includes(searchQuery)
+                  !searchQuery || rowMatchesSearch(row.original, searchQuery)
               )
               .map((row) => (
                 <PhaseTableRow key={row.id} row={row} />
@@ -3412,7 +3419,6 @@ export interface ScopeBuilderProps {
   onScopeTypeChange?: (type: ScopeType) => void
   /** Team members available for task assignment */
   teamMembers?: TeamMember[]
-  /** Opens the task form for a phase when the embedded editor is shown. */
   openTaskDialogForPhaseIndex?: number | null
   onTaskDialogOpened?: () => void
 }
