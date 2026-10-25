@@ -17,4 +17,15 @@ describe('PersistentStatusAlert entity', () => {
       ]),
     );
   });
+
+  // A zone-less timestamp is read back in the server's local zone: on a non-UTC host every
+  // createdAt came out hours in the future, which broke ordering against the browser clock.
+  it('stores every timestamp with its time zone', async () => {
+    const ds = new DataSource({ type: 'postgres', entities: [PersistentStatusAlert] });
+    await (ds as any).buildMetadatas();
+    const meta = ds.getMetadata(PersistentStatusAlert);
+    for (const name of ['createdAt', 'updatedAt', 'dismissedAt']) {
+      expect(meta.findColumnWithPropertyName(name)?.type).toBe('timestamptz');
+    }
+  });
 });
