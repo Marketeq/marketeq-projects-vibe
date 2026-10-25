@@ -7,7 +7,6 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { withoutStatusAlertStack } from "./status-alert-stack-source"
 import { isActiveTravelUpdate, isTravelModeInForce } from "./travel-popup"
 import { shouldShowTravelExpiryPopup } from "./travel-expiry-popup"
 import {
@@ -17,11 +16,9 @@ import {
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
-const page = withoutStatusAlertStack(
-  readFileSync(
-    join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-    "utf8"
-  )
+const page = readFileSync(
+  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
+  "utf8"
 )
 const count = (needle: string) => page.split(needle).length - 1
 

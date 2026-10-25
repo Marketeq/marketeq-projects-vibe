@@ -1708,83 +1708,88 @@ export default function TalentDashboard() {
         />
       )}
 
+      {/* Persistent status alerts (PMCM-651): a fixed top-right overlay, outside the dashboard
+          layout, so nothing on the page moves when an alert appears or is dismissed. Same
+          corner as the existing toasts (right 20px), 20px below the header (64px from md up, 92px
+          on phones, where it has a second row). Below md it spans the screen with 16px margins. Newest
+          first, three at most, 12px apart, no timeout. The wrapper ignores the pointer so
+          it never blocks the page; only the cards take it. */}
+      {(statusAlertStack.visible.length > 0 ||
+        statusAlertDismissFailed) && (
+        <div
+          data-status-alert-stack
+          className="pointer-events-none fixed left-4 right-4 top-[112px] z-40 flex flex-col items-end gap-3 md:left-auto md:right-5 md:top-[84px] md:w-[400px]"
+        >
+          {statusAlertStack.visible.filter(isTravelModeAlert).map((card) => (
+            // Figma node 13101-46846: 400px card, 98px with a two-line body. Figma's 16px padding
+            // sits over its 1px stroke, so padding is 15px here (border-box + 1px border) to
+            // keep the icon 16px from the edge and the content 368px; the 36px close button is
+            // 8px from the corner, i.e. 7px from the padding box.
+            <Alert
+              key={card.key}
+              data-status-alert="travel_mode"
+              className="pointer-events-auto relative w-full max-w-[400px] items-start md:w-[400px] gap-x-5 rounded-xl border-gray-100 bg-white p-[15px] text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
+            >
+              <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+                <Plane className="size-[24.75px] text-primary-500" />
+              </AlertIcon>
+              <AlertContent className="flex min-w-0 flex-col gap-1 pr-10 pt-0.5">
+                <AlertTitle className="text-sm font-semibold leading-5 text-gray-900">
+                  {card.title}
+                </AlertTitle>
+                <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
+                  {card.body}
+                </AlertDescription>
+              </AlertContent>
+              <IconButton
+                aria-label={STATUS_ALERT_CLOSE_LABEL}
+                className="absolute right-[7px] top-[7px] size-9 text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={() => {
+                  setStatusAlertDismissFailed(false)
+                  void dismissPersistentAlertOptimistically({
+                    alert: card,
+                    dismiss: StatusAlertsAPI.dismiss,
+                    update: setStatusAlertDismissal,
+                  }).then((outcome) => {
+                    if (outcome.ok) return
+                    console.error(
+                      "[status-alerts] could not dismiss the alert",
+                      outcome.error
+                    )
+                    setStatusAlertDismissFailed(true)
+                  })
+                }}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </Alert>
+          ))}
+          {statusAlertDismissFailed && (
+            <Alert
+              variant="error"
+              data-status-alert-error
+              className="pointer-events-auto w-full max-w-[400px] md:w-[400px]"
+            >
+              <AlertContent>
+                <AlertTitle>{STATUS_ALERT_DISMISS_ERROR}</AlertTitle>
+              </AlertContent>
+              <CloseButton
+                aria-label="Close"
+                onClick={() => setStatusAlertDismissFailed(false)}
+              />
+            </Alert>
+          )}
+        </div>
+      )}
+
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
           <LeftSidebar />
           <div className="flex-auto p-3.5 gap-x-8 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
             <div className="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">
-              {(statusAlertStack.visible.length > 0 ||
-                statusAlertDismissFailed) && (
-                // Inline alert stack (not a popup or toast): newest first, three at most.
-                // Like the banner below, it carries its own bottom gap from md up.
-                <div
-                  data-status-alert-stack
-                  className="flex flex-col items-start gap-3 md:mb-8"
-                >
-                  {statusAlertStack.visible.filter(isTravelModeAlert).map((card) => (
-                    // Figma node 13101-46846: 400px card, 98px with a two-line body. Figma's 16px padding
-                    // sits over its 1px stroke, so padding is 15px here (border-box + 1px border) to
-                    // keep the icon 16px from the edge and the content 368px; the 36px close button is
-                    // 8px from the corner, i.e. 7px from the padding box.
-                    <Alert
-                      key={card.key}
-                      data-status-alert="travel_mode"
-                      className="relative w-[400px] max-w-full items-start gap-x-5 rounded-xl border-gray-100 bg-white p-[15px] text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
-                    >
-                      <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
-                        <Plane className="size-[24.75px] text-primary-500" />
-                      </AlertIcon>
-                      <AlertContent className="flex min-w-0 flex-col gap-1 pr-10 pt-0.5">
-                        <AlertTitle className="text-sm font-semibold leading-5 text-gray-900">
-                          {card.title}
-                        </AlertTitle>
-                        <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
-                          {card.body}
-                        </AlertDescription>
-                      </AlertContent>
-                      <IconButton
-                        aria-label={STATUS_ALERT_CLOSE_LABEL}
-                        className="absolute right-[7px] top-[7px] size-9 text-gray-500"
-                        size="md"
-                        visual="gray"
-                        variant="ghost"
-                        onClick={() => {
-                          setStatusAlertDismissFailed(false)
-                          void dismissPersistentAlertOptimistically({
-                            alert: card,
-                            dismiss: StatusAlertsAPI.dismiss,
-                            update: setStatusAlertDismissal,
-                          }).then((outcome) => {
-                            if (outcome.ok) return
-                            console.error(
-                              "[status-alerts] could not dismiss the alert",
-                              outcome.error
-                            )
-                            setStatusAlertDismissFailed(true)
-                          })
-                        }}
-                      >
-                        <X className="size-5" />
-                      </IconButton>
-                    </Alert>
-                  ))}
-                  {statusAlertDismissFailed && (
-                    <Alert
-                      variant="error"
-                      data-status-alert-error
-                      className="w-[400px] max-w-full"
-                    >
-                      <AlertContent>
-                        <AlertTitle>{STATUS_ALERT_DISMISS_ERROR}</AlertTitle>
-                      </AlertContent>
-                      <CloseButton
-                        aria-label="Close"
-                        onClick={() => setStatusAlertDismissFailed(false)}
-                      />
-                    </Alert>
-                  )}
-                </div>
-              )}
               {profileBannerShown && !profileBannerDismissed && (
                 // Welcome renders its header row inside a `md:contents` wrapper, so at
                 // md+ the column's space-y margin never reaches that row (a

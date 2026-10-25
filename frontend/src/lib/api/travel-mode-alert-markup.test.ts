@@ -41,17 +41,60 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     }
   })
 
-  it("is an inline alert, not a toast, dialog or modal", () => {
+  it("is an alert card, not a toast, dialog or modal", () => {
     assert.ok(start > -1)
     assert.doesNotMatch(card, /<Toast|<Dialog|<ToastProvider|role="dialog"/)
-    // The stack sits in the page's content column, before the profile banner.
-    assert.ok(start < page.indexOf("{profileBannerShown &&"))
+  })
+
+  it("sits in a fixed top-right overlay outside the dashboard layout, so nothing on the page moves", () => {
+    const stack = page.slice(
+      page.lastIndexOf("<div", start),
+      page.indexOf(">", start)
+    )
+    const classes = stack.match(/className="([^"]*)"/)![1].split(/\s+/)
+    for (const cls of [
+      "fixed",
+      "md:right-5", // the existing toasts' corner offset (right 20px)
+      "md:top-[84px]", // 64px header + 20px
+      "md:left-auto",
+      "md:w-[400px]",
+      "top-[112px]", // phones: 92px two-row header + 20px
+      "flex",
+      "flex-col",
+      "gap-3", // 12px between cards
+      "pointer-events-none", // the wrapper never blocks the page
+    ]) {
+      assert.ok(classes.includes(cls), cls)
+    }
+    assert.ok(classes.includes("left-4") && classes.includes("right-4"))
+    assert.ok(classes.some((c) => /^z-\d+$/.test(c)))
+    // In the document flow there would be no "fixed"; and it is rendered before the page
+    // layout, so the layout (and its pinned hash) contains no part of it.
+    assert.ok(start < page.indexOf("<AuthenticatedRoute>"))
+    assert.ok(
+      !page
+        .slice(page.indexOf("<AuthenticatedRoute>"))
+        .includes("data-status-alert")
+    )
+    assert.ok(!classes.includes("md:mb-8"))
+  })
+
+  it("cards take the pointer, are full width on phones and exactly 400px from md up, and never time out", () => {
+    const c = cardClasses('data-status-alert="travel_mode"')
+    for (const cls of [
+      "pointer-events-auto",
+      "w-full",
+      "max-w-[400px]",
+      "md:w-[400px]",
+    ])
+      assert.ok(c.includes(cls), cls)
+    assert.doesNotMatch(card, /duration=|setTimeout|autoHide/)
   })
 
   it("the card is 400px wide with 16px padding, a 20px icon/text gap, a 12px radius, a #F2F4F7 border and a white fill", () => {
     const c = cardClasses('data-status-alert="travel_mode"')
     for (const cls of [
-      "w-[400px]",
+      "w-full",
       "p-[15px]", // 16px in Figma, over its 1px stroke: 368px content, 98px tall
       "gap-x-5",
       "rounded-xl",

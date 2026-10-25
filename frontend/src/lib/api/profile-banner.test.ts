@@ -4,12 +4,11 @@ import { createHash } from "node:crypto"
 import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { withoutStatusAlertStack } from "./status-alert-stack-source"
 import { shouldShowProfileBanner, verifyActionFor } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = withoutStatusAlertStack(read("app", "(group)", "talent-dashboard", "page.tsx"))
+const page = read("app", "(group)", "talent-dashboard", "page.tsx")
 
 const bannerStart = page.indexOf("{profileBannerShown && !profileBannerDismissed && (")
 const bannerEnd = page.indexOf("</Alert>", bannerStart) + "</Alert>".length
