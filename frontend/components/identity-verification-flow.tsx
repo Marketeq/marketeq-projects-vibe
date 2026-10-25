@@ -118,6 +118,7 @@ import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-ky
 import {
   recordTravelClassification,
   recordTravelDuration,
+  SKIPPED_TRAVEL_DURATION_LABEL,
   type TravelModeDeps,
 } from "@/src/lib/api/travel-mode-backend"
 import { type TravelDuration } from "@/src/lib/api/travel-mode-reminder"
@@ -508,6 +509,7 @@ type FlowState =
   | "face-verification-handoff"
   | "current-location-showcase"
   | "traveling-showcase"
+  | "travel-mode"
 
 // The face-verification-handoff screen's "Begin verifying" action needs a
 // real IdentityDocument id before it means anything. Nothing in this
@@ -725,6 +727,13 @@ export function IdentityVerificationFlow({
       },
       "traveling-showcase": {
         BACK: "current-location-showcase",
+        // Reached only once the duration (or Skip) was saved.
+        NEXT: "travel-mode",
+        UPDATE_LOCATION: "current-location-showcase",
+      },
+      // "Travel Mode is now active!" — no BACK: the activation is saved, and
+      // going back would offer a second duration the backend refuses.
+      "travel-mode": {
         UPDATE_LOCATION: "current-location-showcase",
       },
     }
@@ -749,8 +758,10 @@ export function IdentityVerificationFlow({
     })
   }, [isCountryScreen, getIsMounted])
 
-  // Travel Mode confirmation is a top-right Notification toast (Figma node
-  // 13101-46846), not a screen in the dialog flow — a separate, locally
+  // A first activation (Confirm / Skip) ends on the "Travel Mode is now active!"
+  // screen ("travel-mode" state). This top-right "Travel mode is on." Notification
+  // toast (Figma node 13101-46846) is now only for a traveler whose Travel Mode is
+  // already in force and who picks "Temporarily traveling" again — a separate, locally
   // controlled Toast instance rather than the shared useToast() queue, since
   // that queue renders through the app-wide Toaster's own dark, bottom-left
   // (on desktop) styling and can't be repositioned/restyled per call.
@@ -759,6 +770,11 @@ export function IdentityVerificationFlow({
   const [travelDuration, setTravelDuration] = useState<TravelDuration | null>(
     null
   )
+  // Set only by Skip, to pick the "Travel Mode is now active!" copy. The backend cannot
+  // store a skipped duration (see SKIPPED_TRAVEL_DURATION_LABEL), so this is screen state.
+  const [travelDurationSkipped, setTravelDurationSkipped] = useState(false)
+  // The duration request failed: the duration screen stays open and says so.
+  const [travelModeSaveFailed, setTravelModeSaveFailed] = useState(false)
 
   // "Travel time elapsed" reminder Notification (Figma node 13101-46860),
   // shown once the user's selected duration is up. Real trigger is a
@@ -863,23 +879,31 @@ export function IdentityVerificationFlow({
   }
 
   // Confirm / Skip. The duration request saves the whole Travel Mode activation in one
-  // atomic backend write, and the "Travel mode is on" confirmation and the close wait for
-  // it: a failed save leaves this screen open, with nothing saved, to try again.
+  // atomic backend write, and the "Travel Mode is now active!" screen waits for it: a failed
+  // save leaves this screen open, with nothing saved, and says so, to try again. Confirm
+  // submits the selected duration and never a made-up one (its button is disabled until
+  // one is chosen); Skip submits an explicit "Not sure" and ignores any earlier selection.
   const [activatingTravelMode, setActivatingTravelMode] = useState(false)
   const activatingTravelModeRef = useRef(false)
-  const activateTravelMode = async () => {
+  const activateTravelMode = async (skipped: boolean) => {
     if (activatingTravelModeRef.current) return
+    const duration = skipped ? SKIPPED_TRAVEL_DURATION_LABEL : travelDuration
+    if (duration === null) return
     activatingTravelModeRef.current = true
     setActivatingTravelMode(true)
+    setTravelModeSaveFailed(false)
     const saved = await travelModeDeps().then((deps) =>
-      recordTravelDuration(deps, travelDuration)
+      recordTravelDuration(deps, duration)
     )
     activatingTravelModeRef.current = false
     if (!getIsMounted()) return
     setActivatingTravelMode(false)
-    if (!saved) return
-    setTravelModeNotificationOpen(true)
-    onOpenChange(false)
+    if (!saved) {
+      setTravelModeSaveFailed(true)
+      return
+    }
+    setTravelDurationSkipped(skipped)
+    send("NEXT")
   }
 
   // Guards against a second capture firing (e.g. a fast double-click) while
@@ -1828,25 +1852,37 @@ export function IdentityVerificationFlow({
           <RadioGroup
             className="mt-6 space-y-2.5"
             value={travelDuration ?? undefined}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
               setTravelDuration(value as TravelDuration)
-            }
+              setTravelModeSaveFailed(false)
+            }}
           >
             <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="A few days" id="item-1" />{" "}
-              <Label id="item-1">A few days</Label>
+              <RadioGroupItem
+                value="A few days"
+                id="travel-duration-a-few-days"
+              />{" "}
+              <Label htmlFor="travel-duration-a-few-days">A few days</Label>
             </div>
             <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="1–2 weeks" id="item-2" />{" "}
-              <Label id="item-2">1–2 weeks</Label>
+              <RadioGroupItem
+                value="1–2 weeks"
+                id="travel-duration-1-2-weeks"
+              />{" "}
+              <Label htmlFor="travel-duration-1-2-weeks">1–2 weeks</Label>
             </div>
             <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="More than 2 weeks" id="item-3" />{" "}
-              <Label id="item-3">More than 2 weeks</Label>
+              <RadioGroupItem
+                value="More than 2 weeks"
+                id="travel-duration-more-than-2-weeks"
+              />{" "}
+              <Label htmlFor="travel-duration-more-than-2-weeks">
+                More than 2 weeks
+              </Label>
             </div>
             <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="Not sure" id="item-4" />{" "}
-              <Label id="item-4">Not sure</Label>
+              <RadioGroupItem value="Not sure" id="travel-duration-not-sure" />{" "}
+              <Label htmlFor="travel-duration-not-sure">Not sure</Label>
             </div>
           </RadioGroup>
 
@@ -1861,21 +1897,78 @@ export function IdentityVerificationFlow({
             </AlertContent>
           </Alert>
 
+          {travelModeSaveFailed && (
+            <Alert variant="error" className="mt-3" role="alert">
+              <AlertIcon>
+                <AlertTriangle className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>
+                  We couldn&rsquo;t save your travel details. Please try again.
+                </AlertTitle>
+              </AlertContent>
+            </Alert>
+          )}
+
           <div className="grid grid-cols-2 gap-x-3 mt-6">
             <Button
               variant="outlined"
               visual="gray"
               disabled={activatingTravelMode}
-              onClick={() => void activateTravelMode()}
+              onClick={() => void activateTravelMode(true)}
             >
               Skip
             </Button>
             <Button
-              disabled={activatingTravelMode}
-              onClick={() => void activateTravelMode()}
+              disabled={activatingTravelMode || travelDuration === null}
+              onClick={() => void activateTravelMode(false)}
             >
               Confirm
             </Button>
+          </div>
+        </DialogContent>
+      )}
+
+      {state === "travel-mode" && (
+        <DialogContent className="max-w-[650px]">
+          <div className="flex items-start justify-end">
+            <DialogClose asChild>
+              <IconButton
+                className="text-gray-500/50 hover:text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+          </div>
+
+          <div className="mt-3 max-w-[554px]">
+            <h1 className="text-lg font-medium text-dark-blue-400">
+              Travel Mode is now active!
+            </h1>
+            <p className="mt-1 font-light text-dark-blue-400">
+              {travelDurationSkipped
+                ? "You’re marked as temporarily traveling. Some features may be limited until you are back in your home country."
+                : "You’re marked as temporarily traveling. You can now use the platform without restrictions."}
+            </p>
+          </div>
+
+          <Alert className="mt-6">
+            <AlertIcon>
+              <Info className="size-5" />
+            </AlertIcon>
+            <AlertContent>
+              <AlertTitle>
+                You&rsquo;ll remain in Travel Mode until you return to your home
+                country or update your location.
+              </AlertTitle>
+            </AlertContent>
+          </Alert>
+
+          <div className="mt-6 grid">
+            <Button onClick={() => onOpenChange(false)}>Done</Button>
           </div>
         </DialogContent>
       )}

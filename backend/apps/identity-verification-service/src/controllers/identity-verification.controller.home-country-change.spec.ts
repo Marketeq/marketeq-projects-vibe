@@ -56,7 +56,13 @@ describe('POST /v1/identity-verification/kyc-sessions/home-country-change (HTTP)
     expect(res.status).toBe(200);
     expect(Object.keys(res.body)).toEqual(['url']);
     expect(detect).toHaveBeenCalledTimes(1);
-    expect(freeKyc.startHomeCountryChange).toHaveBeenCalledWith('user-1');
+    expect(freeKyc.startHomeCountryChange).toHaveBeenCalledWith('user-1', undefined);
+  });
+
+  it("passes the browser's own origin to the service, which validates it against FRONTEND_URL", async () => {
+    const res = await request(app.getHttpServer()).post(ROUTE).send({ returnOrigin: 'https://staging-marketeq-projects.vercel.app' });
+    expect(res.status).toBe(200);
+    expect(freeKyc.startHomeCountryChange).toHaveBeenCalledWith('user-1', 'https://staging-marketeq-projects.vercel.app');
   });
 
   it('is a separate route: the ordinary start is not involved', async () => {
@@ -83,13 +89,12 @@ describe('POST /v1/identity-verification/kyc-sessions/home-country-change (HTTP)
     expect(freeKyc.startHomeCountryChange).not.toHaveBeenCalled();
   });
 
-  it('ignores any user, country, purpose or session id the client tries to supply', async () => {
+  it('rejects any user, country, purpose or session id the client tries to supply (only returnOrigin is read)', async () => {
     const res = await request(app.getHttpServer())
       .post(ROUTE)
       .send({ userId: 'someone-else', country: 'ZZ', purpose: 'identity_verification', sessionId: 'x' });
-    expect(res.status).toBe(200);
-    expect(freeKyc.startHomeCountryChange).toHaveBeenCalledWith('user-1');
-    expect(freeKyc.startHomeCountryChange.mock.calls[0]).toHaveLength(1);
+    expect(res.status).toBe(400);
+    expect(freeKyc.startHomeCountryChange).not.toHaveBeenCalled();
   });
 
   it('answers the existing not-startable contract for an account that has no relocation claim', async () => {

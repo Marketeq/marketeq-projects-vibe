@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nest
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
+import { resolveCallbackOrigin } from '../common/config/frontend-origin';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -184,13 +185,13 @@ export class FreeKycService {
    * retry can never create two sessions, and Didit's own same-vendor_data
    * reuse backs that up for the resume case.
    */
-  async startOrResume(userId: string): Promise<{ url: string }> {
+  async startOrResume(userId: string, returnOrigin?: string): Promise<{ url: string }> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
-    return this.withProfileLock(profile.id, () => this.startOrResumeLocked(profile.id));
+    return this.withProfileLock(profile.id, () => this.startOrResumeLocked(profile.id, returnOrigin));
   }
 
-  private async startOrResumeLocked(profileId: string): Promise<{ url: string }> {
+  private async startOrResumeLocked(profileId: string, returnOrigin?: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
 
@@ -202,7 +203,7 @@ export class FreeKycService {
     // retry runs through the relocation start, which reuses everything below but
     // links the session to the pending country. Never true for first-time or
     // ordinary verification (no pending country).
-    if (hasPendingHomeCountryChange(profile)) return this.startHomeCountryChangeLocked(profileId);
+    if (hasPendingHomeCountryChange(profile)) return this.startHomeCountryChangeLocked(profileId, returnOrigin);
 
     // Runs under the per-profile advisory lock held by startOrResume, so
     // concurrent starts cannot both leave failed_final or create two sessions.
@@ -234,7 +235,7 @@ export class FreeKycService {
         // profile and was started under a valid confirmation, so resuming needs
         // no (new) home-country confirmation at all. Only creating a NEW session
         // requires verified location, travel mode off and a fresh confirmation.
-        return this.resume(active);
+        return this.resume(active, returnOrigin);
       }
 
       // Decided at Didit: re-apply the start rules to the updated profile
@@ -252,7 +253,7 @@ export class FreeKycService {
     const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
-    return this.createNew(profile);
+    return this.createNew(profile, returnOrigin);
   }
 
   // ---------------------------------------------------------------------
@@ -274,13 +275,13 @@ export class FreeKycService {
    * ordinary one, and the 15-minute confirmation rule applies to the pending
    * confirmation. Approval returns it to verified and promotes the pending country.
    */
-  async startHomeCountryChange(userId: string): Promise<{ url: string }> {
+  async startHomeCountryChange(userId: string, returnOrigin?: string): Promise<{ url: string }> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
-    return this.withProfileLock(profile.id, () => this.startHomeCountryChangeLocked(profile.id));
+    return this.withProfileLock(profile.id, () => this.startHomeCountryChangeLocked(profile.id, returnOrigin));
   }
 
-  private async startHomeCountryChangeLocked(profileId: string): Promise<{ url: string }> {
+  private async startHomeCountryChangeLocked(profileId: string, returnOrigin?: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
 
@@ -311,7 +312,7 @@ export class FreeKycService {
         // Waiting for Didit's decision: no second session.
         throw new KycNotStartableException({ status: profile.identityVerificationStatus, reason: 'home_country_change_in_review' });
       }
-      if (ACTIVE_SESSION_STATUSES.includes(linked.status)) return this.resume(linked);
+      if (ACTIVE_SESSION_STATUSES.includes(linked.status)) return this.resume(linked, returnOrigin);
     }
 
     this.assertHomeCountryChangeConfirmationFresh(profile);
@@ -319,7 +320,7 @@ export class FreeKycService {
     const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
-    return this.createHomeCountryChangeSession(profile);
+    return this.createHomeCountryChangeSession(profile, returnOrigin);
   }
 
   // A pending country must exist, and the identity status must allow a start under
@@ -347,9 +348,12 @@ export class FreeKycService {
     if (Date.now() - (confirmedAt as Date).getTime() > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
   }
 
-  private async createHomeCountryChangeSession(profile: IdentityVerificationProfile): Promise<{ url: string }> {
+  private async createHomeCountryChangeSession(
+    profile: IdentityVerificationProfile,
+    returnOrigin?: string,
+  ): Promise<{ url: string }> {
     const vendorReference = randomUUID();
-    const created = await this.callProvider(vendorReference);
+    const created = await this.callProvider(vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
     const saved = await this.sessionRepository.save(
@@ -626,10 +630,10 @@ export class FreeKycService {
     }
   }
 
-  private async resume(active: HostedKycSession): Promise<{ url: string }> {
+  private async resume(active: HostedKycSession, returnOrigin?: string): Promise<{ url: string }> {
     // Didit returns the same unfinished session for the same vendor_data —
     // the hosted URL is never stored here.
-    const created = await this.callProvider(active.vendorReference);
+    const created = await this.callProvider(active.vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
     const mapped = mapDiditStatusToKycStatus(created.status);
@@ -643,9 +647,9 @@ export class FreeKycService {
     return { url };
   }
 
-  private async createNew(profile: IdentityVerificationProfile): Promise<{ url: string }> {
+  private async createNew(profile: IdentityVerificationProfile, returnOrigin?: string): Promise<{ url: string }> {
     const vendorReference = randomUUID();
-    const created = await this.callProvider(vendorReference);
+    const created = await this.callProvider(vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
     await this.sessionRepository.save(
@@ -664,17 +668,31 @@ export class FreeKycService {
     return { url };
   }
 
-  private async callProvider(vendorReference: string) {
+  private async callProvider(vendorReference: string, returnOrigin?: string) {
     const workflowId = process.env.DIDIT_FREE_KYC_WORKFLOW_ID;
-    const frontendUrl = process.env.FRONTEND_URL;
-    if (!workflowId || !frontendUrl) {
+    if (!workflowId) {
       throw new VendorStageUnavailableException({ reason: 'free_kyc_not_configured' });
+    }
+    // FRONTEND_URL is a list of origins (live, staging, dev, ...). Didit returns the browser
+    // to exactly one of them: the request's own origin, accepted only if it is on that list.
+    // Nothing is guessed (never "the first"), and nothing is created before this is settled.
+    const callbackOrigin = resolveCallbackOrigin(process.env.FRONTEND_URL, returnOrigin);
+    if (!callbackOrigin.ok) {
+      if (callbackOrigin.reason === 'not_configured') {
+        throw new VendorStageUnavailableException({ reason: 'free_kyc_not_configured' });
+      }
+      this.logger.warn(`Hosted KYC return origin not accepted: ${callbackOrigin.reason}`);
+      throw new BadRequestException(
+        callbackOrigin.reason === 'invalid_origin'
+          ? { code: 'INVALID_RETURN_ORIGIN', message: 'returnOrigin is not an allowed frontend origin.' }
+          : { code: 'RETURN_ORIGIN_REQUIRED', message: 'returnOrigin is required.' },
+      );
     }
     try {
       return await this.provider.createKycSession({
         workflowId,
         vendorData: vendorReference,
-        callbackUrl: `${frontendUrl.replace(/\/+$/, '')}/talent-dashboard`,
+        callbackUrl: `${callbackOrigin.origin}/talent-dashboard`,
       });
     } catch (err) {
       if (err instanceof AmbiguousVendorOutcomeError) {

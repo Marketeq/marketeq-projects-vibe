@@ -476,17 +476,17 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
 })
 
 describe("SOURCE-PINNED: the client, and the components that must stay read-only", () => {
-  it("the new start is POST /v1/identity-verification/kyc-sessions/home-country-change with no body fields", () => {
+  it("the new start is POST /v1/identity-verification/kyc-sessions/home-country-change whose only body field is the browser's origin", () => {
     assert.ok(
       http.includes(
-        'AxiosRequest.post("/v1/identity-verification/kyc-sessions/home-country-change", {})'
+        'AxiosRequest.post("/v1/identity-verification/kyc-sessions/home-country-change", kycReturnOriginBody())'
       )
     )
     assert.ok(
       http.includes(
-        'AxiosRequest.post("/v1/identity-verification/kyc-sessions", {})'
+        'AxiosRequest.post("/v1/identity-verification/kyc-sessions", kycReturnOriginBody())'
       )
-    ) // ordinary start untouched
+    ) // ordinary start: same body, same route
   })
 
   it("the Storybook-mirrored flow component is not changed to know about the new route", () => {
