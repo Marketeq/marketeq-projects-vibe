@@ -4886,8 +4886,15 @@ export function Chats({
 
                       <div className="h-px w-full shrink-0 bg-gray-100" />
                       <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
-                        <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{acceptedCounterOfferMessage.offerRate}</strong></span>
-                        <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                        {/* BTB-370: same "never render a bare /hr" guard as the inline
+                        chat card above (hasOfferRate) — hide the whole segment and its
+                        divider rather than a label with no real number. */}
+                        {/\d/.test(acceptedCounterOfferMessage.offerRate) ? (
+                          <>
+                            <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{acceptedCounterOfferMessage.offerRate}</strong></span>
+                            <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                          </>
+                        ) : null}
                         <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" /><span className="shrink-0">Role</span> <strong className="min-w-0 truncate text-dark-blue-400" title={acceptedCounterOfferMessage.role}>{acceptedCounterOfferMessage.role}</strong></span>
                         <div className="h-[22px] w-px shrink-0 bg-gray-200" />
                         <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{acceptedCounterOfferMessage.duration}</strong></span>
@@ -5014,8 +5021,15 @@ export function Chats({
 
                         <div className="h-px w-full shrink-0 bg-gray-100" />
                         <div className="flex h-[22px] w-full items-center justify-between gap-3 text-xs leading-[15px] text-gray-500">
-                          <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{sentOffer.offerRate}</strong></span>
-                          <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                          {/* BTB-370: same "never render a bare /hr" guard as the inline
+                          chat card above (hasOfferRate) — hide the whole segment and its
+                          divider rather than a label with no real number. */}
+                          {/\d/.test(sentOffer.offerRate) ? (
+                            <>
+                              <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><DollarSign className="size-3 shrink-0 text-primary-400" />Offer Rate <strong className="text-base text-dark-blue-400">{sentOffer.offerRate}</strong></span>
+                              <div className="h-[22px] w-px shrink-0 bg-gray-200" />
+                            </>
+                          ) : null}
                           <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><UserIcon className="size-3 shrink-0 text-primary-400" /><span className="shrink-0">Role</span> <strong className="min-w-0 truncate text-dark-blue-400" title={sentOffer.role}>{sentOffer.role}</strong></span>
                           <div className="h-[22px] w-px shrink-0 bg-gray-200" />
                           <span className="flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap"><Calendar className="size-3 shrink-0 text-primary-400" />Duration <strong className="text-dark-blue-400">{sentOffer.duration}</strong></span>
@@ -6084,7 +6098,16 @@ export function Chats({
                     size="sm"
                     className="w-[104px] px-2"
                     leftIcon={<MessageSquare className="size-4" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: same fix as the other counter-offer screens' "Message" button — no
+                      // template exists for a counter-related "Message" (PMCM-380 AC-26.02 specifies
+                      // none), so open the thread with the composer empty and focused instead of
+                      // just closing the dialog.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
@@ -6223,7 +6246,16 @@ export function Chats({
                     size="sm"
                     className="w-[104px] px-2"
                     leftIcon={<MessageSquare className="size-4" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: same fix as the other counter-offer screens' "Message" button — no
+                      // template exists for a counter-related "Message" (PMCM-380 AC-26.02 specifies
+                      // none), so open the thread with the composer empty and focused instead of
+                      // just closing the dialog.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
@@ -7354,7 +7386,16 @@ export function Chats({
                     visual="gray"
                     size="sm"
                     leftIcon={<MessageSquare className="size-[15px]" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: same fix as the other counter-offer screens' "Message" button — no
+                      // template exists for a counter-related "Message" (PMCM-380 AC-26.02 specifies
+                      // none), so open the thread with the composer empty and focused instead of
+                      // just closing the dialog.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
@@ -7731,7 +7772,16 @@ export function Chats({
                     visual="gray"
                     size="sm"
                     leftIcon={<MessageSquare className="size-[15px]" />}
-                    onClick={() => setSelectedNotificationOffer(null)}
+                    onClick={() => {
+                      // BTB-371: same fix as the other counter-offer screens' "Message" button — no
+                      // template exists for a counter-related "Message" (PMCM-380 AC-26.02 specifies
+                      // none), so open the thread with the composer empty and focused instead of
+                      // just closing the dialog.
+                      setSelectedNotificationOffer(null)
+                      setSelectedTab("Messages")
+                      setTextareaValue("")
+                      requestAnimationFrame(() => composerRef.current?.focus())
+                    }}
                   >
                     Message
                   </Button>
