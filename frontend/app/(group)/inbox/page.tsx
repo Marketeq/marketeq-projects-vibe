@@ -254,11 +254,17 @@ export default function InboxRoot() {
                 const actorId = actorKeys
                   .map((key) => metadata[key])
                   .find((value): value is string => typeof value === "string")
+                // BTB-364/D1: offer.jobListingId is now string | null (a
+                // listing-less "Hire Me" offer has none) — fall through to
+                // "" like the metadata-only branch below does, not a bare
+                // null, so viewJobHref's guard and offerJobHref() callers
+                // stay string-typed.
                 const jobListingId =
                   (typeof metadata.jobId === "string" && metadata.jobId) ||
                   (typeof metadata.jobListingId === "string" &&
                     metadata.jobListingId) ||
-                  offer.jobListingId
+                  offer.jobListingId ||
+                  ""
                 const conversationParticipantId =
                   actorId ||
                   (offer.clientId === getCurrentUser()?.id
@@ -296,12 +302,14 @@ export default function InboxRoot() {
                   title: item.title,
                   body: item.body,
                   href: getNotificationHref(item, getNotificationKind(item)),
-                  viewJobHref: offerJobHref(
-                    jobListingId,
-                    offerId,
-                    conversationParticipantId,
-                    metadata
-                  ),
+                  viewJobHref: jobListingId
+                    ? offerJobHref(
+                        jobListingId,
+                        offerId,
+                        conversationParticipantId,
+                        metadata
+                      )
+                    : "",
                   jobListingId,
                   createdAt: item.createdAt,
                   actorId: conversationParticipantId,

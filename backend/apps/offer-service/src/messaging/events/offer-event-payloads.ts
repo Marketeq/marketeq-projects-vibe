@@ -29,7 +29,11 @@ export interface BaseOfferEventPayload {
   offerId: string;
   clientId: string;
   talentId: string;
-  jobListingId: string;
+  // BTB-364/D1: nullable — a listing-less "Hire Me" offer has none.
+  // contracts-service's own consumer (offer-accepted.subscriber.ts) already
+  // types this field `string | null` — this was the one producer-side
+  // mismatch found during the audit; now consistent on both sides.
+  jobListingId: string | null;
   contractType: ContractType;
   contractTitle: string;
 }
