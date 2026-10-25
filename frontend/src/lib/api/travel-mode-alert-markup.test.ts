@@ -15,7 +15,7 @@ const page = readFileSync(
 )
 const start = page.indexOf("data-status-alert-stack")
 const card = page.slice(
-  page.indexOf('data-status-alert="travel_mode"', start) - 120,
+  page.indexOf("data-status-alert={card.type}", start) - 120,
   page.indexOf("data-status-alert-error", start)
 )
 const cardClasses = (marker: string) => {
@@ -80,7 +80,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
   })
 
   it("cards take the pointer, are full width on phones and exactly 400px from md up, and never time out", () => {
-    const c = cardClasses('data-status-alert="travel_mode"')
+    const c = cardClasses("data-status-alert={card.type}")
     for (const cls of [
       "pointer-events-auto",
       "w-full",
@@ -92,7 +92,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
   })
 
   it("the card is 400px wide with 16px padding, a 20px icon/text gap, a 12px radius, a #F2F4F7 border and a white fill", () => {
-    const c = cardClasses('data-status-alert="travel_mode"')
+    const c = cardClasses("data-status-alert={card.type}")
     for (const cls of [
       "w-full",
       "p-[15px]", // 16px in Figma, over its 1px stroke: 368px content, 98px tall
@@ -178,11 +178,48 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     assert.match(card, /setStatusAlertDismissFailed\(true\)/)
   })
 
-  it("only the Travel Mode alert is rendered in this phase", () => {
+  it("only the Travel Mode and submitted-for-review alerts are rendered so far", () => {
     assert.match(
       page,
-      /statusAlerts\.filter\(\(a\) => a\.type === "travel_mode"\)/
+      /RENDERED_STATUS_ALERT_TYPES as readonly string\[\]\)\.includes\(a\.type\)/
     )
-    assert.match(page, /visible\.filter\(isTravelModeAlert\)/)
+    assert.match(page, /visible\.filter\(isRenderedStatusAlert\)/)
+  })
+})
+
+describe("Submitted-for-review alert card (Figma node 13101-47555)", () => {
+  it("reuses the Travel Mode card: same Alert composition, picked by type, no second card markup", () => {
+    assert.equal(page.split("data-status-alert={card.type}").length - 1, 1)
+    assert.match(card, /card\.type === "submitted_for_review"/)
+  })
+
+  it("uses the ClockStopwatch icon of the existing Storybook ToastContent story, at 24.75px #306CFE with Figma's +0.38/-0.62 offset", () => {
+    assert.match(
+      card,
+      /<ClockStopwatch className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>/
+    )
+    const story = readFileSync(
+      join(__dirname, "../../../stories/identity-verfication.stories.tsx"),
+      "utf8"
+    )
+    assert.match(story, /ClockStopwatch/)
+    assert.match(story, /Your location verification was submitted\./)
+  })
+
+  it("has no action link or button: the dismiss control is the only interactive element", () => {
+    assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
+    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+  })
+
+  it("the alert's text is the Figma copy, sent by the backend with this exact capitalization and punctuation", () => {
+    const copy = readFileSync(
+      join(
+        __dirname,
+        "../../../../backend/apps/identity-verification-service/src/events/status-alert-copy.ts"
+      ),
+      "utf8"
+    )
+    assert.match(copy, /title: 'Your location verification was submitted\.'/)
+    assert.match(copy, /body: 'We will notify you once it is reviewed\.'/)
   })
 })

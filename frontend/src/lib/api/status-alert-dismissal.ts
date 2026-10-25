@@ -38,8 +38,17 @@ export async function dismissPersistentAlertOptimistically(args: {
   }
 }
 
-/** The persistent Travel Mode alerts only: this phase renders no other alert type. */
-export const isTravelModeAlert = (
+/** The persistent alert types the dashboard renders so far (PMCM-651, one type per phase). */
+export const RENDERED_STATUS_ALERT_TYPES = [
+  "travel_mode",
+  "submitted_for_review",
+] as const
+
+export type RenderedStatusAlertType =
+  (typeof RENDERED_STATUS_ALERT_TYPES)[number]
+
+export const isRenderedStatusAlert = (
   alert: DisplayAlert
-): alert is PersistentDisplayAlert & { type: "travel_mode" } =>
-  alert.source === "persistent" && alert.type === "travel_mode"
+): alert is PersistentDisplayAlert & { type: RenderedStatusAlertType } =>
+  alert.source === "persistent" &&
+  (RENDERED_STATUS_ALERT_TYPES as readonly string[]).includes(alert.type)

@@ -4,7 +4,7 @@ import { describe, it } from "node:test"
 import {
   type PersistentDisplayAlert,
   dismissPersistentAlertOptimistically,
-  isTravelModeAlert,
+  isRenderedStatusAlert,
 } from "./status-alert-dismissal"
 import {
   type DismissalState,
@@ -170,8 +170,71 @@ describe("what this phase renders", () => {
       fullyVerified: false,
     })
     assert.deepEqual(
-      stack.filter(isTravelModeAlert).map((a) => a.type),
+      stack.filter(isRenderedStatusAlert).map((a) => a.type),
       ["travel_mode"]
     )
+  })
+})
+
+describe("the submitted-for-review alert", () => {
+  const submitted = alert(7, "submitted_for_review", 5)
+  const travel = alert(8, "travel_mode", 20)
+  const stack = (state: DismissalState) =>
+    buildAlertStack({
+      persistent: [travel, submitted],
+      ...state,
+      loginSessionKey: null,
+      nowMs: NOW,
+      travelModeActive: undefined,
+      fullyVerified: undefined,
+    })
+
+  it("is rendered, and stacks with Travel Mode newest first", () => {
+    const rendered = stack(empty).filter(isRenderedStatusAlert)
+    assert.deepEqual(
+      rendered.map((a) => a.type),
+      ["submitted_for_review", "travel_mode"]
+    )
+  })
+
+  it("dismisses through the persistent API, optimistically, and is restored on failure", async () => {
+    const s = holder()
+    const [top] = stack(s.get())
+    const calls: string[] = []
+    const ok = await dismissPersistentAlertOptimistically({
+      alert: top as PersistentDisplayAlert,
+      dismiss: async (id) => void calls.push(id),
+      update: s.update,
+    })
+    assert.deepEqual(ok, { ok: true })
+    assert.deepEqual(calls, [submitted.id])
+    assert.deepEqual(
+      stack(s.get()).map((a) => a.type),
+      ["travel_mode"]
+    )
+
+    const f = holder()
+    const failed = await dismissPersistentAlertOptimistically({
+      alert: stack(f.get())[0] as PersistentDisplayAlert,
+      dismiss: async () => {
+        throw new Error("500")
+      },
+      update: f.update,
+    })
+    assert.equal(failed.ok, false)
+    assert.equal(stack(f.get()).length, 2)
+  })
+
+  it("a newer Verified alert replaces it in the list the page builds", () => {
+    const verified = alert(9, "verified", 1)
+    const types = buildAlertStack({
+      persistent: [travel, submitted, verified],
+      ...empty,
+      loginSessionKey: null,
+      nowMs: NOW,
+      travelModeActive: undefined,
+      fullyVerified: undefined,
+    }).map((a) => a.type)
+    assert.ok(!types.includes("submitted_for_review"))
   })
 })
