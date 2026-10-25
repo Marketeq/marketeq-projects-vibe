@@ -16,8 +16,9 @@ export const STATUS_ALERT_LINK = '/talent-dashboard';
 
 export const STATUS_ALERT_COPY: Record<StatusAlertType, StatusAlertCopy> = {
   travel_mode: {
-    title: 'Travel Mode is on.',
-    body: 'You can keep using the platform while you are away from your home country.',
+    // Figma node 13101-46846.
+    title: 'Travel Mode is on',
+    body: 'You can continue using the platform while away from your home country.',
   },
   submitted_for_review: {
     title: 'Your location verification was submitted.',

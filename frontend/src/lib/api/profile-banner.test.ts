@@ -8,7 +8,15 @@ import { shouldShowProfileBanner, verifyActionFor } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+// The persistent status-alert stack (PMCM-651) is its own block, rendered before the banner and
+// pinned by travel-mode-alert-markup.test.ts. It is taken out here so this test keeps pinning
+// the banner and the rest of the layout exactly as before.
+const withoutStatusAlertStack = (source: string) => {
+  const from = source.indexOf("{(statusAlertStack.visible.length > 0 ||")
+  const to = source.indexOf("{profileBannerShown && !profileBannerDismissed && (")
+  return from > -1 && to > from ? source.slice(0, from) + source.slice(to) : source
+}
+const page = withoutStatusAlertStack(read("app", "(group)", "talent-dashboard", "page.tsx"))
 
 const bannerStart = page.indexOf("{profileBannerShown && !profileBannerDismissed && (")
 const bannerEnd = page.indexOf("</Alert>", bannerStart) + "</Alert>".length

@@ -28,3 +28,9 @@ export const LIVE_ALERT_COPY = {
     action: "verify_account",
   },
 } as const satisfies Record<string, LiveAlertCopy>
+
+// Accessible name of the close button on a persistent alert card, and the line shown when
+// a dismissal could not be saved (the card is put back). Provisional, like the above.
+export const STATUS_ALERT_CLOSE_LABEL = "Dismiss alert"
+export const STATUS_ALERT_DISMISS_ERROR =
+  "We couldn't dismiss that alert. Please try again."

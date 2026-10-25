@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -63,6 +64,21 @@ import {
   ToastViewport,
 } from "@/components/ui"
 import { StatusDialog } from "@/app/(group)/complete-profile/page"
+import { StatusAlertsAPI } from "@/service/http/status-alerts"
+import type { StatusAlert } from "@/src/lib/api/status-alerts"
+import {
+  type DismissalState,
+  buildAlertStack,
+  selectVisibleAlerts,
+} from "@/src/lib/api/status-alert-state"
+import {
+  dismissPersistentAlertOptimistically,
+  isTravelModeAlert,
+} from "@/src/lib/api/status-alert-dismissal"
+import {
+  STATUS_ALERT_CLOSE_LABEL,
+  STATUS_ALERT_DISMISS_ERROR,
+} from "@/src/lib/api/status-alert-copy"
 import {
   checkVpnProxy,
   type VpnProxyDetectionOutcome,
@@ -210,6 +226,18 @@ export default function TalentDashboard() {
   // only the explicit "Verify My Account" click (or a failed connection check
   // from that click) opens anything. Dismissing the banner is in-memory only.
   const [profileBannerShown, setProfileBannerShown] = useState(false)
+  // Persistent status alerts (PMCM-651), kept by notification-service: dismissal is
+  // stored per account on the backend, so it holds across sessions and devices. This
+  // phase renders the Travel Mode alert only.
+  const [statusAlerts, setStatusAlerts] = useState<StatusAlert[]>([])
+  const [statusAlertDismissal, setStatusAlertDismissal] =
+    useState<DismissalState>({
+      dismissedPersistentIds: new Set(),
+      dismissedLiveKeys: new Set(),
+    })
+  const [statusAlertDismissFailed, setStatusAlertDismissFailed] =
+    useState(false)
+  const statusAlertRequestRef = useRef(0)
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
   const [connectionCheckState, setConnectionCheckState] =
@@ -319,6 +347,36 @@ export default function TalentDashboard() {
     setTravelSummary(summary)
     setLocationMismatchOpen(shouldShowLocationMismatchPrompt(summary))
   }, [])
+
+  // Reads the persistent alerts on load and whenever the identity summary is re-read (a
+  // Travel Mode activation in this session arrives as a new alert). Only the latest read
+  // is applied, and a failed read leaves the alerts that are already showing.
+  useEffect(() => {
+    if (!user) return
+    const request = ++statusAlertRequestRef.current
+    StatusAlertsAPI.list()
+      .then((alerts) => {
+        if (request === statusAlertRequestRef.current) setStatusAlerts(alerts)
+      })
+      .catch((error) => {
+        console.error("[status-alerts] could not load the alerts", error)
+      })
+  }, [user, travelSummary])
+
+  const statusAlertStack = useMemo(
+    () =>
+      selectVisibleAlerts(
+        buildAlertStack({
+          persistent: statusAlerts.filter((a) => a.type === "travel_mode"),
+          ...statusAlertDismissal,
+          loginSessionKey: null,
+          nowMs: 0,
+          travelModeActive: undefined,
+          fullyVerified: undefined,
+        })
+      ),
+    [statusAlerts, statusAlertDismissal]
+  )
 
   // A start attempt rejected as not startable re-reads the real status; a
   // verified account closes everything that was open.
@@ -1655,6 +1713,76 @@ export default function TalentDashboard() {
           <LeftSidebar />
           <div className="flex-auto p-3.5 gap-x-8 flex md:p-6 min-[1024px]:pt-[50px] min-[1024px]:pb-8 min-[1024px]:pl-[var(--sidebar-content-pl,274px)] transition-[padding-left] duration-300 ease-in-out min-[1024px]:pr-[50px] overflow-hidden">
             <div className="flex-auto space-y-3 min-[1024px]:space-y-5 min-w-0">
+              {(statusAlertStack.visible.length > 0 ||
+                statusAlertDismissFailed) && (
+                // Inline alert stack (not a popup or toast): newest first, three at most.
+                // Like the banner below, it carries its own bottom gap from md up.
+                <div
+                  data-status-alert-stack
+                  className="flex flex-col items-start gap-3 md:mb-8"
+                >
+                  {statusAlertStack.visible.filter(isTravelModeAlert).map((card) => (
+                    // Figma node 13101-46846: 400px card, 16px padding, 20px between the
+                    // featured icon and the text, 36px close button 8px from the corner.
+                    <Alert
+                      key={card.key}
+                      data-status-alert="travel_mode"
+                      className="relative w-[400px] max-w-full items-start gap-x-5 rounded-xl border-gray-100 bg-white p-4 text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
+                    >
+                      <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+                        <Plane className="size-[24.75px] text-primary-500" />
+                      </AlertIcon>
+                      <AlertContent className="flex min-w-0 flex-col gap-1 pr-10 pt-0.5">
+                        <AlertTitle className="text-sm font-semibold leading-5 text-gray-900">
+                          {card.title}
+                        </AlertTitle>
+                        <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
+                          {card.body}
+                        </AlertDescription>
+                      </AlertContent>
+                      <IconButton
+                        aria-label={STATUS_ALERT_CLOSE_LABEL}
+                        className="absolute right-2 top-2 size-9 text-gray-500"
+                        size="md"
+                        visual="gray"
+                        variant="ghost"
+                        onClick={() => {
+                          setStatusAlertDismissFailed(false)
+                          void dismissPersistentAlertOptimistically({
+                            alert: card,
+                            dismiss: StatusAlertsAPI.dismiss,
+                            update: setStatusAlertDismissal,
+                          }).then((outcome) => {
+                            if (outcome.ok) return
+                            console.error(
+                              "[status-alerts] could not dismiss the alert",
+                              outcome.error
+                            )
+                            setStatusAlertDismissFailed(true)
+                          })
+                        }}
+                      >
+                        <X className="size-5" />
+                      </IconButton>
+                    </Alert>
+                  ))}
+                  {statusAlertDismissFailed && (
+                    <Alert
+                      variant="error"
+                      data-status-alert-error
+                      className="w-[400px] max-w-full"
+                    >
+                      <AlertContent>
+                        <AlertTitle>{STATUS_ALERT_DISMISS_ERROR}</AlertTitle>
+                      </AlertContent>
+                      <CloseButton
+                        aria-label="Close"
+                        onClick={() => setStatusAlertDismissFailed(false)}
+                      />
+                    </Alert>
+                  )}
+                </div>
+              )}
               {profileBannerShown && !profileBannerDismissed && (
                 // Welcome renders its header row inside a `md:contents` wrapper, so at
                 // md+ the column's space-y margin never reaches that row (a
