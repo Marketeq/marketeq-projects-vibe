@@ -15,9 +15,10 @@ export interface LiveAlertCopy {
 }
 
 export const LIVE_ALERT_COPY = {
+  // Figma node 13101-47532; the same text as the dashboard's existing Travel Mode popup.
   travel_mode_ongoing: {
     title: "You are in Travel Mode",
-    body: "Update your travel plans if they have changed.",
+    body: "Update your status if your location changes",
     actionLabel: "Update",
     action: "update_travel",
   },

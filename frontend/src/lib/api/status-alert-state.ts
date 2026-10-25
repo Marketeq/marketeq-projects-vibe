@@ -67,6 +67,10 @@ export interface StatusAlertInputs {
   nowMs: number
   // undefined while the profile is loading: nothing live is shown until it is known.
   travelModeActive: boolean | undefined
+  // Tells one Travel Mode activation from the next (the period's end time from /me is
+  // different for every activation). It is part of the live card's dismissal key, so a card
+  // dismissed in this login returns for a LATER activation, but not for the same one.
+  travelModeOccurrence?: string | null
   travelModeActivatedAt?: string | null
   fullyVerified: boolean | undefined
 }
@@ -107,12 +111,14 @@ export function applySupersession(alerts: StatusAlert[]): StatusAlert[] {
 }
 
 function endedByHomeCountryUpdate(input: StatusAlertInputs): boolean {
+  // Without the activation time nothing can be compared, so the profile (which an approved
+  // change clears) is the only authority: a card is never hidden for an unknown activation.
   const activatedAt = toMs(input.travelModeActivatedAt)
+  if (activatedAt === null) return false
   return input.persistent.some((a) => {
     if (a.type !== "home_country_updated") return false
     const ms = toMs(a.createdAt)
-    // Unknown activation time: any approved change counts, as it ends whatever is active.
-    return ms !== null && (activatedAt === null || ms >= activatedAt)
+    return ms !== null && ms >= activatedAt
   })
 }
 
@@ -144,7 +150,12 @@ export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
     // once a Home Country Updated alert is newer than the activation.
     const travelEnded = endedByHomeCountryUpdate(input)
     if (input.travelModeActive === true && !travelEnded) {
-      const key = liveAlertKey("travel_mode_ongoing", session)
+      const key = liveAlertKey(
+        "travel_mode_ongoing",
+        input.travelModeOccurrence
+          ? `${session}:${input.travelModeOccurrence}`
+          : session
+      )
       if (!dismissedLive.has(key)) {
         out.push({
           source: "live",

@@ -4,12 +4,14 @@
 // leaves the stack at once, so the next alert moves up before the request finishes; if the
 // request fails the card is restored and the caller is told, so it can show the error.
 // Pure apart from the injected `dismiss` call and `update` setter.
+import { rememberLiveDismissal } from "./live-alert-dismissal"
 import {
   type DismissalState,
   type DisplayAlert,
   dismissAlert,
   undoPersistentDismissal,
 } from "./status-alert-state"
+import type { DismissalStorage } from "./travel-expiry-popup"
 
 export type PersistentDisplayAlert = Extract<
   DisplayAlert,
@@ -54,3 +56,25 @@ export const isRenderedStatusAlert = (
 ): alert is PersistentDisplayAlert & { type: RenderedStatusAlertType } =>
   alert.source === "persistent" &&
   (RENDERED_STATUS_ALERT_TYPES as readonly string[]).includes(alert.type)
+
+/** What the stack renders so far: the persistent types, and the live Travel Mode card. */
+export const isRenderedAlert = (alert: DisplayAlert): boolean =>
+  isRenderedStatusAlert(alert) ||
+  (alert.source === "live" && alert.type === "travel_mode_ongoing")
+
+export type LiveDisplayAlert = Extract<DisplayAlert, { source: "live" }>
+
+/**
+ * Dismisses a live alert for this login only. Hides it at once and remembers it in the
+ * browser under the login's key; the backend is never called.
+ */
+export function dismissLiveAlert(args: {
+  alert: LiveDisplayAlert
+  loginSessionKey: string | null | undefined
+  storage: DismissalStorage | undefined
+  update: (change: (state: DismissalState) => DismissalState) => void
+}): void {
+  const { alert, loginSessionKey, storage, update } = args
+  update((state) => dismissAlert(state, alert).state)
+  rememberLiveDismissal(loginSessionKey, alert.key, storage)
+}

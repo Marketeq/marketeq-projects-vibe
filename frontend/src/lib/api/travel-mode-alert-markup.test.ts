@@ -18,6 +18,16 @@ const card = page.slice(
   page.indexOf("data-status-alert={card.type}", start) - 120,
   page.indexOf("data-status-alert-error", start)
 )
+
+// The card markup is shared. The Update button exists only inside the live-card branch, so a
+// persistent alert (which renders without it) has no action.
+const liveBranch = card.indexOf('card.source === "live" &&')
+const assertPersistentHasNoAction = () => {
+  assert.ok(liveBranch > -1)
+  assert.equal((card.match(/<Button\b/g) ?? []).length, 1)
+  assert.ok(card.indexOf("<Button") > liveBranch)
+  assert.doesNotMatch(card, /<a\b|<Link\b|href=/)
+}
 const cardClasses = (marker: string) => {
   const at = card.indexOf(marker)
   assert.ok(at > -1, `${marker} is in the card`)
@@ -183,7 +193,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
       page,
       /RENDERED_STATUS_ALERT_TYPES as readonly string\[\]\)\.includes\(a\.type\)/
     )
-    assert.match(page, /visible\.filter\(isRenderedStatusAlert\)/)
+    assert.match(page, /visible\.filter\(isRenderedAlert\)/)
   })
 })
 
@@ -208,7 +218,7 @@ describe("Submitted-for-review alert card (Figma node 13101-47555)", () => {
 
   it("has no action link or button: the dismiss control is the only interactive element", () => {
     assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
-    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+    assertPersistentHasNoAction()
   })
 
   it("the alert's text is the Figma copy, sent by the backend with this exact capitalization and punctuation", () => {
@@ -242,7 +252,7 @@ describe("Verified alert card (Figma node 13101-47566)", () => {
   it("renders the verified type and has no action: the dismiss control is the only button", () => {
     assert.match(page, /RENDERED_STATUS_ALERT_TYPES/)
     assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
-    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+    assertPersistentHasNoAction()
   })
 
   it("the backend sends the exact Figma copy", () => {
@@ -278,7 +288,7 @@ describe("Home Country Updated alert card (Figma node 13101-47577)", () => {
 
   it("has no action: the dismiss control is the only button", () => {
     assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
-    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+    assertPersistentHasNoAction()
   })
 
   it("the backend sends the Figma copy from one source shared with the in-app notification", () => {
@@ -297,5 +307,93 @@ describe("Home Country Updated alert card (Figma node 13101-47577)", () => {
       publisher,
       /You can continue using the platform while away from your home\s+country\.'|'You can continue using the platform while away from your home country\.'/
     )
+  })
+})
+
+describe("Live Travel Mode card (Figma node 13101-47532)", () => {
+  it("is the same single card markup, with the Plane icon at Figma's +0.38/+0.38 offset", () => {
+    assert.equal(page.split("data-status-alert={card.type}").length - 1, 1)
+    assert.match(card, /card\.type === "travel_mode_ongoing"/)
+    assert.match(
+      card,
+      /<Plane className="size-\[24\.75px\] translate-x-\[0\.38px\] translate-y-\[0\.38px\] text-primary-500" \/>/
+    )
+  })
+
+  it("has the existing popup's Update action: a link-variant Button, 14/600/20, 16px under the text", () => {
+    const branch = card.slice(liveBranch)
+    assert.match(branch, /<Button\s+variant="link"/)
+    for (const cls of [
+      "mt-3",
+      "h-5",
+      "p-0",
+      "text-sm",
+      "font-semibold",
+      "leading-5",
+    ])
+      assert.ok(branch.includes(cls), cls)
+    assert.match(branch, /\{card\.actionLabel\}/)
+    // The existing popup's Update button (reused styling, unchanged).
+    assert.match(
+      page,
+      /variant="link"\s+className="h-5 justify-start p-0 text-sm font-semibold leading-5"\s+onClick=\{\(\) => void handleTravelUpdate\(\)\}/
+    )
+  })
+
+  it("Update opens the existing flow through the existing handler and is not a dismissal", () => {
+    assert.match(card, /handleLiveTravelUpdate\(\)/)
+    assert.match(
+      page,
+      /const handleLiveTravelUpdate = useCallback\(\(\) => \{\s+liveTravelUpdateRef\.current = true\s+return handleTravelUpdate\("reminder"\)/
+    )
+    const handler = page.slice(
+      page.indexOf("const handleLiveTravelUpdate"),
+      page.indexOf("const handleLiveTravelUpdate") + 400
+    )
+    assert.doesNotMatch(handler, /dismiss|localStorage|StatusAlertsAPI/i)
+  })
+
+  it("the X on a live card never calls the persistent dismissal endpoint", () => {
+    assert.match(
+      card,
+      /card\.source === "live"[\s\S]*handleDismissLiveAlert\(card\)[\s\S]*return[\s\S]*dismissPersistentAlertOptimistically/
+    )
+    const live = page.slice(
+      page.indexOf("const handleDismissLiveAlert"),
+      page.indexOf("const handleDismissLiveAlert") + 400
+    )
+    assert.doesNotMatch(
+      live,
+      /StatusAlertsAPI|dismissPersistentAlertOptimistically/
+    )
+  })
+
+  it("is derived from the identity summary, not fetched: nothing live until the summary is read", () => {
+    assert.match(
+      page,
+      /travelSummary \? liveLoginKey \?\? "unkeyed" : undefined/
+    )
+    assert.match(
+      page,
+      /travelSummary && !checkInHasPriorityNow\s+\? isTravelModeInForce\(travelSummary\)\s+: undefined/
+    )
+    assert.match(
+      page,
+      /travelModeActivatedAt: null,\s+fullyVerified: undefined/
+    )
+  })
+
+  it("a flow opened by Update re-reads the summary when it closes, so a completed change removes the card", () => {
+    assert.match(
+      page,
+      /if \(!open && liveTravelUpdateRef\.current\) \{\s+liveTravelUpdateRef\.current = false[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
+    )
+  })
+
+  it("the copy is Figma's, in one place", () => {
+    const copy = readFileSync(join(__dirname, "status-alert-copy.ts"), "utf8")
+    assert.match(copy, /title: "You are in Travel Mode"/)
+    assert.match(copy, /body: "Update your status if your location changes"/)
+    assert.match(copy, /actionLabel: "Update"/)
   })
 })

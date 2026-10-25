@@ -75,8 +75,11 @@ import {
 import {
   dismissPersistentAlertOptimistically,
   RENDERED_STATUS_ALERT_TYPES,
-  isRenderedStatusAlert,
+  type LiveDisplayAlert,
+  dismissLiveAlert,
+  isRenderedAlert,
 } from "@/src/lib/api/status-alert-dismissal"
+import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
 import {
   STATUS_ALERT_CLOSE_LABEL,
   STATUS_ALERT_DISMISS_ERROR,
@@ -163,6 +166,7 @@ import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
   isTravelModeInForce,
+  type TravelPopupKind,
   TRAVEL_POPUP_DURATION_MS,
 } from "@/src/lib/api/travel-popup"
 import {
@@ -240,6 +244,12 @@ export default function TalentDashboard() {
   const [statusAlertDismissFailed, setStatusAlertDismissFailed] =
     useState(false)
   const statusAlertRequestRef = useRef(0)
+  // The live "You are in Travel Mode" card (PMCM-651) is derived from the identity summary,
+  // not stored: its dismissal is per login (loginSessionKey) and lives in this browser only.
+  // A flow opened by its Update action re-reads the summary when it closes (see
+  // handleIdentityFlowOpenChange), so the card goes away once Travel Mode has ended.
+  const liveTravelUpdateRef = useRef(false)
+  const [travelSummaryReadAt, setTravelSummaryReadAt] = useState(0)
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
   const [connectionCheckState, setConnectionCheckState] =
@@ -365,6 +375,32 @@ export default function TalentDashboard() {
       })
   }, [user, travelSummary])
 
+  // Which login this is, for the live cards' per-login dismissal. Unknown until the
+  // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
+  // but also remembers nothing.
+  const liveLoginKey = travelSummary?.loginSessionKey ?? null
+  useEffect(() => {
+    setStatusAlertDismissal((prev) => ({
+      ...prev,
+      dismissedLiveKeys: readLiveDismissals(liveLoginKey, window.localStorage),
+    }))
+  }, [liveLoginKey])
+  useEffect(() => {
+    if (travelSummary) setTravelSummaryReadAt(Date.now())
+  }, [travelSummary])
+  // A live card is dismissed for this login only: hidden now, remembered in this browser
+  // under the login's key, and never sent to the backend.
+  const handleDismissLiveAlert = useCallback(
+    (card: LiveDisplayAlert) =>
+      dismissLiveAlert({
+        alert: card,
+        loginSessionKey: liveLoginKey,
+        storage: window.localStorage,
+        update: setStatusAlertDismissal,
+      }),
+    [liveLoginKey]
+  )
+
   const statusAlertStack = useMemo(
     () =>
       selectVisibleAlerts(
@@ -373,13 +409,28 @@ export default function TalentDashboard() {
             (RENDERED_STATUS_ALERT_TYPES as readonly string[]).includes(a.type)
           ),
           ...statusAlertDismissal,
-          loginSessionKey: null,
-          nowMs: 0,
-          travelModeActive: undefined,
+          // Nothing live is shown while the profile is loading, or while the check-in
+          // modal has priority (the same rule as the existing Travel Mode popup).
+          loginSessionKey: travelSummary ? liveLoginKey ?? "unkeyed" : undefined,
+          loginStartedAt: null,
+          nowMs: travelSummaryReadAt,
+          travelModeActive:
+            travelSummary && !checkInHasPriorityNow
+              ? isTravelModeInForce(travelSummary)
+              : undefined,
+          travelModeOccurrence: travelSummary?.travelModeEndsAt ?? null,
+          travelModeActivatedAt: null,
           fullyVerified: undefined,
         })
       ),
-    [statusAlerts, statusAlertDismissal]
+    [
+      statusAlerts,
+      statusAlertDismissal,
+      travelSummary,
+      liveLoginKey,
+      travelSummaryReadAt,
+      checkInHasPriorityNow,
+    ]
   )
 
   // A start attempt rejected as not startable re-reads the real status; a
@@ -837,8 +888,9 @@ export default function TalentDashboard() {
   // skips the duration screen); for an expired Travel Mode it continues to the duration
   // screen so a new period can be activated. A reminder popup can stay open for a long
   // time, so /me is re-read to make sure Travel Mode has not ended meanwhile.
-  const handleTravelUpdate = useCallback(async () => {
-    const kind = travelPopup
+  const handleTravelUpdate = useCallback(
+    async (kindOverride?: TravelPopupKind) => {
+    const kind = kindOverride ?? travelPopup
     setTravelPopup(null)
     const fresh = kind === "reminder" ? await fetchIdentityVerificationSummary() : null
     const activeTravelModeUpdate = isActiveTravelUpdate(kind, fresh)
@@ -850,7 +902,17 @@ export default function TalentDashboard() {
       activeTravelModeUpdate,
     }))
     setIdentityFlowOpen(true)
-  }, [travelPopup])
+    },
+    [travelPopup]
+  )
+
+  // The live Travel Mode card's Update: the same flow and the same detection as the popup's
+  // Update for a reminder (Travel Mode in force, so "Temporarily traveling" changes nothing).
+  // It is not a dismissal: the card stays eligible, and the flow's close re-reads the state.
+  const handleLiveTravelUpdate = useCallback(() => {
+    liveTravelUpdateRef.current = true
+    return handleTravelUpdate("reminder")
+  }, [handleTravelUpdate])
 
   // The new-location prompt's two answers. Each records the choice, then opens the
   // existing verification flow: "currently traveling" on its duration screen, "change my
@@ -878,6 +940,14 @@ export default function TalentDashboard() {
   const handleIdentityFlowOpenChange = useCallback(
     (open: boolean) => {
       setIdentityFlowOpen(open)
+      if (!open && liveTravelUpdateRef.current) {
+        liveTravelUpdateRef.current = false
+        // Re-read so a completed change that ended Travel Mode removes the live card; an
+        // unfinished flow leaves it showing. Nothing else is derived from this read here.
+        void fetchIdentityVerificationSummary().then((fresh) => {
+          if (fresh) setTravelSummary(fresh)
+        })
+      }
       const kind = mismatchFlowKindRef.current
       if (open || kind === null) return
       mismatchFlowKindRef.current = null
@@ -1724,7 +1794,7 @@ export default function TalentDashboard() {
           data-status-alert-stack
           className="pointer-events-none fixed left-4 right-4 top-[112px] z-40 flex flex-col items-end gap-3 md:left-auto md:right-5 md:top-[84px] md:w-[400px]"
         >
-          {statusAlertStack.visible.filter(isRenderedStatusAlert).map((card) => (
+          {statusAlertStack.visible.filter(isRenderedAlert).map((card) => (
             // Figma nodes 13101-46846 (Travel Mode, 98px), 13101-47555 (location verification
             // submitted, 118px), 13101-47566 (verified, 118px) and 13101-47577 (home country
             // updated, 98px): one card, a different icon and copy each. Figma's 16px padding
@@ -1743,6 +1813,8 @@ export default function TalentDashboard() {
                   <CheckCircle className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
                 ) : card.type === "home_country_updated" ? (
                   <MarkerPin01 className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+                ) : card.type === "travel_mode_ongoing" ? (
+                  <Plane className="size-[24.75px] translate-x-[0.38px] translate-y-[0.38px] text-primary-500" />
                 ) : (
                   <Plane className="size-[24.75px] text-primary-500" />
                 )}
@@ -1754,6 +1826,16 @@ export default function TalentDashboard() {
                 <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
                   {card.body}
                 </AlertDescription>
+                {card.source === "live" && (
+                  // Figma node 13101-47532: 16px under the text block (4px gap + 12px).
+                  <Button
+                    variant="link"
+                    className="mt-3 h-5 w-fit justify-start p-0 text-sm font-semibold leading-5"
+                    onClick={() => void handleLiveTravelUpdate()}
+                  >
+                    {card.actionLabel}
+                  </Button>
+                )}
               </AlertContent>
               <IconButton
                 aria-label={STATUS_ALERT_CLOSE_LABEL}
@@ -1763,6 +1845,10 @@ export default function TalentDashboard() {
                 variant="ghost"
                 onClick={() => {
                   setStatusAlertDismissFailed(false)
+                  if (card.source === "live") {
+                    handleDismissLiveAlert(card)
+                    return
+                  }
                   void dismissPersistentAlertOptimistically({
                     alert: card,
                     dismiss: StatusAlertsAPI.dismiss,

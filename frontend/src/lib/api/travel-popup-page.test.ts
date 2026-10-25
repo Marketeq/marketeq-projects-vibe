@@ -170,8 +170,8 @@ describe("Update tells the flow WHY the popup opened (an explicit prop, not init
   const update = page.slice(page.indexOf("const handleTravelUpdate"), page.indexOf("// Exact copy/markup from the Storybook reference"))
 
   it("captures the popup kind before hiding it, and re-reads /me only for a reminder", () => {
-    assert.ok(update.indexOf("const kind = travelPopup") > -1)
-    assert.ok(update.indexOf("const kind = travelPopup") < update.indexOf("setTravelPopup(null)"))
+    assert.ok(update.indexOf("const kind = kindOverride ?? travelPopup") > -1)
+    assert.ok(update.indexOf("const kind = kindOverride ?? travelPopup") < update.indexOf("setTravelPopup(null)"))
     assert.ok(update.includes('kind === "reminder" ? await fetchIdentityVerificationSummary() : null'))
     assert.ok(update.includes("isActiveTravelUpdate(kind, fresh)"))
   })
