@@ -178,7 +178,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     assert.match(card, /setStatusAlertDismissFailed\(true\)/)
   })
 
-  it("only the Travel Mode and submitted-for-review alerts are rendered so far", () => {
+  it("only the Travel Mode, submitted-for-review and verified alerts are rendered so far", () => {
     assert.match(
       page,
       /RENDERED_STATUS_ALERT_TYPES as readonly string\[\]\)\.includes\(a\.type\)/
@@ -221,5 +221,42 @@ describe("Submitted-for-review alert card (Figma node 13101-47555)", () => {
     )
     assert.match(copy, /title: 'Your location verification was submitted\.'/)
     assert.match(copy, /body: 'We will notify you once it is reviewed\.'/)
+  })
+})
+
+describe("Verified alert card (Figma node 13101-47566)", () => {
+  it("is the same single card markup, with the CheckCircle icon of the existing 'All set!' toast at Figma's offset", () => {
+    assert.equal(page.split("data-status-alert={card.type}").length - 1, 1)
+    assert.match(card, /card\.type === "verified"/)
+    assert.match(
+      card,
+      /<CheckCircle className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>/
+    )
+    // The existing toast uses the same icon with the same offsets (reused, unchanged).
+    assert.match(
+      page,
+      /<CheckCircle className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>[\s\S]*All set! Your identity and location are verified\./
+    )
+  })
+
+  it("renders the verified type and has no action: the dismiss control is the only button", () => {
+    assert.match(page, /RENDERED_STATUS_ALERT_TYPES/)
+    assert.equal((card.match(/<IconButton/g) ?? []).length, 1)
+    assert.doesNotMatch(card, /<Button\b|<a\b|<Link\b|href=/)
+  })
+
+  it("the backend sends the exact Figma copy", () => {
+    const copy = readFileSync(
+      join(
+        __dirname,
+        "../../../../backend/apps/identity-verification-service/src/events/status-alert-copy.ts"
+      ),
+      "utf8"
+    )
+    assert.match(
+      copy,
+      /title: 'All set! Your identity and location are verified\.'/
+    )
+    assert.match(copy, /body: 'You now have full access to all features\.'/)
   })
 })

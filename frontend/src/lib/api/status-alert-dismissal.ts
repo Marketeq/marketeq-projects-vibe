@@ -42,6 +42,7 @@ export async function dismissPersistentAlertOptimistically(args: {
 export const RENDERED_STATUS_ALERT_TYPES = [
   "travel_mode",
   "submitted_for_review",
+  "verified",
 ] as const
 
 export type RenderedStatusAlertType =

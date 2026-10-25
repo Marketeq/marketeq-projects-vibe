@@ -160,10 +160,13 @@ describe("dismissing the Travel Mode alert", () => {
   })
 })
 
-describe("what this phase renders", () => {
-  it("only the persistent Travel Mode alert", () => {
+describe("what is rendered so far", () => {
+  it("not the types whose cards are not built yet, and never the live cards", () => {
     const stack = buildAlertStack({
-      persistent: [alert(1, "travel_mode", 5), alert(2, "verified", 4)],
+      persistent: [
+        alert(1, "travel_mode", 5),
+        alert(2, "home_country_updated", 9),
+      ],
       loginSessionKey: "l",
       nowMs: NOW,
       travelModeActive: true,
@@ -236,5 +239,66 @@ describe("the submitted-for-review alert", () => {
       fullyVerified: undefined,
     }).map((a) => a.type)
     assert.ok(!types.includes("submitted_for_review"))
+  })
+})
+
+describe("the verified alert", () => {
+  const verified = alert(10, "verified", 2)
+  const submitted = alert(11, "submitted_for_review", 30)
+  const travel = alert(12, "travel_mode", 20)
+  const stack = (state: DismissalState, extra: StatusAlert[] = []) =>
+    buildAlertStack({
+      persistent: [travel, submitted, verified, ...extra],
+      ...state,
+      loginSessionKey: null,
+      nowMs: NOW,
+      travelModeActive: undefined,
+      fullyVerified: undefined,
+    })
+
+  it("is rendered, replaces the older Submitted alert, and stacks newest first with Travel Mode", () => {
+    assert.deepEqual(
+      stack(empty)
+        .filter(isRenderedStatusAlert)
+        .map((a) => a.type),
+      ["verified", "travel_mode"]
+    )
+  })
+
+  it("a later, independent Submitted (a new verification) is not hidden by the old Verified", () => {
+    const later = alert(13, "submitted_for_review", 1)
+    assert.deepEqual(
+      stack(empty, [later])
+        .filter(isRenderedStatusAlert)
+        .map((a) => a.type),
+      ["submitted_for_review", "verified", "travel_mode"]
+    )
+  })
+
+  it("dismisses through the persistent API, optimistically, and is restored on failure", async () => {
+    const s = holder()
+    const calls: string[] = []
+    const ok = await dismissPersistentAlertOptimistically({
+      alert: stack(s.get())[0] as PersistentDisplayAlert,
+      dismiss: async (id) => void calls.push(id),
+      update: s.update,
+    })
+    assert.deepEqual(ok, { ok: true })
+    assert.deepEqual(calls, [verified.id])
+    assert.deepEqual(
+      stack(s.get()).map((a) => a.type),
+      ["travel_mode"]
+    )
+
+    const f = holder()
+    const failed = await dismissPersistentAlertOptimistically({
+      alert: stack(f.get())[0] as PersistentDisplayAlert,
+      dismiss: async () => {
+        throw new Error("500")
+      },
+      update: f.update,
+    })
+    assert.equal(failed.ok, false)
+    assert.equal(stack(f.get()).filter(isRenderedStatusAlert).length, 2)
   })
 })

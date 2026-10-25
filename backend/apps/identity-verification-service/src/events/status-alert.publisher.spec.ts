@@ -22,6 +22,13 @@ describe('StatusAlertPublisher', () => {
     );
   });
 
+  it('the Verified alert carries the exact Figma copy', () => {
+    expect(STATUS_ALERT_COPY.verified).toEqual({
+      title: 'All set! Your identity and location are verified.',
+      body: 'You now have full access to all features.',
+    });
+  });
+
   it('Submitted for Review is keyed by the session and supersedes nothing', async () => {
     const { emit, publisher } = setup();
     await publisher.submittedForReview('u1', 'sess-2');

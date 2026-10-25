@@ -25,8 +25,9 @@ export const STATUS_ALERT_COPY: Record<StatusAlertType, StatusAlertCopy> = {
     body: 'We will notify you once it is reviewed.',
   },
   verified: {
-    title: 'All set!',
-    body: 'Your identity and location are verified.',
+    // Figma node 13101-47566.
+    title: 'All set! Your identity and location are verified.',
+    body: 'You now have full access to all features.',
   },
   home_country_updated: {
     title: HOME_COUNTRY_UPDATED_NOTIFICATION_TITLE,

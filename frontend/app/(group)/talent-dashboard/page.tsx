@@ -1725,8 +1725,9 @@ export default function TalentDashboard() {
           className="pointer-events-none fixed left-4 right-4 top-[112px] z-40 flex flex-col items-end gap-3 md:left-auto md:right-5 md:top-[84px] md:w-[400px]"
         >
           {statusAlertStack.visible.filter(isRenderedStatusAlert).map((card) => (
-            // Figma nodes 13101-46846 (Travel Mode, 98px) and 13101-47555 (location verification
-            // submitted, 118px: a two-line title and body). Same card, different icon and copy. Figma's 16px padding
+            // Figma nodes 13101-46846 (Travel Mode, 98px), 13101-47555 (location verification
+            // submitted, 118px) and 13101-47566 (verified, 118px): one card, a different icon
+            // and copy each. Figma's 16px padding
             // sits over its 1px stroke, so padding is 15px here (border-box + 1px border) to
             // keep the icon 16px from the edge and the content 368px; the 36px close button is
             // 8px from the corner, i.e. 7px from the padding box.
@@ -1738,6 +1739,8 @@ export default function TalentDashboard() {
               <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
                 {card.type === "submitted_for_review" ? (
                   <ClockStopwatch className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+                ) : card.type === "verified" ? (
+                  <CheckCircle className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
                 ) : (
                   <Plane className="size-[24.75px] text-primary-500" />
                 )}
