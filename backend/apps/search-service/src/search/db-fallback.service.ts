@@ -494,8 +494,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
               name: r.name || r.username,
               username: r.username,
               availability: r.availability,
-          location: r.location || undefined,
-          avatar_url: r.avatar_url || undefined,
+              location: r.location || undefined,
+              avatar_url: r.avatar_url || undefined,
               hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
               job_title: r.job_title ?? undefined,
               skills: Array.isArray(r.skills) ? r.skills : undefined,
@@ -1202,14 +1202,6 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     return 'NULL::text'
   }
 
-  /**
-   * `location` and `avatar_url` were added to cms.talent_profiles by a CMS
-   * migration. cms-service does not run on every deployment, so the columns
-   * may not exist yet; naming them would fail the whole talent query with
-   * 42703. Missing columns are selected as NULL instead. Only a probe that
-   * found both is cached, so the next search picks the columns up once the
-   * migration has run.
-   */
   private async resolveTalentProfileExtras(): Promise<{ locationSql: string; avatarSql: string }> {
     if (this.talentProfileExtras) return this.talentProfileExtras
     if (!this.pool) return { locationSql: 'NULL::text', avatarSql: 'NULL::text' }

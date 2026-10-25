@@ -26,7 +26,7 @@ describe('G7 - project create/update teamMemberIds', () => {
       manager: { query: jest.fn(async () => []) },
       createQueryBuilder: jest.fn(),
     };
-    const svc = new ProjectsService(repo, {} as any, {} as any, {} as any, {} as any, new RosterGateService(new InMemoryGateState().asService), gate);
+    const svc = new ProjectsService(repo, {} as any, {} as any, {} as any, {} as any, new RosterGateService(new InMemoryGateState().asService), gate, {} as any);
     jest.spyOn(svc as any, 'resolveUniqueSlug').mockResolvedValue('slug');
     jest.spyOn(svc as any, 'emitAlgoliaUpsert').mockImplementation(() => undefined);
     return { svc, stored, writes, transport, asked };
