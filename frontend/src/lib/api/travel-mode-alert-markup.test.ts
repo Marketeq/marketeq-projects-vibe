@@ -52,7 +52,7 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     const c = cardClasses('data-status-alert="travel_mode"')
     for (const cls of [
       "w-[400px]",
-      "p-4",
+      "p-[15px]", // 16px in Figma, over its 1px stroke: 368px content, 98px tall
       "gap-x-5",
       "rounded-xl",
       "border-gray-100", // #F2F4F7
@@ -110,8 +110,8 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     const c = cardClasses("<IconButton")
     for (const cls of [
       "size-9",
-      "right-2",
-      "top-2",
+      "right-[7px]", // 8px from the corner, over the 1px border
+      "top-[7px]",
       "absolute",
       "text-gray-500",
     ])

@@ -7,6 +7,7 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
+import { withoutStatusAlertStack } from "./status-alert-stack-source"
 import { isActiveTravelUpdate, isTravelModeInForce } from "./travel-popup"
 import { shouldShowTravelExpiryPopup } from "./travel-expiry-popup"
 import {
@@ -16,14 +17,6 @@ import {
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
 
-// The persistent status-alert stack (PMCM-651) is its own block, rendered before the banner and
-// pinned by travel-mode-alert-markup.test.ts. It is taken out here so this test keeps pinning
-// the banner and the rest of the layout exactly as before.
-const withoutStatusAlertStack = (source: string) => {
-  const from = source.indexOf("{(statusAlertStack.visible.length > 0 ||")
-  const to = source.indexOf("{profileBannerShown && !profileBannerDismissed && (")
-  return from > -1 && to > from ? source.slice(0, from) + source.slice(to) : source
-}
 const page = withoutStatusAlertStack(
   readFileSync(
     join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
