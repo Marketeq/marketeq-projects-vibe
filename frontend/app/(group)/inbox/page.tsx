@@ -9,7 +9,7 @@ import {
   type NotificationItem,
   NotificationsAPI,
 } from "@/service/http/notifications"
-import { getOffer, listOffers } from "@/service/http/offers"
+import { getCounterOffer, getOffer, listOffers } from "@/service/http/offers"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
@@ -268,6 +268,39 @@ export default function InboxRoot() {
                   offer.latestCounterOffer !== undefined
                     ? offer.latestCounterOffer?.id
                     : (await loadCounterOfferIdByOffer()).get(offerId)
+                // BTB-366: the latest counter offer's OWN terms — never the
+                // original offer's, never notification metadata (no real
+                // backend producer ever writes metadata.offerRate/
+                // originalOfferRate for a genuine counter; only QA seed
+                // scripts do — same gap as metadata.withdrawalMessage
+                // above). GET .../counter-offers/:id (confirmed on the
+                // backend, counter-offers.controller.ts) returns the real,
+                // live CounterOffer entity. A lookup failure (e.g. the
+                // counter was deleted, or a transient error) must not break
+                // the notification — falls back to treating this like an
+                // offer with no counter at all.
+                const latestCounterOfferTerms = latestCounterOfferId
+                  ? await getCounterOffer(offerId, latestCounterOfferId).catch(
+                      () => null
+                    )
+                  : null
+                const currentScheduleSource =
+                  latestCounterOfferTerms?.workSchedule ?? offer.workSchedule
+                const formatScheduleLabel = (
+                  schedule: typeof offer.workSchedule
+                ) =>
+                  schedule.type === "FULL_TIME"
+                    ? "Full Time"
+                    : schedule.type === "PART_TIME"
+                      ? "Part Time"
+                      : "Custom"
+                const formatStartDateLabel = (startDate: string) =>
+                  new Date(startDate).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })
                 return {
                   id: item.id,
                   contractId: offerId,
@@ -329,25 +362,24 @@ export default function InboxRoot() {
                     offer.contractType.slice(1).toLowerCase(),
                   offerRate: `${new Intl.NumberFormat("en-US", {
                     style: "currency",
+                    currency:
+                      latestCounterOfferTerms?.currencyCode ??
+                      offer.currencyCode,
+                    maximumFractionDigits: 0,
+                  }).format(latestCounterOfferTerms?.rate ?? offer.rate)}/hr`,
+                  // BTB-366: the ORIGINAL offer's own rate — real, live
+                  // data (already fetched above), not metadata. When there
+                  // is no counter offer this equals offerRate above, so the
+                  // existing "(was X)" gate (counterTermChanges in
+                  // chats-comp.tsx, equality-based) correctly shows no diff.
+                  originalOfferRate: `${new Intl.NumberFormat("en-US", {
+                    style: "currency",
                     currency: offer.currencyCode,
                     maximumFractionDigits: 0,
                   }).format(offer.rate)}/hr`,
-                  originalOfferRate:
-                    typeof metadata.originalOfferRate === "string"
-                      ? metadata.originalOfferRate
-                      : undefined,
-                  originalDuration:
-                    typeof metadata.originalDuration === "string"
-                      ? metadata.originalDuration
-                      : undefined,
-                  originalSchedule:
-                    typeof metadata.originalSchedule === "string"
-                      ? metadata.originalSchedule
-                      : undefined,
-                  originalStartDate:
-                    typeof metadata.originalStartDate === "string"
-                      ? metadata.originalStartDate
-                      : undefined,
+                  originalDuration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
+                  originalSchedule: formatScheduleLabel(offer.workSchedule),
+                  originalStartDate: formatStartDateLabel(offer.startDate),
                   role:
                     typeof metadata.role === "string" && metadata.role.trim()
                       ? metadata.role.trim()
@@ -356,35 +388,27 @@ export default function InboxRoot() {
                         ? metadata.jobTitle.trim()
                         : offer.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
                           "Team Member",
-                  duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
-                  schedule:
-                    offer.workSchedule.type === "FULL_TIME"
-                      ? "Full Time"
-                      : offer.workSchedule.type === "PART_TIME"
-                        ? "Part Time"
-                        : "Custom",
+                  duration: latestCounterOfferTerms
+                    ? `${latestCounterOfferTerms.durationMonths} Month${latestCounterOfferTerms.durationMonths === 1 ? "" : "s"}`
+                    : `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
+                  schedule: formatScheduleLabel(currentScheduleSource),
                   scheduleDetail:
-                    offer.workSchedule.type === "CUSTOM" &&
-                    typeof offer.workSchedule.hoursPerWeek === "number"
-                      ? `${offer.workSchedule.hoursPerWeek} hrs/week`
+                    currentScheduleSource.type === "CUSTOM" &&
+                    typeof currentScheduleSource.hoursPerWeek === "number"
+                      ? `${currentScheduleSource.hoursPerWeek} hrs/week`
                       : undefined,
-                  // offer.startDate is a date-only "YYYY-MM-DD" string (see
-                  // offer-service's normalizeDateOnly) — new Date() parses
-                  // that as UTC midnight, so formatting it in the browser's
-                  // local timezone showed the previous day west of UTC.
+                  // offer.startDate (and a counter's own startDate) is a
+                  // date-only "YYYY-MM-DD" string (see offer-service's
+                  // normalizeDateOnly) — new Date() parses that as UTC
+                  // midnight, so formatting it in the browser's local
+                  // timezone showed the previous day west of UTC.
                   // timeZone: "UTC" keeps the formatted day matching the
                   // UTC-midnight instant that was actually parsed, with no
                   // change to the stored value. expiresAt is a real
                   // timestamp (not date-only), so it keeps local-time
                   // formatting unchanged.
-                  startDate: new Date(offer.startDate).toLocaleDateString(
-                    "en-US",
-                    {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    }
+                  startDate: formatStartDateLabel(
+                    latestCounterOfferTerms?.startDate ?? offer.startDate
                   ),
                   expiresLabel: new Date(offer.expiresAt).toLocaleDateString(
                     "en-US",
