@@ -393,31 +393,28 @@ export default function TalentDashboard() {
     []
   )
 
-  // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
-  // traveler prompt, an Update that starts a new period): /me already says so, but the
-  // persistent "Travel Mode is on" alert is stored asynchronously by notification-service,
-  // so the list read that goes with the summary can run before it exists. Re-read the list a
-  // bounded number of times (about 3 seconds in all, stopping at the first read that has the
-  // new alert); nothing polls, and an unfinished flow, which creates no activation, never
-  // starts this.
-  useEffect(() => {
-    const previous = previousTravelSummaryRef.current
-    previousTravelSummaryRef.current = travelSummary
-    if (!user || !isNewTravelActivation(previous, travelSummary)) return
+  // A status alert that this page visit just caused (a Travel Mode activation, an approval) is
+  // stored ASYNCHRONOUSLY by notification-service: the identity service publishes the event
+  // after its write, and the consumer stores it (and supersedes the alert it replaces) a moment
+  // later. The list read that comes with the page, or with a summary, can run before that, so
+  // the list is re-read a bounded number of times (about 3 seconds in all, stopping at the
+  // first read that has a NEW alert of an expected type). Nothing polls; a newer run or the
+  // page leaving ends an older one, and the newest read always wins over an older, slower one.
+  const startAlertReconcile = useCallback((expected: StatusAlert["type"][]) => {
     const known = new Set(
       statusAlertsRef.current
-        .filter((a) => a.type === "travel_mode")
+        .filter((a) => expected.includes(a.type))
         .map((a) => a.id)
     )
     const generation = ++alertReconcileGenRef.current
     let latestRequest = 0
     void reconcileStatusAlerts({
       list: () => {
-        // The newest read wins over a slower, older one (including the load above).
         latestRequest = ++statusAlertRequestRef.current
         return StatusAlertsAPI.list()
       },
-      isSettled: (alerts) => hasNewAlertOfType(alerts, "travel_mode", known),
+      isSettled: (alerts) =>
+        expected.some((type) => hasNewAlertOfType(alerts, type, known)),
       apply: (alerts) => {
         if (latestRequest === statusAlertRequestRef.current) {
           setStatusAlerts(alerts)
@@ -426,7 +423,18 @@ export default function TalentDashboard() {
       isCurrent: () => generation === alertReconcileGenRef.current,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     })
-  }, [user, travelSummary])
+  }, [])
+
+  // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
+  // traveler prompt, an Update that starts a new period): /me already says so, but the
+  // persistent "Travel Mode is on" alert is not stored yet. An unfinished flow, which creates
+  // no activation, never starts this.
+  useEffect(() => {
+    const previous = previousTravelSummaryRef.current
+    previousTravelSummaryRef.current = travelSummary
+    if (!user || !isNewTravelActivation(previous, travelSummary)) return
+    startAlertReconcile(["travel_mode"])
+  }, [user, travelSummary, startAlertReconcile])
 
   // Which login this is, for the live cards' per-login dismissal. Unknown until the
   // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
@@ -529,10 +537,12 @@ export default function TalentDashboard() {
   // fresh backend answer shows it again.
   const [cooldownRetryTime, setCooldownRetryTime] = useState<string | null>(null)
   const retryWhen = formatRetryAt(cooldownRetryTime)
-  // The modal's existing Done button: close the modal, then show the alert.
+  // The modal's existing Done button only closes the modal. The top-right notification for
+  // this event is the persistent Verified (or Home Country Updated) card of the status-alert
+  // stack, loaded by startAlertReconcile when the approval was seen; the old temporary
+  // "All set!" alert is not opened any more, so two cards never collide.
   const handleSuccessDone = () => {
     setVerifiedModalOpen(false)
-    setSuccessAlertOpen(true)
   }
   // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
   const returnReconcilerRef = useRef<ReturnType<
@@ -554,6 +564,9 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        // The approval was just processed: its persistent alert (and the Submitted one it
+        // replaces) is stored a moment later, so reload the list until it is there.
+        startAlertReconcile(["verified", "home_country_updated"])
         // The immediate result is handled by the modal: no review alert may follow it.
         clearReviewedResult(window.localStorage, user.id)
         // Which success alert follows the modal. Read once: a repeat (duplicate
@@ -666,8 +679,10 @@ export default function TalentDashboard() {
       if (outcome !== "approved") return
       setVerificationGateOpen(false)
       setProfileBannerShown(false)
-      setSuccessAlertKind("verified")
-      setSuccessAlertOpen(true)
+      // Approved after review: the page's first alert read may have run before the approval
+      // was processed and still show "submitted". The persistent Verified card replaces it;
+      // the old temporary "All set!" alert is not opened (it would sit on top of that card).
+      startAlertReconcile(["verified", "home_country_updated"])
     }
 
     const onVisible = () => {
@@ -681,7 +696,7 @@ export default function TalentDashboard() {
     }
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
-  }, [user])
+  }, [user, startAlertReconcile])
 
   // The Identity Verification check (which may open AccountVerificationGate) waits
   // for the "Secure your account" dialog: not while the authenticated user still

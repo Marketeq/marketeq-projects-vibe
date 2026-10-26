@@ -78,16 +78,25 @@ describe("the persistent alert follows a detected activation, boundedly", () => 
     assert.match(effect, /previousTravelSummaryRef\.current = travelSummary/)
   })
 
-  it("is the bounded helper, with no interval, no continuous polling and no fixed 5s wait", () => {
-    assert.match(effect, /reconcileStatusAlerts\(\{/)
-    assert.doesNotMatch(effect, /setInterval|5000|while \(true\)/)
+  it("is the shared bounded helper, with no interval, no continuous polling and no fixed 5s wait", () => {
+    assert.match(effect, /startAlertReconcile\(\["travel_mode"\]\)/)
+    const reconcile = page.slice(
+      page.indexOf("const startAlertReconcile = useCallback"),
+      page.indexOf("// A Travel Mode activation made in this page visit")
+    )
+    assert.match(reconcile, /reconcileStatusAlerts\(\{/)
+    assert.doesNotMatch(reconcile, /setInterval|5000|while \(true\)/)
     assert.doesNotMatch(page, /setInterval/)
   })
 
   it("the newest read wins over a slower older one, and a newer run (or unmount) ends an older one", () => {
-    assert.match(effect, /latestRequest = \+\+statusAlertRequestRef\.current/)
-    assert.match(effect, /latestRequest === statusAlertRequestRef\.current/)
-    assert.match(effect, /generation === alertReconcileGenRef\.current/)
+    const reconcile = page.slice(
+      page.indexOf("const startAlertReconcile = useCallback"),
+      page.indexOf("// A Travel Mode activation made in this page visit")
+    )
+    assert.match(reconcile, /latestRequest = \+\+statusAlertRequestRef\.current/)
+    assert.match(reconcile, /latestRequest === statusAlertRequestRef\.current/)
+    assert.match(reconcile, /generation === alertReconcileGenRef\.current/)
     assert.match(page, /alertReconcileGenRef\.current = -1/)
   })
 })

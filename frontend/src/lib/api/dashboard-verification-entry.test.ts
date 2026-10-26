@@ -109,12 +109,13 @@ describe("dashboard verification entry: return from Didit", () => {
     assert.ok(page.includes('document.removeEventListener("visibilitychange", onVisible)'))
   })
 
-  it("completion hides the banner, and the success alert shows only after Done", () => {
+  it("completion hides the banner, and Done only closes the modal (the persistent Verified card is the notification)", () => {
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("clearAwaitingResult", at), at).includes("setProfileBannerShown(false)"))
-    assert.ok(page.includes("setVerifiedModalOpen(false)\n    setSuccessAlertOpen(true)"))
-    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
-    assert.equal(count("setSuccessAlertOpen(true)"), 2)
+    // PMCM-651: Done closes the modal and opens nothing; the old temporary alert is no longer
+    // opened from anywhere, so it can never sit on top of the persistent status-alert stack.
+    assert.match(page, /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+\}/)
+    assert.equal(count("setSuccessAlertOpen(true)"), 0)
   })
 })
 
