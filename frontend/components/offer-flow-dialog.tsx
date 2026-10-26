@@ -11,6 +11,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
+import { talentProfileUrl } from "@/src/lib/listing-urls"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   Alert,
@@ -73,6 +74,13 @@ interface OfferFlowDialogProps {
   onCounterOffer?: () => void
   onDecline?: () => void
   onAccept?: () => void
+  /** BTB-292: the client's own view of their still-open, not-yet-countered
+   * sent offer — EC-043 (talent-response actions must never render for the
+   * offer's own client). Distinct from onLiveExpiredEditOffer/
+   * onLiveExpiredResendOffer below, which only fire once the offer has
+   * actually expired. */
+  onWithdrawOffer?: () => void
+  onEditOffer?: () => void
   onBack?: () => void
   onCancelAccept?: () => void
   onCancelDecline?: () => void
@@ -171,6 +179,8 @@ export function OfferFlowDialog({
   onCounterOffer,
   onDecline,
   onAccept,
+  onWithdrawOffer,
+  onEditOffer,
   onBack,
   onCancelAccept,
   onCancelDecline,
@@ -571,10 +581,23 @@ export function OfferFlowDialog({
                         </Avatar>
                         <span className="truncate text-dark-blue-400">
                           {data.senderDisplayName.split(/\s+/)[0]}
-                          <span className="text-primary-500">
-                            {data.senderUsername ||
-                              `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                          </span>
+                          {/* BTB-369: only the client sees the talent's real
+                          username here — link to their profile. The talent
+                          side shows the client's handle, which has no public
+                          profile page, so it stays plain text. */}
+                          {clientPerspective && data.senderUsername ? (
+                            <NextLink
+                              href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                              className={INLINE_LINK_CLASS}
+                            >
+                              {data.senderUsername}
+                            </NextLink>
+                          ) : (
+                            <span className="text-primary-500">
+                              {data.senderUsername ||
+                                `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </div>
@@ -761,9 +784,21 @@ export function OfferFlowDialog({
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                     Counter offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-369: client view names the talent (real profile,
+                    link it); talent view names the client (no public
+                    profile, stays plain text). */}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -816,17 +851,34 @@ export function OfferFlowDialog({
                     ) : null}
                   </div>
 
+                  {/* BTB-368: a pending counter (client view) needs Message
+                  AND Offer History together — this used to be an
+                  either/or toggle, which is why some entry points showed
+                  one and not the other. The talent side keeps just Offer
+                  History (unchanged, out of this ticket's scope). */}
                   {clientPerspective ? (
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      className="w-[104px] px-2"
-                      leftIcon={<MessageSquare className="size-[15px]" />}
-                      onClick={onMessage}
-                    >
-                      Message
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<MessageSquare className="size-[15px]" />}
+                        onClick={onMessage}
+                      >
+                        Message
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<Repeat className="size-[15px]" />}
+                        onClick={onOfferHistory}
+                      >
+                        Offer History
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       variant="outlined"
@@ -989,11 +1041,28 @@ export function OfferFlowDialog({
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
-                    Offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername ||
-                        `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-292: this screen is reached by whoever is viewing
+                    a still-open, not-yet-countered offer — that's the
+                    TALENT when it's the client's offer they received, but
+                    it's also the CLIENT when it's her own just-sent offer
+                    (same event shape, no counter yet). "Offer from" is only
+                    correct for the former; the latter needs "Your offer
+                    to" (BTB-369's link guard — named party is the talent
+                    only when clientPerspective — still holds either way). */}
+                    {clientPerspective ? "Your offer to" : "Offer from"}{" "}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername ||
+                          `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -1177,38 +1246,69 @@ export function OfferFlowDialog({
                       This offer expires {data.expiresLabel}
                     </p>
 
-                    <div className="flex h-9 items-start gap-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        className="w-[109px]"
-                        onClick={onCounterOffer}
-                        disabled={offline}
-                      >
-                        Counter Offer
-                      </Button>
-                      <div className="flex flex-1 items-center justify-end gap-3">
+                    {/* BTB-292/EC-043: this is the one real root cause —
+                    this branch used to render Counter/Decline/Accept
+                    unconditionally, with no clientPerspective check at
+                    all (every other variant in this file already checks
+                    it). A client viewing her own still-open sent offer
+                    needs Withdraw/Edit instead — talent-response actions
+                    must never render for the offer's own client, and
+                    vice versa. */}
+                    {clientPerspective ? (
+                      <div className="flex h-9 items-start gap-3">
                         <Button
-                          variant="ghost"
+                          variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-[105px]"
-                          disabled={declineLoading || offline}
-                          onClick={onDecline}
+                          onClick={onWithdrawOffer}
+                          disabled={offline}
                         >
-                          {declineLoading ? "Declining..." : "Decline Offer"}
+                          Withdraw Offer
                         </Button>
                         <Button
+                          variant="outlined"
+                          visual="gray"
                           size="sm"
-                          className="w-[103px]"
+                          onClick={onEditOffer}
                           disabled={offline}
-                          onClick={onAccept}
                         >
-                          Accept Offer
+                          Edit Offer
                         </Button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex h-9 items-start gap-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="w-[109px]"
+                          onClick={onCounterOffer}
+                          disabled={offline}
+                        >
+                          Counter Offer
+                        </Button>
+                        <div className="flex flex-1 items-center justify-end gap-3">
+                          <Button
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="w-[105px]"
+                            disabled={declineLoading || offline}
+                            onClick={onDecline}
+                          >
+                            {declineLoading ? "Declining..." : "Decline Offer"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="w-[103px]"
+                            disabled={offline}
+                            onClick={onAccept}
+                          >
+                            Accept Offer
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1234,9 +1334,21 @@ export function OfferFlowDialog({
                     ) : (
                       <>
                         Offer from{" "}
-                        <span className="text-primary-500">
-                          {data.senderUsername}
-                        </span>
+                        {/* BTB-369: Offer History reuses this same title —
+                        link the talent's real username, leave the client's
+                        (no public profile) as plain text. */}
+                        {clientPerspective && data.senderUsername ? (
+                          <NextLink
+                            href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                            className={INLINE_LINK_CLASS}
+                          >
+                            {data.senderUsername}
+                          </NextLink>
+                        ) : (
+                          <span className="text-primary-500">
+                            {data.senderUsername}
+                          </span>
+                        )}
                       </>
                     )}
                   </DialogTitle>
