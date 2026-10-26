@@ -183,6 +183,21 @@ export class ProjectRelationalRepository implements ProjectRepository {
     );
   }
 
+  // PMCM-403: one query for every project's lead(s) instead of N — same
+  // one-pass intent as the teamAvatars resolution in getMyProjects.
+  async getLeadUserIdsByProject(
+    ids: Project['id'][],
+  ): Promise<Array<{ projectId: string; userId: string }>> {
+    const projectIds = ids.filter(Boolean).map((id) => id!.toString());
+    if (projectIds.length === 0) return [];
+    return this.projectRepository.manager.query(
+      `SELECT "projectId"::text AS "projectId", "userId"::text AS "userId"
+       FROM listings.project_members
+       WHERE "projectId" = ANY($1) AND "isLead" = true`,
+      [projectIds],
+    );
+  }
+
   async upsertProjectMembers(
     id: Project['id'],
     members: Array<{
