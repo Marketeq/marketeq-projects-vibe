@@ -9,7 +9,7 @@ import { expireTravelModeIfDue } from './travel-mode-state';
 
 describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
   const ACTIVATED = new Date('2026-06-01T12:00:00.000Z');
-  const ENDS_6 = ACTIVATED.getTime() + 6 * DAY_MS;
+  const ENDS_A_FEW = ACTIVATED.getTime() + 7 * DAY_MS;
   const TRAVELING = TravelClassification.TEMPORARILY_TRAVELING;
   const LAST_SENT = new Date('2026-06-04T09:00:00.000Z');
   const NEXT = new Date('2026-06-08T12:00:00.000Z');
@@ -37,7 +37,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
     const { repository, run } = build();
     const profile = profileRow();
 
-    const result = await run(profile, ENDS_6);
+    const result = await run(profile, ENDS_A_FEW);
 
     expect(repository.update).toHaveBeenCalledTimes(1);
     expect(repository.update).toHaveBeenCalledWith(
@@ -53,7 +53,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
 
   it('preserves the classification, duration, activation time and last reminder time', async () => {
     const { run } = build();
-    const result = await run(profileRow(), ENDS_6);
+    const result = await run(profileRow(), ENDS_A_FEW);
 
     expect(result.travelClassification).toBe(TRAVELING);
     expect(result.declaredDuration).toBe(DeclaredDuration.A_FEW_DAYS);
@@ -62,7 +62,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
   });
 
   it.each([
-    [DeclaredDuration.A_FEW_DAYS, 6],
+    [DeclaredDuration.A_FEW_DAYS, 7],
     [DeclaredDuration.ONE_TO_TWO_WEEKS, 13],
     [DeclaredDuration.MORE_THAN_TWO_WEEKS, 30],
     [DeclaredDuration.NOT_SURE, 30],
@@ -93,7 +93,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
       const profile = profileRow(over);
       const before = { ...profile };
 
-      const result = await run(profile, ENDS_6 - 5 * DAY_MS);
+      const result = await run(profile, ENDS_A_FEW - 5 * DAY_MS);
 
       expect(repository.update).toHaveBeenCalledTimes(1);
       expect(repository.update.mock.calls[0][1]).toEqual({ travelModeActive: false, nextTravelReminderAt: null });
@@ -113,7 +113,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
     it('matches observed null values with IS NULL, never with an equals-null', async () => {
       const { repository, run } = build();
 
-      await run(profileRow({ travelModeActivatedAt: null, declaredDuration: null }), ENDS_6);
+      await run(profileRow({ travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW);
 
       const criteria = repository.update.mock.calls[0][0];
       expect(criteria).toMatchObject({ id: 'p1', travelModeActive: true });
@@ -126,7 +126,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
     it('does not log when the fail-safe lost the compare-and-set', async () => {
       const { logger, run } = build(jest.fn().mockResolvedValue({ affected: 0 }), profileRow({ travelModeActive: false }));
 
-      await run(profileRow({ declaredDuration: null }), ENDS_6);
+      await run(profileRow({ declaredDuration: null }), ENDS_A_FEW);
 
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -134,11 +134,11 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
 
   describe('a lost compare-and-set', () => {
     it('reloads and returns the fresh row without overwriting the winner or the caller’s copy', async () => {
-      const winner = profileRow({ travelModeActivatedAt: new Date(ENDS_6 + 1000), declaredDuration: DeclaredDuration.NOT_SURE });
+      const winner = profileRow({ travelModeActivatedAt: new Date(ENDS_A_FEW + 1000), declaredDuration: DeclaredDuration.NOT_SURE });
       const { repository, run } = build(jest.fn().mockResolvedValue({ affected: 0 }), winner);
       const stale = profileRow();
 
-      const result = await run(stale, ENDS_6 + DAY_MS);
+      const result = await run(stale, ENDS_A_FEW + DAY_MS);
 
       expect(result).toBe(winner);
       expect(repository.update).toHaveBeenCalledTimes(1);
@@ -152,17 +152,17 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
       const { run } = build(jest.fn().mockResolvedValue({ affected: 0 }), null);
       const stale = profileRow();
 
-      expect(await run(stale, ENDS_6 + DAY_MS)).toBe(stale);
+      expect(await run(stale, ENDS_A_FEW + DAY_MS)).toBe(stale);
     });
   });
 
   describe('nothing due: no update and no reload', () => {
     it.each([
-      ['active Travel Mode', profileRow(), ENDS_6 - 1],
-      ['the raw flag already false after an expired period', profileRow({ travelModeActive: false }), ENDS_6 + DAY_MS],
-      ['a pending duration (classified, never activated)', profileRow({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null }), ENDS_6],
-      ['no travel data at all', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null }), ENDS_6],
-      ['a profile cleared by a home-country confirmation', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null, nextTravelReminderAt: null }), ENDS_6],
+      ['active Travel Mode', profileRow(), ENDS_A_FEW - 1],
+      ['the raw flag already false after an expired period', profileRow({ travelModeActive: false }), ENDS_A_FEW + DAY_MS],
+      ['a pending duration (classified, never activated)', profileRow({ travelModeActive: false, travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW],
+      ['no travel data at all', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null }), ENDS_A_FEW],
+      ['a profile cleared by a home-country confirmation', profileRow({ travelModeActive: false, travelClassification: null, travelModeActivatedAt: null, declaredDuration: null, nextTravelReminderAt: null }), ENDS_A_FEW],
     ])('%s', async (_label, profile, now) => {
       const { repository, logger, run } = build();
 
@@ -179,8 +179,8 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
     const { repository, run } = build();
     const profile = profileRow();
 
-    await run(profile, ENDS_6);
-    const again = await run(profile, ENDS_6 + DAY_MS);
+    await run(profile, ENDS_A_FEW);
+    const again = await run(profile, ENDS_A_FEW + DAY_MS);
 
     expect(again).toBe(profile);
     expect(repository.update).toHaveBeenCalledTimes(1);
@@ -188,7 +188,7 @@ describe('expireTravelModeIfDue (persisted lazy expiry)', () => {
 
   it('never logs for a valid expiry', async () => {
     const { logger, run } = build();
-    await run(profileRow(), ENDS_6);
+    await run(profileRow(), ENDS_A_FEW);
     expect(logger.warn).not.toHaveBeenCalled();
   });
 });

@@ -63,8 +63,25 @@ describe('Free KYC routes (HTTP)', () => {
       expect(res.status).toBe(200);
       expect(Object.keys(res.body)).toEqual(['url']);
       expect(detect).toHaveBeenCalledTimes(1);
-      expect(freeKyc.startOrResume).toHaveBeenCalledWith('user-1');
+      expect(freeKyc.startOrResume).toHaveBeenCalledWith('user-1', undefined);
     });
+
+    it("passes the browser's own origin to the service, which validates it against FRONTEND_URL", async () => {
+      const res = await request(app.getHttpServer())
+        .post('/v1/identity-verification/kyc-sessions')
+        .send({ returnOrigin: 'https://staging-marketeq-projects.vercel.app' });
+      expect(res.status).toBe(200);
+      expect(freeKyc.startOrResume).toHaveBeenCalledWith('user-1', 'https://staging-marketeq-projects.vercel.app');
+    });
+
+    it.each([[123], [['https://a.com']], ['x'.repeat(2049)]])(
+      'rejects a malformed returnOrigin (case %#) before the service runs',
+      async (value) => {
+        const res = await request(app.getHttpServer()).post('/v1/identity-verification/kyc-sessions').send({ returnOrigin: value });
+        expect(res.status).toBe(400);
+        expect(freeKyc.startOrResume).not.toHaveBeenCalled();
+      },
+    );
 
     it.each([
       [VpnProxyDetectionResult.VPN_DETECTED],
@@ -92,13 +109,12 @@ describe('Free KYC routes (HTTP)', () => {
       expect(freeKyc.startOrResume).not.toHaveBeenCalled();
     });
 
-    it('ignores any user/country/reference the client tries to supply in the body', async () => {
+    it('rejects any user/country/callback field the client tries to supply in the body (only returnOrigin is read)', async () => {
       const res = await request(app.getHttpServer())
         .post('/v1/identity-verification/kyc-sessions')
-        .send({});
-      expect(res.status).toBe(200);
-      expect(freeKyc.startOrResume).toHaveBeenCalledWith('user-1');
-      expect(freeKyc.startOrResume.mock.calls[0]).toHaveLength(1);
+        .send({ userId: 'someone-else', country: 'ZZ', callback: 'https://evil.example' });
+      expect(res.status).toBe(400);
+      expect(freeKyc.startOrResume).not.toHaveBeenCalled();
     });
   });
 

@@ -119,6 +119,8 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
           travelModeActivatedAt: new Date(NOW),
           lastTravelReminderSentAt: null,
           nextTravelReminderAt: new Date(NOW + 3 * DAY_MS),
+          // A new activation is a new cycle: its first check-in is unanswered.
+          travelCheckInCount: 0,
         },
       );
       expect(saved).toMatchObject({ id: 'p1', travelModeActive: true, declaredDuration: DeclaredDuration.A_FEW_DAYS, travelClassification: TRAVELING });

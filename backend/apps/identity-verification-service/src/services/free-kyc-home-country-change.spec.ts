@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { FreeKycService } from './free-kyc.service';
 import { IdentityVerificationService } from './identity-verification.service';
 import { FAILED_FINAL_COOLDOWN_MS } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
@@ -264,6 +265,26 @@ describe('Home-country change sessions (PMCM-650)', () => {
       expect(w.profile.pendingRelocationSessionId).toBe(w.sessions[0].id);
       expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
       expectCountryKept(w);
+    });
+
+    it('Didit returns the browser to the requesting frontend, chosen from the comma-separated FRONTEND_URL (staging, not the first entry)', async () => {
+      process.env.FRONTEND_URL =
+        'https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app,http://localhost:3000';
+      const w = world();
+      await w.service.startHomeCountryChange('user-1', 'https://staging-marketeq-projects.vercel.app');
+      expect((w.provider.createKycSession.mock.calls[0] as any[])[0].callbackUrl).toBe(
+        'https://staging-marketeq-projects.vercel.app/talent-dashboard',
+      );
+    });
+
+    it('an origin that is not on the list, or none with several configured, creates nothing', async () => {
+      process.env.FRONTEND_URL = 'https://live-marketeq-projects.vercel.app,https://staging-marketeq-projects.vercel.app';
+      for (const origin of ['https://evil.example', undefined]) {
+        const w = world();
+        await expect(w.service.startHomeCountryChange('user-1', origin)).rejects.toBeInstanceOf(BadRequestException);
+        expect(w.provider.createKycSession).not.toHaveBeenCalled();
+        expect(w.sessions).toHaveLength(0);
+      }
     });
 
     it('the ordinary start hands a pending claim to the same relocation start (so the existing "Verify My Account" retry works)', async () => {
@@ -760,11 +781,29 @@ describe('Home-country change sessions (PMCM-650)', () => {
     // The REAL account-side service over the same profile row the session service uses.
     const accountService = (w: World) =>
       new IdentityVerificationService(
-        { findOne: jest.fn(async () => w.profile), save: jest.fn(async (p: Row) => p), create: jest.fn((d: Row) => ({ ...d })), update: jest.fn() } as any,
-        {} as any, {} as any, {} as any, {} as any,
-        { getRepository: () => ({ exist: jest.fn().mockResolvedValue(false) }) } as any,
-        {} as any, {} as any, {} as any,
-        { resolve: jest.fn().mockResolvedValue({ countryCode: 'US', regionState: null, city: null }) } as any,
+        {
+          findOne: jest.fn(async () => w.profile),
+          save: jest.fn(async (p: Row) => p),
+          create: jest.fn((d: Row) => ({ ...d })),
+          update: jest.fn(),
+        } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {
+          getRepository: () => ({ exist: jest.fn().mockResolvedValue(false) }),
+        } as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {
+          resolve: jest.fn().mockResolvedValue({
+            countryCode: 'US',
+            regionState: null,
+            city: null,
+          }),
+        } as any,
         {} as any,
         { publish: jest.fn() } as any,
       );
@@ -844,6 +883,43 @@ describe('Home-country change sessions (PMCM-650)', () => {
       expect(w.profile.pendingRelocationSessionId).toBe(w.sessions[0].id);
       expect(s1).toBeTruthy();
       expectTravelKept(w);
+    });
+
+    // Starting the home-country update flow resolves the Travel Mode check-in that led to it.
+    // Nothing earlier does: opening or abandoning the check-in resolves nothing.
+    it('starting the session resolves the current check-in: the resolved-up-to time is set, and Travel Mode is otherwise untouched', async () => {
+      const w = world({ profile: traveler() });
+      expect(w.profile.lastTravelReminderSentAt).toBeNull();
+
+      await w.startChange();
+
+      expect(w.profile.lastTravelReminderSentAt).toBeInstanceOf(Date);
+      expect(
+        (w.profile.lastTravelReminderSentAt as Date).getTime(),
+      ).toBeLessThanOrEqual(Date.now());
+      expectTravelKept(w);
+    });
+
+    it('a start that fails (vendor outage) resolves nothing: the check-in is still due', async () => {
+      const w = world({ profile: traveler() });
+      w.provider.createKycSession.mockRejectedValueOnce(
+        new VendorTransportError(new Error('down')),
+      );
+
+      await expect(
+        w.service.startHomeCountryChange('user-1'),
+      ).rejects.toBeInstanceOf(VendorStageUnavailableException);
+
+      expect(w.profile.lastTravelReminderSentAt).toBeNull();
+      expectTravelKept(w);
+    });
+
+    it('an account that is not in Travel Mode has no check-in to resolve: nothing is written to it', async () => {
+      const w = world();
+
+      await w.startChange();
+
+      expect(w.profile.lastTravelReminderSentAt ?? null).toBeNull();
     });
 
     it.each([

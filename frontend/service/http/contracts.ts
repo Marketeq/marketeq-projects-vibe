@@ -24,9 +24,10 @@ export interface ContractDTO {
 export interface AddableContractDTO {
   id: string
   name: string
+  type: string
   status: string
   phase: string | null
-  memberAvatars: string[]
+  memberAvatars: Array<string | null>
   memberCount: number
   createdAt: string
 }

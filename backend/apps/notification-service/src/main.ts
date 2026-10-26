@@ -5,13 +5,15 @@ import { NotificationServiceModule } from './notification-service.module';
 import { AckingServerRMQ } from './delivery/acking-server-rmq';
 import { NotificationDeliveryService } from './delivery/notification-delivery.service';
 import { NOTIFICATION_QUEUE } from './delivery/delivery.constants';
-import { getRabbitMqUrl, isRabbitMqReachable, shouldRequireRabbitMq } from '../../../shared/utils';
+import { getRabbitMqUrl, isRabbitMqReachable, redactRabbitMqUrl, shouldRequireRabbitMq } from '../../../shared/utils';
 
 async function bootstrap() {
   const logger = new Logger('NotificationServiceBootstrap');
   const app = await NestFactory.create(NotificationServiceModule);
   const rabbitMqUrl = getRabbitMqUrl();
   const rabbitMqRequired = shouldRequireRabbitMq();
+  // Logs never carry the broker's credentials; the connection itself uses rabbitMqUrl.
+  const rabbitMqLogUrl = redactRabbitMqUrl(rabbitMqUrl);
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors({
@@ -38,9 +40,9 @@ async function bootstrap() {
       ),
     });
   } else if (rabbitMqRequired) {
-    throw new Error(`RabbitMQ is required but unreachable at ${rabbitMqUrl}`);
+    throw new Error(`RabbitMQ is required but unreachable at ${rabbitMqLogUrl}`);
   } else {
-    logger.warn(`RabbitMQ is unavailable at ${rabbitMqUrl}; starting HTTP API without RMQ consumers in local/dev mode.`);
+    logger.warn(`RabbitMQ is unavailable at ${rabbitMqLogUrl}; starting HTTP API without RMQ consumers in local/dev mode.`);
   }
 
   await app.listen(process.env.PORT || 3006);
@@ -48,7 +50,7 @@ async function bootstrap() {
 
   if (rabbitMqReachable) {
     await app.startAllMicroservices();
-    logger.log(`RabbitMQ transport connected at ${rabbitMqUrl}`);
+    logger.log(`RabbitMQ transport connected at ${rabbitMqLogUrl}`);
   }
 }
 bootstrap();

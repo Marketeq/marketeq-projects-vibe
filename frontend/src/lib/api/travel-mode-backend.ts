@@ -26,6 +26,15 @@ export const TRAVEL_DURATION_TO_BACKEND: Record<string, DeclaredDurationValue> =
   "Not sure": "not_sure",
 }
 
+// What "Skip" submits: an explicit "Not sure", whatever was selected before. Skip never
+// reads the selection. identity-verification-service cannot represent a Travel Mode with
+// no duration at all: `declared_duration = null` ("skipped", Data Model doc) on an active
+// period is the fail-closed `invalid` state (travel-mode-state.ts) and would deactivate it,
+// and the length of a skipped period is not documented. So the request is the Not sure
+// period; "skipped" exists only on this screen, to choose the confirmation copy. A real
+// null-duration state needs a backend contract decision (see PMCM-639).
+export const SKIPPED_TRAVEL_DURATION_LABEL = "Not sure"
+
 export interface TravelModeDeps {
   recordTravelClassification: (c: TravelClassificationValue) => Promise<unknown>
   recordTravelDuration: (d: DeclaredDurationValue) => Promise<unknown>
@@ -45,16 +54,22 @@ export async function recordTravelClassification(
 // Saves the whole Travel Mode activation: the backend sets the classification and the
 // duration in ONE atomic write, so nothing is saved before this call and nothing is
 // half-saved if it fails. Resolves true only when the backend accepted it; a failure is
-// logged and resolves false so the caller can keep its screen open. "Skip" (no duration
-// chosen) is recorded as the screen's own "Not sure" option.
+// logged and resolves false so the caller can keep its screen open.
+//
+// The duration must be one of the four screen labels: nothing is invented for a missing or
+// unknown one (that used to fall back to "not_sure", which let Confirm save an answer the
+// user never gave). "Skip" passes SKIPPED_TRAVEL_DURATION_LABEL on purpose.
 export async function recordTravelDuration(
   deps: TravelModeDeps,
-  duration: string | null
+  duration: string
 ): Promise<boolean> {
+  const backendDuration = TRAVEL_DURATION_TO_BACKEND[duration]
+  if (!backendDuration) {
+    console.error("[identity-verification] travel duration is not one of the screen options")
+    return false
+  }
   try {
-    await deps.recordTravelDuration(
-      (duration && TRAVEL_DURATION_TO_BACKEND[duration]) || "not_sure"
-    )
+    await deps.recordTravelDuration(backendDuration)
     return true
   } catch (error) {
     console.error("[identity-verification] travel duration failed", error)

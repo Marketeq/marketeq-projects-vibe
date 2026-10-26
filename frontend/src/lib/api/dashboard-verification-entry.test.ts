@@ -164,16 +164,16 @@ describe("Travel Mode popups: each appears only when its backend condition appli
     assert.equal(shouldShowTravelExpiryPopup({ ...base, storage }), true)
   })
 
-  it("the reminder popup opens only after the backend claim says claimed, from one scheduler", () => {
-    assert.equal(count('setTravelPopup("reminder")'), 1)
-    const at = page.indexOf('setTravelPopup("reminder")')
-    const before = page.slice(page.lastIndexOf("createTravelReminderScheduler({", at), at)
-    assert.ok(before.includes("claim: () => claimTravelReminder()"))
-    assert.ok(before.includes("onClaimed:"))
-    assert.equal(count("createTravelReminderScheduler({"), 1)
-    assert.ok(page.includes("due: travelSummary.travelReminderDue"))
-    assert.ok(page.includes("availableAt: travelSummary.travelReminderAvailableAt"))
-    assert.ok(page.includes("return () => scheduler.dispose()"))
+  it("a due Travel Mode occurrence opens the check-in modal from /me, not a claim: one timer, no scheduler", () => {
+    // PMCM-641 retired the claim-and-toast path: the small alert has no trigger of its own now.
+    assert.equal(count('setTravelPopup("reminder")'), 0)
+    assert.equal(count("createTravelReminderScheduler"), 0)
+    assert.equal(count("claimTravelReminder"), 0)
+    assert.equal(count("createCheckInTimer({"), 1)
+    assert.ok(page.includes("timer.update(travelSummary)"))
+    assert.ok(page.includes("return () => timer.dispose()"))
+    assert.ok(page.includes("reconcileCheckIn("))
+    assert.ok(page.includes("summary: travelSummary"))
   })
 
   it("closing a reminder spends it; closing the expiry popup is remembered for this login only", () => {

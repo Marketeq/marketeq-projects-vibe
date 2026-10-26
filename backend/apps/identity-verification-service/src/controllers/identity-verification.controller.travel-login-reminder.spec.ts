@@ -37,7 +37,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
     getLocationMismatch: jest.fn(),
     getTravelModeLocationMismatch: jest.fn().mockResolvedValue(false),
     getLoginReminderAt: jest.fn(),
-    claimTravelReminder: jest.fn(),
+    isTravelCheckInDue: jest.fn(),
   };
 
   const travellingProfile = () =>
@@ -74,8 +74,8 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
     );
     ivs.getLocationMismatch.mockReset().mockResolvedValue(false);
     ivs.getTravelModeLocationMismatch.mockReset().mockResolvedValue(false);
-    ivs.getLoginReminderAt.mockReset().mockResolvedValue(null);
-    ivs.claimTravelReminder.mockReset().mockResolvedValue({ claimed: false });
+    ivs.getLoginReminderAt.mockReset().mockReturnValue(null);
+    ivs.isTravelCheckInDue.mockReset().mockResolvedValue({ due: false });
 
     const moduleRef = await Test.createTestingModule({
       controllers: [IdentityVerificationController],
@@ -106,11 +106,14 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
 
   describe('POST /travel-reminder/claim', () => {
     it('hands the service the token’s session id and authentication time (milliseconds)', async () => {
-      ivs.claimTravelReminder.mockResolvedValue({ claimed: true });
+      ivs.isTravelCheckInDue.mockResolvedValue({ due: true });
       const res = await request(app.getHttpServer()).post(CLAIM).expect(200);
       expect(res.body).toEqual({ claimed: true });
-      expect(ivs.claimTravelReminder).toHaveBeenCalledTimes(1);
-      expect(ivs.claimTravelReminder).toHaveBeenCalledWith('user-1', { sid: SID, authTimeMs: (NOW_SECONDS - 600) * 1000 });
+      expect(ivs.isTravelCheckInDue).toHaveBeenCalledTimes(1);
+      expect(ivs.isTravelCheckInDue).toHaveBeenCalledWith('user-1', {
+        sid: SID,
+        authTimeMs: (NOW_SECONDS - 600) * 1000,
+      });
     });
 
     it.each([
@@ -122,22 +125,28 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
       ['a future auth_time', { sub: 'user-1', sid: SID, auth_time: NOW_SECONDS + 3600 }],
       ['a malformed sid', { sub: 'user-1', sid: "x'; DROP TABLE y;--", auth_time: NOW_SECONDS - 600 }],
       ['no payload at all', undefined],
-    ])('%s: the service gets no login session (day 3 / day 7 only)', async (_label, payload) => {
-      tokenPayload = payload;
-      await request(app.getHttpServer()).post(CLAIM).expect(200);
-      expect(ivs.claimTravelReminder).toHaveBeenCalledWith('user-1', null);
-    });
+    ])(
+      '%s: the service gets no login session (day schedule only)',
+      async (_label, payload) => {
+        tokenPayload = payload;
+        await request(app.getHttpServer()).post(CLAIM).expect(200);
+        expect(ivs.isTravelCheckInDue).toHaveBeenCalledWith('user-1', null);
+      },
+    );
 
     it('ignores anything the client sends: session and time come only from the verified token', async () => {
       await request(app.getHttpServer())
         .post(`${CLAIM}?sid=attacker&auth_time=1`)
         .send({ sid: 'attacker', auth_time: 1, authTimeMs: 1 })
         .expect(200);
-      expect(ivs.claimTravelReminder).toHaveBeenCalledWith('user-1', { sid: SID, authTimeMs: (NOW_SECONDS - 600) * 1000 });
+      expect(ivs.isTravelCheckInDue).toHaveBeenCalledWith('user-1', {
+        sid: SID,
+        authTimeMs: (NOW_SECONDS - 600) * 1000,
+      });
     });
 
     it('the response is still exactly { claimed: boolean }', async () => {
-      ivs.claimTravelReminder.mockResolvedValue({ claimed: false });
+      ivs.isTravelCheckInDue.mockResolvedValue({ due: false });
       const res = await request(app.getHttpServer()).post(CLAIM).expect(200);
       expect(Object.keys(res.body)).toEqual(['claimed']);
     });
@@ -160,7 +169,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
 
     it('reports a due login reminder on the existing fields, ahead of day 3', async () => {
       const dueAt = new Date(Date.now() - 60_000);
-      ivs.getLoginReminderAt.mockResolvedValue(dueAt);
+      ivs.getLoginReminderAt.mockReturnValue(dueAt);
       const res = await request(app.getHttpServer()).get(ME).expect(200);
       expect(res.body.travelReminderDue).toBe(true);
       expect(res.body.travelReminderAvailableAt).toBe(dueAt.toISOString());
@@ -168,7 +177,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
 
     it('reports a login reminder that is still in the future without marking it due', async () => {
       const dueAt = new Date(Date.now() + 2 * 60_000);
-      ivs.getLoginReminderAt.mockResolvedValue(dueAt);
+      ivs.getLoginReminderAt.mockReturnValue(dueAt);
       const res = await request(app.getHttpServer()).get(ME).expect(200);
       expect(res.body.travelReminderDue).toBe(false);
       expect(res.body.travelReminderAvailableAt).toBe(dueAt.toISOString());
@@ -181,7 +190,7 @@ describe('Travel Mode login reminder — token to service (HTTP)', () => {
     });
 
     it('adds no new field and leaks no session id or token claim', async () => {
-      ivs.getLoginReminderAt.mockResolvedValue(new Date(Date.now() - 1000));
+      ivs.getLoginReminderAt.mockReturnValue(new Date(Date.now() - 1000));
       const res = await request(app.getHttpServer()).get(ME).expect(200);
       const text = JSON.stringify(res.body);
       expect(text).not.toContain(SID);
