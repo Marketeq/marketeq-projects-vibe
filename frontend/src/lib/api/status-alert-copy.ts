@@ -1,11 +1,10 @@
 // frontend/src/lib/api/status-alert-copy.ts
 //
-// PROVISIONAL copy for the two live (non-persisted) alerts. Persistent alerts carry their
-// own title and body from notification-service. Everything here is a placeholder to be
-// replaced once the Figma Alerts frame (PMCM-651, node 11105-18845) is provided; the
-// state logic reads it only through this module.
+// Copy for the live (non-persisted) "You are in Travel Mode" alert. Persistent alerts carry their
+// own title and body from notification-service. The state logic reads this copy only
+// through this module.
 
-export type LiveAlertAction = "update_travel" | "verify_account"
+export type LiveAlertAction = "update_travel"
 
 export interface LiveAlertCopy {
   title: string
@@ -22,16 +21,10 @@ export const LIVE_ALERT_COPY = {
     actionLabel: "Update",
     action: "update_travel",
   },
-  unverified_account: {
-    title: "Verify your account",
-    body: "Verify your identity and location to make your profile public.",
-    actionLabel: "Verify My Account",
-    action: "verify_account",
-  },
 } as const satisfies Record<string, LiveAlertCopy>
 
 // Accessible name of the close button on a persistent alert card, and the line shown when
-// a dismissal could not be saved (the card is put back). Provisional, like the above.
+// a dismissal could not be saved (the card is put back).
 export const STATUS_ALERT_CLOSE_LABEL = "Dismiss alert"
 export const STATUS_ALERT_DISMISS_ERROR =
   "We couldn't dismiss that alert. Please try again."

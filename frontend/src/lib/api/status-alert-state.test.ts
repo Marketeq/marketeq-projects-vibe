@@ -8,7 +8,6 @@ import {
   applySupersession,
   buildAlertStack,
   dismissAlert,
-  isUnverifiedBannerVisible,
   liveAlertKey,
   selectVisibleAlerts,
   undoPersistentDismissal,
@@ -36,7 +35,6 @@ const base = (over: Partial<StatusAlertInputs> = {}): StatusAlertInputs => ({
   loginSessionKey: "login-1",
   nowMs: NOW,
   travelModeActive: false,
-  fullyVerified: true,
   ...over,
 })
 const empty: DismissalState = {
@@ -86,11 +84,10 @@ describe("ordering and the visible cap", () => {
           alert(1, "travel_mode", at(40)),
           alert(2, "verified", at(30)),
           alert(3, "home_country_updated", at(50)),
+          alert(4, "submitted_for_review", at(5)),
         ],
         travelModeActive: true,
-        travelModeActivatedAt: at(10),
-        fullyVerified: false,
-        loginStartedAt: at(1),
+        travelModeActivatedAt: at(2),
       })
     )
     assert.equal(MAX_VISIBLE_ALERTS, 3)
@@ -98,7 +95,7 @@ describe("ordering and the visible cap", () => {
     const { visible, hiddenCount } = selectVisibleAlerts(stack)
     assert.equal(visible.length, 3)
     assert.equal(hiddenCount, 2)
-    assert.equal(visible[0].type, "unverified_account") // newest
+    assert.equal(visible[0].type, "travel_mode_ongoing") // newest
   })
 
   it("an empty stack shows nothing", () => {
@@ -153,11 +150,10 @@ describe("dismissal and promotion", () => {
         alert(1, "travel_mode", at(10)),
         alert(2, "verified", at(20)),
         alert(3, "home_country_updated", at(30)),
+        alert(4, "submitted_for_review", at(3)),
       ],
       travelModeActive: true,
-      travelModeActivatedAt: at(5),
-      fullyVerified: false,
-      loginStartedAt: at(1),
+      travelModeActivatedAt: at(1),
     })
     // submitted/travel supersession does not apply here: home_country (30m) is OLDER than
     // travel_mode (10m), so a fresh Travel Mode alert stays.
@@ -314,35 +310,15 @@ describe("live alerts", () => {
     )
   })
 
-  it("the unverified card shows for an unverified account and returns on every new login", () => {
-    const input = base({ fullyVerified: false })
-    const card = buildAlertStack(input)[0]
-    assert.equal(card.type, "unverified_account")
-    const out = dismissAlert(empty, card)
-    assert.equal(buildAlertStack({ ...input, ...out.state }).length, 0)
-    assert.equal(
-      buildAlertStack({ ...input, ...out.state, loginSessionKey: "login-2" })
-        .length,
-      1
-    )
-  })
-
-  it("once fully verified the unverified card never appears, whatever was dismissed", () => {
-    assert.equal(buildAlertStack(base({ fullyVerified: true })).length, 0)
-  })
-
   it("shows no live alert while the profile is loading or the login is unknown", () => {
     assert.equal(
-      buildAlertStack(
-        base({ fullyVerified: undefined, travelModeActive: undefined })
-      ).length,
+      buildAlertStack(base({ travelModeActive: undefined })).length,
       0
     )
     assert.equal(
       buildAlertStack(
         base({
           loginSessionKey: null,
-          fullyVerified: false,
           travelModeActive: true,
         })
       ).length,
@@ -350,73 +326,10 @@ describe("live alerts", () => {
     )
   })
 
-  it("live keys are per login session and per kind", () => {
+  it("the live key is per login session", () => {
     assert.notEqual(
-      liveAlertKey("unverified_account", "a"),
-      liveAlertKey("unverified_banner", "a")
-    )
-    assert.notEqual(
-      liveAlertKey("unverified_banner", "a"),
-      liveAlertKey("unverified_banner", "b")
-    )
-  })
-})
-
-describe("the inline unverified banner", () => {
-  it("shows for an unverified account and is dismissed for this login only", () => {
-    const input = { fullyVerified: false, loginSessionKey: "login-1" }
-    assert.equal(isUnverifiedBannerVisible(input), true)
-    const dismissed = new Set([liveAlertKey("unverified_banner", "login-1")])
-    assert.equal(
-      isUnverifiedBannerVisible({ ...input, dismissedLiveKeys: dismissed }),
-      false
-    )
-    assert.equal(
-      isUnverifiedBannerVisible({
-        ...input,
-        loginSessionKey: "login-2",
-        dismissedLiveKeys: dismissed,
-      }),
-      true
-    )
-  })
-
-  it("dismissing the banner does not dismiss the card, and the reverse", () => {
-    const bannerKey = liveAlertKey("unverified_banner", "login-1")
-    const input = base({
-      fullyVerified: false,
-      dismissedLiveKeys: new Set([bannerKey]),
-    })
-    assert.equal(buildAlertStack(input).length, 1)
-    const card = liveAlertKey("unverified_account", "login-1")
-    assert.equal(
-      isUnverifiedBannerVisible({
-        fullyVerified: false,
-        loginSessionKey: "login-1",
-        dismissedLiveKeys: new Set([card]),
-      }),
-      true
-    )
-  })
-
-  it("is never visible once fully verified, or while the profile is unknown", () => {
-    assert.equal(
-      isUnverifiedBannerVisible({ fullyVerified: true, loginSessionKey: "l" }),
-      false
-    )
-    assert.equal(
-      isUnverifiedBannerVisible({
-        fullyVerified: undefined,
-        loginSessionKey: "l",
-      }),
-      false
-    )
-    assert.equal(
-      isUnverifiedBannerVisible({
-        fullyVerified: false,
-        loginSessionKey: null,
-      }),
-      false
+      liveAlertKey("travel_mode_ongoing", "a"),
+      liveAlertKey("travel_mode_ongoing", "b")
     )
   })
 })

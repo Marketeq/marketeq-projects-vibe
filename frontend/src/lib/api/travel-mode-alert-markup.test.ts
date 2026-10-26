@@ -379,7 +379,7 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
     )
     assert.match(
       page,
-      /travelModeActivatedAt: null,\s+fullyVerified: undefined/
+      /travelModeActivatedAt: null,\s+\}\)/
     )
   })
 

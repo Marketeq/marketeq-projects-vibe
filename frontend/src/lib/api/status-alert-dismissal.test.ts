@@ -45,7 +45,6 @@ const stackFor = (alerts: StatusAlert[], state: DismissalState) =>
     loginSessionKey: null,
     nowMs: NOW,
     travelModeActive: undefined,
-    fullyVerified: undefined,
   })
 
 describe("dismissing the Travel Mode alert", () => {
@@ -167,7 +166,6 @@ describe("what is rendered so far", () => {
       loginSessionKey: "l",
       nowMs: NOW,
       travelModeActive: true,
-      fullyVerified: false,
     })
     assert.ok(stack.some((a) => a.source === "live"))
     assert.deepEqual(
@@ -187,7 +185,6 @@ describe("the submitted-for-review alert", () => {
       loginSessionKey: null,
       nowMs: NOW,
       travelModeActive: undefined,
-      fullyVerified: undefined,
     })
 
   it("is rendered, and stacks with Travel Mode newest first", () => {
@@ -234,7 +231,6 @@ describe("the submitted-for-review alert", () => {
       loginSessionKey: null,
       nowMs: NOW,
       travelModeActive: undefined,
-      fullyVerified: undefined,
     }).map((a) => a.type)
     assert.ok(!types.includes("submitted_for_review"))
   })
@@ -251,7 +247,6 @@ describe("the verified alert", () => {
       loginSessionKey: null,
       nowMs: NOW,
       travelModeActive: undefined,
-      fullyVerified: undefined,
     })
 
   it("is rendered, replaces the older Submitted alert, and stacks newest first with Travel Mode", () => {
@@ -311,7 +306,6 @@ describe("the home-country-updated alert", () => {
       loginSessionKey: null,
       nowMs: NOW,
       travelModeActive: undefined,
-      fullyVerified: undefined,
     })
 
   it("is rendered and replaces the older persistent Travel Mode alert", () => {

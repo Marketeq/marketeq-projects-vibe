@@ -1,9 +1,9 @@
 // frontend/src/lib/api/live-alert-dismissal.ts
 //
-// Per-LOGIN dismissal of the live status alerts (PMCM-651): the "You are in Travel Mode"
-// card and, later, the unverified-account card and banner. These are derived from the
-// current identity state, never stored in notification-service, so nothing is sent to the
-// backend: the dismissal lives in this browser, keyed by the opaque `loginSessionKey` that
+// Per-LOGIN dismissal of the live status alerts (PMCM-651): today only the "You are in
+// Travel Mode" card. It is derived from the current identity state, never stored in
+// notification-service, so nothing is sent to the backend: the dismissal lives in this
+// browser, keyed by the opaque `loginSessionKey` that
 // GET /me returns (the same design as travel-expiry-popup.ts). A refresh keeps the key, a
 // new login gets a new one (so the card returns), and another account never shares it.
 //

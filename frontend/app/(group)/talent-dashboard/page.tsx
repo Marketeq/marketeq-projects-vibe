@@ -412,7 +412,6 @@ export default function TalentDashboard() {
           // Nothing live is shown while the profile is loading, or while the check-in
           // modal has priority (the same rule as the existing Travel Mode popup).
           loginSessionKey: travelSummary ? liveLoginKey ?? "unkeyed" : undefined,
-          loginStartedAt: null,
           nowMs: travelSummaryReadAt,
           travelModeActive:
             travelSummary && !checkInHasPriorityNow
@@ -420,7 +419,6 @@ export default function TalentDashboard() {
               : undefined,
           travelModeOccurrence: travelSummary?.travelModeEndsAt ?? null,
           travelModeActivatedAt: null,
-          fullyVerified: undefined,
         })
       ),
     [

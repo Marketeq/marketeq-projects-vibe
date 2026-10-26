@@ -10,25 +10,22 @@
 //     stored server-side by id, and a new occurrence is a new alert with a new id;
 //   - "You are in Travel Mode / Update" is a LIVE card: derived from the profile while
 //     Travel Mode is active, dismissed for the current login session only;
-//   - the unverified-account card and the inline banner are LIVE too: derived from the
-//     profile on every login, dismissed for the current login session only, never shown
-//     once the account is fully verified;
+//   - there is NO unverified-account alert here: the orange inline banner and the
+//     AccountVerificationGate are not part of this stack (Christopher's PMCM-651 decisions,
+//     pinned by unverified-account-decisions.test.ts);
 //   - Verified replaces Submitted for Review, and an approved home-country update replaces
 //     the Travel Mode alert. notification-service already dismisses the replaced alert
 //     when the new one is stored; the same rule is applied here so a list that is read
 //     between the two writes, or a late retry, cannot show both.
 //
-// Live dismissal keys embed the loginSessionKey (GET /me), which is new on every login and
-// stable across refreshes, so a new login un-dismisses them without any cleanup.
+// The live card's dismissal key embeds the loginSessionKey (GET /me), which is new on every
+// login and stable across refreshes, so a new login un-dismisses it without any cleanup.
 import { LIVE_ALERT_COPY, type LiveAlertAction } from "./status-alert-copy"
 import type { StatusAlert, StatusAlertType } from "./status-alerts"
 
 export const MAX_VISIBLE_ALERTS = 3
 
-export type LiveAlertKind =
-  | "travel_mode_ongoing"
-  | "unverified_account"
-  | "unverified_banner"
+export type LiveAlertKind = "travel_mode_ongoing"
 
 export type DisplayAlert =
   | {
@@ -45,7 +42,7 @@ export type DisplayAlert =
   | {
       source: "live"
       key: string
-      type: Exclude<LiveAlertKind, "unverified_banner">
+      type: LiveAlertKind
       title: string
       body: string
       actionLabel: string
@@ -62,8 +59,6 @@ export interface StatusAlertInputs {
   dismissedLiveKeys?: ReadonlySet<string>
   // GET /me: stable for a login, new for every login.
   loginSessionKey: string | null | undefined
-  // ISO time this login began, used to order the unverified card. Falls back to nowMs.
-  loginStartedAt?: string | null
   nowMs: number
   // undefined while the profile is loading: nothing live is shown until it is known.
   travelModeActive: boolean | undefined
@@ -72,7 +67,6 @@ export interface StatusAlertInputs {
   // dismissed in this login returns for a LATER activation, but not for the same one.
   travelModeOccurrence?: string | null
   travelModeActivatedAt?: string | null
-  fullyVerified: boolean | undefined
 }
 
 export const liveAlertKey = (
@@ -162,22 +156,7 @@ export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
           key,
           type: "travel_mode_ongoing",
           ...LIVE_ALERT_COPY.travel_mode_ongoing,
-          createdAtMs:
-            toMs(input.travelModeActivatedAt) ??
-            toMs(input.loginStartedAt) ??
-            input.nowMs,
-        })
-      }
-    }
-    if (input.fullyVerified === false) {
-      const key = liveAlertKey("unverified_account", session)
-      if (!dismissedLive.has(key)) {
-        out.push({
-          source: "live",
-          key,
-          type: "unverified_account",
-          ...LIVE_ALERT_COPY.unverified_account,
-          createdAtMs: toMs(input.loginStartedAt) ?? input.nowMs,
+          createdAtMs: toMs(input.travelModeActivatedAt) ?? input.nowMs,
         })
       }
     }
@@ -201,18 +180,6 @@ export function selectVisibleAlerts(
 ): VisibleAlerts {
   const visible = stack.slice(0, Math.max(0, max))
   return { visible, hiddenCount: stack.length - visible.length }
-}
-
-/** The inline banner: same live rule as the unverified card, its own dismissal key. */
-export function isUnverifiedBannerVisible(input: {
-  fullyVerified: boolean | undefined
-  loginSessionKey: string | null | undefined
-  dismissedLiveKeys?: ReadonlySet<string>
-}): boolean {
-  if (input.fullyVerified !== false || !input.loginSessionKey) return false
-  return !(input.dismissedLiveKeys ?? new Set<string>()).has(
-    liveAlertKey("unverified_banner", input.loginSessionKey)
-  )
 }
 
 export interface DismissalState {

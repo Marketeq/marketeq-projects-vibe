@@ -45,7 +45,6 @@ const inputs = (over: Partial<StatusAlertInputs> = {}): StatusAlertInputs => ({
   loginSessionKey: A,
   nowMs: NOW,
   travelModeActive: true,
-  fullyVerified: undefined,
   ...over,
 })
 const persistentAlert = (
