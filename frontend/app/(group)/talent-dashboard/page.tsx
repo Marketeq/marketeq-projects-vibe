@@ -81,6 +81,10 @@ import {
 } from "@/src/lib/api/status-alert-dismissal"
 import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
 import {
+  readTravelActivationsInLogin,
+  rememberTravelActivationInLogin,
+} from "@/src/lib/api/travel-activation-login"
+import {
   ALERT_RECENCY_WINDOW_MS,
   hasNewAlertOfType,
   hasRecentAlertOfType,
@@ -454,6 +458,25 @@ export default function TalentDashboard() {
   // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
   // but also remembers nothing.
   const liveLoginKey = travelSummary?.loginSessionKey ?? null
+  // Travel Mode activations made in THIS login (kept in this browser under the login's key, so
+  // a refresh keeps them and a new login starts empty): the persistent "Travel Mode is on"
+  // card announces those, and the live Update card waits for a later login. Marked in a layout
+  // effect, before the first paint that shows the new state, so Update never flashes.
+  const [travelActivationsHere, setTravelActivationsHere] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  useEffect(() => {
+    setTravelActivationsHere(
+      readTravelActivationsInLogin(liveLoginKey, window.localStorage)
+    )
+  }, [liveLoginKey])
+  useLayoutEffect(() => {
+    if (!user || !isNewTravelActivation(previousTravelSummaryRef.current, travelSummary)) return
+    const occurrence = travelSummary?.travelModeEndsAt
+    if (!occurrence) return
+    rememberTravelActivationInLogin(liveLoginKey, occurrence, window.localStorage)
+    setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
+  }, [user, travelSummary, liveLoginKey])
   useEffect(() => {
     setStatusAlertDismissal((prev) => ({
       ...prev,
@@ -489,6 +512,10 @@ export default function TalentDashboard() {
               ? isTravelModeInForce(travelSummary)
               : undefined,
           travelModeOccurrence: travelSummary?.travelModeEndsAt ?? null,
+          travelModeActivatedThisLogin: Boolean(
+            travelSummary?.travelModeEndsAt &&
+              travelActivationsHere.has(travelSummary.travelModeEndsAt)
+          ),
           travelModeActivatedAt: null,
         })
       ),
@@ -497,6 +524,7 @@ export default function TalentDashboard() {
       statusAlertDismissal,
       travelSummary,
       liveLoginKey,
+      travelActivationsHere,
       checkInHasPriorityNow,
     ]
   )

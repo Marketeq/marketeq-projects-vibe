@@ -9,7 +9,9 @@
 //   - a persistent alert (notification-service) stays dismissed for good: its dismissal is
 //     stored server-side by id, and a new occurrence is a new alert with a new id;
 //   - "You are in Travel Mode / Update" is a LIVE card: derived from the profile while
-//     Travel Mode is active, dismissed for the current login session only;
+//     Travel Mode is active, dismissed for the current login session only, and NOT shown in the
+//     login where Travel Mode was activated (the persistent "Travel Mode is on" card covers
+//     that login; Update appears from the next login on);
 //   - there is NO unverified-account alert here: the orange inline banner and the
 //     AccountVerificationGate are not part of this stack (Christopher's PMCM-651 decisions,
 //     pinned by unverified-account-decisions.test.ts);
@@ -67,6 +69,10 @@ export interface StatusAlertInputs {
   // dismissed in this login returns for a LATER activation, but not for the same one.
   travelModeOccurrence?: string | null
   travelModeActivatedAt?: string | null
+  // The current activation was made during THIS login (see travel-activation-login.ts): the
+  // persistent "Travel Mode is on" card announces it, so the live Update card stays hidden
+  // until a later login. False or absent: Travel Mode was already in force when the login began.
+  travelModeActivatedThisLogin?: boolean
 }
 
 export const liveAlertKey = (
@@ -163,7 +169,11 @@ export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
     // still says active (it was read before the change), the ongoing card does not qualify
     // once a Home Country Updated alert is newer than the activation.
     const travelEnded = endedByHomeCountryUpdate(input)
-    if (input.travelModeActive === true && !travelEnded) {
+    if (
+      input.travelModeActive === true &&
+      !travelEnded &&
+      input.travelModeActivatedThisLogin !== true
+    ) {
       const key = liveAlertKey(
         "travel_mode_ongoing",
         input.travelModeOccurrence
