@@ -414,3 +414,83 @@ Two gaps that cost time on a clean boot, neither caused by this branch:
 Still unfixed from §5: the three colliding `InitContractsSchema` migrations, and
 `messaging-service` / `time-tracking-service` / `content-moderation-service`
 restart-looping past `max_restarts` on broken or unrun migrations.
+
+---
+
+## 12. The Talent Network card (25 Oct)
+
+### 12.1 An uncatalogued fork of a catalogued component
+
+`frontend/components/talent-network-status-card.tsx` is a **fork** of
+`TalentSearchCard`, and says so in its own header. Created 27 Aug by
+@sejalshitole (#533). It is **not listed in COMPONENTS.md**; the component it
+forked **is**. Both divergences below lived in it.
+
+It has exactly one consumer — My Team's Talent Network tab — so changing it is
+page-specific by construction, and the catalogued card used by five other
+pages stays untouched. Worth a decision on whether the fork should exist at
+all, since the alternative is putting the states into `TalentSearchCard` and
+deleting it.
+
+### 12.2 Only one of the three availability states existed
+
+The Figma draws three states on the avatar — green check, amber clock, red
+watch. The code hardcoded green with no conditional. All three colours already
+exist in `tailwind.config.ts` at exactly the Figma values (Success/500
+`#12B76A`, Warning/400 `#FDB022`, Error/500 `#F04438`), so no arbitrary values
+were needed. Now built and driven by the profile's `availability` field.
+
+**Not just this page:** the same dot is hardcoded green in
+`talent-search-card.tsx`, which **nine surfaces** render. Every talent card in
+the product currently claims availability regardless of the truth. Fixing that
+one is a design-system change, not ours.
+
+### 12.3 The hire-status badge was never in the design
+
+The Active / Invitation pending / Ended pill is absent from the Figma's Talent
+Network card, which ends at the rating row. Removed. Note the docs *do*
+mention a Talent Network status badge under OQ-05, so **design and docs
+disagree**; this follows the design.
+
+### 12.4 Why every card looked identical — and why it matters beyond seed data
+
+Every profile field was NULL, so each card fell through to the component's
+default props, which read "Marketing Technologist / Australia / 4.7 /
+2 projects / $85-$120". Three separate bugs were hiding behind those defaults:
+
+| Field | Problem |
+|---|---|
+| `projects` | never passed to the card — pinned to the default `2` |
+| `rating` | mapper reads `u.rating`; the endpoint returns `clientSuccessRating` |
+| `localTime` | hardcoded `"7:30pm local time"` in the shared mapper |
+
+The wider point: **the shared mapper's fallbacks make missing data
+invisible.** A profile with nothing in it renders as a plausible-looking
+talent rather than an obviously empty one, which is how six identical cards
+sat there unnoticed.
+
+### 12.5 Three experience tables, two of them dead
+
+`user_service.experiences`, `user_service.experience` and `public.experiences`
+all exist. The entity maps to **`user_service.experience` (singular)**; the
+other two are decoys that nothing reads. Seeding the wrong one looks like it
+worked and changes nothing.
+
+### 12.6 Local test data
+
+`~/dev/marketeq-seed/talent-network-figma-seed.sql` (outside the repo,
+re-runnable, with undo notes) seeds the six Talent Network members to match
+the Figma card-for-card: role, years, location, timezone, rating, project
+count, availability, avatar and seven skills each. Rates vary by seniority —
+the one deliberate deviation, since the design shows `$85-$120` on every card.
+
+Worth knowing: the mapper pads with its generic skill list whenever a talent
+has **fewer than six** skills, so a partial profile still looks generic.
+
+### 12.7 Not done
+
+- The "You currently have N team members" block is correctly wired to live
+  data, but three values differ from the Figma: supporting-text line-height
+  (15px vs 16.34px) and weight (300 vs unset), and the chevron (12px vs 14px).
+  It lives in a nav rendered by five pages, so it is left alone.
+- A rating of `4.0` renders as `4` — the card prints the value raw.
