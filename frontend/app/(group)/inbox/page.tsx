@@ -261,11 +261,17 @@ export default function InboxRoot() {
                 const actorId = actorKeys
                   .map((key) => metadata[key])
                   .find((value): value is string => typeof value === "string")
+                // BTB-364/D1: offer.jobListingId is now string | null (a
+                // listing-less "Hire Me" offer has none) — fall through to
+                // "" like the metadata-only branch below does, not a bare
+                // null, so viewJobHref's guard and offerJobHref() callers
+                // stay string-typed.
                 const jobListingId =
                   (typeof metadata.jobId === "string" && metadata.jobId) ||
                   (typeof metadata.jobListingId === "string" &&
                     metadata.jobListingId) ||
-                  offer.jobListingId
+                  offer.jobListingId ||
+                  ""
                 const conversationParticipantId =
                   actorId ||
                   (offer.clientId === currentUserProfile?.id
@@ -286,11 +292,21 @@ export default function InboxRoot() {
                 // counter was deleted, or a transient error) must not break
                 // the notification — falls back to treating this like an
                 // offer with no counter at all.
-                const latestCounterOfferTerms = latestCounterOfferId
+                // Only a PENDING or ACCEPTED counter's terms are the live
+                // ones. Declining or withdrawing a counter restores the
+                // parent offer to PENDING on its ORIGINAL terms
+                // (counter-offers.service.ts), and latestCounterOffer is just
+                // the newest counter by createdAt, whatever its status.
+                const latestCounter = latestCounterOfferId
                   ? await getCounterOffer(offerId, latestCounterOfferId).catch(
                       () => null
                     )
                   : null
+                const latestCounterOfferTerms =
+                  latestCounter?.status === "PENDING" ||
+                  latestCounter?.status === "ACCEPTED"
+                    ? latestCounter
+                    : null
                 const currentScheduleSource =
                   latestCounterOfferTerms?.workSchedule ?? offer.workSchedule
                 const formatScheduleLabel = (
@@ -340,17 +356,22 @@ export default function InboxRoot() {
                   // withdrawn, or expired-with-restore (confirmed against
                   // counter-offers.service.ts's decline()/withdraw()) —
                   // this is the one field that actually distinguishes them.
-                  latestCounterOfferStatus: latestCounterOfferTerms?.status,
+                  // Read from latestCounter, not latestCounterOfferTerms:
+                  // the terms are nulled for a DECLINED/WITHDRAWN/EXPIRED
+                  // counter, which is exactly the status needed here.
+                  latestCounterOfferStatus: latestCounter?.status,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
                   href: getNotificationHref(item, getNotificationKind(item)),
-                  viewJobHref: offerJobHref(
-                    jobListingId,
-                    offerId,
-                    conversationParticipantId,
-                    metadata
-                  ),
+                  viewJobHref: jobListingId
+                    ? offerJobHref(
+                        jobListingId,
+                        offerId,
+                        conversationParticipantId,
+                        metadata
+                      )
+                    : "",
                   jobListingId,
                   createdAt: item.createdAt,
                   actorId: conversationParticipantId,

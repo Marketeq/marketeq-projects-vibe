@@ -167,6 +167,10 @@ import NextImage from "@/components/next-image"
 import { countryOf } from "@/lib/geo"
 import NextLink from "@/components/next-link"
 import { ProjectDetailsStepsSection } from "@/components/project-details/project-details-steps-section"
+import {
+  PublishConfirmDialog,
+  getPublishedToastTitle,
+} from "@/components/listings/publish-confirm-dialog"
 import { ReadMoreLessComp, ReadMoreLessRoot } from "@/components/read-more-less"
 import { RichTextEditor } from "@/components/rich-text-editor"
 import {
@@ -2403,6 +2407,7 @@ function ProjectDetailsInner() {
 
   const handlePublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
+    if (project.viewerCanPublish === false) return
     setIsPublishing(true)
     setPublishError(null)
     setPublishErrorField(null)
@@ -2411,8 +2416,12 @@ function ProjectDetailsInner() {
       setProject((prev: any) => ({ ...prev, status: "published" }))
       setHasChanges(false)
       setPublishDialogOpen(false)
-      const label = project.listingType === "service" ? "service" : "project"
-      toast({ title: `Your ${label} is live`, variant: "success" })
+      toast({
+        title: getPublishedToastTitle(
+          project.listingType === "service" ? "service" : "project"
+        ),
+        variant: "success",
+      })
     } catch (err: any) {
       console.error("Failed to publish:", err)
       if (isUnauthorizedError(err)) {
@@ -2446,6 +2455,7 @@ function ProjectDetailsInner() {
 
   const handleUnpublish = React.useCallback(async () => {
     if (!project?.id || !isRealBackendId(project.id)) return
+    if (project.viewerCanPublish === false) return
     setIsPublishing(true)
     try {
       await ProjectAPI.UnpublishProject(project.id)
@@ -10996,7 +11006,44 @@ function ProjectDetailsInner() {
                 </div>
 
                 <div className="mt-6 flex items-center gap-x-3">
-                  {hasChanges ? (
+                  {project.viewerCanPublish === false ? (
+                    // PMCM-403/F2: owner-or-lead only (viewerCanPublish from
+                    // getProjectDraft, listings-service) — a disabled
+                    // control fires no pointer events, so the Tooltip
+                    // trigger wraps a focusable span around it (same
+                    // pattern this file already uses elsewhere for a
+                    // disabled control under a Tooltip).
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="inline-block" tabIndex={0}>
+                            <Button
+                              variant="outlined"
+                              visual="gray"
+                              size="md"
+                              className="gap-x-1.5"
+                              disabled
+                            >
+                              <span
+                                className={cn(
+                                  "size-2 rounded-full",
+                                  isPublished ? "bg-success-500" : "bg-gray-400"
+                                )}
+                              />
+                              {isPublished ? "Live" : "Draft"}
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent
+                          side="top"
+                          visual="white"
+                          className="max-w-[200px] text-center"
+                        >
+                          Only the owner or project lead can publish.
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : hasChanges ? (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -11192,47 +11239,17 @@ function ProjectDetailsInner() {
                     </div>
                   )}
 
-                {/* Publish confirmation dialog */}
-                <Dialog
+                {/* PMCM-403: shared publish-confirmation dialog, same
+                    component the wizard and the dashboard use. */}
+                <PublishConfirmDialog
                   open={publishDialogOpen}
                   onOpenChange={setPublishDialogOpen}
-                >
-                  <DialogContent className="p-0" style={{ maxWidth: 416 }}>
-                    <div className="p-6">
-                      <DialogTitle>
-                        Publish this{" "}
-                        {project.listingType === "service"
-                          ? "service"
-                          : "project"}
-                        ?
-                      </DialogTitle>
-                      <DialogDescription className="mt-2">
-                        Your{" "}
-                        {project.listingType === "service"
-                          ? "service"
-                          : "project"}{" "}
-                        will be visible live in the marketplace.
-                      </DialogDescription>
-                    </div>
-
-                    <div className="border-t border-gray-200 py-4 px-6 flex items-center justify-between">
-                      <DialogClose asChild>
-                        <Button variant="link" visual="gray">
-                          <X className="size-[15px]" />
-                          Cancel
-                        </Button>
-                      </DialogClose>
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        onClick={handlePublish}
-                        disabled={isPublishing}
-                      >
-                        {isPublishing ? "Publishing..." : "Yes, Publish"}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                  onConfirm={handlePublish}
+                  listingType={
+                    project.listingType === "service" ? "service" : "project"
+                  }
+                  loading={isPublishing}
+                />
 
                 {/* Add a Featured Video dialog */}
                 <Dialog

@@ -75,7 +75,9 @@ export class WarningProcessor {
       id: raw.id,
       clientId: raw.client_id ?? raw.clientId,
       talentId: raw.talent_id ?? raw.talentId,
-      jobListingId: raw.job_listing_id ?? raw.jobListingId,
+      // BTB-364/D1: trailing `?? null` — see offers.service.ts's mapRawToOffer
+      // for why `?? raw.jobListingId` alone silently drops a genuine null.
+      jobListingId: raw.job_listing_id ?? raw.jobListingId ?? null,
       contractType: raw.contract_type ?? raw.contractType,
       contractTitle: raw.contract_title ?? raw.contractTitle,
       status: raw.status,

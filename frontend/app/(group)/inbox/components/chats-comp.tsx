@@ -6133,19 +6133,26 @@ export function Chats({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-5">
-                  <div className="space-y-3 text-sm leading-[22px] text-gray-500">
+                {/* BTB-350: one row per field — two independent
+                space-y-stacked columns drift apart once any value's row
+                (here, Work Schedule's two-span row) is a different height
+                than its label's. */}
+                <div className="space-y-3 border-y border-gray-100 py-5">
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
                     <div className="font-semibold text-dark-blue-400">Offer Rate</div>
-                    <div>Role</div>
-                    <div>Contract Duration</div>
-                    <div>Work Schedule</div>
-                    <div>Start Date</div>
+                    <div className="font-semibold text-dark-blue-400">{selectedNotificationOfferData.offerRate}</div>
                   </div>
-                  <div className="space-y-3 text-sm font-medium leading-[22px] text-dark-blue-400">
-                    <div className="font-semibold">{selectedNotificationOfferData.offerRate}</div>
-                    <div>{selectedNotificationOfferData.role}</div>
-                    <div>{selectedNotificationOfferData.duration}</div>
-                    <div className="flex items-center gap-1">
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Role</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Contract Duration</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.duration}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Work Schedule</div>
+                    <div className="flex items-center gap-1 font-medium text-dark-blue-400">
                       <span>{selectedNotificationOfferData.schedule}</span>
                       {selectedNotificationOfferData.schedule === "Full Time" ? (
                         <span className="text-xs font-normal">over 30 hrs/week</span>
@@ -6153,7 +6160,10 @@ export function Chats({
                         <span className="text-xs font-normal">up to 30 hrs/week</span>
                       ) : null}
                     </div>
-                    <div>{selectedNotificationOfferData.startDate}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Start Date</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.startDate}</div>
                   </div>
                 </div>
 
@@ -6299,25 +6309,30 @@ export function Chats({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
-                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                {/* BTB-350: one row per field — same fix as the
+                Withdrawn dialog above. */}
+                <div className="space-y-4 border-y border-gray-100 py-6">
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
                     <div className="font-semibold text-dark-blue-400">
                       Offer Rate
                     </div>
-                    <div>Role</div>
-                    <div>Contract Duration</div>
-                    <div>Work Schedule</div>
-                    <div>Start Date</div>
-                  </div>
-                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
-                    <div className="font-semibold">
+                    <div className="font-semibold text-dark-blue-400">
                       {selectedNotificationOfferData.offerRate.endsWith("/hr")
                         ? selectedNotificationOfferData.offerRate
                         : `${selectedNotificationOfferData.offerRate}/hr`}
                     </div>
-                    <div>{selectedNotificationOfferData.role}</div>
-                    <div>{selectedNotificationOfferData.duration}</div>
-                    <div className="flex items-center gap-1">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Role</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Contract Duration</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.duration}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Work Schedule</div>
+                    <div className="flex items-center gap-1 font-medium text-dark-blue-400">
                       <span>
                         {selectedNotificationOfferData.schedule.startsWith(
                           "Full Time"
@@ -6347,7 +6362,10 @@ export function Chats({
                         </span>
                       ) : null}
                     </div>
-                    <div>{selectedNotificationOfferData.startDate}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Start Date</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.startDate}</div>
                   </div>
                 </div>
               </div>
@@ -7001,16 +7019,14 @@ export function Chats({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
-                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                {/* BTB-350: one row per field — two independent
+                space-y-stacked columns drift apart once any value's row
+                (a "(was X)" annotation, or Work Schedule's two-span row)
+                is a different height than its label's. */}
+                <div className="space-y-4 border-y border-gray-100 py-6">
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
                     <div className="font-semibold text-dark-blue-400">Rate</div>
-                    <div>Role</div>
-                    <div>Contract Duration</div>
-                    <div>Work Schedule</div>
-                    <div>Start Date</div>
-                  </div>
-                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
-                    <div className="flex items-center gap-1.5 font-bold">
+                    <div className="flex items-center gap-1.5 font-bold text-dark-blue-400">
                       {counterTermChanges.rate ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7031,8 +7047,14 @@ export function Chats({
                         </span>
                       ) : null}
                     </div>
-                    <div>{selectedNotificationOfferData.role}</div>
-                    <div className="flex items-center gap-1.5">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Role</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Contract Duration</div>
+                    <div className="flex items-center gap-1.5 font-medium text-dark-blue-400">
                       {counterTermChanges.duration ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7043,7 +7065,10 @@ export function Chats({
                         </span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Work Schedule</div>
+                    <div className="flex items-center gap-1 font-medium text-dark-blue-400">
                       {counterTermChanges.schedule ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7077,7 +7102,10 @@ export function Chats({
                         </span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Start Date</div>
+                    <div className="flex items-center gap-1.5 font-medium text-dark-blue-400">
                       {counterTermChanges.startDate ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7266,16 +7294,12 @@ export function Chats({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
-                  <div className="space-y-4 text-sm leading-[22px] text-gray-500">
+                {/* BTB-350: one row per field — same fix as the
+                sent/expired-counter dialog above. */}
+                <div className="space-y-4 border-y border-gray-100 py-6">
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
                     <div className="font-semibold text-dark-blue-400">Rate</div>
-                    <div>Role</div>
-                    <div>Contract Duration</div>
-                    <div>Work Schedule</div>
-                    <div>Start Date</div>
-                  </div>
-                  <div className="space-y-4 text-sm font-medium leading-[22px] text-dark-blue-400">
-                    <div className="flex items-center gap-1.5 font-bold">
+                    <div className="flex items-center gap-1.5 font-bold text-dark-blue-400">
                       {counterTermChanges.rate ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7286,14 +7310,23 @@ export function Chats({
                         </span>
                       ) : null}
                     </div>
-                    <div>{selectedNotificationOfferData.role}</div>
-                    <div className="flex items-center gap-1.5">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Role</div>
+                    <div className="font-medium text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Contract Duration</div>
+                    <div className="flex items-center gap-1.5 font-medium text-dark-blue-400">
                       {counterTermChanges.duration ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
                       <span>{selectedNotificationOfferData.duration}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Work Schedule</div>
+                    <div className="flex items-center gap-1 font-medium text-dark-blue-400">
                       {counterTermChanges.schedule ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7304,7 +7337,10 @@ export function Chats({
                         <span className="text-xs font-normal">up to 30 hrs/week</span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-1.5">
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6 text-sm leading-[22px] text-gray-500">
+                    <div>Start Date</div>
+                    <div className="flex items-center gap-1.5 font-medium text-dark-blue-400">
                       {counterTermChanges.startDate ? (
                         <ArrowRight className="size-3.5 shrink-0 text-success-400" />
                       ) : null}
@@ -7481,22 +7517,30 @@ export function Chats({
                   </Button>
                 </div>
                 <div className="border-t border-gray-100" />
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field — same fix as the other
+                hand-rolled detail dialogs in this file. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">Offer Rate</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
-                  </div>
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.offerRate}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.duration}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
                     <div className="flex items-center gap-1 text-dark-blue-400">
                       <span className="text-sm font-medium leading-[18px]">{selectedNotificationOfferData.schedule}</span>
                       {selectedNotificationOfferData.schedule === "Full Time" ? <span className="text-xs leading-[18px]">over 30 hrs/week</span> : selectedNotificationOfferData.schedule === "Part Time" ? <span className="text-xs leading-[18px]">up to 30 hrs/week</span> : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-400">{selectedNotificationOfferData.startDate}</div>
                   </div>
                 </div>
@@ -7727,26 +7771,31 @@ export function Chats({
 
                 <div className="border-t border-gray-100" />
 
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field — same fix as the other
+                hand-rolled detail dialogs in this file. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-500">
                       Offer Rate
                     </div>
-                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
-                  </div>
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-500">
                       {selectedNotificationOfferData.offerRate}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {selectedNotificationOfferData.role}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {selectedNotificationOfferData.duration}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
                     <div className="flex items-center gap-1 text-dark-blue-500">
                       <span className="text-sm font-medium leading-[18px]">
                         {selectedNotificationOfferData.schedule}
@@ -7757,6 +7806,9 @@ export function Chats({
                         <span className="text-xs leading-[18px]">up to 30 hrs/week</span>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {selectedNotificationOfferData.startDate}
                     </div>

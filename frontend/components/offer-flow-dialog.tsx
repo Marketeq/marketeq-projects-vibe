@@ -587,7 +587,7 @@ export function OfferFlowDialog({
                           profile page, so it stays plain text. */}
                           {clientPerspective && data.senderUsername ? (
                             <NextLink
-                              href={talentProfileUrl(data.senderUsername)}
+                              href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                               className={INLINE_LINK_CLASS}
                             >
                               {data.senderUsername}
@@ -615,34 +615,43 @@ export function OfferFlowDialog({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field (label + value as siblings in
+                the same grid-cols-[162px_1fr]), not two independent stacked
+                columns. Two stacks drift apart the moment any one value's
+                row is a different height than its label's (here, Work
+                Schedule's value is a flex row of two differently-sized
+                spans) — nothing after that point in the column keeps the
+                same row again, and the gap compounds downward, worst at
+                the last field. A per-row grid can't drift: each row sizes
+                to its own tallest cell, independent of every other row. */}
+                <div className="space-y-4 border-y border-gray-100 py-6">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">
                       Offer Rate
                     </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Role
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Contract Duration
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Work Schedule
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Start Date
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-400">
                       {data.offerRate}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
                     </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.role}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.duration}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
                     </div>
                     <div className="flex items-center gap-1 text-dark-blue-400">
                       <span className="text-sm font-medium leading-[18px]">
@@ -661,6 +670,11 @@ export function OfferFlowDialog({
                           up to 30 hrs/week
                         </span>
                       ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
                     </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.startDate}
@@ -775,7 +789,7 @@ export function OfferFlowDialog({
                     profile, stays plain text). */}
                     {clientPerspective && data.senderUsername ? (
                       <NextLink
-                        href={talentProfileUrl(data.senderUsername)}
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                         className={INLINE_LINK_CLASS}
                       >
                         {data.senderUsername}
@@ -881,16 +895,14 @@ export function OfferFlowDialog({
 
                 <div className="border-t border-gray-100" />
 
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field, same reasoning as the
+                Declined/Withdrawn block above — two independent stacked
+                columns drift apart the instant one value's row (here, the
+                "(was X)" annotation under Rate, or Work Schedule's
+                two-span row) is a different height than its label's. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">Rate</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="relative flex items-center gap-1.5 leading-[18px]">
                       <ArrowUp className="absolute -left-5 size-3.5 text-success-400" />
                       <span className="text-sm font-bold text-dark-blue-400">{data.offerRate}</span>
@@ -906,8 +918,17 @@ export function OfferFlowDialog({
                         <span className="text-xs font-medium text-gray-400">(was {data.originalOfferRate})</span>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.duration}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
                     <div className="flex items-center gap-1 text-dark-blue-500">
                       <span className="text-sm font-medium leading-[18px]">
                         {data.schedule.startsWith("Full Time") ? "Full Time" : data.schedule.startsWith("Part Time") ? "Part Time" : data.schedule}
@@ -918,6 +939,9 @@ export function OfferFlowDialog({
                         <span className="text-xs leading-[18px]">up to 30 hrs/week</span>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.startDate}</div>
                   </div>
                 </div>
@@ -1028,7 +1052,7 @@ export function OfferFlowDialog({
                     {clientPerspective ? "Your offer to" : "Offer from"}{" "}
                     {clientPerspective && data.senderUsername ? (
                       <NextLink
-                        href={talentProfileUrl(data.senderUsername)}
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                         className={INLINE_LINK_CLASS}
                       >
                         {data.senderUsername}
@@ -1118,34 +1142,36 @@ export function OfferFlowDialog({
 
                 <div className="border-t border-gray-100" />
 
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field — same reasoning as the
+                other two detail blocks in this file. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-500">
                       Offer Rate
                     </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Role
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Contract Duration
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Work Schedule
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Start Date
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-500">
                       {data.offerRate}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
                     </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.role}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.duration}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
                     </div>
                     <div className="flex items-center gap-1 text-dark-blue-500">
                       <span className="text-sm font-medium leading-[18px]">
@@ -1164,6 +1190,11 @@ export function OfferFlowDialog({
                           up to 30 hrs/week
                         </span>
                       ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
                     </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.startDate}
@@ -1308,7 +1339,7 @@ export function OfferFlowDialog({
                         (no public profile) as plain text. */}
                         {clientPerspective && data.senderUsername ? (
                           <NextLink
-                            href={talentProfileUrl(data.senderUsername)}
+                            href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                             className={INLINE_LINK_CLASS}
                           >
                             {data.senderUsername}

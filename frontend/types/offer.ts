@@ -56,7 +56,10 @@ export interface WorkScheduleResponse {
 
 export interface CreateOfferPayload {
   talentId: string
-  jobListingId: string
+  // BTB-364/D1: optional — a "Hire Me" offer sent directly from a talent's
+  // profile has no job listing at all. Omit the key entirely for that case;
+  // when present it must be a real listing id (backend still validates it).
+  jobListingId?: string
   contractType: ContractType
   contractTitle?: string
   rate: number
@@ -77,7 +80,8 @@ export interface Offer {
   id: string
   clientId: string
   talentId: string
-  jobListingId: string
+  // BTB-364/D1: nullable — a listing-less "Hire Me" offer has none.
+  jobListingId: string | null
   contractType: ContractType
   contractTitle: string
   status: OfferStatus
@@ -150,7 +154,8 @@ export interface OfferListItem {
   id: string
   clientId: string
   talentId: string
-  jobListingId: string
+  // BTB-364/D1: nullable — a listing-less "Hire Me" offer has none.
+  jobListingId: string | null
   contractType: ContractType
   contractTitle: string
   status: OfferStatus
