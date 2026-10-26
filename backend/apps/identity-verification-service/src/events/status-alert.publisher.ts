@@ -15,7 +15,11 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom, timeout } from 'rxjs';
 import { NOTIFICATIONS_CLIENT } from './home-country-updated-notification.publisher';
-import { STATUS_ALERT_COPY, STATUS_ALERT_LINK, StatusAlertType } from './status-alert-copy';
+import {
+  STATUS_ALERT_COPY,
+  STATUS_ALERT_LINK,
+  StatusAlertType,
+} from './status-alert-copy';
 
 export const STATUS_ALERT_UPSERT_PATTERN = 'notification.status_alert.upsert';
 
@@ -33,9 +37,12 @@ const SUPERSEDES: Record<StatusAlertType, StatusAlertType[]> = {
 };
 
 export const statusAlertOccurrenceKey = {
-  verified: (hostedKycSessionId: string) => `identity-verified:${hostedKycSessionId}`,
-  submittedForReview: (hostedKycSessionId: string) => `submitted-for-review:${hostedKycSessionId}`,
-  homeCountryUpdated: (hostedKycSessionId: string) => `home-country-updated:${hostedKycSessionId}`,
+  verified: (hostedKycSessionId: string) =>
+    `identity-verified:${hostedKycSessionId}`,
+  submittedForReview: (hostedKycSessionId: string) =>
+    `submitted-for-review:${hostedKycSessionId}`,
+  homeCountryUpdated: (hostedKycSessionId: string) =>
+    `home-country-updated:${hostedKycSessionId}`,
   travelMode: (activatedAt: Date) => `travel-mode:${activatedAt.toISOString()}`,
 };
 
@@ -43,29 +50,57 @@ export const statusAlertOccurrenceKey = {
 export class StatusAlertPublisher {
   private readonly logger = new Logger(StatusAlertPublisher.name);
 
-  constructor(@Inject(NOTIFICATIONS_CLIENT) private readonly client: ClientProxy) {}
+  constructor(
+    @Inject(NOTIFICATIONS_CLIENT) private readonly client: ClientProxy,
+  ) {}
 
   verified(userId: string, hostedKycSessionId: string): Promise<boolean> {
-    return this.publish('verified', userId, statusAlertOccurrenceKey.verified(hostedKycSessionId), { hostedKycSessionId });
+    return this.publish(
+      'verified',
+      userId,
+      statusAlertOccurrenceKey.verified(hostedKycSessionId),
+      { hostedKycSessionId },
+    );
   }
 
-  submittedForReview(userId: string, hostedKycSessionId: string): Promise<boolean> {
-    return this.publish('submitted_for_review', userId, statusAlertOccurrenceKey.submittedForReview(hostedKycSessionId), {
-      hostedKycSessionId,
-    });
+  submittedForReview(
+    userId: string,
+    hostedKycSessionId: string,
+  ): Promise<boolean> {
+    return this.publish(
+      'submitted_for_review',
+      userId,
+      statusAlertOccurrenceKey.submittedForReview(hostedKycSessionId),
+      {
+        hostedKycSessionId,
+      },
+    );
   }
 
   /** Only for an approved home-country change, never an initial confirmation. */
-  homeCountryUpdated(userId: string, hostedKycSessionId: string): Promise<boolean> {
-    return this.publish('home_country_updated', userId, statusAlertOccurrenceKey.homeCountryUpdated(hostedKycSessionId), {
-      hostedKycSessionId,
-    });
+  homeCountryUpdated(
+    userId: string,
+    hostedKycSessionId: string,
+  ): Promise<boolean> {
+    return this.publish(
+      'home_country_updated',
+      userId,
+      statusAlertOccurrenceKey.homeCountryUpdated(hostedKycSessionId),
+      {
+        hostedKycSessionId,
+      },
+    );
   }
 
   travelMode(userId: string, activatedAt: Date): Promise<boolean> {
-    return this.publish('travel_mode', userId, statusAlertOccurrenceKey.travelMode(activatedAt), {
-      activatedAt: activatedAt.toISOString(),
-    });
+    return this.publish(
+      'travel_mode',
+      userId,
+      statusAlertOccurrenceKey.travelMode(activatedAt),
+      {
+        activatedAt: activatedAt.toISOString(),
+      },
+    );
   }
 
   /**

@@ -1,4 +1,7 @@
-import { BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { AckingServerRMQ } from './acking-server-rmq';
 import {
   ATTEMPT_HEADER,
@@ -118,7 +121,9 @@ describe('persistent status alert delivery', () => {
   });
 
   it('dead-letters a payload the store rejects instead of retrying it', async () => {
-    const r = rig(jest.fn().mockRejectedValue(new BadRequestException('link is invalid')));
+    const r = rig(
+      jest.fn().mockRejectedValue(new BadRequestException('link is invalid')),
+    );
 
     await r.delivery.handleStatusAlert(payload, r.context);
 

@@ -171,7 +171,11 @@ export class PersistentStatusAlertService {
         );
         if (supersedes.length) {
           await repo.update(
-            { userId: recipientId, type: In(supersedes), dismissedAt: IsNull() },
+            {
+              userId: recipientId,
+              type: In(supersedes),
+              dismissedAt: IsNull(),
+            },
             { dismissedAt: new Date() },
           );
         }

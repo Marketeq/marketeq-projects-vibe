@@ -94,7 +94,10 @@ describe("the persistent alert follows a detected activation, boundedly", () => 
       page.indexOf("const startAlertReconcile = useCallback"),
       page.indexOf("// A Travel Mode activation made in this page visit")
     )
-    assert.match(reconcile, /latestRequest = \+\+statusAlertRequestRef\.current/)
+    assert.match(
+      reconcile,
+      /latestRequest = \+\+statusAlertRequestRef\.current/
+    )
     assert.match(reconcile, /latestRequest === statusAlertRequestRef\.current/)
     assert.match(reconcile, /generation === alertReconcileGenRef\.current/)
     assert.match(page, /alertReconcileGenRef\.current = -1/)

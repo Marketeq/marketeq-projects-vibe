@@ -2,9 +2,16 @@
 // so it can be replaced when the Figma Alerts frame (PMCM-651, node 11105-18845) is
 // provided. The wording mirrors the toasts and modals the dashboard already shows.
 // The home-country text is the Figma-sourced notification copy from PMCM-650.
-import { HOME_COUNTRY_UPDATED_NOTIFICATION_BODY, HOME_COUNTRY_UPDATED_NOTIFICATION_TITLE } from './home-country-updated-notification.publisher';
+import {
+  HOME_COUNTRY_UPDATED_NOTIFICATION_BODY,
+  HOME_COUNTRY_UPDATED_NOTIFICATION_TITLE,
+} from './home-country-updated-notification.publisher';
 
-export type StatusAlertType = 'travel_mode' | 'submitted_for_review' | 'verified' | 'home_country_updated';
+export type StatusAlertType =
+  | 'travel_mode'
+  | 'submitted_for_review'
+  | 'verified'
+  | 'home_country_updated';
 
 export interface StatusAlertCopy {
   title: string;

@@ -7,13 +7,27 @@ import { PersistentStatusAlert } from './persistent-status-alert.entity';
 // build the real metadata here.
 describe('PersistentStatusAlert entity', () => {
   it('builds Postgres metadata with the columns the migration creates', async () => {
-    const ds = new DataSource({ type: 'postgres', entities: [PersistentStatusAlert] });
+    const ds = new DataSource({
+      type: 'postgres',
+      entities: [PersistentStatusAlert],
+    });
     await (ds as any).buildMetadatas();
-    const columns = ds.getMetadata(PersistentStatusAlert).columns.map((c) => c.propertyName);
+    const columns = ds
+      .getMetadata(PersistentStatusAlert)
+      .columns.map((c) => c.propertyName);
     expect(columns).toEqual(
       expect.arrayContaining([
-        'id', 'userId', 'type', 'occurrenceKey', 'title', 'body',
-        'link', 'metadata', 'dismissedAt', 'createdAt', 'updatedAt',
+        'id',
+        'userId',
+        'type',
+        'occurrenceKey',
+        'title',
+        'body',
+        'link',
+        'metadata',
+        'dismissedAt',
+        'createdAt',
+        'updatedAt',
       ]),
     );
   });
@@ -21,7 +35,10 @@ describe('PersistentStatusAlert entity', () => {
   // A zone-less timestamp is read back in the server's local zone: on a non-UTC host every
   // createdAt came out hours in the future, which broke ordering against the browser clock.
   it('stores every timestamp with its time zone', async () => {
-    const ds = new DataSource({ type: 'postgres', entities: [PersistentStatusAlert] });
+    const ds = new DataSource({
+      type: 'postgres',
+      entities: [PersistentStatusAlert],
+    });
     await (ds as any).buildMetadatas();
     const meta = ds.getMetadata(PersistentStatusAlert);
     for (const name of ['createdAt', 'updatedAt', 'dismissedAt']) {

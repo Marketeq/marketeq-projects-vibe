@@ -186,16 +186,18 @@ describe('PersistentStatusAlertService', () => {
     );
   });
 
-  it.each(['javascript:alert(1)', '//evil.example', 'data:text/html,x', '/ok path'])(
-    'rejects an unsafe link (%s)',
-    async (link) => {
-      const { service, repo } = setup();
-      await expect(service.upsert({ ...payload(), link })).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-      expect(repo.save).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    'javascript:alert(1)',
+    '//evil.example',
+    'data:text/html,x',
+    '/ok path',
+  ])('rejects an unsafe link (%s)', async (link) => {
+    const { service, repo } = setup();
+    await expect(service.upsert({ ...payload(), link })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(repo.save).not.toHaveBeenCalled();
+  });
 
   it('accepts an in-app path and an https link', async () => {
     const { service } = setup();
@@ -227,10 +229,19 @@ describe('PersistentStatusAlertService', () => {
       supersedes: ['travel_mode' as const, 'submitted_for_review' as const],
     });
 
-    it('dismisses the review\'s Submitted alert and the Travel Mode alert, and never touches an existing Verified alert', async () => {
+    it("dismisses the review's Submitted alert and the Travel Mode alert, and never touches an existing Verified alert", async () => {
       const { service, rows } = setup([
-        row({ id: 'v', type: 'verified', occurrenceKey: 'identity-verified:first', dismissedAt: new Date('2026-10-20T00:00:00Z') }),
-        row({ id: 's', type: 'submitted_for_review', occurrenceKey: 'submitted-for-review:sess-2' }),
+        row({
+          id: 'v',
+          type: 'verified',
+          occurrenceKey: 'identity-verified:first',
+          dismissedAt: new Date('2026-10-20T00:00:00Z'),
+        }),
+        row({
+          id: 's',
+          type: 'submitted_for_review',
+          occurrenceKey: 'submitted-for-review:sess-2',
+        }),
         row({ id: 't', type: 'travel_mode', occurrenceKey: 'travel-mode:a' }),
       ]);
       await service.upsert(home('sess-2'));
@@ -238,14 +249,24 @@ describe('PersistentStatusAlertService', () => {
       expect(rows.find((r) => r.id === 's')?.dismissedAt).toBeInstanceOf(Date);
       expect(rows.find((r) => r.id === 't')?.dismissedAt).toBeInstanceOf(Date);
       // The earlier Verified occurrence stays exactly as it was (dismissed): nothing reactivates it.
-      expect(rows.find((r) => r.id === 'v')?.dismissedAt).toEqual(new Date('2026-10-20T00:00:00Z'));
-      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual(['home_country_updated']);
+      expect(rows.find((r) => r.id === 'v')?.dismissedAt).toEqual(
+        new Date('2026-10-20T00:00:00Z'),
+      );
+      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual([
+        'home_country_updated',
+      ]);
     });
 
     it('a replayed event supersedes nothing a second time: a later independent submission survives', async () => {
       const { service, rows } = setup();
       await service.upsert(home('sess-2'));
-      rows.push(row({ id: 'later', type: 'submitted_for_review', occurrenceKey: 'submitted-for-review:sess-9' }));
+      rows.push(
+        row({
+          id: 'later',
+          type: 'submitted_for_review',
+          occurrenceKey: 'submitted-for-review:sess-9',
+        }),
+      );
       await service.upsert(home('sess-2')); // the same occurrence again
       expect(rows.find((r) => r.id === 'later')?.dismissedAt).toBeNull();
     });
@@ -259,15 +280,26 @@ describe('PersistentStatusAlertService', () => {
         occurrenceKey: 'identity-verified:sess-5',
         supersedes: ['submitted_for_review'],
       });
-      expect((await service.listActive('user-1')).map((a) => a.type).sort()).toEqual(['home_country_updated', 'verified']);
+      expect(
+        (await service.listActive('user-1')).map((a) => a.type).sort(),
+      ).toEqual(['home_country_updated', 'verified']);
     });
   });
 
   describe('supersession', () => {
-    it('Verified dismisses the same user\'s active Submitted alert, not another user\'s', async () => {
+    it("Verified dismisses the same user's active Submitted alert, not another user's", async () => {
       const { service, rows } = setup([
-        row({ id: 's1', type: 'submitted_for_review', occurrenceKey: 'sess-1' }),
-        row({ id: 's2', userId: 'user-2', type: 'submitted_for_review', occurrenceKey: 'sess-9' }),
+        row({
+          id: 's1',
+          type: 'submitted_for_review',
+          occurrenceKey: 'sess-1',
+        }),
+        row({
+          id: 's2',
+          userId: 'user-2',
+          type: 'submitted_for_review',
+          occurrenceKey: 'sess-9',
+        }),
       ]);
       await service.upsert({
         ...payload(),
@@ -277,7 +309,9 @@ describe('PersistentStatusAlertService', () => {
       });
       expect(rows.find((r) => r.id === 's1')?.dismissedAt).toBeInstanceOf(Date);
       expect(rows.find((r) => r.id === 's2')?.dismissedAt).toBeNull();
-      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual(['verified']);
+      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual([
+        'verified',
+      ]);
     });
 
     it('a redelivered occurrence supersedes nothing a second time', async () => {
@@ -289,7 +323,13 @@ describe('PersistentStatusAlertService', () => {
         supersedes: ['submitted_for_review' as const],
       };
       await service.upsert(verified);
-      rows.push(row({ id: 'later', type: 'submitted_for_review', occurrenceKey: 'sess-2' }));
+      rows.push(
+        row({
+          id: 'later',
+          type: 'submitted_for_review',
+          occurrenceKey: 'sess-2',
+        }),
+      );
       await service.upsert(verified);
       expect(rows.find((r) => r.id === 'later')?.dismissedAt).toBeNull();
     });
