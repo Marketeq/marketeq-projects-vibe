@@ -165,6 +165,9 @@ export default function InboxRoot() {
 
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
+  // Set when the /user/me fetch below fails, so the offer notifications
+  // effect can fall back to the cached user instead of waiting forever.
+  const [profileFetchFailed, setProfileFetchFailed] = useState(false)
   useEffect(() => {
     setToken(getAccessToken() || "")
   }, [])
@@ -184,7 +187,19 @@ export default function InboxRoot() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
+    // BTB-292/F1: clientPerspective below is derived from the current
+    // user's id — if that isn't known yet (currentUserProfile hasn't
+    // resolved from its own /user/me fetch), computing it anyway would
+    // silently default every offer to "not the client" (undefined !==
+    // anything), showing the wrong role's buttons with no error. Wait for
+    // it, and this effect's own dependency on currentUserProfile?.id below
+    // re-runs it once that fetch resolves, so nothing needs a manual retry.
+    // If /user/me failed outright, fall back to the cached user rather than
+    // never loading offer notifications at all.
+    const viewerId =
+      currentUserProfile?.id ??
+      (profileFetchFailed ? getCurrentUser()?.id : undefined)
+    if (!token || !viewerId) return
     let cancelled = false
 
     void NotificationsAPI.list({ limit: 100 })
@@ -267,7 +282,7 @@ export default function InboxRoot() {
                   ""
                 const conversationParticipantId =
                   actorId ||
-                  (offer.clientId === getCurrentUser()?.id
+                  (offer.clientId === viewerId
                     ? offer.talentId
                     : offer.clientId)
                 const latestCounterOfferId =
@@ -454,7 +469,12 @@ export default function InboxRoot() {
                   // that this could misclassify into the wrong (more
                   // powerful) view; a non-party viewer would have thrown
                   // above and landed in the catch branch below instead.
-                  clientPerspective: offer.clientId === getCurrentUser()?.id,
+                  // BTB-292/F1: currentUserProfile.id, not getCurrentUser()
+                  // — this component's own already-awaited /user/me result,
+                  // guaranteed resolved by the time this effect is even
+                  // allowed to run (see the early-return above), rather
+                  // than a module-level snapshot that can race.
+                  clientPerspective: offer.clientId === viewerId,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
                   // No backend producer writes offer notification metadata,
                   // so metadata.withdrawalMessage is always undefined for a
@@ -695,7 +715,7 @@ export default function InboxRoot() {
     return () => {
       cancelled = true
     }
-  }, [offerNotificationRefreshToken, token])
+  }, [offerNotificationRefreshToken, token, currentUserProfile?.id, profileFetchFailed])
 
   useEffect(() => {
     if (
@@ -916,6 +936,7 @@ export default function InboxRoot() {
         setCurrentUserProfile(me)
       } catch (err) {
         console.error("Failed to fetch user profile", err)
+        setProfileFetchFailed(true)
       }
 
       // 1) Ensure keypair exists, device registered, public key pushed
