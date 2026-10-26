@@ -23,6 +23,7 @@ function handlerBefore(marker: string): string {
   const start = flow.lastIndexOf("onClick={() => {", at) + "onClick={() => {".length
   return flow.slice(start, flow.indexOf("\n              }}", start))
 }
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 function run(body: string, activeTravelModeUpdate: boolean) {
   const calls: string[] = []
   const stubs = {
@@ -33,11 +34,20 @@ function run(body: string, activeTravelModeUpdate: boolean) {
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
     onTravelModeConfirmed: () => calls.push("confirmed"),
   }
-  new Function(...Object.keys(stubs), body)(...Object.values(stubs))
+  stubs.relocatingRef = { current: false }
+  stubs.onPermanentlyRelocated = undefined
+  stubs.getIsMounted = () => true
+  new AsyncFunction(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }
 const temporarily = handlerBefore('Nothing is saved here: closing before a duration is chosen')
-const relocated = handlerBefore('persistTravelClassification("permanently_relocated")')
+// "Permanently relocated" is the flow's handlePermanentlyRelocated; without the optional
+// onPermanentlyRelocated prop (every non-Update caller) it is the same two synchronous steps.
+const relocatedAt = flow.indexOf("const handlePermanentlyRelocated = async () => {")
+const relocated = flow.slice(
+  relocatedAt + "const handlePermanentlyRelocated = async () => {".length,
+  flow.indexOf("\n  }\n", relocatedAt)
+)
 
 describe("isTravelModeInForce", () => {
   it("is true for a valid, unended activation (verified or not)", () => {

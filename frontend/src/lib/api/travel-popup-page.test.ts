@@ -135,7 +135,8 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(screen.includes("Temporarily traveling"))
     assert.ok(screen.includes("Permanently relocated"))
     assert.ok(!screen.includes('persistTravelClassification("temporarily_traveling")'))
-    assert.ok(screen.includes('persistTravelClassification("permanently_relocated")'))
+    assert.ok(screen.includes("onClick={() => void handlePermanentlyRelocated()}"))
+    assert.ok(flow.includes('persistTravelClassification("permanently_relocated")'))
   })
 
   it("hands the start screen to the flow through its existing public props and remounts it so it is read", () => {
@@ -145,9 +146,11 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(flow.includes('initialState ?? "ideal"')) // the flow reads it once, on mount
   })
 
-  it("shows the server's location only: Update never asks for the browser's", () => {
-    assert.ok(update.includes("await getDetectedLocation()"))
-    assert.ok(!update.includes("useBrowserLocation"))
+  it("shows the server's location only: opening Update never asks for the browser's", () => {
+    // Only the later "Permanently relocated" choice does (travel-update-relocated-detection.test.ts).
+    const opening = update.slice(0, update.indexOf("const refreshLocationForRelocation"))
+    assert.ok(opening.includes("await getDetectedLocation()"))
+    assert.ok(!opening.includes("useBrowserLocation"))
   })
 
   it("the normal Verify path keeps its default start (an Update-launched flow is reset)", () => {
@@ -155,7 +158,7 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(page.includes("? { key: prev.key + 1, ...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {}) }"))
     assert.ok(
       page.includes(
-        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n  }>({ key: 0 })"
+        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n    // Set only by the Travel Mode Update action: \"Permanently relocated\" then re-detects\n    // the location with the browser (see refreshLocationForRelocation).\n    detectBrowserLocationOnRelocate?: boolean\n  }>({ key: 0 })"
       )
     )
   })
