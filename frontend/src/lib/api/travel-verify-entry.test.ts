@@ -33,10 +33,10 @@ function run(body: string, activeTravelModeUpdate: boolean) {
     setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
     onTravelModeConfirmed: () => calls.push("confirmed"),
+    relocatingRef: { current: false },
+    onPermanentlyRelocated: undefined,
+    getIsMounted: () => true,
   }
-  stubs.relocatingRef = { current: false }
-  stubs.onPermanentlyRelocated = undefined
-  stubs.getIsMounted = () => true
   new AsyncFunction(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }

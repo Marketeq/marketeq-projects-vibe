@@ -10,27 +10,38 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { getDetectedLocation, type DetectedLocation } from "./detected-location"
+import { type DetectedLocation, getDetectedLocation } from "./detected-location"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const flow = read("components", "identity-verification-flow.tsx")
 const page = read("app", "(group)", "talent-dashboard", "page.tsx")
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
-const handlerStart = flow.indexOf("const handlePermanentlyRelocated = async () => {")
+const handlerStart = flow.indexOf(
+  "const handlePermanentlyRelocated = async () => {"
+)
 const handlerBody = flow.slice(
   handlerStart + "const handlePermanentlyRelocated = async () => {".length,
   flow.indexOf("\n  }\n", handlerStart)
 )
-const refreshStart = page.indexOf("const refreshLocationForRelocation = useCallback(async () => {")
+const refreshStart = page.indexOf(
+  "const refreshLocationForRelocation = useCallback(async () => {"
+)
 const refreshBody = page.slice(
-  refreshStart + "const refreshLocationForRelocation = useCallback(async () => {".length,
+  refreshStart +
+    "const refreshLocationForRelocation = useCallback(async () => {".length,
   page.indexOf("\n  }, [])", refreshStart)
 )
 const updateStart = page.indexOf("const handleTravelUpdate = useCallback(")
-const updateBody = page.slice(updateStart, page.indexOf("[travelPopup]", updateStart))
+const updateBody = page.slice(
+  updateStart,
+  page.indexOf("[travelPopup]", updateStart)
+)
 const temporarilyAt = flow.indexOf("if (activeTravelModeUpdate) {")
-const temporarilyBody = flow.slice(temporarilyAt, flow.indexOf('send("NEXT")', temporarilyAt))
+const temporarilyBody = flow.slice(
+  temporarilyAt,
+  flow.indexOf('send("NEXT")', temporarilyAt)
+)
 
 // Runs the REAL flow handler against a recorded callback.
 async function clickRelocated(
@@ -51,7 +62,9 @@ async function clickRelocated(
       : undefined,
     getIsMounted: () => mounted,
   }
-  const promise = new AsyncFunction(...Object.keys(stubs), handlerBody)(...Object.values(stubs))
+  const promise = new AsyncFunction(...Object.keys(stubs), handlerBody)(
+    ...Object.values(stubs)
+  )
   return { calls, promise: promise as Promise<void> }
 }
 
@@ -60,26 +73,46 @@ const position = (status: "ok" | "denied") => async () =>
     ? ({ status: "ok", latitude: 51.5072, longitude: -0.1276 } as const)
     : ({ status: "denied" } as const)
 const COUNTRY_ONLY = {
-  countryCode: "US", countryName: "United States", city: null, regionCode: null,
-  regionName: null, latitude: null, longitude: null,
+  countryCode: "US",
+  countryName: "United States",
+  city: null,
+  regionCode: null,
+  regionName: null,
+  latitude: null,
+  longitude: null,
 }
 const GPS_LONDON = {
-  status: "resolved", countryCode: "GB", countryName: "United Kingdom", city: "London",
-  regionCode: "ENG", regionName: "England", latitude: 51.5072, longitude: -0.1276,
+  status: "resolved",
+  countryCode: "GB",
+  countryName: "United Kingdom",
+  city: "London",
+  regionCode: "ENG",
+  regionName: "England",
+  latitude: 51.5072,
+  longitude: -0.1276,
 }
 
 describe("Permanently relocated runs browser-based detection", () => {
   it("waits for the caller's detection, then moves on (and only then)", async () => {
     let release!: () => void
-    const { calls, promise } = await clickRelocated(() => new Promise<void>((r) => (release = r)))
+    const { calls, promise } = await clickRelocated(
+      () => new Promise<void>((r) => (release = r))
+    )
     assert.deepEqual(calls, ["persist:permanently_relocated", "detect"])
     release()
     await promise
-    assert.deepEqual(calls, ["persist:permanently_relocated", "detect", "send:RELOCATED"])
+    assert.deepEqual(calls, [
+      "persist:permanently_relocated",
+      "detect",
+      "send:RELOCATED",
+    ])
   })
 
   it("the dashboard's callback is exactly getDetectedLocation({ useBrowserLocation: true })", () => {
-    assert.match(refreshBody, /setDetectedLocation\(await getDetectedLocation\(\{ useBrowserLocation: true \}\)\)/)
+    assert.match(
+      refreshBody,
+      /setDetectedLocation\(await getDetectedLocation\(\{ useBrowserLocation: true \}\)\)/
+    )
   })
 
   it("the next screen gets city/state/country and coordinates (map tiles + red pin) from browser GPS", async () => {
@@ -90,7 +123,10 @@ describe("Permanently relocated runs browser-based detection", () => {
       fetchLocation: async () => COUNTRY_ONLY,
     })
     assert.equal(loc.detected, true)
-    assert.deepEqual([loc.city, loc.region, loc.countryName], ["London", "ENG", "United Kingdom"])
+    assert.deepEqual(
+      [loc.city, loc.region, loc.countryName],
+      ["London", "ENG", "United Kingdom"]
+    )
     assert.deepEqual([loc.latitude, loc.longitude], [51.5072, -0.1276])
   })
 })
@@ -98,10 +134,17 @@ describe("Permanently relocated runs browser-based detection", () => {
 describe("Temporarily traveling does not invoke it", () => {
   it("its branch neither calls the prop nor requests location nor saves anything", () => {
     assert.ok(!temporarilyBody.includes("onPermanentlyRelocated"))
-    assert.ok(!/getDetectedLocation|geolocation|getBrowserPosition|persistTravelClassification/.test(temporarilyBody))
+    assert.ok(
+      !/getDetectedLocation|geolocation|getBrowserPosition|persistTravelClassification/.test(
+        temporarilyBody
+      )
+    )
   })
   it("the prop is read in exactly one place besides its declaration", () => {
-    const code = flow.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n")
+    const code = flow
+      .split("\n")
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n")
     // destructured, typed, and two uses inside the handler (the guard and the call)
     assert.equal((code.match(/onPermanentlyRelocated/g) ?? []).length, 4)
     assert.equal((handlerBody.match(/onPermanentlyRelocated/g) ?? []).length, 2)
@@ -122,7 +165,9 @@ describe("denied permission or failed detection uses the existing failure state"
     const loc: DetectedLocation = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
-      fetchLocation: async () => { throw new Error("down") },
+      fetchLocation: async () => {
+        throw new Error("down")
+      },
     })
     assert.equal(loc.detected, false)
     assert.equal(loc.serviceUnavailable, true)
@@ -134,7 +179,9 @@ describe("denied permission or failed detection uses the existing failure state"
   })
   it("a rejected callback still releases the double-click guard", async () => {
     const ref = { current: false }
-    const { promise } = await clickRelocated(async () => { throw new Error("x") }, ref)
+    const { promise } = await clickRelocated(async () => {
+      throw new Error("x")
+    }, ref)
     await assert.rejects(promise)
     assert.equal(ref.current, false)
   })
@@ -146,9 +193,16 @@ describe("closing without choosing writes no state", () => {
     assert.ok(!/useBrowserLocation|persistTravel|recordTravel/.test(updateBody))
   })
   it("the only classification write in the flow is inside the Permanently relocated handler", () => {
-    const code = flow.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n")
+    const code = flow
+      .split("\n")
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n")
     assert.equal((code.match(/persistTravelClassification\(/g) ?? []).length, 1) // the handler's call
-    assert.ok(handlerBody.includes('persistTravelClassification("permanently_relocated")'))
+    assert.ok(
+      handlerBody.includes(
+        'persistTravelClassification("permanently_relocated")'
+      )
+    )
   })
 })
 
@@ -158,15 +212,28 @@ describe("Verify My Account is unchanged", () => {
     assert.deepEqual(calls, ["persist:permanently_relocated", "send:RELOCATED"])
   })
   it("only the Update launch sets the flag; Verify My Account's launch drops it", () => {
-    assert.equal((page.match(/detectBrowserLocationOnRelocate: true/g) ?? []).length, 1)
+    assert.equal(
+      (page.match(/detectBrowserLocationOnRelocate: true/g) ?? []).length,
+      1
+    )
     assert.ok(updateBody.includes("detectBrowserLocationOnRelocate: true"))
-    const verify = page.slice(page.indexOf("const activeTravelModeUpdate = isTravelModeInForce(summary)"))
+    const verify = page.slice(
+      page.indexOf(
+        "const activeTravelModeUpdate = isTravelModeInForce(summary)"
+      )
+    )
     const launch = verify.slice(0, verify.indexOf("setIdentityFlowOpen(true)"))
-    assert.ok(!launch.includes("detectBrowserLocationOnRelocate") || !/\.\.\.prev/.test(launch))
+    assert.ok(
+      !launch.includes("detectBrowserLocationOnRelocate") ||
+        !/\.\.\.prev/.test(launch)
+    )
     assert.ok(launch.includes("{ key: prev.key + 1,"))
   })
   it("the prop is passed only when the Update launch set it", () => {
-    assert.match(page, /onPermanentlyRelocated=\{\s*flowLaunch\.detectBrowserLocationOnRelocate\s*\?\s*refreshLocationForRelocation\s*:\s*undefined\s*\}/)
+    assert.match(
+      page,
+      /onPermanentlyRelocated=\{\s*flowLaunch\.detectBrowserLocationOnRelocate\s*\?\s*refreshLocationForRelocation\s*:\s*undefined\s*\}/
+    )
   })
 })
 
@@ -174,20 +241,34 @@ describe("no duplicate home-country-change session", () => {
   it("a second click while detection is pending does nothing: one write, one detection, one RELOCATED", async () => {
     let release!: () => void
     const ref = { current: false }
-    const first = await clickRelocated(() => new Promise<void>((r) => (release = r)), ref)
+    const first = await clickRelocated(
+      () => new Promise<void>((r) => (release = r)),
+      ref
+    )
     const second = await clickRelocated(async () => {}, ref)
     await second.promise
     assert.deepEqual(second.calls, [])
     release()
     await first.promise
-    assert.deepEqual(first.calls.filter((c) => c.startsWith("persist")), ["persist:permanently_relocated"])
+    assert.deepEqual(
+      first.calls.filter((c) => c.startsWith("persist")),
+      ["persist:permanently_relocated"]
+    )
     assert.equal(first.calls.filter((c) => c === "send:RELOCATED").length, 1)
   })
   it("the detection path starts no session: no Didit / home-country-confirm call anywhere in the handler or callback", () => {
-    assert.ok(!/Didit|confirmHomeCountry|startFreeKyc|home-country/i.test(handlerBody + refreshBody))
+    assert.ok(
+      !/Didit|confirmHomeCountry|startFreeKyc|home-country/i.test(
+        handlerBody + refreshBody
+      )
+    )
   })
   it("an unmounted flow does not advance", async () => {
-    const { calls, promise } = await clickRelocated(async () => {}, { current: false }, false)
+    const { calls, promise } = await clickRelocated(
+      async () => {},
+      { current: false },
+      false
+    )
     await promise
     assert.ok(!calls.includes("send:RELOCATED"))
   })
