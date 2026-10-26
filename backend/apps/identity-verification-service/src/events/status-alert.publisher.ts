@@ -25,16 +25,15 @@ export const STATUS_ALERT_UPSERT_PATTERN = 'notification.status_alert.upsert';
 
 const PUBLISH_TIMEOUT_MS = 5000;
 
-// Verified replaces Submitted for Review. An approved home-country change ends Travel Mode and
-// also ends the review it came from (its own Submitted alert; it does not publish Verified,
-// which belongs to the account's initial verification), so it replaces both. Applied by
-// notification-service in the same transaction that stores the new occurrence.
-const SUPERSEDES: Record<StatusAlertType, StatusAlertType[]> = {
-  travel_mode: [],
-  submitted_for_review: [],
-  verified: ['submitted_for_review'],
-  home_country_updated: ['travel_mode', 'submitted_for_review'],
-};
+// What a new occurrence replaces, applied by notification-service in the same transaction that
+// stores it. Verified replaces the Submitted alert of its OWN verification session; an approved
+// home-country change ends Travel Mode (account-wide: the account is no longer traveling) and the
+// review it came from (its own session's Submitted alert; it does not publish Verified, which
+// belongs to the account's initial verification). Scoping by session means a delayed approval can
+// never dismiss a newer, unrelated Submitted alert.
+type Supersedes = Array<
+  StatusAlertType | { type: StatusAlertType; occurrenceKey: string }
+>;
 
 export const statusAlertOccurrenceKey = {
   verified: (hostedKycSessionId: string) =>
@@ -45,6 +44,12 @@ export const statusAlertOccurrenceKey = {
     `home-country-updated:${hostedKycSessionId}`,
   travelMode: (activatedAt: Date) => `travel-mode:${activatedAt.toISOString()}`,
 };
+
+const submittedOf = (hostedKycSessionId: string) => ({
+  type: 'submitted_for_review' as const,
+  occurrenceKey:
+    statusAlertOccurrenceKey.submittedForReview(hostedKycSessionId),
+});
 
 @Injectable()
 export class StatusAlertPublisher {
@@ -60,6 +65,7 @@ export class StatusAlertPublisher {
       userId,
       statusAlertOccurrenceKey.verified(hostedKycSessionId),
       { hostedKycSessionId },
+      [submittedOf(hostedKycSessionId)],
     );
   }
 
@@ -74,6 +80,7 @@ export class StatusAlertPublisher {
       {
         hostedKycSessionId,
       },
+      [],
     );
   }
 
@@ -89,6 +96,7 @@ export class StatusAlertPublisher {
       {
         hostedKycSessionId,
       },
+      ['travel_mode', submittedOf(hostedKycSessionId)],
     );
   }
 
@@ -100,6 +108,7 @@ export class StatusAlertPublisher {
       {
         activatedAt: activatedAt.toISOString(),
       },
+      [],
     );
   }
 
@@ -113,6 +122,7 @@ export class StatusAlertPublisher {
     userId: string,
     occurrenceKey: string,
     metadata: Record<string, string>,
+    supersedes: Supersedes,
   ): Promise<boolean> {
     try {
       await lastValueFrom(
@@ -125,7 +135,7 @@ export class StatusAlertPublisher {
             body: STATUS_ALERT_COPY[type].body,
             link: STATUS_ALERT_LINK,
             metadata,
-            supersedes: SUPERSEDES[type],
+            supersedes,
           })
           .pipe(timeout(PUBLISH_TIMEOUT_MS)),
         { defaultValue: undefined },

@@ -82,27 +82,42 @@ const toMs = (iso: string | null | undefined): number | null => {
 
 /** Persistent alerts with the replaced ones removed. Pure; the input is not changed. */
 export function applySupersession(alerts: StatusAlert[]): StatusAlert[] {
-  const newest = (type: StatusAlertType): number | null => {
+  // The verification session an alert belongs to (the backend stores it in the metadata of
+  // Submitted, Verified and Home Country Updated alerts), or null when it carries none.
+  const sessionOf = (a: StatusAlert): string | null => {
+    const id = a.metadata?.hostedKycSessionId
+    return typeof id === "string" && id ? id : null
+  }
+  // Does `ender` (a Verified or Home Country Updated alert) end the review that `submitted`
+  // announced? With a session on both sides it must be the SAME session: a delayed approval of
+  // session A never hides a newer, unrelated Submitted alert of session B. Without one (older
+  // alerts) the earlier rule applies: a newer Verified / Home Country Updated ends it.
+  const ends = (ender: StatusAlert, submitted: StatusAlert): boolean => {
+    const endMs = toMs(ender.createdAt)
+    const subMs = toMs(submitted.createdAt)
+    if (endMs === null || subMs === null || endMs < subMs) return false
+    const a = sessionOf(ender)
+    const b = sessionOf(submitted)
+    return a !== null && b !== null ? a === b : true
+  }
+  const enders = alerts.filter(
+    (a) => a.type === "verified" || a.type === "home_country_updated"
+  )
+  // Travel Mode ends account-wide (the account is no longer traveling), like the backend.
+  const homeCountryAt = (() => {
     let best: number | null = null
     for (const a of alerts) {
-      if (a.type !== type) continue
+      if (a.type !== "home_country_updated") continue
       const ms = toMs(a.createdAt)
       if (ms !== null && (best === null || ms > best)) best = ms
     }
     return best
-  }
-  const verifiedAt = newest("verified")
-  const homeCountryAt = newest("home_country_updated")
+  })()
   return alerts.filter((a) => {
     const ms = toMs(a.createdAt)
     if (ms === null) return true
-    // The review ends with Verified (a first verification) or with Home Country Updated (a
-    // home-country change on an account that was already verified; no Verified alert is made).
     if (a.type === "submitted_for_review")
-      return (
-        (verifiedAt === null || verifiedAt < ms) &&
-        (homeCountryAt === null || homeCountryAt < ms)
-      )
+      return !enders.some((e) => ends(e, a))
     if (a.type === "travel_mode")
       return homeCountryAt === null || homeCountryAt < ms
     return true

@@ -263,6 +263,36 @@ describe("supersession", () => {
     assert.equal(out.length, 2)
   })
 
+  it("an approval of session A hides only session A's Submitted, never a newer one of session B", () => {
+    const withSession = (a: StatusAlert, session: string): StatusAlert => ({
+      ...a,
+      metadata: { hostedKycSessionId: session },
+    })
+    const subA = withSession(alert(1, "submitted_for_review", at(20)), "A")
+    const subB = withSession(alert(2, "submitted_for_review", at(10)), "B")
+    const homeA = withSession(alert(3, "home_country_updated", at(5)), "A")
+    const verifiedA = withSession(alert(4, "verified", at(5)), "A")
+    assert.deepEqual(
+      applySupersession([subA, subB, homeA]).map((a) => a.id),
+      [subB.id, homeA.id]
+    )
+    assert.deepEqual(
+      applySupersession([subA, subB, verifiedA]).map((a) => a.id),
+      [subB.id, verifiedA.id]
+    )
+  })
+
+  it("alerts without a session keep the earlier rule: a newer Verified ends an older Submitted", () => {
+    const out = applySupersession([
+      alert(1, "submitted_for_review", at(10)),
+      alert(2, "verified", at(5)),
+    ])
+    assert.deepEqual(
+      out.map((a) => a.type),
+      ["verified"]
+    )
+  })
+
   it("does not change the input list", () => {
     const input = [
       alert(1, "submitted_for_review", at(10)),

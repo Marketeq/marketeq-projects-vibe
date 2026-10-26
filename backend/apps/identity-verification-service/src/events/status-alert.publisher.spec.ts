@@ -19,7 +19,12 @@ describe('StatusAlertPublisher', () => {
         recipientId: 'u1',
         type: 'verified',
         occurrenceKey: 'identity-verified:sess-1',
-        supersedes: ['submitted_for_review'],
+        supersedes: [
+          {
+            type: 'submitted_for_review',
+            occurrenceKey: 'submitted-for-review:sess-1',
+          },
+        ],
         title: STATUS_ALERT_COPY.verified.title,
       }),
     );
@@ -48,7 +53,13 @@ describe('StatusAlertPublisher', () => {
     expect(emit.mock.calls[0][1]).toMatchObject({
       type: 'home_country_updated',
       occurrenceKey: 'home-country-updated:sess-3',
-      supersedes: ['travel_mode', 'submitted_for_review'],
+      supersedes: [
+        'travel_mode',
+        {
+          type: 'submitted_for_review',
+          occurrenceKey: 'submitted-for-review:sess-3',
+        },
+      ],
     });
   });
 

@@ -55,11 +55,14 @@ function setup(initial: PersistentStatusAlert[] = []) {
     update: jest.fn(
       async (where: any, updates: Partial<PersistentStatusAlert>) => {
         if (where.type && !where.id) {
-          const types: string[] = where.type.value ?? [];
+          // `type` is a bare string (exact occurrences) or In([...]) (account-wide types).
+          const types: string[] = where.type.value ?? [where.type];
+          const keys: string[] | undefined = where.occurrenceKey?.value;
           const hit = rows.filter(
             (item) =>
               item.userId === where.userId &&
               types.includes(item.type) &&
+              (!keys || keys.includes(item.occurrenceKey)) &&
               !item.dismissedAt,
           );
           hit.forEach((item) => Object.assign(item, updates));
@@ -341,6 +344,170 @@ describe('PersistentStatusAlertService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
       await expect(
         service.upsert({ ...payload(), supersedes: [payload().type] }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('session-scoped supersession (PMCM-651)', () => {
+    const submitted = (id: string, session: string, over = {}) =>
+      row({
+        id,
+        type: 'submitted_for_review',
+        occurrenceKey: `submitted-for-review:${session}`,
+        metadata: { hostedKycSessionId: session },
+        ...over,
+      });
+    const scoped = (session: string) => ({
+      type: 'submitted_for_review' as const,
+      occurrenceKey: `submitted-for-review:${session}`,
+    });
+    const homeFor = (session: string) => ({
+      ...payload(),
+      type: 'home_country_updated' as const,
+      occurrenceKey: `home-country-updated:${session}`,
+      supersedes: ['travel_mode' as const, scoped(session)],
+    });
+    const verifiedFor = (session: string) => ({
+      ...payload(),
+      type: 'verified' as const,
+      occurrenceKey: `identity-verified:${session}`,
+      supersedes: [scoped(session)],
+    });
+    const active = async (service: any) =>
+      (await service.listActive('user-1')).map(
+        (a: any) => a.type + ':' + (a.metadata?.hostedKycSessionId ?? ''),
+      );
+
+    it('1. Session A Submitted -> Session A Home Country Updated dismisses Session A Submitted', async () => {
+      const { service, rows } = setup([submitted('a', 'sess-A')]);
+      await service.upsert(homeFor('sess-A'));
+      expect(rows.find((r) => r.id === 'a')?.dismissedAt).toBeInstanceOf(Date);
+      expect((await service.listActive('user-1')).map((x) => x.type)).toEqual([
+        'home_country_updated',
+      ]);
+    });
+
+    it("2. Session A's home-country approval does not dismiss an active Session B Submitted", async () => {
+      const { service, rows } = setup([
+        submitted('a', 'sess-A'),
+        submitted('b', 'sess-B'),
+      ]);
+      await service.upsert(homeFor('sess-A'));
+      expect(rows.find((r) => r.id === 'a')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 'b')?.dismissedAt).toBeNull();
+      expect(await active(service)).toEqual(
+        expect.arrayContaining([
+          'submitted_for_review:sess-B',
+          'home_country_updated:',
+        ]),
+      );
+    });
+
+    it('3. Session A Submitted -> Session A Verified dismisses Session A Submitted', async () => {
+      const { service, rows } = setup([submitted('a', 'sess-A')]);
+      await service.upsert(verifiedFor('sess-A'));
+      expect(rows.find((r) => r.id === 'a')?.dismissedAt).toBeInstanceOf(Date);
+      expect((await service.listActive('user-1')).map((x) => x.type)).toEqual([
+        'verified',
+      ]);
+    });
+
+    it("4. Session A's verification does not dismiss an active Session B Submitted", async () => {
+      const { service, rows } = setup([
+        submitted('a', 'sess-A'),
+        submitted('b', 'sess-B'),
+      ]);
+      await service.upsert(verifiedFor('sess-A'));
+      expect(rows.find((r) => r.id === 'a')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 'b')?.dismissedAt).toBeNull();
+    });
+
+    it('5. Travel Mode supersession is unchanged: a home-country approval still ends every active Travel Mode alert of the account, and only those', async () => {
+      const { service, rows } = setup([
+        row({ id: 't1', type: 'travel_mode', occurrenceKey: 'travel-mode:1' }),
+        row({ id: 't2', type: 'travel_mode', occurrenceKey: 'travel-mode:2' }),
+        row({
+          id: 'v',
+          type: 'verified',
+          occurrenceKey: 'identity-verified:old',
+        }),
+        row({
+          id: 'o',
+          userId: 'user-2',
+          type: 'travel_mode',
+          occurrenceKey: 'travel-mode:x',
+        }),
+      ]);
+      await service.upsert(homeFor('sess-A'));
+      expect(rows.find((r) => r.id === 't1')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 't2')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 'v')?.dismissedAt).toBeNull(); // Verified is never touched
+      expect(rows.find((r) => r.id === 'o')?.dismissedAt).toBeNull(); // another account
+    });
+
+    it('6. a duplicate / replayed approval is idempotent and supersedes nothing a second time', async () => {
+      const { service, rows } = setup([submitted('a', 'sess-A')]);
+      await service.upsert(homeFor('sess-A'));
+      rows.push(
+        submitted('b', 'sess-A', {
+          occurrenceKey: 'submitted-for-review:sess-A-again',
+        }),
+      );
+      const before = rows.length;
+      await service.upsert(homeFor('sess-A')); // the same occurrence again
+      expect(rows.length).toBe(before); // nothing stored twice
+      expect(rows.find((r) => r.id === 'b')?.dismissedAt).toBeNull(); // nothing dismissed twice
+    });
+
+    it('7. backward compatible: the earlier bare-type form still works account-wide, and rows written before this change are matched by their occurrence key', async () => {
+      const { service, rows } = setup([
+        submitted('a', 'sess-A'),
+        submitted('b', 'sess-B'),
+      ]);
+      await service.upsert({
+        ...verifiedFor('legacy'),
+        supersedes: ['submitted_for_review'],
+      });
+      expect(rows.find((r) => r.id === 'a')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 'b')?.dismissedAt).toBeInstanceOf(Date);
+
+      // A pre-existing Submitted row (no scoped metadata needed: the key alone correlates it).
+      const legacy = setup([
+        row({
+          id: 'old',
+          type: 'submitted_for_review',
+          occurrenceKey: 'submitted-for-review:sess-Z',
+          metadata: null,
+        }),
+      ]);
+      await legacy.service.upsert(verifiedFor('sess-Z'));
+      expect(
+        legacy.rows.find((r) => r.id === 'old')?.dismissedAt,
+      ).toBeInstanceOf(Date);
+    });
+
+    it('a scoped entry that names the occurrence of the wrong type or an empty key is rejected before anything is stored', async () => {
+      const { service, repo } = setup();
+      await expect(
+        service.upsert({
+          ...verifiedFor('s'),
+          supersedes: [{ type: 'verified', occurrenceKey: 'x' } as any],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException); // may not name its own type
+      await expect(
+        service.upsert({
+          ...verifiedFor('s'),
+          supersedes: [
+            { type: 'submitted_for_review', occurrenceKey: ' ' } as any,
+          ],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.upsert({
+          ...verifiedFor('s'),
+          supersedes: [{ type: 'bogus', occurrenceKey: 'k' } as any],
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(repo.save).not.toHaveBeenCalled();
     });

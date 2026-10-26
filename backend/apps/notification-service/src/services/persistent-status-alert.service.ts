@@ -11,6 +11,16 @@ import {
   PersistentStatusAlertType,
 } from '../entities/persistent-status-alert.entity';
 
+/**
+ * One alert this occurrence replaces. A bare type replaces every active alert of that type for
+ * the user (Travel Mode: an approved home-country change ends it account-wide). An object names
+ * the exact occurrence (the Submitted alert of the verification session being approved), so a
+ * delayed approval can never dismiss a newer, unrelated alert of the same type.
+ */
+export type PersistentStatusAlertSupersedes =
+  | PersistentStatusAlertType
+  | { type: PersistentStatusAlertType; occurrenceKey: string };
+
 export interface PersistentStatusAlertPayload {
   recipientId: string;
   type: PersistentStatusAlertType;
@@ -20,11 +30,12 @@ export interface PersistentStatusAlertPayload {
   link?: string | null;
   metadata?: Record<string, unknown> | null;
   /**
-   * Types whose active alerts this occurrence replaces for the same user (Verified
-   * replaces Submitted for Review; an approved home-country change replaces Travel
-   * Mode). Applied once, in the same transaction that stores the new occurrence.
+   * What this occurrence replaces for the same user: Verified replaces the Submitted alert of
+   * its own session; an approved home-country change replaces Travel Mode and the Submitted
+   * alert of its own session. Applied once, in the same transaction that stores the new
+   * occurrence. A bare type (the earlier form) is still accepted and stays account-wide.
    */
-  supersedes?: PersistentStatusAlertType[];
+  supersedes?: PersistentStatusAlertSupersedes[];
 }
 
 export interface PersistentStatusAlertView {
@@ -38,6 +49,36 @@ export interface PersistentStatusAlertView {
 }
 
 const allowedTypes = new Set<string>(PERSISTENT_STATUS_ALERT_TYPES);
+const MAX_SUPERSEDES = 8;
+
+const supersedesType = (entry: PersistentStatusAlertSupersedes) =>
+  typeof entry === 'string' ? entry : entry.type;
+
+function supersedesProblem(entries: unknown, ownType: unknown): string | null {
+  if (!Array.isArray(entries) || entries.length > MAX_SUPERSEDES) {
+    return 'invalid supersedes';
+  }
+  for (const entry of entries) {
+    if (typeof entry === 'string') {
+      if (!allowedTypes.has(entry) || entry === ownType)
+        return 'invalid supersedes';
+      continue;
+    }
+    if (
+      !entry ||
+      typeof entry !== 'object' ||
+      Array.isArray(entry) ||
+      !allowedTypes.has(String((entry as any).type)) ||
+      (entry as any).type === ownType ||
+      typeof (entry as any).occurrenceKey !== 'string' ||
+      !(entry as any).occurrenceKey.trim() ||
+      (entry as any).occurrenceKey.length > 200
+    ) {
+      return 'invalid supersedes';
+    }
+  }
+  return null;
+}
 
 /** An alert is a status banner, not an inbox: the dashboard shows a short stack. */
 export const ACTIVE_STATUS_ALERT_LIMIT = 20;
@@ -62,15 +103,8 @@ export function persistentStatusAlertPayloadProblem(
   }
   if (!allowedTypes.has(String(payload.type))) return 'invalid type';
   if (payload.supersedes != null) {
-    if (
-      !Array.isArray(payload.supersedes) ||
-      payload.supersedes.length > PERSISTENT_STATUS_ALERT_TYPES.length ||
-      payload.supersedes.some(
-        (type) => !allowedTypes.has(String(type)) || type === payload.type,
-      )
-    ) {
-      return 'invalid supersedes';
-    }
+    const problem = supersedesProblem(payload.supersedes, payload.type);
+    if (problem) return problem;
   }
   return null;
 }
@@ -153,7 +187,27 @@ export class PersistentStatusAlertService {
     const existing = await this.alerts.findOne({ where: identity });
     if (existing) return this.present(existing);
 
-    const supersedes = [...new Set(payload.supersedes ?? [])];
+    // Account-wide types, and exact occurrences (grouped by type; a type that is already
+    // account-wide needs no list).
+    const entries = payload.supersedes ?? [];
+    const wholeTypes = [
+      ...new Set(
+        entries.filter(
+          (e): e is PersistentStatusAlertType => typeof e === 'string',
+        ),
+      ),
+    ];
+    const exact = new Map<PersistentStatusAlertType, Set<string>>();
+    for (const entry of entries) {
+      if (
+        typeof entry === 'string' ||
+        wholeTypes.includes(supersedesType(entry))
+      )
+        continue;
+      const keys = exact.get(entry.type) ?? new Set<string>();
+      keys.add(entry.occurrenceKey.trim());
+      exact.set(entry.type, keys);
+    }
     try {
       // Stored and superseding in one transaction, only when this occurrence is new:
       // a redelivery returns early above, so it can never dismiss a later alert.
@@ -169,11 +223,22 @@ export class PersistentStatusAlertService {
             dismissedAt: null,
           }),
         );
-        if (supersedes.length) {
+        if (wholeTypes.length) {
           await repo.update(
             {
               userId: recipientId,
-              type: In(supersedes),
+              type: In(wholeTypes),
+              dismissedAt: IsNull(),
+            },
+            { dismissedAt: new Date() },
+          );
+        }
+        for (const [type, keys] of exact) {
+          await repo.update(
+            {
+              userId: recipientId,
+              type,
+              occurrenceKey: In([...keys]),
               dismissedAt: IsNull(),
             },
             { dismissedAt: new Date() },

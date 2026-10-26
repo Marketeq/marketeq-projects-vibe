@@ -373,7 +373,8 @@ export default function TalentDashboard() {
   // Travel Mode activation in this session arrives as a new alert). Only the latest read
   // is applied, and a failed read leaves the alerts that are already showing.
   useEffect(() => {
-    if (!user) return
+    // Talent accounts only: a client that lands here is redirected away and has no alerts.
+    if (!user || resolveDashboardRole(user) !== ROLE.TALENT) return
     const request = ++statusAlertRequestRef.current
     StatusAlertsAPI.list()
       .then((alerts) => {

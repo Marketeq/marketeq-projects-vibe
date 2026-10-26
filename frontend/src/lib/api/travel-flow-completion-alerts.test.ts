@@ -174,3 +174,20 @@ describe("the whole first-time flow, end to end without a refresh", () => {
     assert.deepEqual(visibleTypes(unverified, []), [])
   })
 })
+
+describe("the alert list is loaded for talent accounts only", () => {
+  it("a client landing on the talent dashboard (it redirects) makes no status-alert request", () => {
+    const loader = page.slice(
+      page.indexOf("Talent accounts only: a client that lands here"),
+      page.indexOf("}, [user, travelSummary])")
+    )
+    assert.match(
+      loader,
+      /resolveDashboardRole\(user\) !== ROLE\.TALENT\) return/
+    )
+    assert.match(loader, /StatusAlertsAPI\.list\(\)/)
+    assert.ok(
+      loader.indexOf("ROLE.TALENT") < loader.indexOf("StatusAlertsAPI.list()")
+    )
+  })
+})
