@@ -14,7 +14,6 @@ import { FAQ_ADAPTER } from '../publish/faq/faq.adapter';
 import { FaqAdapterHeuristic } from '../publish/faq/faq.adapter.heuristic';
 import { FaqAdapterHuggingFace } from '../publish/faq/faq.adapter.huggingface';
 import { IdentityGateModule } from '../identity-gate/identity-gate.module';
-import { RoleRateModule } from '../shared/pricing/role-rate.module';
 
 @Module({
   imports: [
@@ -22,7 +21,6 @@ import { RoleRateModule } from '../shared/pricing/role-rate.module';
     ConfigModule,
     // G5: public rosters omit members whose gate is closed.
     IdentityGateModule,
-    RoleRateModule,
     ClientsModule.registerAsync([
       {
         name: 'ALGOLIA_CLIENT',
