@@ -51,15 +51,17 @@ describe('home-country-updated notification wiring', () => {
     const paramTypes: unknown[] = Reflect.getMetadata('design:paramtypes', FreeKycService);
     const optional: number[] = Reflect.getMetadata('optional:paramtypes', FreeKycService) ?? [];
 
-    it('it is the final parameter and an optional one, so no earlier position moved', () => {
-      expect(paramTypes[paramTypes.length - 1]).toBe(HomeCountryUpdatedNotificationPublisher);
+    it('it is the second-to-last parameter and an optional one, so no earlier position moved', () => {
+      // PMCM-651 appended the status-alert publisher after it; both stay optional.
+      expect(paramTypes[paramTypes.length - 2]).toBe(HomeCountryUpdatedNotificationPublisher);
+      expect(optional).toContain(paramTypes.length - 2);
       expect(optional).toContain(paramTypes.length - 1);
       // `events` stays right before it, still optional.
-      expect(optional).toContain(paramTypes.length - 2);
+      expect(optional).toContain(paramTypes.length - 3);
     });
 
     it('the nine earlier positions are exactly as they were', () => {
-      expect(paramTypes).toHaveLength(10);
+      expect(paramTypes).toHaveLength(11);
     });
   });
 });

@@ -304,7 +304,7 @@ describe("SOURCE-PINNED: when it opens, and what stays exactly as it was", () =>
     )
     assert.match(
       page,
-      /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+setSuccessAlertOpen\(true\)\s+\}/
+      /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+\}/
     )
     const generic = page.slice(
       page.indexOf("open={successAlertOpen}"),

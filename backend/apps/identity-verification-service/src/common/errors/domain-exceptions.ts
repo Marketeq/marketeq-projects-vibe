@@ -111,6 +111,15 @@ export class TravelModeNotActiveException extends DomainException {
   }
 }
 
+// The Travel Mode confirmation could not be handed to the alert pipeline. Nothing was recorded
+// and no alert exists; the caller may retry with the same confirmationId.
+export class TravelModeConfirmationUnavailableException extends DomainException {
+  readonly code = 'TRAVEL_MODE_CONFIRMATION_UNAVAILABLE';
+  constructor(details?: Record<string, unknown>) {
+    super("We couldn't confirm Travel Mode. Please try again.", HttpStatus.SERVICE_UNAVAILABLE, details);
+  }
+}
+
 // Another request answered the same check-in first: Travel Mode is still active but the
 // period this request observed has been replaced. Nothing was written; the caller
 // re-reads GET /me.
