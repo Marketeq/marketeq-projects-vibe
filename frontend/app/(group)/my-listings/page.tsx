@@ -10,7 +10,9 @@ import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { toUserMessage } from "@/lib/listing-errors"
 import {
   PublishConfirmDialog,
+  getPendingReviewToastTitle,
   getPublishedToastTitle,
+  isPublishedResponse,
 } from "@/components/listings/publish-confirm-dialog"
 import {
   MY_LISTING_STATUSES,
@@ -321,10 +323,19 @@ export default function MyListingsPage() {
     const listing = confirmPublishTarget
     setTogglingId(listing.id)
     try {
-      await ProjectAPI.PublishProject(listing.id)
-      updateListing(listing.id, { status: "Active" })
+      const res = await ProjectAPI.PublishProject(listing.id)
       setConfirmPublishTarget(null)
-      toast({ title: getPublishedToastTitle(listing.type), variant: "success" })
+      if (isPublishedResponse(res)) {
+        updateListing(listing.id, { status: "Active" })
+        toast({
+          title: getPublishedToastTitle(listing.type),
+          variant: "success",
+        })
+      } else {
+        // Held by moderation ("pending_review"): not live, so it stays
+        // Draft here (fetchBackendListings maps pending_review to Draft).
+        toast({ title: getPendingReviewToastTitle(listing.type) })
+      }
     } catch (err) {
       // PMCM-403/AC3: backend still rejected it (validation/moderation) —
       // leave it Draft, treat it like the client-blocked case above.

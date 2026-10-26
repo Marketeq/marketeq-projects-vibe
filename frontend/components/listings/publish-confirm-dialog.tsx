@@ -20,6 +20,20 @@ export type PublishListingType = "project" | "service"
 export const getPublishedToastTitle = (listingType: PublishListingType): string =>
   listingType === "service" ? "Your service is live" : "Your project is live"
 
+// PMCM-403: publish can also succeed with status "pending_review" when image
+// or video moderation holds the listing (applyModerationDecision in
+// listings-service) — it is not live yet, so callers show this instead.
+export const getPendingReviewToastTitle = (
+  listingType: PublishListingType
+): string =>
+  listingType === "service"
+    ? "Your service is pending review"
+    : "Your project is pending review"
+
+export const isPublishedResponse = (response: unknown): boolean =>
+  (response as { data?: { status?: unknown } } | undefined)?.data?.status ===
+  "published"
+
 /**
  * PMCM-403: the one reusable "Publish this project/service?" confirmation
  * dialog, built from existing DS Dialog parts only. Generalizes the ad-hoc

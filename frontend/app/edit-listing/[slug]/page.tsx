@@ -27,7 +27,9 @@ import {
 } from "@/lib/listing-errors"
 import {
   PublishConfirmDialog,
+  getPendingReviewToastTitle,
   getPublishedToastTitle,
+  isPublishedResponse,
 } from "@/components/listings/publish-confirm-dialog"
 import options from "@/public/mock/options.json"
 import {
@@ -12271,15 +12273,15 @@ function PublishProject({
     if (!draftProjectId || isPublishing) return
     setIsPublishing(true)
     try {
-      await ProjectAPI.PublishProject(draftProjectId)
+      const publishResponse = await ProjectAPI.PublishProject(draftProjectId)
       setIsProjectSubmitted(true)
       setPublishDialogOpen(false)
-      toast({
-        title: getPublishedToastTitle(
-          scopeType === "service" ? "service" : "project"
-        ),
-        variant: "success",
-      })
+      const publishedType = scopeType === "service" ? "service" : "project"
+      toast(
+        isPublishedResponse(publishResponse)
+          ? { title: getPublishedToastTitle(publishedType), variant: "success" }
+          : { title: getPendingReviewToastTitle(publishedType) }
+      )
       router.push("/my-listings")
     } catch (error: any) {
       console.error("Failed to publish project", error)
