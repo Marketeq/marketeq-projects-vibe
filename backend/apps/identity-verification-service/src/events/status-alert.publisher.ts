@@ -21,14 +21,15 @@ export const STATUS_ALERT_UPSERT_PATTERN = 'notification.status_alert.upsert';
 
 const PUBLISH_TIMEOUT_MS = 5000;
 
-// Verified replaces Submitted for Review; an approved home-country change ends Travel
-// Mode, so it replaces the stored Travel Mode alert. Applied by notification-service in
-// the same transaction that stores the new occurrence.
+// Verified replaces Submitted for Review. An approved home-country change ends Travel Mode and
+// also ends the review it came from (its own Submitted alert; it does not publish Verified,
+// which belongs to the account's initial verification), so it replaces both. Applied by
+// notification-service in the same transaction that stores the new occurrence.
 const SUPERSEDES: Record<StatusAlertType, StatusAlertType[]> = {
   travel_mode: [],
   submitted_for_review: [],
   verified: ['submitted_for_review'],
-  home_country_updated: ['travel_mode'],
+  home_country_updated: ['travel_mode', 'submitted_for_review'],
 };
 
 export const statusAlertOccurrenceKey = {

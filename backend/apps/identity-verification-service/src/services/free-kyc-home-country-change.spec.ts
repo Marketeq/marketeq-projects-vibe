@@ -1362,6 +1362,24 @@ describe('Home-country change sessions (PMCM-650)', () => {
 
   // PMCM-651: the persistent dashboard alerts ride the same post-commit signal as the events.
   describe('persistent status alerts', () => {
+    // An account that is not verified yet (or verified before and expired): an ORDINARY session.
+    const firstTime = (patch: Record<string, unknown> = {}) =>
+      world({
+        profile: {
+          identityVerificationStatus: IdentityVerificationStatus.UNSTARTED,
+          locationVerificationStatus: LocationVerificationStatus.VERIFIED,
+          verifiedHomeCountryConfirmedAt: new Date(),
+          pendingHomeCountry: null,
+          pendingHomeCountryConfirmedAt: null,
+          travelClassification: null,
+          ...patch,
+        },
+      });
+    const startOrdinary = async (w: World) => {
+      await w.service.startOrResume('user-1');
+      return w.sessions[w.sessions.length - 1].diditSessionId as string;
+    };
+
     it('In Review stores one Submitted alert keyed by the session; a replay or a second In Review stores nothing more', async () => {
       const w = world();
       const s1 = await w.startChange();
@@ -1374,26 +1392,103 @@ describe('Home-country change sessions (PMCM-650)', () => {
       expect(w.alerts.verified).not.toHaveBeenCalled();
     });
 
-    it('Approved after review stores Verified and Home Country Updated with the same session key', async () => {
-      const w = world();
-      const s1 = await w.startChange();
-      await w.send(s1, 'In Review');
-      await w.send(s1, 'Approved');
+    describe('initial verification: Submitted -> Verified', () => {
+      it('the approval of the account\'s first verification publishes Verified (and no Home Country Updated), keyed by that session', async () => {
+        const w = firstTime();
+        const s1 = await startOrdinary(w);
+        await w.send(s1, 'In Review');
+        expect(w.alerts.submittedForReview).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+        await w.send(s1, 'Approved');
 
-      expect(w.alerts.verified).toHaveBeenCalledTimes(1);
-      expect(w.alerts.verified).toHaveBeenCalledWith('user-1', w.sessions[0].id);
-      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
-      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+        expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+        expect(w.alerts.verified).toHaveBeenCalledTimes(1);
+        expect(w.alerts.verified).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+        expect(w.alerts.homeCountryUpdated).not.toHaveBeenCalled();
+      });
+
+      it('a later, genuinely independent verification (after the verified status expired) publishes its own Verified: it is not suppressed', async () => {
+        const w = firstTime();
+        const s1 = await startOrdinary(w);
+        await w.send(s1, 'Approved');
+        await w.send(s1, 'Kyc Expired');
+        expect(identity(w)).toBe(IdentityVerificationStatus.EXPIRED);
+
+        const s2 = await startOrdinary(w);
+        expect(w.sessions).toHaveLength(2)
+        await w.send(s2, 'In Review');
+        await w.send(s2, 'Approved');
+
+        expect(w.alerts.verified).toHaveBeenCalledTimes(2);
+        expect(w.alerts.verified).toHaveBeenNthCalledWith(2, 'user-1', w.sessions[1].id);
+        expect(w.sessions[1].id).not.toBe(w.sessions[0].id); // a new occurrence key
+      });
+
+      it('a duplicate approval announces Verified once', async () => {
+        const w = firstTime();
+        const s1 = await startOrdinary(w);
+        await w.send(s1, 'Approved', { eventId: 'evt-a' });
+        await w.send(s1, 'Approved', { eventId: 'evt-a' });
+        await w.send(s1, 'Approved', { eventId: 'evt-b' }); // a replay with another event id
+        expect(w.alerts.verified).toHaveBeenCalledTimes(1);
+      });
     });
 
-    it('a duplicate approval stores each alert once', async () => {
-      const w = world();
-      const s1 = await w.startChange();
-      await w.send(s1, 'Approved', { eventId: 'evt-a' });
-      await w.send(s1, 'Approved', { eventId: 'evt-a' });
+    describe('an already verified account\'s home-country change: Submitted -> Home Country Updated only', () => {
+      it('the approval publishes Home Country Updated and NOT Verified; the review\'s Submitted alert was published for the same session', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        await w.send(s1, 'In Review');
+        await w.send(s1, 'Approved');
 
-      expect(w.alerts.verified).toHaveBeenCalledTimes(1);
-      expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+        expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED); // restored, as designed
+        expect(w.alerts.submittedForReview).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+        expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+        expect(w.alerts.homeCountryUpdated).toHaveBeenCalledWith('user-1', w.sessions[0].id);
+        expect(w.alerts.verified).not.toHaveBeenCalled(); // never created, never reactivated
+      });
+
+      it('the legacy identity_verified event is unchanged (only the persistent Verified alert is withheld)', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        await w.send(s1, 'In Review');
+        await w.send(s1, 'Approved');
+        expect(published(w, IdentityVerificationEventType.IDENTITY_VERIFIED)).toBe(1);
+        expect(published(w, IdentityVerificationEventType.HOME_COUNTRY_UPDATED)).toBe(1);
+      });
+
+      it('a retry after a decline, then an approval, still publishes no Verified', async () => {
+        const w = world();
+        await w.send(await w.startChange(), 'Declined');
+        await w.send(await w.startChange(), 'Approved');
+        expect(w.alerts.verified).not.toHaveBeenCalled();
+        expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+      });
+
+      it('an approval while Travel Mode is on publishes Home Country Updated and no Verified (the travel alert is superseded by it)', async () => {
+        const w = world({
+          profile: {
+            travelClassification: TravelClassification.TEMPORARILY_TRAVELING,
+            travelModeActive: true,
+            declaredDuration: DeclaredDuration.A_FEW_DAYS,
+            travelModeActivatedAt: new Date(T0.getTime() - 86_400_000),
+          },
+        });
+        const s1 = await w.startChange();
+        await w.send(s1, 'Approved');
+        expect(w.profile.travelModeActive).toBe(false);
+        expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+        expect(w.alerts.verified).not.toHaveBeenCalled();
+      });
+
+      it('event/webhook replay stays idempotent: one Home Country Updated, never a Verified', async () => {
+        const w = world();
+        const s1 = await w.startChange();
+        await w.send(s1, 'Approved', { eventId: 'evt-a' });
+        await w.send(s1, 'Approved', { eventId: 'evt-a' });
+        await w.send(s1, 'Approved', { eventId: 'evt-z' });
+        expect(w.alerts.homeCountryUpdated).toHaveBeenCalledTimes(1);
+        expect(w.alerts.verified).not.toHaveBeenCalled();
+      });
     });
 
     it('a declined or stale session announces no alert at all', async () => {

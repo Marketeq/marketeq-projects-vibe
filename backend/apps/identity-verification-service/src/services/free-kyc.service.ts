@@ -91,7 +91,13 @@ export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
 // already-verified profile never sets it).
 interface IdentityVerifiedSignal {
   // hostedKycSessionId: the approved session; it keys the persistent Verified alert.
-  verified?: { profileId: string; userId: string; hostedKycSessionId: string };
+  // persistentAlert: whether this approval is the account's verification (identity and
+  // location becoming fully verified). It is false for an approved HOME-COUNTRY CHANGE: that
+  // session moved an already verified account through in-progress and in-review (the profile
+  // goes back to verified when it is approved), but the account is not being verified again,
+  // so only "home country updated" is announced. The legacy identity_verified event is
+  // unaffected by it.
+  verified?: { profileId: string; userId: string; hostedKycSessionId: string; persistentAlert: boolean };
   // Set only on the transition into In Review (never for a replay, or a profile that
   // was already pending); hostedKycSessionId keys the persistent Submitted alert.
   submitted?: { userId: string; hostedKycSessionId: string };
@@ -493,7 +499,7 @@ export class FreeKycService {
     if (this.statusAlerts && signal.submitted) {
       await this.statusAlerts.submittedForReview(signal.submitted.userId, signal.submitted.hostedKycSessionId);
     }
-    if (this.statusAlerts && signal.verified) {
+    if (this.statusAlerts && signal.verified?.persistentAlert) {
       await this.statusAlerts.verified(signal.verified.userId, signal.verified.hostedKycSessionId);
     }
     if (this.statusAlerts && signal.homeCountryUpdated) {
@@ -968,7 +974,12 @@ export class FreeKycService {
         profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
         // A successful (re-)verification ends any renewal window (TRVG2 §2.7).
         profile.expiredAt = null;
-        signal.verified = { profileId: profile.id, userId: profile.userId, hostedKycSessionId: session.id };
+        signal.verified = {
+          profileId: profile.id,
+          userId: profile.userId,
+          hostedKycSessionId: session.id,
+          persistentAlert: session.purpose !== HostedKycSessionPurpose.HOME_COUNTRY_CHANGE,
+        };
         break;
       case HostedKycSessionStatus.DECLINED: {
         const attemptRepository = manager.getRepository(VerificationAttempt);

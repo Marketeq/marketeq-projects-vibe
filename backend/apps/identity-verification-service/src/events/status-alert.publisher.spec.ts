@@ -39,13 +39,13 @@ describe('StatusAlertPublisher', () => {
     });
   });
 
-  it('Home Country Updated is keyed by the session and supersedes Travel Mode', async () => {
+  it('Home Country Updated is keyed by the session and supersedes Travel Mode and the review\'s Submitted alert', async () => {
     const { emit, publisher } = setup();
     await publisher.homeCountryUpdated('u1', 'sess-3');
     expect(emit.mock.calls[0][1]).toMatchObject({
       type: 'home_country_updated',
       occurrenceKey: 'home-country-updated:sess-3',
-      supersedes: ['travel_mode'],
+      supersedes: ['travel_mode', 'submitted_for_review'],
     });
   });
 

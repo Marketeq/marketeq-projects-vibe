@@ -14,7 +14,8 @@
 //     AccountVerificationGate are not part of this stack (Christopher's PMCM-651 decisions,
 //     pinned by unverified-account-decisions.test.ts);
 //   - Verified replaces Submitted for Review, and an approved home-country update replaces
-//     the Travel Mode alert. notification-service already dismisses the replaced alert
+//     the Travel Mode alert and the Submitted alert of the review it ended (it publishes no
+//     Verified: that belongs to an account's first verification). notification-service already dismisses the replaced alert
 //     when the new one is stored; the same rule is applied here so a list that is read
 //     between the two writes, or a late retry, cannot show both.
 //
@@ -95,8 +96,13 @@ export function applySupersession(alerts: StatusAlert[]): StatusAlert[] {
   return alerts.filter((a) => {
     const ms = toMs(a.createdAt)
     if (ms === null) return true
+    // The review ends with Verified (a first verification) or with Home Country Updated (a
+    // home-country change on an account that was already verified; no Verified alert is made).
     if (a.type === "submitted_for_review")
-      return verifiedAt === null || verifiedAt < ms
+      return (
+        (verifiedAt === null || verifiedAt < ms) &&
+        (homeCountryAt === null || homeCountryAt < ms)
+      )
     if (a.type === "travel_mode")
       return homeCountryAt === null || homeCountryAt < ms
     return true

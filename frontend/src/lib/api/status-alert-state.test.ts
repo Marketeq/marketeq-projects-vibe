@@ -244,6 +244,25 @@ describe("supersession", () => {
     assert.equal(out.length, 2)
   })
 
+  it("an approved home-country change removes the older Submitted alert of its review, with no Verified involved", () => {
+    const out = applySupersession([
+      alert(1, "submitted_for_review", at(10)),
+      alert(2, "home_country_updated", at(5)),
+    ])
+    assert.deepEqual(
+      out.map((a) => a.type),
+      ["home_country_updated"]
+    )
+  })
+
+  it("a Submitted created after the home-country update (a later review) stays", () => {
+    const out = applySupersession([
+      alert(1, "home_country_updated", at(60)),
+      alert(2, "submitted_for_review", at(5)),
+    ])
+    assert.equal(out.length, 2)
+  })
+
   it("does not change the input list", () => {
     const input = [
       alert(1, "submitted_for_review", at(10)),

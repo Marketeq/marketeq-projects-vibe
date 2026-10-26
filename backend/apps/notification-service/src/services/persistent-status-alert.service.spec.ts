@@ -219,6 +219,50 @@ describe('PersistentStatusAlertService', () => {
     );
   });
 
+  describe('approved home-country change on an already verified account (PMCM-651)', () => {
+    const home = (key: string) => ({
+      ...payload(),
+      type: 'home_country_updated' as const,
+      occurrenceKey: `home-country-updated:${key}`,
+      supersedes: ['travel_mode' as const, 'submitted_for_review' as const],
+    });
+
+    it('dismisses the review\'s Submitted alert and the Travel Mode alert, and never touches an existing Verified alert', async () => {
+      const { service, rows } = setup([
+        row({ id: 'v', type: 'verified', occurrenceKey: 'identity-verified:first', dismissedAt: new Date('2026-10-20T00:00:00Z') }),
+        row({ id: 's', type: 'submitted_for_review', occurrenceKey: 'submitted-for-review:sess-2' }),
+        row({ id: 't', type: 'travel_mode', occurrenceKey: 'travel-mode:a' }),
+      ]);
+      await service.upsert(home('sess-2'));
+
+      expect(rows.find((r) => r.id === 's')?.dismissedAt).toBeInstanceOf(Date);
+      expect(rows.find((r) => r.id === 't')?.dismissedAt).toBeInstanceOf(Date);
+      // The earlier Verified occurrence stays exactly as it was (dismissed): nothing reactivates it.
+      expect(rows.find((r) => r.id === 'v')?.dismissedAt).toEqual(new Date('2026-10-20T00:00:00Z'));
+      expect((await service.listActive('user-1')).map((a) => a.type)).toEqual(['home_country_updated']);
+    });
+
+    it('a replayed event supersedes nothing a second time: a later independent submission survives', async () => {
+      const { service, rows } = setup();
+      await service.upsert(home('sess-2'));
+      rows.push(row({ id: 'later', type: 'submitted_for_review', occurrenceKey: 'submitted-for-review:sess-9' }));
+      await service.upsert(home('sess-2')); // the same occurrence again
+      expect(rows.find((r) => r.id === 'later')?.dismissedAt).toBeNull();
+    });
+
+    it('a later, genuinely independent Verified occurrence is stored and keeps the Home Country Updated alert', async () => {
+      const { service } = setup();
+      await service.upsert(home('sess-2'));
+      await service.upsert({
+        ...payload(),
+        type: 'verified',
+        occurrenceKey: 'identity-verified:sess-5',
+        supersedes: ['submitted_for_review'],
+      });
+      expect((await service.listActive('user-1')).map((a) => a.type).sort()).toEqual(['home_country_updated', 'verified']);
+    });
+  });
+
   describe('supersession', () => {
     it('Verified dismisses the same user\'s active Submitted alert, not another user\'s', async () => {
       const { service, rows } = setup([
