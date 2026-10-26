@@ -25,6 +25,7 @@ export type CheckoutFaq = {
 
 export type CheckoutProjectSummary = {
   id: string | null
+  slug: string | null
   title: string
   mediaUrl: string
   teamMemberCount: number | null
@@ -203,6 +204,7 @@ const getFaqs = (project: any): CheckoutFaq[] => {
 
 const mapProjectSummary = (project: any): CheckoutProjectSummary => ({
   id: project.id ? String(project.id) : null,
+  slug: project.slug ? String(project.slug) : null,
   title: project.title || "Project Title Unavailable",
   mediaUrl: project.mediaUrls?.[0] || project.featuredImage || "",
   teamMemberCount: getTeamMemberCount(project),

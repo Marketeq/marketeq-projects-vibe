@@ -3414,6 +3414,12 @@ function CheckoutPageInner() {
                 )
                 return
               }
+              if (projectSummary?.slug) {
+                router.push(
+                  `/project-details/${encodeURIComponent(projectSummary.slug)}`
+                )
+                return
+              }
               router.back()
             }}
             className="gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-6"

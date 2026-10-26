@@ -74,10 +74,13 @@ import {
 } from "@/lib/checkout/draft-summary"
 import { CreditDebitCardArticle3 } from "@/components/ui/credit-debit-card-article/credit-debit-card-article"
 import { HelperText } from "@/components/ui/helper-text"
-import { PhoneNumberInput } from "@/components/phone-number-input"
+import {
+  PhoneNumberInput,
+  isPhoneValid,
+  phoneUtil,
+} from "@/components/phone-number-input"
 import { CountriesCombobox } from "@/components/own-combobox"
 import { resolveCountryCodeByName } from "@/src/lib/api/resolve-country-code"
-import { defaultCountries } from "react-international-phone"
 import { inputVariants } from "@/components/ui/input"
 import {
   InputLeftElement,
@@ -277,26 +280,6 @@ const parseCurrencyAmount = (value?: string | null) => {
   return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
-const getUsPhoneDigits = (value: string) => {
-  const digits = value.replace(/\D/g, "")
-  const nationalDigits =
-    digits.length > 10 && digits.startsWith("1") ? digits.slice(1) : digits
-
-  return nationalDigits.slice(0, 10)
-}
-
-const formatUsPhoneNumber = (value: string) => {
-  const digits = getUsPhoneDigits(value)
-  const areaCode = digits.slice(0, 3)
-  const prefix = digits.slice(3, 6)
-  const lineNumber = digits.slice(6, 10)
-
-  if (digits.length <= 3) return areaCode ? `(${areaCode}` : ""
-  if (digits.length <= 6) return `(${areaCode})-${prefix}`
-
-  return `(${areaCode})-${prefix}-${lineNumber}`
-}
-
 const US_STATES: [string, string][] = [
   ["AL", "Alabama"],
   ["AK", "Alaska"],
@@ -349,10 +332,6 @@ const US_STATES: [string, string][] = [
   ["WV", "West Virginia"],
   ["WI", "Wisconsin"],
   ["WY", "Wyoming"],
-]
-
-const BILLING_PHONE_COUNTRIES: typeof defaultCountries = [
-  ["United States", "us", "1", "(...)-...-....", 0],
 ]
 
 const isValidAbaRoutingNumber = (value: string) => {
@@ -1321,11 +1300,13 @@ type SavedBillingAddress = {
 }
 
 const formatSavedBillingPhone = (phoneNumber: string) => {
-  const digits = phoneNumber.replace(/\D/g, "")
-  if (phoneNumber.startsWith("+1") && digits.length === 11) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
+  try {
+    return phoneUtil.formatOutOfCountryCallingNumber(
+      phoneUtil.parseAndKeepRawInput(phoneNumber)
+    )
+  } catch {
+    return phoneNumber
   }
-  return phoneNumber
 }
 
 const toSavedBillingAddress = (
@@ -1772,6 +1753,9 @@ export default function PaymentPage() {
   const [legalDialog, setLegalDialog] = React.useState<
     "terms" | "privacy" | null
   >(null)
+  const lastLegalDialogRef = React.useRef<"terms" | "privacy">("terms")
+  if (legalDialog) lastLegalDialogRef.current = legalDialog
+  const shownLegalDialog = legalDialog ?? lastLegalDialogRef.current
 
   // Billing address
   const [savedBillingAddresses, setSavedBillingAddresses] = React.useState<
@@ -3812,7 +3796,9 @@ export default function PaymentPage() {
             .filter(Boolean)
             .join(" ")}`
         : selectedBillingAddress.cityStateZip,
-    phoneNumber: phoneNumber || selectedBillingAddress.phoneNumber,
+    phoneNumber: phoneNumber
+      ? formatSavedBillingPhone(phoneNumber)
+      : selectedBillingAddress.phoneNumber,
     country: selectedBillingAddress.country,
   }
   const confirmAddressDetails = {
@@ -3886,7 +3872,7 @@ export default function PaymentPage() {
       billingCountry.trim().length > 0 &&
       (!isUnitedStatesBilling || billingState.trim().length > 0) &&
       isBillingZipValid &&
-      getUsPhoneDigits(phoneNumber).length === 10)
+      isPhoneValid(phoneNumber))
   const billingFieldErrors: Record<BillingField, string> = {
     fullName:
       fullName.trim().length >= 2 ? "" : "Please enter your full name",
@@ -3902,11 +3888,12 @@ export default function PaymentPage() {
       : isBillingZipValid
         ? ""
         : "Please enter a valid zip code",
-    phone: !phoneNumber.trim()
-      ? "Please enter your phone number"
-      : getUsPhoneDigits(phoneNumber).length === 10
-        ? ""
-        : "Please enter a valid US phone number",
+    phone:
+      phoneNumber.replace(/\D/g, "").length <= 3
+        ? "Please enter your phone number"
+        : isPhoneValid(phoneNumber)
+          ? ""
+          : "Please enter a valid phone number",
   }
   const shouldShowBillingFieldError = (field: BillingField) =>
     (hasAttemptedCardSubmit || billingFieldTouched[field]) &&
@@ -4273,6 +4260,26 @@ export default function PaymentPage() {
     setBillingAddressMode(hasSavedBillingAddresses ? "saved" : "new")
   }
 
+  const clearNewBillingAddressFields = () => {
+    setFullName("")
+    setAddressLine1("")
+    setAddressLine2("")
+    setCity("")
+    setBillingState("")
+    setBillingCountry("United States")
+    setZipcode("")
+    setPhoneNumber("")
+    setBillingFieldTouched({
+      fullName: false,
+      addressLine1: false,
+      country: false,
+      city: false,
+      state: false,
+      zipcode: false,
+      phone: false,
+    })
+  }
+
   const resetFullPaymentBankForm = () => {
     resetInstallmentBankForm()
   }
@@ -4321,7 +4328,7 @@ export default function PaymentPage() {
           : {}),
         postalCode: override ? override.postalCode : zipcode.trim(),
         country: billingCountry,
-        phoneNumber: `+1${getUsPhoneDigits(phoneNumber)}`,
+        phoneNumber,
       })
       const savedAddress = toSavedBillingAddress(
         response.data as BillingAddress
@@ -4597,7 +4604,9 @@ export default function PaymentPage() {
           setSavedCards(listResponse.data as SavedCardSummary[])
         )
         .catch(() => {})
-      setSavedCardNotification("Your card was updated.")
+      setSavedCardNotification(
+        `${SAVED_CARD_BRAND_NAMES[updated.brand] ?? "Credit Card"} ending in *${updated.last4} has been updated.`
+      )
       window.setTimeout(() => setSavedCardNotification(""), 5000)
     } catch {
       toast({
@@ -6912,8 +6921,7 @@ export default function PaymentPage() {
 
                 {pay === "AT_ONCE" &&
                   fullPaymentMethods.length > 0 &&
-                  !hasSplitFullPayment &&
-                  !editingCard && (
+                  !hasSplitFullPayment && (
                     <div className="mt-6">
                       <div className="flex items-center justify-between">
                         <h3 className="text-base leading-[.703] font-bold text-dark-blue-400">
@@ -7990,8 +7998,11 @@ export default function PaymentPage() {
                 )}
 
                 {/* Credit / Debit Card Form */}
-                {shouldShowFullPaymentCardForm && (
-                  <div className="mt-[50px]">
+                {shouldShowFullPaymentCardForm && (() => {
+                  const cardForm = (
+                  <div className={editingCard ? undefined : "mt-[50px]"}>
+                    {editingCard ? null : (
+                    <>
                     <div className="flex items-start justify-between">
                       <h1 className="text-lg leading-[22px] font-bold text-dark-blue-400">
                         {editingCard
@@ -8014,6 +8025,8 @@ export default function PaymentPage() {
                       <Lock className="size-4" /> Your payment is secure. Your
                       card details will not be shared.
                     </p>
+                    </>
+                    )}
 
                     {stripeLoadFailed || !isStripePublishableKeyConfigured ? (
                       <Alert className="mt-4 border-error-200 bg-error-50">
@@ -8045,7 +8058,7 @@ export default function PaymentPage() {
                       </Alert>
                     ) : null}
 
-                    <div className="mt-6 space-y-3">
+                    <div className={cn("space-y-3", !editingCard && "mt-6")}>
                       <div className="space-y-1.5">
                         <Label
                           size="sm"
@@ -8270,7 +8283,10 @@ export default function PaymentPage() {
                             className="text-xs leading-5 underline"
                             variant="link"
                             disabled={!hasSavedBillingAddresses}
-                            onClick={() => setBillingAddressMode("saved")}
+                            onClick={() => {
+                              clearNewBillingAddressFields()
+                              setBillingAddressMode("saved")
+                            }}
                           >
                             Use a Saved Address
                           </Button>
@@ -8577,32 +8593,13 @@ export default function PaymentPage() {
                             >
                               Phone Number
                             </Label>
-                            <div className="[--react-international-phone-height:theme(size.11)]">
-                              <PhoneNumberInput
-                                defaultCountry="us"
-                                countries={BILLING_PHONE_COUNTRIES}
-                                placeholder="(555)-000-0000"
-                                disableDialCodeAndPrefix
-                                showDisabledDialCodeAndPrefix
-                                hideDropdown
-                                inputClassName="!text-base"
-                                invalid={shouldShowBillingFieldError("phone")}
-                                onBlur={() => touchBillingField("phone")}
-                                inputProps={{
-                                  id: "phone-number",
-                                  inputMode: "numeric",
-                                  autoComplete: "tel-national",
-                                }}
-                                value={phoneNumber}
-                                onChange={(value) =>
-                                  setPhoneNumber(
-                                    formatUsPhoneNumber(
-                                      value.replace(/^\+1/, "")
-                                    )
-                                  )
-                                }
-                              />
-                            </div>
+                            <PhoneNumberInput
+                              invalid={shouldShowBillingFieldError("phone")}
+                              onBlur={() => touchBillingField("phone")}
+                              inputProps={{ id: "phone-number" }}
+                              value={phoneNumber}
+                              onChange={setPhoneNumber}
+                            />
                             {shouldShowBillingFieldError("phone") ? (
                               <span className="block text-xs leading-5 text-error-500">
                                 {billingFieldErrors.phone}
@@ -8612,6 +8609,7 @@ export default function PaymentPage() {
                         </form>
                       ) : null}
 
+                      {editingCard ? null : (
                       <div className="flex mt-[50px] justify-end">
                         <TooltipProvider delayDuration={75}>
                           <Tooltip
@@ -8660,6 +8658,7 @@ export default function PaymentPage() {
                           </Tooltip>
                         </TooltipProvider>
                       </div>
+                      )}
                     </div>
 
                     <Dialog
@@ -8790,7 +8789,115 @@ export default function PaymentPage() {
                       </DialogContent>
                     </Dialog>
                   </div>
-                )}
+                  )
+                  return editingCard ? (
+                    <Dialog
+                      open
+                      onOpenChange={(open) => {
+                        if (!open) handleCancelEditCard()
+                      }}
+                    >
+                      <DialogContent className="flex h-[min(740px,calc(100vh-48px))] max-w-[743px] flex-col gap-0 overflow-hidden p-0">
+                        <div className="flex items-start justify-between border-b border-gray-200 py-3 pl-[18px] pr-3">
+                          <div className="flex flex-col gap-y-1">
+                            <DialogTitle className="text-lg font-semibold capitalize leading-7 text-dark-blue-400">
+                              Edit your credit card
+                            </DialogTitle>
+                            <DialogDescription className="flex items-center gap-x-1 text-xs text-gray-500">
+                              <Lock className="size-4" /> Your payment is
+                              secure. Your card details will not be shared.
+                            </DialogDescription>
+                          </div>
+                          <DialogClose asChild>
+                            <IconButton variant="ghost" visual="gray">
+                              <X className="size-5" />
+                            </IconButton>
+                          </DialogClose>
+                        </div>
+
+                        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                          {cardForm}
+                        </div>
+
+                        <div className="flex h-[68px] items-center justify-between border-t border-gray-200 px-6 py-3">
+                          <div className="flex items-center gap-x-[3px] text-xs">
+                            <span className="font-light text-dark-blue-400">
+                              By updating your card info, you agree to
+                              Marketeq&apos;s
+                            </span>
+                            <Button
+                              className="text-xs"
+                              variant="link"
+                              type="button"
+                              onClick={() => setLegalDialog("terms")}
+                            >
+                              Terms &amp; Conditions
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-x-3">
+                            <Button
+                              className="text-xs"
+                              variant="outlined"
+                              visual="gray"
+                              type="button"
+                              onClick={handleCancelEditCard}
+                            >
+                              Cancel
+                            </Button>
+                            <TooltipProvider delayDuration={75}>
+                              <Tooltip
+                                open={
+                                  !isFullPaymentCardFormValid ? undefined : false
+                                }
+                              >
+                                <TooltipTrigger asChild>
+                                  <span>
+                                    <Button
+                                      className={cn(
+                                        "text-xs",
+                                        !isFullPaymentCardFormValid &&
+                                          "pointer-events-none"
+                                      )}
+                                      disabled={
+                                        !isFullPaymentCardFormValid ||
+                                        isSavingCard ||
+                                        isValidatingAddress
+                                      }
+                                      onClick={() => {
+                                        setHasAttemptedCardSubmit(true)
+                                        if (
+                                          !isFullPaymentCardFormValid ||
+                                          isSavingCard ||
+                                          isValidatingAddress
+                                        )
+                                          return
+                                        if (billingAddressMode !== "new") {
+                                          handleSaveFullPaymentCard()
+                                          return
+                                        }
+                                        handleValidateBillingAddress()
+                                      }}
+                                    >
+                                      Save Card
+                                    </Button>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent visual="gray">
+                                  {billingAddressMode === "saved" &&
+                                  isCardDetailsValid
+                                    ? "Please select a billing address"
+                                    : "Please fill in the required fields"}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  ) : (
+                    cardForm
+                  )
+                })()}
 
                 {/* Bank Account Form */}
                 {paymentMethod === "item-1" && (
@@ -10840,16 +10947,24 @@ export default function PaymentPage() {
       >
         <DialogContent className="max-w-[480px] p-6">
           <h2 className="text-lg font-semibold text-dark-blue-400">
-            {legalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
+            {shownLegalDialog === "privacy"
+              ? "Privacy Policy"
+              : "Terms & Conditions"}
           </h2>
+          <DialogClose asChild>
+            <IconButton
+              variant="ghost"
+              visual="gray"
+              className="absolute right-6 top-6 rounded-full text-gray-500 hover:text-gray-900"
+            >
+              <X className="size-5" />
+            </IconButton>
+          </DialogClose>
           <p className="mt-3 text-sm leading-5 text-gray-500">
-            {legalDialog === "privacy"
+            {shownLegalDialog === "privacy"
               ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
               : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
           </p>
-          <div className="mt-6 flex justify-end">
-            <Button onClick={() => setLegalDialog(null)}>Close</Button>
-          </div>
         </DialogContent>
       </Dialog>
     </>
