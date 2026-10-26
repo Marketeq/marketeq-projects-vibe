@@ -7,8 +7,10 @@ import {
   findFavoriteByItemId,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import { cn } from "@/utils/functions"
 import {
   Check,
+  Clock,
   Copy,
   Edit03,
   MarkerPin02,
@@ -16,11 +18,11 @@ import {
   Star,
   Stars02,
   Trash2,
+  Watch,
 } from "@blend-metrics/icons"
 import NextImage from "./next-image"
 import NextLink from "./next-link"
 import {
-  Badge,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -74,6 +76,12 @@ interface TalentNetworkStatusCardProps {
   onRemove?: () => void
   /** Bucket from contracts-service. My Team's Talent Network tab only. */
   status: TalentNetworkCardStatus
+  /**
+   * Drives the avatar dot: "available" | "limited" | "unavailable", straight
+   * from the profile's availability field. Unset renders the green state,
+   * which is what the card did unconditionally before.
+   */
+  availability?: string | null
 }
 
 /**
@@ -124,22 +132,29 @@ function useVisibleSkills(skills: string[]) {
   return { containerRef, visibleCount }
 }
 
-const STATUS_BADGE: Record<
-  TalentNetworkCardStatus,
-  { label: string; className?: string }
-> = {
-  active: {
-    label: "Active",
-    className: "border border-success-200 bg-success-50 text-success-700",
-  },
-  past: {
-    label: "Ended",
-    className: "border border-gray-200 bg-white text-gray-600",
-  },
-  pending: {
-    label: "Invitation pending",
-  },
-}
+/**
+ * The availability dot on the avatar. The Figma draws three states on the
+ * Talent Network cards — green check, amber clock, red watch — at
+ * 29×29 with a 2.71875px white ring and a 15px glyph. Colours are the
+ * design-system feedback tokens the file names, each of which already exists
+ * in tailwind.config.ts at exactly the Figma value: Success/500 #12B76A,
+ * Warning/400 #FDB022, Error/500 #F04438.
+ *
+ * Anything we do not recognise falls back to "available", which is what the
+ * card rendered unconditionally before these states existed.
+ */
+const AVAILABILITY_INDICATOR = {
+  available: { className: "bg-success-500", Icon: Check },
+  limited: { className: "bg-warning-400", Icon: Clock },
+  unavailable: { className: "bg-error-500", Icon: Watch },
+} as const
+
+type AvailabilityKey = keyof typeof AVAILABILITY_INDICATOR
+
+const resolveAvailability = (value?: string | null): AvailabilityKey =>
+  value && value in AVAILABILITY_INDICATOR
+    ? (value as AvailabilityKey)
+    : "available"
 
 /**
  * Fork of TalentSearchCard's "card" variant, scoped to My Team's Talent
@@ -169,10 +184,10 @@ export const TalentNetworkStatusCard = ({
   imageLoading = "lazy",
   showOptionsMenu = false,
   onRemove,
-  status,
+  availability,
 }: TalentNetworkStatusCardProps) => {
   const { containerRef, visibleCount } = useVisibleSkills(skillsList)
-  const statusBadge = STATUS_BADGE[status]
+  const indicator = AVAILABILITY_INDICATOR[resolveAvailability(availability)]
 
   const handleFavoriteToggle = useCallback(
     async (pressed: boolean) => {
@@ -204,7 +219,11 @@ export const TalentNetworkStatusCard = ({
   )
 
   return (
-    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[440px]">
+    // Figma card: 418px tall (342 body + 76 skills footer), 6px radius,
+    // 1px #EAECF0 border, 0px 2px 5px rgba(0,0,0,.04). The 440px this used to
+    // carry was height added for the status badge, which left a dead gap above
+    // the footer once the badge came out.
+    <article className="bg-white border rounded-[6px] border-gray-200 shadow-[0px_2px_5px_0px_rgba(0,0,0,.04)] overflow-hidden flex flex-col min-h-[418px]">
       <div className="p-5">
         <div className="relative">
           <NextLink href={profileHref} className="block">
@@ -282,9 +301,16 @@ export const TalentNetworkStatusCard = ({
             )}
           </div>
 
-          <div className="absolute grid rounded-full shrink-0 border-[2.53px] bg-white size-[29.53px] -left-[7px] -bottom-1 border-white">
-            <div className="bg-success-500 flex items-center justify-center rounded-full text-white">
-              <Check className="size-[13.97px]" />
+          {/* Figma "_Avatar online indicator": 29×29, 2.71875px white ring,
+              14.5px radius, 15px glyph. */}
+          <div className="absolute grid rounded-[14.5px] shrink-0 border-[2.71875px] bg-white size-[29px] -left-[7px] -bottom-1 border-white">
+            <div
+              className={cn(
+                "flex items-center justify-center rounded-full text-white",
+                indicator.className
+              )}
+            >
+              <indicator.Icon className="size-[15px]" />
             </div>
           </div>
         </div>
@@ -341,16 +367,11 @@ export const TalentNetworkStatusCard = ({
             </span>
           </div>
 
-          <div className="mt-6 flex items-center">
-            <Badge
-              visual="gray"
-              size="sm"
-              variant="rounded"
-              className={statusBadge.className}
-            >
-              {statusBadge.label}
-            </Badge>
-          </div>
+          {/* The Figma's Talent Network card carries no hire-status badge —
+              it ends at the rating row. The Active / Invitation pending /
+              Ended pill this card used to render was never in the design, so
+              it is gone. `status` stays on the props so the bucket is still
+              available if that decision is revisited. */}
         </div>
       </div>
 

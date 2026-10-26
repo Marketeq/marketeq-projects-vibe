@@ -165,9 +165,12 @@ interface TalentMember {
   country: string
   localTime: string
   rate: string
+  projects: number
   skills: string[]
   email?: string
   company?: string
+  /** Profile availability, drives the card's avatar indicator. */
+  availability?: string | null
   /** Bucket from contracts-service. Drives the Status column and badge. */
   status: TalentNetworkStatus
 }
@@ -1241,6 +1244,8 @@ function mapUserToTalent(
 
   // The master mapper hardcodes a placeholder experience string. Where the
   // profile actually carries work history, derive the real figure instead.
+  // getUserById returns the relation twice — spread as `experiences` and
+  // aliased to `experience` — so either name works; keep the singular.
   let experience = card.experience
   if (u.experience?.length) {
     const earliest = u.experience.reduce((min: string, e: any) => {
@@ -1257,6 +1262,26 @@ function mapUserToTalent(
     experience = `${yearsExp} years of experience`
   }
 
+  // The master mapper hardcodes "7:30pm local time" for everyone. Where the
+  // profile carries a zone, show the talent's actual local time instead.
+  let localTime = card.localTime
+  if (u.timezone) {
+    try {
+      const clock = new Intl.DateTimeFormat("en-US", {
+        timeZone: u.timezone,
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+        .format(new Date())
+        .toLowerCase()
+        .replace(/\s/g, "")
+      localTime = `${clock} local time`
+    } catch {
+      // An unknown zone string must not take the card down.
+    }
+  }
+
   return {
     id: card.id,
     username: card.username,
@@ -1264,12 +1289,17 @@ function mapUserToTalent(
     handle: card.handle,
     role: card.role,
     avatarSrc: card.photo,
-    rating: card.rating,
+    // The master mapper reads `u.rating`, which this endpoint does not return —
+    // the profile carries the figure as `clientSuccessRating`, so prefer that
+    // and keep the mapper's value as the fallback.
+    rating: Number(u.clientSuccessRating) || card.rating,
     experience,
     country: card.country,
-    localTime: card.localTime,
+    localTime,
     rate: card.rate,
+    projects: card.projects,
     skills: card.skills,
+    availability: u.availability,
     status,
   }
 }
@@ -1899,9 +1929,11 @@ export default function MyTeam() {
                   country={member.country}
                   localTime={member.localTime}
                   rating={member.rating}
+                  projects={member.projects}
                   skills={member.skills}
                   profileHref={`/talent-profile?username=${member.username}`}
                   status={member.status}
+                  availability={member.availability}
                   isFavorited={favoritedItems.has(String(member.id))}
                   onFavoriteChange={(favorited) => {
                     setFavoritedItems((prev) => {
