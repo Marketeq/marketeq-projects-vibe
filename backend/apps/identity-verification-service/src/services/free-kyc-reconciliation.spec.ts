@@ -1,3 +1,4 @@
+import { computeHostedKycCycleAttemptCount } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { FreeKycService, HOME_COUNTRY_CONFIRMATION_WINDOW_MS } from './free-kyc.service';
 import { computeDiditSignatureV2 } from '../providers/webhooks/didit-webhook-signature-v2';
 import { buildVerificationSummary } from '../common/status/verification-summary';
@@ -27,6 +28,7 @@ import {
 } from '../providers/biometric-session/hosted-biometric-session.errors';
 import {
   HomeCountryConfirmationRequiredException,
+  KycNotStartableException,
   KycReconciliationUnavailableException,
   VendorOutcomeUnknownException,
   VendorStageUnavailableException,
@@ -261,11 +263,237 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
   };
 
   // ------------------------------------------------------------------
-  describe('resuming an existing active session needs no new home-country confirmation', () => {
+  // A session retired after its confirmation window ends as ABANDONED. A late Didit
+  // event for it must never disturb the flow that replaced it.
+  describe('late Didit events for a retired (superseded) session', () => {
+    const retired = (over: Row = {}) =>
+      unfinished(HostedKycSessionStatus.ABANDONED, { createdAt: new Date(T0.getTime() - 60 * 60_000), ...over });
+    const replacement = (status = HostedKycSessionStatus.CREATED) =>
+      unfinished(status, { id: 'row-2', diditSessionId: 'didit-2', vendorReference: '22222222-2222-2222-2222-222222222222', createdAt: new Date(T0.getTime() - 10_000) });
+    const withReplacement = () =>
+      world({ profile: inProgressProfile(), sessions: [retired(), replacement()] });
+
+    it.each(['Approved', 'Declined', 'In Review'])('late %s for the retired session changes nothing while a replacement exists', async (status) => {
+      const w = withReplacement();
+      await w.webhook('didit-1', status);
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(sessionStatus(w, 'didit-2')).toBe(HostedKycSessionStatus.CREATED);
+      expect(w.attempts).toHaveLength(0);
+      expect(w.published).toHaveLength(0); // no identity_verified event
+    });
+
+    it('the retry cycle is untouched by a late Approved/Declined of the retired session', async () => {
+      const w = withReplacement();
+      await w.webhook('didit-1', 'Declined');
+      await w.webhook('didit-1', 'Approved');
+      expect(computeHostedKycCycleAttemptCount(w.sessions, new Set(w.attempts.map((a) => a.vendorSessionId)))).toBe(0);
+    });
+
+    it('the replacement still decides the profile normally afterwards', async () => {
+      const w = withReplacement();
+      await w.webhook('didit-1', 'Approved'); // ignored
+      await w.webhook('didit-2', 'Approved');
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(sessionStatus(w, 'didit-2')).toBe(HostedKycSessionStatus.APPROVED);
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+    });
+
+    it('with NO replacement the late event is the current session\'s genuine decision and applies as before', async () => {
+      const approved = world({ profile: inProgressProfile(), sessions: [retired()] });
+      await approved.webhook('didit-1', 'Approved');
+      expect(identity(approved)).toBe(IdentityVerificationStatus.VERIFIED);
+      const declined = world({ profile: inProgressProfile(), sessions: [retired()] });
+      await declined.webhook('didit-1', 'Declined');
+      expect(identity(declined)).toBe(IdentityVerificationStatus.FAILED);
+      expect(declined.attempts).toHaveLength(1);
+    });
+
+    it('end to end: expire → retire → re-confirm → new session; the old session\'s late Approved cannot verify the profile', async () => {
+      const staleAt = new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS);
+      const w = world({
+        profile: inProgressProfile({ verifiedHomeCountryConfirmedAt: staleAt }),
+        sessions: [unfinished(HostedKycSessionStatus.IN_PROGRESS, { confirmedAt: staleAt })],
+      });
+      const refused = await reasonOf(w.service.startOrResume('user-1'));
+      expect(refused?.reason).toBe('confirmation_stale');
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+
+      w.profile.verifiedHomeCountryConfirmedAt = new Date(); // the user confirms their location again
+      await expect(w.service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      expect(w.sessions).toHaveLength(2);
+      const fresh = w.sessions[1];
+      expect(fresh.confirmedAt).toEqual(w.profile.verifiedHomeCountryConfirmedAt);
+
+      await w.webhook('didit-1', 'Approved'); // the old tab finished late
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(w.published).toHaveLength(0);
+
+      await w.webhook(fresh.diditSessionId, 'Approved');
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    it('reconciling the replacement is unaffected by the retired session', async () => {
+      const w = withReplacement();
+      w.decide('didit-2', { status: 'Declined' });
+      await w.service.reconcileForUser('user-1');
+      expect(sessionStatus(w, 'didit-2')).toBe(HostedKycSessionStatus.DECLINED);
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(w.attempts).toHaveLength(1);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  // Concurrency: stale session A is retired, a fresh confirmation starts replacement B,
+  // and A's Didit event arrives at the same time. createNew (session insert + profile
+  // status) and applyTransition (superseded check + outcome) both run in a transaction
+  // that locks the profile row, so exactly one of them goes first; the FIFO transaction
+  // stand-in in world() models that row lock.
+  describe('concurrency: retired A, replacement B and A\'s late event', () => {
+    const deferred = () => {
+      let resolve!: () => void;
+      const promise = new Promise<void>((r) => (resolve = r));
+      return { promise, resolve };
+    };
+    const settle = () => new Promise<void>((r) => setImmediate(r));
+
+    // A was started under a confirmation that has since expired; a start refuses and
+    // retires it; the user then confirms again.
+    async function retiredThenReconfirmed() {
+      const staleAt = new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS);
+      const w = world({
+        profile: inProgressProfile({ verifiedHomeCountryConfirmedAt: staleAt }),
+        sessions: [unfinished(HostedKycSessionStatus.IN_PROGRESS, { confirmedAt: staleAt })],
+      });
+      expect((await reasonOf(w.service.startOrResume('user-1')))?.reason).toBe('confirmation_stale');
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+      w.profile.verifiedHomeCountryConfirmedAt = new Date();
+      return w;
+    }
+
+    it.each(['Approved', 'Declined', 'In Review'])(
+      'A\'s %s arriving while B is being stored waits for B and is then ignored: only B controls the profile',
+      async (status) => {
+        const w = await retiredThenReconfirmed();
+        // Hold B's insert open (inside the createNew transaction, row lock held).
+        const reached = deferred();
+        const release = deferred();
+        const realSave = w.sessionRepository.save.getMockImplementation()!;
+        w.sessionRepository.save.mockImplementation(async (d: Row) => {
+          if (d.confirmedAt && d.diditSessionId !== 'didit-1') {
+            reached.resolve();
+            await release.promise;
+          }
+          return realSave(d);
+        });
+
+        const start = w.service.startOrResume('user-1');
+        await reached.promise;
+        const late = w.webhook('didit-1', status); // arrives while B's transaction is open
+        await settle();
+        expect(identity(w)).toBe(IdentityVerificationStatus.UNSTARTED); // A (retired) has not touched the profile; B is not committed yet
+        release.resolve();
+        await expect(start).resolves.toEqual({ url: HOSTED_URL });
+        await late;
+
+        expect(w.sessions).toHaveLength(2); // exactly one replacement
+        expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+        expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.ABANDONED);
+        expect(w.attempts).toHaveLength(0); // A consumed no attempt
+        expect(w.published).toHaveLength(0);
+
+        await w.webhook(w.sessions[1].diditSessionId, 'Approved'); // B alone decides
+        expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      },
+    );
+
+    it('A\'s event landing BEFORE B is stored decides as the current session; the start then re-checks and refuses (Approved / In Review)', async () => {
+      for (const [status, expected] of [
+        ['Approved', IdentityVerificationStatus.VERIFIED],
+        ['In Review', IdentityVerificationStatus.PENDING],
+      ] as const) {
+        const w = await retiredThenReconfirmed();
+        const reached = deferred();
+        const release = deferred();
+        const realCreate = w.provider.createKycSession.getMockImplementation()!;
+        w.provider.createKycSession.mockImplementation(async (i: any) => {
+          reached.resolve();
+          await release.promise;
+          return realCreate(i);
+        });
+        const start = w.service.startOrResume('user-1');
+        await reached.promise; // Didit is being called; nothing stored yet
+        await w.webhook('didit-1', status);
+        release.resolve();
+        await expect(start).rejects.toBeInstanceOf(KycNotStartableException);
+        expect(identity(w)).toBe(expected); // never overwritten back to in_progress
+        expect(w.sessions).toHaveLength(1); // no replacement stored
+        expect(w.attempts).toHaveLength(0);
+      }
+    });
+
+    it('A\'s Declined landing BEFORE B is stored is its genuine decline (one attempt); the start then creates exactly one B', async () => {
+      const w = await retiredThenReconfirmed();
+      const reached = deferred();
+      const release = deferred();
+      const realCreate = w.provider.createKycSession.getMockImplementation()!;
+      w.provider.createKycSession.mockImplementation(async (i: any) => {
+        reached.resolve();
+        await release.promise;
+        return realCreate(i);
+      });
+      const start = w.service.startOrResume('user-1');
+      await reached.promise;
+      await w.webhook('didit-1', 'Declined');
+      expect(identity(w)).toBe(IdentityVerificationStatus.FAILED);
+      release.resolve();
+      await expect(start).resolves.toEqual({ url: HOSTED_URL });
+      expect(w.sessions).toHaveLength(2);
+      expect(identity(w)).toBe(IdentityVerificationStatus.IN_PROGRESS);
+      expect(w.attempts).toHaveLength(1);
+    });
+
+    it('two simultaneous starts after the re-confirmation create only one replacement', async () => {
+      const w = await retiredThenReconfirmed();
+      const [first, second] = await Promise.all([w.service.startOrResume('user-1'), w.service.startOrResume('user-1')]);
+      expect(first).toEqual({ url: HOSTED_URL });
+      expect(second).toEqual({ url: HOSTED_URL });
+      expect(w.sessions).toHaveLength(2);
+      expect(w.sessions[1].confirmedAt).toEqual(w.profile.verifiedHomeCountryConfirmedAt);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    it('a decision that lands while the stale session is being retired is kept, not overwritten by the retirement', async () => {
+      const staleAt = new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS);
+      const w = world({
+        profile: inProgressProfile({ verifiedHomeCountryConfirmedAt: staleAt }),
+        sessions: [unfinished(HostedKycSessionStatus.IN_PROGRESS, { confirmedAt: staleAt })],
+      });
+      // Didit approves A between the start's read and its retirement (the reconcile read says in progress).
+      const realFind = w.sessionRepository.findOne.getMockImplementation()!;
+      let injected = false;
+      w.sessionRepository.findOne.mockImplementation(async (q: any) => {
+        const row = await realFind(q);
+        if (!injected && q?.lock && row?.diditSessionId === 'didit-1') {
+          injected = true;
+          row.status = HostedKycSessionStatus.APPROVED; // the webhook committed first
+          w.profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
+        }
+        return row;
+      });
+      const r = await reasonOf(w.service.startOrResume('user-1'));
+      expect(r?.type).toBeInstanceOf(KycNotStartableException);
+      expect(identity(w)).toBe(IdentityVerificationStatus.VERIFIED);
+      expect(sessionStatus(w, 'didit-1')).toBe(HostedKycSessionStatus.APPROVED);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('resuming an existing active session needs no NEW confirmation, only a current one (15 minutes)', () => {
     const cases: Array<[string, Row]> = [
       ['a fresh confirmation', {}],
-      ['a stale confirmation (older than 15 minutes)', { verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }],
-      ['no confirmation at all (absent, location not verified)', { verifiedHomeCountryConfirmedAt: null, verifiedHomeCountry: null, locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }],
       ['travel mode active', { travelModeActive: true, travelClassification: TravelClassification.TEMPORARILY_TRAVELING }],
     ];
 
@@ -275,6 +503,35 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       expect((w.provider.createKycSession.mock.calls[0] as any[])[0].vendorData).toBe(REF);
       expect(w.sessionRepository.create).not.toHaveBeenCalled();
       expect(w.sessions).toHaveLength(1);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    const expired: Array<[string, Row]> = [
+      ['a stale confirmation (older than 15 minutes)', { verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }],
+      ['no confirmation at all (absent, location not verified)', { verifiedHomeCountryConfirmedAt: null, verifiedHomeCountry: null, locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }],
+    ];
+
+    it.each(expired)('does NOT resume with %s: retires the session (no attempt), starts nothing, requires location', async (_label, over) => {
+      const w = world({ profile: inProgressProfile(over), sessions: [unfinished()] });
+      const r = await reasonOf(w.service.startOrResume('user-1'));
+      expect(r?.type).toBeInstanceOf(HomeCountryConfirmationRequiredException);
+      expect(w.provider.createKycSession).not.toHaveBeenCalled();
+      expect(w.sessions).toHaveLength(1);
+      expect(w.sessions[0].status).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    it('after a fresh confirmation the next start creates ONE new session; still no attempt consumed', async () => {
+      const w = world({
+        profile: inProgressProfile({ verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }),
+        sessions: [unfinished()],
+      });
+      await reasonOf(w.service.startOrResume('user-1')); // direct start after expiry: refused, session retired
+      w.profile.verifiedHomeCountryConfirmedAt = new Date(); // the user re-confirms the home country
+      await expect(w.service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      expect(w.provider.createKycSession).toHaveBeenCalledTimes(1);
+      expect((w.provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(REF);
+      expect(w.sessions).toHaveLength(2);
       expect(w.attempts).toHaveLength(0);
     });
   });

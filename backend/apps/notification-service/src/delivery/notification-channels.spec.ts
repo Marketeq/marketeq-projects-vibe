@@ -57,7 +57,7 @@ function rig() {
   const service = new NotificationService(notifRepo, prefRepo, idempotencyRepo, ably, brevo);
   jest.spyOn(service, 'getUnreadCount').mockResolvedValue(1);
   const monitor = new NotificationDeliveryMonitor();
-  const delivery = new NotificationDeliveryService(service, monitor);
+  const delivery = new NotificationDeliveryService(service, monitor, {} as any);
 
   // A minimal broker: queues, delayed retry queues and the acknowledgment calls.
   const queues = new Map<string, any[]>();

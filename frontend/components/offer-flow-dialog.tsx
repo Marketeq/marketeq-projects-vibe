@@ -11,6 +11,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
+import { talentProfileUrl } from "@/src/lib/listing-urls"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   Alert,
@@ -73,6 +74,13 @@ interface OfferFlowDialogProps {
   onCounterOffer?: () => void
   onDecline?: () => void
   onAccept?: () => void
+  /** BTB-292: the client's own view of their still-open, not-yet-countered
+   * sent offer — EC-043 (talent-response actions must never render for the
+   * offer's own client). Distinct from onLiveExpiredEditOffer/
+   * onLiveExpiredResendOffer below, which only fire once the offer has
+   * actually expired. */
+  onWithdrawOffer?: () => void
+  onEditOffer?: () => void
   onBack?: () => void
   onCancelAccept?: () => void
   onCancelDecline?: () => void
@@ -85,6 +93,10 @@ interface OfferFlowDialogProps {
   // already wired to different (declined-offer) targets at the call site.
   liveWithdrawn?: boolean
   liveCounterWithdrawn?: boolean
+  /** BTB-367: the counter's own live status is DECLINED, not WITHDRAWN —
+   * a distinct terminal notice (counter declined, offer restored to
+   * PENDING), not a third way to spell "withdrawn." */
+  liveCounterDeclined?: boolean
   liveExpired?: boolean
   /** Talent's single recovery button label — stays one button with a
    * switching label, matching the existing hand-rolled expired dialog. */
@@ -167,6 +179,8 @@ export function OfferFlowDialog({
   onCounterOffer,
   onDecline,
   onAccept,
+  onWithdrawOffer,
+  onEditOffer,
   onBack,
   onCancelAccept,
   onCancelDecline,
@@ -174,6 +188,7 @@ export function OfferFlowDialog({
   onEditTerms,
   liveWithdrawn = false,
   liveCounterWithdrawn = false,
+  liveCounterDeclined = false,
   liveExpired = false,
   talentAskNowLabel = "Ask Now",
   onTalentRecoveryAction,
@@ -566,10 +581,23 @@ export function OfferFlowDialog({
                         </Avatar>
                         <span className="truncate text-dark-blue-400">
                           {data.senderDisplayName.split(/\s+/)[0]}
-                          <span className="text-primary-500">
-                            {data.senderUsername ||
-                              `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                          </span>
+                          {/* BTB-369: only the client sees the talent's real
+                          username here — link to their profile. The talent
+                          side shows the client's handle, which has no public
+                          profile page, so it stays plain text. */}
+                          {clientPerspective && data.senderUsername ? (
+                            <NextLink
+                              href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                              className={INLINE_LINK_CLASS}
+                            >
+                              {data.senderUsername}
+                            </NextLink>
+                          ) : (
+                            <span className="text-primary-500">
+                              {data.senderUsername ||
+                                `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </div>
@@ -587,34 +615,43 @@ export function OfferFlowDialog({
                   </Button>
                 </div>
 
-                <div className="grid grid-cols-[162px_1fr] gap-6 border-y border-gray-100 py-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field (label + value as siblings in
+                the same grid-cols-[162px_1fr]), not two independent stacked
+                columns. Two stacks drift apart the moment any one value's
+                row is a different height than its label's (here, Work
+                Schedule's value is a flex row of two differently-sized
+                spans) — nothing after that point in the column keeps the
+                same row again, and the gap compounds downward, worst at
+                the last field. A per-row grid can't drift: each row sizes
+                to its own tallest cell, independent of every other row. */}
+                <div className="space-y-4 border-y border-gray-100 py-6">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">
                       Offer Rate
                     </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Role
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Contract Duration
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Work Schedule
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Start Date
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-400">
                       {data.offerRate}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
                     </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.role}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.duration}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
                     </div>
                     <div className="flex items-center gap-1 text-dark-blue-400">
                       <span className="text-sm font-medium leading-[18px]">
@@ -633,6 +670,11 @@ export function OfferFlowDialog({
                           up to 30 hrs/week
                         </span>
                       ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
                     </div>
                     <div className="text-sm font-medium leading-[22px] text-dark-blue-400">
                       {data.startDate}
@@ -742,9 +784,21 @@ export function OfferFlowDialog({
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                     Counter offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-369: client view names the talent (real profile,
+                    link it); talent view names the client (no public
+                    profile, stays plain text). */}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -797,17 +851,34 @@ export function OfferFlowDialog({
                     ) : null}
                   </div>
 
+                  {/* BTB-368: a pending counter (client view) needs Message
+                  AND Offer History together — this used to be an
+                  either/or toggle, which is why some entry points showed
+                  one and not the other. The talent side keeps just Offer
+                  History (unchanged, out of this ticket's scope). */}
                   {clientPerspective ? (
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      className="w-[104px] px-2"
-                      leftIcon={<MessageSquare className="size-[15px]" />}
-                      onClick={onMessage}
-                    >
-                      Message
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<MessageSquare className="size-[15px]" />}
+                        onClick={onMessage}
+                      >
+                        Message
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<Repeat className="size-[15px]" />}
+                        onClick={onOfferHistory}
+                      >
+                        Offer History
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       variant="outlined"
@@ -824,25 +895,40 @@ export function OfferFlowDialog({
 
                 <div className="border-t border-gray-100" />
 
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field, same reasoning as the
+                Declined/Withdrawn block above — two independent stacked
+                columns drift apart the instant one value's row (here, the
+                "(was X)" annotation under Rate, or Work Schedule's
+                two-span row) is a different height than its label's. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-400">Rate</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
-                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="relative flex items-center gap-1.5 leading-[18px]">
                       <ArrowUp className="absolute -left-5 size-3.5 text-success-400" />
                       <span className="text-sm font-bold text-dark-blue-400">{data.offerRate}</span>
-                      {data.originalOfferRate ? (
+                      {/* BTB-366: equality-gated, not truthiness-only —
+                      page.tsx now always sets originalOfferRate (the real
+                      original offer's rate, never notification metadata),
+                      so a bare `?` would show "(was $X)" next to an
+                      unchanged $X on every offer, not just a genuine
+                      counter-proposed change. Matches
+                      chats-comp.tsx's own counterTermChanges gate. */}
+                      {data.originalOfferRate &&
+                      data.originalOfferRate !== data.offerRate ? (
                         <span className="text-xs font-medium text-gray-400">(was {data.originalOfferRate})</span>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Role</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.role}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Contract Duration</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.duration}</div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Work Schedule</div>
                     <div className="flex items-center gap-1 text-dark-blue-500">
                       <span className="text-sm font-medium leading-[18px]">
                         {data.schedule.startsWith("Full Time") ? "Full Time" : data.schedule.startsWith("Part Time") ? "Part Time" : data.schedule}
@@ -853,6 +939,9 @@ export function OfferFlowDialog({
                         <span className="text-xs leading-[18px]">up to 30 hrs/week</span>
                       ) : null}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">Start Date</div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">{data.startDate}</div>
                   </div>
                 </div>
@@ -878,6 +967,12 @@ export function OfferFlowDialog({
                 <div className="flex h-[60px] items-center border-t border-gray-200 p-3">
                   <span className="pl-3 text-sm font-medium text-gray-500">
                     This counter offer has been withdrawn.
+                  </span>
+                </div>
+              ) : liveCounterDeclined ? (
+                <div className="flex h-[60px] items-center border-t border-gray-200 p-3">
+                  <span className="pl-3 text-sm font-medium text-gray-500">
+                    This counter offer has been declined.
                   </span>
                 </div>
               ) : liveExpired ? (
@@ -946,11 +1041,28 @@ export function OfferFlowDialog({
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
-                    Offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername ||
-                        `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-292: this screen is reached by whoever is viewing
+                    a still-open, not-yet-countered offer — that's the
+                    TALENT when it's the client's offer they received, but
+                    it's also the CLIENT when it's her own just-sent offer
+                    (same event shape, no counter yet). "Offer from" is only
+                    correct for the former; the latter needs "Your offer
+                    to" (BTB-369's link guard — named party is the talent
+                    only when clientPerspective — still holds either way). */}
+                    {clientPerspective ? "Your offer to" : "Offer from"}{" "}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername ||
+                          `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -1030,34 +1142,36 @@ export function OfferFlowDialog({
 
                 <div className="border-t border-gray-100" />
 
-                <div className="grid h-44 grid-cols-[162px_1fr] gap-6">
-                  <div className="space-y-4">
+                {/* BTB-350: one row per field — same reasoning as the
+                other two detail blocks in this file. */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
                     <div className="text-[15px] font-semibold leading-6 text-dark-blue-500">
                       Offer Rate
                     </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Role
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Contract Duration
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Work Schedule
-                    </div>
-                    <div className="text-sm leading-[22px] text-gray-500">
-                      Start Date
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
                     <div className="text-[16px] font-semibold leading-[18px] text-dark-blue-500">
                       {data.offerRate}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Role
                     </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.role}
                     </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Contract Duration
+                    </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.duration}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Work Schedule
                     </div>
                     <div className="flex items-center gap-1 text-dark-blue-500">
                       <span className="text-sm font-medium leading-[18px]">
@@ -1076,6 +1190,11 @@ export function OfferFlowDialog({
                           up to 30 hrs/week
                         </span>
                       ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-[162px_1fr] gap-6">
+                    <div className="text-sm leading-[22px] text-gray-500">
+                      Start Date
                     </div>
                     <div className="text-sm font-medium leading-[18px] text-dark-blue-500">
                       {data.startDate}
@@ -1127,38 +1246,69 @@ export function OfferFlowDialog({
                       This offer expires {data.expiresLabel}
                     </p>
 
-                    <div className="flex h-9 items-start gap-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        className="w-[109px]"
-                        onClick={onCounterOffer}
-                        disabled={offline}
-                      >
-                        Counter Offer
-                      </Button>
-                      <div className="flex flex-1 items-center justify-end gap-3">
+                    {/* BTB-292/EC-043: this is the one real root cause —
+                    this branch used to render Counter/Decline/Accept
+                    unconditionally, with no clientPerspective check at
+                    all (every other variant in this file already checks
+                    it). A client viewing her own still-open sent offer
+                    needs Withdraw/Edit instead — talent-response actions
+                    must never render for the offer's own client, and
+                    vice versa. */}
+                    {clientPerspective ? (
+                      <div className="flex h-9 items-start gap-3">
                         <Button
-                          variant="ghost"
+                          variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-[105px]"
-                          disabled={declineLoading || offline}
-                          onClick={onDecline}
+                          onClick={onWithdrawOffer}
+                          disabled={offline}
                         >
-                          {declineLoading ? "Declining..." : "Decline Offer"}
+                          Withdraw Offer
                         </Button>
                         <Button
+                          variant="outlined"
+                          visual="gray"
                           size="sm"
-                          className="w-[103px]"
+                          onClick={onEditOffer}
                           disabled={offline}
-                          onClick={onAccept}
                         >
-                          Accept Offer
+                          Edit Offer
                         </Button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex h-9 items-start gap-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="w-[109px]"
+                          onClick={onCounterOffer}
+                          disabled={offline}
+                        >
+                          Counter Offer
+                        </Button>
+                        <div className="flex flex-1 items-center justify-end gap-3">
+                          <Button
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="w-[105px]"
+                            disabled={declineLoading || offline}
+                            onClick={onDecline}
+                          >
+                            {declineLoading ? "Declining..." : "Decline Offer"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="w-[103px]"
+                            disabled={offline}
+                            onClick={onAccept}
+                          >
+                            Accept Offer
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -1184,9 +1334,21 @@ export function OfferFlowDialog({
                     ) : (
                       <>
                         Offer from{" "}
-                        <span className="text-primary-500">
-                          {data.senderUsername}
-                        </span>
+                        {/* BTB-369: Offer History reuses this same title —
+                        link the talent's real username, leave the client's
+                        (no public profile) as plain text. */}
+                        {clientPerspective && data.senderUsername ? (
+                          <NextLink
+                            href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                            className={INLINE_LINK_CLASS}
+                          >
+                            {data.senderUsername}
+                          </NextLink>
+                        ) : (
+                          <span className="text-primary-500">
+                            {data.senderUsername}
+                          </span>
+                        )}
                       </>
                     )}
                   </DialogTitle>

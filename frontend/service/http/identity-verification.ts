@@ -188,6 +188,14 @@ export const IdentityVerificationAPI = {
       checkInAt,
     }),
 
+  // An already-active traveler chose Update > Temporarily traveling (PMCM-651). Changes nothing
+  // about the period; the backend stores a new persistent "Travel Mode is on" alert keyed by
+  // `confirmationId`, which the caller chooses once per click and reuses on a retry.
+  confirmTravelMode: (confirmationId: string) =>
+    AxiosRequest.post("/v1/identity-verification/travel-mode/confirm", {
+      confirmationId,
+    }),
+
   // A revision of the answer that was just saved (the confirmation's Back, then a different
   // duration): the same endpoint WITHOUT checkInAt. The backend updates the duration and
   // restarts the schedule but does not count another check-in; the original occurrence stays

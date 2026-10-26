@@ -62,6 +62,11 @@ export class HostedKycSession {
   @Column({ name: 'pending_home_country', type: 'char', length: 2, nullable: true })
   pendingHomeCountry!: string | null;
 
+  // ORDINARY sessions: the profile's home-country confirmation time at creation.
+  // Null for legacy rows and for home-country-change sessions.
+  @Column({ name: 'confirmed_at', type: 'timestamptz', nullable: true })
+  confirmedAt!: Date | null;
+
   @Column({ name: 'last_event_timestamp', type: 'bigint', nullable: true })
   lastEventTimestamp!: string | null;
 

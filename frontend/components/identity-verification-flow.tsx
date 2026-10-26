@@ -531,6 +531,7 @@ export function IdentityVerificationFlow({
   onBeginVerifying,
   initialState,
   activeTravelModeUpdate,
+  onTravelModeConfirmed,
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
@@ -566,6 +567,11 @@ export function IdentityVerificationFlow({
   // (first-time, or an expired Travel Mode) leaves it unset and behaves exactly
   // as before, including the duration screen.
   activeTravelModeUpdate?: boolean
+  // Called once when `activeTravelModeUpdate` is set and the user chooses "Temporarily
+  // traveling" (the already-active traveler's confirmation). Never called for a first-time
+  // activation, "Permanently relocated", closing or going back. Optional: callers that omit
+  // it behave exactly as before (PMCM-651: the dashboard records the confirmation).
+  onTravelModeConfirmed?: () => void
   // Development preview only (app/identity-verification-preview/): skips the
   // real presigned-URL + R2 upload in handleCapture so every screen can be
   // walked through without storage credentials. Defaults to off and is
@@ -1777,6 +1783,7 @@ export function IdentityVerificationFlow({
               onClick={() => {
                 if (activeTravelModeUpdate) {
                   setTravelModeNotificationOpen(true)
+                  onTravelModeConfirmed?.()
                   onOpenChange(false)
                   return
                 }

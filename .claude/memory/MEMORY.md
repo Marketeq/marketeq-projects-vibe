@@ -11,13 +11,15 @@ Keep THIS file as an index only (under 150 lines). Write details to the topic fi
 - Your agent role file: agents/<your-role>.md
 - Relevant service file: services/<service-name>.md
 - progress.md — to understand dependencies and what's done
+- progress/ — newest per-PR notes (`ls -r`), grep for your service
 - global.md — project conventions (read once, reference as needed)
 
 ## File Map
 ### Global / Cross-Cutting
 - [global.md](.claude/memory/global.md) — conventions, env vars, standards, lessons learned
 - [architecture.md](.claude/memory/architecture.md) — full stack and monorepo details
-- [progress.md](.claude/memory/progress.md) — implementation status and dependencies
+- [progress.md](.claude/memory/progress.md) — implementation status and dependencies (history up to 2026-10-26)
+- [progress/](.claude/memory/progress/README.md) — one file per PR/ticket since 2026-10-26; never append to progress.md or a service file
 
 ### Agent Roles
 - [agents/backend-builder.md](.claude/memory/agents/backend-builder.md)

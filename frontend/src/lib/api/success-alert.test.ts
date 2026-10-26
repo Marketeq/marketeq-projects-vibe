@@ -21,18 +21,16 @@ describe("success alert: sequence (modal unchanged, alert only after Done)", () 
     assert.ok(alertStart >= modalEnd, "the alert is not part of the modal")
   })
 
-  it("Done closes the modal first, then opens the alert — in that order, in one handler", () => {
+  it("Done only closes the modal, in one handler: the persistent Verified card is the notification and no second top-right alert opens", () => {
     assert.match(
       page,
-      /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+setSuccessAlertOpen\(true\)\s+\}/
+      /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+\}/
     )
     assert.ok(modal.includes("<Button onClick={handleSuccessDone}>Done</Button>"))
   })
 
-  it("the alert opens from exactly one place: the Done handler, which only the Done button uses", () => {
-    // Two openers: the Done handler, and (PMCM-653) the reviewed-approval check, which
-    // is pinned in reviewed-approval-result.test.ts and never runs beside the modal.
-    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 2)
+  it("the temporary alert is opened from nowhere any more; the Done handler is used only by the Done button", () => {
+    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 0)
     assert.equal((page.match(/handleSuccessDone/g) ?? []).length, 2) // definition + the Done button
   })
 
