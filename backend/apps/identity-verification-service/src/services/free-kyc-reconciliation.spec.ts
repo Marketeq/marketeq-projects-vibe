@@ -261,11 +261,9 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
   };
 
   // ------------------------------------------------------------------
-  describe('resuming an existing active session needs no new home-country confirmation', () => {
+  describe('resuming an existing active session needs no NEW confirmation, only a current one (15 minutes)', () => {
     const cases: Array<[string, Row]> = [
       ['a fresh confirmation', {}],
-      ['a stale confirmation (older than 15 minutes)', { verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }],
-      ['no confirmation at all (absent, location not verified)', { verifiedHomeCountryConfirmedAt: null, verifiedHomeCountry: null, locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }],
       ['travel mode active', { travelModeActive: true, travelClassification: TravelClassification.TEMPORARILY_TRAVELING }],
     ];
 
@@ -275,6 +273,35 @@ describe('Free KYC resume and reconciliation (Part 2)', () => {
       expect((w.provider.createKycSession.mock.calls[0] as any[])[0].vendorData).toBe(REF);
       expect(w.sessionRepository.create).not.toHaveBeenCalled();
       expect(w.sessions).toHaveLength(1);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    const expired: Array<[string, Row]> = [
+      ['a stale confirmation (older than 15 minutes)', { verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }],
+      ['no confirmation at all (absent, location not verified)', { verifiedHomeCountryConfirmedAt: null, verifiedHomeCountry: null, locationVerificationStatus: LocationVerificationStatus.NOT_VERIFIED }],
+    ];
+
+    it.each(expired)('does NOT resume with %s: retires the session (no attempt), starts nothing, requires location', async (_label, over) => {
+      const w = world({ profile: inProgressProfile(over), sessions: [unfinished()] });
+      const r = await reasonOf(w.service.startOrResume('user-1'));
+      expect(r?.type).toBeInstanceOf(HomeCountryConfirmationRequiredException);
+      expect(w.provider.createKycSession).not.toHaveBeenCalled();
+      expect(w.sessions).toHaveLength(1);
+      expect(w.sessions[0].status).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(w.attempts).toHaveLength(0);
+    });
+
+    it('after a fresh confirmation the next start creates ONE new session; still no attempt consumed', async () => {
+      const w = world({
+        profile: inProgressProfile({ verifiedHomeCountryConfirmedAt: new Date(T0.getTime() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS) }),
+        sessions: [unfinished()],
+      });
+      await reasonOf(w.service.startOrResume('user-1')); // direct start after expiry: refused, session retired
+      w.profile.verifiedHomeCountryConfirmedAt = new Date(); // the user re-confirms the home country
+      await expect(w.service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+      expect(w.provider.createKycSession).toHaveBeenCalledTimes(1);
+      expect((w.provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(REF);
+      expect(w.sessions).toHaveLength(2);
       expect(w.attempts).toHaveLength(0);
     });
   });

@@ -58,6 +58,7 @@ import {
   VendorOutcomeUnknownException,
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
+import { isUnfinishedSessionResumable } from '../common/status/unfinished-session-resumability';
 import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
 import { expireTravelModeIfDue, travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
 import { clearPendingRelocation, hasPendingHomeCountryChange } from '../common/home-country-change/home-country-change';
@@ -222,17 +223,29 @@ export class FreeKycService {
       profile = (await this.profileRepository.findOne({ where: { id: profileId } })) ?? profile;
 
       if (ACTIVE_SESSION_STATUSES.includes(active.status)) {
-        // Still active at Didit: resume it. The session already belongs to this
-        // profile and was started under a valid confirmation, so resuming needs
-        // no (new) home-country confirmation at all. Only creating a NEW session
-        // requires verified location, travel mode off and a fresh confirmation.
-        return this.resume(active, returnOrigin);
+        // Still active at Didit. It is resumed only while the home-country
+        // confirmation it was started under is current (15 minutes) and no newer
+        // confirmation has superseded it; no new confirmation is needed to resume.
+        if (
+          isUnfinishedSessionResumable({
+            confirmedAt: profile.verifiedHomeCountryConfirmedAt,
+            sessionCreatedAt: active.createdAt,
+            nowMs: Date.now(),
+            windowMs: HOME_COUNTRY_CONFIRMATION_WINDOW_MS,
+          })
+        ) {
+          return this.resume(active, returnOrigin);
+        }
+        // Past the window (or superseded): retire it, then fall through to the
+        // new-session rules below, which demand a fresh confirmation (409
+        // confirmation_stale otherwise) before any new Didit session is created.
+        profile = await this.retireStaleUnfinishedSession(active, profile);
+      } else {
+        // Decided at Didit: re-apply the start rules to the updated profile
+        // (verified / pending review => not startable, no new session;
+        // failed_final => limit; failed / unstarted => continue below).
+        this.assertStatusAllowsStart(profile);
       }
-
-      // Decided at Didit: re-apply the start rules to the updated profile
-      // (verified / pending review => not startable, no new session;
-      // failed_final => limit; failed / unstarted => continue below).
-      this.assertStatusAllowsStart(profile);
     }
 
     this.assertHomeCountryConfirmed(profile, { requireFresh: true });
@@ -605,6 +618,27 @@ export class FreeKycService {
       const age = Date.now() - (profile.verifiedHomeCountryConfirmedAt as Date).getTime();
       if (age > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
     }
+  }
+
+  /**
+   * Retires an unfinished session whose confirmation window has passed. It ends
+   * without a decision, exactly like Didit's own Abandoned: no attempt row is
+   * written and abandoned sessions never count toward the retry cycle. The profile
+   * returns to unstarted so the next start follows the new-session rules. A decision
+   * Didit delivers later (webhook) is still applied; only a decided session is final.
+   */
+  private async retireStaleUnfinishedSession(
+    session: HostedKycSession,
+    profile: IdentityVerificationProfile,
+  ): Promise<IdentityVerificationProfile> {
+    session.status = HostedKycSessionStatus.ABANDONED;
+    await this.sessionRepository.save(session);
+    if (profile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS) {
+      profile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
+      await this.profileRepository.save(profile);
+    }
+    this.logger.log('Unfinished session retired: its home-country confirmation expired.');
+    return profile;
   }
 
   private async resume(active: HostedKycSession, returnOrigin?: string): Promise<{ url: string }> {

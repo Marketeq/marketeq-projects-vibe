@@ -1,5 +1,5 @@
 import { VerificationSummaryService } from './verification-summary.service';
-import { DeclaredDuration, HostedKycSessionStatus, IdentityVerificationStatus, LocationVerificationStatus, TravelClassification } from '../entities/enums/identity-verification.enums';
+import { DeclaredDuration, HostedKycSessionPurpose, HostedKycSessionStatus, IdentityVerificationStatus, LocationVerificationStatus, TravelClassification } from '../entities/enums/identity-verification.enums';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 
 describe('VerificationSummaryService (hosted Free KYC data only, read-only)', () => {
@@ -49,6 +49,38 @@ describe('VerificationSummaryService (hosted Free KYC data only, read-only)', ()
     );
     const s = await service.summarize(profile({ identityVerificationStatus: IdentityVerificationStatus.FAILED }), NOW);
     expect(s).toMatchObject({ attemptsUsed: 2, attemptsRemaining: 1, nextAction: 'retry_identity' });
+  });
+
+  describe('15-minute guard on an unfinished session (ordinary verification)', () => {
+    const MIN = 60_000;
+    const inProgress = (confirmedMinAgo: number, over: Row = {}) =>
+      profile({
+        identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS,
+        verifiedHomeCountryConfirmedAt: new Date(NOW - confirmedMinAgo * MIN),
+        pendingHomeCountry: null,
+        ...over,
+      });
+    const unfinished = (createdMinAgo: number, purpose = HostedKycSessionPurpose.IDENTITY_VERIFICATION): Row => ({
+      id: 'r1', profileId: 'profile-1', diditSessionId: 'd1', status: HostedKycSessionStatus.CREATED, purpose,
+      createdAt: new Date(NOW - createdMinAgo * MIN),
+    });
+
+    it('under 15 minutes → continue_identity (the session is resumed)', async () => {
+      const { service } = build([unfinished(9.9)]);
+      expect(await service.summarize(inProgress(10), NOW)).toMatchObject({ nextAction: 'continue_identity', hasActiveSession: true });
+    });
+    it('over 15 minutes → confirm_location (the old session does not bypass location detection)', async () => {
+      const { service } = build([unfinished(19.9)]);
+      expect(await service.summarize(inProgress(20), NOW)).toMatchObject({ nextAction: 'confirm_location' });
+    });
+    it('a fresh confirmation after expiry → start_identity (a new session, not the old one)', async () => {
+      const { service } = build([unfinished(30)]);
+      expect(await service.summarize(inProgress(0.5), NOW)).toMatchObject({ nextAction: 'start_identity' });
+    });
+    it('a home-country-change session keeps its own rules (not subject to this guard)', async () => {
+      const { service } = build([unfinished(40, HostedKycSessionPurpose.HOME_COUNTRY_CHANGE)]);
+      expect(await service.summarize(inProgress(40), NOW)).toMatchObject({ nextAction: 'continue_identity' });
+    });
   });
 
   describe('passes the Travel Mode activation fields through to the rule', () => {
