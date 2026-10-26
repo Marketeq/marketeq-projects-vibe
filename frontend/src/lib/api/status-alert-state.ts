@@ -59,7 +59,6 @@ export interface StatusAlertInputs {
   dismissedLiveKeys?: ReadonlySet<string>
   // GET /me: stable for a login, new for every login.
   loginSessionKey: string | null | undefined
-  nowMs: number
   // undefined while the profile is loading: nothing live is shown until it is known.
   travelModeActive: boolean | undefined
   // Tells one Travel Mode activation from the next (the period's end time from /me is
@@ -156,7 +155,12 @@ export function buildAlertStack(input: StatusAlertInputs): DisplayAlert[] {
           key,
           type: "travel_mode_ongoing",
           ...LIVE_ALERT_COPY.travel_mode_ongoing,
-          createdAtMs: toMs(input.travelModeActivatedAt) ?? input.nowMs,
+          // A live card describes the account's state right now, so without a known activation
+          // time it is newer than every stored alert: it sorts first, and stays first whichever
+          // order the persistent alerts arrive in (no flip between a fresh activation and a
+          // refresh).
+          createdAtMs:
+            toMs(input.travelModeActivatedAt) ?? Number.MAX_SAFE_INTEGER,
         })
       }
     }

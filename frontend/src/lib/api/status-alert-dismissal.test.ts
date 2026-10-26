@@ -43,7 +43,6 @@ const stackFor = (alerts: StatusAlert[], state: DismissalState) =>
     persistent: alerts.filter((a) => a.type === "travel_mode"),
     ...state,
     loginSessionKey: null,
-    nowMs: NOW,
     travelModeActive: undefined,
   })
 
@@ -164,7 +163,6 @@ describe("what is rendered so far", () => {
     const stack = buildAlertStack({
       persistent: [alert(1, "travel_mode", 5)],
       loginSessionKey: "l",
-      nowMs: NOW,
       travelModeActive: true,
     })
     assert.ok(stack.some((a) => a.source === "live"))
@@ -183,7 +181,6 @@ describe("the submitted-for-review alert", () => {
       persistent: [travel, submitted],
       ...state,
       loginSessionKey: null,
-      nowMs: NOW,
       travelModeActive: undefined,
     })
 
@@ -229,7 +226,6 @@ describe("the submitted-for-review alert", () => {
       persistent: [travel, submitted, verified],
       ...empty,
       loginSessionKey: null,
-      nowMs: NOW,
       travelModeActive: undefined,
     }).map((a) => a.type)
     assert.ok(!types.includes("submitted_for_review"))
@@ -245,7 +241,6 @@ describe("the verified alert", () => {
       persistent: [travel, submitted, verified, ...extra],
       ...state,
       loginSessionKey: null,
-      nowMs: NOW,
       travelModeActive: undefined,
     })
 
@@ -304,7 +299,6 @@ describe("the home-country-updated alert", () => {
       persistent: [oldTravel, home],
       ...state,
       loginSessionKey: null,
-      nowMs: NOW,
       travelModeActive: undefined,
     })
 

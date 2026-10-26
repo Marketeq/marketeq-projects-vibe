@@ -81,6 +81,11 @@ import {
 } from "@/src/lib/api/status-alert-dismissal"
 import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
 import {
+  hasNewAlertOfType,
+  isNewTravelActivation,
+  reconcileStatusAlerts,
+} from "@/src/lib/api/status-alert-reconcile"
+import {
   STATUS_ALERT_CLOSE_LABEL,
   STATUS_ALERT_DISMISS_ERROR,
 } from "@/src/lib/api/status-alert-copy"
@@ -248,8 +253,10 @@ export default function TalentDashboard() {
   // not stored: its dismissal is per login (loginSessionKey) and lives in this browser only.
   // A flow opened by its Update action re-reads the summary when it closes (see
   // handleIdentityFlowOpenChange), so the card goes away once Travel Mode has ended.
-  const liveTravelUpdateRef = useRef(false)
-  const [travelSummaryReadAt, setTravelSummaryReadAt] = useState(0)
+  const statusAlertsRef = useRef<StatusAlert[]>([])
+  const alertReconcileGenRef = useRef(0)
+  const previousTravelSummaryRef =
+    useRef<IdentityVerificationSummaryView | null>(null)
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
   const [connectionCheckState, setConnectionCheckState] =
@@ -375,6 +382,52 @@ export default function TalentDashboard() {
       })
   }, [user, travelSummary])
 
+  useEffect(() => {
+    statusAlertsRef.current = statusAlerts
+  }, [statusAlerts])
+  // A page leaving ends any reconciliation still waiting to read.
+  useEffect(
+    () => () => {
+      alertReconcileGenRef.current = -1
+    },
+    []
+  )
+
+  // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
+  // traveler prompt, an Update that starts a new period): /me already says so, but the
+  // persistent "Travel Mode is on" alert is stored asynchronously by notification-service,
+  // so the list read that goes with the summary can run before it exists. Re-read the list a
+  // bounded number of times (about 3 seconds in all, stopping at the first read that has the
+  // new alert); nothing polls, and an unfinished flow, which creates no activation, never
+  // starts this.
+  useEffect(() => {
+    const previous = previousTravelSummaryRef.current
+    previousTravelSummaryRef.current = travelSummary
+    if (!user || !isNewTravelActivation(previous, travelSummary)) return
+    const known = new Set(
+      statusAlertsRef.current
+        .filter((a) => a.type === "travel_mode")
+        .map((a) => a.id)
+    )
+    const generation = ++alertReconcileGenRef.current
+    let latestRequest = 0
+    void reconcileStatusAlerts({
+      list: () => {
+        // The newest read wins over a slower, older one (including the load above).
+        latestRequest = ++statusAlertRequestRef.current
+        return StatusAlertsAPI.list()
+      },
+      isSettled: (alerts) => hasNewAlertOfType(alerts, "travel_mode", known),
+      apply: (alerts) => {
+        if (latestRequest === statusAlertRequestRef.current) {
+          setStatusAlerts(alerts)
+        }
+      },
+      isCurrent: () => generation === alertReconcileGenRef.current,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    })
+  }, [user, travelSummary])
+
   // Which login this is, for the live cards' per-login dismissal. Unknown until the
   // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
   // but also remembers nothing.
@@ -385,9 +438,6 @@ export default function TalentDashboard() {
       dismissedLiveKeys: readLiveDismissals(liveLoginKey, window.localStorage),
     }))
   }, [liveLoginKey])
-  useEffect(() => {
-    if (travelSummary) setTravelSummaryReadAt(Date.now())
-  }, [travelSummary])
   // A live card is dismissed for this login only: hidden now, remembered in this browser
   // under the login's key, and never sent to the backend.
   const handleDismissLiveAlert = useCallback(
@@ -412,7 +462,6 @@ export default function TalentDashboard() {
           // Nothing live is shown while the profile is loading, or while the check-in
           // modal has priority (the same rule as the existing Travel Mode popup).
           loginSessionKey: travelSummary ? liveLoginKey ?? "unkeyed" : undefined,
-          nowMs: travelSummaryReadAt,
           travelModeActive:
             travelSummary && !checkInHasPriorityNow
               ? isTravelModeInForce(travelSummary)
@@ -426,7 +475,6 @@ export default function TalentDashboard() {
       statusAlertDismissal,
       travelSummary,
       liveLoginKey,
-      travelSummaryReadAt,
       checkInHasPriorityNow,
     ]
   )
@@ -907,10 +955,10 @@ export default function TalentDashboard() {
   // The live Travel Mode card's Update: the same flow and the same detection as the popup's
   // Update for a reminder (Travel Mode in force, so "Temporarily traveling" changes nothing).
   // It is not a dismissal: the card stays eligible, and the flow's close re-reads the state.
-  const handleLiveTravelUpdate = useCallback(() => {
-    liveTravelUpdateRef.current = true
-    return handleTravelUpdate("reminder")
-  }, [handleTravelUpdate])
+  const handleLiveTravelUpdate = useCallback(
+    () => handleTravelUpdate("reminder"),
+    [handleTravelUpdate]
+  )
 
   // The new-location prompt's two answers. Each records the choice, then opens the
   // existing verification flow: "currently traveling" on its duration screen, "change my
@@ -938,15 +986,20 @@ export default function TalentDashboard() {
   const handleIdentityFlowOpenChange = useCallback(
     (open: boolean) => {
       setIdentityFlowOpen(open)
-      if (!open && liveTravelUpdateRef.current) {
-        liveTravelUpdateRef.current = false
-        // Re-read so a completed change that ended Travel Mode removes the live card; an
-        // unfinished flow leaves it showing. Nothing else is derived from this read here.
+      const kind = mismatchFlowKindRef.current
+      if (!open && kind === null) {
+        // An ordinary flow closed (Verify My Account, or an Update): re-read /me so what it
+        // completed shows up without a refresh. A finished Travel Mode activation turns the
+        // live "You are in Travel Mode" card on (and, through the effect on travelSummary,
+        // loads and reconciles the persistent alert); a completed change that ended Travel
+        // Mode turns it off; an unfinished flow changes nothing. Only the summary is
+        // updated here: the banner, the prompts and the completion markers are the
+        // mismatch flows' own business, below.
         void fetchIdentityVerificationSummary().then((fresh) => {
           if (fresh) setTravelSummary(fresh)
         })
+        return
       }
-      const kind = mismatchFlowKindRef.current
       if (open || kind === null) return
       mismatchFlowKindRef.current = null
       void fetchIdentityVerificationSummary().then((fresh) => {

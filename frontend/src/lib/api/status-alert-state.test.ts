@@ -33,7 +33,6 @@ const at = (min: number) => new Date(NOW - min * 60_000).toISOString()
 const base = (over: Partial<StatusAlertInputs> = {}): StatusAlertInputs => ({
   persistent: [],
   loginSessionKey: "login-1",
-  nowMs: NOW,
   travelModeActive: false,
   ...over,
 })
@@ -279,10 +278,7 @@ describe("live alerts", () => {
     })
     assert.equal(buildAlertStack({ ...input, ...out.state }).length, 0)
     // same login after a refresh: still dismissed
-    assert.equal(
-      buildAlertStack({ ...input, ...out.state, nowMs: NOW + 1000 }).length,
-      0
-    )
+    assert.equal(buildAlertStack({ ...input, ...out.state }).length, 0)
     // next login: a new loginSessionKey, the stored key no longer matches
     assert.equal(
       buildAlertStack({ ...input, ...out.state, loginSessionKey: "login-2" })
@@ -376,5 +372,22 @@ describe("an approved home-country change ends Travel Mode", () => {
       alert(2, "travel_mode", at(5)),
     ])
     assert.equal(later.length, 2)
+  })
+})
+
+describe("the live card's place in the stack", () => {
+  it("with no known activation time it sorts above every stored alert, however new, so the order never flips between a fresh activation and a refresh", () => {
+    const stack = buildAlertStack(
+      base({
+        persistent: [
+          alert(1, "travel_mode", new Date(NOW + 5_000).toISOString()),
+        ],
+        travelModeActive: true,
+      })
+    )
+    assert.deepEqual(
+      stack.map((a) => a.type),
+      ["travel_mode_ongoing", "travel_mode"]
+    )
   })
 })

@@ -43,7 +43,6 @@ const empty: DismissalState = {
 const inputs = (over: Partial<StatusAlertInputs> = {}): StatusAlertInputs => ({
   persistent: [],
   loginSessionKey: A,
-  nowMs: NOW,
   travelModeActive: true,
   ...over,
 })

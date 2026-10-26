@@ -344,11 +344,11 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
     assert.match(card, /handleLiveTravelUpdate\(\)/)
     assert.match(
       page,
-      /const handleLiveTravelUpdate = useCallback\(\(\) => \{\s+liveTravelUpdateRef\.current = true\s+return handleTravelUpdate\("reminder"\)/
+      /const handleLiveTravelUpdate = useCallback\(\s*\(\) => handleTravelUpdate\("reminder"\),\s*\[handleTravelUpdate\]\s*\)/
     )
     const handler = page.slice(
       page.indexOf("const handleLiveTravelUpdate"),
-      page.indexOf("const handleLiveTravelUpdate") + 400
+      page.indexOf("const handleLiveTravelUpdate") + 300
     )
     assert.doesNotMatch(handler, /dismiss|localStorage|StatusAlertsAPI/i)
   })
@@ -377,16 +377,13 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
       page,
       /travelSummary && !checkInHasPriorityNow\s+\? isTravelModeInForce\(travelSummary\)\s+: undefined/
     )
-    assert.match(
-      page,
-      /travelModeActivatedAt: null,\s+\}\)/
-    )
+    assert.match(page, /travelModeActivatedAt: null,\s+\}\)/)
   })
 
-  it("a flow opened by Update re-reads the summary when it closes, so a completed change removes the card", () => {
+  it("any ordinary flow closing re-reads the summary, so a completed change removes the card (see travel-flow-completion-alerts.test.ts)", () => {
     assert.match(
       page,
-      /if \(!open && liveTravelUpdateRef\.current\) \{\s+liveTravelUpdateRef\.current = false[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
+      /if \(!open && kind === null\) \{[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
     )
   })
 
