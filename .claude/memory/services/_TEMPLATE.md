@@ -26,4 +26,4 @@ Scaffolded / In Progress / Implemented
 (anything tricky discovered during implementation)
 
 ## Agent Log
-(append timestamped notes when multiple agents work on this)
+(Do not append ticket notes here; they go in `.claude/memory/progress/YYYY-MM-DD-<ticket>-<slug>.md`, see `progress/README.md`. Edit the sections above only to correct durable facts in place.)
