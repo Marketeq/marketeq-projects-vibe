@@ -10,7 +10,11 @@
 //   verified              identity-verified:<hostedKycSessionId>
 //   submitted_for_review  submitted-for-review:<hostedKycSessionId>
 //   home_country_updated  home-country-updated:<hostedKycSessionId>
-//   travel_mode           travel-mode:<travelModeActivatedAt ISO>
+//   travel_mode           travel-mode:<travelModeActivatedAt ISO>   (an activation)
+//                         travel-mode-confirmed:<confirmationId>      (an already-active traveler's
+//                         Update > Temporarily traveling; the id is chosen by the client once per
+//                         click and reused on a retry, so a retry or redelivery stores one alert and
+//                         a second click is a new occurrence)
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom, timeout } from 'rxjs';
@@ -43,6 +47,8 @@ export const statusAlertOccurrenceKey = {
   homeCountryUpdated: (hostedKycSessionId: string) =>
     `home-country-updated:${hostedKycSessionId}`,
   travelMode: (activatedAt: Date) => `travel-mode:${activatedAt.toISOString()}`,
+  travelModeConfirmed: (confirmationId: string) =>
+    `travel-mode-confirmed:${confirmationId}`,
 };
 
 const submittedOf = (hostedKycSessionId: string) => ({
@@ -108,6 +114,19 @@ export class StatusAlertPublisher {
       {
         activatedAt: activatedAt.toISOString(),
       },
+      [],
+    );
+  }
+
+  // An already-active traveler confirmed Travel Mode again (Update > Temporarily traveling).
+  // A new occurrence of the same alert type, so it shows again even if the earlier one was
+  // dismissed; nothing is superseded and the period's dates are not touched.
+  travelModeConfirmed(userId: string, confirmationId: string): Promise<boolean> {
+    return this.publish(
+      'travel_mode',
+      userId,
+      statusAlertOccurrenceKey.travelModeConfirmed(confirmationId),
+      { confirmationId },
       [],
     );
   }

@@ -23,6 +23,7 @@ import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
+import { TravelModeConfirmationRequestDto } from '../dto/request/travel-mode-confirmation.request.dto';
 import { KycSessionRequestDto } from '../dto/request/kyc-session.request.dto';
 import { TravelCheckInAnswerRequestDto } from '../dto/request/travel-check-in-answer.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
@@ -146,6 +147,21 @@ export class IdentityVerificationController {
     @Body() dto: TravelDurationRequestDto,
   ): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.recordTravelDuration(req.userId, dto.duration);
+    return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
+  // An already-active traveler chose Update > Temporarily traveling. Records nothing about the
+  // period (dates and duration are untouched) and creates a new persistent "Travel Mode is on"
+  // alert occurrence keyed by the client's confirmationId (a retry with the same id is stored
+  // once). 409 TRAVEL_MODE_NOT_ACTIVE when Travel Mode is not in force; 503 when the alert could
+  // not be handed over (nothing was created).
+  @Post('travel-mode/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmActiveTravelMode(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: TravelModeConfirmationRequestDto,
+  ): Promise<ProfileStatusResponseDto> {
+    const profile = await this.service.confirmActiveTravelMode(req.userId, dto.confirmationId);
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 

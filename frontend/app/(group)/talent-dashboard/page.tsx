@@ -81,6 +81,10 @@ import {
 } from "@/src/lib/api/status-alert-dismissal"
 import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
 import {
+  type PendingConfirmation,
+  confirmActiveTravelMode,
+} from "@/src/lib/api/travel-mode-confirmation"
+import {
   readTravelActivationsInLogin,
   rememberTravelActivationInLogin,
 } from "@/src/lib/api/travel-activation-login"
@@ -1095,6 +1099,43 @@ export default function TalentDashboard() {
     [markTravelerPromptCompleted]
   )
 
+  // The flow's "Temporarily traveling" for an already-active traveler (Update): Travel Mode is
+  // confirmed again. The backend creates a new persistent "Travel Mode is on" occurrence (the
+  // period's dates are untouched); on success the live Update card is hidden for the rest of
+  // this login (the same per-login marker an activation uses) and the new alert is awaited.
+  // The flow's own toast never mounts (the instance is replaced on close). On failure nothing
+  // is hidden or announced: the Update card stays and the Update screen opens again to retry
+  // with the same confirmation id, so a request that did succeed is stored once.
+  const travelConfirmationRef = useRef<PendingConfirmation>({ current: null })
+  const handleTravelModeConfirmed = useCallback(async () => {
+    const { IdentityVerificationAPI } = await import(
+      "@/service/http/identity-verification"
+    )
+    await confirmActiveTravelMode({
+      confirm: (id) => IdentityVerificationAPI.confirmTravelMode(id),
+      pending: travelConfirmationRef.current,
+      newId: () => globalThis.crypto.randomUUID(),
+      loginSessionKey: liveLoginKey,
+      occurrence: travelSummary?.travelModeEndsAt ?? null,
+      storage: window.localStorage,
+      onConfirmed: (occurrence) => {
+        if (occurrence) {
+          setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
+        }
+        startAlertReconcile(["travel_mode"])
+      },
+      onFailed: (error) => {
+        console.error("[identity-verification] could not confirm Travel Mode", error)
+        setFlowLaunch((prev) => ({
+          key: prev.key + 1,
+          initialState: "current-location-showcase",
+          activeTravelModeUpdate: true,
+        }))
+        setIdentityFlowOpen(true)
+      },
+    })
+  }, [travelSummary, liveLoginKey, startAlertReconcile])
+
   const handleStillTraveling = useCallback(async () => {
     setLocationMismatchBusy(true)
     try {
@@ -1907,6 +1948,7 @@ export default function TalentDashboard() {
           detectedLocation={detectedLocation}
           initialState={flowLaunch.initialState}
           activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
+          onTravelModeConfirmed={() => void handleTravelModeConfirmed()}
         />
       )}
 

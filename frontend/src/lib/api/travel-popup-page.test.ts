@@ -114,7 +114,7 @@ describe("the expiry popup", () => {
   })
 
   it("Update remembers nothing", () => {
-    const update = page.slice(page.indexOf("const handleTravelUpdate"), page.indexOf("// Exact copy/markup from the Storybook reference"))
+    const update = page.slice(page.indexOf("const handleTravelUpdate"), page.indexOf("const handleLiveTravelUpdate"))
     assert.ok(!update.includes("dismissTravelExpiryPopup"))
     assert.ok(!update.includes("localStorage"))
   })

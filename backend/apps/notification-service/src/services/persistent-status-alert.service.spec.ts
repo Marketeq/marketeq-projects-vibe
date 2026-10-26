@@ -150,6 +150,52 @@ describe('PersistentStatusAlertService', () => {
     expect(rows).toHaveLength(2);
   });
 
+  describe('Travel Mode confirmation occurrences (PMCM-651)', () => {
+    const activation = {
+      ...payload(),
+      occurrenceKey: 'travel-mode:2026-10-26T14:00:00.000Z',
+    };
+    const confirmation = (id: string) => ({
+      ...payload(),
+      occurrenceKey: `travel-mode-confirmed:${id}`,
+    });
+
+    it('a confirmation is a NEW occurrence even after the activation alert was dismissed', async () => {
+      const { service, rows } = setup([
+        row({
+          occurrenceKey: activation.occurrenceKey,
+          dismissedAt: new Date('2026-10-26T14:05:00.000Z'),
+        }),
+      ]);
+
+      await service.upsert(confirmation('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'));
+
+      expect(rows).toHaveLength(2);
+      expect(rows.filter((r) => !r.dismissedAt)).toHaveLength(1);
+    });
+
+    it('a retry or redelivery of the same confirmation is stored once, and a dismissed one is not resurrected', async () => {
+      const { service, rows } = setup();
+      const same = confirmation('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+
+      await service.upsert(same);
+      await service.upsert(same);
+      expect(rows).toHaveLength(1);
+
+      rows[0].dismissedAt = new Date();
+      await service.upsert(same);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].dismissedAt).not.toBeNull();
+    });
+
+    it('a second click (a new confirmationId) is a second occurrence', async () => {
+      const { service, rows } = setup();
+      await service.upsert(confirmation('cccccccc-cccc-4ccc-8ccc-cccccccccccc'));
+      await service.upsert(confirmation('dddddddd-dddd-4ddd-8ddd-dddddddddddd'));
+      expect(rows).toHaveLength(2);
+    });
+  });
+
   it('dismisses only an alert owned by the signed-in user and is idempotent', async () => {
     const alert = row();
     const { service, repo } = setup([alert]);

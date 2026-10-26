@@ -42,11 +42,14 @@ describe("dashboard verification entry: nothing opens on page load", () => {
   })
 
   it("the verification flow is opened only by a click: Verify, the popup's Update, or a mismatch answer", () => {
-    assert.equal(count("setIdentityFlowOpen(true)"), 3)
+    // The fourth is the Update confirmation's retry (PMCM-651): it reopens the Update screen
+    // only after a click-started confirmation failed.
+    assert.equal(count("setIdentityFlowOpen(true)"), 4)
     for (const owner of [
       "const handleVerifyMyAccount = useCallback(",
       "const handleTravelUpdate = useCallback(",
       "const openFlowFromMismatch = useCallback(",
+      "const handleTravelModeConfirmed = useCallback(",
     ]) {
       const from = page.indexOf(owner)
       const next = owner.includes("openFlowFromMismatch")

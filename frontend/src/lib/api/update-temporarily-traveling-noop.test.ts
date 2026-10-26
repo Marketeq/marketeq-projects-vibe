@@ -29,10 +29,10 @@ const temporarilyButton = flow.slice(
 )
 
 describe("the flow's behaviour this fix depends on (read-only file)", () => {
-  it("for an Update on an in-force Travel Mode, 'Temporarily traveling' only opens the toast and closes: nothing is saved or sent", () => {
+  it("for an Update on an in-force Travel Mode, 'Temporarily traveling' reports the choice (onTravelModeConfirmed) and closes: the flow itself saves and sends nothing", () => {
     assert.match(
       temporarilyButton,
-      /if \(activeTravelModeUpdate\) \{\s+setTravelModeNotificationOpen\(true\)\s+onOpenChange\(false\)\s+return\s+\}/
+      /if \(activeTravelModeUpdate\) \{\s+setTravelModeNotificationOpen\(true\)\s+onTravelModeConfirmed\?\.\(\)\s+onOpenChange\(false\)\s+return\s+\}/
     )
     assert.doesNotMatch(
       temporarilyButton,
