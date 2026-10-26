@@ -27,8 +27,10 @@ export class Offer extends OfferServiceBaseEntity {
   @Index('idx_offers_talent_id')
   talentId: string;
 
-  @Column({ name: 'job_listing_id', type: 'uuid' })
-  jobListingId: string;
+  // BTB-364/D1: nullable — see create-offer.dto.ts's matching change and
+  // the migration making the underlying column nullable.
+  @Column({ name: 'job_listing_id', type: 'uuid', nullable: true })
+  jobListingId: string | null;
 
   // ---- Contract details ----
   @Column({ name: 'contract_type', type: 'varchar', length: 20 })

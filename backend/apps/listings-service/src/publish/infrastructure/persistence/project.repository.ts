@@ -81,6 +81,13 @@ export abstract class ProjectRepository {
     }>
   >;
 
+  // PMCM-403: batched isLead lookup across many projects in one query, for
+  // getMyProjects' dashboard listing — mirrors the existing one-pass
+  // team-avatar resolution just above it rather than querying per project.
+  abstract getLeadUserIdsByProject(
+    ids: Project['id'][],
+  ): Promise<Array<{ projectId: string; userId: string }>>;
+
   abstract upsertProjectMembers(
     id: Project['id'],
     members: Array<{
