@@ -240,6 +240,8 @@ export class FreeKycService {
         // new-session rules below, which demand a fresh confirmation (409
         // confirmation_stale otherwise) before any new Didit session is created.
         profile = await this.retireStaleUnfinishedSession(active, profile);
+        // A decision that landed while retiring (verified / in review / blocked) wins.
+        this.assertStatusAllowsStart(profile);
       } else {
         // Decided at Didit: re-apply the start rules to the updated profile
         // (verified / pending review => not startable, no new session;
@@ -624,21 +626,41 @@ export class FreeKycService {
    * Retires an unfinished session whose confirmation window has passed. It ends
    * without a decision, exactly like Didit's own Abandoned: no attempt row is
    * written and abandoned sessions never count toward the retry cycle. The profile
-   * returns to unstarted so the next start follows the new-session rules. A decision
-   * Didit delivers later (webhook) is still applied; only a decided session is final.
+   * returns to unstarted so the next start follows the new-session rules.
+   *
+   * Runs in one transaction that locks the session row and then the profile row (the
+   * same order the webhook and reconcile use, so the two cannot deadlock) and
+   * re-reads both under the lock: a decision that landed first (a webhook between the
+   * caller's read and this lock) is kept, never overwritten by a stale in-memory copy.
+   * Returns the profile as it stands afterwards.
    */
   private async retireStaleUnfinishedSession(
     session: HostedKycSession,
     profile: IdentityVerificationProfile,
   ): Promise<IdentityVerificationProfile> {
-    session.status = HostedKycSessionStatus.ABANDONED;
-    await this.sessionRepository.save(session);
-    if (profile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS) {
-      profile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
-      await this.profileRepository.save(profile);
-    }
-    this.logger.log('Unfinished session retired: its home-country confirmation expired.');
-    return profile;
+    let retired = false;
+    await this.dataSource.transaction(async (manager) => {
+      const lockedSession = await manager.getRepository(HostedKycSession).findOne({
+        where: { id: session.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const profileRepository = manager.getRepository(IdentityVerificationProfile);
+      const lockedProfile = await profileRepository.findOne({
+        where: { id: profile.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedSession || !ACTIVE_SESSION_STATUSES.includes(lockedSession.status)) return;
+      lockedSession.status = HostedKycSessionStatus.ABANDONED;
+      await manager.getRepository(HostedKycSession).save(lockedSession);
+      session.status = lockedSession.status;
+      retired = true;
+      if (lockedProfile && lockedProfile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS) {
+        lockedProfile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
+        await profileRepository.save(lockedProfile);
+      }
+    });
+    if (retired) this.logger.log('Unfinished session retired: its home-country confirmation expired.');
+    return (await this.profileRepository.findOne({ where: { id: profile.id } })) ?? profile;
   }
 
   private async resume(active: HostedKycSession, returnOrigin?: string): Promise<{ url: string }> {
@@ -663,21 +685,35 @@ export class FreeKycService {
     const created = await this.callProvider(vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
-    await this.sessionRepository.save(
-      this.sessionRepository.create({
-        profileId: profile.id,
-        diditSessionId: created.sessionId,
-        vendorReference,
-        status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
-        // The confirmation this session was started under (see unfinished-session-resumability.ts).
-        confirmedAt: profile.verifiedHomeCountryConfirmedAt,
-      }),
-    );
+    // The session row and the profile status are written together under the profile
+    // row lock, and the start rules are re-checked on the locked row. A webhook or
+    // reconcile for the previous session (same session -> profile lock order, so no
+    // deadlock) therefore either lands first (this start then refuses: verified, in
+    // review, blocked) or finds this new session when it checks for a replacement.
+    // The Didit session created above is simply never stored on a refusal.
+    await this.dataSource.transaction(async (manager) => {
+      const profileRepository = manager.getRepository(IdentityVerificationProfile);
+      const locked = await profileRepository.findOne({ where: { id: profile.id }, lock: { mode: 'pessimistic_write' } });
+      const current = locked ?? profile;
+      this.assertStatusAllowsStart(current);
 
-    if (profile.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
-      profile.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
-      await this.profileRepository.save(profile);
-    }
+      const sessionRepository = manager.getRepository(HostedKycSession);
+      await sessionRepository.save(
+        sessionRepository.create({
+          profileId: profile.id,
+          diditSessionId: created.sessionId,
+          vendorReference,
+          status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
+          // The confirmation this session was started under (see unfinished-session-resumability.ts).
+          confirmedAt: current.verifiedHomeCountryConfirmedAt,
+        }),
+      );
+
+      if (current.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
+        current.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
+        await profileRepository.save(current);
+      }
+    });
     return { url };
   }
 
@@ -922,7 +958,16 @@ export class FreeKycService {
    * profile row is locked first (the same lock the outcome below takes), so the
    * check and the write are atomic against another transition of this profile.
    * With no replacement the session is still the current one and a late genuine
-   * decision applies as it always did. Home-country-change sessions are not judged
+   * decision applies as it always did.
+   *
+   * Intended behavior for the user who finishes the already-open Didit tab after the
+   * 15 minutes, before any replacement exists: the decision STILL APPLIES (verified,
+   * declined with its one attempt, or in review). The 15-minute rule gates STARTING a
+   * session (and resuming one from the dashboard); it is not a deadline for finishing
+   * a flow already under way, and rejecting a real approval would waste a completed
+   * KYC and can trip Didit's duplicate-face check on the redo. Location is not
+   * re-judged: it stays as confirmed. Once a replacement exists, only the replacement
+   * decides. Home-country-change sessions are not judged
    * here (they have their own pending-claim rules).
    */
   private async isSupersededOrdinarySession(manager: EntityManager, session: HostedKycSession): Promise<boolean> {
