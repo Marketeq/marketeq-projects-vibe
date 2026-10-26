@@ -17,6 +17,7 @@ import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
 import { StripeCustomer } from './checkout/entities/stripe-customer.entity';
 import { SavedCard } from './checkout/entities/saved-card.entity';
 import { SavedCardsService } from './checkout/saved-cards.service';
+import { PaymentSelectionRegistry } from './checkout/payment-selection.registry';
 import { CheckoutDraft } from './checkout/entities/checkout-draft.entity';
 import { CheckoutDraftPhaseEntity } from './checkout/entities/checkout-draft-phase.entity';
 import { CheckoutDraftTaskEntity } from './checkout/entities/checkout-draft-task.entity';
@@ -111,7 +112,7 @@ const requireRabbitmqUrl = (): string => {
       : []),
   ],
   controllers: [CheckoutController, UcheckoutUserviceController],
-  providers: [CheckoutService, CheckoutDraftService, CheckoutDraftCodeService, CheckoutDraftPricingService, CheckoutDraftValidationService, CheckoutDraftSessionService, CheckoutPaymentMethodsService, SavedCardsService, PromoAdjustment, GiftCardAdjustment, {
+  providers: [CheckoutService, CheckoutDraftService, CheckoutDraftCodeService, CheckoutDraftPricingService, CheckoutDraftValidationService, CheckoutDraftSessionService, CheckoutPaymentMethodsService, SavedCardsService, PaymentSelectionRegistry, PromoAdjustment, GiftCardAdjustment, {
       provide: DRAFT_PRICING_ADJUSTMENTS,
       useFactory: (promo: PromoAdjustment, giftCards: GiftCardAdjustment) => [promo, giftCards],
       inject: [PromoAdjustment, GiftCardAdjustment],

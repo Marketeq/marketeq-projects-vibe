@@ -139,6 +139,34 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (session && !isCheckoutSessionAllowed(pathname, session.status)) {
+    if (session.status === "expired" || session.status === "cancelled") {
+      return (
+        <Dialog open>
+          <DialogContent className="max-w-[480px] p-6">
+            <h2 className="text-lg font-semibold text-dark-blue-400">
+              Your checkout session has ended
+            </h2>
+            <p className="mt-3 text-sm leading-5 text-gray-500">
+              This checkout session is no longer active. Please try again to
+              continue.
+            </p>
+            <div className="mt-6 flex justify-end">
+              <Button
+                onClick={() =>
+                  router.push(
+                    `/checkout/project-details?listingId=${encodeURIComponent(
+                      session.listingId
+                    )}`
+                  )
+                }
+              >
+                Try Again
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )
+    }
     notFound()
   }
 

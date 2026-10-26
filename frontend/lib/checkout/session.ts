@@ -21,6 +21,17 @@ export type CheckoutSession = {
     amount: number
   } | null
   giftCardLockedUntil: string | null
+  paymentSelection: {
+    method: "card"
+    id: string
+    brand: string
+    funding: string
+    last4: string
+    expMonth: number
+    expYear: number
+    billingAddressId: string | null
+    isDefault: boolean
+  } | null
 }
 
 export const getCheckoutSession = async (

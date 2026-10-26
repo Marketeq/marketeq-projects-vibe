@@ -80,6 +80,9 @@ export class CheckoutSession {
   @Column({ type: 'uuid', nullable: true })
   appliedPromoCode: string | null;
 
+  @Column({ type: 'uuid', nullable: true })
+  paymentSelectionId: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

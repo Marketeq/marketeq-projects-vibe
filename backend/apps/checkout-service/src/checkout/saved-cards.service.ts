@@ -189,6 +189,18 @@ export class SavedCardsService {
     return toView(await this.withDefault(userId, saved, dto.setAsDefault));
   }
 
+  async getCardView(userId: string, cardId: string): Promise<SavedCardView> {
+    return toView(await this.findOwnedCard(userId, cardId));
+  }
+
+  async findCardView(
+    userId: string,
+    cardId: string,
+  ): Promise<SavedCardView | null> {
+    const card = await this.cards.findOne({ where: { id: cardId, userId } });
+    return card ? toView(card) : null;
+  }
+
   async getCard(userId: string, cardId: string): Promise<SavedCardDetailView> {
     const card = await this.findOwnedCard(userId, cardId);
     let cardholderName: string | null = null;

@@ -4,6 +4,7 @@ import {
   Get,
   Patch,
   Delete,
+  Put,
   Param,
   Body,
   Query,
@@ -27,6 +28,7 @@ import { SavedCardsService } from "./saved-cards.service";
 import { SaveCardDto } from "./dto/save-card.dto";
 import { UpdateCardDto } from "./dto/update-card.dto";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
+import { SetPaymentSelectionDto } from "./dto/set-payment-selection.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
@@ -196,6 +198,33 @@ export class CheckoutController {
       clientId,
       sessionId,
       balanceApplied,
+    );
+  }
+
+  @Put("session/:sessionId/payment/selection")
+  @UseGuards(InternalTokenGuard)
+  setSessionPaymentSelection(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Body() dto: SetPaymentSelectionDto,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.setPaymentSelection(
+      clientId,
+      sessionId,
+      dto,
+    );
+  }
+
+  @Delete("session/:sessionId/payment/selection")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(InternalTokenGuard)
+  clearSessionPaymentSelection(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.clearPaymentSelection(
+      clientId,
+      sessionId,
     );
   }
 

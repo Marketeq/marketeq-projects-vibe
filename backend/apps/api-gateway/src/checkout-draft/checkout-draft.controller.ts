@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -120,6 +121,23 @@ export class CheckoutDraftController {
     @UserId() clientId: string,
   ) {
     return this.checkoutDraftService.getSessionPaymentMethods(sessionId, clientId, balanceApplied);
+  }
+
+  @Put('session/:sessionId/payment/selection')
+  @UseGuards(JwtAuthGuard)
+  setSessionPaymentSelection(
+    @Param('sessionId') sessionId: string,
+    @Body() body: Record<string, unknown>,
+    @UserId() clientId: string,
+  ) {
+    return this.checkoutDraftService.setSessionPaymentSelection(sessionId, body, clientId);
+  }
+
+  @Delete('session/:sessionId/payment/selection')
+  @HttpCode(204)
+  @UseGuards(JwtAuthGuard)
+  clearSessionPaymentSelection(@Param('sessionId') sessionId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.clearSessionPaymentSelection(sessionId, clientId);
   }
 
   @Post('session/:sessionId/apply-code')

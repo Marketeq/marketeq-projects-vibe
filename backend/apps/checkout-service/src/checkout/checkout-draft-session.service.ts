@@ -25,6 +25,8 @@ import { CheckoutDraftService } from './checkout-draft.service';
 import { CheckoutDraftCodeService } from './checkout-draft-code.service';
 import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.service';
 import { ApplyDraftCodeDto } from './dto/draft-code.dto';
+import { SetPaymentSelectionDto } from './dto/set-payment-selection.dto';
+import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
 export const SESSION_EXPIRY_MINUTES = 30;
@@ -48,6 +50,7 @@ export class CheckoutDraftSessionService {
     private readonly codeService: CheckoutDraftCodeService,
     private readonly pricingService: CheckoutDraftPricingService,
     private readonly savedCardsService: SavedCardsService,
+    private readonly paymentSelections: PaymentSelectionRegistry,
   ) {}
 
   async getSession(clientId: string, sessionId: string) {
@@ -68,6 +71,7 @@ export class CheckoutDraftSessionService {
       promoCode: session.appliedPromoCode,
     });
     const giftCardLock = await this.codeService.getGiftCardLock(clientId);
+    const paymentSelection = await this.readPaymentSelection(clientId, session);
 
     return {
       sessionId: session.id,
@@ -97,7 +101,43 @@ export class CheckoutDraftSessionService {
       giftCardLockedUntil: giftCardLock.lockedUntil
         ? giftCardLock.lockedUntil.toISOString()
         : null,
+      paymentSelection,
     };
+  }
+
+  async setPaymentSelection(
+    clientId: string,
+    sessionId: string,
+    dto: SetPaymentSelectionDto,
+  ) {
+    const session = await this.loadActiveSession(clientId, sessionId);
+    const summary = await this.paymentSelections.resolve(
+      dto.method,
+      clientId,
+      dto.id,
+    );
+    await this.dataSource.manager.update(CheckoutSession, session.id, {
+      paymentMethod: dto.method,
+      paymentSelectionId: dto.id,
+    });
+    return { method: dto.method, ...summary };
+  }
+
+  async clearPaymentSelection(clientId: string, sessionId: string) {
+    const session = await this.loadActiveSession(clientId, sessionId);
+    await this.dataSource.manager.update(CheckoutSession, session.id, {
+      paymentSelectionId: null,
+    });
+  }
+
+  private async readPaymentSelection(clientId: string, session: CheckoutSession) {
+    if (!session.paymentSelectionId) return null;
+    const summary = await this.paymentSelections.find(
+      session.paymentMethod,
+      clientId,
+      session.paymentSelectionId,
+    );
+    return summary ? { method: session.paymentMethod, ...summary } : null;
   }
 
   async applySessionCode(
@@ -121,6 +161,15 @@ export class CheckoutDraftSessionService {
   }
 
   private async loadActiveSessionDraft(clientId: string, sessionId: string) {
+    await this.loadActiveSession(clientId, sessionId);
+    const draft = await this.dataSource.manager.findOne(CheckoutDraft, {
+      where: { sessionId, clientId },
+    });
+    if (!draft) throw new NotFoundException('Draft not found');
+    return draft;
+  }
+
+  private async loadActiveSession(clientId: string, sessionId: string) {
     const session = await this.dataSource.manager.findOne(CheckoutSession, {
       where: { id: sessionId, clientId },
     });
@@ -140,11 +189,7 @@ export class CheckoutDraftSessionService {
         message: 'This checkout session is no longer active',
       });
     }
-    const draft = await this.dataSource.manager.findOne(CheckoutDraft, {
-      where: { sessionId, clientId },
-    });
-    if (!draft) throw new NotFoundException('Draft not found');
-    return draft;
+    return session;
   }
 
   private async refreshSessionCodes(

@@ -1842,27 +1842,7 @@ export default function PaymentPage() {
     let isActive = true
     CheckoutAPI.ListSavedCards()
       .then((response) => {
-        if (!isActive) return
-        const cards = response.data as SavedCardSummary[]
-        setSavedCards(cards)
-        const defaultCard = cards.find((card) => card.isDefault)
-        if (!defaultCard) return
-        setFullPaymentMethods((current) =>
-          current.length > 0
-            ? current
-            : [
-                {
-                  id: `full-card-${defaultCard.id}`,
-                  method: "CREDIT_DEBIT_CARD",
-                  title: "Credit Card",
-                  subtitle: "Stripe card",
-                  cardNumber: defaultCard.last4,
-                  brand: defaultCard.brand,
-                  funding: defaultCard.funding,
-                  saveDefaultPaymentMethod: true,
-                },
-              ]
-        )
+        if (isActive) setSavedCards(response.data as SavedCardSummary[])
       })
       .catch(() => {})
       .finally(() => {
@@ -1872,6 +1852,35 @@ export default function PaymentPage() {
       isActive = false
     }
   }, [])
+
+  const hasPreselectedCardRef = React.useRef(false)
+  React.useEffect(() => {
+    if (hasPreselectedCardRef.current || isSavedCardsLoading) return
+    if (checkout.sessionId && !checkout.session) return
+    hasPreselectedCardRef.current = true
+
+    const chosenId = checkout.session?.paymentSelection?.id
+    const card =
+      savedCards.find((saved) => saved.id === chosenId) ??
+      savedCards.find((saved) => saved.isDefault)
+    if (!card) return
+    setFullPaymentMethods((current) =>
+      current.length > 0
+        ? current
+        : [
+            {
+              id: `full-card-${card.id}`,
+              method: "CREDIT_DEBIT_CARD",
+              title: "Credit Card",
+              subtitle: "Stripe card",
+              cardNumber: card.last4,
+              brand: card.brand,
+              funding: card.funding,
+              saveDefaultPaymentMethod: card.isDefault,
+            },
+          ]
+    )
+  }, [checkout.session, checkout.sessionId, isSavedCardsLoading, savedCards])
 
   React.useEffect(() => {
     if (!isChangeCardPanelOpen) return
@@ -2374,8 +2383,14 @@ export default function PaymentPage() {
       ? paymentMethod === "" && fullPaymentMethods.length === 0
       : firstInstallmentMethods.length === 0 ||
         secondInstallmentMethods.length === 0)
+  const isCardFormOpen =
+    !isTalentCheckout &&
+    pay === "AT_ONCE" &&
+    totalAmountToBePaid > 0 &&
+    shouldShowFullPaymentCardForm
   const isSubmitOrderDisabled =
     isProcessing ||
+    isCardFormOpen ||
     isPaymentMethodMissing ||
     isGooglePayProcessing ||
     isApplePayProcessing ||
@@ -2745,22 +2760,70 @@ export default function PaymentPage() {
   const handleSubmitOrder = async () => {
     setPaymentError("")
 
-    if (
+    const selectedCardMethod = fullPaymentMethods.find(
+      (method) => method.method === "CREDIT_DEBIT_CARD"
+    )
+    const mustRecordCard =
       isCardPaymentSelected &&
-      fullPaymentMethods.every(
-        (method) => method.method !== "CREDIT_DEBIT_CARD"
-      ) &&
+      !isTalentCheckout &&
+      Boolean(checkout.sessionId) &&
       totalAmountToBePaid > 0
-    ) {
-      setHasAttemptedCardSubmit(true)
-      if (!isFullPaymentCardFormValid) return
+
+    if (!mustRecordCard) {
+      navigateToReview()
+      return
     }
 
+    const savedCardId = selectedCardMethod?.id.startsWith("full-card-")
+      ? selectedCardMethod.id.slice("full-card-".length)
+      : null
+    if (!savedCardId) return
+
     setIsProcessing(true)
-    setTimeout(() => {
-      navigateToReview()
+    try {
+      const response = await CheckoutAPI.SetSessionPaymentSelection(
+        checkout.sessionId,
+        { method: "card", id: savedCardId }
+      )
+      if (checkout.session) {
+        checkout.updateSession({
+          ...checkout.session,
+          paymentSelection: response.data,
+        })
+      }
+    } catch (error) {
       setIsProcessing(false)
-    }, 1500)
+      const failure = error as {
+        code?: string
+        response?: { status?: number; data?: { code?: string } }
+      }
+      if (failure.response?.status === 401) {
+        setIsSessionExpiredDialogOpen(true)
+      } else if (
+        failure.response?.data?.code === "SESSION_NOT_ACTIVE" ||
+        failure.response?.data?.code === "SESSION_ALREADY_PAID"
+      ) {
+        setIsCheckoutSessionInactiveDialogOpen(true)
+      } else if (
+        !failure.response ||
+        failure.code === "ECONNABORTED" ||
+        failure.code === "ETIMEDOUT"
+      ) {
+        toast({
+          variant: "destructive",
+          title:
+            "Connection timed out. Please check your internet connection and try again.",
+        })
+      } else {
+        toast({
+          variant: "destructive",
+          title:
+            "We were unable to process your card at this time. Please try again or contact support.",
+        })
+      }
+      return
+    }
+    navigateToReview()
   }
 
   const handleWalletCheckout = (
@@ -10402,9 +10465,7 @@ export default function PaymentPage() {
                               onClick={handleSubmitOrder}
                               disabled={isSubmitOrderDisabled}
                             >
-                              {isProcessing
-                                ? "Loading..."
-                                : "Review your order"}
+                              Review your order
                             </Button>
                           </div>
 
@@ -10603,7 +10664,7 @@ export default function PaymentPage() {
                             onClick={handleSubmitOrder}
                             disabled={isSubmitOrderDisabled}
                           >
-                            {isProcessing ? "Loading..." : "Review your order"}
+                            Review your order
                           </Button>
                         </div>
 

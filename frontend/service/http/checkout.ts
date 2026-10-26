@@ -109,6 +109,19 @@ export const CheckoutAPI = {
   GetSession: (sessionId: string) =>
     AxiosRequest.get(`/v1/checkout/session/${sessionId}`, { timeout: 10000 }),
 
+  SetSessionPaymentSelection: (
+    sessionId: string,
+    data: { method: CheckoutPaymentMethod; id: string }
+  ) =>
+    AxiosRequest.put(`/v1/checkout/session/${sessionId}/payment/selection`, data, {
+      timeout: 4000,
+    }),
+
+  ClearSessionPaymentSelection: (sessionId: string) =>
+    AxiosRequest.del(`/v1/checkout/session/${sessionId}/payment/selection`, {
+      timeout: 4000,
+    }),
+
   GetPaymentMethods: (sessionId: string, balanceApplied = 0) =>
     AxiosRequest.get(`/v1/checkout/session/${sessionId}/payment-methods`, {
       timeout: 4000,
