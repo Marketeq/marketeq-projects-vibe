@@ -48,6 +48,33 @@ export function hasNewAlertOfType(
   return alerts.some((a) => a.type === type && !knownIds.has(a.id))
 }
 
+/**
+ * How far back "this return" reaches when the awaited alert is identified by its age: the
+ * alert for a verification that has just gone In Review is created by the reconcile that
+ * precedes the page seeing the result, a moment (well under a few seconds) before it starts
+ * waiting for it.
+ */
+export const ALERT_RECENCY_WINDOW_MS = 30_000
+
+/**
+ * Whether `alerts` holds a `type` alert created at or after `sinceMs`. Unlike
+ * hasNewAlertOfType this does not depend on which alerts were already known, so it neither
+ * misses an alert that the page's own first read already contained nor stops on an OLDER
+ * alert of the same type (an earlier submission still on screen is created long before
+ * `sinceMs`).
+ */
+export function hasRecentAlertOfType(
+  alerts: StatusAlert[],
+  type: StatusAlertType,
+  sinceMs: number
+): boolean {
+  return alerts.some((a) => {
+    if (a.type !== type) return false
+    const created = Date.parse(a.createdAt)
+    return Number.isFinite(created) && created >= sinceMs
+  })
+}
+
 export type ReconcileOutcome = "settled" | "gave_up" | "superseded"
 
 export async function reconcileStatusAlerts(args: {

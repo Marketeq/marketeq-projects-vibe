@@ -81,7 +81,9 @@ import {
 } from "@/src/lib/api/status-alert-dismissal"
 import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
 import {
+  ALERT_RECENCY_WINDOW_MS,
   hasNewAlertOfType,
+  hasRecentAlertOfType,
   isNewTravelActivation,
   reconcileStatusAlerts,
 } from "@/src/lib/api/status-alert-reconcile"
@@ -400,30 +402,41 @@ export default function TalentDashboard() {
   // the list is re-read a bounded number of times (about 3 seconds in all, stopping at the
   // first read that has a NEW alert of an expected type). Nothing polls; a newer run or the
   // page leaving ends an older one, and the newest read always wins over an older, slower one.
-  const startAlertReconcile = useCallback((expected: StatusAlert["type"][]) => {
-    const known = new Set(
-      statusAlertsRef.current
-        .filter((a) => expected.includes(a.type))
-        .map((a) => a.id)
-    )
-    const generation = ++alertReconcileGenRef.current
-    let latestRequest = 0
-    void reconcileStatusAlerts({
-      list: () => {
-        latestRequest = ++statusAlertRequestRef.current
-        return StatusAlertsAPI.list()
-      },
-      isSettled: (alerts) =>
-        expected.some((type) => hasNewAlertOfType(alerts, type, known)),
-      apply: (alerts) => {
-        if (latestRequest === statusAlertRequestRef.current) {
-          setStatusAlerts(alerts)
-        }
-      },
-      isCurrent: () => generation === alertReconcileGenRef.current,
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    })
-  }, [])
+  //
+  // The awaited alert is a NEW one (an id the page did not already hold); with sinceMs it is
+  // instead one created at or after that time, which also covers an alert the page's own first
+  // read already contained, and cannot be satisfied by an older alert of the same type.
+  const startAlertReconcile = useCallback(
+    (expected: StatusAlert["type"][], options: { sinceMs?: number } = {}) => {
+      const known = new Set(
+        statusAlertsRef.current
+          .filter((a) => expected.includes(a.type))
+          .map((a) => a.id)
+      )
+      const generation = ++alertReconcileGenRef.current
+      let latestRequest = 0
+      void reconcileStatusAlerts({
+        list: () => {
+          latestRequest = ++statusAlertRequestRef.current
+          return StatusAlertsAPI.list()
+        },
+        isSettled: (alerts) =>
+          expected.some((type) =>
+            options.sinceMs !== undefined
+              ? hasRecentAlertOfType(alerts, type, options.sinceMs)
+              : hasNewAlertOfType(alerts, type, known)
+          ),
+        apply: (alerts) => {
+          if (latestRequest === statusAlertRequestRef.current) {
+            setStatusAlerts(alerts)
+          }
+        },
+        isCurrent: () => generation === alertReconcileGenRef.current,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      })
+    },
+    []
+  )
 
   // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
   // traveler prompt, an Update that starts a new period): /me already says so, but the
@@ -591,6 +604,13 @@ export default function TalentDashboard() {
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setPendingModalOpen(true)
+        // In review, first-time or a home-country change: the persistent "location
+        // verification was submitted" alert was stored (asynchronously) by the reconcile that
+        // just ran, so load it without waiting for Done or a refresh. Only Submitted is
+        // awaited: Home Country Updated exists only after an approval.
+        startAlertReconcile(["submitted_for_review"], {
+          sinceMs: Date.now() - ALERT_RECENCY_WINDOW_MS,
+        })
         return
       }
       // The banner or gate may have opened from an earlier read, before this result
@@ -656,7 +676,7 @@ export default function TalentDashboard() {
       document.removeEventListener("visibilitychange", onVisible)
       window.removeEventListener("pageshow", onPageShow)
     }
-  }, [user])
+  }, [user, startAlertReconcile])
 
   // PMCM-653: a first-time verification that was shown as submitted and is approved
   // later shows the existing success alert once. The marker only says this browser is
