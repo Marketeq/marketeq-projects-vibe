@@ -279,11 +279,21 @@ export default function InboxRoot() {
                 // counter was deleted, or a transient error) must not break
                 // the notification — falls back to treating this like an
                 // offer with no counter at all.
-                const latestCounterOfferTerms = latestCounterOfferId
+                // Only a PENDING or ACCEPTED counter's terms are the live
+                // ones. Declining or withdrawing a counter restores the
+                // parent offer to PENDING on its ORIGINAL terms
+                // (counter-offers.service.ts), and latestCounterOffer is just
+                // the newest counter by createdAt, whatever its status.
+                const latestCounter = latestCounterOfferId
                   ? await getCounterOffer(offerId, latestCounterOfferId).catch(
                       () => null
                     )
                   : null
+                const latestCounterOfferTerms =
+                  latestCounter?.status === "PENDING" ||
+                  latestCounter?.status === "ACCEPTED"
+                    ? latestCounter
+                    : null
                 const currentScheduleSource =
                   latestCounterOfferTerms?.workSchedule ?? offer.workSchedule
                 const formatScheduleLabel = (
