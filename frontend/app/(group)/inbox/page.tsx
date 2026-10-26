@@ -9,7 +9,7 @@ import {
   type NotificationItem,
   NotificationsAPI,
 } from "@/service/http/notifications"
-import { getOffer, listOffers } from "@/service/http/offers"
+import { getCounterOffer, getOffer, listOffers } from "@/service/http/offers"
 import { ensureEncryptionKeysExist, loadPrivateKey } from "@/src/crypto/keys"
 import { apiFetch } from "@/src/lib/api"
 import { jobDetailsUrl } from "@/src/lib/listing-urls"
@@ -165,6 +165,9 @@ export default function InboxRoot() {
 
   const [token, setToken] = useState("")
   const [currentUserProfile, setCurrentUserProfile] = useState<any>(null)
+  // Set when the /user/me fetch below fails, so the offer notifications
+  // effect can fall back to the cached user instead of waiting forever.
+  const [profileFetchFailed, setProfileFetchFailed] = useState(false)
   useEffect(() => {
     setToken(getAccessToken() || "")
   }, [])
@@ -184,7 +187,19 @@ export default function InboxRoot() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
+    // BTB-292/F1: clientPerspective below is derived from the current
+    // user's id — if that isn't known yet (currentUserProfile hasn't
+    // resolved from its own /user/me fetch), computing it anyway would
+    // silently default every offer to "not the client" (undefined !==
+    // anything), showing the wrong role's buttons with no error. Wait for
+    // it, and this effect's own dependency on currentUserProfile?.id below
+    // re-runs it once that fetch resolves, so nothing needs a manual retry.
+    // If /user/me failed outright, fall back to the cached user rather than
+    // never loading offer notifications at all.
+    const viewerId =
+      currentUserProfile?.id ??
+      (profileFetchFailed ? getCurrentUser()?.id : undefined)
+    if (!token || !viewerId) return
     let cancelled = false
 
     void NotificationsAPI.list({ limit: 100 })
@@ -254,20 +269,69 @@ export default function InboxRoot() {
                 const actorId = actorKeys
                   .map((key) => metadata[key])
                   .find((value): value is string => typeof value === "string")
+                // BTB-364/D1: offer.jobListingId is now string | null (a
+                // listing-less "Hire Me" offer has none) — fall through to
+                // "" like the metadata-only branch below does, not a bare
+                // null, so viewJobHref's guard and offerJobHref() callers
+                // stay string-typed.
                 const jobListingId =
                   (typeof metadata.jobId === "string" && metadata.jobId) ||
                   (typeof metadata.jobListingId === "string" &&
                     metadata.jobListingId) ||
-                  offer.jobListingId
+                  offer.jobListingId ||
+                  ""
                 const conversationParticipantId =
                   actorId ||
-                  (offer.clientId === getCurrentUser()?.id
+                  (offer.clientId === viewerId
                     ? offer.talentId
                     : offer.clientId)
                 const latestCounterOfferId =
                   offer.latestCounterOffer !== undefined
                     ? offer.latestCounterOffer?.id
                     : (await loadCounterOfferIdByOffer()).get(offerId)
+                // BTB-366: the latest counter offer's OWN terms — never the
+                // original offer's, never notification metadata (no real
+                // backend producer ever writes metadata.offerRate/
+                // originalOfferRate for a genuine counter; only QA seed
+                // scripts do — same gap as metadata.withdrawalMessage
+                // above). GET .../counter-offers/:id (confirmed on the
+                // backend, counter-offers.controller.ts) returns the real,
+                // live CounterOffer entity. A lookup failure (e.g. the
+                // counter was deleted, or a transient error) must not break
+                // the notification — falls back to treating this like an
+                // offer with no counter at all.
+                // Only a PENDING or ACCEPTED counter's terms are the live
+                // ones. Declining or withdrawing a counter restores the
+                // parent offer to PENDING on its ORIGINAL terms
+                // (counter-offers.service.ts), and latestCounterOffer is just
+                // the newest counter by createdAt, whatever its status.
+                const latestCounter = latestCounterOfferId
+                  ? await getCounterOffer(offerId, latestCounterOfferId).catch(
+                      () => null
+                    )
+                  : null
+                const latestCounterOfferTerms =
+                  latestCounter?.status === "PENDING" ||
+                  latestCounter?.status === "ACCEPTED"
+                    ? latestCounter
+                    : null
+                const currentScheduleSource =
+                  latestCounterOfferTerms?.workSchedule ?? offer.workSchedule
+                const formatScheduleLabel = (
+                  schedule: typeof offer.workSchedule
+                ) =>
+                  schedule.type === "FULL_TIME"
+                    ? "Full Time"
+                    : schedule.type === "PART_TIME"
+                      ? "Part Time"
+                      : "Custom"
+                const formatStartDateLabel = (startDate: string) =>
+                  new Date(startDate).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  })
                 return {
                   id: item.id,
                   contractId: offerId,
@@ -292,16 +356,30 @@ export default function InboxRoot() {
                   // from either" when this offer has never had a counter
                   // offer.
                   latestCounterOfferId,
+                  // BTB-367: the counter's OWN live status — real, live
+                  // signal only (same rule as offerStatus/realContractId
+                  // above), from the same getCounterOffer() call BTB-366
+                  // added. The parent offer's own offerStatus reverting to
+                  // PENDING is identical whether the counter was declined,
+                  // withdrawn, or expired-with-restore (confirmed against
+                  // counter-offers.service.ts's decline()/withdraw()) —
+                  // this is the one field that actually distinguishes them.
+                  // Read from latestCounter, not latestCounterOfferTerms:
+                  // the terms are nulled for a DECLINED/WITHDRAWN/EXPIRED
+                  // counter, which is exactly the status needed here.
+                  latestCounterOfferStatus: latestCounter?.status,
                   event: item.event?.toLowerCase() || "offer.received",
                   title: item.title,
                   body: item.body,
                   href: getNotificationHref(item, getNotificationKind(item)),
-                  viewJobHref: offerJobHref(
-                    jobListingId,
-                    offerId,
-                    conversationParticipantId,
-                    metadata
-                  ),
+                  viewJobHref: jobListingId
+                    ? offerJobHref(
+                        jobListingId,
+                        offerId,
+                        conversationParticipantId,
+                        metadata
+                      )
+                    : "",
                   jobListingId,
                   createdAt: item.createdAt,
                   actorId: conversationParticipantId,
@@ -329,25 +407,24 @@ export default function InboxRoot() {
                     offer.contractType.slice(1).toLowerCase(),
                   offerRate: `${new Intl.NumberFormat("en-US", {
                     style: "currency",
+                    currency:
+                      latestCounterOfferTerms?.currencyCode ??
+                      offer.currencyCode,
+                    maximumFractionDigits: 0,
+                  }).format(latestCounterOfferTerms?.rate ?? offer.rate)}/hr`,
+                  // BTB-366: the ORIGINAL offer's own rate — real, live
+                  // data (already fetched above), not metadata. When there
+                  // is no counter offer this equals offerRate above, so the
+                  // existing "(was X)" gate (counterTermChanges in
+                  // chats-comp.tsx, equality-based) correctly shows no diff.
+                  originalOfferRate: `${new Intl.NumberFormat("en-US", {
+                    style: "currency",
                     currency: offer.currencyCode,
                     maximumFractionDigits: 0,
                   }).format(offer.rate)}/hr`,
-                  originalOfferRate:
-                    typeof metadata.originalOfferRate === "string"
-                      ? metadata.originalOfferRate
-                      : undefined,
-                  originalDuration:
-                    typeof metadata.originalDuration === "string"
-                      ? metadata.originalDuration
-                      : undefined,
-                  originalSchedule:
-                    typeof metadata.originalSchedule === "string"
-                      ? metadata.originalSchedule
-                      : undefined,
-                  originalStartDate:
-                    typeof metadata.originalStartDate === "string"
-                      ? metadata.originalStartDate
-                      : undefined,
+                  originalDuration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
+                  originalSchedule: formatScheduleLabel(offer.workSchedule),
+                  originalStartDate: formatStartDateLabel(offer.startDate),
                   role:
                     typeof metadata.role === "string" && metadata.role.trim()
                       ? metadata.role.trim()
@@ -356,35 +433,27 @@ export default function InboxRoot() {
                         ? metadata.jobTitle.trim()
                         : offer.contractTitle.split(/\s+[—-]\s+/)[0].trim() ||
                           "Team Member",
-                  duration: `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
-                  schedule:
-                    offer.workSchedule.type === "FULL_TIME"
-                      ? "Full Time"
-                      : offer.workSchedule.type === "PART_TIME"
-                        ? "Part Time"
-                        : "Custom",
+                  duration: latestCounterOfferTerms
+                    ? `${latestCounterOfferTerms.durationMonths} Month${latestCounterOfferTerms.durationMonths === 1 ? "" : "s"}`
+                    : `${offer.durationMonths} Month${offer.durationMonths === 1 ? "" : "s"}`,
+                  schedule: formatScheduleLabel(currentScheduleSource),
                   scheduleDetail:
-                    offer.workSchedule.type === "CUSTOM" &&
-                    typeof offer.workSchedule.hoursPerWeek === "number"
-                      ? `${offer.workSchedule.hoursPerWeek} hrs/week`
+                    currentScheduleSource.type === "CUSTOM" &&
+                    typeof currentScheduleSource.hoursPerWeek === "number"
+                      ? `${currentScheduleSource.hoursPerWeek} hrs/week`
                       : undefined,
-                  // offer.startDate is a date-only "YYYY-MM-DD" string (see
-                  // offer-service's normalizeDateOnly) — new Date() parses
-                  // that as UTC midnight, so formatting it in the browser's
-                  // local timezone showed the previous day west of UTC.
+                  // offer.startDate (and a counter's own startDate) is a
+                  // date-only "YYYY-MM-DD" string (see offer-service's
+                  // normalizeDateOnly) — new Date() parses that as UTC
+                  // midnight, so formatting it in the browser's local
+                  // timezone showed the previous day west of UTC.
                   // timeZone: "UTC" keeps the formatted day matching the
                   // UTC-midnight instant that was actually parsed, with no
                   // change to the stored value. expiresAt is a real
                   // timestamp (not date-only), so it keeps local-time
                   // formatting unchanged.
-                  startDate: new Date(offer.startDate).toLocaleDateString(
-                    "en-US",
-                    {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                      timeZone: "UTC",
-                    }
+                  startDate: formatStartDateLabel(
+                    latestCounterOfferTerms?.startDate ?? offer.startDate
                   ),
                   expiresLabel: new Date(offer.expiresAt).toLocaleDateString(
                     "en-US",
@@ -400,7 +469,12 @@ export default function InboxRoot() {
                   // that this could misclassify into the wrong (more
                   // powerful) view; a non-party viewer would have thrown
                   // above and landed in the catch branch below instead.
-                  clientPerspective: offer.clientId === getCurrentUser()?.id,
+                  // BTB-292/F1: currentUserProfile.id, not getCurrentUser()
+                  // — this component's own already-awaited /user/me result,
+                  // guaranteed resolved by the time this effect is even
+                  // allowed to run (see the early-return above), rather
+                  // than a module-level snapshot that can race.
+                  clientPerspective: offer.clientId === viewerId,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
                   // No backend producer writes offer notification metadata,
                   // so metadata.withdrawalMessage is always undefined for a
@@ -641,7 +715,7 @@ export default function InboxRoot() {
     return () => {
       cancelled = true
     }
-  }, [offerNotificationRefreshToken, token])
+  }, [offerNotificationRefreshToken, token, currentUserProfile?.id, profileFetchFailed])
 
   useEffect(() => {
     if (
@@ -862,6 +936,7 @@ export default function InboxRoot() {
         setCurrentUserProfile(me)
       } catch (err) {
         console.error("Failed to fetch user profile", err)
+        setProfileFetchFailed(true)
       }
 
       // 1) Ensure keypair exists, device registered, public key pushed

@@ -254,6 +254,30 @@ export class PublishService {
     return project;
   }
 
+  // PMCM-403: publish/unpublish are stricter than the rest of this service —
+  // every other mutating endpoint uses isProjectMember/ensureProjectOwnership
+  // (any team member, QA-196/PMCM-402), which stays unchanged for editing.
+  // Going live/offline is owner-or-lead only. isLead comes from the same
+  // persisted listings.project_members row getProjectDraft already reads
+  // for its own team/lead display (~L729-735) — not re-derived or guessed.
+  private async ensureCanPublish(
+    project: Project,
+    userId: string,
+  ): Promise<void> {
+    if (project.userId === userId) return;
+    const members = await this.projectRepository.getProjectMembers(
+      project.id,
+    );
+    const isLead = members.some(
+      (m) => String(m.userId) === String(userId) && m.isLead,
+    );
+    if (!isLead) {
+      throw new ForbiddenException(
+        'Only the owner or project lead can publish.',
+      );
+    }
+  }
+
   private async ensurePhaseOwnership(
     phaseId: string,
     userId: string,
@@ -752,6 +776,13 @@ export class PublishService {
       projectMembers,
       recentQuestions,
       budgetUsdCents: await this.calculateProjectBudgetUsdCents(scope),
+      // PMCM-403/F2: same owner-or-lead signal as getMyProjects'
+      // viewerCanPublish, computed server-side here too so the wizard and
+      // inline editor gate Publish/Unpublish the same way as the
+      // dashboard, from the same leadUserId this method already derived
+      // above — not a second, independent client-side guess.
+      viewerCanPublish:
+        project.userId === userId || String(leadUserId ?? '') === String(userId),
     };
   }
 
@@ -1039,7 +1070,11 @@ export class PublishService {
   async getMyProjects(
     userId: string,
   ): Promise<
-    (Project & { teamAvatars: string[]; hasValidationError: boolean })[]
+    (Project & {
+      teamAvatars: string[];
+      hasValidationError: boolean;
+      viewerCanPublish: boolean;
+    })[]
   > {
     const projects = await this.projectRepository.findAll({
       filterOptions: {
@@ -1071,6 +1106,21 @@ export class PublishService {
       projects.map((p) => p.id).filter((id): id is string => !!id),
     );
 
+    // PMCM-403: viewerCanPublish mirrors ensureCanPublish's owner-or-lead
+    // rule, computed server-side (not guessed client-side) — every listing
+    // here is already userId-owned by construction (findAll's own
+    // filterOptions.userId above), but this is computed properly rather
+    // than hardcoded true so it stays correct if this endpoint's scope
+    // ever widens to include team-member-visible listings.
+    const leadRows = await this.projectRepository.getLeadUserIdsByProject(
+      projects.map((p) => p.id).filter((id): id is string => !!id),
+    );
+    const leadProjectIds = new Set(
+      leadRows
+        .filter((r) => String(r.userId) === String(userId))
+        .map((r) => r.projectId),
+    );
+
     return projects.map((p) => {
       const ids = [
         String(userId),
@@ -1086,6 +1136,8 @@ export class PublishService {
           p,
           scopedProjectIds,
         ),
+        viewerCanPublish:
+          p.userId === userId || (!!p.id && leadProjectIds.has(p.id)),
       };
     });
   }
@@ -1280,6 +1332,7 @@ export class PublishService {
     authToken?: string,
   ): Promise<Project> {
     const project = await this.ensureProjectOwnership(projectId, userId);
+    await this.ensureCanPublish(project, userId);
 
     try {
       const media = await this.mediaRepository.find({ projectId: project.id });
@@ -1384,7 +1437,8 @@ export class PublishService {
   }
 
   async unpublishProject(userId: string, projectId: string): Promise<Project> {
-    await this.ensureProjectOwnership(projectId, userId);
+    const project = await this.ensureProjectOwnership(projectId, userId);
+    await this.ensureCanPublish(project, userId);
     const updated = await this.projectRepository.update(projectId, {
       status: 'draft',
       projectDatePublished: null,

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { HttpModule } from '@nestjs/axios';
 import { APP_GUARD } from '@nestjs/core';
 import { Notification } from './entities/notification.entity';
 import { UserPreference } from './entities/user-preference.entity';
@@ -16,6 +17,8 @@ import { SupportController } from './support/support.controller';
 import { SupportService } from './support/support.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PersistentStatusAlertService } from './services/persistent-status-alert.service';
+import { OfferCreatedSubscriber } from './subscribers/offer-created.subscriber';
+import { UserServiceClient } from './clients/user-service.client';
 
 function resolveDatabaseSsl(config: ConfigService) {
   const isProd = config.get<string>('NODE_ENV') === 'production';
@@ -57,6 +60,7 @@ function resolveDatabaseSsl(config: ConfigService) {
       }),
     }),
     TypeOrmModule.forFeature([Notification, UserPreference, NotificationIdempotency, PersistentStatusAlert]),
+    HttpModule,
   ],
   controllers: [NotificationController, SupportController],
   providers: [
@@ -67,6 +71,8 @@ function resolveDatabaseSsl(config: ConfigService) {
     BrevoService,
     SupportService,
     PersistentStatusAlertService,
+    OfferCreatedSubscriber,
+    UserServiceClient,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
