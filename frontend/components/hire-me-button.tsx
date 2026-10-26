@@ -3065,6 +3065,12 @@ export function OfferDialog({
                       offer = await createOffer({
                         talentId: hiredTalentId,
                         contractType: "PROJECT",
+                        // offer_service.offers.contract_title is NOT NULL
+                        // (InitialSchema) and create() inserts dto.contractTitle
+                        // as-is, so omitting it fails the insert even though
+                        // the DTO allows it for PROJECT. Same title the review
+                        // dialog shows (buildOfferReviewData's fallback).
+                        contractTitle: jobTitle || "Team Member",
                         rate:
                           parseFabricatedRateValue(
                             selectedRate,
