@@ -6834,6 +6834,14 @@ export function Chats({
             )
           }}
           onCounterOffer={() => setNotificationOfferStep("counter")}
+          // BTB-292: same two steps the "previous" dialog's clientPerspective
+          // branch already uses for a client's own sent offer — reusing the
+          // existing wired handlers (BTB-284/285), not new ones.
+          onWithdrawOffer={() => {
+            setNotificationWithdrawalMessage("")
+            setNotificationOfferStep("withdraw-confirm")
+          }}
+          onEditOffer={() => setNotificationOfferStep("edit-expired")}
           onCancelAccept={() => setNotificationOfferStep("event")}
           onCancelDecline={() => setNotificationOfferStep("event")}
           onPreviousOffer={() => setNotificationOfferStep("previous")}

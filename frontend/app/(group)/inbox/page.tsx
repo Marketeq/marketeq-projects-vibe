@@ -184,7 +184,14 @@ export default function InboxRoot() {
   }, [])
 
   useEffect(() => {
-    if (!token) return
+    // BTB-292/F1: clientPerspective below is derived from the current
+    // user's id — if that isn't known yet (currentUserProfile hasn't
+    // resolved from its own /user/me fetch), computing it anyway would
+    // silently default every offer to "not the client" (undefined !==
+    // anything), showing the wrong role's buttons with no error. Wait for
+    // it, and this effect's own dependency on currentUserProfile?.id below
+    // re-runs it once that fetch resolves, so nothing needs a manual retry.
+    if (!token || !currentUserProfile?.id) return
     let cancelled = false
 
     void NotificationsAPI.list({ limit: 100 })
@@ -261,7 +268,7 @@ export default function InboxRoot() {
                   offer.jobListingId
                 const conversationParticipantId =
                   actorId ||
-                  (offer.clientId === getCurrentUser()?.id
+                  (offer.clientId === currentUserProfile?.id
                     ? offer.talentId
                     : offer.clientId)
                 const latestCounterOfferId =
@@ -433,7 +440,12 @@ export default function InboxRoot() {
                   // that this could misclassify into the wrong (more
                   // powerful) view; a non-party viewer would have thrown
                   // above and landed in the catch branch below instead.
-                  clientPerspective: offer.clientId === getCurrentUser()?.id,
+                  // BTB-292/F1: currentUserProfile.id, not getCurrentUser()
+                  // — this component's own already-awaited /user/me result,
+                  // guaranteed resolved by the time this effect is even
+                  // allowed to run (see the early-return above), rather
+                  // than a module-level snapshot that can race.
+                  clientPerspective: offer.clientId === currentUserProfile?.id,
                   withdrawnByViewer: metadata.withdrawnByViewer === true,
                   // No backend producer writes offer notification metadata,
                   // so metadata.withdrawalMessage is always undefined for a
@@ -674,7 +686,7 @@ export default function InboxRoot() {
     return () => {
       cancelled = true
     }
-  }, [offerNotificationRefreshToken, token])
+  }, [offerNotificationRefreshToken, token, currentUserProfile?.id])
 
   useEffect(() => {
     if (

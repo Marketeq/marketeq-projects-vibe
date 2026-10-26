@@ -74,6 +74,13 @@ interface OfferFlowDialogProps {
   onCounterOffer?: () => void
   onDecline?: () => void
   onAccept?: () => void
+  /** BTB-292: the client's own view of their still-open, not-yet-countered
+   * sent offer — EC-043 (talent-response actions must never render for the
+   * offer's own client). Distinct from onLiveExpiredEditOffer/
+   * onLiveExpiredResendOffer below, which only fire once the offer has
+   * actually expired. */
+  onWithdrawOffer?: () => void
+  onEditOffer?: () => void
   onBack?: () => void
   onCancelAccept?: () => void
   onCancelDecline?: () => void
@@ -172,6 +179,8 @@ export function OfferFlowDialog({
   onCounterOffer,
   onDecline,
   onAccept,
+  onWithdrawOffer,
+  onEditOffer,
   onBack,
   onCancelAccept,
   onCancelDecline,
@@ -1008,11 +1017,15 @@ export function OfferFlowDialog({
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 p-3">
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
-                    Offer from{" "}
-                    {/* BTB-369: this screen is client-only (the talent
-                    doesn't get a "counter offer" footer here), so the named
-                    party is always the talent — link it when a real
-                    username is present. */}
+                    {/* BTB-292: this screen is reached by whoever is viewing
+                    a still-open, not-yet-countered offer — that's the
+                    TALENT when it's the client's offer they received, but
+                    it's also the CLIENT when it's her own just-sent offer
+                    (same event shape, no counter yet). "Offer from" is only
+                    correct for the former; the latter needs "Your offer
+                    to" (BTB-369's link guard — named party is the talent
+                    only when clientPerspective — still holds either way). */}
+                    {clientPerspective ? "Your offer to" : "Offer from"}{" "}
                     {clientPerspective && data.senderUsername ? (
                       <NextLink
                         href={talentProfileUrl(data.senderUsername)}
@@ -1202,38 +1215,69 @@ export function OfferFlowDialog({
                       This offer expires {data.expiresLabel}
                     </p>
 
-                    <div className="flex h-9 items-start gap-3">
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        size="sm"
-                        className="w-[109px]"
-                        onClick={onCounterOffer}
-                        disabled={offline}
-                      >
-                        Counter Offer
-                      </Button>
-                      <div className="flex flex-1 items-center justify-end gap-3">
+                    {/* BTB-292/EC-043: this is the one real root cause —
+                    this branch used to render Counter/Decline/Accept
+                    unconditionally, with no clientPerspective check at
+                    all (every other variant in this file already checks
+                    it). A client viewing her own still-open sent offer
+                    needs Withdraw/Edit instead — talent-response actions
+                    must never render for the offer's own client, and
+                    vice versa. */}
+                    {clientPerspective ? (
+                      <div className="flex h-9 items-start gap-3">
                         <Button
-                          variant="ghost"
+                          variant="outlined"
                           visual="gray"
                           size="sm"
-                          className="w-[105px]"
-                          disabled={declineLoading || offline}
-                          onClick={onDecline}
+                          onClick={onWithdrawOffer}
+                          disabled={offline}
                         >
-                          {declineLoading ? "Declining..." : "Decline Offer"}
+                          Withdraw Offer
                         </Button>
                         <Button
+                          variant="outlined"
+                          visual="gray"
                           size="sm"
-                          className="w-[103px]"
+                          onClick={onEditOffer}
                           disabled={offline}
-                          onClick={onAccept}
                         >
-                          Accept Offer
+                          Edit Offer
                         </Button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex h-9 items-start gap-3">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          size="sm"
+                          className="w-[109px]"
+                          onClick={onCounterOffer}
+                          disabled={offline}
+                        >
+                          Counter Offer
+                        </Button>
+                        <div className="flex flex-1 items-center justify-end gap-3">
+                          <Button
+                            variant="ghost"
+                            visual="gray"
+                            size="sm"
+                            className="w-[105px]"
+                            disabled={declineLoading || offline}
+                            onClick={onDecline}
+                          >
+                            {declineLoading ? "Declining..." : "Decline Offer"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="w-[103px]"
+                            disabled={offline}
+                            onClick={onAccept}
+                          >
+                            Accept Offer
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
