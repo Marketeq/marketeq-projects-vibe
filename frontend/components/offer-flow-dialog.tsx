@@ -578,7 +578,7 @@ export function OfferFlowDialog({
                           profile page, so it stays plain text. */}
                           {clientPerspective && data.senderUsername ? (
                             <NextLink
-                              href={talentProfileUrl(data.senderUsername)}
+                              href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                               className={INLINE_LINK_CLASS}
                             >
                               {data.senderUsername}
@@ -780,7 +780,7 @@ export function OfferFlowDialog({
                     profile, stays plain text). */}
                     {clientPerspective && data.senderUsername ? (
                       <NextLink
-                        href={talentProfileUrl(data.senderUsername)}
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                         className={INLINE_LINK_CLASS}
                       >
                         {data.senderUsername}
@@ -1039,7 +1039,7 @@ export function OfferFlowDialog({
                     username is present. */}
                     {clientPerspective && data.senderUsername ? (
                       <NextLink
-                        href={talentProfileUrl(data.senderUsername)}
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                         className={INLINE_LINK_CLASS}
                       >
                         {data.senderUsername}
@@ -1295,7 +1295,7 @@ export function OfferFlowDialog({
                         (no public profile) as plain text. */}
                         {clientPerspective && data.senderUsername ? (
                           <NextLink
-                            href={talentProfileUrl(data.senderUsername)}
+                            href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
                             className={INLINE_LINK_CLASS}
                           >
                             {data.senderUsername}
