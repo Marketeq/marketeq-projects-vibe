@@ -25,6 +25,12 @@ import {
   isUnauthorizedError,
   toUserMessage,
 } from "@/lib/listing-errors"
+import {
+  PublishConfirmDialog,
+  getPendingReviewToastTitle,
+  getPublishedToastTitle,
+  isPublishedResponse,
+} from "@/components/listings/publish-confirm-dialog"
 import options from "@/public/mock/options.json"
 import {
   AutocompleteAPI,
@@ -55,7 +61,12 @@ import {
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { getPublicApiUrl } from "@/lib/runtime-urls"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
-import { PROJECT_TYPE_OPTIONS, TEAM_SEED_LISTINGS } from "@/src/lib/my-listings"
+import {
+  PROJECT_TYPE_OPTIONS,
+  TEAM_SEED_LISTINGS,
+  TITLE_MAX_LENGTH,
+  TITLE_MAX_LENGTH_ERROR,
+} from "@/src/lib/my-listings"
 import { buildProjectUrl } from "@/src/lib/urlHelpers"
 import { HTTPS, ONE_SECOND } from "@/utils/constants"
 import {
@@ -1498,6 +1509,7 @@ const Header = ({
   publishing,
   saveStatus,
   isOffline,
+  canPublish = true,
 }: {
   onClose?: () => void
   slug?: string
@@ -1506,6 +1518,7 @@ const Header = ({
   publishing?: boolean
   saveStatus?: "idle" | "saving" | "saved" | "error"
   isOffline?: boolean
+  canPublish?: boolean
 }) => {
   return (
     <div className="pr-[17px] pl-[32px] flex items-center justify-between sticky top-0 bg-white h-[70px] border-b border-gray-200 z-10">
@@ -1561,9 +1574,28 @@ const Header = ({
             <TooltipContent>Preview</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        <Button onClick={onPublish} disabled={publishing}>
-          {publishing ? "Publishing…" : "Publish"}
-        </Button>
+        {canPublish ? (
+          <Button onClick={onPublish} disabled={publishing}>
+            {publishing ? "Publishing…" : "Publish"}
+          </Button>
+        ) : (
+          // PMCM-403/F2: owner-or-lead only — a disabled control fires no
+          // pointer events, so the Tooltip trigger wraps a focusable span
+          // around it (same pattern already used elsewhere in this file
+          // for a disabled control under a Tooltip).
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-block" tabIndex={0}>
+                  <Button disabled>Publish</Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Only the owner or project lead can publish.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -2258,11 +2290,12 @@ const scrollToWizardField = (targetId: string) => {
   })
 }
 
-const TITLE_MAX_LENGTH = 120
+// PMCM-254/PMCM-403: TITLE_MAX_LENGTH/TITLE_MAX_LENGTH_ERROR now come from
+// the shared src/lib/my-listings module (import above) so the dashboard's
+// inline rename reuses this exact rule instead of a third copy.
 // PMCM-255: settled at max 300 / 2,000, no minimum on either field.
 const SHORT_DESCRIPTION_MAX_LENGTH = 300
 const FULL_DESCRIPTION_MAX_LENGTH = 2000
-const TITLE_MAX_LENGTH_ERROR = "Please do not enter more than 120 character(s)"
 const SHORT_DESCRIPTION_MAX_LENGTH_ERROR =
   "Please do not enter more than 300 character(s)"
 const FULL_DESCRIPTION_MAX_LENGTH_ERROR =
@@ -12092,6 +12125,8 @@ function PublishProject({
     [currentStep, hasNextStep, hasPreviousStep, totalSteps, stepsState]
   )
   const [isSaveExitDialogOpen, toggleIsSaveExitDialogOpen] = useToggle(false)
+  // PMCM-403: shared publish-confirmation modal's open state.
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false)
   const projectInfoMethods = useForm<ProjectInfoFormValues>({
     resolver: zodResolver(projectInfoSchema),
     defaultValues: {
@@ -12126,6 +12161,11 @@ function PublishProject({
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null)
   const [isExistingPublishedListing, setIsExistingPublishedListing] =
     useState(false)
+  // PMCM-403/F2: owner-or-lead signal from getProjectDraft's own
+  // viewerCanPublish (listings-service), not derived client-side. Defaults
+  // true — a brand-new draft just created by this caller has no
+  // viewerCanPublish field yet, and its creator is trivially the owner.
+  const [viewerCanPublish, setViewerCanPublish] = useState(true)
   const [teamMemberIds, setTeamMemberIds] = useState<string[]>([])
   const [teamSubTab, setTeamSubTab] = useState<string>("members")
   const [pendingInviteEmails, setPendingInviteEmails] = useState<string[]>([])
@@ -12202,8 +12242,13 @@ function PublishProject({
     }
   }
 
-  const handlePublish = async () => {
-    if (!draftProjectId || isPublishing) return
+  // PMCM-403: Header's Publish button calls this — PMCM-253's exact
+  // behavior is unchanged (always clickable, invalid → inline jump, no
+  // modal, no toast). Only once the listing is actually valid does it open
+  // the new shared confirmation modal; the real publish call now happens
+  // in handlePublish below, on "Yes, Publish".
+  const attemptPublish = () => {
+    if (!draftProjectId || isPublishing || !viewerCanPublish) return
     setPublishAttempted(true)
     setFaqModerationError(null)
     setProjectInfoModerationError(null)
@@ -12216,10 +12261,27 @@ function PublishProject({
       })
       return
     }
+    setPublishDialogOpen(true)
+  }
+
+  // PMCM-403: no validity check here — attemptPublish above already gated
+  // entry (modal only opens once valid). Also the session-expiry resume
+  // target (handlePublishRef, PMCM-261/AC3): on a 401 mid-publish this
+  // re-runs unchanged, retrying the same API call rather than re-validating
+  // or re-opening the modal.
+  const handlePublish = async () => {
+    if (!draftProjectId || isPublishing) return
     setIsPublishing(true)
     try {
-      await ProjectAPI.PublishProject(draftProjectId)
+      const publishResponse = await ProjectAPI.PublishProject(draftProjectId)
       setIsProjectSubmitted(true)
+      setPublishDialogOpen(false)
+      const publishedType = scopeType === "service" ? "service" : "project"
+      toast(
+        isPublishedResponse(publishResponse)
+          ? { title: getPublishedToastTitle(publishedType), variant: "success" }
+          : { title: getPendingReviewToastTitle(publishedType) }
+      )
       router.push("/my-listings")
     } catch (error: any) {
       console.error("Failed to publish project", error)
@@ -12230,6 +12292,7 @@ function PublishProject({
         promptSignInToRetry(() => handlePublishRef.current())
         return
       }
+      setPublishDialogOpen(false)
       const errorMessage =
         error?.response?.data?.reason ||
         error?.response?.data?.message ||
@@ -12651,6 +12714,7 @@ function PublishProject({
         const nextDraftId = String(draft?.id ?? "")
         setDraftProjectId(nextDraftId || null)
         setIsExistingPublishedListing(draft?.status === "published")
+        setViewerCanPublish(draft?.viewerCanPublish !== false)
         setTeamMemberIds(
           Array.isArray(draft?.teamMemberIds)
             ? draft.teamMemberIds.map(String)
@@ -13623,15 +13687,25 @@ function PublishProject({
                     }}
                     slug={slug}
                     lastSavedAt={lastSavedAt}
-                    onPublish={handlePublish}
+                    onPublish={attemptPublish}
                     publishing={isPublishing}
                     saveStatus={saveStatus}
                     isOffline={isOffline}
+                    canPublish={viewerCanPublish}
                   />
                   <SaveExitDialog
                     open={isSaveExitDialogOpen}
                     onOpenChange={toggleIsSaveExitDialogOpen}
                     onConfirm={handleSaveExit}
+                  />
+                  {/* PMCM-403: shared publish-confirmation dialog, same
+                      component the inline editor and the dashboard use. */}
+                  <PublishConfirmDialog
+                    open={publishDialogOpen}
+                    onOpenChange={setPublishDialogOpen}
+                    onConfirm={handlePublish}
+                    listingType={scopeType === "service" ? "service" : "project"}
+                    loading={isPublishing}
                   />
                   <div
                     key={currentStep}

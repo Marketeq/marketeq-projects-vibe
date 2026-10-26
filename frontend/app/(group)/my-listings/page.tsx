@@ -1,14 +1,24 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
+import { toUserMessage } from "@/lib/listing-errors"
+import {
+  PublishConfirmDialog,
+  getPendingReviewToastTitle,
+  getPublishedToastTitle,
+  isPublishedResponse,
+} from "@/components/listings/publish-confirm-dialog"
 import {
   MY_LISTING_STATUSES,
+  TITLE_MAX_LENGTH,
+  TITLE_MAX_LENGTH_ERROR,
+  TITLE_REQUIRED_ERROR,
   type MyListing,
   type MyListingStatus,
   type MyListingType,
@@ -24,6 +34,8 @@ import {
   DotsHorizontal,
   Edit3,
   ExternalLink,
+  Eye,
+  EyeOff,
   File04,
   FilterLines,
   HelpCircle,
@@ -38,6 +50,7 @@ import {
   Users,
   XCircle,
 } from "@blend-metrics/icons"
+import { Spinner } from "@/components/ui/spinner/spinner"
 import { ROLE } from "@/types/user"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { DropdownIcon } from "@/components/icons/dropdown-icon"
@@ -66,11 +79,17 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  ErrorMessage,
   IconButton,
+  Input,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   useToast,
 } from "@/components/ui"
 
@@ -116,7 +135,8 @@ export default function MyListingsPage() {
   const { toast } = useToast()
   const [showNewListingDialog, setShowNewListingDialog] = useState(false)
   const [creatingType, setCreatingType] = useState<string | null>(null)
-  const { listings, isLoading, hasError, refreshListings } = useMyListings()
+  const { listings, isLoading, hasError, refreshListings, updateListing } =
+    useMyListings()
   const [deleteTarget, setDeleteTarget] = useState<MyListing | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [viewMode, setViewMode] = useState("grid")
@@ -127,6 +147,24 @@ export default function MyListingsPage() {
   const [sortBy, setSortBy] = useState<string>("recent")
   const [typeFilters, setTypeFilters] = useState<MyListingType[]>([])
   const [statusFilters, setStatusFilters] = useState<MyListingStatus[]>([])
+
+  // PMCM-403/AC1: inline rename — only one card can be renaming at a time.
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const skipRenameBlurRef = useRef(false)
+
+  // PMCM-403/AC3: Live/Draft toggle state.
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [confirmPublishTarget, setConfirmPublishTarget] =
+    useState<MyListing | null>(null)
+  // PMCM-403/AC3: per-listing inline publish-blocked message — either the
+  // client-side "complete the required sections" copy (listing.
+  // hasValidationError, #715's computation) or a backend rejection
+  // (toUserMessage/curated), both rendered the same way per the ticket.
+  const [blockedMessageById, setBlockedMessageById] = useState<
+    Record<string, string>
+  >({})
 
   const toggleFilter = <T,>(
     value: T,
@@ -194,6 +232,123 @@ export default function MyListingsPage() {
 
   const goEdit = (id: string) => router.push(editProjectListingUrl(id))
 
+  // PMCM-403/AC1: inline rename — clicking a manageable listing's name
+  // (grid or list) starts this instead of navigating to the editor.
+  const startRename = (listing: MyListing) => {
+    setRenamingId(listing.id)
+    setRenameValue(listing.title)
+    setRenameError(null)
+  }
+
+  const cancelRename = () => {
+    skipRenameBlurRef.current = true
+    setRenamingId(null)
+    setRenameError(null)
+  }
+
+  const commitRename = async (listing: MyListing) => {
+    if (skipRenameBlurRef.current) {
+      // Escape already cancelled — the input's own blur (from unmounting)
+      // must not also save.
+      skipRenameBlurRef.current = false
+      return
+    }
+    const trimmed = renameValue.trim()
+    if (!trimmed) {
+      setRenameError(TITLE_REQUIRED_ERROR)
+      return
+    }
+    if (trimmed.length > TITLE_MAX_LENGTH) {
+      setRenameError(TITLE_MAX_LENGTH_ERROR)
+      return
+    }
+    setRenamingId(null)
+    if (trimmed === listing.title) return
+    const previousTitle = listing.title
+    updateListing(listing.id, { title: trimmed })
+    try {
+      // PMCM-403/AC1: same endpoint the inline editor's own title field
+      // already uses for both drafts and already-published listings
+      // (verified: updateProjectDraft has no status gate and keeps
+      // PMCM-254's first-save-only slug rule either way) — no new backend
+      // path needed.
+      await ProjectAPI.UpdateProjectDraft(listing.id, { title: trimmed })
+    } catch (err) {
+      updateListing(listing.id, { title: previousTitle })
+      toast({ title: toUserMessage(err), variant: "destructive" })
+    }
+  }
+
+  // PMCM-403/AC3: Live → Draft is instant, no confirmation.
+  const handleUnpublish = async (listing: MyListing) => {
+    const previousStatus = listing.status
+    updateListing(listing.id, { status: "Draft" })
+    setTogglingId(listing.id)
+    try {
+      await ProjectAPI.UnpublishProject(listing.id)
+    } catch (err) {
+      updateListing(listing.id, { status: previousStatus })
+      toast({ title: toUserMessage(err), variant: "destructive" })
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
+  const clearBlockedMessage = (id: string) =>
+    setBlockedMessageById((prev) => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+
+  // PMCM-403/AC3: Draft → Live — reuses #715's existing hasValidationError
+  // computation (src/lib/my-listings.ts) as the validation gate, same
+  // signal the red "Needs Attention" badge already uses. Blocked listings
+  // never see the confirmation modal at all.
+  const handleDraftToggleClick = (listing: MyListing) => {
+    if (listing.hasValidationError) {
+      setBlockedMessageById((prev) => ({
+        ...prev,
+        [listing.id]: "Complete the required sections to publish.",
+      }))
+      return
+    }
+    clearBlockedMessage(listing.id)
+    setConfirmPublishTarget(listing)
+  }
+
+  const handleConfirmPublish = async () => {
+    if (!confirmPublishTarget) return
+    const listing = confirmPublishTarget
+    setTogglingId(listing.id)
+    try {
+      const res = await ProjectAPI.PublishProject(listing.id)
+      setConfirmPublishTarget(null)
+      if (isPublishedResponse(res)) {
+        updateListing(listing.id, { status: "Active" })
+        toast({
+          title: getPublishedToastTitle(listing.type),
+          variant: "success",
+        })
+      } else {
+        // Held by moderation ("pending_review"): not live, so it stays
+        // Draft here (fetchBackendListings maps pending_review to Draft).
+        toast({ title: getPendingReviewToastTitle(listing.type) })
+      }
+    } catch (err) {
+      // PMCM-403/AC3: backend still rejected it (validation/moderation) —
+      // leave it Draft, treat it like the client-blocked case above.
+      setConfirmPublishTarget(null)
+      setBlockedMessageById((prev) => ({
+        ...prev,
+        [listing.id]: toUserMessage(err),
+      }))
+    } finally {
+      setTogglingId(null)
+    }
+  }
+
   // QA-202/PMCM-403: the menu item below called nothing — this is the
   // actual delete action, soft-deleting via the endpoint newly wired up in
   // publish.controller.ts (backed by the pre-existing but previously
@@ -230,11 +385,12 @@ export default function MyListingsPage() {
         <DropdownMenuItem>
           <Users className="h-4 w-4" /> Manage members
         </DropdownMenuItem>
-        {/* Routes to the full editor, so the label says Edit rather than
-            Rename — there is no inline-rename endpoint yet. */}
+        {/* Opens the full editor — renaming itself now happens inline, by
+            clicking the listing's name directly (PMCM-403/AC1). */}
         <DropdownMenuItem onClick={() => goEdit(listing.id)}>
           <Edit3 className="h-4 w-4" /> Edit {noun}
         </DropdownMenuItem>
+        {/* PMCM-403: out of scope, report only — these two do nothing yet. */}
         <DropdownMenuItem>
           <Pause className="h-4 w-4" /> Pause {noun}
         </DropdownMenuItem>
@@ -260,6 +416,115 @@ export default function MyListingsPage() {
           Delete {noun}
         </DropdownMenuItem>
       </DropdownMenuContent>
+    )
+  }
+
+  // PMCM-403/AC3: Figma's "Publishing the Offer" status control — an
+  // outlined "• Live"/"• Draft" button whose menu offers Unpublish/Publish.
+  // Only meaningful for the two statuses that can actually toggle; every
+  // other status (In Review, Needs Update, Paused, Completed) keeps the
+  // plain, non-interactive status Badge it already had.
+  const renderStatusControl = (listing: MyListing) => {
+    const isLive = listing.status === "Active"
+    const isDraft = listing.status === "Draft"
+    if (!isLive && !isDraft) {
+      return (
+        <Badge size="md" visual={statusToBadgeVisual(listing.status)}>
+          {listing.status}
+        </Badge>
+      )
+    }
+    const loading = togglingId === listing.id
+    const dotAndLabel = loading ? (
+      <Spinner size={14} />
+    ) : (
+      <>
+        <span
+          className={cn(
+            "size-2 rounded-full shrink-0",
+            isLive ? "bg-success-500" : "bg-gray-400"
+          )}
+        />
+        {isLive ? "Live" : "Draft"}
+      </>
+    )
+
+    // PMCM-403/F2: owner-or-lead only (listings-service's ensureCanPublish)
+    // — everyone else sees the same control, DS-disabled, with a tooltip
+    // explaining why (same focusable-span wrapper pattern used elsewhere in
+    // this codebase for a disabled control under a Tooltip, since a
+    // disabled element fires no pointer events on its own).
+    if (!listing.canPublish) {
+      return (
+        <TooltipProvider delayDuration={150}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-block"
+                tabIndex={0}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Button size="sm" variant="outlined" visual="gray" disabled>
+                  {dotAndLabel}
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              Only the owner or project lead can publish.
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="sm"
+            variant="outlined"
+            visual="gray"
+            disabled={loading}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {dotAndLabel}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="bottom"
+          align="end"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {isLive ? (
+            <DropdownMenuItem onClick={() => handleUnpublish(listing)}>
+              <EyeOff className="h-4 w-4" /> Unpublish
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={() => handleDraftToggleClick(listing)}>
+              <Eye className="h-4 w-4" /> Publish
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  }
+
+  const renderBlockedMessage = (listing: MyListing) => {
+    const message = blockedMessageById[listing.id]
+    if (!message) return null
+    return (
+      <ErrorMessage className="mt-1 block" size="sm">
+        {message}{" "}
+        <span
+          className="underline cursor-pointer"
+          onClick={(e) => {
+            e.stopPropagation()
+            goEdit(listing.id)
+          }}
+        >
+          Edit listing
+        </span>
+      </ErrorMessage>
     )
   }
 
@@ -340,7 +605,7 @@ export default function MyListingsPage() {
 
                 <div className="flex items-center gap-x-3">
                   <DropdownMenu>
-                    <DropdownMenuTrigger>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         className="text-gray-500"
                         visual="gray"
@@ -421,7 +686,7 @@ export default function MyListingsPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <DropdownMenu>
-                    <DropdownMenuTrigger>
+                    <DropdownMenuTrigger asChild>
                       <IconButton
                         className="text-gray-500"
                         size="md"
@@ -555,12 +820,10 @@ export default function MyListingsPage() {
                       activeTab !== "Shared" && (
                         <Button
                           className="mt-4"
-                          variant="outlined"
-                          visual="gray"
                           onClick={() => setShowNewListingDialog(true)}
                         >
                           <Plus className="size-[15px]" />
-                          Create your first listing
+                          Create Your First Listing
                         </Button>
                       )
                     )}
@@ -638,12 +901,48 @@ export default function MyListingsPage() {
                         </div>
                         <div className="pt-3">
                           <div className="flex items-start justify-between gap-x-2">
-                            <h2
-                              className="text-sm font-semibold text-dark-blue-400 line-clamp-2 hover:text-primary-500 cursor-pointer transition-colors duration-150"
-                              onClick={() => goEdit(listing.id)}
-                            >
-                              {listing.title || "Untitled Listing"}
-                            </h2>
+                            {renamingId === listing.id ? (
+                              <div className="flex-auto min-w-0" onClick={(e) => e.stopPropagation()}>
+                                <Input
+                                  autoFocus
+                                  className="h-8 text-sm font-semibold"
+                                  value={renameValue}
+                                  maxLength={TITLE_MAX_LENGTH}
+                                  isInvalid={!!renameError}
+                                  onChange={(e) => {
+                                    setRenameValue(e.target.value)
+                                    setRenameError(null)
+                                  }}
+                                  onBlur={() => commitRename(listing)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault()
+                                      ;(e.target as HTMLInputElement).blur()
+                                    } else if (e.key === "Escape") {
+                                      e.preventDefault()
+                                      cancelRename()
+                                    }
+                                  }}
+                                />
+                                {renameError && (
+                                  <ErrorMessage size="sm">{renameError}</ErrorMessage>
+                                )}
+                              </div>
+                            ) : (
+                              <h2
+                                className="text-sm font-semibold text-dark-blue-400 line-clamp-2 hover:text-primary-500 cursor-pointer transition-colors duration-150"
+                                onClick={(e) => {
+                                  if (listing.canRename) {
+                                    e.stopPropagation()
+                                    startRename(listing)
+                                  } else {
+                                    goEdit(listing.id)
+                                  }
+                                }}
+                              >
+                                {listing.title || "Untitled Listing"}
+                              </h2>
+                            )}
                             {listing.teamAvatars &&
                               listing.teamAvatars.length > 0 && (
                                 <div className="shrink-0">
@@ -670,13 +969,11 @@ export default function MyListingsPage() {
                                 </div>
                               )}
                           </div>
-                          <div className="mt-2 flex items-center gap-x-2">
-                            <Badge
-                              size="md"
-                              visual={statusToBadgeVisual(listing.status)}
-                            >
-                              {listing.status}
-                            </Badge>
+                          <div
+                            className="mt-2 flex items-center gap-x-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {renderStatusControl(listing)}
                             {listing.hasValidationError && (
                               <Badge
                                 size="md"
@@ -691,6 +988,7 @@ export default function MyListingsPage() {
                               Updated {formatRelativeTime(listing.updatedAt)}
                             </p>
                           </div>
+                          {renderBlockedMessage(listing)}
                         </div>
                       </article>
                     ))}
@@ -731,9 +1029,49 @@ export default function MyListingsPage() {
                         >
                           <td className="px-6 py-2">
                             <div className="flex items-center gap-x-2">
-                              <span className="text-sm font-semibold text-dark-blue-400">
-                                {listing.title}
-                              </span>
+                              {renamingId === listing.id ? (
+                                <div
+                                  className="flex-auto min-w-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Input
+                                    autoFocus
+                                    className="h-8 text-sm font-semibold"
+                                    value={renameValue}
+                                    maxLength={TITLE_MAX_LENGTH}
+                                    isInvalid={!!renameError}
+                                    onChange={(e) => {
+                                      setRenameValue(e.target.value)
+                                      setRenameError(null)
+                                    }}
+                                    onBlur={() => commitRename(listing)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault()
+                                        ;(e.target as HTMLInputElement).blur()
+                                      } else if (e.key === "Escape") {
+                                        e.preventDefault()
+                                        cancelRename()
+                                      }
+                                    }}
+                                  />
+                                  {renameError && (
+                                    <ErrorMessage size="sm">{renameError}</ErrorMessage>
+                                  )}
+                                </div>
+                              ) : (
+                                <span
+                                  className="text-sm font-semibold text-dark-blue-400"
+                                  onClick={(e) => {
+                                    if (listing.canRename) {
+                                      e.stopPropagation()
+                                      startRename(listing)
+                                    }
+                                  }}
+                                >
+                                  {listing.title}
+                                </span>
+                              )}
                               {/* The Type column was replaced by Team, so the
                                   service marker moves next to the name here —
                                   same badge the grid card uses. */}
@@ -775,20 +1113,24 @@ export default function MyListingsPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-2">
+                          <td
+                            className="px-6 py-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="flex items-center gap-x-2">
-                              <Badge
-                                size="md"
-                                visual={statusToBadgeVisual(listing.status)}
-                              >
-                                {listing.status}
-                              </Badge>
+                              {renderStatusControl(listing)}
                               {listing.hasValidationError && (
-                                <Badge size="md" visual="error">
+                                <Badge
+                                  size="md"
+                                  visual="error"
+                                  className="cursor-pointer"
+                                  onClick={() => goEdit(listing.id)}
+                                >
                                   Needs Attention
                                 </Badge>
                               )}
                             </div>
+                            {renderBlockedMessage(listing)}
                           </td>
                           <td className="px-6 py-2">
                             <span className="text-sm leading-5 text-gray-500">
@@ -914,6 +1256,21 @@ export default function MyListingsPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* PMCM-403/AC3: shared publish-confirmation dialog, same component
+            the wizard and the inline editor use. */}
+        <PublishConfirmDialog
+          open={confirmPublishTarget !== null}
+          onOpenChange={(open) => {
+            if (!open) setConfirmPublishTarget(null)
+          }}
+          onConfirm={handleConfirmPublish}
+          listingType={confirmPublishTarget?.type ?? "project"}
+          loading={
+            confirmPublishTarget != null &&
+            togglingId === confirmPublishTarget.id
+          }
+        />
       </div>
     </AuthenticatedRoute>
   )
