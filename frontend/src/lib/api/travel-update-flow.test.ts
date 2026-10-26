@@ -24,6 +24,7 @@ function run(body: string, activeTravelModeUpdate: boolean | undefined) {
     send: (event: string) => calls.push(`send:${event}`),
     setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
+    onTravelModeConfirmed: () => calls.push("confirmed"),
   }
   new Function(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
@@ -44,7 +45,7 @@ describe("active reminder → Temporarily traveling", () => {
   })
 
   it("closes the flow and shows the existing 'Travel mode is on.' confirmation", () => {
-    assert.deepEqual(calls, ["confirmation:true", "open:false"])
+    assert.deepEqual(calls, ["confirmation:true", "confirmed", "open:false"])
     assert.ok(flow.includes("Travel mode is on."))
     assert.ok(flow.includes("open={travelModeNotificationOpen}"))
   })
@@ -97,7 +98,9 @@ describe("the protected flow changed only as approved", () => {
       .filter((line) => !/^\s*\/\//.test(line))
       .join("\n")
     assert.equal((code.match(/activeTravelModeUpdate/g) ?? []).length, 3)
-    assert.ok(code.includes("  activeTravelModeUpdate,\n  simulateUploadForPreview,"))
+    // PMCM-651 (explicitly approved exception): one optional additive prop, onTravelModeConfirmed,
+    // sits between them; see travel-mode-confirmation.test.ts for exactly where it is called.
+    assert.ok(code.includes("  activeTravelModeUpdate,\n  onTravelModeConfirmed,\n  simulateUploadForPreview,"))
     assert.ok(code.includes("  activeTravelModeUpdate?: boolean"))
     assert.ok(code.includes("if (activeTravelModeUpdate) {"))
   })

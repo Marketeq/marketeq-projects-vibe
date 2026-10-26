@@ -5,7 +5,7 @@
 // unacknowledged forever and eventually stall the consumer's prefetch window).
 import { Logger } from '@nestjs/common';
 import { RmqContext, ServerRMQ } from '@nestjs/microservices';
-import { SEND_PATTERN } from './delivery.constants';
+import { SEND_PATTERN, STATUS_ALERT_PATTERN } from './delivery.constants';
 
 export class AckingServerRMQ extends ServerRMQ {
   private readonly ackLogger = new Logger('NotificationRmq');
@@ -24,7 +24,7 @@ export class AckingServerRMQ extends ServerRMQ {
   }
 
   async handleEvent(pattern: string, packet: any, context: RmqContext): Promise<any> {
-    const owns = pattern === SEND_PATTERN; // its handler acknowledges for itself
+    const owns = pattern === SEND_PATTERN || pattern === STATUS_ALERT_PATTERN; // these handlers acknowledge for themselves
     if (!this.getHandlerByPattern(pattern)) {
       this.ackLogger.error(`No handler for "${pattern}" - acknowledging so it does not block the queue`);
       context.getChannelRef().ack(context.getMessage());

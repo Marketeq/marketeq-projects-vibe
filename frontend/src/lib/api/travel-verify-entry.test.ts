@@ -31,6 +31,7 @@ function run(body: string, activeTravelModeUpdate: boolean) {
     send: (event: string) => calls.push(`send:${event}`),
     setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
+    onTravelModeConfirmed: () => calls.push("confirmed"),
   }
   new Function(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
@@ -70,9 +71,9 @@ describe("Verify My Account launches the flow with the traveler's real state", (
 
 describe("active traveler (verified or unverified) → Temporarily traveling", () => {
   for (const [label, summary] of [["verified", verifiedTraveler], ["unverified", unverifiedTraveler]] as const) {
-    it(`${label}: no duration screen, no write, exactly one confirmation, flow closes`, () => {
+    it(`${label}: no duration screen, no write, exactly one confirmation reported (onTravelModeConfirmed), flow closes`, () => {
       const calls = run(temporarily, isTravelModeInForce(summary))
-      assert.deepEqual(calls, ["confirmation:true", "open:false"])
+      assert.deepEqual(calls, ["confirmation:true", "confirmed", "open:false"])
     })
   }
   it("the period and reminders are untouched: no classification, duration or update call exists on that path", () => {

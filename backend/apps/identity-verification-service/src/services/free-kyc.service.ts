@@ -67,6 +67,7 @@ import {
 } from '../events/notification-event-publisher.interface';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 import { HomeCountryUpdatedNotificationPublisher } from '../events/home-country-updated-notification.publisher';
+import { StatusAlertPublisher } from '../events/status-alert.publisher';
 
 // A NEW hosted session requires verified location, travel mode off and a
 // home-country confirmation no older than this. Resuming an already-created
@@ -89,7 +90,17 @@ export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
 // for a real transition (a replay, a duplicate approval or a reconcile of an
 // already-verified profile never sets it).
 interface IdentityVerifiedSignal {
-  verified?: { profileId: string; userId: string };
+  // hostedKycSessionId: the approved session; it keys the persistent Verified alert.
+  // persistentAlert: whether this approval is the account's verification (identity and
+  // location becoming fully verified). It is false for an approved HOME-COUNTRY CHANGE: that
+  // session moved an already verified account through in-progress and in-review (the profile
+  // goes back to verified when it is approved), but the account is not being verified again,
+  // so only "home country updated" is announced. The legacy identity_verified event is
+  // unaffected by it.
+  verified?: { profileId: string; userId: string; hostedKycSessionId: string; persistentAlert: boolean };
+  // Set only on the transition into In Review (never for a replay, or a profile that
+  // was already pending); hostedKycSessionId keys the persistent Submitted alert.
+  submitted?: { userId: string; hostedKycSessionId: string };
   // Set only when an approved home-country-change session actually promoted the
   // pending country (never for a replay, a stale session or any other outcome).
   // hostedKycSessionId: the hosted_kyc_sessions row that was promoted (it keys the
@@ -163,6 +174,10 @@ export class FreeKycService {
     // approved home-country change was applied.
     @Optional()
     private readonly homeCountryNotifications?: HomeCountryUpdatedNotificationPublisher,
+    // Appended after `homeCountryNotifications` for the same reason. Stores the persistent,
+    // dismissible dashboard alerts (PMCM-651); optional so it can never break a verification.
+    @Optional()
+    private readonly statusAlerts?: StatusAlertPublisher,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -479,6 +494,20 @@ export class FreeKycService {
   // with fixed text only. There is no outbox, so a crash between commit and
   // publish can lose the event.
   private async publishIdentityVerified(signal: IdentityVerifiedSignal): Promise<void> {
+    // Persistent dashboard alerts. Each publisher call resolves false instead of throwing,
+    // and the keys are per session, so a replay or a reconcile stores nothing twice.
+    if (this.statusAlerts && signal.submitted) {
+      await this.statusAlerts.submittedForReview(signal.submitted.userId, signal.submitted.hostedKycSessionId);
+    }
+    if (this.statusAlerts && signal.verified?.persistentAlert) {
+      await this.statusAlerts.verified(signal.verified.userId, signal.verified.hostedKycSessionId);
+    }
+    if (this.statusAlerts && signal.homeCountryUpdated) {
+      await this.statusAlerts.homeCountryUpdated(
+        signal.homeCountryUpdated.userId,
+        signal.homeCountryUpdated.hostedKycSessionId,
+      );
+    }
     if (this.events && signal.verified) {
       try {
         await this.events.publish({
@@ -945,7 +974,12 @@ export class FreeKycService {
         profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
         // A successful (re-)verification ends any renewal window (TRVG2 §2.7).
         profile.expiredAt = null;
-        signal.verified = { profileId: profile.id, userId: profile.userId };
+        signal.verified = {
+          profileId: profile.id,
+          userId: profile.userId,
+          hostedKycSessionId: session.id,
+          persistentAlert: session.purpose !== HostedKycSessionPurpose.HOME_COUNTRY_CHANGE,
+        };
         break;
       case HostedKycSessionStatus.DECLINED: {
         const attemptRepository = manager.getRepository(VerificationAttempt);
@@ -974,6 +1008,9 @@ export class FreeKycService {
         break;
       }
       case HostedKycSessionStatus.IN_REVIEW:
+        if (current !== IdentityVerificationStatus.PENDING) {
+          signal.submitted = { userId: profile.userId, hostedKycSessionId: session.id };
+        }
         profile.identityVerificationStatus = IdentityVerificationStatus.PENDING;
         break;
       case HostedKycSessionStatus.CREATED:

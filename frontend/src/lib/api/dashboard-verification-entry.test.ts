@@ -42,11 +42,14 @@ describe("dashboard verification entry: nothing opens on page load", () => {
   })
 
   it("the verification flow is opened only by a click: Verify, the popup's Update, or a mismatch answer", () => {
-    assert.equal(count("setIdentityFlowOpen(true)"), 3)
+    // The fourth is the Update confirmation's retry (PMCM-651): it reopens the Update screen
+    // only after a click-started confirmation failed.
+    assert.equal(count("setIdentityFlowOpen(true)"), 4)
     for (const owner of [
       "const handleVerifyMyAccount = useCallback(",
       "const handleTravelUpdate = useCallback(",
       "const openFlowFromMismatch = useCallback(",
+      "const handleTravelModeConfirmed = useCallback(",
     ]) {
       const from = page.indexOf(owner)
       const next = owner.includes("openFlowFromMismatch")
@@ -109,12 +112,13 @@ describe("dashboard verification entry: return from Didit", () => {
     assert.ok(page.includes('document.removeEventListener("visibilitychange", onVisible)'))
   })
 
-  it("completion hides the banner, and the success alert shows only after Done", () => {
+  it("completion hides the banner, and Done only closes the modal (the persistent Verified card is the notification)", () => {
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("clearAwaitingResult", at), at).includes("setProfileBannerShown(false)"))
-    assert.ok(page.includes("setVerifiedModalOpen(false)\n    setSuccessAlertOpen(true)"))
-    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
-    assert.equal(count("setSuccessAlertOpen(true)"), 2)
+    // PMCM-651: Done closes the modal and opens nothing; the old temporary alert is no longer
+    // opened from anywhere, so it can never sit on top of the persistent status-alert stack.
+    assert.match(page, /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+\}/)
+    assert.equal(count("setSuccessAlertOpen(true)"), 0)
   })
 })
 
