@@ -986,6 +986,19 @@ export default function TalentDashboard() {
   const handleIdentityFlowOpenChange = useCallback(
     (open: boolean) => {
       setIdentityFlowOpen(open)
+      if (!open) {
+        // For an Update on a Travel Mode that is already in force, the flow's "Temporarily
+        // traveling" is a no-op: it opens its own temporary confirmation toast and
+        // closes (components/identity-verification-flow.tsx, which is read-only). That toast
+        // sits on top of this page's persistent alert stack, and the "You are in Travel Mode"
+        // card already says it. The toast's state lives in that flow instance and the open
+        // and the close are batched into one render, so replacing the instance with a fresh
+        // one in the same update means the toast never mounts. Nothing is saved or sent, and
+        // a first-time activation (no activeTravelModeUpdate) keeps its confirmation screen.
+        setFlowLaunch((prev) =>
+          prev.activeTravelModeUpdate ? { ...prev, key: prev.key + 1 } : prev
+        )
+      }
       const kind = mismatchFlowKindRef.current
       if (!open && kind === null) {
         // An ordinary flow closed (Verify My Account, or an Update): re-read /me so what it
