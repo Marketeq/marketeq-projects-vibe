@@ -13,6 +13,7 @@
 - checkout-service – Stripe checkout, wallet, webhooks
 - messaging-service – Ably real-time, message threads, history, E2E encryption (AES-256-GCM + RSA-4096-OAEP key wrapping)
 - notification-service – Ably push, SendGrid email, event handlers, preferences
+  - PMCM-651 (2026-10-26): persistent status alerts: `persistent_status_alerts` table + list/dismiss APIs + `notification.status_alert.upsert` consumer (idempotent, supersession, retry/DLQ); identity-verification-service publishers; dashboard top-right stack. Deploy notification-service first. See services/notification-service.md and services/identity-verification-service.md.
 - contracts-service – contract groups, lifecycle (pending→active→ended/canceled/disputed), audit logging, CRON auto-cancel, RabbitMQ events
 - time-tracking-service – complete service, code review fixes, QA tested all endpoints
 - transaction-service – ledger entries, Stripe webhooks, RabbitMQ events, 3 migrations, 62 .ts files
