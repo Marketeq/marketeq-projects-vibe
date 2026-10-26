@@ -512,7 +512,14 @@ export class OffersService {
 
   async create(userId: string, dto: any, clientJwt?: string): Promise<Offer> {
     // Validate listing exists, is published, and belongs to this client.
-    await this.listingsClient.validateListing(dto.jobListingId, userId, clientJwt);
+    // BTB-364/D1: skipped entirely for a listing-less "Hire Me" offer —
+    // there is nothing to validate ownership of. ListingOwnerGuard already
+    // skips its own ownership check the same way when jobListingId is
+    // absent (guards/listing-owner.guard.ts), deferring to this method;
+    // this is the other half of that same deferred check.
+    if (dto.jobListingId) {
+      await this.listingsClient.validateListing(dto.jobListingId, userId, clientJwt);
+    }
 
     // Enforce: one active offer per client-talent pair.
     await this.checkActiveOfferConstraint(userId, dto.talentId);
@@ -532,7 +539,7 @@ export class OffersService {
           ) VALUES ($1, $2, $3, $4, $5, 'PENDING', $6, $7, $8, $9, $10, $11, $12, NULL, NOW(), NOW())
           RETURNING *
         `, [
-          userId, dto.talentId, dto.jobListingId,
+          userId, dto.talentId, dto.jobListingId ?? null,
           dto.contractType, dto.contractTitle,
           dto.rate, dto.currencyCode, dto.durationMonths,
           JSON.stringify(dto.workSchedule), dto.startDate,
@@ -790,7 +797,13 @@ export class OffersService {
       id: raw.id,
       clientId: raw.client_id ?? raw.clientId,
       talentId: raw.talent_id ?? raw.talentId,
-      jobListingId: raw.job_listing_id ?? raw.jobListingId,
+      // BTB-364/D1: `?? null` at the end, not just `?? raw.jobListingId` —
+      // otherwise a genuinely-null DB value (raw.job_listing_id === null)
+      // falls through to raw.jobListingId (undefined, raw SQL rows never
+      // have the camelCase key), silently turning `null` into `undefined`
+      // and dropping the key entirely wherever this gets JSON-serialized
+      // (e.g. the offer.created event payload).
+      jobListingId: raw.job_listing_id ?? raw.jobListingId ?? null,
       contractType: raw.contract_type ?? raw.contractType,
       contractTitle: raw.contract_title ?? raw.contractTitle,
       status: raw.status,

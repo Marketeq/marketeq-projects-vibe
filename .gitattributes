@@ -2,3 +2,8 @@ desktop/resources/activitywatch/**/*.exe filter=lfs diff=lfs merge=lfs -text
 desktop/resources/activitywatch/**/*.dll filter=lfs diff=lfs merge=lfs -text
 desktop/resources/activitywatch/**/*.pyd filter=lfs diff=lfs merge=lfs -text
 desktop/resources/activitywatch/**/*.zip filter=lfs diff=lfs merge=lfs -text
+
+# Shared agent memory notes: if two branches both edit the same memory
+# file, keep both sides instead of conflicting (local merges and the Jenkins
+# promotion merge). New notes should be new files in .claude/memory/progress/.
+.claude/memory/**/*.md merge=union

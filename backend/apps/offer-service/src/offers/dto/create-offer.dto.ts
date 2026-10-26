@@ -21,8 +21,17 @@ export class CreateOfferDto {
   @IsUUID('4', { message: 'talentId must be a valid UUID v4.' })
   talentId: string;
 
+  // BTB-364/D1: optional — a "Hire Me" offer sent directly from a talent's
+  // profile has no job listing at all (confirmed: HireMeButton has no
+  // listing/project prop anywhere). @ValidateIf skips @IsUUID entirely when
+  // the field is absent/null, same shape as every other optional field in
+  // this DTO; still validated as a real UUID whenever a caller does send one
+  // (e.g. the inbox's Resend Offer flow, which always has one). Requires
+  // the matching migration making offer_service.offers.job_listing_id
+  // nullable — see backend/apps/offer-service/migrations.
+  @ValidateIf((o: CreateOfferDto) => o.jobListingId !== undefined && o.jobListingId !== null)
   @IsUUID('4', { message: 'jobListingId must be a valid UUID v4.' })
-  jobListingId: string;
+  jobListingId?: string | null;
 
   @IsEnum(ContractType, {
     message: 'contractType must be one of: PROJECT, SERVICE, TEAM, CONTRACT.',
