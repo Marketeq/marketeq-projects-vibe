@@ -85,6 +85,10 @@ interface OfferFlowDialogProps {
   // already wired to different (declined-offer) targets at the call site.
   liveWithdrawn?: boolean
   liveCounterWithdrawn?: boolean
+  /** BTB-367: the counter's own live status is DECLINED, not WITHDRAWN —
+   * a distinct terminal notice (counter declined, offer restored to
+   * PENDING), not a third way to spell "withdrawn." */
+  liveCounterDeclined?: boolean
   liveExpired?: boolean
   /** Talent's single recovery button label — stays one button with a
    * switching label, matching the existing hand-rolled expired dialog. */
@@ -174,6 +178,7 @@ export function OfferFlowDialog({
   onEditTerms,
   liveWithdrawn = false,
   liveCounterWithdrawn = false,
+  liveCounterDeclined = false,
   liveExpired = false,
   talentAskNowLabel = "Ask Now",
   onTalentRecoveryAction,
@@ -910,6 +915,12 @@ export function OfferFlowDialog({
                 <div className="flex h-[60px] items-center border-t border-gray-200 p-3">
                   <span className="pl-3 text-sm font-medium text-gray-500">
                     This counter offer has been withdrawn.
+                  </span>
+                </div>
+              ) : liveCounterDeclined ? (
+                <div className="flex h-[60px] items-center border-t border-gray-200 p-3">
+                  <span className="pl-3 text-sm font-medium text-gray-500">
+                    This counter offer has been declined.
                   </span>
                 </div>
               ) : liveExpired ? (
