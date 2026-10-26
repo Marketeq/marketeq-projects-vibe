@@ -20,7 +20,8 @@ export interface OfferResponse {
   id: string;
   clientId: string;
   talentId: string;
-  jobListingId: string;
+  // BTB-364/D1: nullable — a listing-less "Hire Me" offer has none.
+  jobListingId: string | null;
   contractType: ContractType;
   contractTitle: string;
   status: OfferStatus;
@@ -113,7 +114,8 @@ export interface OfferListItem {
   id: string;
   clientId: string;
   talentId: string;
-  jobListingId: string;
+  // BTB-364/D1: nullable — a listing-less "Hire Me" offer has none.
+  jobListingId: string | null;
   contractType: ContractType;
   contractTitle: string;
   status: OfferStatus;

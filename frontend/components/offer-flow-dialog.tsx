@@ -849,7 +849,15 @@ export function OfferFlowDialog({
                     <div className="relative flex items-center gap-1.5 leading-[18px]">
                       <ArrowUp className="absolute -left-5 size-3.5 text-success-400" />
                       <span className="text-sm font-bold text-dark-blue-400">{data.offerRate}</span>
-                      {data.originalOfferRate ? (
+                      {/* BTB-366: equality-gated, not truthiness-only —
+                      page.tsx now always sets originalOfferRate (the real
+                      original offer's rate, never notification metadata),
+                      so a bare `?` would show "(was $X)" next to an
+                      unchanged $X on every offer, not just a genuine
+                      counter-proposed change. Matches
+                      chats-comp.tsx's own counterTermChanges gate. */}
+                      {data.originalOfferRate &&
+                      data.originalOfferRate !== data.offerRate ? (
                         <span className="text-xs font-medium text-gray-400">(was {data.originalOfferRate})</span>
                       ) : null}
                     </div>
