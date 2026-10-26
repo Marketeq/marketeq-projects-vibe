@@ -11,6 +11,7 @@ import { formatNotificationTime } from "@/libs/notifications"
 import { acceptCounterOffer, acceptOffer, createCounterOffer, declineCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
+import { talentProfileUrl } from "@/src/lib/listing-urls"
 import {
   DataEmoji,
   EmojiProperties,
@@ -72,6 +73,7 @@ import { toast } from "@/components/ui/toast/use-toast"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
 import { Chat, ChatsContextProvider, useChatsContext } from "@/components/chat"
 import { CounterOfferDialog } from "@/components/counter-offer-dialog"
+import NextLink from "@/components/next-link"
 import { EmojiPicker, type Result as TenorGif } from "@/components/emoji-picker"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import { OfferHistoryDialog } from "@/components/offer-history-dialog"
@@ -6085,11 +6087,29 @@ export function Chats({
                         </AvatarFallback>
                       </Avatar>
                       <span>{selectedNotificationOfferData.senderDisplayName.split(/\s+/)[0]}</span>
-                      <span className="text-primary-500">
-                        {selectedNotificationOfferData.senderUsername.startsWith("@")
-                          ? selectedNotificationOfferData.senderUsername
-                          : `@${selectedNotificationOfferData.senderUsername}`}
-                      </span>
+                      {/* BTB-369: only the client sees the talent's real
+                      username here — link to their profile. The talent
+                      side shows the client's handle, which has no public
+                      profile page, so it stays plain text. */}
+                      {selectedNotificationOffer?.clientPerspective === true &&
+                      selectedNotificationOfferData.senderUsername ? (
+                        <NextLink
+                          href={talentProfileUrl(
+                            selectedNotificationOfferData.senderUsername.replace(/^@/, "")
+                          )}
+                          className="inline text-primary-500 underline-offset-2 hover:underline"
+                        >
+                          {selectedNotificationOfferData.senderUsername.startsWith("@")
+                            ? selectedNotificationOfferData.senderUsername
+                            : `@${selectedNotificationOfferData.senderUsername}`}
+                        </NextLink>
+                      ) : (
+                        <span className="text-primary-500">
+                          {selectedNotificationOfferData.senderUsername.startsWith("@")
+                            ? selectedNotificationOfferData.senderUsername
+                            : `@${selectedNotificationOfferData.senderUsername}`}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <Button
@@ -6240,13 +6260,31 @@ export function Chats({
                           /\s+/
                         )[0]}
                       </span>
-                      <span className="text-primary-500">
-                        {selectedNotificationOfferData.senderUsername.startsWith(
-                          "@"
-                        )
-                          ? selectedNotificationOfferData.senderUsername
-                          : `@${selectedNotificationOfferData.senderUsername}`}
-                      </span>
+                      {/* BTB-369: only the client sees the talent's real
+                      username here — link to their profile. The talent
+                      side shows the client's handle, which has no public
+                      profile page, so it stays plain text. */}
+                      {selectedNotificationOffer?.clientPerspective === true &&
+                      selectedNotificationOfferData.senderUsername ? (
+                        <NextLink
+                          href={talentProfileUrl(
+                            selectedNotificationOfferData.senderUsername.replace(/^@/, "")
+                          )}
+                          className="inline text-primary-500 underline-offset-2 hover:underline"
+                        >
+                          {selectedNotificationOfferData.senderUsername.startsWith("@")
+                            ? selectedNotificationOfferData.senderUsername
+                            : `@${selectedNotificationOfferData.senderUsername}`}
+                        </NextLink>
+                      ) : (
+                        <span className="text-primary-500">
+                          {selectedNotificationOfferData.senderUsername.startsWith(
+                            "@"
+                          )
+                            ? selectedNotificationOfferData.senderUsername
+                            : `@${selectedNotificationOfferData.senderUsername}`}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -6887,11 +6925,28 @@ export function Chats({
                   {notificationOfferStep === "expired-counter"
                     ? "Counter offer from"
                     : "Counter offer sent to"}{" "}
-                  <span className="text-primary-500">
-                    {selectedNotificationOfferData.senderUsername.startsWith("@")
-                      ? selectedNotificationOfferData.senderUsername
-                      : `@${selectedNotificationOfferData.senderUsername}`}
-                  </span>
+                  {/* BTB-369: whichever party is named here, link it only
+                  when that's the talent (viewer is the client) — a
+                  client's handle has no public profile to link to. */}
+                  {selectedNotificationOffer?.clientPerspective === true &&
+                  selectedNotificationOfferData.senderUsername ? (
+                    <NextLink
+                      href={talentProfileUrl(
+                        selectedNotificationOfferData.senderUsername.replace(/^@/, "")
+                      )}
+                      className="inline text-primary-500 underline-offset-2 hover:underline"
+                    >
+                      {selectedNotificationOfferData.senderUsername.startsWith("@")
+                        ? selectedNotificationOfferData.senderUsername
+                        : `@${selectedNotificationOfferData.senderUsername}`}
+                    </NextLink>
+                  ) : (
+                    <span className="text-primary-500">
+                      {selectedNotificationOfferData.senderUsername.startsWith("@")
+                        ? selectedNotificationOfferData.senderUsername
+                        : `@${selectedNotificationOfferData.senderUsername}`}
+                    </span>
+                  )}
                 </DialogTitle>
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -7164,11 +7219,28 @@ export function Chats({
               <div className="flex h-[60px] items-center justify-between border-b border-gray-200 px-6 py-3">
                 <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                   Resend counteroffer to{" "}
-                  <span className="text-primary-500">
-                    {selectedNotificationOfferData.senderUsername.startsWith("@")
-                      ? selectedNotificationOfferData.senderUsername
-                      : `@${selectedNotificationOfferData.senderUsername}`}
-                  </span>
+                  {/* BTB-369: link only when the named recipient is the
+                  talent (viewer is the client) — a client's handle has no
+                  public profile to link to. */}
+                  {selectedNotificationOffer?.clientPerspective === true &&
+                  selectedNotificationOfferData.senderUsername ? (
+                    <NextLink
+                      href={talentProfileUrl(
+                        selectedNotificationOfferData.senderUsername.replace(/^@/, "")
+                      )}
+                      className="inline text-primary-500 underline-offset-2 hover:underline"
+                    >
+                      {selectedNotificationOfferData.senderUsername.startsWith("@")
+                        ? selectedNotificationOfferData.senderUsername
+                        : `@${selectedNotificationOfferData.senderUsername}`}
+                    </NextLink>
+                  ) : (
+                    <span className="text-primary-500">
+                      {selectedNotificationOfferData.senderUsername.startsWith("@")
+                        ? selectedNotificationOfferData.senderUsername
+                        : `@${selectedNotificationOfferData.senderUsername}`}
+                    </span>
+                  )}
                 </DialogTitle>
                 <DialogClose asChild>
                   <IconButton variant="ghost" visual="gray" size="md">
@@ -7592,9 +7664,24 @@ export function Chats({
                     {selectedNotificationOffer?.clientPerspective
                       ? "Offer to"
                       : "Offer from"}{" "}
-                    <span className="text-primary-500">
-                      {selectedNotificationOfferData.senderUsername}
-                    </span>
+                    {/* BTB-369: "Offer to" always names the talent (client
+                    viewer) — link it. "Offer from" names the client (talent
+                    viewer), who has no public profile — stays plain text. */}
+                    {selectedNotificationOffer?.clientPerspective === true &&
+                    selectedNotificationOfferData.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(
+                          selectedNotificationOfferData.senderUsername.replace(/^@/, "")
+                        )}
+                        className="inline text-primary-500 underline-offset-2 hover:underline"
+                      >
+                        {selectedNotificationOfferData.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {selectedNotificationOfferData.senderUsername}
+                      </span>
+                    )}
                   </DialogTitle>
                 </div>
                 <DialogClose asChild>

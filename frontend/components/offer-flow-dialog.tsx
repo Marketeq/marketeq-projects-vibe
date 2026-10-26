@@ -11,6 +11,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import NextLink from "@/components/next-link"
+import { talentProfileUrl } from "@/src/lib/listing-urls"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
 import {
   Alert,
@@ -571,10 +572,23 @@ export function OfferFlowDialog({
                         </Avatar>
                         <span className="truncate text-dark-blue-400">
                           {data.senderDisplayName.split(/\s+/)[0]}
-                          <span className="text-primary-500">
-                            {data.senderUsername ||
-                              `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                          </span>
+                          {/* BTB-369: only the client sees the talent's real
+                          username here — link to their profile. The talent
+                          side shows the client's handle, which has no public
+                          profile page, so it stays plain text. */}
+                          {clientPerspective && data.senderUsername ? (
+                            <NextLink
+                              href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                              className={INLINE_LINK_CLASS}
+                            >
+                              {data.senderUsername}
+                            </NextLink>
+                          ) : (
+                            <span className="text-primary-500">
+                              {data.senderUsername ||
+                                `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                            </span>
+                          )}
                         </span>
                       </span>
                     </div>
@@ -761,9 +775,21 @@ export function OfferFlowDialog({
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                     Counter offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-369: client view names the talent (real profile,
+                    link it); talent view names the client (no public
+                    profile, stays plain text). */}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername || `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -816,17 +842,34 @@ export function OfferFlowDialog({
                     ) : null}
                   </div>
 
+                  {/* BTB-368: a pending counter (client view) needs Message
+                  AND Offer History together — this used to be an
+                  either/or toggle, which is why some entry points showed
+                  one and not the other. The talent side keeps just Offer
+                  History (unchanged, out of this ticket's scope). */}
                   {clientPerspective ? (
-                    <Button
-                      variant="outlined"
-                      visual="gray"
-                      size="sm"
-                      className="w-[104px] px-2"
-                      leftIcon={<MessageSquare className="size-[15px]" />}
-                      onClick={onMessage}
-                    >
-                      Message
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<MessageSquare className="size-[15px]" />}
+                        onClick={onMessage}
+                      >
+                        Message
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        visual="gray"
+                        size="sm"
+                        className="w-[104px] px-2"
+                        leftIcon={<Repeat className="size-[15px]" />}
+                        onClick={onOfferHistory}
+                      >
+                        Offer History
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       variant="outlined"
@@ -990,10 +1033,23 @@ export function OfferFlowDialog({
                 <div className="flex items-center gap-2 pl-3">
                   <DialogTitle className="text-[18px] font-bold leading-[22px] text-dark-blue-400">
                     Offer from{" "}
-                    <span className="text-primary-500">
-                      {data.senderUsername ||
-                        `@${data.senderDisplayName.replace(/\s+/g, "")}`}
-                    </span>
+                    {/* BTB-369: this screen is client-only (the talent
+                    doesn't get a "counter offer" footer here), so the named
+                    party is always the talent — link it when a real
+                    username is present. */}
+                    {clientPerspective && data.senderUsername ? (
+                      <NextLink
+                        href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                        className={INLINE_LINK_CLASS}
+                      >
+                        {data.senderUsername}
+                      </NextLink>
+                    ) : (
+                      <span className="text-primary-500">
+                        {data.senderUsername ||
+                          `@${data.senderDisplayName.replace(/\s+/g, "")}`}
+                      </span>
+                    )}
                   </DialogTitle>
                   {showReconnecting ? (
                     <span className="text-xs font-medium text-gray-400">
@@ -1234,9 +1290,21 @@ export function OfferFlowDialog({
                     ) : (
                       <>
                         Offer from{" "}
-                        <span className="text-primary-500">
-                          {data.senderUsername}
-                        </span>
+                        {/* BTB-369: Offer History reuses this same title —
+                        link the talent's real username, leave the client's
+                        (no public profile) as plain text. */}
+                        {clientPerspective && data.senderUsername ? (
+                          <NextLink
+                            href={talentProfileUrl(data.senderUsername.replace(/^@/, ""))}
+                            className={INLINE_LINK_CLASS}
+                          >
+                            {data.senderUsername}
+                          </NextLink>
+                        ) : (
+                          <span className="text-primary-500">
+                            {data.senderUsername}
+                          </span>
+                        )}
                       </>
                     )}
                   </DialogTitle>
