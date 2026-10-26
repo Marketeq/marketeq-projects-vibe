@@ -20,7 +20,6 @@ import {
   DeliverablesAdapter,
 } from '../project-sync/deliverables/deliverables.adapter';
 import { FAQ_ADAPTER, FaqAdapter } from '../publish/faq/faq.adapter';
-import { RoleRateService } from '../shared/pricing/role-rate.service';
 import { RelatedTermsService } from './related-terms.service';
 import { taxonomyChildren } from './related-taxonomy';
 import { ReportProjectDto } from './dto/report-project.dto';
@@ -50,7 +49,6 @@ export class ProjectsService {
     private readonly relatedTerms: RelatedTermsService,
     private readonly rosterGate: RosterGateService,
     private readonly memberGate: MemberAddGate,
-    private readonly roleRateService: RoleRateService,
   ) {}
 
   async getSuggestedQuestions(projectId: string): Promise<string[]> {
@@ -269,38 +267,32 @@ export class ProjectsService {
     project: Project,
     ownerView = false,
   ): Promise<{ team: any[]; notShownToClients: string[] }> {
-    const rawRows: Array<{ teamMemberIds: string[] | null; userId: string | null }> = await this.repo.manager.query(
+    const rawRows: Array<{ teamMemberIds: string[]; userId: string | null }> = await this.repo.manager.query(
       `SELECT "teamMemberIds", "userId"::text FROM listings.project WHERE id = $1`,
       [project.id],
     );
     const row = rawRows[0];
-    const rosterIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
+    const memberIds: string[] = Array.isArray(row?.teamMemberIds) && row.teamMemberIds.length
       ? row.teamMemberIds
       : row?.userId ? [row.userId] : [];
+    if (!memberIds.length) return { team: [], notShownToClients: [] };
 
     const statusRows: Array<{ userId: string; status: string }> = await this.repo.manager.query(
       `SELECT "userId"::text, "status" FROM listings.project_members WHERE "projectId" = $1`,
       [project.id],
     );
-
-    const hiddenIds = new Set(
-      statusRows
-        .filter((r) => r.status === 'Inactive' || r.status === 'Declined')
-        .map((r) => r.userId),
+    const inactiveIds = new Set(
+      statusRows.filter((r) => r.status === 'Inactive').map((r) => r.userId),
     );
-    const activeIds = Array.from(
-      new Set([...rosterIds, ...statusRows.map((r) => r.userId)]),
-    ).filter((id) => !hiddenIds.has(id));
     // G5: a member whose gate is closed is omitted from the client-facing roster
     // (one batch request for the whole roster). Unknown reads as omitted.
+    const activeIds = memberIds.filter((id) => !inactiveIds.has(id));
     // The owner's own view lists every member (and marks the ones clients do not
     // see); every other view lists only members with a known open gate.
     const gateOpenIds = await this.rosterGate.visibleUserIds(activeIds);
     const notShownToClients = ownerView ? activeIds.filter((id) => !gateOpenIds.has(id)) : [];
     const visibleIds = ownerView ? activeIds : activeIds.filter((id) => gateOpenIds.has(id));
     if (!visibleIds.length) return { team: [], notShownToClients };
-
-    const statusByUser = new Map(statusRows.map((r) => [r.userId, r.status]));
 
     const [profileUsers, skillRows, langRows, experienceRows] = await Promise.all([
       this.repo.manager.query<Array<{
@@ -378,47 +370,31 @@ export class ProjectsService {
     });
 
     const ownerUserId = String(project.userId ?? '');
-    const members = await Promise.all(
-      users.map(async (u) => {
-        const experienceLevel = experienceLevelByUser.get(u.id) ?? null;
-        const role = u.recentJobTitle ?? 'Team Member';
+    const team = users
+      .map((u) => ({
+        id: u.id,
+        firstName: u.firstName ?? '',
+        lastName: u.lastName ?? '',
+        name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
+        username: u.username ?? u.id,
+        avatarUrl: u.avatarUrl ?? null,
+        role: u.recentJobTitle ?? 'Team Member',
+        location: u.location ?? null,
         // `rate` is a Postgres `numeric` column — node-postgres returns those
         // as strings (not numbers) to avoid precision loss, so coerce here
         // rather than leaking that quirk to callers expecting a real number.
-        let rate = u.rate != null ? Number(u.rate) : (u.rateMin ?? null);
-        if (rate == null) {
-          const rateUsdCents = await this.roleRateService.getRateUsdCents(
-            role,
-            u.location,
-            experienceLevel,
-          );
-          rate = Math.round(rateUsdCents) / 100;
-        }
-        return {
-          id: u.id,
-          firstName: u.firstName ?? '',
-          lastName: u.lastName ?? '',
-          name: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim(),
-          username: u.username ?? u.id,
-          avatarUrl: u.avatarUrl ?? null,
-          role,
-          location: u.location ?? null,
-          rate,
-          experienceLevel,
-          isLead: u.id === String(project.userId),
-          isOnline: false,
-          skills: skillsByUser.get(u.id) ?? [],
-          languages: langsByUser.get(u.id) ?? [],
-          status: statusByUser.get(u.id) ?? 'Active',
-        };
-      }),
-    );
-
-    const team = members.sort((a, b) => {
-      if (a.id === ownerUserId) return -1;
-      if (b.id === ownerUserId) return 1;
-      return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
-    });
+        rate: u.rate != null ? Number(u.rate) : (u.rateMin ?? null),
+        experienceLevel: experienceLevelByUser.get(u.id) ?? null,
+        isLead: u.id === String(project.userId),
+        isOnline: false,
+        skills: skillsByUser.get(u.id) ?? [],
+        languages: langsByUser.get(u.id) ?? [],
+      }))
+      .sort((a, b) => {
+        if (a.id === ownerUserId) return -1;
+        if (b.id === ownerUserId) return 1;
+        return visibleIds.indexOf(a.id) - visibleIds.indexOf(b.id);
+      });
     return { team, notShownToClients };
   }
 
