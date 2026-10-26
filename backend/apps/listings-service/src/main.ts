@@ -42,17 +42,20 @@ async function bootstrap() {
 
   const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
   if (!rabbitmqUrl) {
-    throw new Error('RABBITMQ_URL is required for the listings RPC and gate-change consumers');
+    logger.warn(
+      'RABBITMQ_URI / RABBITMQ_URL is not set: the listings RPC and gate-change consumers are not connected, the HTTP API still starts',
+    );
+  } else {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'listings_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+    logger.log('RabbitMQ microservice connected (queue: listings_service_queue)');
   }
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [rabbitmqUrl],
-      queue: 'listings_service_queue',
-      queueOptions: { durable: true },
-    },
-  });
-  logger.log('RabbitMQ microservice connected (queue: listings_service_queue)');
 
   try {
     app.connectMicroservice({
@@ -70,16 +73,18 @@ async function bootstrap() {
   // G5: durable queue of identity-verification-service's `identity.gate_changed`
   // events, which keep the last known gate of every rostered account up to date.
   // Manual ack (GateStateConsumer acknowledges after the state is written).
-  app.connectMicroservice({
-    transport: Transport.RMQ,
-    options: {
-      urls: [rabbitmqUrl],
-      queue: LISTINGS_GATE_QUEUE,
-      queueOptions: { durable: true },
-      noAck: false,
-      prefetchCount: 10,
-    },
-  });
+  if (rabbitmqUrl) {
+    app.connectMicroservice({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: LISTINGS_GATE_QUEUE,
+        queueOptions: { durable: true },
+        noAck: false,
+        prefetchCount: 10,
+      },
+    });
+  }
 
   // One start for every connected transport; a transport that cannot start
   // (gRPC port taken, broker down) is non-fatal for the HTTP API.
