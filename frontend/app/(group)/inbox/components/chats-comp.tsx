@@ -8,7 +8,7 @@ import { exportPrivateKey, republishPublicKey } from "@/src/crypto/keys"
 import { loadKey, saveKey } from "@/src/crypto/storage"
 import { ApiError, apiFetch } from "@/src/lib/api"
 import { formatNotificationTime } from "@/libs/notifications"
-import { createCounterOffer, declineCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
+import { acceptCounterOffer, acceptOffer, createCounterOffer, declineCounterOffer, declineOffer, editCounterOffer, withdrawCounterOffer, withdrawOffer } from "@/service/http/offers"
 import { getCurrentUser } from "@/utils/auth"
 import { getOtherParticipantId } from "@/utils/conversation"
 import {
@@ -412,6 +412,44 @@ const formatAcceptedHeadlineDate = (startDate: string): string => {
       })
 }
 
+// BTB-365: offer-state-machine.ts's OfferConcurrentModificationException —
+// the ONE other party's accept/decline/withdraw/edit landed between this
+// viewer's last refetch and this click, so the CAS update affected 0 rows.
+// HTTP 409, { error: "OFFER_CONCURRENT_MODIFICATION", message: "..." }
+// (offer-exception.filter.ts's generic OfferServiceException case) — this
+// mapping doesn't exist anywhere in the frontend yet (confirmed via a
+// repo-wide search before writing this), so every accept/decline/withdraw/
+// edit handler's catch block still shows the same generic
+// "Couldn't <verb> the <offer>. Please try again." regardless of cause.
+// Scoped to Accept only here, per this ticket — not retrofitted onto the
+// other already-shipped handlers.
+const getAcceptFailureMessage = (error: unknown, fallback: string): string => {
+  const errorCode = (error as { response?: { data?: { error?: string } } })
+    ?.response?.data?.error
+  if (errorCode === "OFFER_CONCURRENT_MODIFICATION") {
+    return "This was just updated elsewhere. Please reload and try again."
+  }
+  return fallback
+}
+
+// BTB-365/AC-27.04: the Contract row contracts-service creates on accept is
+// asynchronous — offer-service's outbox drains on a 10s cron, then
+// contracts-service's own subscriber has to process it — so the single
+// onOfferUpdateRequested() refetch right after a successful accept will
+// usually still see realContractId as null. onViewContract (below) is
+// already gated on it being set; this re-triggers that same refetch a few
+// more times on a short, bounded schedule so "View Contract" appears
+// without the viewer needing to manually reload. Calling the setter after
+// this component unmounts is a harmless no-op (React 18 just drops it) —
+// no cleanup tracked here, same as every other fire-and-forget
+// onOfferUpdateRequested?.() call in this file.
+const pollForAcceptedContract = (onOfferUpdateRequested?: () => void) => {
+  if (!onOfferUpdateRequested) return
+  for (const delayMs of [4000, 8000, 13000, 19000]) {
+    setTimeout(() => onOfferUpdateRequested(), delayMs)
+  }
+}
+
 const OFFER_EVENT_ACTION: Record<string, string> = {
   "offer.received": "sent an offer",
   "offer.created": "sent an offer",
@@ -585,6 +623,13 @@ export function Chats({
   const [notificationWithdrawalMessage, setNotificationWithdrawalMessage] =
     useState("")
   const [submittingCounterOffer, setSubmittingCounterOffer] = useState(false)
+  // BTB-365: same double-submit-guard shape as decliningOffer/
+  // decliningCounterOffer below — acceptingCounterOffer covers both
+  // directions (client accepting a talent's counter, talent accepting a
+  // client's counter), since both call the same acceptCounterOffer() and
+  // never run concurrently in the same dialog instance.
+  const [acceptingOffer, setAcceptingOffer] = useState(false)
+  const [acceptingCounterOffer, setAcceptingCounterOffer] = useState(false)
   const [decliningOffer, setDecliningOffer] = useState(false)
   const [decliningCounterOffer, setDecliningCounterOffer] = useState(false)
   const [editingCounterOffer, setEditingCounterOffer] = useState(false)
@@ -718,7 +763,32 @@ export function Chats({
 
   const selectedNotificationOfferEventVariant =
     useMemo<OfferFlowDialogVariant>(() => {
-      const event = selectedNotificationOffer?.event
+      // BTB-365/AC-26.08: same liveStatusEvent fix as the inline chat card
+      // below (PMCM-393 AC-42) — this dialog's own variant was still keyed
+      // purely off selectedNotificationOffer.event, the notification's
+      // frozen event type (set once, e.g. "offer.received"/
+      // "offer.countered", never updated afterward — no notification-
+      // service consumer exists for offer.accepted/offer.counter_accepted
+      // to ever create an "accepted" notification). Reopening a just-
+      // accepted offer or counter showed the live "offer-details"/
+      // "counter-offer-details" variant (active Accept/Decline/Counter
+      // buttons) instead of the read-only "offer-accepted" terminal
+      // variant — exactly the BTB-365 repro's step 4. offerStatus is the
+      // live status from the same getOffer() refetch every load already
+      // runs; consulted first, falling back to the frozen event when
+      // there's no live signal (seeded fixtures, or the lookup failed),
+      // same precedence the inline card already uses.
+      const liveStatusEvent =
+        selectedNotificationOffer?.offerStatus === "ACCEPTED"
+          ? "offer.accepted"
+          : selectedNotificationOffer?.offerStatus === "DECLINED"
+            ? "offer.declined"
+            : selectedNotificationOffer?.offerStatus === "WITHDRAWN"
+              ? "offer.withdrawn"
+              : selectedNotificationOffer?.offerStatus === "EXPIRED"
+                ? "offer.expired"
+                : undefined
+      const event = liveStatusEvent ?? selectedNotificationOffer?.event
       if (event === "offer.accepted" || event === "offer.counter_accepted") {
         return "offer-accepted"
       }
@@ -6237,6 +6307,7 @@ export function Chats({
           termsAccepted={notificationTermsAccepted}
           declineMessage={notificationDeclineMessage}
           selectedDeclineReason={notificationDeclineReason}
+          acceptLoading={acceptingOffer || acceptingCounterOffer}
           declineLoading={decliningOffer || decliningCounterOffer}
           declinedByViewer={
             notificationOfferStep === "declined" ||
@@ -6291,7 +6362,14 @@ export function Chats({
           onTermsAcceptedChange={setNotificationTermsAccepted}
           onDeclineMessageChange={setNotificationDeclineMessage}
           onDeclineReasonChange={setNotificationDeclineReason}
-          onAccept={() => {
+          onAccept={async () => {
+            // BTB-365: talent accepting the client's original (never
+            // countered) offer. Previously local-only — sessionStorage +
+            // a URL param, no API call, so the offer stayed PENDING
+            // server-side regardless of what this screen showed. Same
+            // id-read-at-click-time/double-submit-guard/modal-stays-open
+            // shape as the already-fixed decline/withdraw/edit handlers
+            // below.
             if (
               notificationOfferStep === "accept" &&
               selectedNotificationOffer &&
@@ -6299,51 +6377,170 @@ export function Chats({
               !selectedNotificationOffer.clientPerspective &&
               !selectedNotificationOffer.event.includes("counter")
             ) {
+              if (acceptingOffer) return
+
               const contractId = selectedNotificationOffer.contractId
               const acceptanceMessage =
                 notificationAcceptanceMessage.trim() ||
                 "Excited to get started!"
 
-              if (typeof window !== "undefined") {
-                sessionStorage.setItem(
-                  `inbox_offer_accepted:${contractId}`,
-                  JSON.stringify({
-                    status: "accepted",
-                    contractId,
-                    offerTitle: selectedNotificationOfferData.offerTitle,
-                    offerType: selectedNotificationOfferData.offerType,
-                    offerRate: selectedNotificationOfferData.offerRate,
-                    role: selectedNotificationOfferData.role,
-                    duration: selectedNotificationOfferData.duration,
-                    schedule: selectedNotificationOfferData.schedule,
-                    startDate: selectedNotificationOfferData.startDate,
-                    acceptanceMessage,
-                  })
-                )
+              setAcceptingOffer(true)
+              try {
+                await acceptOffer(contractId, { message: acceptanceMessage })
+                onOfferUpdateRequested?.()
+                pollForAcceptedContract(onOfferUpdateRequested)
 
-                const url = new URL(window.location.href)
-                url.searchParams.set("offerStatus", "accepted")
-                url.searchParams.set("contractId", contractId)
-                router.replace(`${url.pathname}${url.search}${url.hash}`)
+                if (typeof window !== "undefined") {
+                  sessionStorage.setItem(
+                    `inbox_offer_accepted:${contractId}`,
+                    JSON.stringify({
+                      status: "accepted",
+                      contractId,
+                      offerTitle: selectedNotificationOfferData.offerTitle,
+                      offerType: selectedNotificationOfferData.offerType,
+                      offerRate: selectedNotificationOfferData.offerRate,
+                      role: selectedNotificationOfferData.role,
+                      duration: selectedNotificationOfferData.duration,
+                      schedule: selectedNotificationOfferData.schedule,
+                      startDate: selectedNotificationOfferData.startDate,
+                      acceptanceMessage,
+                    })
+                  )
+
+                  const url = new URL(window.location.href)
+                  url.searchParams.set("offerStatus", "accepted")
+                  url.searchParams.set("contractId", contractId)
+                  router.replace(`${url.pathname}${url.search}${url.hash}`)
+                }
+
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationAcceptanceMessage("")
+                setNotificationTermsAccepted(false)
+              } catch (error) {
+                console.error("Offer accept failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't accept the offer",
+                  description: getAcceptFailureMessage(
+                    error,
+                    "Please try again."
+                  ),
+                })
+                // Modal stays open on failure, matching decline/withdraw/
+                // edit's failure paths.
+              } finally {
+                setAcceptingOffer(false)
               }
-
-              setSelectedNotificationOffer(null)
-              setNotificationOfferStep("event")
-              setNotificationAcceptanceMessage("")
-              setNotificationTermsAccepted(false)
               return
             }
+            // BTB-365: client accepting the talent's counter-offer.
+            // Previously local-state-only (setAcceptedCounterOfferMessage),
+            // never called acceptCounterOffer — the counter stayed PENDING
+            // server-side no matter what this screen showed.
             if (
               notificationOfferStep === "accept" &&
               selectedNotificationOffer?.clientPerspective &&
               selectedNotificationOffer.event.includes("counter")
             ) {
-              setAcceptedCounterOfferMessage(selectedNotificationOffer)
-              setAcceptedCounterOfferBody(notificationAcceptanceMessage.trim())
-              setSelectedNotificationOffer(null)
-              setNotificationOfferStep("event")
-              setNotificationAcceptanceMessage("")
-              setNotificationTermsAccepted(false)
+              if (acceptingCounterOffer) return
+
+              const counterOfferId =
+                selectedNotificationOffer.latestCounterOfferId
+              if (!counterOfferId) {
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't accept the counter offer",
+                  description: "Please try again.",
+                })
+                return
+              }
+
+              setAcceptingCounterOffer(true)
+              try {
+                await acceptCounterOffer(
+                  selectedNotificationOffer.contractId,
+                  counterOfferId
+                )
+                onOfferUpdateRequested?.()
+                pollForAcceptedContract(onOfferUpdateRequested)
+                // selectedNotificationOfferData.offerRate/duration/schedule/
+                // startDate already reflect THIS counter's own terms
+                // (BTB-366's fix in page.tsx), so no separate "use the
+                // accept response's terms" step is needed here.
+                setAcceptedCounterOfferMessage(selectedNotificationOffer)
+                setAcceptedCounterOfferBody(
+                  notificationAcceptanceMessage.trim()
+                )
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationAcceptanceMessage("")
+                setNotificationTermsAccepted(false)
+              } catch (error) {
+                console.error("Counter offer accept failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't accept the counter offer",
+                  description: getAcceptFailureMessage(
+                    error,
+                    "Please try again."
+                  ),
+                })
+              } finally {
+                setAcceptingCounterOffer(false)
+              }
+              return
+            }
+            // BTB-365: talent accepting the CLIENT's counter-offer — the
+            // one scenario that didn't even fake-persist locally before
+            // this fix (it fell through to the generic step-flip fallback
+            // below, which just flipped the dialog to "accepted" with no
+            // action at all). Same acceptCounterOffer() call as the branch
+            // above, the other direction.
+            if (
+              notificationOfferStep === "accept" &&
+              selectedNotificationOffer &&
+              !selectedNotificationOffer.clientPerspective &&
+              selectedNotificationOffer.event.includes("counter")
+            ) {
+              if (acceptingCounterOffer) return
+
+              const counterOfferId =
+                selectedNotificationOffer.latestCounterOfferId
+              if (!counterOfferId) {
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't accept the counter offer",
+                  description: "Please try again.",
+                })
+                return
+              }
+
+              setAcceptingCounterOffer(true)
+              try {
+                await acceptCounterOffer(
+                  selectedNotificationOffer.contractId,
+                  counterOfferId
+                )
+                onOfferUpdateRequested?.()
+                pollForAcceptedContract(onOfferUpdateRequested)
+                setSelectedNotificationOffer(null)
+                setNotificationOfferStep("event")
+                setNotificationAcceptanceMessage("")
+                setNotificationTermsAccepted(false)
+              } catch (error) {
+                console.error("Counter offer accept failed", error)
+                toast({
+                  variant: "destructive",
+                  title: "Couldn't accept the counter offer",
+                  description: getAcceptFailureMessage(
+                    error,
+                    "Please try again."
+                  ),
+                })
+              } finally {
+                setAcceptingCounterOffer(false)
+              }
               return
             }
             setNotificationOfferStep((step) =>
