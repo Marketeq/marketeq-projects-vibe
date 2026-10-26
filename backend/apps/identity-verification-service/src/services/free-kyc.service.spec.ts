@@ -266,7 +266,7 @@ describe('FreeKycService', () => {
   // ------------------------------------------------------------------ start
   describe('startOrResume — new session', () => {
     it('creates one hosted session: workflow from config, opaque vendor reference, callback to /talent-dashboard', async () => {
-      const { service, provider, sessionRepository } = build();
+      const { service, provider, sessionRepository, profile } = build();
       const result = await service.startOrResume('user-1');
 
       expect(result).toEqual({ url: HOSTED_URL });
@@ -285,6 +285,8 @@ describe('FreeKycService', () => {
         diditSessionId: 'didit-1',
         vendorReference: call.vendorData,
         status: HostedKycSessionStatus.CREATED,
+        // The confirmation this session was started under (exact correlation for resume).
+        confirmedAt: profile.verifiedHomeCountryConfirmedAt,
       });
       // The hosted URL is never persisted.
       expect(JSON.stringify(saved)).not.toContain('didit.me');
@@ -548,11 +550,11 @@ describe('FreeKycService', () => {
       const MIN = 60 * 1000;
       const inProgress = (over: Record<string, unknown> = {}) =>
         confirmedProfile({ identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS, ...over });
-      const sessionAt = (createdAt: Date) => ({ ...active(), createdAt });
+      const sessionUnder = (confirmedAt: Date) => ({ ...active(), createdAt: new Date(confirmedAt.getTime() + 2_000), confirmedAt });
 
       it('under 15 minutes: resumes the SAME Didit session and creates no second session', async () => {
         const confirmedAt = new Date(Date.now() - 10 * MIN);
-        const row = sessionAt(new Date(confirmedAt.getTime() + 2_000));
+        const row = sessionUnder(confirmedAt);
         const { service, provider, sessionRepository } = build({
           activeSession: row,
           profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }),
@@ -568,7 +570,7 @@ describe('FreeKycService', () => {
 
       it('over 15 minutes: a direct start cannot bypass location detection (409 confirmation_stale, no Didit call)', async () => {
         const confirmedAt = new Date(Date.now() - 20 * MIN);
-        const row = sessionAt(new Date(confirmedAt.getTime() + 2_000));
+        const row = sessionUnder(confirmedAt);
         const { service, provider, sessionRepository } = build({
           activeSession: row,
           profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }),
@@ -582,7 +584,7 @@ describe('FreeKycService', () => {
 
       it('over 15 minutes: the stale session is retired without consuming an attempt', async () => {
         const confirmedAt = new Date(Date.now() - 20 * MIN);
-        const row = sessionAt(new Date(confirmedAt.getTime() + 2_000));
+        const row = sessionUnder(confirmedAt);
         const profile = inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt });
         const { service, attemptRepository, sessionRepository, profileRepository } = build({ activeSession: row, profile });
         await reasonOf(service.startOrResume('user-1'));
@@ -601,8 +603,7 @@ describe('FreeKycService', () => {
       });
 
       it('a fresh confirmation after expiry starts a NEW session (new reference, old one retired, no attempt)', async () => {
-        const oldCreated = new Date(Date.now() - 30 * MIN);
-        const row = sessionAt(oldCreated);
+        const row = sessionUnder(new Date(Date.now() - 30 * MIN));
         const profile = inProgress({ verifiedHomeCountryConfirmedAt: new Date(Date.now() - 1_000) }); // just re-confirmed
         const { service, provider, sessionRepository, attemptRepository } = build({
           activeSession: row,
@@ -613,9 +614,37 @@ describe('FreeKycService', () => {
         expect(row.status).toBe(HostedKycSessionStatus.ABANDONED);
         expect(provider.createKycSession).toHaveBeenCalledTimes(1);
         expect((provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(row.vendorReference);
-        expect(sessionRepository.create).toHaveBeenCalledWith(expect.objectContaining({ diditSessionId: 'didit-2' }));
+        expect(sessionRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({ diditSessionId: 'didit-2', confirmedAt: profile.verifiedHomeCountryConfirmedAt }),
+        );
         expect(profile.identityVerificationStatus).toBe(IdentityVerificationStatus.IN_PROGRESS);
         expect(attemptRepository.insert).not.toHaveBeenCalled();
+      });
+
+      it('a re-confirmation made seconds after the session started still supersedes it (exact correlation, no tolerance)', async () => {
+        const startedUnder = new Date(Date.now() - 5 * MIN);
+        const row = sessionUnder(startedUnder);
+        const profile = inProgress({ verifiedHomeCountryConfirmedAt: new Date(startedUnder.getTime() + 5_000) });
+        const { service, provider } = build({
+          activeSession: row,
+          profile,
+          providerResult: { sessionId: 'didit-2', url: HOSTED_URL, status: 'Not Started' },
+        });
+        await service.startOrResume('user-1');
+        expect(row.status).toBe(HostedKycSessionStatus.ABANDONED);
+        expect((provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(row.vendorReference);
+      });
+
+      it('a second start after the retirement neither resumes nor creates anything (idempotent refusal)', async () => {
+        const confirmedAt = new Date(Date.now() - 20 * MIN);
+        const row = sessionUnder(confirmedAt);
+        const h = build({ activeSession: row, profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }) });
+        await reasonOf(h.service.startOrResume('user-1'));
+        h.sessionRepository.findOne.mockImplementation(async () => null); // the retired row is no longer active
+        const r = await reasonOf(h.service.startOrResume('user-1'));
+        expect(r?.reason).toBe('confirmation_stale');
+        expect(h.provider.createKycSession).not.toHaveBeenCalled();
+        expect(h.sessionRepository.create).not.toHaveBeenCalled();
       });
     });
 

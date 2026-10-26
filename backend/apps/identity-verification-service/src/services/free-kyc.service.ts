@@ -229,7 +229,7 @@ export class FreeKycService {
         if (
           isUnfinishedSessionResumable({
             confirmedAt: profile.verifiedHomeCountryConfirmedAt,
-            sessionCreatedAt: active.createdAt,
+            sessionConfirmedAt: active.confirmedAt,
             nowMs: Date.now(),
             windowMs: HOME_COUNTRY_CONFIRMATION_WINDOW_MS,
           })
@@ -669,6 +669,8 @@ export class FreeKycService {
         diditSessionId: created.sessionId,
         vendorReference,
         status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
+        // The confirmation this session was started under (see unfinished-session-resumability.ts).
+        confirmedAt: profile.verifiedHomeCountryConfirmedAt,
       }),
     );
 
@@ -899,11 +901,42 @@ export class FreeKycService {
       this.logger.debug('Status change would regress a finished session — ignored.');
       return false;
     }
+    if (await this.isSupersededOrdinarySession(manager, session)) {
+      // A late event for a session that a newer ordinary session has replaced
+      // (e.g. one retired after its confirmation window): it is inert. Neither the
+      // session row (an APPROVED/DECLINED row would also move the retry cycle), nor
+      // the profile, nor the attempt count is touched, so the replacement flow cannot
+      // be overwritten or verified by the old session.
+      this.logger.warn('Event for a superseded session — ignored.');
+      return false;
+    }
     session.status = status;
     if (eventTimestamp !== null) session.lastEventTimestamp = eventTimestamp;
     await manager.getRepository(HostedKycSession).save(session);
     await this.applyProfileOutcome(manager, session, status, signal);
     return true;
+  }
+
+  /**
+   * True when a NEWER ordinary identity session exists for the same profile. The
+   * profile row is locked first (the same lock the outcome below takes), so the
+   * check and the write are atomic against another transition of this profile.
+   * With no replacement the session is still the current one and a late genuine
+   * decision applies as it always did. Home-country-change sessions are not judged
+   * here (they have their own pending-claim rules).
+   */
+  private async isSupersededOrdinarySession(manager: EntityManager, session: HostedKycSession): Promise<boolean> {
+    if (session.purpose !== undefined && session.purpose !== HostedKycSessionPurpose.IDENTITY_VERIFICATION) return false;
+    await manager.getRepository(IdentityVerificationProfile).findOne({
+      where: { id: session.profileId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const latest = await manager.getRepository(HostedKycSession).findOne({
+      where: { profileId: session.profileId, purpose: HostedKycSessionPurpose.IDENTITY_VERIFICATION },
+      order: { createdAt: 'DESC' },
+    });
+    if (!latest || latest.id === session.id) return false;
+    return latest.createdAt.getTime() > session.createdAt.getTime();
   }
 
   private isBlockedTerminalTransition(current: HostedKycSessionStatus, next: HostedKycSessionStatus): boolean {

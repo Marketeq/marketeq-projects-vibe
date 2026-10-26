@@ -48,7 +48,7 @@ export class VerificationSummaryService {
       (!ordinary ||
         isUnfinishedSessionResumable({
           confirmedAt: profile.verifiedHomeCountryConfirmedAt,
-          sessionCreatedAt: resumable.createdAt,
+          sessionConfirmedAt: resumable.confirmedAt,
           nowMs,
           windowMs: HOME_COUNTRY_CONFIRMATION_WINDOW_MS,
         }));
