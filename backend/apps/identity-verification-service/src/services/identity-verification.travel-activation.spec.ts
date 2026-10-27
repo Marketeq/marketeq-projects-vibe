@@ -27,6 +27,7 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
   let row: Row | null;
   let update: jest.Mock;
   let events: { publish: jest.Mock };
+  let statusAlerts: { travelMode: jest.Mock };
   let service: IdentityVerificationService;
   let warn: jest.SpyInstance;
 
@@ -55,9 +56,10 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       update,
     };
     events = { publish: jest.fn() };
+    statusAlerts = { travelMode: jest.fn(async () => true) };
     service = new IdentityVerificationService(
       profileRepository as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
-      {} as any, {} as any, events as any,
+      {} as any, {} as any, events as any, {} as any, statusAlerts as any,
     );
     warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
     return { profileRepository };
@@ -128,6 +130,9 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       expect(events.publish).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: IdentityVerificationEventType.TRAVEL_MODE_ACTIVATED, profileId: 'p1', userId: 'u1' }),
       );
+      // One persistent alert per activation, keyed by the activation time.
+      expect(statusAlerts.travelMode).toHaveBeenCalledTimes(1);
+      expect(statusAlerts.travelMode).toHaveBeenCalledWith('u1', new Date(NOW));
     });
 
     it('sets the first reminder exactly 3 days after activation, never 5 minutes', async () => {
@@ -308,6 +313,7 @@ describe('IdentityVerificationService — Travel Mode activation', () => {
       expect(rejected).toHaveLength(1);
       expect(rejected[0].reason).toBeInstanceOf(TravelModeAlreadyActiveException);
       expect(events.publish).toHaveBeenCalledTimes(1);
+      expect(statusAlerts.travelMode).toHaveBeenCalledTimes(1);
       expect(row!.declaredDuration).toBe(DeclaredDuration.A_FEW_DAYS); // first request won; never replaced
       expect(update).toHaveBeenCalledTimes(2); // both tried, only one matched
     });

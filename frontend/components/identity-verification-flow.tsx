@@ -531,6 +531,8 @@ export function IdentityVerificationFlow({
   onBeginVerifying,
   initialState,
   activeTravelModeUpdate,
+  onTravelModeConfirmed,
+  onPermanentlyRelocated,
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
@@ -566,6 +568,16 @@ export function IdentityVerificationFlow({
   // (first-time, or an expired Travel Mode) leaves it unset and behaves exactly
   // as before, including the duration screen.
   activeTravelModeUpdate?: boolean
+  // Called once when `activeTravelModeUpdate` is set and the user chooses "Temporarily
+  // traveling" (the already-active traveler's confirmation). Never called for a first-time
+  // activation, "Permanently relocated", closing or going back. Optional: callers that omit
+  // it behave exactly as before (PMCM-651: the dashboard records the confirmation).
+  onTravelModeConfirmed?: () => void
+  // Called once when "Permanently relocated" is chosen, before the flow moves on, so the
+  // caller can refresh `detectedLocation` (the dashboard's Update uses it to run browser
+  // detection). The flow waits for it, then continues to the screen that shows the location.
+  // Optional: callers that omit it (Verify My Account, the preview) behave exactly as before.
+  onPermanentlyRelocated?: () => Promise<void>
   // Development preview only (app/identity-verification-preview/): skips the
   // real presigned-URL + R2 upload in handleCapture so every screen can be
   // walked through without storage credentials. Defaults to off and is
@@ -876,6 +888,27 @@ export function IdentityVerificationFlow({
     void travelModeDeps().then((deps) =>
       recordTravelClassification(deps, classification)
     )
+  }
+
+  // "Permanently relocated": saved once, then on to the screen that shows the location. With
+  // `onPermanentlyRelocated` the flow first waits for the caller's refreshed location, and
+  // ignores a second click meanwhile (one classification write per choice).
+  const relocatingRef = useRef(false)
+  const handlePermanentlyRelocated = async () => {
+    if (relocatingRef.current) return
+    persistTravelClassification("permanently_relocated")
+    if (!onPermanentlyRelocated) {
+      send("RELOCATED")
+      return
+    }
+    relocatingRef.current = true
+    try {
+      await onPermanentlyRelocated()
+    } finally {
+      relocatingRef.current = false
+    }
+    if (!getIsMounted()) return
+    send("RELOCATED")
   }
 
   // Confirm / Skip. The duration request saves the whole Travel Mode activation in one
@@ -1777,6 +1810,7 @@ export function IdentityVerificationFlow({
               onClick={() => {
                 if (activeTravelModeUpdate) {
                   setTravelModeNotificationOpen(true)
+                  onTravelModeConfirmed?.()
                   onOpenChange(false)
                   return
                 }
@@ -1796,10 +1830,7 @@ export function IdentityVerificationFlow({
               <ChevronRight className="size-5 text-gray-500" />
             </button>
             <button
-              onClick={() => {
-                persistTravelClassification("permanently_relocated")
-                send("RELOCATED")
-              }}
+              onClick={() => void handlePermanentlyRelocated()}
               className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
             >
               <div className="inline-flex items-center gap-x-3">

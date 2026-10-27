@@ -144,6 +144,21 @@ export const createCounterOffer = async (
   return res.data
 }
 
+// BTB-366: GET /v1/offers/:offerId/counter-offers/:id (confirmed on the
+// backend, counter-offers.controller.ts's getCounterOffer() ->
+// CounterOffersService.findById()) — the real source for a counter
+// offer's own rate/duration/workSchedule/startDate, never notification
+// metadata (no real backend producer writes that).
+export const getCounterOffer = async (
+  offerId: string,
+  counterOfferId: string
+): Promise<CounterOffer> => {
+  const res = await AxiosRequest.get(
+    `${OFFERS_BASE}/${encodeURIComponent(offerId)}/counter-offers/${encodeURIComponent(counterOfferId)}`
+  )
+  return res.data
+}
+
 export const acceptCounterOffer = async (
   offerId: string,
   counterOfferId: string

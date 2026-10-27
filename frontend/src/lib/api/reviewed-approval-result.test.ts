@@ -473,9 +473,9 @@ describe("dashboard wiring (source-pinned)", () => {
     assert.ok(!/setInterval|setTimeout/.test(block), "no polling")
   })
 
-  it("it shows the EXISTING success alert, as the verified kind, and builds no new markup", () => {
-    assert.ok(block.includes('setSuccessAlertKind("verified")'))
-    assert.ok(block.includes("setSuccessAlertOpen(true)"))
+  it("it no longer opens the temporary success alert: the persistent Verified card (reloaded after the approval) is the notification, and no new markup is built", () => {
+    assert.ok(block.includes('startAlertReconcile(["verified", "home_country_updated"])'))
+    assert.ok(!block.includes("setSuccessAlertOpen"))
     assert.ok(!block.includes("<"), "no JSX in the effect")
     assert.equal(
       page.split("All set! Your identity and location are verified.").length - 1,

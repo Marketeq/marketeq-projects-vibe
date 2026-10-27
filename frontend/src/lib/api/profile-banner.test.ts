@@ -171,11 +171,10 @@ describe("the success alert is preserved exactly as in commit 494827a0, and the 
     assert.ok(alert.includes("You now have full access to all features."))
   })
 
-  it("Done closes the modal and then opens the alert, through the same handler as before", () => {
+  it("Done only closes the modal, through the same handler (PMCM-651: the persistent Verified card is the notification, nothing else opens)", () => {
     assert.ok(page.includes("<Button onClick={handleSuccessDone}>Done</Button>"))
-    assert.match(page, /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+setSuccessAlertOpen\(true\)\s+\}/)
-    // the Done handler, plus the PMCM-653 reviewed-approval check (its own test file)
-    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 2)
+    assert.match(page, /const handleSuccessDone = \(\) => \{\s+setVerifiedModalOpen\(false\)\s+\}/)
+    assert.equal((page.match(/setSuccessAlertOpen\(true\)/g) ?? []).length, 0)
   })
 
   it("its dedicated test file is present", () => {
