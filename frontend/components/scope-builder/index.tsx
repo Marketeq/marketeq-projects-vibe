@@ -2483,6 +2483,7 @@ const columns = [
 
       const commit = () => {
         const trimmed = draft.trim()
+        if (draftDuration.value <= 0) return
         if (trimmed) {
           table.options.meta?.batchUpdateData?.(
             index,
@@ -2541,6 +2542,7 @@ const columns = [
                         type="number"
                         min={1}
                         value={draftDuration.value}
+                        isInvalid={draftDuration.value <= 0}
                         onChange={(event) =>
                           setDraftDuration((previous) => ({
                             ...previous,
@@ -2574,6 +2576,11 @@ const columns = [
                       </SelectContent>
                     </Select>
                   </div>
+                  {draftDuration.value <= 0 && (
+                    <ErrorMessage size="sm">
+                      Minimum 1 hour per task.
+                    </ErrorMessage>
+                  )}
                 </div>
                 <DialogFooter className="gap-3">
                   <DialogClose asChild>
@@ -3053,6 +3060,7 @@ const columns = [
                         type="number"
                         min={1}
                         value={draftTaskDuration.value}
+                        isInvalid={draftTaskDuration.value <= 0}
                         onChange={(event) =>
                           setDraftTaskDuration((previous) => ({
                             ...previous,
@@ -3089,6 +3097,11 @@ const columns = [
                       </SelectContent>
                     </Select>
                   </div>
+                  {draftTaskDuration.value <= 0 && (
+                    <ErrorMessage size="sm">
+                      Minimum 1 hour per task.
+                    </ErrorMessage>
+                  )}
                 </div>
                 <DialogFooter className="gap-3">
                   <DialogClose asChild>
