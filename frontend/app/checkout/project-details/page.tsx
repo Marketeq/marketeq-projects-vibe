@@ -688,6 +688,7 @@ const getApiError = (error: unknown) =>
 const REPLACEMENT_BROWSE_LIMIT = 20
 const REPLACEMENT_SEARCH_FETCH_LIMIT = 5
 const REPLACEMENT_SEARCH_SHOWN = 4
+const REPLACEMENT_PROFILE_LIMIT = 20
 
 const normalizeHandle = (handle?: string | null): string =>
   handle ? handle.replace(/^@/, "").toLowerCase() : ""
@@ -1142,7 +1143,9 @@ function CheckoutPageInner() {
         const groups = (groupsResponse?.data ?? []) as Array<{
           favorites: Array<{ id: string; itemId: string }>
         }>
-        const favorites = groups.flatMap((group) => group.favorites ?? [])
+        const favorites = groups
+          .flatMap((group) => group.favorites ?? [])
+          .slice(0, REPLACEMENT_PROFILE_LIMIT)
 
         const profiles = await Promise.all(
           favorites.map((favorite) =>
@@ -1256,7 +1259,7 @@ function CheckoutPageInner() {
           ...(network?.active ?? []),
           ...(network?.pending ?? []),
           ...(network?.past ?? []),
-        ]
+        ].slice(0, REPLACEMENT_PROFILE_LIMIT)
 
         const profiles = await Promise.all(
           entries.map((entry) =>
