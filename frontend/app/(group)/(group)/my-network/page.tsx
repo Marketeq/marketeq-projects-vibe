@@ -259,10 +259,24 @@ function buildAccountColumns(
       header: "Status",
       cell: (info) => {
         const val = info.getValue()
+        // Figma Status column: pill badges, not plain text. Active is
+        // Success/50 on Success/500 — the Badge's own `success` visual is
+        // 100/700, so those two colours are overridden here rather than by
+        // touching the shared component. Pending is exactly `visual="gray"`
+        // (Gray/100 on Gray/700), so that one needs no override.
         return val === "active" ? (
-          <span className="text-sm font-medium text-success-500">Active</span>
+          <Badge
+            visual="success"
+            size="sm"
+            variant="rounded"
+            className="bg-success-50 text-success-500"
+          >
+            Active
+          </Badge>
         ) : (
-          <span className="text-sm text-gray-400">Invitation pending</span>
+          <Badge visual="gray" size="sm" variant="rounded">
+            Invitation pending
+          </Badge>
         )
       },
     }),
@@ -340,14 +354,20 @@ const AccountMembersTable = ({
 
   return (
     <Table>
-      <TableHeader className="[&_tr]:border-t-0">
+      {/* Figma's header cells are #FFFFFF, same as the body rows — the
+          component defaults to bg-gray-25, which reads as a tinted bar. */}
+      <TableHeader className="bg-white [&_tr]:border-t-0">
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {headerGroup.headers.map((header) => (
               <TableHead
-                className={
-                  header.column.getCanSort() ? "cursor-pointer select-none" : ""
-                }
+                // leading-[18px] is Figma's header line-height; the component
+                // sets text-[18px] (a size, not a leading) and text-xs then
+                // pulls the computed leading down to 16px.
+                className={cn(
+                  "leading-[18px]",
+                  header.column.getCanSort() && "cursor-pointer select-none"
+                )}
                 key={header.id}
                 colSpan={header.colSpan}
                 onClick={header.column.getToggleSortingHandler()}
