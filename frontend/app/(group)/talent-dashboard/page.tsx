@@ -294,6 +294,9 @@ export default function TalentDashboard() {
     key: number
     initialState?: "current-location-showcase" | "traveling-showcase"
     activeTravelModeUpdate?: boolean
+    // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
+    // the location with the browser (see refreshLocationForRelocation).
+    detectBrowserLocationOnRelocate?: boolean
   }>({ key: 0 })
   // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
   // locationMismatch decides. It has only its two buttons: no outside click, no Escape,
@@ -1014,11 +1017,21 @@ export default function TalentDashboard() {
       key: prev.key + 1,
       initialState: "current-location-showcase",
       activeTravelModeUpdate,
+      detectBrowserLocationOnRelocate: true,
     }))
     setIdentityFlowOpen(true)
     },
     [travelPopup]
   )
+
+  // The Update action shows the server-derived location behind its first screen and asks
+  // for no permission. Choosing "Permanently relocated" is the explicit user action that
+  // asks the browser for its location, through the same call Verify My Account uses; a
+  // denied or failed detection yields the flow's own "couldn't detect" state, never a
+  // made-up location.
+  const refreshLocationForRelocation = useCallback(async () => {
+    setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
+  }, [])
 
   // The live Travel Mode card's Update: the same flow and the same detection as the popup's
   // Update for a reminder (Travel Mode in force, so "Temporarily traveling" changes nothing).
@@ -1949,6 +1962,11 @@ export default function TalentDashboard() {
           initialState={flowLaunch.initialState}
           activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
           onTravelModeConfirmed={() => void handleTravelModeConfirmed()}
+          onPermanentlyRelocated={
+            flowLaunch.detectBrowserLocationOnRelocate
+              ? refreshLocationForRelocation
+              : undefined
+          }
         />
       )}
 
