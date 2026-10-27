@@ -126,7 +126,7 @@ hand-off.
 | # | Finding | Where |
 |---|---|---|
 | 1 | Modal title is **"Invite Your Team"**; Figma says **"Invite Team Member"** (UX-29 — the app took the wrong one of the two) | `invite-window.tsx:1078` |
-| 2 | **The in-app notification goes to the wrong person.** Figma specifies the *invitee* gets "@user invited you to join their external team". The app notifies the *inviter*: "Invitation sent to… You've invited X to join your team as viewer" | notification-service |
+| 2 | ~~**The in-app notification goes to the wrong person.**~~ **WRONG — corrected in §14.** The invitee notification exists and matches the Figma copy; it fires only when the invited email is already a Marketeq user. The inviter also gets one, which the design does not draw | invitations-service |
 | 3 | That copy says **"as viewer"** when the actual grant was Hiring Manager + Negotiator — the legacy `role` field leaking into user-facing text | same |
 | 4 | **Send Invite is enabled too early** — active while an address is still typed in the field and not yet added to the Invites list, contrary to the epic AC and R3-13 | `invite-window.tsx` |
 | 5 | S3 has no `Clear` link and no Logo Tips panel; Continue is enabled before any upload | `invite-company-steps.tsx` |
@@ -560,3 +560,103 @@ make unilaterally.
 Two things to fix in the catalogue either way:
 - `ListingCard`'s description should mention `talent` and `team`.
 - `TalentSearchCard`'s card variant labels a **projects** count as "reviews".
+
+---
+
+## 14. Full epic audit — every Figma section vs frontend and backend (27 Oct)
+
+Triggered by the answered Round 3 doc (19 Oct, received 27 Oct). That document
+carries a header telling any AI reading it not to build UI from it; it is used
+here only as a statement of product behaviour, which is what it says it is for.
+
+**Correction to §4 defect #2 first.** That entry claimed the in-app invite
+notification goes to the wrong person. It is wrong, and it has been wrong since
+it was written. `notifyInviteeOnInvite` in
+`invitations-service/src/invitations/invitations.service.ts:480` sends the
+invitee a `team` / `team.invitation.received` notification titled **"New Offer"**
+with the body `@handle invited you to join their external team` — the Figma copy
+exactly, and `git log -S` dates it to 27 Aug (#529), well before the note. It
+only fires when the invited email already belongs to a Marketeq user, which is
+correct and is also what R3-02 describes; testing with brand-new addresses is
+why it never appeared. The artifact circulated on 23 Oct had this right, so
+nothing incorrect went to the team. §4 defect #3 (the inviter's copy leaking
+`as viewer`) still stands.
+
+### Coverage by Figma section
+
+| Section | Frontend | Backend |
+|---|---|---|
+| Invite Team Member (External Team) | Built (S1–S3) | Built |
+| Invite Window — S4 invite, S6 permissions | Built | Built |
+| Invite Window — S5 Manage Invite Settings | Built, **inert** | **Does not exist** |
+| External Team | Built | Built, minus pending-role change |
+| Talent Network | Built | Built |
+| Add Team Member (Talent Network) | Built on this branch | Reuses existing endpoints |
+| External Team Member Onboarding | Built | Built, blocked by the accept gate |
+| Confirmations | Built | Built |
+
+Nothing in the Figma is unimplemented as a *screen*. Every gap below is either
+behaviour behind a screen that renders, or a Round 3 decision the code predates.
+
+### The one structural hole: invite settings have no backend
+
+`components/invite-window.tsx` renders all of S5 — General Invites (Enable User
+Tracking, Guest Sharing) and Link Settings (Who Has Access with the design's
+three options, Allow Link Expiration After with 15/30/90/Custom, Enable Link
+Password, Allow Notification Alerts, Enable Embed Code). Every control is local
+`useState`. `handleSave` validates the custom date and calls `onBack()`. Nothing
+is persisted, nothing is read back, and none of it reaches
+`POST /invitations/link`, which mints a signed token on a fixed TTL and knows
+nothing about access scope, password or custom expiry.
+
+A repo-wide search for `userTracking|guestSharing|invite_settings|linkExpiration`
+returns exactly one file: that component. No entity, no migration, no endpoint,
+no consumer.
+
+R3-02 moves this in scope — it changes WD-09 to "build link invitations and
+account-wide invite settings", one set per client account, with the roles frame
+deciding who may change them. This is the largest single piece of backend work
+left in the epic, and it is currently invisible because the UI looks finished.
+
+### Round 3 decisions vs the code (supersedes the §10 table)
+
+| ID | Decision | Code today |
+|---|---|---|
+| R3-02 | Link invitations **and** account-wide invite settings | Link invitations exist; settings do not |
+| R3-03 | Email invitations fixed at 30 days | `expHours` defaults to 336 (14 days); `INVITE_EXP_DAYS` is set in no env file |
+| R3-04 | Logo limit 1 MB, design's wording | `MAX_LOGO_BYTES = 5 * 1024 * 1024`; S3 has no client-side check or copy |
+| R3-05 | Count active members **on the open tab only** | `useTeamMemberCount` returns `activeTalent + acceptedExternal`, and the nav that renders it cannot see which tab is open |
+| R3-06 | Company search returns only companies the caller owns | `GET /companies/search` is the **global directory**, unscoped; `app/invite/setup/page.tsx:248` feeds it to the invitee's picker and `onSelect` accepts a stranger's company |
+| R3-09 | Resend held until the toast closes | Done, client-side (8s). The doc puts the hold in the backend |
+| R3-10 | Roles changeable on pending invitations | No `PATCH` on `/invitations` at all. The toast's Manage Roles routes to `/my-network` for every send, not to Edit Permissions for a single invitee |
+| R3-11 | Duplicates/existing members flagged **when the chip is created** | Chips are flagged only by `!isEmail(email)`. The checks exist, but only inside `createInvites` at send time |
+| R3-12 | Row actions by status **and viewer role** | Status gating only; no viewer role is fetched anywhere |
+| R3-13 | Send Invite sends valid staged chips | `canSend` includes `!hasInvalid`, so one flagged chip blocks the send |
+| R3-14 | Settings save immediately, no Save button | `Cancel` + `Save Settings` (read-only file) |
+| R3-15 | Multi-invitee toast lists every address | Says "sent to N people" (read-only file) |
+
+R3-01, R3-07 and R3-08 need no change.
+
+### Smaller divergences found this pass
+
+1. **The two External Team views disagree with each other.** The card menu has
+   the design's five items (Edit Permissions, View Profile, Resend Invite,
+   Cancel Invite, Remove User); the list-view row menu has three, two of them
+   relabelled — `Edit` and `Remove`. Same data, same page, different menus.
+2. **Pending rows offer Cancel Invite and Remove User**, both calling
+   `onCancel`. R3-12 gives a pending row two actions, not three.
+3. **`View Profile` in the card menu has no `onSelect`.** It is live in the
+   talent table, where it wraps a `NextLink`.
+4. **`ctaLabel: 'View Invite'`** is set on the invitee notification
+   (`invitations.service.ts:522`) and no frontend code reads `ctaLabel`. The
+   Figma draws that link under the notification.
+5. **R3-01's unreachable path is still implemented.** `app/invite/setup`
+   handles all four company paths including "client specified no company",
+   which no client screen can now produce. Harmless; worth a comment rather
+   than a deletion, in case the decision flips.
+
+### Still true from earlier sections
+
+The accept-flow blocker (§6) is unchanged: acceptance is gated behind
+identity-verification, which 403s locally. Nothing in this audit can be
+end-to-end tested past the invitation email until that is settled.
