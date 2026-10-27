@@ -196,7 +196,7 @@ function buildAccountColumns(
       cell: (info) => {
         const row = info.row.original
         return (
-          <div className="inline-flex items-center gap-x-3">
+          <div className="flex items-center gap-x-3">
             {/* Show the member's own photo when one is set; when it is not,
                 fall back to the empty profile circle, never a name initial. */}
             <Avatar
@@ -395,7 +395,12 @@ const AccountMembersTable = ({
         {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id} className="hover:bg-transparent">
             {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>
+              <TableCell
+                // Figma body cell is 16px/24px, giving a 72px row off the
+                // 40px avatar; the component defaults to py-[26px] (98px).
+                className="py-4"
+                key={cell.id}
+              >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>
             ))}
@@ -419,8 +424,11 @@ const talentColumns = [
       const row = info.row.original
       const profileHref = `/talent-profile?username=${row.username}`
       return (
-        <div className="inline-flex items-center gap-x-3">
-          <NextLink href={profileHref} className="shrink-0">
+        <div className="flex items-center gap-x-3">
+          {/* `flex` so the link is not an inline box: as an inline element
+              it added ~5px of descender space under the 40px avatar and
+              pushed the row past Figma's 72px. */}
+          <NextLink href={profileHref} className="flex shrink-0">
             <Avatar
               size="md"
               className="transition-transform duration-500 ease-out hover:scale-110"
@@ -565,7 +573,12 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
         {table.getRowModel().rows.map((row) => (
           <TableRow key={row.id} className="hover:bg-transparent">
             {row.getVisibleCells().map((cell) => (
-              <TableCell key={cell.id}>
+              <TableCell
+                // Figma body cell is 16px/24px, giving a 72px row off the
+                // 40px avatar; the component defaults to py-[26px] (98px).
+                className="py-4"
+                key={cell.id}
+              >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </TableCell>
             ))}
