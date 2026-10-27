@@ -2088,6 +2088,72 @@ export default function PaymentPage() {
     amountDueNow - appliedBalanceAmount - totalGiftCardAmount,
     0
   )
+  const previousPriceLineValuesRef = React.useRef<Record<
+    string,
+    number
+  > | null>(null)
+  const [changedPriceLines, setChangedPriceLines] = React.useState<
+    Record<string, boolean>
+  >({})
+  React.useEffect(() => {
+    const priceLineValues: Record<string, number> = {
+      balance: appliedBalanceAmount,
+      promo: sessionPromoAmount,
+      sessionGiftCard: sessionGiftCardAmount,
+      giftCard: totalGiftCardAmount,
+      installment: initialInstallmentAmount,
+      total: totalAmountToBePaid,
+    }
+    const previous = previousPriceLineValuesRef.current
+    previousPriceLineValuesRef.current = priceLineValues
+    if (!previous) return
+    const changed = Object.keys(priceLineValues).filter(
+      (key) => previous[key] !== priceLineValues[key]
+    )
+    if (changed.length === 0) return
+    setChangedPriceLines((current) => ({
+      ...current,
+      ...Object.fromEntries(changed.map((key) => [key, true])),
+    }))
+    window.setTimeout(
+      () =>
+        setChangedPriceLines((current) => ({
+          ...current,
+          ...Object.fromEntries(changed.map((key) => [key, false])),
+        })),
+      300
+    )
+  }, [
+    appliedBalanceAmount,
+    sessionPromoAmount,
+    sessionGiftCardAmount,
+    totalGiftCardAmount,
+    initialInstallmentAmount,
+    totalAmountToBePaid,
+  ])
+  const isCheckoutSessionLoading = !isTalentCheckout && !checkoutSession
+  const isPromoApplying = redeemPromoStatus === "applying"
+  const isGiftCardApplying = redeemGiftCardStatus === "applying"
+  const isBalanceLineShimmering =
+    Boolean(changedPriceLines.balance) ||
+    (!isTalentCheckout && isBalanceLoading)
+  const isPromoLineShimmering =
+    Boolean(changedPriceLines.promo) ||
+    isPromoApplying ||
+    isCheckoutSessionLoading
+  const isSessionGiftCardLineShimmering =
+    Boolean(changedPriceLines.sessionGiftCard) ||
+    isGiftCardApplying ||
+    isCheckoutSessionLoading
+  const isGiftCardLineShimmering = Boolean(changedPriceLines.giftCard)
+  const isInstallmentLineShimmering =
+    Boolean(changedPriceLines.installment) || isCheckoutSessionLoading
+  const isTotalShimmering =
+    Boolean(changedPriceLines.total) ||
+    isPromoApplying ||
+    isGiftCardApplying ||
+    isCheckoutSessionLoading ||
+    (!isTalentCheckout && isBalanceLoading)
   const [serverPaymentMethods, setServerPaymentMethods] = React.useState<
     CheckoutPaymentMethodOption[] | null
   >(null)
@@ -7005,7 +7071,7 @@ export default function PaymentPage() {
                       </div>
 
                       {isChangeCardPanelOpen ? (
-                        <Card className="mt-5 flex-col items-stretch justify-center gap-5 p-5">
+                        <Card className="mt-5 flex-col items-stretch justify-center gap-5 p-5 animate-in fade-in slide-in-from-top-1 duration-200">
                           <div className="flex w-full items-center justify-between">
                             <h3 className="text-base font-bold leading-[.703] text-dark-blue-400">
                               Select a payment method
@@ -7078,7 +7144,7 @@ export default function PaymentPage() {
                           </Button>
                         </Card>
                       ) : (
-                      <div className="mt-5">
+                      <div className="mt-5 animate-in fade-in duration-200">
                         {renderFullPaymentMethodRow(fullPaymentMethods[0], {
                           onChange: () => setIsChangeCardPanelOpen(true),
                           onEditCard: handleStartEditCard,
@@ -8357,7 +8423,7 @@ export default function PaymentPage() {
                       </div>
 
                       {billingAddressMode === "summary" ? (
-                        <div className="mt-6 rounded-[7px] border-2 border-gray-200 bg-white py-6 pl-6 pr-[35px]">
+                        <div className="mt-6 rounded-[7px] border-2 border-gray-200 bg-white py-6 pl-6 pr-[35px] animate-in fade-in slide-in-from-top-1 duration-200">
                           <div className="flex items-center justify-between gap-x-6">
                             <div className="space-y-1 text-base leading-5 text-[#122A4B]">
                               <p className="font-semibold">
@@ -8383,7 +8449,7 @@ export default function PaymentPage() {
                       ) : null}
 
                       {billingAddressMode === "saved" ? (
-                        <div className="mt-3">
+                        <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-200">
                           <p className="text-xs text-gray-500">
                             Please choose a billing address from your address
                             book below, or{" "}
@@ -8441,7 +8507,7 @@ export default function PaymentPage() {
 
                       {billingAddressMode === "new" ? (
                         <form
-                          className="mt-6 space-y-3"
+                          className="mt-6 space-y-3 animate-in fade-in slide-in-from-top-1 duration-200"
                           onSubmit={(e) => e.preventDefault()}
                         >
                           <div className="space-y-1.5">
@@ -10585,17 +10651,35 @@ export default function PaymentPage() {
                                 <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                   Initial payment
                                 </span>
-                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                  {priceFormatter.format(initialInstallmentAmount)}
-                                </span>
+                                {isInstallmentLineShimmering ? (
+                                  <div
+                                    className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                    aria-hidden="true"
+                                  >
+                                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                  </div>
+                                ) : (
+                                  <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                    {priceFormatter.format(initialInstallmentAmount)}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex items-center justify-between">
                                 <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                   Recurring payment
                                 </span>
-                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                  {priceFormatter.format(recurringInstallmentAmount)}
-                                </span>
+                                {isInstallmentLineShimmering ? (
+                                  <div
+                                    className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                    aria-hidden="true"
+                                  >
+                                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                  </div>
+                                ) : (
+                                  <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                    {priceFormatter.format(recurringInstallmentAmount)}
+                                  </span>
+                                )}
                               </div>
                             </>
                           )}
@@ -10604,9 +10688,18 @@ export default function PaymentPage() {
                               <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                 Balance applied
                               </span>
-                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {priceFormatter.format(appliedBalanceAmount)}
-                              </span>
+                              {isBalanceLineShimmering ? (
+                                <div
+                                  className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                  aria-hidden="true"
+                                >
+                                  <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                </div>
+                              ) : (
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                  - {priceFormatter.format(appliedBalanceAmount)}
+                                </span>
+                              )}
                             </div>
                           )}
                           {sessionPromoAmount > 0 && (
@@ -10614,9 +10707,18 @@ export default function PaymentPage() {
                               <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-light">
                                 Promo code applied
                               </span>
-                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {priceFormatter.format(sessionPromoAmount)}
-                              </span>
+                              {isPromoLineShimmering ? (
+                                <div
+                                  className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                  aria-hidden="true"
+                                >
+                                  <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                </div>
+                              ) : (
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                  - {priceFormatter.format(sessionPromoAmount)}
+                                </span>
+                              )}
                             </div>
                           )}
                           {sessionGiftCardAmount > 0 && (
@@ -10626,9 +10728,18 @@ export default function PaymentPage() {
                                   ? "Gift card applied"
                                   : `${sessionGiftCards.length} Gift cards applied`}
                               </span>
-                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {priceFormatter.format(sessionGiftCardAmount)}
-                              </span>
+                              {isSessionGiftCardLineShimmering ? (
+                                <div
+                                  className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                  aria-hidden="true"
+                                >
+                                  <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                </div>
+                              ) : (
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                  - {priceFormatter.format(sessionGiftCardAmount)}
+                                </span>
+                              )}
                             </div>
                           )}
                           {totalGiftCardAmount > 0 && (
@@ -10639,9 +10750,18 @@ export default function PaymentPage() {
                                   ? "Gift card applied"
                                   : "Gift cards applied"}
                               </span>
-                              <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
-                                - {priceFormatter.format(totalGiftCardAmount)}
-                              </span>
+                              {isGiftCardLineShimmering ? (
+                                <div
+                                  className="relative h-3.5 w-14 overflow-hidden rounded bg-gray-100"
+                                  aria-hidden="true"
+                                >
+                                  <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                                </div>
+                              ) : (
+                                <span className="inline-block text-xs leading-[normal] text-dark-blue-400 font-normal">
+                                  - {priceFormatter.format(totalGiftCardAmount)}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -10654,9 +10774,18 @@ export default function PaymentPage() {
                               ? "Amount due today"
                               : "Total amount to be paid"}
                           </span>
-                          <h1 className="inline-block text-base font-bold leading-[normal] text-dark-blue-400">
-                            {priceFormatter.format(totalAmountToBePaid)}
-                          </h1>
+                          {isTotalShimmering ? (
+                            <div
+                              className="relative h-4 w-16 overflow-hidden rounded bg-gray-100"
+                              aria-hidden="true"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ) : (
+                            <h1 className="inline-block text-base font-bold leading-[normal] text-dark-blue-400">
+                              {priceFormatter.format(totalAmountToBePaid)}
+                            </h1>
+                          )}
                         </div>
 
                         <div className="grid mt-5">
@@ -10746,7 +10875,12 @@ export default function PaymentPage() {
         open={isSessionExpiredDialogOpen}
         onOpenChange={setIsSessionExpiredDialogOpen}
       >
-        <DialogContent className="max-w-[480px] p-6">
+        <DialogContent
+          className="max-w-[480px] p-6"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <h2 className="text-lg font-semibold text-dark-blue-400">
             Your session has expired
           </h2>
