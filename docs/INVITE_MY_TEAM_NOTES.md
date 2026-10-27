@@ -494,3 +494,69 @@ has **fewer than six** skills, so a partial profile still looks generic.
   (15px vs 16.34px) and weight (300 vs unset), and the chevron (12px vs 14px).
   It lives in a nav rendered by five pages, so it is left alone.
 - A rating of `4.0` renders as `4` — the card prints the value raw.
+
+---
+
+## 13. Which talent card is the real one? (27 Oct)
+
+@CTorres9800 said a component already exists for the Talent Network card, and
+that the one first used "didn't match the Figma at all". Both halves need
+separating, because the answer is: **the component exists, and it does broadly
+match — but the catalogue describes it wrongly and the chain is not obvious.**
+
+### 13.1 There is one implementation, reached two ways
+
+```
+ListingCard  kind="talent"   ──delegates to──▶  TalentSearchCard   ← the implementation
+TalentNetworkStatusCard      ──fork of────────▶  TalentSearchCard
+```
+
+`ListingCard` is a **dispatcher**, not a card: `kind="talent"` returns
+`<TalentSearchCard …>` verbatim. So there is exactly one talent card in the
+product, `TalentSearchCard`, and it is catalogued in COMPONENTS.md.
+
+**The catalogue is wrong about it.** COMPONENTS.md calls `ListingCard` a
+"Project/service listing card"; it also handles `kind: "talent"` and
+`kind: "team"`. CLAUDE.md has this right, COMPONENTS.md does not — which is
+exactly how someone concludes no talent component exists.
+
+### 13.2 Does it match the Figma? Mostly, yes
+
+`TalentSearchCard` has two variants. The **card** variant is a real card and
+lines up with the design:
+
+| | Figma | TalentSearchCard (card) | Our fork |
+|---|---|---|---|
+| radius | 6px | `rounded-[6px]` ✅ | `rounded-[6px]` ✅ |
+| border | 1px #EAECF0 | `border-[#eaecf0]` ✅ | `border-gray-200` (= #EAECF0) ✅ |
+| shadow | `0 2px 5px rgba(0,0,0,.04)` | `drop-shadow-[0 2px 2.5px …]` ≈ | `shadow-[0 2px 5px …]` ✅ exact |
+| height | 418px | `h-full`, none | `min-h-[418px]` ✅ |
+| count label | "11 **projects**" | "2 **reviews**" ✗ | "projects" ✅ (fixed 27 Oct) |
+| availability dot | green / amber / red | hardcoded green ✗ | all three ✅ |
+
+So "didn't match at all" is too strong — structurally it is the same card
+(All Stars chip, photo, dot, rate, name/handle, role, experience,
+location + local time, rating, skills footer). It differs in details.
+
+The **compact** variant is a list row (`border-b … py-5`), not a card. Picking
+the wrong variant would make it look nothing like the design, which may be
+what was originally hit.
+
+### 13.3 The fork's original reason no longer exists
+
+`TalentNetworkStatusCard` was forked (27 Aug, @sejalshitole, #533) to add a
+hire-status badge the catalogued card doesn't have. **That badge is not in the
+Figma and has now been removed** (§12.3), so the only thing left that the fork
+has and the catalogued card lacks is the three availability states — and the
+catalogued card arguably needs those anyway, since it hardcodes green across
+**nine** surfaces.
+
+**Recommendation:** move the three availability states into `TalentSearchCard`,
+fix its "reviews" label to "projects", give it the Figma's 418px, and delete
+the fork. Every talent surface gains correct availability and the duplication
+goes. That is a design-system change and needs an owner — it is not ours to
+make unilaterally.
+
+Two things to fix in the catalogue either way:
+- `ListingCard`'s description should mention `talent` and `team`.
+- `TalentSearchCard`'s card variant labels a **projects** count as "reviews".
