@@ -660,3 +660,116 @@ R3-01, R3-07 and R3-08 need no change.
 The accept-flow blocker (§6) is unchanged: acceptance is gated behind
 identity-verification, which 403s locally. Nothing in this audit can be
 end-to-end tested past the invitation email until that is settled.
+
+---
+
+## 15. The backend the audit asked for, built (27 Oct)
+
+Everything §14 listed as a backend gap, implemented. Two services touched:
+`invitations-service` and `user-service`. No frontend file changed — the
+endpoints are additive and the existing UI keeps working untouched until
+somebody wires it up.
+
+### New storage: `invite_settings`
+
+One row per client account, keyed by the same id invitations carry as
+`team_id`. Absent row means defaults, and nothing creates one until a setting
+is changed, so an account that never opens the panel costs nothing and reads
+the same answers forever. The column defaults and the service's defaults are
+the same values by construction.
+
+Two defaults deliberately differ from what the panel draws:
+
+- **`link_expiration_enabled = true`, preset `30d`.** The panel opens on
+  "Custom" with no date — fine to draw, impossible to enforce. 30 days is the
+  window R3-03 settles for email invitations, so both halves of the epic give
+  one answer.
+- **`notification_alerts = true`** where the panel draws it off. That
+  notification ships today; a default matching the drawing would silently
+  switch it off for every existing account.
+
+### Endpoints
+
+| Route | What it does | Decision |
+|---|---|---|
+| `GET /invitations/settings` | Read, defaults when no row. Never returns the password — `passwordSet` instead | R3-02 |
+| `PATCH /invitations/settings` | Saves the one control that moved, immediately. No Save button to answer to | R3-02, R3-14 |
+| `POST /invitations/check` | Flags duplicates and existing members for chips still in the field | R3-11 |
+| `PATCH /invitations/:id` | Changes the roles on a pending invitation. Administrator only | R3-10 |
+| `POST /invitations/:id/resend` | Takes an optional `holdMs`; with one, nothing goes out until it elapses | R3-09 |
+| `DELETE /invitations/:id/resend` | Undo: drops a resend still held | R3-09 |
+
+`holdMs` defaults to 0, so the invite UI's own 8s toast hold keeps working
+exactly as it does now. Nothing double-delays until the frontend opts in.
+
+### Link Settings are enforced live, not baked into the token
+
+`createInviteLink` reads the account's settings for the expiry window and
+reports `requiresPassword` and `accessLevel` alongside the URL. Everything
+else is checked at accept time against whatever the settings say *then*:
+
+- **Who Has Access** — `owner_only` admits nobody but the account owner;
+  `invited_guests` requires a pending invitation for that address; `anyone`
+  is open. The switch and the dropdown are separate, so a stored level does
+  nothing until the switch is on.
+- **Expiration** — measured from the token's new `iat` claim. Narrowing the
+  window kills links already copied, immediately. Widening it cannot revive
+  a token whose signature has lapsed, which is the safe direction.
+- **Password** — bcrypt, never returned by any route. "Required" and "wrong"
+  are different error codes so the client can tell *ask* from *ask again*.
+
+Refusals say nothing about the account behind the link — not the owner, not
+which rule rejected you. An invite link is a URL anyone can hold.
+
+### A hole closed on the way past
+
+`resend` and `cancel` took an invitation id and **no actor at all**: any
+signed-in user could cancel any invitation in the system by guessing its id,
+and `list` would hand over any team's invitations for the asking. Both now go
+through the R3-12 table — account owner, the person who sent it, or a holder
+of `administrator` / `coordinator` / `onboarder` in the owning company;
+`administrator` alone for changing roles, since the roles frame says the
+other two "cannot change roles".
+
+### Two small ones in user-service
+
+- Logo limit 5 MB → **1 MB**, and the rejection carries the design's own
+  wording ("Max image size 1 mb") rather than multer's generic 413. Multer
+  stops one byte past the ceiling so the handler can answer properly.
+- `GET /companies/search` was an unscoped `ILike` over **every company on
+  Marketeq**. It is now scoped to the caller's own (R3-06). That was both the
+  wrong behaviour for the invitee's picker and a directory anyone signed in
+  could enumerate a letter at a time.
+
+### And the `as viewer` leak
+
+The inviter's in-app notification said "as viewer" no matter what was
+granted, because the invite dialog stopped having a role picker but the copy
+kept reading the legacy field. It now describes the actual permissions, or
+drops the clause when there are none.
+
+### Tests
+
+105 passing in `invitations-service`, up from 70. The 35 new ones cover the
+settings service directly and drive the link rules end to end through the
+controller — including that a refusal leaks nothing about the account.
+
+### Deliberately not built
+
+**Enable User Tracking** stores its flag but records nothing. R3-02 says it
+"records who opened the link and who joined through it" and in the same
+breath notes the design has no screen that shows that record (UX-32). An
+audit table with no reader is a guess at a schema; it is a small addition
+once somebody decides what the screen shows. **Guest Sharing** is the same
+shape: the flag persists, and the request/approval screens it implies are
+UX-33, which does not exist either.
+
+**R3-05 needs no backend.** Both numbers already exist separately — the
+talent count and the accepted-invitation count. The bug is that the frontend
+hook adds them together.
+
+### Local test data
+
+The smoke test left invitation `d9403334` (seanstest123+team2@gmail.com)
+with permissions `treasurer, auditor`, and its invite-settings row was
+deleted afterwards so the account is back on defaults.

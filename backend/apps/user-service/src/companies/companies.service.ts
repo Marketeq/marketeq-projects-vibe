@@ -90,11 +90,26 @@ export class CompaniesService {
     return this.companyRepo.find({ where: { id: In(ids) } });
   }
 
-  async search(q?: string): Promise<Company[]> {
+  /**
+   * Name search over the companies the caller **owns**, never the global
+   * directory.
+   *
+   * R3-06 settles this: an invited person cannot find or join a company
+   * someone else registered, so the search returns only their own. A new
+   * invitee owns none and is left with "Register a company with this name",
+   * which the design already puts first in the list.
+   *
+   * It was an unscoped `ILike` over every row before, which both contradicted
+   * that decision and let any signed-in user enumerate the whole company
+   * directory a letter at a time. `ownerUserId` rather than membership is
+   * deliberate: the decision says owns, and the one caller (the invitee's
+   * "Add Your Company" step) is about registering their own company.
+   */
+  async search(q: string | undefined, ownerUserId: string): Promise<Company[]> {
     const query = q?.trim();
-    if (!query) return [];
+    if (!query || !ownerUserId) return [];
     return this.companyRepo.find({
-      where: { name: ILike(`%${query}%`) },
+      where: { name: ILike(`%${query}%`), ownerUserId },
       take: 20,
       order: { name: 'ASC' },
     });
@@ -257,5 +272,20 @@ export class CompaniesService {
       where: { companyId, userId },
     });
     return !!membership;
+  }
+
+  /**
+   * The membership row itself, for callers that need the grant and not just
+   * its existence.
+   *
+   * invitations-service uses this to apply R3-12: which row actions a viewer
+   * is offered depends on the permission roles they hold in the company that
+   * owns the invitation, and `checkMembership` alone cannot answer that.
+   */
+  async getMembership(
+    companyId: string,
+    userId: string,
+  ): Promise<CompanyUser | null> {
+    return this.companyUserRepo.findOne({ where: { companyId, userId } });
   }
 }

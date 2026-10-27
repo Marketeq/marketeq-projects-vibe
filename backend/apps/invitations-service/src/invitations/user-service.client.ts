@@ -193,6 +193,30 @@ export class UserServiceClient {
     return (response.data as { isMember: boolean }).isMember;
   }
 
+  /**
+   * The membership row behind `checkCompanyMembership`, permission roles and
+   * all.
+   *
+   * Needed because R3-12 decides a viewer's row actions from the permissions
+   * they hold in the company, and a boolean cannot answer that. Same route as
+   * the membership check, which returns `member` alongside `isMember`. Null
+   * for a non-member, and for a user-service old enough to predate the field.
+   */
+  async getCompanyMembership(
+    companyId: string,
+    userId: string,
+  ): Promise<InternalCompanyMember | null> {
+    const url = `${this.baseUrl}/internal/companies/${companyId}/members/${userId}`;
+    const response = await lastValueFrom(
+      this.http.get(url, {
+        headers: { 'x-internal-token': process.env.INTERNAL_SERVICE_TOKEN || '' },
+      }),
+    );
+    return (
+      (response.data as { member?: InternalCompanyMember | null }).member ?? null
+    );
+  }
+
   async dismissOnboarding(userId: string): Promise<InternalUserSummary> {
     const url = `${this.baseUrl}/internal/users/${userId}/onboarding-dismissed`;
 

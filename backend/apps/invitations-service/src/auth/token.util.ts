@@ -19,12 +19,23 @@ export interface InviteLinkTokenPayload {
   invitedBy: string;
   invitedByEmail?: string;
   exp: number;
+  /**
+   * When the link was minted.
+   *
+   * `exp` alone cannot express the Link Settings rules (R3-02): those are
+   * account-wide and live, so a link copied yesterday has to answer to the
+   * expiry window configured today. Accept reads the window from the settings
+   * and measures it from here. Optional, so tokens minted before this existed
+   * keep verifying — they simply fall back to `exp`.
+   */
+  iat?: number;
 }
 
 export function generateInviteLinkToken(payload: Omit<InviteLinkTokenPayload, 'type' | 'exp'> & { exp?: number }): string {
   const secret = getInviteTokenSecret();
   const completePayload: InviteLinkTokenPayload = {
     type: 'link',
+    iat: Date.now(),
     ...payload,
     exp: payload.exp ?? nowPlusDays(Number(process.env.INVITE_EXP_DAYS || 7)).getTime(),
   };

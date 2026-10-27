@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { randomBytes } from 'crypto';
 import { Invitation, InvitationStatus, InvitationRole } from '../entities/invitation.entity';
-import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto, ShareProjectLinkDto } from '../dto/invitation.dto';
+import { CreateInvitationsDto, CreateInviteLinkDto, ListInvitationsDto, AcceptInvitationDto, ShareProjectLinkDto, UpdateInvitationDto, CheckInvitationsDto } from '../dto/invitation.dto';
 import { generateInviteLinkToken, verifyInviteLinkToken } from '../auth/token.util';
 import {
   generateInviteSecret,
@@ -26,8 +26,14 @@ import {
   InvitationNotPendingException,
   TokenExpiredException,
   VerificationRequiredException,
+  LinkPasswordRequiredException,
+  LinkPasswordInvalidException,
+  LinkAccessDeniedException,
+  InvitationForbiddenException,
 } from '../common/invitation-exceptions';
 import { IdentityVerificationGateClient } from './identity-verification-gate.client';
+import { InviteSettingsService } from './invite-settings.service';
+import { InviteAccessLevel, InviteSettings } from '../entities/invite-settings.entity';
 
 type AcceptInvitationResult = {
   id: string | null;
@@ -77,13 +83,61 @@ export type InvitationPreview = {
   permissions: string[];
   expiresAt: Date;
   status: string;
+  /**
+   * Whether accepting will ask for the Link Settings password. False for a
+   * per-invitation accept token, which is never password-gated — only the
+   * shared link is.
+   */
+  requiresPassword: boolean;
 };
+
+/** Whoever is making the request, as the gateway hands them over. */
+type Actor = { id: string; email?: string | null };
+
+/** A resend taken but not yet sent (R3-09). */
+type HeldResend = { id: string; held: true; sendAt: Date };
+
+/**
+ * R3-12's row-action table, as permission-role ids.
+ *
+ * Administrator "invites and removes members, assigns and changes roles";
+ * Coordinator "manages the roster"; Onboarder "handles pending invites". Both
+ * Coordinator and Onboarder "cannot change roles", which is the line between
+ * the two lists.
+ */
+const ROSTER_PERMISSIONS = ['administrator', 'coordinator', 'onboarder'] as const;
+const ADMIN_PERMISSIONS = ['administrator'] as const;
+
+/** Good enough to flag a chip; the real validation is CreateInvitationsDto. */
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Signature lifetime for a link whose account has expiry switched off. Long
+ * enough to mean "never" in practice, finite so a token still carries one.
+ */
+const NEVER_EXPIRES_MS = 100 * 365 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class InvitationsService {
   private readonly logger = new Logger(InvitationsService.name);
   private readonly expHours: number;
   private readonly appBaseUrl: string;
+
+  /**
+   * Resends being held before they go out, keyed by invitation id (R3-09).
+   *
+   * In process, not in a queue, and deliberately so: the hold is a handful of
+   * seconds whose only job is to give Undo something to cancel, and a dropped
+   * hold on restart simply means the resend never went — the safe direction,
+   * since the invitation and its old link are untouched until the timer
+   * fires. The caveat is that Undo has to reach the same instance that took
+   * the resend; with one instance per environment today that holds, and the
+   * endpoint reports `held: false` when it cannot find a hold to cancel.
+   */
+  private readonly heldResends = new Map<
+    string,
+    { timer: NodeJS.Timeout; sendAt: number }
+  >();
 
   constructor(
     @InjectRepository(Invitation)
@@ -94,15 +148,20 @@ export class InvitationsService {
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
     private readonly identityGate: IdentityVerificationGateClient,
+    private readonly inviteSettings: InviteSettingsService,
   ) {
-    // QA-180/PMCM-399: default changed from 72h to 14 days (336h) to match
-    // the invite-link AC. INVITE_EXP_HOURS/INVITE_EXP_DAYS still override
-    // this for any deployment that has already set one explicitly — this
-    // only changes what happens when neither is configured.
+    // R3-03: email invitations are valid for a fixed 30 days (720h). This was
+    // 336h (14 days) from QA-180/PMCM-399, which predates the decision.
+    // INVITE_EXP_HOURS/INVITE_EXP_DAYS still override it for any deployment
+    // that set one explicitly — this only changes the unconfigured default.
+    //
+    // It governs email invitations only. The copied link's expiry comes from
+    // Link Settings instead (R3-02/R3-03), which is why `createInviteLink`
+    // no longer reads this.
     const days = config.get('INVITE_EXP_DAYS');
     this.expHours = days
       ? parseInt(days, 10) * 24
-      : parseInt(config.get('INVITE_EXP_HOURS') ?? '336', 10);
+      : parseInt(config.get('INVITE_EXP_HOURS') ?? '720', 10);
     this.appBaseUrl = config.get('APP_BASE_URL') ?? 'http://localhost:3000';
   }
 
@@ -157,13 +216,39 @@ export class InvitationsService {
     return trimmed.length > 0 ? trimmed : null;
   }
 
-  createInviteLink(
+  /**
+   * Mints a Copy Link invitation.
+   *
+   * The link's expiry comes from the account's Link Settings, not from the
+   * email-invitation window (R3-02/R3-03: "the copied link follows the Link
+   * Settings expiration"). With expiry switched off the link never expires,
+   * like Slack's "never expires" option — expressed here as a far-future
+   * signature expiry, because the real decision is made again at accept time
+   * against whatever the settings say then.
+   *
+   * Access level and password are not baked into the token at all. They are
+   * read live in `accept`, so turning a link off, or putting a password on
+   * it, takes effect on links people are already holding. That is what
+   * "saves immediately" has to mean for a control whose whole purpose is to
+   * govern a URL that has already left the building.
+   */
+  async createInviteLink(
     dto: CreateInviteLinkDto,
     creator: { id: string; email: string },
     team: { id: string; name: string },
   ) {
-    const expiresAt = new Date();
-    expiresAt.setTime(expiresAt.getTime() + this.expHours * 60 * 60 * 1000);
+    const settings = await this.inviteSettings.get(dto.teamId);
+    const issuedAt = Date.now();
+    const deadline = this.inviteSettings.resolveLinkDeadline(settings, issuedAt);
+
+    // The signature needs some expiry of its own; "never" is a hundred
+    // years. The live check in accept() can then shorten it to whatever the
+    // settings say at the time — it cannot extend past the signature, so
+    // lengthening the window later does not revive a token whose signature
+    // has already lapsed. Shortening, which is the direction that matters
+    // for turning a link off, applies immediately.
+    const signatureExp = deadline ?? issuedAt + NEVER_EXPIRES_MS;
+    const expiresAt = deadline ? new Date(deadline) : null;
 
     const token = generateInviteLinkToken({
       teamId: dto.teamId,
@@ -172,7 +257,7 @@ export class InvitationsService {
       teamName: team.name,
       invitedBy: creator.id,
       invitedByEmail: creator.email,
-      exp: expiresAt.getTime(),
+      exp: signatureExp,
     });
 
     return {
@@ -183,8 +268,65 @@ export class InvitationsService {
       status: 'pending' as const,
       token,
       expiresAt,
+      requiresPassword: this.inviteSettings.isPasswordRequired(settings),
+      accessLevel: this.inviteSettings.effectiveAccessLevel(settings),
       url: `${this.appBaseUrl}/invite/accept?token=${encodeURIComponent(token)}`,
     };
+  }
+
+  /**
+   * Applies Link Settings to somebody arriving on an invite link.
+   *
+   * Runs on the link path only. A per-invitation accept token is already a
+   * secret addressed to one person, and the settings describe the shared
+   * link, so gating a direct invitation behind the link password would lock
+   * out the very people who were invited by name.
+   */
+  private async assertLinkSettingsAllow(
+    settings: InviteSettings,
+    linkPayload: { teamId: string; companyId?: string; iat?: number; exp: number },
+    arrival: { id: string; email: string },
+    linkPassword?: string,
+  ): Promise<void> {
+    // Expiry, measured from when the link was minted. Tokens predating `iat`
+    // fall back to their own `exp`, which verifyInviteLinkToken has already
+    // enforced, so they are simply left alone here.
+    if (linkPayload.iat) {
+      const deadline = this.inviteSettings.resolveLinkDeadline(
+        settings,
+        linkPayload.iat,
+      );
+      if (deadline && Date.now() > deadline) {
+        throw new TokenExpiredException();
+      }
+    }
+
+    switch (this.inviteSettings.effectiveAccessLevel(settings)) {
+      case InviteAccessLevel.OWNER_ONLY:
+        // "Works for nobody but the account owner, so it is effectively off."
+        if (arrival.id !== linkPayload.teamId) throw new LinkAccessDeniedException();
+        break;
+      case InviteAccessLevel.INVITED_GUESTS: {
+        // "Works only for emails that already have a pending invitation."
+        const pending = await this.repo
+          .createQueryBuilder('i')
+          .where('i.teamId = :teamId', { teamId: linkPayload.teamId })
+          .andWhere('LOWER(i.invitedEmail) = LOWER(:email)', { email: arrival.email })
+          .andWhere('i.status = :status', { status: InvitationStatus.PENDING })
+          .getOne();
+        if (!pending) throw new LinkAccessDeniedException();
+        break;
+      }
+      case InviteAccessLevel.ANYONE:
+      default:
+        break;
+    }
+
+    if (this.inviteSettings.isPasswordRequired(settings)) {
+      if (!linkPassword) throw new LinkPasswordRequiredException();
+      const ok = await this.inviteSettings.verifyPassword(settings, linkPassword);
+      if (!ok) throw new LinkPasswordInvalidException();
+    }
   }
 
   private async getSafeDismissedUserSummary(invitee: { id: string; email: string; role?: string }): Promise<InternalUserSummary> {
@@ -251,6 +393,12 @@ export class InvitationsService {
     const results = [];
     const normalizedNote = this.normalizeInvitationNote(dto.note);
     const permissions = dto.permissions ?? [];
+
+    // "Allow Notification Alerts" (R3-02): invitees who already have an
+    // account get the in-app card as well as the email. Read once for the
+    // whole batch — it is an account-wide setting and cannot change mid-send.
+    const settings = await this.inviteSettings.get(dto.teamId);
+    const notifyInApp = settings.notificationAlerts;
 
     // Resolve the company name once so the notification email shows a real
     // name instead of the raw team/company UUID.
@@ -347,13 +495,13 @@ export class InvitationsService {
 
       this.events.created(inv.id, dto.teamId, dto.companyId, email, dto.role);
 
-      this.notifyInviter(inviter, email, dto.teamId, dto.role);
+      this.notifyInviter(inviter, email, dto.teamId, permissions);
 
       // In-app notification to invitee if they are an existing registered user
       try {
-        const inviteeUser = await this.userService
-          .getUserSummaryByEmail(email)
-          .catch(() => null);
+        const inviteeUser = notifyInApp
+          ? await this.userService.getUserSummaryByEmail(email).catch(() => null)
+          : null;
 
         if (inviteeUser?.id) {
           this.notifyInviteeOnInvite(inviteeUser, inviter, {
@@ -457,22 +605,50 @@ export class InvitationsService {
     this.rabbitmq.emit('notification.email.invitation_accepted', payload);
   }
 
+  /**
+   * Describes what an invitation actually grants, for user-facing copy.
+   *
+   * `role` must never appear in anything a person reads. The invite dialog
+   * has had no role picker since the permissions panel replaced it, so the
+   * field is always the DTO's `viewer` default — which is how the inviter's
+   * notification came to tell people they had invited a Hiring Manager and a
+   * Negotiator "as viewer". Permissions are the real grant; with none, the
+   * sentence simply does without.
+   */
+  private describeGrant(permissions?: string[]): string | null {
+    const names = (permissions ?? [])
+      .filter(Boolean)
+      .map((id) =>
+        id
+          .split('-')
+          .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+          .join(' '),
+      );
+    if (names.length === 0) return null;
+    if (names.length === 1) return names[0];
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.length} roles`;
+  }
+
   /** In-app notification to the inviter confirming the invite was sent. */
   private notifyInviter(
     inviter: { id: string; email: string },
     invitedEmail: string,
     teamId: string,
-    role: string,
+    permissions: string[],
   ): void {
+    const grant = this.describeGrant(permissions);
     this.rabbitmq.emit('notification.send', {
       recipientId: inviter.id,
       recipientEmail: inviter.email,
       category: 'teams',
       event: 'invitation.sent',
       title: `Invitation sent to ${invitedEmail}`,
-      body: `You've invited ${invitedEmail} to join your team as ${role}`,
+      body: grant
+        ? `You've invited ${invitedEmail} to join your team as ${grant}`
+        : `You've invited ${invitedEmail} to join your team`,
       link: `${this.appBaseUrl}/my-team`,
-      metadata: { invitedEmail, teamId, role },
+      metadata: { invitedEmail, teamId, permissions },
       delivery: { inApp: true, email: false },
     });
   }
@@ -604,12 +780,15 @@ export class InvitationsService {
    * dispatches and only gates the realtime push, so a suppressed-delivery
    * notification would still list in the panel and still count as unread. */
   private notifyAccepted(invitee: { id: string; email: string }, updated: Invitation): void {
+    const grant = this.describeGrant(updated.permissions);
     this.rabbitmq.emit('notification.send', {
       recipientId: updated.createdByUserId,
       category: 'teams',
       event: 'invitation.accepted_by_invitee',
       title: `${invitee.email} accepted your invitation`,
-      body: `${invitee.email} has joined your team as ${updated.role}`,
+      body: grant
+        ? `${invitee.email} has joined your team as ${grant}`
+        : `${invitee.email} has joined your team`,
       link: `/my-team`,
       metadata: { teamId: updated.teamId, acceptedByEmail: invitee.email, invitationId: updated.id },
       delivery: { inApp: true, email: false },
@@ -669,7 +848,32 @@ export class InvitationsService {
     return inv;
   }
 
-  async resend(id: string): Promise<Invitation> {
+  /**
+   * `list` for an external caller, scoped to what they may see.
+   *
+   * The raw `list` stays unauthorised on purpose: CompanyInvitationsController
+   * reaches it behind CompanyContextGuard, which has already established
+   * membership of the company being listed, and re-deriving that here would
+   * be a second round trip to user-service for an answer already in hand.
+   */
+  async listFor(dto: ListInvitationsDto, actor: Actor) {
+    await this.assertCanActOnTeam(dto.teamId, dto.companyId, actor);
+    return this.list(dto);
+  }
+
+  /** `getOne` for an external caller, under the R3-12 rule. */
+  async getOneFor(id: string, actor: Actor): Promise<Invitation> {
+    const inv = await this.getOne(id);
+    await this.assertCanManageInvitation(inv, actor, ROSTER_PERMISSIONS);
+    return inv;
+  }
+
+  /**
+   * Does the actual resend. Split out from `resend` so a held resend (R3-09)
+   * has something to call when its timer fires, with no authorisation or
+   * hold logic in the way — both already happened when the hold was taken.
+   */
+  private async performResend(id: string): Promise<Invitation> {
     const inv = await this.getOne(id);
     if (inv.status !== InvitationStatus.PENDING) {
       throw new InvitationNotPendingException('Can only resend pending invitations');
@@ -711,11 +915,16 @@ export class InvitationsService {
 
     this.events.resent(inv.id, inv.teamId, inv.companyId, inv.invitedEmail);
 
-    // In-app notification to invitee if they are an existing registered user
+    // In-app notification to invitee if they are an existing registered user,
+    // subject to the same "Allow Notification Alerts" setting as the original
+    // send.
     try {
-      const inviteeUser = await this.userService
-        .getUserSummaryByEmail(inv.invitedEmail)
-        .catch(() => null);
+      const settings = await this.inviteSettings.get(inv.teamId);
+      const inviteeUser = settings.notificationAlerts
+        ? await this.userService
+            .getUserSummaryByEmail(inv.invitedEmail)
+            .catch(() => null)
+        : null;
 
       if (inviteeUser?.id) {
         this.notifyInviteeOnInvite(
@@ -743,16 +952,228 @@ export class InvitationsService {
     return inv;
   }
 
-  async cancel(id: string): Promise<Invitation> {
+  async cancel(id: string, actor: Actor): Promise<Invitation> {
     const inv = await this.getOne(id);
+    await this.assertCanManageInvitation(inv, actor, ROSTER_PERMISSIONS);
     if (inv.status !== InvitationStatus.PENDING) {
       throw new InvitationNotPendingException('Can only cancel pending invitations');
     }
+    // A cancel supersedes a resend that has not gone out yet: resending a
+    // link and then revoking it in the same breath must not leave a timer
+    // about to mail a fresh link for an invitation that no longer exists.
+    this.dropHeldResend(id);
     inv.status = InvitationStatus.CANCELED;
     inv.canceledAt = new Date();
     const saved = await this.repo.save(inv);
     this.events.revoked(inv.id, inv.teamId, inv.companyId, inv.invitedEmail);
     return saved;
+  }
+
+  /**
+   * Resend, optionally held for `holdMs` first (R3-09).
+   *
+   * With a hold, nothing goes out and nothing on the invitation changes until
+   * the timer fires, so the old link and its expiry stay exactly as they were
+   * and `undoResend` can drop the whole thing. Once it fires the resend runs
+   * normally: new secret, old link dead, fresh 30-day expiry. Gmail's "Undo
+   * send", which is the behaviour the decision names.
+   *
+   * `holdMs` defaults to 0, so a caller that does its own hold — as the
+   * invite UI does today, on an 8s toast — keeps the behaviour it has now.
+   */
+  async resend(
+    id: string,
+    actor: Actor,
+    holdMs = 0,
+  ): Promise<Invitation | HeldResend> {
+    const inv = await this.getOne(id);
+    await this.assertCanManageInvitation(inv, actor, ROSTER_PERMISSIONS);
+    if (inv.status !== InvitationStatus.PENDING) {
+      throw new InvitationNotPendingException('Can only resend pending invitations');
+    }
+
+    if (holdMs <= 0) return this.performResend(id);
+
+    // A second resend while one is held replaces it rather than queueing a
+    // second mail.
+    this.dropHeldResend(id);
+
+    const sendAt = Date.now() + holdMs;
+    const timer = setTimeout(() => {
+      this.heldResends.delete(id);
+      this.performResend(id).catch((err) =>
+        this.logger.error(
+          `Held resend for invitation ${id} failed: ${err?.message ?? err}`,
+        ),
+      );
+    }, holdMs);
+    // Never keep the process alive for a pending resend.
+    timer.unref?.();
+    this.heldResends.set(id, { timer, sendAt });
+
+    this.logger.log(`Resend for invitation ${id} held until ${new Date(sendAt).toISOString()}`);
+    return { id, held: true, sendAt: new Date(sendAt) };
+  }
+
+  /**
+   * Undo on "Your invitation has been resent" (R3-09): drop a held resend so
+   * nothing goes out and the existing link keeps working.
+   *
+   * Reports `canceled: false` rather than failing when there is nothing to
+   * drop — the resend has already gone, which is exactly what Undo looks like
+   * when it arrives late, and the caller has nothing useful to do with an
+   * error there.
+   */
+  async undoResend(id: string, actor: Actor): Promise<{ id: string; canceled: boolean }> {
+    const inv = await this.getOne(id);
+    await this.assertCanManageInvitation(inv, actor, ROSTER_PERMISSIONS);
+    return { id, canceled: this.dropHeldResend(id) };
+  }
+
+  private dropHeldResend(id: string): boolean {
+    const held = this.heldResends.get(id);
+    if (!held) return false;
+    clearTimeout(held.timer);
+    this.heldResends.delete(id);
+    return true;
+  }
+
+  /**
+   * Change the grant on a pending invitation (R3-10).
+   *
+   * Administrator only: the roles frame gives Coordinator and Onboarder the
+   * roster and pending invites but says both "cannot change roles", so they
+   * can resend and cancel this invitation without being able to rewrite what
+   * it grants.
+   *
+   * Pending only. An accepted invitation's grant lives on the company_users
+   * row by then, and user-service's member routes own it — rewriting the
+   * invitation would change nothing and quietly disagree with the roster.
+   */
+  async updatePending(
+    id: string,
+    dto: UpdateInvitationDto,
+    actor: Actor,
+  ): Promise<Invitation> {
+    const inv = await this.getOne(id);
+    await this.assertCanManageInvitation(inv, actor, ADMIN_PERMISSIONS);
+    if (inv.status !== InvitationStatus.PENDING) {
+      throw new InvitationNotPendingException(
+        'Can only change the roles on a pending invitation',
+      );
+    }
+
+    if (dto.permissions !== undefined) inv.permissions = dto.permissions;
+    if (dto.role !== undefined) inv.role = dto.role;
+
+    const saved = await this.repo.save(inv);
+    this.logger.log(
+      `Invitation ${id} permissions updated by ${actor.id}: [${saved.permissions.join(', ')}]`,
+    );
+    return saved;
+  }
+
+  /**
+   * Pre-flight duplicate check for the invite field (R3-11).
+   *
+   * Exactly the two checks `createInvites` runs per address — company
+   * membership, then a pending invitation — so a chip can be flagged as it is
+   * created rather than at send time. Send still re-runs them: this is a
+   * snapshot, and somebody else may invite the same person in between.
+   */
+  async checkEmails(dto: CheckInvitationsDto, actor: Actor) {
+    await this.assertCanActOnTeam(dto.teamId, dto.companyId, actor);
+
+    const results = await Promise.all(
+      dto.emails.map(async (email) => {
+        const trimmed = email.trim();
+        const valid = EMAIL_PATTERN.test(trimmed);
+        if (!valid) {
+          return { email: trimmed, valid: false, alreadyMember: false, alreadyInvited: false };
+        }
+
+        const [member, pending] = await Promise.all([
+          dto.companyId
+            ? this.userService
+                .getCompanyMemberByEmail(dto.companyId, trimmed)
+                .catch(() => null)
+            : Promise.resolve(null),
+          this.repo
+            .createQueryBuilder('i')
+            .where('i.teamId = :teamId', { teamId: dto.teamId })
+            .andWhere('LOWER(i.invitedEmail) = LOWER(:email)', { email: trimmed })
+            .andWhere('i.status = :status', { status: InvitationStatus.PENDING })
+            .getOne(),
+        ]);
+
+        return {
+          email: trimmed,
+          valid: true,
+          alreadyMember: !!member,
+          alreadyInvited: !!pending,
+        };
+      }),
+    );
+
+    return { data: results };
+  }
+
+  /**
+   * R3-12's table, enforced.
+   *
+   * The account owner and the person who sent the invitation always qualify.
+   * Anyone else has to hold one of `allowed` in the company the invitation
+   * belongs to. A team-only invitation with no company has no roster to check
+   * against, so it stays with the owner and the sender.
+   *
+   * Before this, `resend` and `cancel` took an id and no actor at all: any
+   * signed-in user could cancel any invitation in the system by guessing its
+   * id. That is the hole this closes, as much as it is the decision it
+   * implements.
+   */
+  private async assertCanManageInvitation(
+    inv: Invitation,
+    actor: Actor,
+    allowed: readonly string[],
+  ): Promise<void> {
+    if (actor.id && inv.teamId === actor.id) return;
+    if (actor.id && inv.createdByUserId === actor.id) return;
+
+    if (inv.companyId && actor.id) {
+      const membership = await this.userService
+        .getCompanyMembership(inv.companyId, actor.id)
+        .catch(() => null);
+      const held = membership?.permissions ?? [];
+      if (held.some((p) => allowed.includes(p))) return;
+    }
+
+    this.logger.warn(
+      `Refused invitation action: actor=${actor.id} invitation=${inv.id} team=${inv.teamId}`,
+    );
+    throw new InvitationForbiddenException();
+  }
+
+  /**
+   * The same rule for routes that name a team rather than one invitation.
+   */
+  private async assertCanActOnTeam(
+    teamId: string | undefined,
+    companyId: string | undefined,
+    actor: Actor,
+  ): Promise<void> {
+    if (teamId && actor.id === teamId) return;
+
+    if (companyId && actor.id) {
+      const isMember = await this.userService
+        .checkCompanyMembership(companyId, actor.id)
+        .catch(() => false);
+      if (isMember) return;
+    }
+
+    this.logger.warn(
+      `Refused team-scoped invitation action: actor=${actor.id} team=${teamId ?? 'n/a'}`,
+    );
+    throw new InvitationForbiddenException();
   }
 
   async preview(token: string): Promise<InvitationPreview> {
@@ -769,6 +1190,14 @@ export class InvitationsService {
         this.userService.getUserSummary(linkPayload.invitedBy).catch(() => null),
       ]);
 
+      // Link Settings decide both of these, and are read live so a change
+      // in the panel shows up on the next preview of a link already copied.
+      const linkSettings = await this.inviteSettings.get(linkPayload.teamId);
+      const settingsDeadline = linkPayload.iat
+        ? this.inviteSettings.resolveLinkDeadline(linkSettings, linkPayload.iat)
+        : linkPayload.exp;
+      const effectiveExpiry = settingsDeadline ?? linkPayload.exp;
+
       return {
         companyId: linkPayload.companyId ?? null,
         companyName: company?.name ?? linkPayload.teamName ?? null,
@@ -781,8 +1210,14 @@ export class InvitationsService {
         // Invite links don't currently carry granular permissions through
         // the signed token payload. Only the legacy role does.
         permissions: [],
-        expiresAt: new Date(linkPayload.exp),
-        status: Date.now() > linkPayload.exp ? 'expired' : 'pending',
+        expiresAt: new Date(effectiveExpiry),
+        status:
+          settingsDeadline !== null && Date.now() > effectiveExpiry
+            ? 'expired'
+            : 'pending',
+        // So the accept page can ask for the password up front rather than
+        // bouncing the arrival off a 401 to find out.
+        requiresPassword: this.inviteSettings.isPasswordRequired(linkSettings),
       };
     }
 
@@ -805,6 +1240,9 @@ export class InvitationsService {
       permissions: inv.permissions ?? [],
       expiresAt: inv.expiresAt,
       status: isExpired ? 'expired' : inv.status,
+      // A per-invitation token is already a secret addressed to one person;
+      // the Link Settings password guards the shared link, not this.
+      requiresPassword: false,
     };
   }
 
@@ -859,6 +1297,17 @@ export class InvitationsService {
       if (!linkPayload) {
         throw new InvalidTokenException();
       }
+
+      // Link Settings (R3-02) are enforced here, before any roster write, so
+      // a refused arrival leaves nothing behind. Read live rather than from
+      // the token: see createInviteLink.
+      const linkSettings = await this.inviteSettings.get(linkPayload.teamId);
+      await this.assertLinkSettingsAllow(
+        linkSettings,
+        linkPayload,
+        invitee,
+        dto.linkPassword,
+      );
 
       // Link-based accept. Add to the team roster via user-service, and
       // to the company roster too when the link carries a company.

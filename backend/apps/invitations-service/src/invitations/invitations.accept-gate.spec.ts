@@ -13,6 +13,8 @@ import { InvitationsController } from './invitations.controller';
 import { InvitationsService } from './invitations.service';
 import { InvitationEventsService } from './invitation-events.service';
 import { UserServiceClient } from './user-service.client';
+import { InviteSettingsService } from './invite-settings.service';
+import { InviteAccessLevel } from '../entities/invite-settings.entity';
 import {
   ACCOUNT_GATE_CHECK_PATTERN,
   IDENTITY_GATE_TIMEOUT_MS,
@@ -66,6 +68,7 @@ describe('invitation acceptance — account-verification gate (G7)', () => {
   let userService: Record<string, jest.Mock>;
   let events: Record<string, jest.Mock>;
   let rabbit: { emit: jest.Mock };
+  let inviteSettings: Record<string, jest.Mock>;
 
   const pendingInvitation = () =>
     ({
@@ -134,6 +137,18 @@ describe('invitation acceptance — account-verification gate (G7)', () => {
       revoked: jest.fn(),
     };
     rabbit = { emit: jest.fn() };
+    // Invite settings are not what this suite is about: a stub on the
+    // defaults keeps every link unrestricted and unexpired, so the gate is
+    // still the only thing that can refuse anything here.
+    inviteSettings = {
+      get: jest.fn().mockResolvedValue({ accountId: 'team-1', notificationAlerts: true }),
+      resolveLinkDeadline: jest.fn().mockReturnValue(null),
+      isPasswordRequired: jest.fn().mockReturnValue(false),
+      verifyPassword: jest.fn().mockResolvedValue(true),
+      effectiveAccessLevel: jest.fn().mockReturnValue(InviteAccessLevel.ANYONE),
+      assertCanManage: jest.fn().mockResolvedValue(undefined),
+      toPublic: jest.fn((v: unknown) => v),
+    };
 
     const moduleRef = await Test.createTestingModule({
       controllers: [InvitationsController],
@@ -143,6 +158,7 @@ describe('invitation acceptance — account-verification gate (G7)', () => {
         { provide: getRepositoryToken(Invitation), useValue: repo },
         { provide: ConfigService, useValue: { get: jest.fn((k: string) => (k === 'RABBITMQ_URL' ? 'amqp://test-broker' : undefined)) } },
         { provide: UserServiceClient, useValue: userService },
+        { provide: InviteSettingsService, useValue: inviteSettings },
         { provide: InvitationEventsService, useValue: events },
         { provide: 'RABBITMQ_CLIENT', useValue: rabbit },
         { provide: IDENTITY_VERIFICATION_CLIENT, useValue: identityClient },
