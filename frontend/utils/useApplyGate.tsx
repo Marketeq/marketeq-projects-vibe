@@ -8,6 +8,7 @@ import { AlertTriangle } from "@blend-metrics/icons"
 import { Button, Dialog, DialogClose, DialogContent } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
 import { applyGateFor } from "@/src/lib/api/apply-gate"
+import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
 import { fetchIdentityVerificationSummary } from "@/src/lib/api/identity-verification-state"
 
 // G3: gates the job Apply entry points. For a talent, the backend's gate_open
@@ -16,8 +17,8 @@ import { fetchIdentityVerificationSummary } from "@/src/lib/api/identity-verific
 // unreadable answer opens that popup's existing status-unavailable state. Anyone
 // who is not a talent (clients, signed-out visitors) keeps the button's existing
 // behavior untouched. Cancel only closes the modal and aborts that Apply attempt.
-// "Start Verification" continues on the talent dashboard, where the existing
-// Identity Verification flow starts (same hand-off as the other verification gates).
+// "Start Verification" continues on the talent dashboard with a one-shot marker, and
+// the dashboard starts its existing Identity Verification flow itself (no second click).
 export function useApplyGate() {
   const { user } = useAuth()
   const router = useRouter()
@@ -49,7 +50,7 @@ export function useApplyGate() {
 
   const goVerify = () => {
     setBlock(null)
-    router.push("/talent-dashboard")
+    router.push(START_VERIFICATION_HREF)
   }
 
   const applyGateDialog = (

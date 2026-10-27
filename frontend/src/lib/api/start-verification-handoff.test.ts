@@ -1,0 +1,48 @@
+// Run like apply-gate.test.ts (from the frontend/ directory).
+import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { describe, it } from "node:test"
+import {
+  isStartVerificationRequested,
+  START_VERIFICATION_HREF,
+} from "./start-verification-handoff"
+
+const dashboard = readFileSync(
+  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
+  "utf8"
+)
+
+describe("Start Verification hand-off marker", () => {
+  it("the href targets the dashboard with the exact one-shot marker", () => {
+    assert.equal(START_VERIFICATION_HREF, "/talent-dashboard?startVerification=1")
+    assert.equal(isStartVerificationRequested(new URL(START_VERIFICATION_HREF, "http://x").search), true)
+  })
+
+  it("only the exact marker counts", () => {
+    assert.equal(isStartVerificationRequested(""), false)
+    assert.equal(isStartVerificationRequested("?startVerification=0"), false)
+    assert.equal(isStartVerificationRequested("?startVerification=true"), false)
+    assert.equal(isStartVerificationRequested("?other=1"), false)
+  })
+})
+
+describe("the dashboard runs its own Verify My Account action once for the marker", () => {
+  const start = dashboard.indexOf("const startVerificationHandledRef = useRef(false)")
+  const body = dashboard.slice(start, dashboard.indexOf("// Travel Mode expiry popup", start))
+
+  it("reuses handleVerifyMyAccount; no second flow implementation", () => {
+    assert.ok(start > 0)
+    assert.ok(body.includes("void handleVerifyMyAccount()"))
+    assert.ok(!body.includes("setIdentityFlowOpen"))
+  })
+
+  it("waits like the status check (talent, no Secure-your-account dialog), runs once, strips the marker", () => {
+    assert.ok(body.includes("isStartVerificationRequested(window.location.search)"))
+    assert.ok(body.includes("shouldStartIdentityCheck({"))
+    assert.ok(body.includes("securityDialogOpen: showSecurityModal"))
+    assert.ok(body.includes("alreadyStarted: startVerificationHandledRef.current"))
+    assert.ok(body.includes("startVerificationHandledRef.current = true"))
+    assert.ok(body.includes('router.replace("/talent-dashboard")'))
+  })
+})

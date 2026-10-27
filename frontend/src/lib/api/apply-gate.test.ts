@@ -97,7 +97,8 @@ describe("every Apply entry point goes through the gate", () => {
 
   it("Start Verification closes the modal and hands off to the existing verification entry", () => {
     assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(hook))
-    assert.ok(hook.includes('const goVerify = () => {\n    setBlock(null)\n    router.push("/talent-dashboard")\n  }'))
+    assert.ok(hook.includes("const goVerify = () => {\n    setBlock(null)\n    router.push(START_VERIFICATION_HREF)\n  }"))
+    assert.ok(hook.includes('import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"'))
   })
 
   it("an unreadable status still fails closed into the existing status-unavailable popup", () => {

@@ -191,6 +191,7 @@ import {
   type MismatchLaunch,
 } from "@/src/lib/api/location-mismatch"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
+import { isStartVerificationRequested } from "@/src/lib/api/start-verification-handoff"
 import {
   AccountVerificationGate,
   type ConnectionCheckState,
@@ -855,6 +856,29 @@ export default function TalentDashboard() {
     setVerificationGateOpen(false)
     setVpnProxyModalOpen(true)
   }, [runIdentityVerificationCheck])
+
+  // Start Verification on the Job Apply blocked modal lands here with a one-shot marker.
+  // It is the talent's own click on that button, so it runs the same Verify My Account
+  // action (VPN check, then the flow) instead of asking for a second click. It waits for
+  // the Secure your account dialog like the status read does, runs once, and strips the
+  // marker so a refresh or Back never starts it again.
+  const startVerificationHandledRef = useRef(false)
+  useEffect(() => {
+    if (!isStartVerificationRequested(window.location.search)) return
+    if (
+      !shouldStartIdentityCheck({
+        user,
+        isTalent: !!user && resolveDashboardRole(user) === ROLE.TALENT,
+        securityDialogOpen: showSecurityModal,
+        alreadyStarted: startVerificationHandledRef.current,
+      })
+    ) {
+      return
+    }
+    startVerificationHandledRef.current = true
+    router.replace("/talent-dashboard")
+    void handleVerifyMyAccount()
+  }, [user, showSecurityModal, handleVerifyMyAccount, router])
 
   // Travel Mode expiry popup: when the backend says Travel Mode ended, show it (verified
   // or not) unless it was closed in THIS login (the opaque loginSessionKey from /me: a
