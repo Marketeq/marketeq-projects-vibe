@@ -66,6 +66,7 @@ pipeline {
                 [key: 'pr_author', value: '$.pull_request.user.login', defaultValue: ''],
                 [key: 'push_ref', value: '$.ref', defaultValue: ''],
                 [key: 'push_after', value: '$.after', defaultValue: ''],
+                [key: 'push_before', value: '$.before', defaultValue: ''],
                 [key: 'pusher_name', value: '$.pusher.name', defaultValue: ''],
                 [key: 'forced', value: '$.forced', defaultValue: 'false']
             ],
@@ -311,9 +312,11 @@ def dispatchVibe(event) {
             string(name: 'COMMIT_SHA', value: push_after)
         ]
 
+        // PMCM-750: scan exactly what this push added and post the result on the pushed commit.
         build job: '/marketeq-projects-vibe/pr-merge-gates/gitleaks', wait: false, parameters: [
             string(name: 'PR_NUMBER', value: ''),
-            string(name: 'BASE_SHA', value: ''),
+            string(name: 'BASE_SHA', value: (env.push_before ?: '')),
+            string(name: 'HEAD_SHA', value: push_after),
             string(name: 'SCAN_TYPE', value: 'push')
         ]
 
