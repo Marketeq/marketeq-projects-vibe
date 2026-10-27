@@ -11,3 +11,17 @@ export const START_VERIFICATION_HREF = `/talent-dashboard?${START_VERIFICATION_P
 export function isStartVerificationRequested(search: string): boolean {
   return new URLSearchParams(search).get(START_VERIFICATION_PARAM) === "1"
 }
+
+/**
+ * Reads the marker from the current browser URL. Kept here, not in the dashboard page,
+ * because that page must never read anything from the URL itself (its source guard: a
+ * verification result is never taken from the URL). The marker is only a request to start,
+ * never a result.
+ */
+export function startVerificationRequestedInBrowser(
+  win: { location: { search: string } } | undefined = typeof window === "undefined"
+    ? undefined
+    : window
+): boolean {
+  return win ? isStartVerificationRequested(win.location.search) : false
+}

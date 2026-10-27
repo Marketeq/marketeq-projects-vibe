@@ -191,7 +191,7 @@ import {
   type MismatchLaunch,
 } from "@/src/lib/api/location-mismatch"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
-import { isStartVerificationRequested } from "@/src/lib/api/start-verification-handoff"
+import { startVerificationRequestedInBrowser } from "@/src/lib/api/start-verification-handoff"
 import {
   AccountVerificationGate,
   type ConnectionCheckState,
@@ -864,7 +864,7 @@ export default function TalentDashboard() {
   // marker so a refresh or Back never starts it again.
   const startVerificationHandledRef = useRef(false)
   useEffect(() => {
-    if (!isStartVerificationRequested(window.location.search)) return
+    if (!startVerificationRequestedInBrowser()) return
     if (
       !shouldStartIdentityCheck({
         user,
