@@ -74,14 +74,34 @@ describe("every Apply entry point goes through the gate", () => {
     assert.ok(!project.includes("useApplyGate"))
   })
 
-  it("the hook: talents only, fresh read each click, existing popup, no new copy", () => {
+  it("the hook: talents only, fresh read each click", () => {
     assert.ok(hook.includes("resolveDashboardRole(user) === ROLE.TALENT"))
     assert.ok(hook.includes("if (!isTalent) {\n        proceed?.()"))
     assert.ok(hook.includes("applyGateFor(await fetchIdentityVerificationSummary())"))
-    assert.ok(hook.includes('reason={block === "unavailable" ? "status_unavailable" : "unstarted"}'))
-    assert.ok(hook.includes('router.push("/talent-dashboard")'))
     assert.ok(!hook.includes("fullyVerified"))
-    // no new strings: the hook renders only the existing component
-    assert.ok(!/["'`][A-Z][a-z]+ [a-z]+ [a-z]+/.test(hook.replace(/\/\/.*$/gm, "").replace(/import .*$/gm, "")))
+  })
+
+  it("closed gate opens the Figma modal; open gate only ever runs proceed()", () => {
+    assert.ok(hook.includes('open={block === "closed"}'))
+    assert.ok(hook.includes('setBlock(decision === "closed" ? "closed" : "unavailable")'))
+    assert.ok(hook.includes('if (decision === "open") {\n          proceed?.()\n          return\n        }'))
+    assert.ok(hook.includes("To apply to this job, you will need to verify your account"))
+  })
+
+  it("Cancel only closes: no navigation, no API call, no stored state", () => {
+    assert.ok(/<DialogClose asChild>\s*<Button variant="outlined" size="md">\s*Cancel\s*<\/Button>\s*<\/DialogClose>/.test(hook))
+    assert.ok(hook.includes("if (!open) setBlock(null)"))
+    const onOpenChange = hook.slice(hook.indexOf("onOpenChange={"), hook.indexOf("<DialogContent"))
+    assert.ok(!/router|fetch|localStorage|sessionStorage|proceed/.test(onOpenChange))
+  })
+
+  it("Start Verification closes the modal and hands off to the existing verification entry", () => {
+    assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(hook))
+    assert.ok(hook.includes('const goVerify = () => {\n    setBlock(null)\n    router.push("/talent-dashboard")\n  }'))
+  })
+
+  it("an unreadable status still fails closed into the existing status-unavailable popup", () => {
+    assert.ok(hook.includes('open={block === "unavailable"}'))
+    assert.ok(hook.includes('reason="status_unavailable"'))
   })
 })

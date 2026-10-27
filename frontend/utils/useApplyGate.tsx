@@ -4,6 +4,8 @@ import { useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
+import { AlertTriangle } from "@blend-metrics/icons"
+import { Button, Dialog, DialogClose, DialogContent } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
 import { applyGateFor } from "@/src/lib/api/apply-gate"
 import { fetchIdentityVerificationSummary } from "@/src/lib/api/identity-verification-state"
@@ -13,8 +15,9 @@ import { fetchIdentityVerificationSummary } from "@/src/lib/api/identity-verific
 // existing behavior, closed opens the existing "Verify My Account" popup, and an
 // unreadable answer opens that popup's existing status-unavailable state. Anyone
 // who is not a talent (clients, signed-out visitors) keeps the button's existing
-// behavior untouched. "Verify My Account" continues on the talent dashboard, where
-// the existing verification banner starts verification.
+// behavior untouched. Cancel only closes the modal and aborts that Apply attempt.
+// "Start Verification" continues on the talent dashboard, where the existing
+// Identity Verification flow starts (same hand-off as the other verification gates).
 export function useApplyGate() {
   const { user } = useAuth()
   const router = useRouter()
@@ -50,14 +53,46 @@ export function useApplyGate() {
   }
 
   const applyGateDialog = (
-    <AccountVerificationGate
-      open={block !== null}
-      reason={block === "unavailable" ? "status_unavailable" : "unstarted"}
-      connectionCheckState="idle"
-      onVerify={goVerify}
-      onRetryConnectionCheck={goVerify}
-      onDismissConnectionError={() => setBlock(null)}
-    />
+    <>
+      <Dialog
+        open={block === "closed"}
+        onOpenChange={(open) => {
+          if (!open) setBlock(null)
+        }}
+      >
+        <DialogContent className="max-w-[506px] pt-[50px]">
+          <div className="flex items-center justify-center">
+            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-6" />
+            </div>
+          </div>
+
+          <h1 className="mt-5 mx-auto max-w-[317px] text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+            To apply to this job, you will need to verify your account
+          </h1>
+
+          <div className="mt-6 flex justify-center items-center gap-x-3">
+            <DialogClose asChild>
+              <Button variant="outlined" size="md">
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button size="md" onClick={goVerify}>
+              Start Verification
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AccountVerificationGate
+        open={block === "unavailable"}
+        reason="status_unavailable"
+        connectionCheckState="idle"
+        onVerify={goVerify}
+        onRetryConnectionCheck={goVerify}
+        onDismissConnectionError={() => setBlock(null)}
+      />
+    </>
   )
 
   return { runApply, applyGateDialog }
