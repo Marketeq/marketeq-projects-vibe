@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { useStartTimeGate } from "@/utils/useStartTimeGate"
+import { useRouter } from "next/navigation"
+import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   type ContractDTO,
@@ -3793,6 +3796,15 @@ export default function TimeTrackingPage() {
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
   const { runStart, startTimeGateDialog } = useStartTimeGate()
+  const router = useRouter()
+  // G8: Add Manual Time refused by the backend's verification gate. The default Verify your
+  // account dialog opens over the form; no entry was written.
+  const [manualTimeBlocked, setManualTimeBlocked] = useState(false)
+  const goVerifyManualTime = () => {
+    setManualTimeBlocked(false)
+    setShowManualTimeDialog(false)
+    router.push(START_VERIFICATION_HREF)
+  }
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedFilters>(emptyAppliedFilters)
   const [sort, setSort] = useState<SortKey>("time-desc")
@@ -4987,6 +4999,15 @@ export default function TimeTrackingPage() {
         open={showManualTimeDialog}
         onOpenChange={setShowManualTimeDialog}
         onSaved={() => { fetchScreenshots(); fetchManualTime() }}
+        onVerificationBlocked={() => setManualTimeBlocked(true)}
+      />
+      <AccountVerificationGate
+        open={manualTimeBlocked}
+        reason="unstarted"
+        connectionCheckState="idle"
+        onVerify={goVerifyManualTime}
+        onRetryConnectionCheck={goVerifyManualTime}
+        onDismissConnectionError={() => setManualTimeBlocked(false)}
       />
 
       <EditDetailsDialog
