@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/contexts/auth"
+import { useStartTimeGate } from "@/utils/useStartTimeGate"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   type ContractDTO,
@@ -3791,6 +3792,7 @@ export default function TimeTrackingPage() {
   const [showSettingsDialog, setShowSettingsDialog] = useState(false)
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
+  const { runStart, startTimeGateDialog } = useStartTimeGate()
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedFilters>(emptyAppliedFilters)
   const [sort, setSort] = useState<SortKey>("time-desc")
@@ -4531,11 +4533,15 @@ export default function TimeTrackingPage() {
                 onClick={async () => {
                   setOpeningDesktopTracker(true)
                   try {
-                    // Either opens the installed tracker or offers the installer.
-                    await openDesktopTracker(() => {
-                      setOpeningDesktopTracker(false)
-                      setShowDownloadTracker(true)
-                    })
+                    // G8: the gate is asked first; a refusal opens the blocked modal
+                    // and nothing below runs. Otherwise: either opens the installed
+                    // tracker or offers the installer.
+                    await runStart(() =>
+                      openDesktopTracker(() => {
+                        setOpeningDesktopTracker(false)
+                        setShowDownloadTracker(true)
+                      })
+                    )
                   } finally {
                     setOpeningDesktopTracker(false)
                   }
@@ -5031,6 +5037,7 @@ export default function TimeTrackingPage() {
         open={showDownloadTracker}
         onOpenChange={setShowDownloadTracker}
       />
+      {startTimeGateDialog}
 
       <ScreenshotDetailsDialog
         showTooltips={userShowTooltips}
