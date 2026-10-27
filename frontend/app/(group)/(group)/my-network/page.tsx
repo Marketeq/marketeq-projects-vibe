@@ -524,14 +524,20 @@ const TalentNetworkTable = ({ data }: { data: TalentMember[] }) => {
 
   return (
     <Table>
-      <TableHeader className="[&_tr]:border-t-0">
+      {/* Same as the External Team table: Figma's header cell is Base/White,
+          not the component's bg-gray-25. Confirmed on the Talent Network
+          frame's own "Table header cell" — #FFFFFF, 44px, 12px/24px. */}
+      <TableHeader className="bg-white [&_tr]:border-t-0">
         {table.getHeaderGroups().map((headerGroup) => (
           <TableRow key={headerGroup.id}>
             {headerGroup.headers.map((header) => (
               <TableHead
-                className={
-                  header.column.getCanSort() ? "cursor-pointer select-none" : ""
-                }
+                // Figma header line-height is 18px; see the note on the
+                // External Team table above for why it needs pinning.
+                className={cn(
+                  "leading-[18px]",
+                  header.column.getCanSort() && "cursor-pointer select-none"
+                )}
                 key={header.id}
                 colSpan={header.colSpan}
                 onClick={header.column.getToggleSortingHandler()}
