@@ -151,6 +151,8 @@ interface AccountMember {
   /** Set for accepted members with a company, and needed to edit permissions. */
   userId?: string
   companyId?: string
+  /** Invitation date; drives Newest/Oldest sorting. */
+  joinedAt?: string | null
 }
 
 interface TalentMember {
@@ -171,6 +173,8 @@ interface TalentMember {
   company?: string
   /** Profile availability, drives the card's avatar indicator. */
   availability?: string | null
+  /** First hire date from contracts-service; drives Newest/Oldest sorting. */
+  joinedAt?: string | null
   /** Bucket from contracts-service. Drives the Status column and badge. */
   status: TalentNetworkStatus
 }
@@ -634,7 +638,11 @@ const ExternalTeamCard = ({
   }, [roleNames, rolesInline])
 
   return (
-    <article className="relative flex flex-1 flex-col rounded-lg p-5 lg:py-[35px] lg:px-[30px] bg-white border border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
+    // `min-w-0` matters: a flex item defaults to min-width:auto, so a long
+    // unbroken invitee email sets the card's min-content width and the card
+    // grows past its grid cell — swallowing the 24px gap and making adjacent
+    // cards look joined. This lets it shrink back to the cell.
+    <article className="relative flex min-w-0 flex-1 flex-col rounded-lg p-5 lg:py-[35px] lg:px-[30px] lg:min-h-[396px] bg-white border border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <IconButton
@@ -687,19 +695,30 @@ const ExternalTeamCard = ({
 
       <div className="flex items-center justify-center mt-2">
         {/* The member's own photo when one is set; otherwise the empty dashed
-            profile circle from the design, never a name initial. */}
+            profile circle from the design, never a name initial.
+
+            The dashed circle is styled from Avatar, not AvatarFallback:
+            AvatarFallback destructures `className` and never applies it
+            (components/ui/avatar/avatar.tsx), so anything set there is
+            silently dropped — which is why this rendered as a plain circle.
+            Radix renders the fallback as a <span>, and a descendant selector
+            outranks the component's own utility class without !important.
+            Figma: 116px, #F9FAFB fill, 2px dashed #D0D5DD. */}
         <Avatar
           size="3xl"
-          className="h-[62px] w-[62px] lg:h-[116px] lg:w-[116px] hover:ring-0 active:ring-0"
+          className="h-[62px] w-[62px] lg:h-[116px] lg:w-[116px] hover:ring-0 active:ring-0 [&_span]:border-2 [&_span]:border-dashed [&_span]:border-gray-300 [&_span]:bg-gray-50"
         >
           <AvatarImage src={avatarSrc} alt={displayName || email} />
-          <AvatarFallback className="border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-50" />
+          <AvatarFallback />
         </Avatar>
       </div>
 
       {isPending ? (
         <>
-          <p className="text-[11px] leading-[13.31px] lg:text-sm text-center font-light lg:leading-[16.94px] text-[#585C65] mt-3 lg:mt-[17px]">
+          {/* break-all because an email has no spaces to wrap at; without it
+              the address sets the card's min-content width. The design only
+              ever shows a short address, so this long-value state is ours. */}
+          <p className="w-full break-all text-[11px] leading-[13.31px] lg:text-sm text-center font-light lg:leading-[16.94px] text-[#585C65] mt-3 lg:mt-[17px]">
             {email}
           </p>
           {/* Same height as the accepted card's logo slot so both cards line
@@ -824,7 +843,10 @@ const InviteWindowButton = ({ onClick }: { onClick?: () => void }) => {
       size="md"
       onClick={onClick}
     >
-      <Plus className="size-[11.64px] lg:size-[15px] [&_path]:stroke-[1.25]" />{" "}
+      {/* shrink-0 matches the Figma's `flex: none` on the icon. Without it
+          the 170px button has 142px of content space, the label takes its
+          natural 119px, and flexbox squeezes the icon from 15px to 11px. */}
+      <Plus className="shrink-0 size-[11.64px] lg:size-[15px] [&_path]:stroke-[1.25]" />{" "}
       Add Team Member
     </Button>
   )
@@ -1206,10 +1228,63 @@ const AddTalentMemberModal = ({
   )
 }
 
-const SortDropdown = () => (
+/**
+ * Sort order for both tabs. The four options are the ones this menu has
+ * always listed; note the menu itself is not in the Figma (UX-14), so the
+ * labels are the build's own, not the design's.
+ *
+ * "Newest/Oldest" sorts by when the person joined the network: the first
+ * hire date for Talent Network, the invitation date for External Team.
+ * Anyone missing that date sorts last, so a gap never silently reorders
+ * the people who do have one.
+ */
+type SortKey = "name-asc" | "name-desc" | "newest" | "oldest"
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "name-asc", label: "Name A-Z" },
+  { key: "name-desc", label: "Name Z-A" },
+  { key: "newest", label: "Newest First" },
+  { key: "oldest", label: "Oldest First" },
+]
+
+/** Pending invitees have no name yet, so fall back to the email. */
+const sortLabel = (m: { name?: string; email?: string }) =>
+  (m.name?.trim() || m.email?.trim() || "").toLowerCase()
+
+const sortMembers = <T extends { name?: string; email?: string; joinedAt?: string | null }>(
+  list: T[],
+  key: SortKey
+): T[] => {
+  const next = [...list]
+  if (key === "name-asc" || key === "name-desc") {
+    const dir = key === "name-asc" ? 1 : -1
+    return next.sort((a, b) => dir * sortLabel(a).localeCompare(sortLabel(b)))
+  }
+  const time = (m: T) => {
+    const t = m.joinedAt ? new Date(m.joinedAt).getTime() : NaN
+    return Number.isNaN(t) ? null : t
+  }
+  return next.sort((a, b) => {
+    const ta = time(a)
+    const tb = time(b)
+    // Undated rows sink to the bottom of either direction.
+    if (ta === null && tb === null) return sortLabel(a).localeCompare(sortLabel(b))
+    if (ta === null) return 1
+    if (tb === null) return -1
+    return key === "newest" ? tb - ta : ta - tb
+  })
+}
+
+const SortDropdown = ({
+  value,
+  onChange,
+}: {
+  value: SortKey
+  onChange: (key: SortKey) => void
+}) => (
   <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <button className="focus-visible:outline-none shrink-0">
+      <button className="focus-visible:outline-none shrink-0" aria-label="Sort">
         <SortAs className="size-4 lg:size-6 text-gray-500" />
       </button>
     </DropdownMenuTrigger>
@@ -1218,10 +1293,19 @@ const SortDropdown = () => (
         viewportClassName="max-h-[250px]"
         scrollBar={<ScrollBar className="w-4 p-1" />}
       >
-        <DropdownMenuCheckItem>Name A-Z</DropdownMenuCheckItem>
-        <DropdownMenuCheckItem>Name Z-A</DropdownMenuCheckItem>
-        <DropdownMenuCheckItem>Newest First</DropdownMenuCheckItem>
-        <DropdownMenuCheckItem>Oldest First</DropdownMenuCheckItem>
+        {SORT_OPTIONS.map((option) => (
+          <DropdownMenuCheckItem
+            key={option.key}
+            checked={value === option.key}
+            // Re-picking the active option must not clear the sort, so only
+            // a positive check changes it.
+            onCheckedChange={(checked) => {
+              if (checked) onChange(option.key)
+            }}
+          >
+            {option.label}
+          </DropdownMenuCheckItem>
+        ))}
       </ScrollArea>
     </DropdownMenuContent>
   </DropdownMenu>
@@ -1238,7 +1322,8 @@ const SortDropdown = () => (
 function mapUserToTalent(
   u: any,
   index: number,
-  status: TalentNetworkStatus
+  status: TalentNetworkStatus,
+  joinedAt: string | null
 ): TalentMember {
   const card = talentToCardProps(u, index)
 
@@ -1300,6 +1385,7 @@ function mapUserToTalent(
     projects: card.projects,
     skills: card.skills,
     availability: u.availability,
+    joinedAt,
     status,
   }
 }
@@ -1335,6 +1421,8 @@ export default function MyTeam() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [value, setValue] = useState([GRID_LAYOUT])
+  // One order shared by both tabs, matching the single toolbar control.
+  const [sortBy, setSortBy] = useState<SortKey>("name-asc")
   const isGrid = getFirstItem(value) === GRID_LAYOUT
   const [activeTab, setActiveTab] = useState(TALENT_NETWORK_TAB)
   const [isAddTalentOpen, setIsAddTalentOpen] = useState(false)
@@ -1493,6 +1581,7 @@ export default function MyTeam() {
         status,
         userId: status === "active" ? inv.inviteeUserId : undefined,
         companyId: inv.companyId,
+        joinedAt: inv.createdAt ?? null,
       }
     }
 
@@ -1651,6 +1740,10 @@ export default function MyTeam() {
         const statusByTalentId = new Map(
           networkEntries.map((entry) => [entry.talentId, entry.status])
         )
+        // When this person first joined the network, for Newest/Oldest.
+        const joinedAtByTalentId = new Map(
+          networkEntries.map((entry) => [entry.talentId, entry.firstHiredAtISO])
+        )
         const profiles = results
           .filter(
             (r): r is PromiseFulfilledResult<any> => r.status === "fulfilled"
@@ -1660,7 +1753,12 @@ export default function MyTeam() {
 
         setTalentMembers(
           profiles.map((u, i) =>
-            mapUserToTalent(u, i, statusByTalentId.get(u.id) ?? "active")
+            mapUserToTalent(
+              u,
+              i,
+              statusByTalentId.get(u.id) ?? "active",
+              joinedAtByTalentId.get(u.id) ?? null
+            )
           )
         )
       })
@@ -1683,30 +1781,36 @@ export default function MyTeam() {
   }, [])
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
-  const filteredTalentMembers = normalizedQuery
-    ? talentMembers.filter(
-        (m) =>
-          m.name?.toLowerCase().includes(normalizedQuery) ||
-          m.email?.toLowerCase().includes(normalizedQuery) ||
-          m.company?.toLowerCase().includes(normalizedQuery)
-      )
-    : talentMembers
-  const filteredTeamMembers = normalizedQuery
-    ? teamMembers.filter(
-        (m) =>
-          m.name?.toLowerCase().includes(normalizedQuery) ||
-          m.email?.toLowerCase().includes(normalizedQuery) ||
-          m.company?.toLowerCase().includes(normalizedQuery)
-      )
-    : teamMembers
+  const matchesQuery = (m: {
+    name?: string
+    email?: string
+    company?: string
+  }) =>
+    m.name?.toLowerCase().includes(normalizedQuery) ||
+    m.email?.toLowerCase().includes(normalizedQuery) ||
+    m.company?.toLowerCase().includes(normalizedQuery)
+
+  // Sort after filtering so the visible rows are what gets ordered.
+  const filteredTalentMembers = sortMembers(
+    normalizedQuery ? talentMembers.filter(matchesQuery) : talentMembers,
+    sortBy
+  )
+  const filteredTeamMembers = sortMembers(
+    normalizedQuery ? teamMembers.filter(matchesQuery) : teamMembers,
+    sortBy
+  )
 
   return (
     <div className="p-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
       <div className="md:hidden items-center flex flex-row-reverse justify-between">
         <div className="flex items-center gap-x-1.5 lg:gap-x-6">
-          <SortDropdown />
+          <SortDropdown value={sortBy} onChange={setSortBy} />
           <ToggleGroupRoot
             value={value}
+            // A view switcher must always have exactly one segment on. Ark
+            // allows empty selection by default, so clicking the active
+            // segment cleared it and left both rendering as off.
+            deselectable={false}
             onValueChange={(details) => setValue(details.value)}
           >
             <ToggleGroupItem value={GRID_LAYOUT}>
@@ -1789,9 +1893,13 @@ export default function MyTeam() {
 
           <div className="hidden items-center gap-x-6 self-start md:flex">
             <div className="flex items-center gap-x-3 lg:gap-x-3.5">
-              <SortDropdown />
+              <SortDropdown value={sortBy} onChange={setSortBy} />
               <ToggleGroupRoot
                 value={value}
+                // A view switcher must always have exactly one segment on.
+                // Ark allows empty selection by default, so clicking the
+                // active segment cleared it and left both rendering as off.
+                deselectable={false}
                 onValueChange={(details) => setValue(details.value)}
               >
                 <ToggleGroupItem value={GRID_LAYOUT}>

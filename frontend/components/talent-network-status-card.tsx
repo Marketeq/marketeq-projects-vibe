@@ -363,7 +363,8 @@ export const TalentNetworkStatusCard = ({
               </span>
             </div>
             <span className="text-xs font-semibold leading-none text-dark-blue-400">
-              {projects} Projects
+              {/* Figma reads "11 projects" — lowercase. */}
+              {projects} projects
             </span>
           </div>
 
