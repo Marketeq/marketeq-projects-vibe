@@ -2940,7 +2940,16 @@ export function OfferDialog({
                     try {
                       contract = await addContractGroupMember(selectedContract.id, {
                         talentId: hiredTalentId,
-                        title: contractTitle.trim(),
+                        // BTB-388: Contract Title is hidden once an
+                        // existing contract is selected, so contractTitle
+                        // is usually empty here. CreateContractDto.title is
+                        // @IsNotEmpty(), so fall back to the selected
+                        // contract's own title instead of sending "".
+                        title:
+                          contractTitle.trim() ||
+                          selectedContract.title ||
+                          jobTitle ||
+                          "Team Member",
                         // T2-14 report: fabricated for the predefined
                         // tiles — see offerRates' own comment above. Not the
                         // talent's real rate. T4-A: when custom is active
