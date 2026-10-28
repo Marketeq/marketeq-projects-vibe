@@ -354,12 +354,12 @@ This is the only pipeline that runs for the website repo. Everything else is for
 
 ```bash
 # SSH into the VPS
-sshpass -p 'JenkinsSetup(2026)' ssh root@72.61.77.231
+ssh root@72.61.77.231   # root password: stored in Doppler, never commit it
 
 # Jenkins web UI
 # URL: http://72.61.77.231:8080
 # Username: admin
-# Password: 30abbf31c05c46b3b51c4f9ae2b47ba7
+# Password: stored in Doppler (never commit it)
 
 # Look at pipeline files
 cat /var/jenkins_home/pipelines/<filename>.groovy
@@ -388,11 +388,11 @@ Or via curl (need to get a fresh crumb first):
 
 ```bash
 # Get crumb + session cookie
-curl -c /tmp/j.cookie -u admin:30abbf31c05c46b3b51c4f9ae2b47ba7 \
+curl -c /tmp/j.cookie -u "admin:$JENKINS_API_TOKEN" \
   http://localhost:8080/crumbIssuer/api/json
 
 # Post the script (use the crumb value from above)
-curl -b /tmp/j.cookie -u admin:30abbf31c05c46b3b51c4f9ae2b47ba7 \
+curl -b /tmp/j.cookie -u "admin:$JENKINS_API_TOKEN" \
   -H "Jenkins-Crumb:<crumb>" \
   http://localhost:8080/scriptText \
   --data-urlencode 'script=def job = Jenkins.instance.getItem("job-name"); ...'
