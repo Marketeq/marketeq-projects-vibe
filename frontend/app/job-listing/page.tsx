@@ -10877,8 +10877,6 @@ const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
 const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
 const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
 const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
-const teamRoleLockedPillClassName =
-  "h-7 max-w-full gap-1.5 whitespace-nowrap rounded-[5px] border border-solid border-gray-200 bg-white px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 opacity-65";
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -21800,13 +21798,9 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span>
                                   Defines the type of specialist needed for this
                                   task. Used to match talent and generate the job
@@ -21822,10 +21816,7 @@ const TeamRoles = ({
                           <TooltipProvider delayDuration={75}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span
-                                  tabIndex={0}
-                                  className="h-[18px] w-[50px] cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
-                                >
+                                <span className="h-[18px] w-[50px] cursor-default">
                                   Location
                                 </span>
                               </TooltipTrigger>
@@ -21834,16 +21825,12 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span className="flex h-[54px] w-[182.55px] items-center">
-                                  Influences team coordination and affects how
-                                  the budget is estimated.
+                                  Affects cost, availability, and potential time
+                                  zone alignment with your team.
                                 </span>
                               </TooltipContent>
                             </Tooltip>
@@ -21867,13 +21854,9 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-28 w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span>
                                   Helps determine the level of skill needed.
                                   Impacts estimated delivery time and team
@@ -21889,10 +21872,7 @@ const TeamRoles = ({
                           <TooltipProvider delayDuration={75}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span
-                                  tabIndex={0}
-                                  className="h-[18px] w-[94px] cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
-                                >
+                                <span className="h-[18px] w-[94px] cursor-default">
                                   Work Schedule
                                 </span>
                               </TooltipTrigger>
@@ -21901,13 +21881,9 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span className="flex h-[54px] w-[182.55px] items-center">
                                   Defines how much time the freelancer will
                                   commit. Impacts total cost.
@@ -21922,10 +21898,7 @@ const TeamRoles = ({
                           <TooltipProvider delayDuration={75}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span
-                                  tabIndex={0}
-                                  className="h-[18px] w-[94px] cursor-default whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
-                                >
+                                <span className="h-[18px] w-[94px] cursor-default whitespace-nowrap">
                                   Contract Length
                                 </span>
                               </TooltipTrigger>
@@ -21934,13 +21907,9 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span className="flex h-[54px] w-[182.55px] items-center">
                                   Sets how long the freelancer will be engaged.
                                   Affects overall budget planning.
@@ -21955,10 +21924,7 @@ const TeamRoles = ({
                           <TooltipProvider delayDuration={75}>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span
-                                  tabIndex={0}
-                                  className="cursor-default whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
-                                >
+                                <span className="cursor-default whitespace-nowrap">
                                   Hourly est.
                                 </span>
                               </TooltipTrigger>
@@ -21967,13 +21933,9 @@ const TeamRoles = ({
                                 align="center"
                                 sideOffset={12}
                                 visual="white"
-                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                               >
-                                <TooltipArrow
-                                  width={35}
-                                  height={17.45}
-                                  className="fill-primary-50"
-                                />
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                 <span className="flex h-[54px] w-[182.55px] items-center">
                                   Estimated hourly rate based on the selected
                                   location, experience, and schedule
@@ -22056,14 +22018,10 @@ const TeamRoles = ({
                                       align="center"
                                       sideOffset={12}
                                       visual="white"
-                                      className="flex h-[94px] w-[222.55px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                                     >
-                                      <TooltipArrow
-                                        width={35}
-                                        height={17.45}
-                                        className="fill-primary-50"
-                                      />
-                                      <span className="flex h-[54px] w-[182.55px] items-center">
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      <span>
                                         This team member is already part of your
                                         team. You can’t make changes here.
                                       </span>
@@ -22089,10 +22047,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={cn(
-                                  teamRoleLockedPillClassName,
-                                  "[&>span:first-child]:size-[18px] [&>span:first-child]:rounded-full",
-                                )}
+                                className={teamRoleLocationPillClassName}
                               >
                                 {renderLocationOptionLabel(row.location)}
                               </Badge>
@@ -22130,7 +22085,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLockedPillClassName}
+                                className={teamRoleExperiencePillClassName}
                               >
                                 {row.experience}
                               </Badge>
@@ -22166,7 +22121,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLockedPillClassName}
+                                className={teamRoleSchedulePillClassName}
                               >
                                 {row.schedule}
                               </Badge>
@@ -22199,7 +22154,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLockedPillClassName}
+                                className={teamRoleLengthPillClassName}
                               >
                                 {row.length}
                               </Badge>
@@ -22225,13 +22180,9 @@ const TeamRoles = ({
                                   align="center"
                                   sideOffset={12}
                                   visual="white"
-                                  className="flex h-[246px] w-[252px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 overflow-visible shadow-none drop-shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                  className="flex h-[246px] w-[252px] max-w-none flex-col items-start gap-4 rounded-lg bg-primary-50 p-5 text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
                                 >
-                                  <TooltipArrow
-                                    width={35}
-                                    height={17.45}
-                                    className="fill-primary-50"
-                                  />
+                                  <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
                                   <span className="h-6 w-[90px] text-base font-semibold leading-6 text-gray-800">
                                     Price Guide
                                   </span>
