@@ -10877,6 +10877,8 @@ const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
 const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
 const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
 const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
+const teamRoleReadOnlyPillClassName =
+  "h-7 w-fit max-w-full gap-x-1.5 rounded-[5px] border border-solid border-gray-200 bg-white px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 opacity-65 mix-blend-normal";
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -22047,7 +22049,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLocationPillClassName}
+                                className={cn(teamRoleReadOnlyPillClassName, "pl-[5px]")}
                               >
                                 {renderLocationOptionLabel(row.location)}
                               </Badge>
@@ -22085,7 +22087,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleExperiencePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.experience}
                               </Badge>
@@ -22121,7 +22123,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleSchedulePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.schedule}
                               </Badge>
@@ -22154,7 +22156,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLengthPillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.length}
                               </Badge>
