@@ -44,6 +44,13 @@ const LISTING_REQUEST_TIMEOUT_MS = 30000
 const LISTING_UPLOAD_TIMEOUT_MS = 120000
 
 export const ProjectAPI = {
+  // G2: read-only check that the talent may start a listing; resolves only when the gate
+  // is open, a closed gate (403 VERIFICATION_REQUIRED) or an unanswered one (503) rejects.
+  CheckCreateListingGate: () => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/create-gate`, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
+  },
   CreateProjectDraft: (
     data: Partial<CreateProjectType> & {
       title?: string

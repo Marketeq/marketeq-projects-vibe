@@ -355,7 +355,8 @@ export class ServicesService {
   }
 
   async create(dto: CreateServiceDto, userId: string) {
-    if (dto.status === ListingStatus.Published) await this.assertGateOpen(userId);
+    // G2 (PMCM-652): creating a service, drafts included, needs an open gate.
+    await this.assertGateOpen(userId);
     const item = this.repo.create({
       ...dto,
       createdBy: userId,

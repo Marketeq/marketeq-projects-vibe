@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ProjectAPI } from "@/service/http/project"
+import { useCreateListingGate } from "@/utils/useCreateListingGate"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { toUserMessage } from "@/lib/listing-errors"
 import {
@@ -130,6 +131,7 @@ const cascadeDelay = (i: number) =>
 
 export default function MyListingsPage() {
   const router = useRouter()
+  const { runCreate, createListingGateDialog } = useCreateListingGate()
   const { user } = useAuth()
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
   const { toast } = useToast()
@@ -1183,19 +1185,27 @@ export default function MyListingsPage() {
                   disabled={creatingType !== null}
                   className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group disabled:opacity-50"
                   onClick={async () => {
+                    // G2: the verification check runs before any draft exists. While blocked
+                    // the chooser closes and nothing is created or saved.
                     setCreatingType(option.type)
                     try {
-                      const res = await ProjectAPI.CreateProjectDraft({
-                        title: "",
-                        listingType: option.type,
+                      const { proceeded } = await runCreate(async () => {
+                        const res = await ProjectAPI.CreateProjectDraft({
+                          title: "",
+                          listingType: option.type,
+                        })
+                        const draftId =
+                          res?.data?.projectId ?? res?.data?.id
+                        if (draftId) {
+                          setShowNewListingDialog(false)
+                          router.push(`/my-listings/${draftId}`)
+                        } else {
+                          console.error("No draft ID returned", res)
+                          setCreatingType(null)
+                        }
                       })
-                      const draftId =
-                        res?.data?.projectId ?? res?.data?.id
-                      if (draftId) {
+                      if (!proceeded) {
                         setShowNewListingDialog(false)
-                        router.push(`/my-listings/${draftId}`)
-                      } else {
-                        console.error("No draft ID returned", res)
                         setCreatingType(null)
                       }
                     } catch (err) {
@@ -1225,6 +1235,8 @@ export default function MyListingsPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {createListingGateDialog}
 
         <Dialog
           open={deleteTarget !== null}
