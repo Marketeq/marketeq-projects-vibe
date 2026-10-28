@@ -207,6 +207,21 @@ export class CheckoutDraftSessionService {
     });
   }
 
+  async submitPayment(clientId: string, sessionId: string) {
+    const session = await this.loadActiveSession(clientId, sessionId);
+    const selection = await this.readPaymentSelection(clientId, session);
+    if (!selection) {
+      throw new UnprocessableEntityException({
+        code: 'PAYMENT_SELECTION_REQUIRED',
+        message: 'Select a payment method before submitting',
+      });
+    }
+    await this.dataSource.manager.update(CheckoutSession, session.id, {
+      status: 'success',
+    });
+    return this.getSession(clientId, sessionId);
+  }
+
   private async readPaymentSelection(clientId: string, session: CheckoutSession) {
     if (!session.paymentSelectionId) return null;
     const summary = await this.paymentSelections.find(

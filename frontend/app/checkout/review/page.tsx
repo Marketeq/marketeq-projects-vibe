@@ -1085,9 +1085,30 @@ export default function ConfirmationPage() {
 
     setSubmitError("")
     setIsSubmittingPayment(true)
-    window.setTimeout(() => {
-      router.push(`${basePath}/confirmation?${slugQuery}`)
-    }, 300)
+
+    if (isTalentCheckout) {
+      window.setTimeout(() => {
+        router.push(`${basePath}/confirmation?${slugQuery}`)
+      }, 300)
+      return
+    }
+
+    const submitProjectPayment = async () => {
+      try {
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+        await CheckoutAPI.SubmitSessionPayment(checkout.sessionId)
+      } catch (error) {
+        setIsSubmittingPayment(false)
+        if (!openSessionDialogForFailure(error)) {
+          setSubmitError(
+            "Something went wrong while processing your payment. Please try again or contact support"
+          )
+        }
+        return
+      }
+      window.location.assign(`${basePath}/thank-you?${slugQuery}`)
+    }
+    void submitProjectPayment()
   }
 
   const renderReviewPaymentRow = (row: ReviewPaymentRow) => (

@@ -135,6 +135,10 @@ export class CheckoutDraftGatewayService {
     return this.forward('put', `/session/${sessionId}/balance`, clientId, `set the applied balance of checkout session ${sessionId}`, { body });
   }
 
+  async submitSessionPayment(sessionId: string, clientId: string) {
+    return this.forward('post', `/session/${sessionId}/payment/submit`, clientId, `submit the payment of checkout session ${sessionId}`);
+  }
+
   async clearSessionPaymentSelection(sessionId: string, clientId: string) {
     return this.forward('delete', `/session/${sessionId}/payment/selection`, clientId, `clear the payment source of checkout session ${sessionId}`);
   }

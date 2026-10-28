@@ -143,6 +143,13 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.setSessionBalanceApplied(sessionId, body, clientId);
   }
 
+  @Post('session/:sessionId/payment/submit')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  submitSessionPayment(@Param('sessionId') sessionId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.submitSessionPayment(sessionId, clientId);
+  }
+
   @Delete('session/:sessionId/payment/selection')
   @HttpCode(204)
   @UseGuards(JwtAuthGuard)

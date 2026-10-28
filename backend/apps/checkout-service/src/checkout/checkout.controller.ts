@@ -230,6 +230,16 @@ export class CheckoutController {
     );
   }
 
+  @Post("session/:sessionId/payment/submit")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(InternalTokenGuard)
+  submitSessionPayment(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.submitPayment(clientId, sessionId);
+  }
+
   @Delete("session/:sessionId/payment/selection")
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(InternalTokenGuard)
