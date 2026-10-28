@@ -106,12 +106,15 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     )
   })
 
-  it("only the root layout and the dashboard import the host module; the dashboard is the only caller", () => {
+  it("only the root layout, the dashboard and the G3 Apply hook import the host module", () => {
     assert.deepEqual(
       filesWith("@/contexts/identity-verification-host"),
-      [DASHBOARD, ROOT].sort()
+      [DASHBOARD, ROOT, "utils/useApplyGate.tsx"].sort()
     )
-    assert.deepEqual(filesWith("= useIdentityVerification()"), [DASHBOARD])
+    assert.deepEqual(
+      filesWith("= useIdentityVerification()"),
+      [DASHBOARD, "utils/useApplyGate.tsx"].sort()
+    )
   })
 
   it("the flow and the gate are rendered by the host only: one flow instance, one gate", () => {
@@ -149,36 +152,43 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     ) // observer mount, startVerification
   })
 
-  it("no off-dashboard gate has been migrated: none imports the host, all still use the dashboard handoff", () => {
-    for (const file of [
-      "utils/useApplyGate.tsx",
-      "utils/useStartTimeGate.tsx",
-      "utils/CreateListingGateHost.tsx",
-      "components/download-desktop-tracker-dialog.tsx",
-      "components/withdraw-funds-dialog.tsx",
-      "app/transfer-funds/page.tsx",
-      "app/verify-withdrawal/page.tsx",
-      "app/(group)/time-tracking/page.tsx",
-    ]) {
+  it("only G3 (Apply) is migrated: every other gate keeps its own navigation and does not touch the host", () => {
+    const unmigrated: Record<string, RegExp> = {
+      "utils/useStartTimeGate.tsx": /START_VERIFICATION_HREF/,
+      "utils/CreateListingGateHost.tsx": /START_VERIFICATION_HREF/,
+      "app/(group)/time-tracking/page.tsx": /START_VERIFICATION_HREF/,
+      "components/download-desktop-tracker-dialog.tsx":
+        /router\.push\("\/talent-dashboard"\)/,
+      "components/withdraw-funds-dialog.tsx":
+        /router\.push\("\/talent-dashboard"\)/,
+      "app/transfer-funds/page.tsx": /router\.push\("\/talent-dashboard"\)/,
+      "app/verify-withdrawal/page.tsx": /router\.push\("\/talent-dashboard"\)/,
+    }
+    for (const [file, navigation] of Object.entries(unmigrated)) {
       const text = readFileSync(join(root, file), "utf8")
       assert.ok(
         !/identity-verification-host|useIdentityVerification/.test(text),
         file
       )
+      assert.ok(navigation.test(text), `${file} keeps its current navigation`)
     }
-    for (const file of [
-      "utils/useApplyGate.tsx",
-      "utils/useStartTimeGate.tsx",
-      "utils/CreateListingGateHost.tsx",
-    ]) {
-      assert.ok(
-        readFileSync(join(root, file), "utf8").includes(
-          "START_VERIFICATION_HREF"
-        ),
-        file
-      )
-    }
+    // G3 is the migrated one: it uses the host and no longer uses the dashboard handoff
+    const apply = readFileSync(join(root, "utils/useApplyGate.tsx"), "utf8")
+    assert.ok(/useIdentityVerification\(\)/.test(apply))
+    assert.ok(!/START_VERIFICATION_HREF|router\.push/.test(apply))
+    // the old handoff stays for the gates that still use it
     assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
+  })
+
+  it("the host never navigates: closing a flow leaves the page it was opened over", () => {
+    const code = host.replace(/\/\/.*$/gm, "")
+    assert.ok(
+      !/useRouter|router\.|next\/navigation"[^;]*useRouter|location\.(replace|reload)|history\./.test(
+        code
+      )
+    )
+    // the only window.location use is the Didit hand-off inside the (read-only) flow, not here
+    assert.ok(!/window\.location/.test(code))
   })
 })
 
