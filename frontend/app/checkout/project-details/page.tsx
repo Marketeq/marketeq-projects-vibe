@@ -957,6 +957,9 @@ function CheckoutPageInner() {
   const [legalDialog, setLegalDialog] = React.useState<
     "terms" | "privacy" | null
   >(null)
+  const lastLegalDialogRef = React.useRef<"terms" | "privacy">("terms")
+  if (legalDialog) lastLegalDialogRef.current = legalDialog
+  const shownLegalDialog = legalDialog ?? lastLegalDialogRef.current
   const [isRedeemCodeDialogOpen, setIsRedeemCodeDialogOpen] =
     React.useState(false)
   const [redeemCodeTab, setRedeemCodeTab] = React.useState<
@@ -5938,10 +5941,10 @@ function CheckoutPageInner() {
       >
         <DialogContent className="max-w-[480px] p-6">
           <h2 className="text-lg font-semibold text-dark-blue-400">
-            {legalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
+            {shownLegalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
           </h2>
           <p className="mt-3 text-sm leading-5 text-gray-500">
-            {legalDialog === "privacy"
+            {shownLegalDialog === "privacy"
               ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
               : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
           </p>

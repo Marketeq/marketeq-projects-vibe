@@ -10863,12 +10863,11 @@ export default function PaymentPage() {
                           </Button>
                         </div>
 
-                        <div className="mt-5">
-                          <span className="block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
-                            By clicking the above, you agree to Marketeq&apos;s
-                            <br />
+                        <div className="mt-[21.33px]">
+                          <span className="inline-block text-center font-light text-[10px] leading-[14px]">
+                            By clicking the above, you agree to Marketeq&apos;s{" "}
                             <Button
-                              className="h-auto p-0 align-baseline text-[10px] font-medium leading-[14px] underline"
+                              className="font-medium underline text-[10px] leading-[14px]"
                               variant="link"
                               onClick={() => setLegalDialog("terms")}
                             >
@@ -10876,7 +10875,7 @@ export default function PaymentPage() {
                             </Button>{" "}
                             and{" "}
                             <Button
-                              className="h-auto p-0 align-baseline text-[10px] font-medium leading-[14px] underline"
+                              className="font-medium underline text-[10px] leading-[14px]"
                               variant="link"
                               onClick={() => setLegalDialog("privacy")}
                             >
@@ -11210,22 +11209,31 @@ export default function PaymentPage() {
           <h2 className="text-lg font-semibold text-dark-blue-400">
             {shownLegalDialog === "privacy"
               ? "Privacy Policy"
-              : "Terms & Conditions"}
+              : isTalentCheckout
+                ? "Terms & Conditions"
+                : "Terms of Use"}
           </h2>
-          <DialogClose asChild>
-            <IconButton
-              variant="ghost"
-              visual="gray"
-              className="absolute right-6 top-6 rounded-full text-gray-500 hover:text-gray-900"
-            >
-              <X className="size-5" />
-            </IconButton>
-          </DialogClose>
+          {isTalentCheckout ? (
+            <DialogClose asChild>
+              <IconButton
+                variant="ghost"
+                visual="gray"
+                className="absolute right-6 top-6 rounded-full text-gray-500 hover:text-gray-900"
+              >
+                <X className="size-5" />
+              </IconButton>
+            </DialogClose>
+          ) : null}
           <p className="mt-3 text-sm leading-5 text-gray-500">
             {shownLegalDialog === "privacy"
               ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
               : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
           </p>
+          {isTalentCheckout ? null : (
+            <div className="mt-6 flex justify-end">
+              <Button onClick={() => setLegalDialog(null)}>Close</Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </>

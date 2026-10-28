@@ -343,6 +343,8 @@ export default function ConfirmationPage() {
   const [billingAddresses, setBillingAddresses] = React.useState<
     BillingAddress[]
   >([])
+  const [isBillingAddressesLoading, setIsBillingAddressesLoading] =
+    React.useState(!isTalentCheckout)
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
   const [authorizationError, setAuthorizationError] = React.useState("")
@@ -352,6 +354,9 @@ export default function ConfirmationPage() {
   const [legalDialog, setLegalDialog] = React.useState<
     "terms" | "privacy" | null
   >(null)
+  const lastLegalDialogRef = React.useRef<"terms" | "privacy">("terms")
+  if (legalDialog) lastLegalDialogRef.current = legalDialog
+  const shownLegalDialog = legalDialog ?? lastLegalDialogRef.current
   const hasAuthorizationError = authorizationError.length > 0
   const authorizationSectionRef = React.useRef<HTMLDivElement | null>(null)
   const [isRedeemCodeDialogOpen, setIsRedeemCodeDialogOpen] =
@@ -441,6 +446,9 @@ export default function ConfirmationPage() {
         if (isActive) setBillingAddresses(response.data as BillingAddress[])
       })
       .catch(() => {})
+      .finally(() => {
+        if (isActive) setIsBillingAddressesLoading(false)
+      })
 
     return () => {
       isActive = false
@@ -1149,20 +1157,30 @@ export default function ConfirmationPage() {
   )
 
   return (
-    <div className="bg-gray-50 pt-[64px]">
-      <CheckoutNavigation
-        currentStep={3}
-        logoHref=""
-        firstStepLabel={
-          isTalentCheckout ? "Contract Details" : "Project Details"
-        }
-      />
+    <div
+      className={cn(
+        "bg-gray-50 pt-[64px]",
+        !isTalentCheckout && !hasProjectPaymentRows && "min-h-screen"
+      )}
+    >
+      {!isTalentCheckout && !hasProjectPaymentRows ? null : (
+        <CheckoutNavigation
+          currentStep={3}
+          logoHref=""
+          firstStepLabel={
+            isTalentCheckout ? "Contract Details" : "Project Details"
+          }
+        />
+      )}
 
       <div
         className={
           isTalentCheckout
             ? "px-[150px] py-[50px]"
-            : "px-[150px] pt-[50px] pb-[10px]"
+            : cn(
+                "px-[150px] pt-[50px] pb-[10px]",
+                !hasProjectPaymentRows && "hidden"
+              )
         }
       >
         <Button
@@ -1439,7 +1457,7 @@ export default function ConfirmationPage() {
                     <Button
                       variant="link"
                       visual="primary"
-                      onClick={handleEditPaymentMethods}
+                      onClick={handleEditProjectDetails}
                     >
                       <Edit03 className="size-[15px]" />
                       Edit
@@ -1490,7 +1508,21 @@ export default function ConfirmationPage() {
                     </Button>
                   </div>
                   <div className="p-6">
-                    {paymentPlan === "IN_INSTALLMENTS" ? (
+                    {isBillingAddressesLoading ? (
+                      <div
+                        className="grid min-h-[87px] w-full grid-cols-1 grid-rows-3 gap-3"
+                        aria-hidden="true"
+                      >
+                        {[0, 1, 2].map((item) => (
+                          <div
+                            key={item}
+                            className="relative overflow-hidden rounded-lg bg-gray-100"
+                          >
+                            <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : paymentPlan === "IN_INSTALLMENTS" ? (
                       <>
                         <h1 className="text-base font-semibold text-dark-blue-400">
                           Initial One-Time Payment
@@ -1512,7 +1544,10 @@ export default function ConfirmationPage() {
 
                     <div
                       ref={authorizationSectionRef}
-                      className="mt-6 px-5 py-2"
+                      className={cn(
+                        "mt-6 px-5 py-2",
+                        isBillingAddressesLoading && "hidden"
+                      )}
                     >
                       <label
                         className="flex cursor-pointer items-start gap-x-5"
@@ -1866,7 +1901,9 @@ export default function ConfirmationPage() {
 
                     <div className="grid mt-2">
                       <Button
-                        disabled={isSubmittingPayment}
+                        disabled={
+                          isSubmittingPayment || isBillingAddressesLoading
+                        }
                         onClick={handleSubmitPayment}
                         visual={
                           /* hasAuthorizationError ? "error" : */ "primary"
@@ -1883,12 +1920,11 @@ export default function ConfirmationPage() {
                       </ErrorMessage>
                     ) : null}
 
-                    <div className="mt-5">
-                      <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
-                        By submitting your payment, you agree to Marketeq’s
-                        <br />
+                    <div className="mt-[21.33px]">
+                      <span className="inline-block text-center font-light text-[10px] leading-[14px]">
+                        By clicking the above, you agree to Marketeq&apos;s{" "}
                         <Button
-                          className="text-[10px] font-medium leading-[14px] underline"
+                          className="font-medium underline text-[10px] leading-[14px]"
                           variant="link"
                           onClick={() => setLegalDialog("terms")}
                         >
@@ -1896,7 +1932,7 @@ export default function ConfirmationPage() {
                         </Button>{" "}
                         and{" "}
                         <Button
-                          className="text-[10px] font-medium leading-[14px] underline"
+                          className="font-medium underline text-[10px] leading-[14px]"
                           variant="link"
                           onClick={() => setLegalDialog("privacy")}
                         >
@@ -2441,6 +2477,25 @@ export default function ConfirmationPage() {
               </div>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={!hasProjectPaymentRows}>
+            <DialogContent
+              className="max-w-[480px] p-6"
+              onPointerDownOutside={(event) => event.preventDefault()}
+              onInteractOutside={(event) => event.preventDefault()}
+              onEscapeKeyDown={(event) => event.preventDefault()}
+            >
+              <h2 className="text-lg font-semibold text-dark-blue-400">
+                Your payment method is no longer valid
+              </h2>
+              <p className="mt-3 text-sm leading-5 text-gray-500">
+                Please go back and select a different payment method.
+              </p>
+              <div className="mt-6 flex justify-end">
+                <Button onClick={handleEditPaymentMethods}>Try Again</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </>
       )}
 
@@ -2452,10 +2507,10 @@ export default function ConfirmationPage() {
       >
         <DialogContent className="max-w-[480px] p-6">
           <h2 className="text-lg font-semibold text-dark-blue-400">
-            {legalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
+            {shownLegalDialog === "privacy" ? "Privacy Policy" : "Terms of Use"}
           </h2>
           <p className="mt-3 text-sm leading-5 text-gray-500">
-            {legalDialog === "privacy"
+            {shownLegalDialog === "privacy"
               ? "This privacy policy explains how Marketeq collects, uses, and protects checkout information. Payment details are handled securely and are only used to process and support your order."
               : "These terms explain the basic conditions for using Marketeq checkout. By continuing, you confirm that your order details are accurate and authorize Marketeq to process the selected payment method."}
           </p>
