@@ -83,11 +83,39 @@ export class CompaniesService {
     });
   }
 
-  async findAllForUser(userId: string): Promise<Company[]> {
+  /**
+   * The companies a caller belongs to, each with its roster size.
+   *
+   * `memberCount` is here because the company selector in the invite flow
+   * draws "N Members" under every row and had no number to draw: the frontend
+   * defaulted it to 1, so a seven-person company read "1 Member". One grouped
+   * count rather than a count per row.
+   */
+  async findAllForUser(
+    userId: string,
+  ): Promise<(Company & { memberCount: number })[]> {
     const memberships = await this.companyUserRepo.find({ where: { userId } });
     if (memberships.length === 0) return [];
     const ids = memberships.map((m) => m.companyId);
-    return this.companyRepo.find({ where: { id: In(ids) } });
+
+    const [companies, counts] = await Promise.all([
+      this.companyRepo.find({ where: { id: In(ids) } }),
+      this.companyUserRepo
+        .createQueryBuilder('cu')
+        .select('cu.company_id', 'companyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('cu.company_id IN (:...ids)', { ids })
+        .groupBy('cu.company_id')
+        .getRawMany<{ companyId: string; count: string }>(),
+    ]);
+
+    const byCompany = new Map(counts.map((r) => [r.companyId, Number(r.count)]));
+    return companies.map((company) => ({
+      ...company,
+      // A company always has at least the caller's own membership, which is
+      // how they came to be in this list at all.
+      memberCount: byCompany.get(company.id) ?? 1,
+    }));
   }
 
   /**

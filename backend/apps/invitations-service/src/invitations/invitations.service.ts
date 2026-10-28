@@ -857,8 +857,27 @@ export class InvitationsService {
    * be a second round trip to user-service for an answer already in hand.
    */
   async listFor(dto: ListInvitationsDto, actor: Actor) {
-    await this.assertCanActOnTeam(dto.teamId, dto.companyId, actor);
-    return this.list(dto);
+    // "Which invitations are addressed to me?" — the sign-in banner and the
+    // accept page ask this by email alone, and legitimately across teams:
+    // an invitee is by definition not a member of the team that invited
+    // them. Allowed only for the caller's own address, so it cannot be used
+    // to ask who else has been invited.
+    const ownEmail =
+      !!dto.invitedEmail &&
+      !!actor.email &&
+      dto.invitedEmail.trim().toLowerCase() === actor.email.trim().toLowerCase();
+    if (ownEmail) return this.list(dto);
+
+    // A request naming neither a team nor a company is asking for "my
+    // invitations", so scope it to the caller rather than refusing it. It
+    // used to return every invitation in the system, which is the behaviour
+    // actually worth removing here — refusing the call instead just breaks
+    // the caller while leaving nothing safer in its place.
+    const scoped: ListInvitationsDto =
+      !dto.teamId && !dto.companyId ? { ...dto, teamId: actor.id } : dto;
+
+    await this.assertCanActOnTeam(scoped.teamId, scoped.companyId, actor);
+    return this.list(scoped);
   }
 
   /** `getOne` for an external caller, under the R3-12 rule. */
@@ -1171,7 +1190,7 @@ export class InvitationsService {
     }
 
     this.logger.warn(
-      `Refused team-scoped invitation action: actor=${actor.id} team=${teamId ?? 'n/a'}`,
+      `Refused team-scoped invitation action: actor=${actor.id} team=${teamId ?? 'n/a'} company=${companyId ?? 'n/a'}`,
     );
     throw new InvitationForbiddenException();
   }
