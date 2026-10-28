@@ -276,7 +276,7 @@ const getMethodTitle = (method: PaymentMethodSummary) => {
 const PaymentMethodIcon = ({ method }: { method: PaymentMethodSummary }) => {
   if (method.method === "BANK_ACCOUNT") {
     return (
-      <div className="inline-flex h-[31px] w-[46.5px] shrink-0 items-center justify-center rounded-[4px] border border-gray-200 bg-white text-gray-500">
+      <div className="inline-flex h-[31px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-[#DADADA] bg-white text-[#A6A7AA]">
         <Bank className="size-4" />
       </div>
     )
@@ -1114,20 +1114,20 @@ export default function ConfirmationPage() {
   const renderReviewPaymentRow = (row: ReviewPaymentRow) => (
     <div
       key={row.id}
-      className="grid min-h-[87px] grid-cols-2 border-b border-gray-200 py-4"
+      className="grid min-h-[87px] grid-cols-2 border-b border-gray-200 pb-[15px] pt-4"
     >
       <div className="flex items-start gap-x-3">
         <PaymentMethodIcon method={row.method} />
         <div className="flex-auto space-y-1">
-          <h2 className="text-sm font-semibold text-dark-blue-400">
+          <h2 className="text-sm font-semibold leading-[normal] text-dark-blue-400">
             {getMethodTitle(row.method)}
           </h2>
           {row.method.method === "CREDIT_DEBIT_CARD" && row.method.expiry ? (
-            <p className="text-xs font-light text-dark-blue-400">
+            <p className="text-xs font-light leading-[normal] text-dark-blue-400">
               Expires: {row.method.expiry}
             </p>
           ) : null}
-          <p className="text-xs font-light text-dark-blue-400">
+          <p className="text-xs font-light leading-[normal] text-dark-blue-400">
             {row.label}:{" "}
             <span className="font-semibold">
               {formatter.format(row.amount)}
@@ -1138,10 +1138,10 @@ export default function ConfirmationPage() {
 
       {row.showBillingAddress && row.method.billingAddress ? (
         <div className="space-y-1 px-3">
-          <h2 className="text-xs font-semibold text-dark-blue-400">
+          <h2 className="text-xs font-semibold leading-[normal] text-dark-blue-400">
             Billing Address
           </h2>
-          <p className="text-xs font-light text-dark-blue-400">
+          <p className="text-xs font-light leading-[normal] text-dark-blue-400">
             {row.method.billingAddress}
           </p>
         </div>
@@ -1199,7 +1199,7 @@ export default function ConfirmationPage() {
           isTalentCheckout
             ? "px-[150px] py-[50px]"
             : cn(
-                "px-[150px] pt-[50px] pb-[10px]",
+                "mx-auto w-[1140px] pt-[50px] pb-[10px]",
                 !hasProjectPaymentRows && "hidden"
               )
         }
@@ -1226,7 +1226,7 @@ export default function ConfirmationPage() {
           className={
             isTalentCheckout
               ? "text-2xl font-bold text-dark-blue-400"
-              : "text-2xl leading-7 font-bold text-dark-blue-400"
+              : "text-2xl leading-7 font-bold text-[#122A4B]"
           }
         >
           Review your order details
@@ -1476,6 +1476,7 @@ export default function ConfirmationPage() {
                     </h1>
 
                     <Button
+                      className="text-xs"
                       variant="link"
                       visual="primary"
                       onClick={handleEditProjectDetails}
@@ -1520,6 +1521,7 @@ export default function ConfirmationPage() {
                     </h1>
 
                     <Button
+                      className="text-xs"
                       variant="link"
                       visual="primary"
                       onClick={handleEditPaymentMethods}
@@ -1922,6 +1924,7 @@ export default function ConfirmationPage() {
 
                     <div className="grid mt-2">
                       <Button
+                        size="md"
                         disabled={
                           isSubmittingPayment || isBillingAddressesLoading
                         }
@@ -1941,7 +1944,7 @@ export default function ConfirmationPage() {
                       </ErrorMessage>
                     ) : null}
 
-                    <div className="mt-[21.33px]">
+                    <div className="mt-5">
                       <span className="inline-block text-center font-light text-[10px] leading-[14px]">
                         By clicking the above, you agree to Marketeq&apos;s{" "}
                         <Button
@@ -1964,6 +1967,7 @@ export default function ConfirmationPage() {
 
                     <div className="mt-5 flex items-center justify-center">
                       <Button
+                        className="text-xs"
                         variant="link"
                         visual="gray"
                         onClick={() => setIsRedeemCodeDialogOpen(true)}
