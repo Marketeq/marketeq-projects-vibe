@@ -3292,7 +3292,8 @@ function ProjectDetailsInner() {
         console.error("Failed to create project draft:", createErr)
         if (isUnauthorizedError(createErr)) {
           promptSignInToRetry(() => saveProjectFieldsRef.current(fields))
-        } else {
+        } else if (!isCreateListingBlocked(createErr)) {
+          // A creation-gate refusal already shows the G2 modal; no second message.
           toast({ title: toUserMessage(createErr), variant: "destructive" })
         }
       }

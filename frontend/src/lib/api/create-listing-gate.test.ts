@@ -101,6 +101,52 @@ describe("createDraftBehindGate: the draft POST happens only after the check res
     assert.deepEqual(out, { data: { id: "d1" } })
   })
 
+  it("404 from the check (older backend without create-gate): the POST runs once, no modal, its result is returned", async () => {
+    let posts = 0
+    const out = await createDraftBehindGate({
+      check: async () => { throw rejected(404, { message: "Cannot GET /publish/create-gate" }) },
+      post: async () => { posts++; return { data: { id: "d404" } } },
+      refuse: () => assert.fail("a 404 must not show the verification modal"),
+    })
+    assert.equal(posts, 1)
+    assert.deepEqual(out, { data: { id: "d404" } })
+  })
+
+  it("404 from the check: a refusal by the POST itself is still announced", async () => {
+    const refused: unknown[] = []
+    const err = refusal("both")
+    await assert.rejects(
+      createDraftBehindGate({ check: async () => { throw rejected(404, {}) }, post: async () => { throw err }, refuse: (e) => refused.push(e) }),
+      (e) => e === err
+    )
+    assert.deepEqual(refused, [err])
+  })
+
+  it("401 from the check: no POST, no modal, the original error is rethrown for the sign-in handling", async () => {
+    const err = rejected(401, { message: "Unauthorized" })
+    let posts = 0
+    await assert.rejects(
+      createDraftBehindGate({
+        check: async () => { throw err },
+        post: async () => { posts++; return "never" },
+        refuse: () => assert.fail("a 401 must not show the verification modal"),
+      }),
+      (e) => e === err
+    )
+    assert.equal(posts, 0)
+  })
+
+  it("only 404 and 401 are special: 403, 500, 502, 503 and network errors still refuse and never POST", async () => {
+    for (const err of [refusal("identity"), rejected(500, {}), rejected(502, {}), rejected(503, { error: "IDENTITY_VERIFICATION_UNAVAILABLE" }), new Error("Network Error")]) {
+      const refused: unknown[] = []
+      await assert.rejects(
+        createDraftBehindGate({ check: async () => { throw err }, post: async () => assert.fail("must not POST"), refuse: (e) => refused.push(e) }),
+        (e) => e === err
+      )
+      assert.deepEqual(refused, [err])
+    }
+  })
+
   it("a POST refused by the gate on a race is announced too (403 and 503), and rethrown", async () => {
     for (const err of [refusal("identity"), rejected(503, { error: "IDENTITY_VERIFICATION_UNAVAILABLE" })]) {
       const refused: unknown[] = []
@@ -224,7 +270,7 @@ describe("every listing-creation entry point goes through the gated call", () =>
   it("my-listings/[slug] fallback leaves the empty page when the gate refuses; its save path keeps its toast", () => {
     const src = read("app", "(group)", "my-listings", "[slug]", "page.tsx")
     assert.ok(/if \(isCreateListingBlocked\(createErr\)\) router\.replace\("\/my-listings"\)/.test(src))
-    assert.ok(src.includes("toast({ title: toUserMessage(createErr), variant: \"destructive\" })"))
+    assert.ok(/\} else if \(!isCreateListingBlocked\(createErr\)\) \{[^}]*toast\(\{ title: toUserMessage\(createErr\), variant: "destructive" \}\)/.test(src))
   })
 
   it("background seed migration: gate checked once up front, silent, and not marked migrated while blocked", () => {

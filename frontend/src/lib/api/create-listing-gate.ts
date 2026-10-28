@@ -44,7 +44,11 @@ export function createListingBlockFrom(error: unknown): CreateListingBlock {
  * tested without a browser: `check` runs first and `post` (the draft creation) runs only after
  * it resolved, so a refused or unreadable check creates nothing. A refusal (from the check, or
  * from the POST itself on a race) goes to `refuse` and the original error is rethrown, never
- * swallowed.
+ * swallowed. Exactly two check statuses are special: a 404 means an older backend without
+ * GET /publish/create-gate, so the POST runs and its own answer decides (no modal); a 401 is
+ * an authentication problem, not a verification one, so nothing is posted, no modal shows,
+ * and the original error is rethrown for the existing sign-in handling. Every other failure
+ * (403, 503, other 5xx, network) stays fail-closed.
  */
 export async function createDraftBehindGate<T>(deps: {
   check: () => Promise<unknown>
@@ -54,8 +58,13 @@ export async function createDraftBehindGate<T>(deps: {
   try {
     await deps.check()
   } catch (error) {
-    deps.refuse(error)
-    throw error
+    const status = (error as { response?: { status?: unknown } } | null)?.response?.status
+    if (status === 401) throw error
+    if (status !== 404) {
+      deps.refuse(error)
+      throw error
+    }
+    // 404: the check route does not exist on this backend; let the POST decide.
   }
   try {
     return await deps.post()
