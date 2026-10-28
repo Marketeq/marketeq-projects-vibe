@@ -977,17 +977,27 @@ export function OfferDialog({
                   : Number(customHours),
           }
         : { type: "FULL_TIME" }
-  // AC-13.1: "A contract title input field is displayed and required" — doc
-  // 04 §6 places it on the Send Offer screen, which is isStepThree here,
-  // not just isStepFour. The input was only ever wired to isStepFour; this
-  // is closing that gap against the spec, not adding a new field. Excluded
-  // for edit mode (selectedContract is always the static placeholder there,
-  // and edit mode never calls addContractGroupMember) and for the
-  // zero-existing-contracts case (selectedContract is null, isStepThree is
-  // true only via T1-10's `!hasExistingContracts` fallthrough — there's no
-  // group to title a membership against).
+  // isExistingContractOfferStep: isStepThree with a real existing contract
+  // selected — used below (and elsewhere in this file, estimate-fetch +
+  // the addContractGroupMember submission branch) to mean "an existing
+  // contract group is the target," unrelated to the Contract Title field.
+  // Left exactly as originally defined; do not fold Contract Title logic
+  // into it again — that was BTB-388's bug (see isNewContractOfferStep).
   const isExistingContractOfferStep =
     isStepThree && !isEditMode && Boolean(selectedContract)
+  // BTB-388: the Figma spec (confirmed by screenshot) is the inverse of
+  // what isExistingContractOfferStep's name suggests — Contract Title
+  // shows for a NEW contract (no existing contract selected, including
+  // the zero-existing-contracts fallthrough), and is replaced by the
+  // selected-contract card + "Change Contract" when one IS selected. The
+  // previous fix (AC-13.1 comment above) wired Contract Title to
+  // isExistingContractOfferStep itself — exactly backwards — which is why
+  // it never appeared on the common Part Time/Full Time path (isStepThree
+  // with no contract selected, the zero-contracts case included).
+  // isStepFour ("Invite me to a new contract") already correctly showed
+  // it and is unchanged.
+  const isNewContractOfferStep =
+    isStepThree && !isEditMode && !selectedContract
   const isOfferReady =
     (isStepThree
       ? Boolean(
@@ -1001,7 +1011,7 @@ export function OfferDialog({
           selectedRate &&
           selectedDuration &&
           selectedStartDateAction &&
-          (!isExistingContractOfferStep || contractTitle.trim())
+          (!isNewContractOfferStep || contractTitle.trim())
         )
       : isStepFour
         ? Boolean(
@@ -1013,7 +1023,7 @@ export function OfferDialog({
     !isCustomDurationIncomplete
   const contractTitleError =
     showValidationErrors &&
-    (isStepFour || isExistingContractOfferStep) &&
+    (isStepFour || isNewContractOfferStep) &&
     !contractTitle.trim()
       ? "Please enter a contract title."
       : null
@@ -2057,10 +2067,12 @@ export function OfferDialog({
                         </div>
                       ) : null}
 
-                      {/* AC-13.1 / doc 04 §6: required on the Send Offer
-                      screen, which is isStepThree here too, not just
-                      isStepFour — see isExistingContractOfferStep above. */}
-                      {isStepFour || isExistingContractOfferStep ? (
+                      {/* BTB-388/AC-13.1: shown whenever no existing
+                      contract is selected (isStepFour's dedicated "new
+                      contract" screen, or isStepThree with nothing picked
+                      — see isNewContractOfferStep above for why this is
+                      not isExistingContractOfferStep). */}
+                      {isStepFour || isNewContractOfferStep ? (
                         <div className={isStepFour ? "mt-6" : undefined}>
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Contract Title
@@ -3065,6 +3077,12 @@ export function OfferDialog({
                       offer = await createOffer({
                         talentId: hiredTalentId,
                         contractType: "PROJECT",
+                        // BTB-388: this call site only runs for
+                        // isNewContractOfferStep (the existing-contract
+                        // branch above always returns before reaching
+                        // here) — contractTitle is real, validated input
+                        // now, not omitted.
+                        contractTitle: contractTitle.trim(),
                         rate:
                           parseFabricatedRateValue(
                             selectedRate,
