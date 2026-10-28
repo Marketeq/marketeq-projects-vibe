@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -38,6 +39,13 @@ const toStableUuid = (value: string) => {
 
 @Injectable()
 export class CheckoutService {
+  private rejectLegacyPayment(): void {
+    throw new ServiceUnavailableException({
+      code: 'PAYMENT_METHOD_UNAVAILABLE',
+      message: 'This payment method is not available yet',
+    });
+  }
+
   private readonly logger = new Logger(CheckoutService.name);
 
   constructor(
@@ -81,6 +89,7 @@ export class CheckoutService {
     successUrl?: string;
     cancelUrl?: string;
   }) {
+    this.rejectLegacyPayment();
     if (!dto.projectId) {
       throw new BadRequestException('listingId is required');
     }
@@ -127,17 +136,13 @@ export class CheckoutService {
 
     const session = this.sessionRepo.create({
       clientId: dto.clientId,
-      listingId: dto.projectId,
       contractId: dto.contractId,
       stripeSessionId: stripeSession.id,
-      paymentMethod: dto.paymentMethod as any,
       projectCost: dto.totalAmount,
       walletAmountUsed,
       appliedGiftCards: dto.giftCardCode
         ? [{ code: dto.giftCardCode, amountUsed: giftCardAmountUsed }]
         : null,
-      splitPaymentEnabled: dto.splitPaymentEnabled,
-      initialPaymentAmount: dto.initialPaymentAmount,
       installmentPlan: (dto.installmentPlanOption as any) || 'full',
     });
 
@@ -211,6 +216,7 @@ export class CheckoutService {
     savePaymentMethod?: boolean;
     metadata?: Record<string, string>;
   }) {
+    this.rejectLegacyPayment();
     if (dto.amount <= 0) {
       throw new BadRequestException('Payment amount must be greater than zero');
     }
@@ -266,10 +272,8 @@ export class CheckoutService {
 
     const sessionPayload: Partial<CheckoutSession> = {
       clientId: dto.clientId,
-      listingId: dto.projectId,
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
-      paymentMethod,
       projectCost: dto.amount,
       status: 'pending',
       stripeMetadata: {
@@ -486,6 +490,7 @@ export class CheckoutService {
       customerId?: string;
     }>;
   }) {
+    this.rejectLegacyPayment();
     this.logger.log(
       `Processing split payment for client ${dto.clientId}, total: ${dto.totalAmount}`,
     );
@@ -596,11 +601,8 @@ export class CheckoutService {
 
       const session = this.sessionRepo.create({
         clientId: dto.clientId,
-        listingId: dto.projectId,
         contractId: dto.contractId,
-        paymentMethod: 'card',
         projectCost: dto.totalAmount,
-        splitPaymentEnabled: true,
         status: 'success',
         paymentVerified: true,
       });
@@ -681,6 +683,7 @@ export class CheckoutService {
     contractId?: string;
     amount: number;
   }) {
+    this.rejectLegacyPayment();
     this.logger.log(
       `Processing ACH payment for client ${dto.clientId}, amount: ${dto.amount}`,
     );
@@ -701,10 +704,8 @@ export class CheckoutService {
 
     const session = this.sessionRepo.create({
       clientId: dto.clientId,
-      listingId: dto.projectId,
       contractId: dto.contractId,
       stripePaymentIntentId: intent.id,
-      paymentMethod: 'ach',
       projectCost: dto.amount,
       status: 'pending',
     });
@@ -759,6 +760,7 @@ export class CheckoutService {
     contractId?: string;
     amount: number;
   }) {
+    this.rejectLegacyPayment();
     this.logger.log(
       `Initiating wire transfer for client ${dto.clientId}, amount: ${dto.amount}`,
     );
@@ -815,9 +817,7 @@ export class CheckoutService {
     const session = await this.sessionRepo.findOne({
       where: {
         clientId: dto.clientId,
-        listingId: projectId,
         contractId: contractId || IsNull(),
-        paymentMethod: 'wire',
         status: 'pending' as any,
       },
       order: { createdAt: 'DESC' },
@@ -836,9 +836,7 @@ export class CheckoutService {
       await this.sessionRepo.save(
         this.sessionRepo.create({
           clientId: dto.clientId,
-          listingId: projectId,
           contractId: contractId || undefined,
-          paymentMethod: 'wire',
           projectCost: dto.amount,
           status: 'pending',
           stripeMetadata: {
@@ -945,6 +943,7 @@ export class CheckoutService {
     wireTransferId: string;
     confirmedBy: string;
   }) {
+    this.rejectLegacyPayment();
     this.logger.log(
       `Confirming wire transfer ${dto.wireTransferId} by ${dto.confirmedBy}`,
     );
@@ -971,8 +970,6 @@ export class CheckoutService {
     const session = await this.sessionRepo.findOne({
       where: {
         clientId: wireTransfer.clientId,
-        listingId: wireTransfer.projectId,
-        paymentMethod: 'wire',
         status: 'pending' as any,
       },
     });

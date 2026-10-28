@@ -1,16 +1,24 @@
 import { ConflictException, UnprocessableEntityException } from '@nestjs/common';
 import { CheckoutDraftSessionService } from './checkout-draft-session.service';
 import { CheckoutSession } from './entities/checkout-session.entity';
+import { Payment } from './entities/payment.entity';
 import { Wallet } from './entities/wallet.entity';
 
 const buildService = (
   session: Record<string, unknown> | null,
-  options: { balance?: number | null; expired?: boolean; promo?: unknown } = {},
+  options: {
+    balance?: number | null;
+    expired?: boolean;
+    promo?: unknown;
+    line?: Record<string, unknown> | null;
+  } = {},
 ) => {
   const update = jest.fn().mockResolvedValue(undefined);
+  const remove = jest.fn().mockResolvedValue(undefined);
   const manager = {
     findOne: jest.fn().mockImplementation(async (entity: unknown) => {
       if (entity === CheckoutSession) return session;
+      if (entity === Payment) return options.line ?? null;
       if (entity === Wallet) {
         return options.balance === null
           ? null
@@ -18,14 +26,22 @@ const buildService = (
       }
       return null;
     }),
+    findOneOrFail: jest.fn().mockResolvedValue(session),
     update,
+    delete: remove,
     query: jest.fn().mockResolvedValue([{ expired: options.expired ?? false }]),
+  };
+  const dataSource = {
+    manager,
+    transaction: jest.fn(async (work: (m: typeof manager) => unknown) =>
+      work(manager),
+    ),
   };
   const codeService = {
     listCodes: jest.fn().mockResolvedValue({ promo: options.promo ?? null }),
   };
   const service = new CheckoutDraftSessionService(
-    { manager } as never,
+    dataSource as never,
     {} as never,
     {} as never,
     {} as never,
@@ -34,7 +50,7 @@ const buildService = (
     {} as never,
     {} as never,
   );
-  return { service, update };
+  return { service, update, remove };
 };
 
 const pending = {
@@ -55,6 +71,30 @@ describe('session applied balance', () => {
       walletAmountUsed: 4000,
     });
     expect(result).toEqual({ walletAmountUsed: 4000 });
+  });
+
+  it('keeps the pending payment line on the new amount due', async () => {
+    const { service, update } = buildService(
+      { ...pending, walletAmountUsed: '4000.00' },
+      { balance: 8000, line: { id: 'line-1', amount: '10000.00' } },
+    );
+    await service.setBalanceApplied('client-1', 'session-1', {
+      amount: 4000,
+    });
+    expect(update).toHaveBeenCalledWith(Payment, 'line-1', {
+      amount: 6000,
+    });
+  });
+
+  it('removes the pending payment line when the balance covers everything', async () => {
+    const { service, remove } = buildService(
+      { ...pending, walletAmountUsed: '10000.00' },
+      { balance: 10000, line: { id: 'line-1', amount: '10000.00' } },
+    );
+    await service.setBalanceApplied('client-1', 'session-1', {
+      amount: 10000,
+    });
+    expect(remove).toHaveBeenCalledWith(Payment, 'line-1');
   });
 
   it('clears the amount with 0 without reading the wallet', async () => {

@@ -18,6 +18,8 @@ import {
   AppliedGiftCard,
   CheckoutSession,
 } from './entities/checkout-session.entity';
+import { Order } from './entities/order.entity';
+import { Payment, PaymentMethod } from './entities/payment.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
 import { SavedCardsService } from './saved-cards.service';
@@ -76,11 +78,16 @@ export class CheckoutDraftSessionService {
     });
     if (!session) throw new NotFoundException('Session not found');
 
-    const project = await this.summaryService.fetchProject(session.listingId);
+    const draftSummary = await this.draftService.getSessionSummary(session.id);
+    const order = await this.dataSource.manager.findOne(Order, {
+      where: { sessionId: session.id },
+    });
+    const listingId = order?.listingId ?? draftSummary?.listingId;
+    if (!listingId) throw new NotFoundException('Session not found');
+    const project = await this.summaryService.fetchProject(listingId);
     const expired =
       session.status === 'pending' &&
       (await this.isPastExpiry(this.dataSource.manager, session.id));
-    const draftSummary = await this.draftService.getSessionSummary(session.id);
     const projectCost = Number(session.projectCost);
     const { promo } = await this.codeService.listCodes({
       clientId,
@@ -102,7 +109,7 @@ export class CheckoutDraftSessionService {
     return {
       sessionId: session.id,
       status: expired ? 'expired' : session.status,
-      listingId: session.listingId,
+      listingId,
       slug: (project?.slug as string | undefined) ?? null,
       contractId: session.contractId,
       projectCost,
@@ -179,6 +186,7 @@ export class CheckoutDraftSessionService {
     await this.dataSource.manager.update(CheckoutSession, session.id, {
       walletAmountUsed: amountCents / 100,
     });
+    await this.syncPaymentAmount(clientId, session.id);
     return { walletAmountUsed: amountCents / 100 };
   }
 
@@ -193,24 +201,25 @@ export class CheckoutDraftSessionService {
       clientId,
       dto.id,
     );
-    await this.dataSource.manager.update(CheckoutSession, session.id, {
-      paymentMethod: dto.method,
-      paymentSelectionId: dto.id,
-    });
+    const amount = await this.amountDue(clientId, session);
+    await this.replaceLines(
+      session.id,
+      amount > 0
+        ? { method: dto.method, savedMethodId: dto.id, amount }
+        : null,
+    );
     return { method: dto.method, ...summary };
   }
 
   async clearPaymentSelection(clientId: string, sessionId: string) {
     const session = await this.loadActiveSession(clientId, sessionId);
-    await this.dataSource.manager.update(CheckoutSession, session.id, {
-      paymentSelectionId: null,
-    });
+    await this.replaceLines(session.id, null);
   }
 
   async submitPayment(clientId: string, sessionId: string) {
     const session = await this.loadActiveSession(clientId, sessionId);
     const selection = await this.readPaymentSelection(clientId, session);
-    if (!selection) {
+    if (!selection && (await this.amountDue(clientId, session)) > 0) {
       throw new UnprocessableEntityException({
         code: 'PAYMENT_SELECTION_REQUIRED',
         message: 'Select a payment method before submitting',
@@ -223,13 +232,98 @@ export class CheckoutDraftSessionService {
   }
 
   private async readPaymentSelection(clientId: string, session: CheckoutSession) {
-    if (!session.paymentSelectionId) return null;
+    const line = await this.dataSource.manager.findOne(Payment, {
+      where: { sessionId: session.id, phase: 'initial' },
+      order: { createdAt: 'ASC' },
+    });
+    if (!line?.savedMethodId) return null;
     const summary = await this.paymentSelections.find(
-      session.paymentMethod,
+      line.method,
       clientId,
-      session.paymentSelectionId,
+      line.savedMethodId,
     );
-    return summary ? { method: session.paymentMethod, ...summary } : null;
+    return summary ? { method: line.method, ...summary } : null;
+  }
+
+  private async amountDue(
+    clientId: string,
+    session: CheckoutSession,
+  ): Promise<number> {
+    const projectCost = Number(session.projectCost);
+    const { promo } = await this.codeService.listCodes({
+      clientId,
+      giftCardCodes: [],
+      promoCode: session.appliedPromoCode,
+    });
+    const promoAmount =
+      promo && promo.status === 'valid'
+        ? promoDiscountCents(promo, toCents(projectCost)) / 100
+        : 0;
+    const dueCents = amountDueCents(
+      projectCost,
+      promoAmount,
+      session.appliedGiftCards,
+    );
+    const balanceCents = Math.min(
+      toCents(Number(session.walletAmountUsed ?? 0)),
+      dueCents,
+    );
+    return (dueCents - balanceCents) / 100;
+  }
+
+  private async replaceLines(
+    sessionId: string,
+    line: {
+      method: PaymentMethod;
+      savedMethodId: string;
+      amount: number;
+    } | null,
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `SELECT "id" FROM "checkout"."sessions" WHERE "id" = $1 FOR UPDATE`,
+        [sessionId],
+      );
+      await manager.delete(Payment, {
+        sessionId,
+        phase: 'initial',
+        status: 'pending',
+      });
+      if (line) {
+        await manager.insert(Payment, {
+          sessionId,
+          phase: 'initial',
+          status: 'pending',
+          ...line,
+        });
+      }
+    });
+  }
+
+  private async syncPaymentAmount(
+    clientId: string,
+    sessionId: string,
+  ): Promise<void> {
+    const session = await this.dataSource.manager.findOneOrFail(
+      CheckoutSession,
+      { where: { id: sessionId } },
+    );
+    const amount = await this.amountDue(clientId, session);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(
+        `SELECT "id" FROM "checkout"."sessions" WHERE "id" = $1 FOR UPDATE`,
+        [sessionId],
+      );
+      const line = await manager.findOne(Payment, {
+        where: { sessionId, phase: 'initial', status: 'pending' },
+      });
+      if (!line) return;
+      if (amount > 0) {
+        await manager.update(Payment, line.id, { amount });
+      } else {
+        await manager.delete(Payment, line.id);
+      }
+    });
   }
 
   async applySessionCode(
@@ -298,6 +392,7 @@ export class CheckoutDraftSessionService {
       appliedGiftCards: frozen.appliedGiftCards,
       appliedPromoCode: frozen.appliedPromoCode,
     });
+    await this.syncPaymentAmount(clientId, sessionId);
     return this.getSession(clientId, sessionId);
   }
 
@@ -396,7 +491,6 @@ export class CheckoutDraftSessionService {
     const created = await manager.save(
       manager.create(CheckoutSession, {
         clientId,
-        listingId: draft.listingId,
         projectCost: pricing.projectCost,
         status: 'pending',
         appliedGiftCards: frozen.appliedGiftCards,

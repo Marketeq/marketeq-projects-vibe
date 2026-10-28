@@ -124,6 +124,7 @@ export class CheckoutDraftService {
     const draft = await this.repo.findOne({ where: { sessionId } });
     if (!draft) return null;
     return {
+      listingId: draft.listingId,
       title: draft.title,
       mediaUrl: draft.mediaUrl,
       teamMemberCount: Object.keys(draft.members).length,

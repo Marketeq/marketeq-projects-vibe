@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import type { PaymentMethod } from './entities/checkout-session.entity';
+import type { PaymentMethod } from './entities/payment.entity';
 import { SavedCardsService } from './saved-cards.service';
 
 export interface PaymentSelectionSummary {

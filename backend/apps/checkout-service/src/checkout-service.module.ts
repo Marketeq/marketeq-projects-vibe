@@ -16,6 +16,8 @@ import { WireTransfer } from './checkout/entities/wire-transfer.entity';
 import { StripeMetadata } from './checkout/entities/stripe-metadata.entity';
 import { StripeCustomer } from './checkout/entities/stripe-customer.entity';
 import { SavedCard } from './checkout/entities/saved-card.entity';
+import { Order } from './checkout/entities/order.entity';
+import { Payment } from './checkout/entities/payment.entity';
 import { SavedCardsService } from './checkout/saved-cards.service';
 import { PaymentSelectionRegistry } from './checkout/payment-selection.registry';
 import { CheckoutDraft } from './checkout/entities/checkout-draft.entity';
@@ -63,7 +65,7 @@ const requireRabbitmqUrl = (): string => {
         SavedBankAccount, WireTransfer, StripeMetadata,
         CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
         PromoCode, PromoRedemption, GiftCardAttempt,
-        StripeCustomer, SavedCard,
+        StripeCustomer, SavedCard, Order, Payment,
       ],
       synchronize: false,
       extra: {
@@ -80,7 +82,7 @@ const requireRabbitmqUrl = (): string => {
       SavedBankAccount, WireTransfer, StripeMetadata,
       CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
       PromoCode, PromoRedemption, GiftCardAttempt,
-        StripeCustomer, SavedCard,
+        StripeCustomer, SavedCard, Order, Payment,
     ]),
     ClientsModule.register(
       [

@@ -1,5 +1,5 @@
 import { IsEmpty, IsIn, IsUUID } from 'class-validator';
-import type { PaymentMethod } from '../entities/checkout-session.entity';
+import type { PaymentMethod } from '../entities/payment.entity';
 
 export const PAYMENT_METHOD_IDS: PaymentMethod[] = [
   'card',

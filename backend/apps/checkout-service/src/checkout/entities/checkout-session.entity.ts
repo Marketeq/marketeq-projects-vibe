@@ -6,7 +6,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export type PaymentMethod = 'card' | 'ach' | 'wire' | 'klarna';
 export type PaymentStatus =
   'pending' | 'success' | 'failed' | 'cancelled' | 'refunded' | 'expired';
 export type AppliedGiftCard = { code: string; amountUsed: number };
@@ -20,9 +19,6 @@ export class CheckoutSession {
   @Column()
   clientId: string;
 
-  @Column()
-  listingId: string;
-
   @Column({ type: 'varchar', nullable: true })
   contractId: string | null;
 
@@ -34,13 +30,6 @@ export class CheckoutSession {
 
   @Column({ nullable: true })
   stripeSubscriptionId: string;
-
-  @Column({
-    type: 'enum',
-    enum: ['card', 'ach', 'wire', 'klarna'],
-    default: 'card',
-  })
-  paymentMethod: PaymentMethod;
 
   @Column({
     type: 'enum',
@@ -63,12 +52,6 @@ export class CheckoutSession {
   walletAmountUsed: number;
 
   @Column({ default: false })
-  splitPaymentEnabled: boolean;
-
-  @Column({ type: 'decimal', precision: 10, scale: 2, nullable: true })
-  initialPaymentAmount: number;
-
-  @Column({ default: false })
   paymentVerified: boolean;
 
   @Column({ type: 'jsonb', nullable: true })
@@ -79,9 +62,6 @@ export class CheckoutSession {
 
   @Column({ type: 'uuid', nullable: true })
   appliedPromoCode: string | null;
-
-  @Column({ type: 'uuid', nullable: true })
-  paymentSelectionId: string | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
