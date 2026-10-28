@@ -117,18 +117,28 @@ export class StripeService {
     metadata?: Record<string, string>;
     confirm?: boolean;
     setupFutureUsage?: 'off_session' | 'on_session';
+    offSession?: boolean;
+    idempotencyKey?: string;
+    timeoutMs?: number;
   }) {
-    return this.stripe.paymentIntents.create({
-      amount: Math.round(params.amount * 100),
-      currency: params.currency || 'usd',
-      customer: params.customerId,
-      payment_method_types: params.paymentMethodTypes || ['card'],
-      payment_method_options: params.paymentMethodOptions,
-      payment_method: params.paymentMethodId,
-      confirm: params.confirm || false,
-      setup_future_usage: params.setupFutureUsage,
-      metadata: params.metadata || {},
-    });
+    const requestOptions: Stripe.RequestOptions = {};
+    if (params.idempotencyKey) requestOptions.idempotencyKey = params.idempotencyKey;
+    if (params.timeoutMs) requestOptions.timeout = params.timeoutMs;
+    return this.stripe.paymentIntents.create(
+      {
+        amount: Math.round(params.amount * 100),
+        currency: params.currency || 'usd',
+        customer: params.customerId,
+        payment_method_types: params.paymentMethodTypes || ['card'],
+        payment_method_options: params.paymentMethodOptions,
+        payment_method: params.paymentMethodId,
+        confirm: params.confirm || false,
+        setup_future_usage: params.setupFutureUsage,
+        off_session: params.offSession,
+        metadata: params.metadata || {},
+      },
+      Object.keys(requestOptions).length ? requestOptions : undefined,
+    );
   }
 
   async retrievePaymentIntent(paymentIntentId: string) {
