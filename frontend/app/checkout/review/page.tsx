@@ -10,12 +10,12 @@ import {
 import { useCheckout } from "@/contexts/checkout"
 import { UserAPI } from "@/service/http/user"
 import {
-  getCheckoutProjectSummary,
-  titleizeCheckoutSlug,
-  type CheckoutProjectSummary,
-} from "@/lib/checkout/project-summary"
+  BillingAddressesAPI,
+  type BillingAddress,
+} from "@/service/http/billing-addresses"
+import { getDraftDateRangeLabel } from "@/lib/checkout/draft-summary"
 import { cn } from "@/utils/functions"
-import { Bank, Edit03, Users03 } from "@blend-metrics/icons"
+import { ArrowLeft, Bank, Edit03, Users03 } from "@blend-metrics/icons"
 import type { UserProfile } from "@/types/user"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
 import {
@@ -28,6 +28,8 @@ import {
   ApplePay1,
   GPay1,
   Klarna,
+  Discover as PaymentDiscover,
+  Mastercard as PaymentMastercard,
   WireTransfer,
 } from "@/components/icons/payment-icons"
 import NextImage from "@/components/next-image"
@@ -66,6 +68,10 @@ type PaymentMethodSummary = {
   cardNumber?: string
   accountType?: string
   accountNumber?: string
+  brand?: string
+  funding?: string
+  expiry?: string
+  billingAddress?: string
   saveDefaultPaymentMethod?: boolean
 }
 
@@ -159,7 +165,19 @@ const Amex = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+const CARD_BRAND_LABELS: Record<string, string> = {
+  amex: "AMEX",
+  visa: "Visa",
+  mastercard: "Mastercard",
+  discover: "Discover",
+}
+
 const getCardBrandLabel = (method: PaymentMethodSummary) => {
+  const brandKey = method.brand?.toLowerCase()
+  if (brandKey && CARD_BRAND_LABELS[brandKey]) {
+    return CARD_BRAND_LABELS[brandKey]
+  }
+
   const source = `${method.title} ${method.subtitle}`.toLowerCase()
 
   if (source.includes("amex") || source.includes("american express")) {
@@ -179,7 +197,10 @@ const getPaymentMethodLast4 = (method: PaymentMethodSummary) =>
 
 const getMethodTitle = (method: PaymentMethodSummary) => {
   if (method.method === "CREDIT_DEBIT_CARD") {
-    return `${getCardBrandLabel(method)} ${method.title.toLowerCase().includes("debit") ? "debit card" : "credit card"} ending in *${getPaymentMethodLast4(method)}`
+    const isDebit = method.funding
+      ? method.funding.toLowerCase() === "debit"
+      : method.title.toLowerCase().includes("debit")
+    return `${getCardBrandLabel(method)} ${isDebit ? "debit card" : "credit card"} ending in *${getPaymentMethodLast4(method)}`
   }
 
   if (method.method === "BANK_ACCOUNT") {
@@ -220,7 +241,17 @@ const PaymentMethodIcon = ({ method }: { method: PaymentMethodSummary }) => {
     return <WireTransfer className="h-[31px] w-[46.5px] shrink-0" />
   }
 
-  return getCardBrandLabel(method).toLowerCase().includes("amex") ? (
+  const cardBrand = getCardBrandLabel(method).toLowerCase()
+
+  if (cardBrand.includes("mastercard")) {
+    return <PaymentMastercard className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  if (cardBrand.includes("discover")) {
+    return <PaymentDiscover className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  return cardBrand.includes("amex") ? (
     <Amex className="h-[30px] w-[45px] shrink-0" />
   ) : (
     <Visa className="h-[30px] w-[45px] shrink-0" />
@@ -252,8 +283,9 @@ export default function ConfirmationPage() {
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
   )
-  const [projectSummary, setProjectSummary] =
-    React.useState<CheckoutProjectSummary | null>(null)
+  const [billingAddresses, setBillingAddresses] = React.useState<
+    BillingAddress[]
+  >([])
   const [isEditOfferOpen, setIsEditOfferOpen] = React.useState(false)
   const [hasAuthorizedPayment, setHasAuthorizedPayment] = React.useState(false)
   const [authorizationError, setAuthorizationError] = React.useState("")
@@ -296,25 +328,16 @@ export default function ConfirmationPage() {
 
     let isActive = true
 
-    const loadProjectSummary = async () => {
-      try {
-        const summary = await getCheckoutProjectSummary(decodedSlug)
-        if (isActive) {
-          setProjectSummary(summary)
-        }
-      } catch {
-        if (isActive) {
-          setProjectSummary(null)
-        }
-      }
-    }
-
-    loadProjectSummary()
+    BillingAddressesAPI.list()
+      .then((response) => {
+        if (isActive) setBillingAddresses(response.data as BillingAddress[])
+      })
+      .catch(() => {})
 
     return () => {
       isActive = false
     }
-  }, [decodedSlug, isTalentCheckout])
+  }, [isTalentCheckout])
 
   const selectedRateValue = searchParams.get("rate") || "web-development"
   const selectedSchedule = searchParams.get("schedule") || "full-time"
@@ -350,16 +373,19 @@ export default function ConfirmationPage() {
   const talentAvatarUrl = talentProfile?.avatarUrl || ""
   const talentJobTitle = getDefaultJobTitle(talentProfile)
   const talentExperienceLabel = getExperienceLabel(talentProfile)
+  const checkoutSession = checkout.session
   const checkoutProjectTitle =
-    projectSummary?.title || titleizeCheckoutSlug(decodedSlug)
-  const checkoutProjectImage = projectSummary?.mediaUrl || "/dashboard.png"
+    checkoutSession?.title || "Project Title Unavailable"
+  const checkoutProjectImage = checkoutSession?.mediaUrl || "/dashboard.png"
+  const checkoutProjectTeamCount = checkoutSession?.teamMemberCount ?? null
   const checkoutProjectTeamLabel =
-    projectSummary?.teamMemberCount !== null &&
-    projectSummary?.teamMemberCount !== undefined
-      ? `${projectSummary.teamMemberCount} team members`
-      : "Team details unavailable"
-  const checkoutProjectDateRange =
-    projectSummary?.dateRangeLabel || "Timeline unavailable"
+    checkoutProjectTeamCount !== null
+      ? `${checkoutProjectTeamCount} team member${checkoutProjectTeamCount === 1 ? "" : "s"}`
+      : "Team Details Unavailable"
+  const checkoutProjectDateRange = (
+    getDraftDateRangeLabel(checkoutSession?.durationDays ?? null) ||
+    "Timeline Unavailable"
+  ).replace(" - ", "  -  ")
   const scheduleTitle =
     selectedSchedule === "part-time" ? "Part time" : "Full time"
   const scheduleDetail =
@@ -370,8 +396,10 @@ export default function ConfirmationPage() {
     selectedDuration === "Ongoing"
       ? `Monthly Payment Amount: ${formattedDueToday}`
       : `Payment Amount: ${formattedDueToday}`
-  const projectCost = 94_000
-  const estimatedProjectTax = 4_000
+  const projectCost = isTalentCheckout
+    ? 94_000
+    : (checkoutSession?.projectCost ?? 0)
+  const estimatedProjectTax = isTalentCheckout ? 4_000 : 0
   const fullAmount = projectCost + estimatedProjectTax
   const projectDurationMonths = 8
   const installmentAmount = fullAmount / projectDurationMonths
@@ -380,7 +408,11 @@ export default function ConfirmationPage() {
     paymentPlan === "IN_INSTALLMENTS" ? installmentAmount : fullAmount
   const balanceAmountParam = parseCurrencyAmount(searchParams.get("balance"))
   const availableBalance =
-    balanceAmountParam === undefined ? 4000 : Math.max(balanceAmountParam, 0)
+    balanceAmountParam === undefined
+      ? isTalentCheckout
+        ? 4000
+        : 0
+      : Math.max(balanceAmountParam, 0)
   const customBalanceAmount = parseCurrencyAmount(paymentSnapshot?.customAmount)
   const appliedBalanceAmount =
     paymentSnapshot?.useBalance === false
@@ -400,7 +432,40 @@ export default function ConfirmationPage() {
     amountDueBeforeCredits - appliedBalanceAmount - totalGiftCardAmount,
     0
   )
-  const fullPaymentMethods = paymentSnapshot?.fullPaymentMethods || []
+  const sessionPaymentSelection = checkoutSession?.paymentSelection ?? null
+  const sessionBillingAddress = billingAddresses.find(
+    (address) => address.id === sessionPaymentSelection?.billingAddressId
+  )
+  const sessionPaymentMethods: PaymentMethodSummary[] =
+    isTalentCheckout || !sessionPaymentSelection
+      ? []
+      : [
+          {
+            id: sessionPaymentSelection.id,
+            method: "CREDIT_DEBIT_CARD",
+            title: "Credit Card",
+            subtitle: "Stripe card",
+            cardNumber: sessionPaymentSelection.last4,
+            brand: sessionPaymentSelection.brand,
+            funding: sessionPaymentSelection.funding,
+            expiry: `${String(sessionPaymentSelection.expMonth).padStart(2, "0")}/${sessionPaymentSelection.expYear}`,
+            billingAddress: sessionBillingAddress
+              ? [
+                  sessionBillingAddress.addressLine1,
+                  sessionBillingAddress.addressLine2,
+                  sessionBillingAddress.city,
+                  [sessionBillingAddress.state, sessionBillingAddress.postalCode]
+                    .filter(Boolean)
+                    .join(" "),
+                ]
+                  .filter(Boolean)
+                  .join(", ")
+              : undefined,
+            saveDefaultPaymentMethod: sessionPaymentSelection.isDefault,
+          },
+        ]
+  const fullPaymentMethods =
+    paymentSnapshot?.fullPaymentMethods || sessionPaymentMethods
   const firstInstallmentMethods = paymentSnapshot?.firstInstallmentMethods || []
   const secondInstallmentMethods =
     paymentSnapshot?.secondInstallmentMethods || []
@@ -545,16 +610,10 @@ export default function ConfirmationPage() {
     }, 300)
   }
 
-  const renderReviewPaymentRow = (
-    row: ReviewPaymentRow,
-    options?: { isLast?: boolean }
-  ) => (
+  const renderReviewPaymentRow = (row: ReviewPaymentRow) => (
     <div
       key={row.id}
-      className={cn(
-        "grid grid-cols-2 gap-x-6 py-4",
-        !options?.isLast && "border-b border-gray-200"
-      )}
+      className="grid min-h-[87px] grid-cols-2 border-b border-gray-200 py-4"
     >
       <div className="flex items-start gap-x-3">
         <PaymentMethodIcon method={row.method} />
@@ -562,9 +621,9 @@ export default function ConfirmationPage() {
           <h2 className="text-sm font-semibold text-dark-blue-400">
             {getMethodTitle(row.method)}
           </h2>
-          {row.method.method === "CREDIT_DEBIT_CARD" ? (
+          {row.method.method === "CREDIT_DEBIT_CARD" && row.method.expiry ? (
             <p className="text-xs font-light text-dark-blue-400">
-              Expires: 09/2027
+              Expires: {row.method.expiry}
             </p>
           ) : null}
           <p className="text-xs font-light text-dark-blue-400">
@@ -576,13 +635,13 @@ export default function ConfirmationPage() {
         </div>
       </div>
 
-      {row.showBillingAddress ? (
+      {row.showBillingAddress && row.method.billingAddress ? (
         <div className="space-y-1 px-3">
-          <h2 className="text-sm font-semibold text-dark-blue-400">
+          <h2 className="text-xs font-semibold text-dark-blue-400">
             Billing Address
           </h2>
           <p className="text-xs font-light text-dark-blue-400">
-            2125 Chestnut Street, San Francisco, CA 94123
+            {row.method.billingAddress}
           </p>
         </div>
       ) : (
@@ -591,14 +650,22 @@ export default function ConfirmationPage() {
     </div>
   )
 
-  const renderSidebarPaymentRow = (row: ReviewPaymentRow) => (
+  const renderSidebarPaymentRow = (
+    row: ReviewPaymentRow,
+    options?: { isLast?: boolean }
+  ) => (
     <article key={row.id} className="flex items-start gap-x-3">
       <PaymentMethodIcon method={row.method} />
-      <div className="flex-auto space-y-1 border-b border-gray-300 pb-3">
-        <h1 className="text-sm font-medium text-dark-blue-400">
+      <div
+        className={cn(
+          "flex-auto space-y-1 pb-3",
+          !options?.isLast && "border-b border-gray-200"
+        )}
+      >
+        <h1 className="text-sm font-medium leading-[normal] text-dark-blue-400">
           {formatter.format(row.amount)}
         </h1>
-        <p className="text-xs font-light uppercase text-dark-blue-400">
+        <p className="text-xs font-light leading-[normal] text-dark-blue-400">
           {row.method.method === "BANK_ACCOUNT"
             ? `${row.method.title} *${getPaymentMethodLast4(row.method)}`
             : row.method.method === "CREDIT_DEBIT_CARD"
@@ -619,22 +686,54 @@ export default function ConfirmationPage() {
         }
       />
 
-      <div className="px-[150px] py-[50px]">
+      <div
+        className={
+          isTalentCheckout
+            ? "px-[150px] py-[50px]"
+            : "px-[150px] pt-[50px] pb-[10px]"
+        }
+      >
         <Button
-          className="mb-6 px-0"
+          className={
+            isTalentCheckout
+              ? "mb-6 px-0"
+              : "gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-2 h-5 py-0"
+          }
           variant="link"
           visual="gray"
           onClick={handleEditPaymentMethods}
         >
-          {"<-"} Back
+          {isTalentCheckout ? (
+            <>{"<-"} Back</>
+          ) : (
+            <>
+              <ArrowLeft className="size-4" /> Back
+            </>
+          )}
         </Button>
-        <h1 className="text-2xl font-bold text-dark-blue-400">
+        <h1
+          className={
+            isTalentCheckout
+              ? "text-2xl font-bold text-dark-blue-400"
+              : "text-2xl leading-7 font-bold text-dark-blue-400"
+          }
+        >
           Review your order details
         </h1>
-        <p className="mt-3 text-base font-light text-dark-blue-400">
+        <p
+          className={
+            isTalentCheckout
+              ? "mt-3 text-base font-light text-dark-blue-400"
+              : "mt-3 text-base font-light leading-[normal] text-dark-blue-400"
+          }
+        >
           Then click{" "}
-          <span className="font-normal">&quot;Submit payment&quot;</span> below
-          to confirm your {isTalentCheckout ? "team" : "project"}
+          {isTalentCheckout ? (
+            <span className="font-normal">&quot;Submit payment&quot;</span>
+          ) : (
+            <span className="font-medium">“Submit payment”</span>
+          )}{" "}
+          below to confirm your {isTalentCheckout ? "team" : "project"}
         </p>
 
         <div className="mt-6 flex gap-x-8">
@@ -874,8 +973,8 @@ export default function ConfirmationPage() {
                       Edit
                     </Button>
                   </div>
-                  <div className="p-5 flex gap-x-5">
-                    <div className="relative flex-none w-[181px] bg-white border border-gray-200 rounded-md overflow-hidden">
+                  <div className="p-5 flex gap-x-3">
+                    <div className="relative h-[92px] w-[181px] shrink-0 overflow-hidden rounded-[6px] bg-white ring-1 ring-gray-200">
                       <NextImage
                         className="object-cover"
                         src={checkoutProjectImage}
@@ -884,19 +983,19 @@ export default function ConfirmationPage() {
                         fill
                       />
                     </div>
-                    <div className="flex-auto">
-                      <h1 className="text-sm font-medium text-dark-blue-400">
+                    <div className="flex h-[92px] flex-auto flex-col items-start justify-between">
+                      <h1 className="text-sm font-medium leading-5 text-dark-blue-400">
                         {checkoutProjectTitle}
                       </h1>
 
-                      <div className="mt-1.5 inline-flex gap-x-2">
+                      <div className="inline-flex items-center gap-x-2">
                         <Users03 className="size-[15px] shrink-0" />
                         <span className="text-xs leading-5 font-semibold text-dark-blue-400">
                           {checkoutProjectTeamLabel}
                         </span>
                       </div>
 
-                      <div className="mt-1.5 leading-5 text-[13px] text-dark-blue-400">
+                      <div className="whitespace-pre-wrap capitalize leading-5 text-[13px] text-dark-blue-400">
                         {checkoutProjectDateRange}
                       </div>
                     </div>
@@ -919,62 +1018,29 @@ export default function ConfirmationPage() {
                     </Button>
                   </div>
                   <div className="p-6">
-                    {hasProjectPaymentRows ? (
+                    {paymentPlan === "IN_INSTALLMENTS" ? (
                       <>
-                        {paymentPlan === "IN_INSTALLMENTS" ? (
-                          <>
-                            <h1 className="text-base font-semibold text-dark-blue-400">
-                              Initial One-Time Payment
-                            </h1>
-                            <div className="mt-2">
-                              {initialInstallmentRows.length > 0
-                                ? initialInstallmentRows.map((row, index) =>
-                                    renderReviewPaymentRow(row, {
-                                      isLast:
-                                        index ===
-                                        initialInstallmentRows.length - 1,
-                                    })
-                                  )
-                                : null}
-                            </div>
+                        <h1 className="text-base font-semibold text-dark-blue-400">
+                          Initial One-Time Payment
+                        </h1>
+                        <div className="mt-2">
+                          {initialInstallmentRows.map(renderReviewPaymentRow)}
+                        </div>
 
-                            <h1 className="mt-6 text-lg font-semibold text-dark-blue-400">
-                              Recurring Payments
-                            </h1>
-                            <div className="mt-2">
-                              {recurringInstallmentRows.map((row, index) =>
-                                renderReviewPaymentRow(row, {
-                                  isLast:
-                                    index ===
-                                    recurringInstallmentRows.length - 1,
-                                })
-                              )}
-                            </div>
-                          </>
-                        ) : (
-                          <div>
-                            {oneTimePaymentRows.map((row, index) =>
-                              renderReviewPaymentRow(row, {
-                                isLast: index === oneTimePaymentRows.length - 1,
-                              })
-                            )}
-                          </div>
-                        )}
+                        <h1 className="mt-6 text-lg font-semibold text-dark-blue-400">
+                          Recurring Payments
+                        </h1>
+                        <div className="mt-2">
+                          {recurringInstallmentRows.map(renderReviewPaymentRow)}
+                        </div>
                       </>
                     ) : (
-                      <div className="rounded-md border border-error-200 bg-error-50 p-4 text-sm text-error-500">
-                        We were unable to load your order summary. Please try
-                        again or contact support.
-                      </div>
+                      <div>{oneTimePaymentRows.map(renderReviewPaymentRow)}</div>
                     )}
 
                     <div
                       ref={authorizationSectionRef}
-                      className={cn(
-                        "mt-6 rounded-md py-2 px-5 transition-colors",
-                        hasAuthorizationError &&
-                          "border border-error-300 bg-error-50"
-                      )}
+                      className="mt-6 px-5 py-2"
                     >
                       <label
                         className="flex cursor-pointer items-start gap-x-5"
@@ -998,20 +1064,29 @@ export default function ConfirmationPage() {
                         />
                         <span
                           className={cn(
-                            "text-sm font-light text-dark-blue-400",
+                            "text-sm font-light leading-[18px] text-dark-blue-400",
                             hasAuthorizationError && "text-error-500"
                           )}
                         >
                           I hereby authorize{" "}
                           <span className="font-semibold">Marketeq</span> to
                           charge my above payment methods for the{" "}
-                          <span className="font-semibold">
-                            {authorizationAmountLabel}
-                          </span>
+                          {paymentPlan === "IN_INSTALLMENTS" ? (
+                            <span className="font-semibold">
+                              {authorizationAmountLabel}
+                            </span>
+                          ) : (
+                            <>
+                              total one-time amount of{" "}
+                              <span className="font-semibold">
+                                {formatter.format(totalDueToday)}
+                              </span>
+                            </>
+                          )}
                         </span>
                       </label>
                       {hasAuthorizationError ? (
-                        <ErrorMessage className="mt-3" size="sm">
+                        <ErrorMessage className="mt-5" size="xs">
                           {authorizationError}
                         </ErrorMessage>
                       ) : null}
@@ -1025,7 +1100,12 @@ export default function ConfirmationPage() {
           <div className="w-[305px] shrink-0">
             <div className="w-[305px] shrink-0 p-5 rounded-lg bg-white border border-gray-200 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
               <div className="border-b pb-4 border-gray-200">
-                <h1 className="text-base leading-none font-semibold text-dark-blue-400">
+                <h1
+                  className={cn(
+                    "text-base font-semibold text-dark-blue-400",
+                    isTalentCheckout ? "leading-none" : "leading-[normal]"
+                  )}
+                >
                   Price Details
                 </h1>
               </div>
@@ -1177,89 +1257,80 @@ export default function ConfirmationPage() {
                 </>
               ) : (
                 <>
-                  <div className="mt-5 border-b pb-4 border-gray-200">
-                    <div className="mt-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                          Project cost
-                        </span>
-                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                  <div className="mt-4 border-b pb-4 border-gray-200">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                        <span className="font-light">Project cost</span>
+                        <span className="font-normal">
                           {formatter.format(projectCost)}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                          Estimated tax *
-                        </span>
-                        <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                          {formatter.format(estimatedProjectTax)}
+                      <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                        <span className="font-light">Estimated tax *</span>
+                        <span className="font-normal">
+                          {estimatedProjectTax.toLocaleString("en-US", {
+                            style: "currency",
+                            currency: "USD",
+                          })}
                         </span>
                       </div>
                       {paymentPlan === "IN_INSTALLMENTS" ? (
                         <>
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                              Initial payment
-                            </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                            <span className="font-light">Initial payment</span>
+                            <span className="font-normal">
                               {formatter.format(installmentAmount)}
                             </span>
                           </div>
-                          <div className="flex items-center justify-between">
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                            <span className="font-light">
                               Recurring payment
                             </span>
-                            <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                            <span className="font-normal">
                               {formatter.format(installmentAmount)}
                             </span>
                           </div>
                         </>
                       ) : null}
                       {appliedBalanceAmount > 0 ? (
-                        <div className="flex items-center justify-between">
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
-                            Balance applied
-                          </span>
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                        <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                          <span className="font-light">Balance applied</span>
+                          <span className="font-normal">
                             - {formatter.format(appliedBalanceAmount)}
                           </span>
                         </div>
                       ) : null}
                       {totalGiftCardAmount > 0 ? (
-                        <div className="flex items-center justify-between">
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                        <div className="flex items-center justify-between text-xs leading-[normal] text-dark-blue-400">
+                          <span className="font-light">
                             {paymentSnapshot?.giftCards.length || 0}{" "}
                             {(paymentSnapshot?.giftCards.length || 0) === 1
                               ? "Gift card applied"
                               : "Gift cards applied"}
                           </span>
-                          <span className="inline-block text-xs leading-none text-dark-blue-400 font-light">
+                          <span className="font-normal">
                             - {formatter.format(totalGiftCardAmount)}
                           </span>
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="flex mt-4 items-center justify-between">
-                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
+                    <div className="mt-4 flex items-center justify-between text-base font-bold leading-[normal] text-dark-blue-400">
+                      <span>
                         {paymentPlan === "IN_INSTALLMENTS"
                           ? "Total Due Today"
                           : "Total"}
-                      </h1>
-                      <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                        {formatter.format(totalDueToday)}
-                      </h1>
+                      </span>
+                      <span>{formatter.format(totalDueToday)}</span>
                     </div>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="mt-5 space-y-3">
-                      {hasProjectPaymentRows ? (
-                        projectPaymentRows.map(renderSidebarPaymentRow)
-                      ) : (
-                        <div className="rounded-md bg-gray-100 p-3 text-xs text-gray-500">
-                          Loading payment methods...
-                        </div>
+                  <div className="mt-5">
+                    <div className="space-y-3">
+                      {projectPaymentRows.map((row, index) =>
+                        renderSidebarPaymentRow(row, {
+                          isLast: index === projectPaymentRows.length - 1,
+                        })
                       )}
                     </div>
 
@@ -1274,7 +1345,7 @@ export default function ConfirmationPage() {
                       </div>
                     ) : null}
 
-                    <div className="grid mt-2.5">
+                    <div className="grid mt-2">
                       <Button
                         disabled={isSubmittingPayment}
                         onClick={handleSubmitPayment}
@@ -1295,9 +1366,10 @@ export default function ConfirmationPage() {
 
                     <div className="mt-5">
                       <span className="inline-block text-center text-[10px] font-light text-dark-blue-400 leading-[14px]">
-                        By clicking this button, you agree to Marketeq&apos;s{" "}
+                        By submitting your payment, you agree to Marketeq’s
+                        <br />
                         <Button
-                          className="text-[10px] leading-[14px] underline"
+                          className="text-[10px] font-medium leading-[14px] underline"
                           variant="link"
                           onClick={() => setLegalDialog("terms")}
                         >
@@ -1305,7 +1377,7 @@ export default function ConfirmationPage() {
                         </Button>{" "}
                         and{" "}
                         <Button
-                          className="text-[10px] leading-[14px] underline"
+                          className="text-[10px] font-medium leading-[14px] underline"
                           variant="link"
                           onClick={() => setLegalDialog("privacy")}
                         >

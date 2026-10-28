@@ -3422,7 +3422,11 @@ function CheckoutPageInner() {
               }
               router.back()
             }}
-            className="gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-6"
+            className={
+              isTalentCheckout
+                ? "gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-6"
+                : "gap-x-1 rounded-none font-normal hover:text-gray-700 hover:no-underline focus:text-gray-500 mb-2 h-5 py-0"
+            }
             variant="link"
             visual="gray"
           >
