@@ -345,19 +345,22 @@ All shared agent memory lives at `.claude/memory/`. Always check it before start
 | `.claude/memory/MEMORY.md` | Index — start here |
 | `.claude/memory/global.md` | Code conventions, env vars, standards |
 | `.claude/memory/architecture.md` | Full stack and monorepo structure |
-| `.claude/memory/progress.md` | What's built, what's in progress, dependencies |
+| `.claude/memory/progress.md` | What's built, what's in progress, dependencies (history up to 2026-10-26) |
+| `.claude/memory/progress/` | One file per PR/ticket since 2026-10-26 — see its `README.md` |
 | `.claude/memory/frontend.md` | Frontend status |
 | `.claude/memory/agents/<role>.md` | Your agent role instructions |
 | `.claude/memory/services/<service>.md` | Per-service implementation notes |
 
 **Before starting any work:**
 1. Read `.claude/memory/progress.md` to see what's done and what's next
-2. Read the relevant `.claude/memory/services/<service>.md`
-3. Read `.claude/memory/agents/<your-role>.md` if you have a role
+2. Read the newest files in `.claude/memory/progress/`, and grep it for your service name
+3. Read the relevant `.claude/memory/services/<service>.md`
+4. Read `.claude/memory/agents/<your-role>.md` if you have a role
 
 **After finishing work:**
-- Update `.claude/memory/services/<service>.md` with what you built
-- Update `.claude/memory/progress.md` to reflect new status
+- Add ONE new file for your PR: `.claude/memory/progress/YYYY-MM-DD-<ticket>-<slug>.md` (format in `.claude/memory/progress/README.md`). Put your ticket notes, findings and service gotchas there.
+- **Do not append to the end of `progress.md` or to a service file's Gotchas / Agent Log.** Every PR appending at the same spot is what made every PR conflict with every other one.
+- Edit `.claude/memory/services/<service>.md` only to correct a durable fact in place (an entity, endpoint, event or status line), not to add a ticket log.
 
 ## Architecture at a Glance
 

@@ -27,7 +27,9 @@ import { travelModeBlocksNewSession } from '../travel-mode/travel-mode-state';
 //                      but location not. The existing "Yes, this is my home country"
 //                      dialog confirms location and, when a session is due, starts it.
 //   start_identity     first hosted session can be started now
-//   continue_identity  an unfinished hosted session exists — resume it (no new checks)
+//   continue_identity  an unfinished hosted session exists and its confirmation is within
+//                      15 minutes — resume it. Older, it is retired on the next start and
+//                      the user restarts from confirm_location.
 //   await_review       Didit has the session in review — nothing to do yet
 //   retry_identity     a previous attempt failed and a new one can be started
 //                      (including a final failure whose 24-hour cooldown has elapsed)
@@ -97,7 +99,9 @@ export interface VerificationSummaryInput {
  * Mirrors the rules FreeKycService enforces before creating a NEW session:
  * location verified, a home country on record, no Travel Mode in force (active or
  * pending a duration; an expired one does not count), and a confirmation no older
- * than the 15-minute window. (Resuming needs none of it.)
+ * than the 15-minute window. (Resuming needs no NEW confirmation, but only while the
+ * confirmation the session was started under is itself within the window: see
+ * unfinished-session-resumability.ts.)
  * A parity test runs this against the real start path so the two cannot drift.
  */
 export function newSessionRequirementsMet(input: VerificationSummaryInput): boolean {

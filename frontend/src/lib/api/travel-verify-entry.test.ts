@@ -23,6 +23,7 @@ function handlerBefore(marker: string): string {
   const start = flow.lastIndexOf("onClick={() => {", at) + "onClick={() => {".length
   return flow.slice(start, flow.indexOf("\n              }}", start))
 }
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 function run(body: string, activeTravelModeUpdate: boolean) {
   const calls: string[] = []
   const stubs = {
@@ -31,12 +32,22 @@ function run(body: string, activeTravelModeUpdate: boolean) {
     send: (event: string) => calls.push(`send:${event}`),
     setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
+    onTravelModeConfirmed: () => calls.push("confirmed"),
+    relocatingRef: { current: false },
+    onPermanentlyRelocated: undefined,
+    getIsMounted: () => true,
   }
-  new Function(...Object.keys(stubs), body)(...Object.values(stubs))
+  new AsyncFunction(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }
 const temporarily = handlerBefore('Nothing is saved here: closing before a duration is chosen')
-const relocated = handlerBefore('persistTravelClassification("permanently_relocated")')
+// "Permanently relocated" is the flow's handlePermanentlyRelocated; without the optional
+// onPermanentlyRelocated prop (every non-Update caller) it is the same two synchronous steps.
+const relocatedAt = flow.indexOf("const handlePermanentlyRelocated = async () => {")
+const relocated = flow.slice(
+  relocatedAt + "const handlePermanentlyRelocated = async () => {".length,
+  flow.indexOf("\n  }\n", relocatedAt)
+)
 
 describe("isTravelModeInForce", () => {
   it("is true for a valid, unended activation (verified or not)", () => {
@@ -70,9 +81,9 @@ describe("Verify My Account launches the flow with the traveler's real state", (
 
 describe("active traveler (verified or unverified) → Temporarily traveling", () => {
   for (const [label, summary] of [["verified", verifiedTraveler], ["unverified", unverifiedTraveler]] as const) {
-    it(`${label}: no duration screen, no write, exactly one confirmation, flow closes`, () => {
+    it(`${label}: no duration screen, no write, exactly one confirmation reported (onTravelModeConfirmed), flow closes`, () => {
       const calls = run(temporarily, isTravelModeInForce(summary))
-      assert.deepEqual(calls, ["confirmation:true", "open:false"])
+      assert.deepEqual(calls, ["confirmation:true", "confirmed", "open:false"])
     })
   }
   it("the period and reminders are untouched: no classification, duration or update call exists on that path", () => {

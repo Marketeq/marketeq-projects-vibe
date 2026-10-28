@@ -141,6 +141,27 @@ const gatewayEnv = {
   LOCATION_SERVICE_URL:           'http://localhost:3036',
 };
 
+// Services whose own RMQ inbox queue nothing publishes to: no producer anywhere
+// in the codebase, and 0 messages on the broker since it went live (checked
+// 2026-10-23). Each inbox consumer holds one of the broker plan's 40
+// connections, and with all of them on the backend used all 40, so publishers
+// that connect on first use (identity-verification events, payout events) were
+// refused. These services keep every other RMQ client; only the inbox is off.
+// Remove a name once something publishes to that service's queue.
+const RABBITMQ_INBOX_DISABLED = new Set([
+  'admin-service',
+  'affiliate-referral-service',
+  'autocomplete-service',
+  'billing-service',
+  'checkout-service',
+  'favorites-service',
+  'messaging-service',
+  'portfolio-service',
+  'search-service',
+  'suggestions-service',
+  'time-tracking-service',
+]);
+
 // svc.portKey allows services that read a non-standard env var for their port
 // (e.g. cms-service reads CMS_PORT instead of PORT).
 function buildInternalServiceEnv(svc) {
@@ -152,6 +173,9 @@ function buildInternalServiceEnv(svc) {
   };
   if (svc.portKey && svc.portKey !== 'PORT') {
     env[svc.portKey] = svc.port;
+  }
+  if (RABBITMQ_INBOX_DISABLED.has(svc.name)) {
+    env.RABBITMQ_INBOX_ENABLED = 'false';
   }
   return env;
 }

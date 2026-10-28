@@ -23,6 +23,8 @@ import { readLoginSessionKey } from '../common/travel-mode/login-session-key';
 import { getEffectiveClientIp } from '../common/utils/effective-client-ip';
 import { TravelClassificationRequestDto } from '../dto/request/travel-classification.request.dto';
 import { TravelDurationRequestDto } from '../dto/request/travel-duration.request.dto';
+import { TravelModeConfirmationRequestDto } from '../dto/request/travel-mode-confirmation.request.dto';
+import { KycSessionRequestDto } from '../dto/request/kyc-session.request.dto';
 import { TravelCheckInAnswerRequestDto } from '../dto/request/travel-check-in-answer.request.dto';
 import { DocumentUploadUrlRequestDto } from '../dto/request/document-upload-url.request.dto';
 import { SubmitDocumentRequestDto } from '../dto/request/submit-document.request.dto';
@@ -145,6 +147,21 @@ export class IdentityVerificationController {
     @Body() dto: TravelDurationRequestDto,
   ): Promise<ProfileStatusResponseDto> {
     const profile = await this.service.recordTravelDuration(req.userId, dto.duration);
+    return ProfileStatusResponseDto.fromEntity(profile);
+  }
+
+  // An already-active traveler chose Update > Temporarily traveling. Records nothing about the
+  // period (dates and duration are untouched) and creates a new persistent "Travel Mode is on"
+  // alert occurrence keyed by the client's confirmationId (a retry with the same id is stored
+  // once). 409 TRAVEL_MODE_NOT_ACTIVE when Travel Mode is not in force; 503 when the alert could
+  // not be handed over (nothing was created).
+  @Post('travel-mode/confirm')
+  @HttpCode(HttpStatus.OK)
+  async confirmActiveTravelMode(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: TravelModeConfirmationRequestDto,
+  ): Promise<ProfileStatusResponseDto> {
+    const profile = await this.service.confirmActiveTravelMode(req.userId, dto.confirmationId);
     return ProfileStatusResponseDto.fromEntity(profile);
   }
 
@@ -301,21 +318,27 @@ export class IdentityVerificationController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(VpnProxyCheckGuard)
-  async startKycSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
-    return this.freeKycService.startOrResume(req.userId);
+  async startKycSession(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: KycSessionRequestDto,
+  ): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startOrResume(req.userId, dto.returnOrigin);
   }
 
   // Home-country change: the explicit, separate start for an already fully
   // verified account that declared a permanent relocation and confirmed the
   // detected country (it is then PENDING). Ordinary kyc-sessions still refuses a
-  // verified account. Same VPN/proxy guard and throttle as session start; reads no
-  // body, query, country or session id: everything comes from the stored claim.
+  // verified account. Same VPN/proxy guard and throttle as session start; reads only the
+  // optional returnOrigin (no country or session id): everything else comes from the stored claim.
   @Post('kyc-sessions/home-country-change')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(VpnProxyCheckGuard)
-  async startHomeCountryChangeSession(@Req() req: AuthenticatedRequest): Promise<KycSessionResponseDto> {
-    return this.freeKycService.startHomeCountryChange(req.userId);
+  async startHomeCountryChangeSession(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: KycSessionRequestDto,
+  ): Promise<KycSessionResponseDto> {
+    return this.freeKycService.startHomeCountryChange(req.userId, dto.returnOrigin);
   }
 
   // Free KYC fallback for a lost or delayed Didit webhook: asks Didit about the

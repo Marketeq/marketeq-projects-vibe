@@ -14,6 +14,7 @@ import {
 import {
   recordTravelClassification,
   recordTravelDuration,
+  SKIPPED_TRAVEL_DURATION_LABEL,
   TRAVEL_DURATION_TO_BACKEND,
   type TravelModeDeps,
 } from "./travel-mode-backend"
@@ -214,16 +215,21 @@ describe("travel branch persistence (never touches Free KYC)", () => {
     }
   })
 
-  it("'Skip' (no duration) is recorded as the screen's own 'Not sure'", async () => {
+  it("'Skip' submits its explicit 'Not sure' label, which is the backend's not_sure", async () => {
     const log: string[] = []
-    await recordTravelDuration(makeDeps(log), null)
+    assert.equal(SKIPPED_TRAVEL_DURATION_LABEL, "Not sure")
+    assert.equal(await recordTravelDuration(makeDeps(log), SKIPPED_TRAVEL_DURATION_LABEL), true)
     assert.deepEqual(log, ["dur:not_sure"])
   })
 
-  it("an unknown label falls back to 'not_sure' rather than inventing a value", async () => {
-    const log: string[] = []
-    await recordTravelDuration(makeDeps(log), "Forever")
-    assert.deepEqual(log, ["dur:not_sure"])
+  it("an unknown or empty label is refused: nothing is sent, nothing is invented, it resolves false", async () => {
+    await quietly(async () => {
+      for (const label of ["Forever", ""]) {
+        const log: string[] = []
+        assert.equal(await recordTravelDuration(makeDeps(log), label), false)
+        assert.deepEqual(log, [])
+      }
+    })
   })
 
   it("persistence failures are logged and never thrown, so the unchanged UI keeps working", async () => {

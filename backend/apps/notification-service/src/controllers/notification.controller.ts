@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -23,6 +24,7 @@ import {
 import { BrevoService } from '../brevo/brevo.service';
 import { UpdatePreferencesDto } from '../dtos/update-preferences.dto';
 import { Public } from '../guards/jwt-auth.guard';
+import { PersistentStatusAlertPayload, PersistentStatusAlertService } from '../services/persistent-status-alert.service';
 
 @Controller('v1/notifications')
 export class NotificationController {
@@ -33,7 +35,19 @@ export class NotificationController {
     private readonly brevoService: BrevoService,
     private readonly delivery: NotificationDeliveryService,
     private readonly deliveryMonitor: NotificationDeliveryMonitor,
+    private readonly statusAlerts: PersistentStatusAlertService,
   ) {}
+
+  @Get('status-alerts')
+  getStatusAlerts(@Req() req: any) {
+    return this.statusAlerts.listActive(req.user?.sub ?? req.user?.id);
+  }
+
+  @Post('status-alerts/:id/dismiss')
+  @HttpCode(HttpStatus.OK)
+  dismissStatusAlert(@Req() req: any, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.statusAlerts.dismiss(req.user?.sub ?? req.user?.id, id);
+  }
 
   @Get()
   getNotifications(
@@ -134,6 +148,11 @@ export class NotificationController {
   @EventPattern('notification.send')
   handleSend(@Payload() payload: NotificationPayload, @Ctx() context: RmqContext) {
     return this.delivery.handle(payload, context);
+  }
+
+  @EventPattern('notification.status_alert.upsert')
+  handleStatusAlert(@Payload() payload: PersistentStatusAlertPayload, @Ctx() context: RmqContext) {
+    return this.delivery.handleStatusAlert(payload, context);
   }
 
   @EventPattern('auth.password_reset_requested')

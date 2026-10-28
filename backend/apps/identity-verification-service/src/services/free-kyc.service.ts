@@ -2,6 +2,7 @@ import { BadRequestException, Inject, Injectable, Logger, Optional } from '@nest
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
+import { resolveCallbackOrigin } from '../common/config/frontend-origin';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
 import { VerificationAttempt } from '../entities/verification-attempt.entity';
@@ -57,6 +58,7 @@ import {
   VendorOutcomeUnknownException,
   VendorStageUnavailableException,
 } from '../common/errors/domain-exceptions';
+import { isUnfinishedSessionResumable } from '../common/status/unfinished-session-resumability';
 import { HomeCountryConfirmationReason } from '../common/errors/kyc-error-reasons';
 import { expireTravelModeIfDue, travelModeBlocksNewSession } from '../common/travel-mode/travel-mode-state';
 import { clearPendingRelocation, hasPendingHomeCountryChange } from '../common/home-country-change/home-country-change';
@@ -66,6 +68,7 @@ import {
 } from '../events/notification-event-publisher.interface';
 import { IdentityVerificationEventType } from '../events/identity-verification-event.types';
 import { HomeCountryUpdatedNotificationPublisher } from '../events/home-country-updated-notification.publisher';
+import { StatusAlertPublisher } from '../events/status-alert.publisher';
 
 // A NEW hosted session requires verified location, travel mode off and a
 // home-country confirmation no older than this. Resuming an already-created
@@ -88,7 +91,17 @@ export type KycReconcileOutcome = 'no_active_session' | 'unchanged' | 'updated';
 // for a real transition (a replay, a duplicate approval or a reconcile of an
 // already-verified profile never sets it).
 interface IdentityVerifiedSignal {
-  verified?: { profileId: string; userId: string };
+  // hostedKycSessionId: the approved session; it keys the persistent Verified alert.
+  // persistentAlert: whether this approval is the account's verification (identity and
+  // location becoming fully verified). It is false for an approved HOME-COUNTRY CHANGE: that
+  // session moved an already verified account through in-progress and in-review (the profile
+  // goes back to verified when it is approved), but the account is not being verified again,
+  // so only "home country updated" is announced. The legacy identity_verified event is
+  // unaffected by it.
+  verified?: { profileId: string; userId: string; hostedKycSessionId: string; persistentAlert: boolean };
+  // Set only on the transition into In Review (never for a replay, or a profile that
+  // was already pending); hostedKycSessionId keys the persistent Submitted alert.
+  submitted?: { userId: string; hostedKycSessionId: string };
   // Set only when an approved home-country-change session actually promoted the
   // pending country (never for a replay, a stale session or any other outcome).
   // hostedKycSessionId: the hosted_kyc_sessions row that was promoted (it keys the
@@ -162,6 +175,10 @@ export class FreeKycService {
     // approved home-country change was applied.
     @Optional()
     private readonly homeCountryNotifications?: HomeCountryUpdatedNotificationPublisher,
+    // Appended after `homeCountryNotifications` for the same reason. Stores the persistent,
+    // dismissible dashboard alerts (PMCM-651); optional so it can never break a verification.
+    @Optional()
+    private readonly statusAlerts?: StatusAlertPublisher,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -175,13 +192,13 @@ export class FreeKycService {
    * retry can never create two sessions, and Didit's own same-vendor_data
    * reuse backs that up for the resume case.
    */
-  async startOrResume(userId: string): Promise<{ url: string }> {
+  async startOrResume(userId: string, returnOrigin?: string): Promise<{ url: string }> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
-    return this.withProfileLock(profile.id, () => this.startOrResumeLocked(profile.id));
+    return this.withProfileLock(profile.id, () => this.startOrResumeLocked(profile.id, returnOrigin));
   }
 
-  private async startOrResumeLocked(profileId: string): Promise<{ url: string }> {
+  private async startOrResumeLocked(profileId: string, returnOrigin?: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
 
@@ -193,7 +210,7 @@ export class FreeKycService {
     // retry runs through the relocation start, which reuses everything below but
     // links the session to the pending country. Never true for first-time or
     // ordinary verification (no pending country).
-    if (hasPendingHomeCountryChange(profile)) return this.startHomeCountryChangeLocked(profileId);
+    if (hasPendingHomeCountryChange(profile)) return this.startHomeCountryChangeLocked(profileId, returnOrigin);
 
     // Runs under the per-profile advisory lock held by startOrResume, so
     // concurrent starts cannot both leave failed_final or create two sessions.
@@ -221,17 +238,31 @@ export class FreeKycService {
       profile = (await this.profileRepository.findOne({ where: { id: profileId } })) ?? profile;
 
       if (ACTIVE_SESSION_STATUSES.includes(active.status)) {
-        // Still active at Didit: resume it. The session already belongs to this
-        // profile and was started under a valid confirmation, so resuming needs
-        // no (new) home-country confirmation at all. Only creating a NEW session
-        // requires verified location, travel mode off and a fresh confirmation.
-        return this.resume(active);
+        // Still active at Didit. It is resumed only while the home-country
+        // confirmation it was started under is current (15 minutes) and no newer
+        // confirmation has superseded it; no new confirmation is needed to resume.
+        if (
+          isUnfinishedSessionResumable({
+            confirmedAt: profile.verifiedHomeCountryConfirmedAt,
+            sessionConfirmedAt: active.confirmedAt,
+            nowMs: Date.now(),
+            windowMs: HOME_COUNTRY_CONFIRMATION_WINDOW_MS,
+          })
+        ) {
+          return this.resume(active, returnOrigin);
+        }
+        // Past the window (or superseded): retire it, then fall through to the
+        // new-session rules below, which demand a fresh confirmation (409
+        // confirmation_stale otherwise) before any new Didit session is created.
+        profile = await this.retireStaleUnfinishedSession(active, profile);
+        // A decision that landed while retiring (verified / in review / blocked) wins.
+        this.assertStatusAllowsStart(profile);
+      } else {
+        // Decided at Didit: re-apply the start rules to the updated profile
+        // (verified / pending review => not startable, no new session;
+        // failed_final => limit; failed / unstarted => continue below).
+        this.assertStatusAllowsStart(profile);
       }
-
-      // Decided at Didit: re-apply the start rules to the updated profile
-      // (verified / pending review => not startable, no new session;
-      // failed_final => limit; failed / unstarted => continue below).
-      this.assertStatusAllowsStart(profile);
     }
 
     this.assertHomeCountryConfirmed(profile, { requireFresh: true });
@@ -243,7 +274,7 @@ export class FreeKycService {
     const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
-    return this.createNew(profile);
+    return this.createNew(profile, returnOrigin);
   }
 
   // ---------------------------------------------------------------------
@@ -265,13 +296,13 @@ export class FreeKycService {
    * ordinary one, and the 15-minute confirmation rule applies to the pending
    * confirmation. Approval returns it to verified and promotes the pending country.
    */
-  async startHomeCountryChange(userId: string): Promise<{ url: string }> {
+  async startHomeCountryChange(userId: string, returnOrigin?: string): Promise<{ url: string }> {
     const profile = await this.profileRepository.findOne({ where: { userId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
-    return this.withProfileLock(profile.id, () => this.startHomeCountryChangeLocked(profile.id));
+    return this.withProfileLock(profile.id, () => this.startHomeCountryChangeLocked(profile.id, returnOrigin));
   }
 
-  private async startHomeCountryChangeLocked(profileId: string): Promise<{ url: string }> {
+  private async startHomeCountryChangeLocked(profileId: string, returnOrigin?: string): Promise<{ url: string }> {
     let profile = await this.profileRepository.findOne({ where: { id: profileId } });
     if (!profile) throw new HomeCountryConfirmationRequiredException({ reason: 'confirmation_missing' satisfies HomeCountryConfirmationReason });
 
@@ -302,7 +333,7 @@ export class FreeKycService {
         // Waiting for Didit's decision: no second session.
         throw new KycNotStartableException({ status: profile.identityVerificationStatus, reason: 'home_country_change_in_review' });
       }
-      if (ACTIVE_SESSION_STATUSES.includes(linked.status)) return this.resume(linked);
+      if (ACTIVE_SESSION_STATUSES.includes(linked.status)) return this.resume(linked, returnOrigin);
     }
 
     this.assertHomeCountryChangeConfirmationFresh(profile);
@@ -310,7 +341,7 @@ export class FreeKycService {
     const attemptTotal = await getHostedKycCycleAttemptCount(this.cycleRepos(), profileId);
     if (attemptTotal >= RETRY_LIMIT) throw new RetryLimitExceededException();
 
-    return this.createHomeCountryChangeSession(profile);
+    return this.createHomeCountryChangeSession(profile, returnOrigin);
   }
 
   // A pending country must exist, and the identity status must allow a start under
@@ -338,9 +369,12 @@ export class FreeKycService {
     if (Date.now() - (confirmedAt as Date).getTime() > HOME_COUNTRY_CONFIRMATION_WINDOW_MS) fail('confirmation_stale');
   }
 
-  private async createHomeCountryChangeSession(profile: IdentityVerificationProfile): Promise<{ url: string }> {
+  private async createHomeCountryChangeSession(
+    profile: IdentityVerificationProfile,
+    returnOrigin?: string,
+  ): Promise<{ url: string }> {
     const vendorReference = randomUUID();
-    const created = await this.callProvider(vendorReference);
+    const created = await this.callProvider(vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
     const saved = await this.sessionRepository.save(
@@ -475,6 +509,20 @@ export class FreeKycService {
   // with fixed text only. There is no outbox, so a crash between commit and
   // publish can lose the event.
   private async publishIdentityVerified(signal: IdentityVerifiedSignal): Promise<void> {
+    // Persistent dashboard alerts. Each publisher call resolves false instead of throwing,
+    // and the keys are per session, so a replay or a reconcile stores nothing twice.
+    if (this.statusAlerts && signal.submitted) {
+      await this.statusAlerts.submittedForReview(signal.submitted.userId, signal.submitted.hostedKycSessionId);
+    }
+    if (this.statusAlerts && signal.verified?.persistentAlert) {
+      await this.statusAlerts.verified(signal.verified.userId, signal.verified.hostedKycSessionId);
+    }
+    if (this.statusAlerts && signal.homeCountryUpdated) {
+      await this.statusAlerts.homeCountryUpdated(
+        signal.homeCountryUpdated.userId,
+        signal.homeCountryUpdated.hostedKycSessionId,
+      );
+    }
     if (this.events && signal.verified) {
       try {
         await this.events.publish({
@@ -603,10 +651,51 @@ export class FreeKycService {
     }
   }
 
-  private async resume(active: HostedKycSession): Promise<{ url: string }> {
+  /**
+   * Retires an unfinished session whose confirmation window has passed. It ends
+   * without a decision, exactly like Didit's own Abandoned: no attempt row is
+   * written and abandoned sessions never count toward the retry cycle. The profile
+   * returns to unstarted so the next start follows the new-session rules.
+   *
+   * Runs in one transaction that locks the session row and then the profile row (the
+   * same order the webhook and reconcile use, so the two cannot deadlock) and
+   * re-reads both under the lock: a decision that landed first (a webhook between the
+   * caller's read and this lock) is kept, never overwritten by a stale in-memory copy.
+   * Returns the profile as it stands afterwards.
+   */
+  private async retireStaleUnfinishedSession(
+    session: HostedKycSession,
+    profile: IdentityVerificationProfile,
+  ): Promise<IdentityVerificationProfile> {
+    let retired = false;
+    await this.dataSource.transaction(async (manager) => {
+      const lockedSession = await manager.getRepository(HostedKycSession).findOne({
+        where: { id: session.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const profileRepository = manager.getRepository(IdentityVerificationProfile);
+      const lockedProfile = await profileRepository.findOne({
+        where: { id: profile.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedSession || !ACTIVE_SESSION_STATUSES.includes(lockedSession.status)) return;
+      lockedSession.status = HostedKycSessionStatus.ABANDONED;
+      await manager.getRepository(HostedKycSession).save(lockedSession);
+      session.status = lockedSession.status;
+      retired = true;
+      if (lockedProfile && lockedProfile.identityVerificationStatus === IdentityVerificationStatus.IN_PROGRESS) {
+        lockedProfile.identityVerificationStatus = IdentityVerificationStatus.UNSTARTED;
+        await profileRepository.save(lockedProfile);
+      }
+    });
+    if (retired) this.logger.log('Unfinished session retired: its home-country confirmation expired.');
+    return (await this.profileRepository.findOne({ where: { id: profile.id } })) ?? profile;
+  }
+
+  private async resume(active: HostedKycSession, returnOrigin?: string): Promise<{ url: string }> {
     // Didit returns the same unfinished session for the same vendor_data —
     // the hosted URL is never stored here.
-    const created = await this.callProvider(active.vendorReference);
+    const created = await this.callProvider(active.vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
     const mapped = mapDiditStatusToKycStatus(created.status);
@@ -620,38 +709,68 @@ export class FreeKycService {
     return { url };
   }
 
-  private async createNew(profile: IdentityVerificationProfile): Promise<{ url: string }> {
+  private async createNew(profile: IdentityVerificationProfile, returnOrigin?: string): Promise<{ url: string }> {
     const vendorReference = randomUUID();
-    const created = await this.callProvider(vendorReference);
+    const created = await this.callProvider(vendorReference, returnOrigin);
     const url = this.validatedUrl(created.url);
 
-    await this.sessionRepository.save(
-      this.sessionRepository.create({
-        profileId: profile.id,
-        diditSessionId: created.sessionId,
-        vendorReference,
-        status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
-      }),
-    );
+    // The session row and the profile status are written together under the profile
+    // row lock, and the start rules are re-checked on the locked row. A webhook or
+    // reconcile for the previous session (same session -> profile lock order, so no
+    // deadlock) therefore either lands first (this start then refuses: verified, in
+    // review, blocked) or finds this new session when it checks for a replacement.
+    // The Didit session created above is simply never stored on a refusal.
+    await this.dataSource.transaction(async (manager) => {
+      const profileRepository = manager.getRepository(IdentityVerificationProfile);
+      const locked = await profileRepository.findOne({ where: { id: profile.id }, lock: { mode: 'pessimistic_write' } });
+      const current = locked ?? profile;
+      this.assertStatusAllowsStart(current);
 
-    if (profile.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
-      profile.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
-      await this.profileRepository.save(profile);
-    }
+      const sessionRepository = manager.getRepository(HostedKycSession);
+      await sessionRepository.save(
+        sessionRepository.create({
+          profileId: profile.id,
+          diditSessionId: created.sessionId,
+          vendorReference,
+          status: mapDiditStatusToKycStatus(created.status) ?? HostedKycSessionStatus.CREATED,
+          // The confirmation this session was started under (see unfinished-session-resumability.ts).
+          confirmedAt: current.verifiedHomeCountryConfirmedAt,
+        }),
+      );
+
+      if (current.identityVerificationStatus !== IdentityVerificationStatus.IN_PROGRESS) {
+        current.identityVerificationStatus = IdentityVerificationStatus.IN_PROGRESS;
+        await profileRepository.save(current);
+      }
+    });
     return { url };
   }
 
-  private async callProvider(vendorReference: string) {
+  private async callProvider(vendorReference: string, returnOrigin?: string) {
     const workflowId = process.env.DIDIT_FREE_KYC_WORKFLOW_ID;
-    const frontendUrl = process.env.FRONTEND_URL;
-    if (!workflowId || !frontendUrl) {
+    if (!workflowId) {
       throw new VendorStageUnavailableException({ reason: 'free_kyc_not_configured' });
+    }
+    // FRONTEND_URL is a list of origins (live, staging, dev, ...). Didit returns the browser
+    // to exactly one of them: the request's own origin, accepted only if it is on that list.
+    // Nothing is guessed (never "the first"), and nothing is created before this is settled.
+    const callbackOrigin = resolveCallbackOrigin(process.env.FRONTEND_URL, returnOrigin);
+    if (!callbackOrigin.ok) {
+      if (callbackOrigin.reason === 'not_configured') {
+        throw new VendorStageUnavailableException({ reason: 'free_kyc_not_configured' });
+      }
+      this.logger.warn(`Hosted KYC return origin not accepted: ${callbackOrigin.reason}`);
+      throw new BadRequestException(
+        callbackOrigin.reason === 'invalid_origin'
+          ? { code: 'INVALID_RETURN_ORIGIN', message: 'returnOrigin is not an allowed frontend origin.' }
+          : { code: 'RETURN_ORIGIN_REQUIRED', message: 'returnOrigin is required.' },
+      );
     }
     try {
       return await this.provider.createKycSession({
         workflowId,
         vendorData: vendorReference,
-        callbackUrl: `${frontendUrl.replace(/\/+$/, '')}/talent-dashboard`,
+        callbackUrl: `${callbackOrigin.origin}/talent-dashboard`,
       });
     } catch (err) {
       if (err instanceof AmbiguousVendorOutcomeError) {
@@ -847,11 +966,51 @@ export class FreeKycService {
       this.logger.debug('Status change would regress a finished session — ignored.');
       return false;
     }
+    if (await this.isSupersededOrdinarySession(manager, session)) {
+      // A late event for a session that a newer ordinary session has replaced
+      // (e.g. one retired after its confirmation window): it is inert. Neither the
+      // session row (an APPROVED/DECLINED row would also move the retry cycle), nor
+      // the profile, nor the attempt count is touched, so the replacement flow cannot
+      // be overwritten or verified by the old session.
+      this.logger.warn('Event for a superseded session — ignored.');
+      return false;
+    }
     session.status = status;
     if (eventTimestamp !== null) session.lastEventTimestamp = eventTimestamp;
     await manager.getRepository(HostedKycSession).save(session);
     await this.applyProfileOutcome(manager, session, status, signal);
     return true;
+  }
+
+  /**
+   * True when a NEWER ordinary identity session exists for the same profile. The
+   * profile row is locked first (the same lock the outcome below takes), so the
+   * check and the write are atomic against another transition of this profile.
+   * With no replacement the session is still the current one and a late genuine
+   * decision applies as it always did.
+   *
+   * Intended behavior for the user who finishes the already-open Didit tab after the
+   * 15 minutes, before any replacement exists: the decision STILL APPLIES (verified,
+   * declined with its one attempt, or in review). The 15-minute rule gates STARTING a
+   * session (and resuming one from the dashboard); it is not a deadline for finishing
+   * a flow already under way, and rejecting a real approval would waste a completed
+   * KYC and can trip Didit's duplicate-face check on the redo. Location is not
+   * re-judged: it stays as confirmed. Once a replacement exists, only the replacement
+   * decides. Home-country-change sessions are not judged
+   * here (they have their own pending-claim rules).
+   */
+  private async isSupersededOrdinarySession(manager: EntityManager, session: HostedKycSession): Promise<boolean> {
+    if (session.purpose !== undefined && session.purpose !== HostedKycSessionPurpose.IDENTITY_VERIFICATION) return false;
+    await manager.getRepository(IdentityVerificationProfile).findOne({
+      where: { id: session.profileId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const latest = await manager.getRepository(HostedKycSession).findOne({
+      where: { profileId: session.profileId, purpose: HostedKycSessionPurpose.IDENTITY_VERIFICATION },
+      order: { createdAt: 'DESC' },
+    });
+    if (!latest || latest.id === session.id) return false;
+    return latest.createdAt.getTime() > session.createdAt.getTime();
   }
 
   private isBlockedTerminalTransition(current: HostedKycSessionStatus, next: HostedKycSessionStatus): boolean {
@@ -927,7 +1086,12 @@ export class FreeKycService {
         profile.identityVerificationStatus = IdentityVerificationStatus.VERIFIED;
         // A successful (re-)verification ends any renewal window (TRVG2 §2.7).
         profile.expiredAt = null;
-        signal.verified = { profileId: profile.id, userId: profile.userId };
+        signal.verified = {
+          profileId: profile.id,
+          userId: profile.userId,
+          hostedKycSessionId: session.id,
+          persistentAlert: session.purpose !== HostedKycSessionPurpose.HOME_COUNTRY_CHANGE,
+        };
         break;
       case HostedKycSessionStatus.DECLINED: {
         const attemptRepository = manager.getRepository(VerificationAttempt);
@@ -956,6 +1120,9 @@ export class FreeKycService {
         break;
       }
       case HostedKycSessionStatus.IN_REVIEW:
+        if (current !== IdentityVerificationStatus.PENDING) {
+          signal.submitted = { userId: profile.userId, hostedKycSessionId: session.id };
+        }
         profile.identityVerificationStatus = IdentityVerificationStatus.PENDING;
         break;
       case HostedKycSessionStatus.CREATED:

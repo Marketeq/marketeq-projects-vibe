@@ -21,3 +21,4 @@ export const FAILURE_HEADER = 'x-notification-failure';
 export const FAILED_AT_HEADER = 'x-notification-failed-at';
 
 export const SEND_PATTERN = 'notification.send';
+export const STATUS_ALERT_PATTERN = 'notification.status_alert.upsert';

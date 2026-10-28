@@ -18,6 +18,40 @@ description = "Committed .env file"
 path = '''(^|/)\.env(\..+)?$'''
 tags = ["secret", "env"]
 
+# PMCM-750: no default rule catches a password inside a connection URL. The
+# supabase_admin password sat in 13 seed scripts and seed-users.js unflagged.
+# The secret is the password group only; placeholders are allowlisted below.
+[[rules]]
+id = "connection-string-password"
+description = "Database, broker or cache URL with an inline password"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|rediss?|amqps?|mssql|sqlserver)://[^\s:@/'"`]*:([^\s@/'"`]{3,})@[^\s'"`]+'''
+secretGroup = 1
+keywords = ["postgres", "mysql", "mariadb", "mongodb", "redis", "amqp", "mssql", "sqlserver"]
+tags = ["password", "connection-string"]
+  [rules.allowlist]
+  regexes = [
+    # ${DB_PASSWORD}, $PASS, and the markdown-escaped \${DB_PASSWORD}
+    '''^\\?\$''',
+    # <password>, {password}, [PASSWORD], and the markdown-escaped \[PASSWORD\] / \<password\>
+    '''^\\?[\[<{]''',
+    '''^%s$''',
+    # Words that are documentation placeholders or local-only defaults
+    # (postgres:postgres@localhost, RabbitMQ guest:guest, marketeq:marketeq@localhost).
+    '''(?i)^(\*+|x+|\.+|password|passwd|pass|pwd|pw|secret|changeme|postgres|guest|root|admin|user|test|example|redacted|marketeq|mypassword|your[-_]?pass[-_a-z]*)$''',
+  ]
+
+# PMCM-750: docs/JENKINS_GUIDE.md committed a root SSH password as an sshpass
+# argument, which no default rule matches.
+[[rules]]
+id = "sshpass-password"
+description = "Password passed to sshpass on the command line"
+regex = '''sshpass\s+-p\s*['"]?([^'"\s]+)'''
+secretGroup = 1
+keywords = ["sshpass"]
+tags = ["password", "ssh"]
+  [rules.allowlist]
+  regexes = ['''^\\?\$''', '''^\\?[\[<{]''']
+
 # Paths to ignore (generated files, fixtures, lockfiles, etc.)
 [allowlist]
 description = "Global allowlist"
@@ -31,7 +65,9 @@ paths = [
   '''(.*?)build/''',
   '''(.*?)node_modules/''',
   '''(.*?)\.next/''',
-  '''docs/''',
+  # docs/ is scanned (PMCM-750). It used to be allowlisted wholesale, which hid
+  # a real VPS root password and Jenkins admin password in docs/JENKINS_GUIDE.md.
+  # Placeholders in docs are allowlisted by value below, not by path.
   # Vendored cal.diy scheduling-service source (backend/apps/scheduling-service/app/).
   # Third-party code we don't author -- test fixtures, example docs, and a
   # git symlink (mode 120000) all trip the default/custom rules with no real
@@ -63,4 +99,10 @@ regexes = [
   # response. It is test data, not a credential; generic-api-key matches the
   # "..._TOKEN = ..." assignment.
   '''^eyJhbGciOi\.eyJzdWIiOiJ1c2VyLTEi\.c2lnbmF0dXJl$''',
+  # Docs placeholders (Transaction Service Doc 01 / Doc 07, Resume Upload):
+  # all-lowercase Stripe keys padded with "xxx" (real keys are mixed-case),
+  # JWTs whose signature is the literal word PLACEHOLDER, and "replace_me..." values.
+  '''^sk_(live|test)_[a-z_]*x{3,}[a-z_]*\s?$''',
+  '''\.PLACEHOLDER$''',
+  '''(?i)^replace[_-]?me''',
 ]

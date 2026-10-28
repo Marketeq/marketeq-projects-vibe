@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { FreeKycService, HOME_COUNTRY_CONFIRMATION_WINDOW_MS, mapDiditStatusToKycStatus } from './free-kyc.service';
+import { computeHostedKycCycleAttemptCount } from '../common/attempt-limit/hosted-kyc-attempt-cycle';
 import { computeDiditSignatureV2 } from '../providers/webhooks/didit-webhook-signature-v2';
 import { HostedKycSession } from '../entities/hosted-kyc-session.entity';
 import { IdentityVerificationProfile } from '../entities/identity-verification-profile.entity';
@@ -184,10 +185,88 @@ describe('FreeKycService', () => {
     return null;
   };
 
+  // ------------------------------------------------------- callback origin
+  // FRONTEND_URL on the shared backend lists every frontend (live, staging, dev, ...). Didit's
+  // callback must be the request's own origin, accepted only from that list.
+  describe('startOrResume — Didit callback origin (comma-separated FRONTEND_URL)', () => {
+    const LIVE = 'https://live-marketeq-projects.vercel.app';
+    const STAGING = 'https://staging-marketeq-projects.vercel.app';
+    const LIST = `${LIVE},${STAGING},https://dev-marketeq-projects.vercel.app,http://localhost:3000`;
+    beforeEach(() => {
+      process.env.FRONTEND_URL = LIST;
+    });
+    const callbackSent = (provider: { createKycSession: jest.Mock }) =>
+      (provider.createKycSession.mock.calls[0] as any[])[0].callbackUrl;
+
+    it('staging request: Didit returns the browser to staging, even though production is listed first', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', STAGING);
+      expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+      expect(callbackSent(provider)).toBe(`${STAGING}/talent-dashboard`);
+    });
+
+    it('production request: Didit returns the browser to production', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', LIVE);
+      expect(callbackSent(provider)).toBe(`${LIVE}/talent-dashboard`);
+    });
+
+    it('the callback is always a single URL, never the configured list', async () => {
+      const { service, provider } = build();
+      await service.startOrResume('user-1', `${STAGING}/`);
+      const callback = callbackSent(provider);
+      expect(callback).not.toContain(',');
+      expect(() => new URL(callback)).not.toThrow();
+      expect(callback).toBe(`${STAGING}/talent-dashboard`);
+    });
+
+    it.each([
+      ['an origin that is not configured', 'https://evil.example'],
+      ['a look-alike of a configured origin', `${STAGING}.evil.com`],
+      ['a configured origin with a path', `${STAGING}/steal`],
+      ['the wrong scheme', 'http://staging-marketeq-projects.vercel.app'],
+      ['javascript:', 'javascript:alert(1)'],
+      ['the whole list', LIST],
+    ])('rejects %s before anything is created', async (_label, origin) => {
+      const { service, provider, sessionRepository, profile } = build();
+      const before = profile.identityVerificationStatus;
+      const outcome = await reasonOf(service.startOrResume('user-1', origin));
+      expect(outcome?.type).toBeInstanceOf(BadRequestException);
+      expect((outcome?.type as any).getResponse().code).toBe('INVALID_RETURN_ORIGIN');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+      expect(sessionRepository.save).not.toHaveBeenCalled();
+      expect(profile.identityVerificationStatus).toBe(before);
+    });
+
+    it('several origins configured and none sent: refuses (never falls back to the first one)', async () => {
+      const { service, provider, sessionRepository } = build();
+      const outcome = await reasonOf(service.startOrResume('user-1'));
+      expect(outcome?.type).toBeInstanceOf(BadRequestException);
+      expect((outcome?.type as any).getResponse().code).toBe('RETURN_ORIGIN_REQUIRED');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+      expect(sessionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('a single configured origin still works without one (local development)', async () => {
+      process.env.FRONTEND_URL = 'http://localhost:3000/';
+      const { service, provider } = build();
+      await service.startOrResume('user-1');
+      expect(callbackSent(provider)).toBe('http://localhost:3000/talent-dashboard');
+    });
+
+    it('a missing FRONTEND_URL is still reported as not configured, not as a bad request', async () => {
+      delete process.env.FRONTEND_URL;
+      const { service, provider } = build();
+      const outcome = await reasonOf(service.startOrResume('user-1', STAGING));
+      expect(outcome?.reason).toBe('free_kyc_not_configured');
+      expect(provider.createKycSession).not.toHaveBeenCalled();
+    });
+  });
+
   // ------------------------------------------------------------------ start
   describe('startOrResume — new session', () => {
     it('creates one hosted session: workflow from config, opaque vendor reference, callback to /talent-dashboard', async () => {
-      const { service, provider, sessionRepository } = build();
+      const { service, provider, sessionRepository, profile } = build();
       const result = await service.startOrResume('user-1');
 
       expect(result).toEqual({ url: HOSTED_URL });
@@ -206,6 +285,8 @@ describe('FreeKycService', () => {
         diditSessionId: 'didit-1',
         vendorReference: call.vendorData,
         status: HostedKycSessionStatus.CREATED,
+        // The confirmation this session was started under (exact correlation for resume).
+        confirmedAt: profile.verifiedHomeCountryConfirmedAt,
       });
       // The hosted URL is never persisted.
       expect(JSON.stringify(saved)).not.toContain('didit.me');
@@ -463,15 +544,108 @@ describe('FreeKycService', () => {
       expect(sessionRepository.save).not.toHaveBeenCalled();
     });
 
-    it('does NOT create a duplicate merely because the 15-minute window expired', async () => {
-      const stale = new Date(Date.now() - 3 * HOME_COUNTRY_CONFIRMATION_WINDOW_MS);
-      const { service, provider, sessionRepository } = build({
-        activeSession: active(),
-        profile: confirmedProfile({ verifiedHomeCountryConfirmedAt: stale, identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS }),
+    // The 15-minute guard: an unfinished session is resumable only while the
+    // confirmation it was started under is current.
+    describe('15-minute confirmation guard', () => {
+      const MIN = 60 * 1000;
+      const inProgress = (over: Record<string, unknown> = {}) =>
+        confirmedProfile({ identityVerificationStatus: IdentityVerificationStatus.IN_PROGRESS, ...over });
+      const sessionUnder = (confirmedAt: Date) => ({ ...active(), createdAt: new Date(confirmedAt.getTime() + 2_000), confirmedAt });
+
+      it('under 15 minutes: resumes the SAME Didit session and creates no second session', async () => {
+        const confirmedAt = new Date(Date.now() - 10 * MIN);
+        const row = sessionUnder(confirmedAt);
+        const { service, provider, sessionRepository } = build({
+          activeSession: row,
+          profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }),
+        });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+        expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+        expect((provider.createKycSession.mock.calls[0] as any[])[0].vendorData).toBe(row.vendorReference);
+        expect(sessionRepository.create).not.toHaveBeenCalled();
+        expect(sessionRepository.save).not.toHaveBeenCalled();
+        expect(row.diditSessionId).toBe('didit-1');
+        expect(row.status).toBe(HostedKycSessionStatus.IN_PROGRESS);
       });
-      await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
-      expect(sessionRepository.create).not.toHaveBeenCalled();
-      expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+
+      it('over 15 minutes: a direct start cannot bypass location detection (409 confirmation_stale, no Didit call)', async () => {
+        const confirmedAt = new Date(Date.now() - 20 * MIN);
+        const row = sessionUnder(confirmedAt);
+        const { service, provider, sessionRepository } = build({
+          activeSession: row,
+          profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }),
+        });
+        const r = await reasonOf(service.startOrResume('user-1'));
+        expect(r?.type).toBeInstanceOf(HomeCountryConfirmationRequiredException);
+        expect(r?.reason).toBe('confirmation_stale');
+        expect(provider.createKycSession).not.toHaveBeenCalled();
+        expect(sessionRepository.create).not.toHaveBeenCalled();
+      });
+
+      it('over 15 minutes: the stale session is retired without consuming an attempt', async () => {
+        const confirmedAt = new Date(Date.now() - 20 * MIN);
+        const row = sessionUnder(confirmedAt);
+        const profile = inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt });
+        const { service, attemptRepository, sessionRepository, profileRepository } = build({ activeSession: row, profile });
+        await reasonOf(service.startOrResume('user-1'));
+        expect(row.status).toBe(HostedKycSessionStatus.ABANDONED);
+        expect(sessionRepository.save).toHaveBeenCalledWith(row);
+        expect(profile.identityVerificationStatus).toBe(IdentityVerificationStatus.UNSTARTED);
+        expect(profileRepository.save).toHaveBeenCalled();
+        expect(attemptRepository.insert).not.toHaveBeenCalled();
+        // The cycle counter ignores abandoned sessions: still zero attempts used.
+        expect(
+          computeHostedKycCycleAttemptCount(
+            [{ diditSessionId: row.diditSessionId, status: row.status, createdAt: row.createdAt }],
+            new Set(),
+          ),
+        ).toBe(0);
+      });
+
+      it('a fresh confirmation after expiry starts a NEW session (new reference, old one retired, no attempt)', async () => {
+        const row = sessionUnder(new Date(Date.now() - 30 * MIN));
+        const profile = inProgress({ verifiedHomeCountryConfirmedAt: new Date(Date.now() - 1_000) }); // just re-confirmed
+        const { service, provider, sessionRepository, attemptRepository } = build({
+          activeSession: row,
+          profile,
+          providerResult: { sessionId: 'didit-2', url: HOSTED_URL, status: 'Not Started' },
+        });
+        await expect(service.startOrResume('user-1')).resolves.toEqual({ url: HOSTED_URL });
+        expect(row.status).toBe(HostedKycSessionStatus.ABANDONED);
+        expect(provider.createKycSession).toHaveBeenCalledTimes(1);
+        expect((provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(row.vendorReference);
+        expect(sessionRepository.create).toHaveBeenCalledWith(
+          expect.objectContaining({ diditSessionId: 'didit-2', confirmedAt: profile.verifiedHomeCountryConfirmedAt }),
+        );
+        expect(profile.identityVerificationStatus).toBe(IdentityVerificationStatus.IN_PROGRESS);
+        expect(attemptRepository.insert).not.toHaveBeenCalled();
+      });
+
+      it('a re-confirmation made seconds after the session started still supersedes it (exact correlation, no tolerance)', async () => {
+        const startedUnder = new Date(Date.now() - 5 * MIN);
+        const row = sessionUnder(startedUnder);
+        const profile = inProgress({ verifiedHomeCountryConfirmedAt: new Date(startedUnder.getTime() + 5_000) });
+        const { service, provider } = build({
+          activeSession: row,
+          profile,
+          providerResult: { sessionId: 'didit-2', url: HOSTED_URL, status: 'Not Started' },
+        });
+        await service.startOrResume('user-1');
+        expect(row.status).toBe(HostedKycSessionStatus.ABANDONED);
+        expect((provider.createKycSession.mock.calls[0] as any[])[0].vendorData).not.toBe(row.vendorReference);
+      });
+
+      it('a second start after the retirement neither resumes nor creates anything (idempotent refusal)', async () => {
+        const confirmedAt = new Date(Date.now() - 20 * MIN);
+        const row = sessionUnder(confirmedAt);
+        const h = build({ activeSession: row, profile: inProgress({ verifiedHomeCountryConfirmedAt: confirmedAt }) });
+        await reasonOf(h.service.startOrResume('user-1'));
+        h.sessionRepository.findOne.mockImplementation(async () => null); // the retired row is no longer active
+        const r = await reasonOf(h.service.startOrResume('user-1'));
+        expect(r?.reason).toBe('confirmation_stale');
+        expect(h.provider.createKycSession).not.toHaveBeenCalled();
+        expect(h.sessionRepository.create).not.toHaveBeenCalled();
+      });
     });
 
     // Part 2: resuming an unfinished session needs no home-country confirmation of

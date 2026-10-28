@@ -58,6 +58,7 @@ import {
   NOTIFICATIONS_CLIENT,
   NOTIFICATION_SERVICE_QUEUE,
 } from './events/home-country-updated-notification.publisher';
+import { StatusAlertPublisher } from './events/status-alert.publisher';
 import { RabbitMqNotificationEventPublisher } from './events/rabbitmq-notification-event-publisher';
 import { MetricsModule } from './metrics/metrics.module';
 import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
@@ -170,6 +171,7 @@ import { VpnProxyCheckGuard } from './common/guards/vpn-proxy-check.guard';
     { provide: HOSTED_BIOMETRIC_SESSION_PROVIDER, useClass: DiditHostedBiometricSessionProvider },
     { provide: NOTIFICATION_EVENT_PUBLISHER, useClass: RabbitMqNotificationEventPublisher },
     HomeCountryUpdatedNotificationPublisher,
+    StatusAlertPublisher,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })

@@ -1,7 +1,13 @@
 const { Client } = require("pg");
 
+// The connection string comes from the environment (stored in Doppler); never commit it.
+if (!process.env.DATABASE_URL) {
+  console.error("DATABASE_URL is not set. Export it, or run with: doppler run -- node src/db-test.js");
+  process.exit(1);
+}
+
 const client = new Client({
-  connectionString: "postgresql://postgres:N%40veen_696096@db.itkmlzugzqrthomsvday.supabase.co:5432/postgres",
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
