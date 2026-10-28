@@ -287,8 +287,8 @@ describe("the installer Download dialog: the fallback popup starts verification 
   })
 })
 
-describe("G2, G3 and G9 are unchanged by G8", () => {
-  it("G3 still uses the host through its own hook; G2 and G9 keep their own navigation", () => {
+describe("G2 and G3 are unchanged by G8", () => {
+  it("G3 still uses the host through its own hook; G2 keeps its own navigation", () => {
     assert.ok(
       read("utils", "useApplyGate.tsx").includes("void startVerification()")
     )
@@ -297,21 +297,6 @@ describe("G2, G3 and G9 are unchanged by G8", () => {
         "router.push(START_VERIFICATION_HREF)"
       )
     )
-    for (const file of [
-      ["components", "withdraw-funds-dialog.tsx"],
-      ["app", "transfer-funds", "page.tsx"],
-      ["app", "verify-withdrawal", "page.tsx"],
-    ]) {
-      const text = read(...file)
-      assert.ok(
-        text.includes('router.push("/talent-dashboard")'),
-        file.join("/")
-      )
-      assert.ok(
-        !/identity-verification-host|useIdentityVerification/.test(text),
-        file.join("/")
-      )
-    }
   })
 
   it("the dashboard handoff remains for the gates that still use it", () => {

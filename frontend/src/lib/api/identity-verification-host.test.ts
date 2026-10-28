@@ -112,6 +112,9 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
       "utils/useStartTimeGate.tsx",
       "app/(group)/time-tracking/page.tsx",
       "app/(group)/earnings/page.tsx",
+      "components/withdraw-funds-dialog.tsx",
+      "app/transfer-funds/page.tsx",
+      "app/verify-withdrawal/page.tsx",
     ]
     assert.deepEqual(
       filesWith("@/contexts/identity-verification-host"),
@@ -158,13 +161,9 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     ) // observer mount, startVerification
   })
 
-  it("only G3 (Apply) and G8 (Log Time, Manual Time) are migrated: G2 and G9 keep their own navigation and do not touch the host", () => {
+  it("G3 (Apply), G8 (Log Time, Manual Time) and G9 (withdrawals) are migrated: only G2 keeps its own navigation and stays off the host", () => {
     const unmigrated: Record<string, RegExp> = {
       "utils/CreateListingGateHost.tsx": /START_VERIFICATION_HREF/,
-      "components/withdraw-funds-dialog.tsx":
-        /router\.push\("\/talent-dashboard"\)/,
-      "app/transfer-funds/page.tsx": /router\.push\("\/talent-dashboard"\)/,
-      "app/verify-withdrawal/page.tsx": /router\.push\("\/talent-dashboard"\)/,
     }
     for (const [file, navigation] of Object.entries(unmigrated)) {
       const text = readFileSync(join(root, file), "utf8")
@@ -178,10 +177,13 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     for (const file of [
       "utils/useApplyGate.tsx",
       "utils/useStartTimeGate.tsx",
+      "components/withdraw-funds-dialog.tsx",
+      "app/transfer-funds/page.tsx",
     ]) {
       const text = readFileSync(join(root, file), "utf8")
       assert.ok(/useIdentityVerification\(\)/.test(text), file)
-      assert.ok(!/START_VERIFICATION_HREF|router\.push/.test(text), file)
+      assert.ok(!/START_VERIFICATION_HREF/.test(text), file)
+      assert.ok(!/router\.push\("\/talent-dashboard"\)/.test(text), file)
     }
     // the old handoff stays for the gates that still use it
     assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
