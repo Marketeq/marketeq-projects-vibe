@@ -101,6 +101,15 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
     }
   }, [sessionId, retryKey])
 
+  useEffect(() => {
+    if (!sessionId) return
+    const reloadOnRestore = (event: PageTransitionEvent) => {
+      if (event.persisted) setRetryKey((count) => count + 1)
+    }
+    window.addEventListener("pageshow", reloadOnRestore)
+    return () => window.removeEventListener("pageshow", reloadOnRestore)
+  }, [sessionId])
+
   const session = loadState.sessionId === sessionId ? loadState.session : null
   const updateSession = useCallback(
     (nextSession: CheckoutSession) =>
@@ -165,6 +174,47 @@ export function CheckoutProvider({ children }: { children: React.ReactNode }) {
             </div>
           </DialogContent>
         </Dialog>
+      )
+    }
+    if (session.status === "success") {
+      const username = searchParams.get("username")
+      return (
+        <div className="flex min-h-screen items-center justify-center px-4 py-[50px]">
+          <div className="w-full max-w-[600px]">
+            <Alert variant="error" className="items-center p-5">
+              <AlertIcon>
+                <AlertCircle className="size-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertTitle>This checkout has already been paid</AlertTitle>
+                <AlertDescription className="mt-1">
+                  Please check your payment confirmation or contact support.
+                </AlertDescription>
+                <Button
+                  variant="filled"
+                  className="mt-4"
+                  onClick={() => {
+                    if (username) {
+                      router.push(
+                        `/talent-profile?username=${encodeURIComponent(username)}`
+                      )
+                      return
+                    }
+                    if (session.slug) {
+                      router.push(
+                        `/project-details/${encodeURIComponent(session.slug)}`
+                      )
+                      return
+                    }
+                    router.back()
+                  }}
+                >
+                  Back to Listing
+                </Button>
+              </AlertContent>
+            </Alert>
+          </div>
+        </div>
       )
     }
     notFound()

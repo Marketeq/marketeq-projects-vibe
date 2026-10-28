@@ -3338,13 +3338,21 @@ function CheckoutPageInner() {
   ) {
     const isNetworkFailure = projectSummaryError
     return (
-      <div className="bg-gray-50 pt-[64px]">
-        <CheckoutNavigation
-          currentStep={1}
-          logoHref=""
-          firstStepLabel="Project Details"
-        />
-        <div className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-[50px]">
+      <div className={isDraftAlreadyPaid ? "bg-gray-50" : "bg-gray-50 pt-[64px]"}>
+        {!isDraftAlreadyPaid && (
+          <CheckoutNavigation
+            currentStep={1}
+            logoHref=""
+            firstStepLabel="Project Details"
+          />
+        )}
+        <div
+          className={
+            isDraftAlreadyPaid
+              ? "flex min-h-screen items-center justify-center px-4 py-[50px]"
+              : "flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-[50px]"
+          }
+        >
           <div className="w-full max-w-[600px]">
             <Alert variant="error" className="items-center p-5">
               <AlertIcon>
@@ -3357,6 +3365,21 @@ function CheckoutPageInner() {
                     <AlertDescription className="mt-1">
                       Please check your payment confirmation or contact support.
                     </AlertDescription>
+                    <Button
+                      variant="filled"
+                      className="mt-4"
+                      onClick={() => {
+                        if (projectSummary?.slug) {
+                          router.push(
+                            `/project-details/${encodeURIComponent(projectSummary.slug)}`
+                          )
+                          return
+                        }
+                        router.back()
+                      }}
+                    >
+                      Back to Listing
+                    </Button>
                   </>
                 ) : isNetworkFailure ? (
                   <>
