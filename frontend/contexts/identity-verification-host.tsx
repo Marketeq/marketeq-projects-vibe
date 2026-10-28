@@ -11,6 +11,8 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import dynamic from "next/dynamic"
+import { usePathname } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import { AlertTriangle, CheckCircle, RefreshCw } from "@blend-metrics/icons"
@@ -64,18 +66,35 @@ import {
 import { isTravelModeInForce } from "@/src/lib/api/travel-popup"
 import { ALERT_RECENCY_WINDOW_MS } from "@/src/lib/api/status-alert-reconcile"
 import type { StatusAlert } from "@/src/lib/api/status-alerts"
-import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
+import {
+  identityHostResetKey,
+  isIdentityHostActive,
+} from "@/src/lib/api/identity-host-routes"
 import {
   AccountVerificationGate,
   type ConnectionCheckState,
 } from "@/components/account-verification-gate"
 
+// The flow is large (a map, a camera, a dozen screens) and the host is mounted for every page,
+// so it is loaded on demand: when the dashboard mounts (so Verify My Account opens it as fast as
+// it always did) or when a verification is started. A page that never starts one never loads it.
+const loadIdentityVerificationFlow = () =>
+  import("@/components/identity-verification-flow").then(
+    (module) => module.IdentityVerificationFlow
+  )
+const IdentityVerificationFlow = dynamic(loadIdentityVerificationFlow, {
+  ssr: false,
+})
+
 // The one place the Identity Verification flow is hosted: the flow dialog, the Verify My
 // Account action (VPN/proxy check, fresh status read, Didit hand-off or the location
 // screen), the dialogs that answer it, and the single owner of the Didit-return
 // reconciliation. It was moved here from the talent dashboard without changing what any
-// of it does. Phase 1: it is mounted around the talent dashboard only, so nothing here
-// can appear on another page yet.
+// of it does. It is mounted once, in the root layout, inside AuthProvider, so it can
+// open over any page; in this phase the talent dashboard is still its only caller. It is inert
+// (renders nothing, reads nothing) when nobody is signed in and on the public authentication
+// pages (identity-host-routes.ts), and it closes and forgets everything when the page, the
+// account, the role or the sign-in changes.
 //
 // Everything that belongs to the dashboard itself (the profile banner, the persistent
 // status alerts, the load-time prompts, the Travel Mode check-in and popups) stays on the
@@ -144,6 +163,8 @@ export interface IdentityVerificationHost {
 interface IdentityVerificationHostContextValue {
   host: IdentityVerificationHost
   observerRef: { current: IdentityHostObserver | null }
+  /** A page that shows verification results (the dashboard) is mounted. */
+  setResultsSurfaceMounted: (mounted: boolean) => void
 }
 
 const IdentityVerificationHostContext =
@@ -155,6 +176,11 @@ export function IdentityVerificationHostProvider({
   children: ReactNode
 }) {
   const { user } = useAuth()
+  const pathname = usePathname()
+  const hostActive = isIdentityHostActive({ pathname, userId: user?.id })
+  // Didit-return results are handled only while a page that shows them is mounted: the awaiting
+  // marker is consumed by the page that can announce the result, never by another page.
+  const [resultsSurfaceMounted, setResultsSurfaceMounted] = useState(false)
   const observerRef = useRef<IdentityHostObserver | null>(null)
   const statusRefreshedListenersRef = useRef(new Set<StatusRefreshedListener>())
   const openOnClosedRef = useRef<(() => void) | null>(null)
@@ -246,7 +272,33 @@ export function IdentityVerificationHostProvider({
     setVerifiedModalOpen(false)
   }
 
-    // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
+  // Everything above belongs to one account on one page. When the page, the account, the role
+  // or the sign-in changes (or a public page is entered, or nobody is signed in), it is all
+  // closed and forgotten, exactly as it was when the dashboard unmounted and a new one mounted.
+  // A layout effect, so it settles before the new page's own effects start anything.
+  const resetKey = identityHostResetKey({
+    pathname,
+    userId: user?.id,
+    role: user ? resolveDashboardRole(user) : null,
+  })
+  const resetKeyRef = useRef(resetKey)
+  useLayoutEffect(() => {
+    if (resetKeyRef.current === resetKey) return
+    resetKeyRef.current = resetKey
+    setVerificationGateOpen(false)
+    setConnectionCheckState("idle")
+    setVpnProxyResult(null)
+    setVpnProxyModalOpen(false)
+    setIdentityFlowOpen(false)
+    setDetectedLocation(null)
+    setFlowLaunch({ key: 0 })
+    setVerifiedModalOpen(false)
+    setPendingModalOpen(false)
+    setCooldownRetryTime(null)
+    openOnClosedRef.current = null
+  }, [resetKey])
+
+  // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
   const returnReconcilerRef = useRef<ReturnType<
     typeof createReturnReconciler
   > | null>(null)
@@ -254,6 +306,7 @@ export function IdentityVerificationHostProvider({
   useEffect(() => {
     if (!user) return
     if (resolveDashboardRole(user) !== ROLE.TALENT) return
+    if (!hostActive || !resultsSurfaceMounted) return
 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -365,7 +418,7 @@ export function IdentityVerificationHostProvider({
       document.removeEventListener("visibilitychange", onVisible)
       window.removeEventListener("pageshow", onPageShow)
     }
-  }, [user, startAlertReconcile])
+  }, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])
 
     // Real required check, attempted only on "Verify My Account" / Retry. Never
   // fakes a clean result and never marks anything verified itself.
@@ -491,6 +544,13 @@ export function IdentityVerificationHostProvider({
 
   const closeGate = useCallback(() => setVerificationGateOpen(false), [])
 
+  // Verify My Account, with the flow's code requested first so it is ready when the location
+  // step opens it.
+  const startVerification = useCallback(() => {
+    void loadIdentityVerificationFlow()
+    return handleVerifyMyAccount()
+  }, [handleVerifyMyAccount])
+
   const subscribeStatusRefreshed = useCallback(
     (listener: StatusRefreshedListener) => {
       statusRefreshedListenersRef.current.add(listener)
@@ -526,7 +586,7 @@ export function IdentityVerificationHostProvider({
   const value = useMemo<IdentityVerificationHostContextValue>(
     () => ({
       host: {
-        startVerification: handleVerifyMyAccount,
+        startVerification,
         openFlow,
         flowOpen: identityFlowOpen,
         connectionCheckState,
@@ -535,9 +595,10 @@ export function IdentityVerificationHostProvider({
         subscribeStatusRefreshed,
       },
       observerRef,
+      setResultsSurfaceMounted,
     }),
     [
-      handleVerifyMyAccount,
+      startVerification,
       openFlow,
       identityFlowOpen,
       connectionCheckState,
@@ -550,6 +611,8 @@ export function IdentityVerificationHostProvider({
     <IdentityVerificationHostContext.Provider value={value}>
       {children}
 
+      {hostActive && (
+      <>
       <Dialog
         open={vpnProxyModalOpen}
         onOpenChange={(open) => {
@@ -693,6 +756,8 @@ export function IdentityVerificationHostProvider({
           }
         />
       )}
+      </>
+      )}
     </IdentityVerificationHostContext.Provider>
   )
 }
@@ -713,6 +778,14 @@ export function useIdentityVerificationObserver(
 ) {
   const context = useContext(IdentityVerificationHostContext)
   const registration = context?.observerRef
+  const setResultsSurfaceMounted = context?.setResultsSurfaceMounted
+  // A page that registers an observer is a page that shows verification results.
+  useLayoutEffect(() => {
+    if (!setResultsSurfaceMounted) return
+    setResultsSurfaceMounted(true)
+    void loadIdentityVerificationFlow()
+    return () => setResultsSurfaceMounted(false)
+  }, [setResultsSurfaceMounted])
   useLayoutEffect(() => {
     if (!registration) return
     registration.current = observer

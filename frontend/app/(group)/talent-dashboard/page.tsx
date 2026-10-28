@@ -164,21 +164,12 @@ import {
   type MismatchLaunch,
 } from "@/src/lib/api/location-mismatch"
 import {
-  IdentityVerificationHostProvider,
   useIdentityVerification,
   useIdentityVerificationObserver,
 } from "@/contexts/identity-verification-host"
 import { startVerificationRequestedInBrowser } from "@/src/lib/api/start-verification-handoff"
 
 export default function TalentDashboard() {
-  return (
-    <IdentityVerificationHostProvider>
-      <TalentDashboardContent />
-    </IdentityVerificationHostProvider>
-  )
-}
-
-function TalentDashboardContent() {
   const [isOpen, setIsOpen] = useState(false)
   const { user } = useAuth()
   const router = useRouter()

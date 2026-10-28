@@ -8,6 +8,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, it } from "node:test"
 import { readDashboardPage, readIdentityHost } from "./dashboard-host-source"
+import {
+  IDENTITY_HOST_PUBLIC_PREFIXES,
+  identityHostResetKey,
+  isIdentityHostActive,
+  isIdentityHostPublicPath,
+} from "./identity-host-routes"
 
 const root = process.cwd()
 const SKIP = new Set([
@@ -45,20 +51,41 @@ const DASHBOARD = "app/(group)/talent-dashboard/page.tsx"
 const host = readIdentityHost()
 const dashboard = readDashboardPage()
 
-describe("the host is mounted around the talent dashboard only", () => {
-  it("only the dashboard page imports the provider or the hooks", () => {
-    assert.deepEqual(filesWith("@/contexts/identity-verification-host"), [
-      DASHBOARD,
-    ])
-    assert.deepEqual(
-      filesWith("IdentityVerificationHostProvider"),
-      [DASHBOARD, HOST].sort()
+const ROOT = "app/layout.tsx"
+const layoutText = (file: string) => readFileSync(join(root, file), "utf8")
+
+describe("one provider, mounted once in the root layout inside AuthProvider", () => {
+  it("only the root layout mounts the provider (exactly one tag in the whole app)", () => {
+    assert.deepEqual(filesWith("<IdentityVerificationHostProvider"), [ROOT])
+    const open =
+      layoutText(ROOT).match(/<IdentityVerificationHostProvider>/g) ?? []
+    const close =
+      layoutText(ROOT).match(/<\/IdentityVerificationHostProvider>/g) ?? []
+    assert.equal(open.length, 1)
+    assert.equal(close.length, 1)
+  })
+
+  it("it sits inside AuthProvider and wraps the page children", () => {
+    const layout = layoutText(ROOT)
+    const auth = layout.indexOf("<AuthProvider>")
+    const provider = layout.indexOf("<IdentityVerificationHostProvider>")
+    const children = layout.indexOf("{children}", provider)
+    const providerEnd = layout.indexOf("</IdentityVerificationHostProvider>")
+    const authEnd = layout.indexOf("</AuthProvider>")
+    assert.ok(
+      auth > -1 &&
+        auth < provider &&
+        provider < children &&
+        children < providerEnd &&
+        providerEnd < authEnd
     )
   })
 
-  it("no layout mounts it: the root layout and the (group) layouts never mention it", () => {
-    const layouts = app.filter(({ file }) => /(^|\/)layout\.tsx$/.test(file))
-    assert.ok(layouts.length > 0)
+  it("no other layout and no page mounts it, and the dashboard no longer carries its own", () => {
+    const layouts = app.filter(
+      ({ file }) => /(^|\/)layout\.tsx$/.test(file) && file !== ROOT
+    )
+    assert.ok(layouts.length >= 5)
     for (const { file, text } of layouts) {
       assert.ok(
         !/identity-verification-host|IdentityVerificationHostProvider/.test(
@@ -67,16 +94,27 @@ describe("the host is mounted around the talent dashboard only", () => {
         file
       )
     }
-  })
-
-  it("the dashboard default export wraps its content in the provider and nothing else", () => {
+    assert.ok(
+      !/<IdentityVerificationHostProvider|import\s*\{[^}]*IdentityVerificationHostProvider/.test(
+        dashboard
+      )
+    )
+    assert.ok(!dashboard.includes("TalentDashboardContent"))
     assert.match(
       dashboard,
-      /export default function TalentDashboard\(\) \{\s+return \(\s+<IdentityVerificationHostProvider>\s+<TalentDashboardContent \/>\s+<\/IdentityVerificationHostProvider>\s+\)\s+\}/
+      /export default function TalentDashboard\(\) \{\s+const \[isOpen, setIsOpen\]/
     )
   })
 
-  it("the flow and the gate are rendered by the host only: no verification UI can appear on another page by itself", () => {
+  it("only the root layout and the dashboard import the host module; the dashboard is the only caller", () => {
+    assert.deepEqual(
+      filesWith("@/contexts/identity-verification-host"),
+      [DASHBOARD, ROOT].sort()
+    )
+    assert.deepEqual(filesWith("= useIdentityVerification()"), [DASHBOARD])
+  })
+
+  it("the flow and the gate are rendered by the host only: one flow instance, one gate", () => {
     // The dev preview route renders the flow on purpose (simulated, development only).
     assert.deepEqual(
       filesWith("<IdentityVerificationFlow"),
@@ -88,7 +126,30 @@ describe("the host is mounted around the talent dashboard only", () => {
     assert.ok(!dashboard.includes('reason="unstarted"'))
   })
 
-  it("the other gate pages are untouched: none of them imports the host", () => {
+  it("the heavy flow is lazy: no static import of it anywhere in the host, and the loader is requested when the dashboard mounts or a verification starts", () => {
+    assert.ok(
+      !/import\s*\{[^}]*IdentityVerificationFlow[^}]*\}\s*from\s*"@\/components\/identity-verification-flow"/.test(
+        host
+      )
+    )
+    assert.match(host, /import dynamic from "next\/dynamic"/)
+    assert.match(
+      host,
+      /dynamic\(loadIdentityVerificationFlow,\s*\{\s*ssr: false,?\s*\}\)/
+    )
+    assert.equal(
+      host.split('import("@/components/identity-verification-flow")').length -
+        1,
+      1
+    )
+    assert.ok(host.includes("void loadIdentityVerificationFlow()"))
+    assert.equal(
+      host.split("void loadIdentityVerificationFlow()").length - 1,
+      2
+    ) // observer mount, startVerification
+  })
+
+  it("no off-dashboard gate has been migrated: none imports the host, all still use the dashboard handoff", () => {
     for (const file of [
       "utils/useApplyGate.tsx",
       "utils/useStartTimeGate.tsx",
@@ -97,23 +158,299 @@ describe("the host is mounted around the talent dashboard only", () => {
       "components/withdraw-funds-dialog.tsx",
       "app/transfer-funds/page.tsx",
       "app/verify-withdrawal/page.tsx",
+      "app/(group)/time-tracking/page.tsx",
+    ]) {
+      const text = readFileSync(join(root, file), "utf8")
+      assert.ok(
+        !/identity-verification-host|useIdentityVerification/.test(text),
+        file
+      )
+    }
+    for (const file of [
+      "utils/useApplyGate.tsx",
+      "utils/useStartTimeGate.tsx",
+      "utils/CreateListingGateHost.tsx",
     ]) {
       assert.ok(
-        !readFileSync(join(root, file), "utf8").includes(
-          "identity-verification-host"
+        readFileSync(join(root, file), "utf8").includes(
+          "START_VERIFICATION_HREF"
         ),
         file
       )
     }
+    assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
+  })
+})
+
+describe("the host is inert on public and authentication pages, and when nobody is signed in", () => {
+  it("is inactive for every public entry page, nested or not, and for a signed-out visitor", () => {
+    for (const path of [
+      ...IDENTITY_HOST_PUBLIC_PREFIXES,
+      "/sign-in/",
+      "/sign-up/verify",
+      "/reset-password/abc",
+    ]) {
+      assert.equal(
+        isIdentityHostActive({ pathname: path, userId: "u1" }),
+        false,
+        path
+      )
+    }
+    for (const path of [
+      "/talent-dashboard",
+      "/earnings",
+      "/time-tracking",
+      "/my-jobs",
+      "/job-details/x",
+      "/transfer-funds",
+      "/verify-withdrawal",
+      "/publish-project",
+    ]) {
+      assert.equal(
+        isIdentityHostActive({ pathname: path, userId: "u1" }),
+        true,
+        path
+      )
+      assert.equal(
+        isIdentityHostActive({ pathname: path, userId: null }),
+        false,
+        `${path} signed out`
+      )
+      assert.equal(
+        isIdentityHostActive({ pathname: path, userId: undefined }),
+        false,
+        `${path} no user`
+      )
+    }
+    assert.equal(isIdentityHostPublicPath("/sign-in-help"), false) // a prefix, not a substring
   })
 
-  it("the Phase 1 handoff is still there: the gates still send the talent to the dashboard marker", () => {
-    assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
+  it("every public entry page that exists is covered", () => {
+    for (const dir of [
+      "sign-in",
+      "sign-up",
+      "forgot-password",
+      "reset-password",
+      "update-password",
+      "recovery-email",
+      "accept-invitation",
+      "invite",
+      "invite-talent",
+    ]) {
+      assert.ok(IDENTITY_HOST_PUBLIC_PREFIXES.includes(`/${dir}` as never), dir)
+      assert.ok(statSync(join(root, "app", dir)).isDirectory(), dir)
+    }
+  })
+
+  it("renders no verification UI unless active: the dialogs, the gate and the flow sit behind hostActive", () => {
+    assert.equal(host.split("{hostActive && (").length - 1, 1)
+    const at = host.indexOf("{hostActive && (")
+    const rendered = host.slice(
+      at,
+      host.indexOf("</IdentityVerificationHostContext.Provider>")
+    )
+    for (const marker of [
+      "open={vpnProxyModalOpen}",
+      "<Dialog open={verifiedModalOpen}",
+      "<Dialog open={pendingModalOpen}",
+      "open={cooldownRetryTime !== null}",
+      "<AccountVerificationGate",
+      "<IdentityVerificationFlow",
+    ]) {
+      assert.ok(rendered.includes(marker), marker)
+      assert.equal(
+        host.indexOf(marker) > at ||
+          marker === "<IdentityVerificationFlow" ||
+          host.indexOf(marker) === host.lastIndexOf(marker),
+        true,
+        marker
+      )
+    }
+    // the page children are rendered outside that condition, in every case
+    assert.ok(host.indexOf("{children}") < at)
+  })
+
+  it("reads no identity state unless active and a results page is mounted: the reconciliation effect starts only behind both", () => {
+    const effectStart = host.indexOf(
+      "const apply = (summary: IdentityVerificationSummaryView | null)"
+    )
+    const guard = host.lastIndexOf(
+      "if (!hostActive || !resultsSurfaceMounted) return",
+      effectStart
+    )
+    const firstRead = host.indexOf(
+      "returnReconcilerRef.current ??=",
+      effectStart
+    )
+    assert.ok(guard > -1 && guard < effectStart && effectStart < firstRead)
     assert.ok(
-      readFileSync(join(root, "utils/useApplyGate.tsx"), "utf8").includes(
-        "START_VERIFICATION_HREF"
+      host.includes(
+        "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
       )
     )
+  })
+
+  it("makes no request at mount: every identity read in the host is inside a handler or the gated effect", () => {
+    const code = host.replace(/\/\/.*$/gm, "")
+    const reads = [
+      ...code.matchAll(
+        /fetchIdentityVerificationSummary\(|checkVpnProxy\(|getDetectedLocation\(|startIdentityOnlyForDashboard\(|returnReconcilerRef\.current\.run\(/g
+      ),
+    ].map((m) => m.index ?? 0)
+    const handlerAt = code.indexOf("const handleVerifyMyAccount = useCallback(")
+    const handlerEnd = code.indexOf(
+      "}, [runIdentityVerificationCheck])",
+      handlerAt
+    )
+    const relocateAt = code.indexOf(
+      "const refreshLocationForRelocation = useCallback("
+    )
+    const relocateEnd = code.indexOf("}, [])", relocateAt)
+    const effectAt = code.indexOf(
+      "if (!hostActive || !resultsSurfaceMounted) return"
+    )
+    const effectEnd = code.indexOf(
+      "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
+    )
+    assert.ok(reads.length >= 6)
+    for (const at of reads) {
+      const inHandler = at > handlerAt && at < handlerEnd
+      const inRelocate = at > relocateAt && at < relocateEnd
+      const inEffect = at > effectAt && at < effectEnd
+      assert.ok(
+        inHandler || inRelocate || inEffect,
+        `identity read at ${at} is outside a handler or the gated effect`
+      )
+    }
+  })
+})
+
+describe("the host closes and forgets everything when the page, the account or the sign-in changes", () => {
+  const key = (
+    over: Partial<{
+      pathname: string
+      userId: string | null
+      role: string | null
+    }> = {}
+  ) =>
+    identityHostResetKey({
+      pathname: "/talent-dashboard",
+      userId: "u1",
+      role: "TALENT",
+      ...over,
+    })
+
+  it("the key is stable for the same page, account and role", () => {
+    assert.equal(key(), key())
+    assert.equal(key({ pathname: "/talent-dashboard" }), key())
+  })
+
+  it("it changes on logout and authentication loss, on an account switch, on a role change and on navigation", () => {
+    for (const changed of [
+      key({ userId: null }),
+      key({ userId: undefined as never }),
+      key({ userId: "u2" }),
+      key({ role: "CLIENT" }),
+      key({ role: null }),
+      key({ pathname: "/earnings" }),
+      key({ pathname: "/sign-in" }),
+    ]) {
+      assert.notEqual(changed, key())
+    }
+  })
+
+  it("every public page and every signed-out state is one 'inactive' kind of key", () => {
+    assert.ok(key({ pathname: "/sign-in" }).startsWith("inactive|"))
+    assert.ok(key({ userId: null }).startsWith("inactive|"))
+    assert.ok(key().startsWith("active|"))
+  })
+
+  it("the reset effect closes the gate, the VPN modal, the flow, the held location, the result dialogs and the cooldown, before anything else starts", () => {
+    const at = host.indexOf(
+      "useLayoutEffect(() => {\n    if (resetKeyRef.current === resetKey) return"
+    )
+    assert.ok(at > -1)
+    const effect = host.slice(at, host.indexOf("}, [resetKey])", at))
+    for (const call of [
+      "setVerificationGateOpen(false)",
+      'setConnectionCheckState("idle")',
+      "setVpnProxyResult(null)",
+      "setVpnProxyModalOpen(false)",
+      "setIdentityFlowOpen(false)",
+      "setDetectedLocation(null)",
+      "setFlowLaunch({ key: 0 })",
+      "setVerifiedModalOpen(false)",
+      "setPendingModalOpen(false)",
+      "setCooldownRetryTime(null)",
+      "openOnClosedRef.current = null",
+    ]) {
+      assert.ok(effect.includes(call), call)
+    }
+    assert.ok(
+      host.indexOf("resetKeyRef") < host.indexOf("const apply = (summary"),
+      "settles before the reconciliation effect"
+    )
+    assert.match(
+      host,
+      /const resetKey = identityHostResetKey\(\{\s+pathname,\s+userId: user\?\.id,\s+role: user \? resolveDashboardRole\(user\) : null,\s+\}\)/
+    )
+  })
+
+  it("the first render is not a reset: the dashboard mounts into exactly the state it always had", () => {
+    assert.match(host, /const resetKeyRef = useRef\(resetKey\)/)
+  })
+})
+
+describe("no duplicate reconciliation, listener or surface across pages", () => {
+  it("a results page registers on mount and unregisters on unmount, and the return effect cleans up its listeners", () => {
+    assert.match(
+      host,
+      /setResultsSurfaceMounted\(true\)[\s\S]*return \(\) => setResultsSurfaceMounted\(false\)/
+    )
+    const effectStart = host.indexOf(
+      "const apply = (summary: IdentityVerificationSummaryView | null)"
+    )
+    const effect = host.slice(
+      effectStart,
+      host.indexOf(
+        "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
+      )
+    )
+    assert.ok(
+      effect.includes(
+        'document.removeEventListener("visibilitychange", onVisible)'
+      )
+    )
+    assert.ok(
+      effect.includes('window.removeEventListener("pageshow", onPageShow)')
+    )
+    assert.ok(effect.includes("cancelled = true"))
+  })
+
+  it("the observer is the dashboard's and is dropped when the dashboard unmounts", () => {
+    assert.match(
+      host,
+      /if \(registration\.current === observer\) registration\.current = null/
+    )
+  })
+
+  it("the dashboard still owns the single observer registration", () => {
+    assert.deepEqual(
+      filesWith("useIdentityVerificationObserver("),
+      [HOST, DASHBOARD].sort().filter(Boolean)
+    )
+    assert.equal(
+      dashboard.split("useIdentityVerificationObserver({").length - 1,
+      1
+    )
+  })
+})
+
+describe("the Didit rules are not in the host", () => {
+  it("the 15-minute resume rule and the session rules stay in the backend: no timing rule moved into the frontend host", () => {
+    const code = host.replace(/\/\/.*$/gm, "")
+    assert.ok(!/15 \* 60|900_?000|MINUTES|minutes/i.test(code))
+    assert.ok(!/callbackUrl|returnOrigin|talent-dashboard/.test(code))
   })
 })
 
@@ -238,7 +575,8 @@ describe("the observer contract between the host and the dashboard", () => {
 
   it("exposes the future API: start, open the flow, close handling, status-refreshed subscription", () => {
     for (const member of [
-      "startVerification: handleVerifyMyAccount",
+      "const startVerification = useCallback(",
+      "return handleVerifyMyAccount()",
       "openFlow,",
       "subscribeStatusRefreshed,",
       "handleIdentityFlowOpenChange?: (open: boolean) => void",
