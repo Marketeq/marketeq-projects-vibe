@@ -20,6 +20,16 @@ export interface InviteLinkTokenPayload {
   invitedByEmail?: string;
   exp: number;
   /**
+   * The granular permission-role ids the inviter chose, carried so a link
+   * grants what an emailed invitation grants.
+   *
+   * Without this a link invite landed a member with no permissions at all,
+   * while the onboarding screen still said "added you ... with the following
+   * roles" and then listed none. Optional, so tokens minted before it keep
+   * verifying — they simply carry no permissions, as they always did.
+   */
+  permissions?: string[];
+  /**
    * When the link was minted.
    *
    * `exp` alone cannot express the Link Settings rules (R3-02): those are

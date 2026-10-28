@@ -254,6 +254,7 @@ export class InvitationsService {
       teamId: dto.teamId,
       companyId: dto.companyId,
       role: dto.role,
+      permissions: dto.permissions ?? [],
       teamName: team.name,
       invitedBy: creator.id,
       invitedByEmail: creator.email,
@@ -667,7 +668,13 @@ export class InvitationsService {
       inviterAvatarUrl?: string;
     },
   ): void {
-    const inviterHandle = details.inviterUsername
+    // A system-generated handle (`user_0fba1aca`) is not a name anybody
+    // recognises, and this notification led with it: "@user_0fba1aca invited
+    // you to join their team". Same rule as user-service's readableUsername,
+    // duplicated rather than imported because services do not share src.
+    const isPlaceholderHandle = (username?: string) =>
+      !username || /^user_[a-f0-9]{8,}$/i.test(username);
+    const inviterHandle = !isPlaceholderHandle(details.inviterUsername)
       ? `@${details.inviterUsername}`
       : details.inviterName
         ? details.inviterName
@@ -1226,9 +1233,7 @@ export class InvitationsService {
           : linkPayload.invitedByEmail ?? null,
         inviterUsername: inviter?.username ?? null,
         role: linkPayload.role,
-        // Invite links don't currently carry granular permissions through
-        // the signed token payload. Only the legacy role does.
-        permissions: [],
+        permissions: linkPayload.permissions ?? [],
         expiresAt: new Date(effectiveExpiry),
         status:
           settingsDeadline !== null && Date.now() > effectiveExpiry
@@ -1345,6 +1350,7 @@ export class InvitationsService {
           companyId: linkPayload.companyId,
           userId: invitee.id,
           role: linkPayload.role,
+          permissions: linkPayload.permissions ?? [],
         });
       }
 
@@ -1372,6 +1378,7 @@ export class InvitationsService {
         companyId: linkPayload.companyId,
         invitedEmail: invitee.email,
         role: linkPayload.role,
+        permissions: linkPayload.permissions ?? [],
         note: null,
         status: 'accepted',
         token: dto.token,

@@ -299,24 +299,41 @@ function buildAccountColumns(
                 <MoreHorizontal className="size-5" />
               </IconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[165px]">
+            {/* Same items, same labels and same status rules as the card
+                menu in MemberCard. The two are different views of one row,
+                and this one used to offer three items — two of them
+                relabelled to "Edit" and "Remove" — against the card's
+                five. */}
+            <DropdownMenuContent align="end" className="w-[185px]">
               {canEdit && (
                 <DropdownMenuItem onSelect={() => onEdit(row.original)}>
-                  <Edit03 className="h-4 w-4" /> Edit
+                  <Edit03 className="h-4 w-4" /> Edit Permissions
                 </DropdownMenuItem>
               )}
-              {isPending && (
-                <DropdownMenuItem onSelect={() => onResend(row.original.id)}>
-                  <RefreshCw04 className="h-4 w-4" /> Resend Invite
-                </DropdownMenuItem>
+              {isPending ? (
+                <>
+                  <DropdownMenuItem onSelect={() => onResend(row.original.id)}>
+                    <RefreshCw04 className="h-4 w-4" /> Resend Invite
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    visual="destructive"
+                    onSelect={() => onCancel(row.original.id)}
+                  >
+                    <Trash2 className="h-4 w-4" /> Cancel Invite
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    visual="destructive"
+                    onSelect={() => onCancel(row.original.id)}
+                  >
+                    <Trash2 className="h-4 w-4" /> Remove User
+                  </DropdownMenuItem>
+                </>
               )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                visual="destructive"
-                onSelect={() => onCancel(row.original.id)}
-              >
-                <Trash2 className="h-4 w-4" /> Remove
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )
@@ -714,21 +731,28 @@ const ExternalTeamCard = ({
               Edit Permissions
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem>View Profile</DropdownMenuItem>
-          {/* Invite-specific actions only apply while the invitation is pending. */}
-          {isPending && (
+          {/* View Profile is gone. R3-12's table names four actions across
+              the two states and this is not one of them; it had no handler
+              either, and a pending invitee has no profile to open. If it
+              comes back it needs a route for an external member, which does
+              not exist today. */}
+          {/* R3-12: a pending row has two actions, an accepted one has
+              Remove User. Pending used to offer Cancel Invite *and* Remove
+              User, both calling the same handler. */}
+          {isPending ? (
             <>
               <DropdownMenuItem onSelect={() => onResend(id)}>
                 Resend Invite
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onCancel(id)}>
+              <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
                 Cancel Invite
               </DropdownMenuItem>
             </>
+          ) : (
+            <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
+              Remove User
+            </DropdownMenuItem>
           )}
-          <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
-            Remove User
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
