@@ -1486,7 +1486,7 @@ export const TaskDialog = ({
       task: "",
       role: "",
       location: "",
-      experience: "Junior",
+      experience: "Medior",
       workSchedule: undefined,
       estimatedHours: undefined,
       duration: {
@@ -1502,7 +1502,7 @@ export const TaskDialog = ({
         task: "",
         role: "",
         location: "",
-        experience: "Junior",
+        experience: "Medior",
         workSchedule: undefined,
         estimatedHours: undefined,
         duration: { type: "hours", value: undefined as any },
@@ -3448,6 +3448,7 @@ export function ScopeBuilder({
 }: ScopeBuilderProps) {
   const { toast } = useToast()
   const lastUndo = useRef<null | (() => void)>(null)
+  const rowsUndoPhaseIndex = useRef<number | null>(null)
   const [taskDialogState, setTaskDialogState] = useState<TaskDialogState>({
     editingPhaseIndex: null,
     open: false,
@@ -3587,6 +3588,13 @@ export function ScopeBuilder({
   const handleSwapPhases = useCallback(
     (from: number, to: number) => {
       setPhases((prev) => arrayMove(prev, from, to))
+      const pending = rowsUndoPhaseIndex.current
+      if (pending === null) return
+      if (pending === from) rowsUndoPhaseIndex.current = to
+      else if (from < pending && pending <= to)
+        rowsUndoPhaseIndex.current = pending - 1
+      else if (to <= pending && pending < from)
+        rowsUndoPhaseIndex.current = pending + 1
     },
     [setPhases]
   )
@@ -3767,15 +3775,28 @@ export function ScopeBuilder({
     [setPhases]
   )
 
+  const pushRowsUndo = useCallback(
+    (
+      title: string,
+      phaseIndex: number,
+      previousRows: PhaseRow[] | undefined
+    ) => {
+      rowsUndoPhaseIndex.current = phaseIndex
+      pushSuccess(title, () => {
+        const target = rowsUndoPhaseIndex.current
+        if (target !== null) restorePhaseRows(target, previousRows)
+      })
+    },
+    [pushSuccess, restorePhaseRows]
+  )
+
   const onAddTask = useCallback(
     (values: TaskFormValues) => {
       const { editingPhaseIndex } = taskDialogState
 
       if (typeof editingPhaseIndex === "number") {
         const previousRows = phases[editingPhaseIndex]?.rows
-        pushSuccess("Task Added", () =>
-          restorePhaseRows(editingPhaseIndex, previousRows)
-        )
+        pushRowsUndo("Task Added", editingPhaseIndex, previousRows)
         setPhases((prev) => {
           const newPhases = prev.map((phase, index) => {
             if (index === editingPhaseIndex) {
@@ -3794,7 +3815,7 @@ export function ScopeBuilder({
         })
       }
     },
-    [taskDialogState, phases, pushSuccess, restorePhaseRows, setPhases]
+    [taskDialogState, phases, pushRowsUndo, setPhases]
   )
 
   const onDurationFormValuesChange = useCallback(
@@ -4353,9 +4374,7 @@ export function ScopeBuilder({
                       }
                       onRowsChange={(rows) => handleRowsChange(index, rows)}
                       onRowsAction={(title, previousRows) =>
-                        pushSuccess(title, () =>
-                          restorePhaseRows(index, previousRows)
-                        )
+                        pushRowsUndo(title, index, previousRows)
                       }
                       openDurationDialog={(editingPhaseRowIndex) =>
                         setDurationDialogState({
