@@ -36,7 +36,7 @@ Two more cases are half-runnable (4, 16). The remaining eighteen are blocked, fo
 - **Case 5** — the test unsets a variable `auth-service` does not read. The step is wrong, not the code.
 - **Case 15** — the SOP it validates has no credential-rotation step.
 
-**One structural problem affects every CI case.** `post-merge-audit.yml` says it plainly in its own header: the free GitHub org plan cannot block merges on failing checks. So wherever a test case expects "PR is shown as blocked" (cases 4, 12, 13, 14), the honest expected result is "the check reports red and the post-merge audit opens an issue if it was merged anyway." The check cannot physically prevent the merge. That is a correction to the test cases, not a defect in the repo.
+**One structural problem affects every CI case — and it is now a settled decision, not an open question.** `post-merge-audit.yml` says it plainly in its own header: the free GitHub org plan cannot block merges on failing checks. Required status checks on a private repository need a paid GitHub tier, and **Marketeq has decided not to upgrade** (confirmed 2026-10-28). So wherever a test case expects "PR is shown as blocked" (cases 4, 12, 13, 14), the correct expected result is "the check reports red, and the post-merge audit opens an issue if it was merged anyway." The check cannot physically prevent the merge, and no change to this repository can make it. That is a permanent correction to the test cases — not a defect, and not an outstanding action.
 
 ---
 
@@ -301,7 +301,9 @@ Two consequences. The status says `Failed` with no reason, and because it is pos
 
 **Blocking: not achievable on this plan.** `.github/workflows/post-merge-audit.yml` states it in its own header — *"The free GitHub org plan cannot block merges on failing checks."* Confirmed on #817: with `Jenkins / Secret Scan` red, GitHub still showed "Merging can be performed automatically" and an enabled **Squash and merge**. No required status check exists to stop it. The compensating control is real, though: `Jenkins / Secret Scan` is in the post-merge audit's watched contexts (`.jenkins/post-merge-audit.groovy:201`), so merging a PR with a secret opens an issue and tags the CTO.
 
-So the honest reading of "before merge" here is **detect-and-report, not prevent**. Whether that is acceptable is a budget decision for the CTO: required status checks on a private repo need a paid GitHub plan.
+So the achievable behaviour is **detect and report, not prevent** — permanently. Marketeq has decided not to move to a paid GitHub tier (confirmed 2026-10-28), so no required status check will ever exist on this repository. The case title "catch committed secrets *before merge*" should be read as "detect on the PR, and audit after the merge". **Nothing is outstanding on blocking.**
+
+That raises the `HEAD_SHA` defect above from cosmetic to the main remaining gap in this case: with blocking off the table for good, a clear failure message is the only thing the gate can still do for the developer who committed the secret. It is the one CTO item left here.
 
 **Cleanup owed:** close #817 without merging and delete `qa/secret-scan-pmcm-750`.
 
