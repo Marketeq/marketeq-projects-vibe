@@ -327,11 +327,10 @@ describe("G3 Start Verification runs in place: no navigation, no handoff, no ret
       )
       assert.ok(!/talent-dashboard\?/.test(page))
     }
-    // the hook is the only G3 file that talks to the host
-    const callers = [
-      "utils/useStartTimeGate.tsx",
-      "utils/CreateListingGateHost.tsx",
-    ].map((f) => read(...f.split("/")))
+    // G2 (listing creation) is still not migrated: it does not talk to the host
+    const callers = ["utils/CreateListingGateHost.tsx"].map((f) =>
+      read(...f.split("/"))
+    )
     for (const source of callers)
       assert.ok(
         !/useIdentityVerification|identity-verification-host/.test(source)

@@ -106,14 +106,20 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     )
   })
 
-  it("only the root layout, the dashboard and the G3 Apply hook import the host module", () => {
+  it("only the root layout, the dashboard and the migrated gates (G3 Apply, G8 Log Time / Manual Time) import the host module", () => {
+    const migrated = [
+      "utils/useApplyGate.tsx",
+      "utils/useStartTimeGate.tsx",
+      "app/(group)/time-tracking/page.tsx",
+      "app/(group)/earnings/page.tsx",
+    ]
     assert.deepEqual(
       filesWith("@/contexts/identity-verification-host"),
-      [DASHBOARD, ROOT, "utils/useApplyGate.tsx"].sort()
+      [DASHBOARD, ROOT, ...migrated].sort()
     )
     assert.deepEqual(
       filesWith("= useIdentityVerification()"),
-      [DASHBOARD, "utils/useApplyGate.tsx"].sort()
+      [DASHBOARD, ...migrated].sort()
     )
   })
 
@@ -152,13 +158,9 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     ) // observer mount, startVerification
   })
 
-  it("only G3 (Apply) is migrated: every other gate keeps its own navigation and does not touch the host", () => {
+  it("only G3 (Apply) and G8 (Log Time, Manual Time) are migrated: G2 and G9 keep their own navigation and do not touch the host", () => {
     const unmigrated: Record<string, RegExp> = {
-      "utils/useStartTimeGate.tsx": /START_VERIFICATION_HREF/,
       "utils/CreateListingGateHost.tsx": /START_VERIFICATION_HREF/,
-      "app/(group)/time-tracking/page.tsx": /START_VERIFICATION_HREF/,
-      "components/download-desktop-tracker-dialog.tsx":
-        /router\.push\("\/talent-dashboard"\)/,
       "components/withdraw-funds-dialog.tsx":
         /router\.push\("\/talent-dashboard"\)/,
       "app/transfer-funds/page.tsx": /router\.push\("\/talent-dashboard"\)/,
@@ -172,10 +174,15 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
       )
       assert.ok(navigation.test(text), `${file} keeps its current navigation`)
     }
-    // G3 is the migrated one: it uses the host and no longer uses the dashboard handoff
-    const apply = readFileSync(join(root, "utils/useApplyGate.tsx"), "utf8")
-    assert.ok(/useIdentityVerification\(\)/.test(apply))
-    assert.ok(!/START_VERIFICATION_HREF|router\.push/.test(apply))
+    // the migrated gates use the host and no longer use the dashboard handoff
+    for (const file of [
+      "utils/useApplyGate.tsx",
+      "utils/useStartTimeGate.tsx",
+    ]) {
+      const text = readFileSync(join(root, file), "utf8")
+      assert.ok(/useIdentityVerification\(\)/.test(text), file)
+      assert.ok(!/START_VERIFICATION_HREF|router\.push/.test(text), file)
+    }
     // the old handoff stays for the gates that still use it
     assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
   })
