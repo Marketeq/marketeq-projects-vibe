@@ -452,6 +452,15 @@ async function ensureSeedListingsInBackend(): Promise<void> {
   if (migrated === "true") return
 
   try {
+    // G2: seeding creates drafts on the user's behalf, so it needs the same open gate. A
+    // closed or unreadable gate creates nothing, shows no modal (nobody clicked anything) and
+    // does not mark the seeds migrated, so they are retried once the account can create.
+    try {
+      await ProjectAPI.CheckCreateListingGate()
+    } catch {
+      return
+    }
+
     // Fetch existing backend listings to find already-migrated seeds
     const existingRes = await ProjectAPI.GetMyProjects()
     const existing = existingRes?.data ?? []
@@ -478,7 +487,7 @@ async function ensureSeedListingsInBackend(): Promise<void> {
         if (match) {
           await ProjectAPI.UpdateProjectDraft(match.id, payload)
         } else if (!existingTitles.has(seed.title.trim())) {
-          await ProjectAPI.CreateProjectDraft(payload)
+          await ProjectAPI.CreateProjectDraft(payload, { silent: true })
         }
       } catch {
         // ignore individual failures

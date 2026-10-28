@@ -17,6 +17,7 @@ import { TimezoneSync } from "@/components/timezone-sync"
 import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
+import { CreateListingGateHost } from "@/utils/CreateListingGateHost"
 
 export const dynamic = "force-dynamic"
 
@@ -55,6 +56,7 @@ export default function RootLayout({
         <Toaster />
         <TimezoneSync />
         <InviteWindow />
+        <CreateListingGateHost />
       </QueryProvider>
     </AuthProvider>
   )

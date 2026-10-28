@@ -1,6 +1,11 @@
 import { CreateProjectType } from "@/types/project"
 import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
+import {
+  announceCreateListingBlocked,
+  createDraftBehindGate,
+  markCreateListingBlocked,
+} from "@/src/lib/api/create-listing-gate"
 
 type CreatePhaseTaskPayload = {
   taskName: string
@@ -44,7 +49,18 @@ const LISTING_REQUEST_TIMEOUT_MS = 30000
 const LISTING_UPLOAD_TIMEOUT_MS = 120000
 
 export const ProjectAPI = {
-  CreateProjectDraft: (
+  // G2: read-only check that the talent may start a listing; resolves only when the gate
+  // is open, a closed gate (403 VERIFICATION_REQUIRED) or an unanswered one (503) rejects.
+  CheckCreateListingGate: () => {
+    return AxiosRequest.get(`${LISTINGS_BASE}/publish/create-gate`, {
+      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    })
+  },
+  // G2: every draft-creating call, from any page, asks the read-only creation check first.
+  // A refusal (or an unreadable gate) creates nothing: the error is marked, the global G2
+  // modal is announced, and the original error is rethrown for the caller's own handling.
+  // `silent` (automatic background seeding only) skips the modal but still creates nothing.
+  CreateProjectDraft: async (
     data: Partial<CreateProjectType> & {
       title?: string
       shortDescription?: string
@@ -52,10 +68,19 @@ export const ProjectAPI = {
       projectType?: string
       faqs?: Array<{ question: string; answer: string }>
       videoUrl?: string
-    } = {}
+    } = {},
+    options: { silent?: boolean } = {}
   ) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data, {
-      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    return createDraftBehindGate({
+      check: () => ProjectAPI.CheckCreateListingGate(),
+      post: () =>
+        AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data, {
+          timeout: LISTING_REQUEST_TIMEOUT_MS,
+        }),
+      refuse: (error) =>
+        options.silent
+          ? markCreateListingBlocked(error)
+          : announceCreateListingBlocked(error),
     })
   },
   GetProjectDraft: (projectId: string) => {
