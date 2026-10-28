@@ -169,7 +169,6 @@ import {
   TooltipTrigger,
   toast,
 } from "@/components/ui"
-import { Spinner } from "@/components/ui/spinner/spinner"
 
 const formatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -6524,8 +6523,20 @@ export default function PaymentPage() {
                     </h3>
 
                     {isBalanceLoading ? (
-                      <div className="mt-5">
-                        <Spinner size={24} strokeWidth={3} />
+                      <div className="mt-5 flex items-start gap-x-2" aria-hidden="true">
+                        <Checkbox size="md" disabled />
+                        <div className="flex flex-col gap-y-1.5">
+                          <div className="flex h-5 items-center">
+                            <div className="relative h-3.5 w-56 overflow-hidden rounded bg-gray-100">
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          </div>
+                          <div className="flex h-5 items-center">
+                            <div className="relative h-3.5 w-32 overflow-hidden rounded bg-gray-100">
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ) : (
                     <div className="mt-5 flex items-start gap-x-2">
@@ -6984,8 +6995,18 @@ export default function PaymentPage() {
                         Select payment method
                       </h3>
                       {isPaymentMethodsLoading || isSavedCardsLoading ? (
-                        <div className="mt-5">
-                          <Spinner size={24} strokeWidth={3} />
+                        <div
+                          className="mt-5 grid h-[136px] w-full grid-cols-1 grid-rows-3 gap-3"
+                          aria-hidden="true"
+                        >
+                          {[0, 1, 2].map((item) => (
+                            <div
+                              key={item}
+                              className="relative overflow-hidden rounded-lg bg-gray-100"
+                            >
+                              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-gray-100 via-white to-gray-100" />
+                            </div>
+                          ))}
                         </div>
                       ) : (
                       <RadioGroup
