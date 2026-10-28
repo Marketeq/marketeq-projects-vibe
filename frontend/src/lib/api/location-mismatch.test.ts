@@ -16,9 +16,10 @@ import {
   startChangeHomeCountry,
   startStillTraveling,
 } from "./location-mismatch"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 const helper = read("src", "lib", "api", "location-mismatch.ts")
 
@@ -105,7 +106,7 @@ describe("when the prompt shows", () => {
     }
     const load = page.slice(
       page.indexOf("const runIdentityVerificationCheck"),
-      page.indexOf("// A start attempt rejected as not startable")
+      page.indexOf("// Reads the persistent alerts on load")
     )
     assert.ok(load.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
     assert.ok(!load.includes("setVerificationGateOpen"))
@@ -200,12 +201,11 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
   })
 
   it("reuses the existing flow: remount key, server location, no new flow code", () => {
-    assert.ok(
-      page.includes(
-        "setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))"
-      )
+    // The host remounts the flow (new key) and takes the server location; the page asks it to.
+    assert.match(
+      page,
+      /openFlow\(\s*\{ initialState: launch\.initialState \},\s*\{ detectedLocation: launch\.location \}\s*\)/
     )
-    assert.ok(page.includes("setDetectedLocation(launch.location)"))
     // Only "Change my home country" asks for the browser position (an explicit click, the
     // same load as Verify My Account); "still traveling" shows no location and asks nothing.
     const stillTraveling = helper.slice(

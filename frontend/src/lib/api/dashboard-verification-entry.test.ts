@@ -15,11 +15,13 @@ import {
   startStillTraveling,
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import {
+  readDashboardPage,
+  readDashboardWithHost,
+  readIdentityHost,
+} from "./dashboard-host-source"
 
-const page = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const page = readDashboardWithHost()
 const count = (needle: string) => page.split(needle).length - 1
 
 describe("dashboard verification entry: nothing opens on page load", () => {
@@ -42,20 +44,31 @@ describe("dashboard verification entry: nothing opens on page load", () => {
   })
 
   it("the verification flow is opened only by a click: Verify, the popup's Update, or a mismatch answer", () => {
-    // The fourth is the Update confirmation's retry (PMCM-651): it reopens the Update screen
-    // only after a click-started confirmation failed.
-    assert.equal(count("setIdentityFlowOpen(true)"), 4)
+    // The host opens it in two places only: the Verify My Account handler and openFlow().
+    // The dashboard reaches openFlow() from the popup's Update, a mismatch answer, and (the
+    // third, PMCM-651) the Update confirmation's retry, which reopens the Update screen only
+    // after a click-started confirmation failed.
+    const host = readIdentityHost()
+    const dashboard = readDashboardPage()
+    assert.equal(host.split("setIdentityFlowOpen(true)").length - 1, 2)
+    const handler = host.slice(
+      host.indexOf("const handleVerifyMyAccount = useCallback("),
+      host.indexOf("}, [runIdentityVerificationCheck])")
+    )
+    assert.ok(handler.includes("setIdentityFlowOpen(true)"))
+    const openFlow = host.slice(host.indexOf("const openFlow = useCallback("))
+    assert.ok(openFlow.slice(0, openFlow.indexOf("[]\n  )")).includes("setIdentityFlowOpen(true)"))
+    assert.equal(dashboard.split("openFlow(").length - 1, 3)
     for (const owner of [
-      "const handleVerifyMyAccount = useCallback(",
       "const handleTravelUpdate = useCallback(",
       "const openFlowFromMismatch = useCallback(",
       "const handleTravelModeConfirmed = useCallback(",
     ]) {
-      const from = page.indexOf(owner)
+      const from = dashboard.indexOf(owner)
       const next = owner.includes("openFlowFromMismatch")
-        ? page.indexOf("const handleIdentityFlowOpenChange", from)
-        : page.indexOf("\n  }, [", from)
-      assert.ok(from > -1 && page.slice(from, next).includes("setIdentityFlowOpen(true)"), owner)
+        ? dashboard.indexOf("const handleIdentityFlowOpenChange", from)
+        : dashboard.indexOf("\n  }, [", from)
+      assert.ok(from > -1 && dashboard.slice(from, next).includes("openFlow("), owner)
     }
   })
 
@@ -129,7 +142,8 @@ describe("dashboard verification entry: the current mobile layout is preserved",
   })
 
   it("the page layout (everything from <AuthenticatedRoute> down, except the banner) is byte-identical to dev-main's", () => {
-    const body = page.slice(page.indexOf("<AuthenticatedRoute>"))
+    const dashboardPage = readDashboardPage()
+    const body = dashboardPage.slice(dashboardPage.indexOf("<AuthenticatedRoute>"))
     const bannerStart = body.indexOf("{profileBannerShown")
     const withoutBanner = body.slice(0, bannerStart) + body.slice(body.indexOf("<Welcome onToggle"))
     const digest = createHash("sha256").update(withoutBanner.replace(/\s+/g, "")).digest("hex")

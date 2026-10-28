@@ -24,9 +24,10 @@ import {
   reviewedResultKey,
   shouldMarkReviewedResult,
 } from "./reviewed-approval-result"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 function memoryStorage(): ReviewedResultStorage & { data: Map<string, string> } {
   const data = new Map<string, string>()

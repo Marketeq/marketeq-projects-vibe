@@ -11,10 +11,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import { type DetectedLocation, getDetectedLocation } from "./detected-location"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const flow = read("components", "identity-verification-flow.tsx")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const handlerStart = flow.indexOf(
@@ -35,7 +36,7 @@ const refreshBody = page.slice(
 const updateStart = page.indexOf("const handleTravelUpdate = useCallback(")
 const updateBody = page.slice(
   updateStart,
-  page.indexOf("[travelPopup]", updateStart)
+  page.indexOf("[travelPopup, openFlow]", updateStart)
 )
 const temporarilyAt = flow.indexOf("if (activeTravelModeUpdate) {")
 const temporarilyBody = flow.slice(

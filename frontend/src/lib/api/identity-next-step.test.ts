@@ -12,6 +12,7 @@ import {
   type StartIdentityOnlyDeps,
 } from "./identity-next-step"
 import { NEXT_ACTIONS, mapNextActionToFlowState, parseIdentityVerificationSummary } from "./identity-verification-state"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 
@@ -190,8 +191,8 @@ describe("startIdentityOnly: Didit only, no location step", () => {
 })
 
 describe("dashboard wiring and boundaries (source guards)", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
-  const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// A start attempt rejected as not startable"))
+  const page = readDashboardWithHost()
+  const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// Reads the persistent alerts on load"))
   const handler = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("}, [runIdentityVerificationCheck])"))
 
   it("the load check reads only the backend summary: banner and cooldown dialog come from it, and it never opens the blocking gate", () => {
