@@ -37,6 +37,7 @@ import {
   AvatarImage,
   Badge,
   Button,
+  Card,
 } from "@/components/ui"
 
 const Visa = (props: React.SVGProps<SVGSVGElement>) => (
@@ -1055,7 +1056,9 @@ export default function ConfirmationPage() {
     )
   }
 
-  const isInstallmentPlan = paymentPlan === "IN_INSTALLMENTS"
+  const isInstallmentPlan =
+    paymentPlan === "IN_INSTALLMENTS" ||
+    searchParams.get("pay") === "IN_INSTALLMENTS"
   const designedInitialPaymentRows: ReviewPaymentRow[] =
     initialInstallmentRows.length > 0
       ? initialInstallmentRows
@@ -1069,70 +1072,72 @@ export default function ConfirmationPage() {
     <div className="bg-gray-50 pt-[64px]">
       <CheckoutNavigation currentStep={3} showSteps={false} logoHref="" />
 
-      <div className="px-[150px] py-[50px]">
-        <div className="rounded-lg border border-gray-200 bg-white p-8 pr-[60px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-          <div className="flex items-start justify-between gap-x-8">
-            <div className="flex min-w-0 flex-auto items-start gap-x-5">
-              <div className="size-12 inline-flex shrink-0 items-center justify-center rounded-full border-[8px] border-success-50 bg-success-100 text-success-500">
-                <CheckCircle className="size-6" />
-              </div>
+      <div className="mx-auto w-[1140px] py-[50px]">
+        <Card className="justify-normal gap-x-5 p-8 pr-[60px]">
+          <div className="flex min-w-0 flex-auto items-start gap-x-5">
+            <div className="size-12 inline-flex shrink-0 items-center justify-center rounded-full border-8 border-success-50 bg-success-100 text-success-600">
+              <CheckCircle className="size-6" />
+            </div>
 
-              <div className="min-w-0 flex-auto">
-                <h1 className="text-[28px] font-bold leading-none text-success-600">
-                  Thank you for launching your project with Marketeq!
-                </h1>
+            <div className="flex min-w-0 flex-auto flex-col items-start gap-y-5 py-2.5">
+              <h1 className="text-[28px] font-bold leading-[normal] text-success-600">
+                Thank you for launching your project with Marketeq!
+              </h1>
 
-                <div className="mt-5 flex flex-wrap items-center gap-x-2">
-                  <p className="text-base text-dark-blue-400">
+              <div className="flex w-full flex-col gap-y-3">
+                <div className="flex w-full items-center gap-x-2">
+                  <p className="text-base leading-5 text-[#122A4B]">
                     A copy of your invoice and order details has been sent to{" "}
-                    <span className="font-semibold">{confirmationEmail}</span>
+                    <span className="font-bold">{confirmationEmail}</span>
                   </p>
-                  <Button className="underline" variant="link" visual="gray">
+                  <Button
+                    className="text-xs leading-5 underline"
+                    variant="link"
+                    visual="gray"
+                  >
                     Change Email
                   </Button>
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-x-3">
-                  <span className="text-base text-gray-500">
-                    Your Order ID: {orderReference}
-                  </span>
-                  <span className="inline-block h-[17px] w-0.5 shrink-0 bg-gray-200" />
-                  <span className="text-base text-gray-500">
-                    Order Date: {orderDateLabel}
-                  </span>
-                </div>
-
-                <div className="mt-5 text-base text-dark-blue-400">
-                  Need to make changes to your order? View{" "}
-                  <Button
-                    className="underline"
-                    variant="link"
-                    onClick={() =>
-                      router.push(
-                        `${basePath}/review?${searchParams.toString()}`
-                      )
-                    }
-                  >
-                    Order Details
-                  </Button>{" "}
-                  or{" "}
-                  <Button className="underline" variant="link">
-                    Contact Us
-                  </Button>
+                <div className="flex items-center gap-x-3 text-base leading-5 text-gray-500">
+                  <span>Your Order ID: {orderReference}</span>
+                  <span className="h-[17px] w-0.5 shrink-0 bg-gray-200" />
+                  <span>Order Date: {orderDateLabel}</span>
                 </div>
               </div>
-            </div>
 
-            <Button
-              variant="outlined"
-              visual="gray"
-              size="lg"
-              onClick={() => router.push("/client-dashboard")}
-            >
-              Continue Browsing <ArrowRight className="size-[15px]" />
-            </Button>
+              <p className="text-base leading-6 text-[#122A4B]">
+                Need to make changes to your order? View{" "}
+                <Button
+                  className="text-base leading-6 underline"
+                  variant="link"
+                  onClick={() =>
+                    router.push(`${basePath}/review?${searchParams.toString()}`)
+                  }
+                >
+                  Order Details
+                </Button>{" "}
+                or{" "}
+                <Button
+                  className="text-base leading-6 underline"
+                  variant="link"
+                >
+                  Contact Us
+                </Button>
+              </p>
+            </div>
           </div>
-        </div>
+
+          <Button
+            className="h-12 px-5 text-lg leading-6"
+            variant="outlined"
+            visual="gray"
+            size="lg"
+            onClick={() => router.push("/client-dashboard")}
+          >
+            Continue Browsing <ArrowRight className="size-[15px] text-gray-500" />
+          </Button>
+        </Card>
 
         <div className="mt-6 flex gap-x-8">
           <div className="flex-auto">
@@ -1143,8 +1148,8 @@ export default function ConfirmationPage() {
                 </h1>
               </div>
 
-              <div className="flex gap-x-5 p-5">
-                <div className="relative w-[181px] flex-none overflow-hidden rounded-md border border-[#DFDFDF] bg-white">
+              <div className="flex gap-x-3 p-5">
+                <div className="relative w-[181px] flex-none self-stretch overflow-hidden rounded-md border border-[#DFDFDF] bg-white">
                   <NextImage
                     className="object-cover"
                     src="/dashboard.png"
@@ -1153,53 +1158,51 @@ export default function ConfirmationPage() {
                     fill
                   />
                 </div>
-                <div className="flex-auto">
-                  <h1 className="text-sm font-medium text-dark-blue-400">
+                <div className="flex h-[92px] flex-auto flex-col items-start justify-between">
+                  <h1 className="text-sm font-medium leading-5 text-dark-blue-400">
                     Marketeq Client Portal - Redesigning and Optimizing Website
                     for Enhanced User Experience.
                   </h1>
 
-                  <div className="mt-1.5 inline-flex gap-x-2">
+                  <div className="flex items-center gap-x-2">
                     <Users03 className="size-[15px] shrink-0" />
                     <span className="text-xs font-semibold leading-5 text-dark-blue-400">
                       8 team members
                     </span>
                   </div>
 
-                  <div className="mt-1.5 text-[13px] leading-5 text-dark-blue-400">
-                    January 2024 - August 2024
-                  </div>
+                  <p className="whitespace-pre text-[13px] capitalize leading-5 text-dark-blue-400">
+                    {"January 2024  -  August 2024"}
+                  </p>
                 </div>
               </div>
 
-              <div className="border-t border-gray-200 p-6">
-                <h1 className="text-base font-semibold text-dark-blue-400">
-                  Set up your introductory call
-                </h1>
-                <p className="mt-1 text-sm font-light text-dark-blue-400">
-                  Connect with team leaders to align on project details and next
-                  steps
-                </p>
+              <div className="flex flex-col gap-y-6 border-t border-gray-200 p-6">
+                <div className="space-y-1">
+                  <h1 className="text-base font-semibold leading-5 text-dark-blue-400">
+                    Set up your introductory call
+                  </h1>
+                  <p className="text-sm font-light leading-[normal] text-dark-blue-400">
+                    Connect with team leaders to align on project details and
+                    next steps
+                  </p>
+                </div>
 
-                <article className="flex items-center justify-between py-6">
+                <article className="flex items-center justify-between">
                   <div className="flex items-center gap-x-3">
                     <Avatar size="md" className="shrink-0">
                       <AvatarImage src="/man.jpg" alt="John Villago" />
                       <AvatarFallback>J</AvatarFallback>
                     </Avatar>
 
-                    <div>
-                      <h1 className="text-sm font-semibold text-dark-blue-400">
-                        John Villago
-                      </h1>
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Account Manager
-                      </p>
+                    <div className="text-sm leading-5 text-dark-blue-400">
+                      <h1 className="font-semibold">John Villago</h1>
+                      <p className="font-light">Account Manager</p>
                     </div>
                   </div>
 
                   <CalBookingButton
-                    className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                    className="bg-primary-50 px-3.5 text-xs leading-5 text-primary-500 hover:bg-primary-500 hover:text-white"
                     visual="primary"
                   >
                     <PhoneCall className="size-[15px]" />
@@ -1207,25 +1210,21 @@ export default function ConfirmationPage() {
                   </CalBookingButton>
                 </article>
 
-                <article className="flex items-center justify-between border-t border-gray-200 py-6">
+                <article className="flex items-center justify-between border-t border-gray-200 pt-6">
                   <div className="flex items-center gap-x-3">
                     <Avatar size="md" className="shrink-0">
                       <AvatarImage src="/man.jpg" alt="Larah Varghese" />
                       <AvatarFallback>L</AvatarFallback>
                     </Avatar>
 
-                    <div>
-                      <h1 className="text-sm font-semibold text-dark-blue-400">
-                        Larah Varghese
-                      </h1>
-                      <p className="text-xs font-light text-dark-blue-400">
-                        Project Manager
-                      </p>
+                    <div className="text-sm leading-5 text-dark-blue-400">
+                      <h1 className="font-semibold">Larah Varghese</h1>
+                      <p className="font-light">Project Manager</p>
                     </div>
                   </div>
 
                   <CalBookingButton
-                    className="bg-primary-50 text-primary-500 hover:bg-primary-500 hover:text-white"
+                    className="bg-primary-50 px-3.5 text-xs leading-5 text-primary-500 hover:bg-primary-500 hover:text-white"
                     visual="primary"
                   >
                     <PhoneCall className="size-[15px]" />
@@ -1235,152 +1234,260 @@ export default function ConfirmationPage() {
               </div>
             </div>
 
-            <div className="mt-8 rounded-lg border border-gray-200 bg-white shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="border-b border-gray-200 px-6 py-5">
-                <h1 className="text-lg font-semibold text-dark-blue-400">
+            <Card className="mt-8 flex-col items-stretch justify-normal overflow-hidden text-dark-blue-400">
+              <div className="flex flex-col gap-y-1.5 border-b border-gray-200 px-6 py-5">
+                <h1 className="text-lg font-semibold leading-7">
                   Payment Methods
                 </h1>
-                <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                  The following payment methods will be billed for the total
-                  amount of{" "}
+                <p className="text-sm leading-[normal]">
+                  <span className="font-light">
+                    The following payment methods will be billed for the total
+                    amount of
+                  </span>{" "}
                   <span className="font-bold">
                     {formatter.format(totalDueToday)}
                   </span>
                 </p>
-                <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                  You will see a charge on your bank statement from{" "}
+                <p className="text-sm leading-[normal]">
+                  <span className="font-light">
+                    You will see a charge on your bank statement from
+                  </span>{" "}
                   <span className="font-bold">Marketeq</span>
                 </p>
               </div>
 
-              <div className="p-6">
-                <div>
-                  <h1 className="text-lg font-semibold text-dark-blue-400">
+              {isInstallmentPlan ? (
+              <div className="flex flex-col gap-y-6 p-6">
+                <div className="flex flex-col gap-y-3">
+                  <h2 className="text-base font-semibold leading-[19px]">
                     Initial One-Time Payment
-                  </h1>
-                  <div className="mt-2">
-                    {designedInitialPaymentRows.map((row, index, rows) =>
-                      renderProjectPaymentRow(row, {
-                        isLast: index === rows.length - 1,
-                      })
-                    )}
+                  </h2>
+                  <div className="flex min-h-[87px] gap-x-3 border-b border-gray-200 py-4">
+                    <div className="inline-flex h-[31px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-[#DADADA] bg-white text-[#A6A7AA]">
+                      <Bank className="size-4" />
+                    </div>
+                    <div className="flex flex-col gap-y-1">
+                      <p className="text-sm font-semibold leading-[normal]">
+                        Bank of America checking ending in *1234
+                      </p>
+                      <p className="text-xs font-light leading-[normal]">
+                        Payment Amount:{" "}
+                        <span className="font-semibold">$45,000</span>
+                      </p>
+                    </div>
                   </div>
+                </div>
 
-                  <div className="mt-6">
-                    <h1 className="text-lg font-semibold text-dark-blue-400">
-                      Recurring Payments
-                    </h1>
-                    <p className="mt-1.5 text-sm font-light text-dark-blue-400">
-                      Your following payment methods will be debited on{" "}
-                      <span className="font-bold">1st of every month</span> for
-                      the amount referenced below until the{" "}
-                      <span className="font-bold">
-                        completion of your project.
-                      </span>
-                    </p>
+                <div className="flex flex-col gap-y-3">
+                  <h2 className="text-base font-semibold leading-[19px]">
+                    Recurring Payments
+                  </h2>
+                  <p className="text-sm leading-[normal]">
+                    <span className="font-light">
+                      Your following payment methods will be debited on
+                    </span>{" "}
+                    <span className="font-bold">1st of every month</span>{" "}
+                    <span className="font-light">
+                      for the amount referenced below until the
+                    </span>{" "}
+                    <span className="font-bold">
+                      completion of your project.
+                    </span>
+                  </p>
 
-                    <div className="mt-2">
-                      {designedRecurringPaymentRows.map((row, index, rows) =>
-                        renderProjectPaymentRow(row, {
-                          isLast: index === rows.length - 1,
-                        })
-                      )}
+                  <div>
+                    <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
+                      <div className="flex gap-x-3 pb-[15px] pt-4">
+                        <Amex className="h-[30px] w-[45px] shrink-0" />
+                        <div className="flex flex-col gap-y-1">
+                          <p className="text-sm font-semibold leading-[normal]">
+                            AMEX credit card ending in *1234
+                          </p>
+                          <p className="text-xs font-light leading-[normal]">
+                            Expires: 09/2027
+                          </p>
+                          <p className="text-xs font-light leading-[normal]">
+                            Weekly Payment Amount:{" "}
+                            <span className="font-semibold">$1,406</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
+                        <p className="font-semibold">Billing Address</p>
+                        <p className="font-light">
+                          2125 Chestnut Street, San Francisco, CA 94123
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 pt-4">
+                      <div className="flex gap-x-3">
+                        <Visa className="h-[30px] w-[45px] shrink-0" />
+                        <div className="flex flex-col gap-y-1">
+                          <p className="text-sm font-semibold leading-[normal]">
+                            Visa debit card ending in *1234
+                          </p>
+                          <p className="text-xs font-light leading-[normal]">
+                            Expires: 09/2027
+                          </p>
+                          <p className="text-xs font-light leading-[normal]">
+                            Weekly Payment Amount:{" "}
+                            <span className="font-semibold">$1,406</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-y-1 px-3 text-xs leading-[normal]">
+                        <p className="font-semibold">Billing Address</p>
+                        <p className="font-light">
+                          2125 Chestnut Street, San Francisco, CA 94123
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+              ) : (
+              <div className="px-6">
+                <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
+                  <div className="flex gap-x-3 pb-[15px] pt-4">
+                    <Amex className="h-[30px] w-[45px] shrink-0" />
+                    <div className="flex flex-col gap-y-1">
+                      <p className="text-sm font-semibold leading-[normal]">
+                        AMEX credit card ending in *1234
+                      </p>
+                      <p className="text-xs font-light leading-[normal]">
+                        Expires: 09/2027
+                      </p>
+                      <p className="text-xs font-light leading-[normal]">
+                        Payment Amount:{" "}
+                        <span className="font-semibold">$4,000</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
+                    <p className="font-semibold">Billing Address</p>
+                    <p className="font-light">
+                      2125 Chestnut Street, San Francisco, CA 94123
+                    </p>
+                  </div>
+                </div>
 
-            <div className="mt-8 flex items-start gap-x-2 rounded-lg border border-gray-200 bg-white p-6 pr-8 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="flex-auto space-y-2">
-                <h1 className="text-2xl font-bold text-dark-blue-400">
+                <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
+                  <div className="flex gap-x-3 pb-[15px] pt-4">
+                    <Visa className="h-[30px] w-[45px] shrink-0" />
+                    <div className="flex flex-col gap-y-1">
+                      <p className="text-sm font-semibold leading-[normal]">
+                        Visa debit card ending in *1234
+                      </p>
+                      <p className="text-xs font-light leading-[normal]">
+                        Expires: 09/2027
+                      </p>
+                      <p className="text-xs font-light leading-[normal]">
+                        Payment Amount:{" "}
+                        <span className="font-semibold">$40,000</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
+                    <p className="font-semibold">Billing Address</p>
+                    <p className="font-light">
+                      2125 Chestnut Street, San Francisco, CA 94123
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex min-h-[87px] gap-x-3 py-4">
+                  <div className="inline-flex h-[31px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-[#DADADA] bg-white text-[#A6A7AA]">
+                    <Bank className="size-4" />
+                  </div>
+                  <div className="flex flex-col gap-y-1">
+                    <p className="text-sm font-semibold leading-[normal]">
+                      Bank of America checking ending in *1234
+                    </p>
+                    <p className="text-xs font-light leading-[normal]">
+                      Payment Amount:{" "}
+                      <span className="font-semibold">$45,000</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+              )}
+            </Card>
+
+            <Card className="mt-8 justify-normal gap-x-2 py-[23px] pl-[23px] pr-[31px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
+              <div className="flex min-w-0 flex-auto flex-col gap-y-2">
+                <h1 className="h-7 text-2xl font-bold leading-7 text-[#122A4B]">
                   Kickoff your project
                 </h1>
-                <p className="text-base font-light text-dark-blue-400">
+                <p className="text-base font-light leading-5 text-dark-blue-400">
                   Here&apos;s some things you can do to get your project going
                   in the right direction.
                 </p>
               </div>
               <Button
+                className="min-w-[130px] shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)]"
+                size="md"
                 onClick={() => router.push(`${basePath}/next-steps?${slugQuery}`)}
               >
                 Next Steps <ArrowRight className="size-[15px]" />
               </Button>
-            </div>
+            </Card>
           </div>
 
           <div className="w-[305px] shrink-0">
-            <div className="w-[305px] shrink-0 rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
-              <div className="border-b border-gray-200 pb-4">
-                <h1 className="text-base font-semibold leading-none text-dark-blue-400">
+            <Card className="w-[305px] shrink-0 flex-col items-stretch justify-normal">
+              <div className="border-b border-gray-200 px-6 py-5">
+                <h1 className="text-lg font-semibold leading-7 text-gray-900">
                   Payment Details
                 </h1>
               </div>
 
-              <div className="mt-5">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                      Project cost
-                    </span>
-                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                      {formatter.format(projectCost)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                      Estimated tax *
-                    </span>
-                    <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                      {estimatedProjectTax === 0
-                        ? "$0.00"
-                        : formatter.format(estimatedProjectTax)}
-                    </span>
-                  </div>
-                  {appliedBalanceAmount > 0 ? (
+              <div className="flex flex-col gap-y-2 p-5">
+                <div className="flex flex-col gap-y-4">
+                  <div className="flex flex-col gap-y-2 text-xs leading-[normal] text-dark-blue-400">
                     <div className="flex items-center justify-between">
-                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                        Balance applied
-                      </span>
-                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                        - {formatter.format(appliedBalanceAmount)}
-                      </span>
+                      <p className="font-light">Project cost</p>
+                      <p>{formatter.format(projectCost)}</p>
                     </div>
-                  ) : null}
-                  {totalGiftCardAmount > 0 ? (
                     <div className="flex items-center justify-between">
-                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                        Gift card applied
-                      </span>
-                      <span className="inline-block text-xs font-light leading-none text-dark-blue-400">
-                        - {formatter.format(totalGiftCardAmount)}
-                      </span>
+                      <p className="font-light">Estimated tax *</p>
+                      <p>
+                        {estimatedProjectTax === 0
+                          ? "$0.00"
+                          : formatter.format(estimatedProjectTax)}
+                      </p>
                     </div>
-                  ) : null}
+                    {appliedBalanceAmount > 0 ? (
+                      <div className="flex items-center justify-between">
+                        <p className="font-light">Balance applied</p>
+                        <p>- {formatter.format(appliedBalanceAmount)}</p>
+                      </div>
+                    ) : null}
+                    {totalGiftCardAmount > 0 ? (
+                      <div className="flex items-center justify-between">
+                        <p className="font-light">Gift card applied</p>
+                        <p>- {formatter.format(totalGiftCardAmount)}</p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-between text-base font-bold leading-[normal] text-dark-blue-400">
+                    <p>Total</p>
+                    <p>{formatter.format(totalDueToday)}</p>
+                  </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-gray-200 pt-4">
-                  <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                    Total
-                  </h1>
-                  <h1 className="inline-block text-base font-bold leading-none text-dark-blue-400">
-                    {formatter.format(totalDueToday)}
-                  </h1>
-                </div>
-              </div>
+                <div className="flex flex-col gap-y-2.5">
+                  <div className="flex items-center justify-between rounded-[4px] bg-primary-25 p-2 text-[10px] leading-[13px] text-dark-blue-400">
+                    <p>Your monthly payments start from</p>
+                    <p className="font-bold">Jan 1st, 2025</p>
+                  </div>
 
-              <div className="mt-5 flex items-center justify-between rounded-[4px] bg-primary-25 p-2">
-                <span className="text-[10px] text-dark-blue-400">
-                  Your monthly payments start from
-                </span>
-                <span className="text-[10px] font-medium text-dark-blue-400">
-                  Jan 1st, 2025
-                </span>
-              </div>
-
-              <div className="mt-4 grid">
-                <Button
-                  className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white"
+                  <Button
+                    className="w-full border-2 border-primary-500 bg-white text-primary-500 hover:bg-primary-500 hover:text-white"
+                    size="md"
+                    variant="outlined"
+                    visual="primary"
                   onClick={() =>
                     downloadInvoice(
                       [
@@ -1426,8 +1533,9 @@ export default function ConfirmationPage() {
                   <Printer className="size-[15px]" />
                   Print Invoice
                 </Button>
+                </div>
               </div>
-            </div>
+            </Card>
           </div>
         </div>
       </div>
