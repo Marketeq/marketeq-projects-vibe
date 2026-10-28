@@ -29,6 +29,7 @@ import { SaveCardDto } from "./dto/save-card.dto";
 import { UpdateCardDto } from "./dto/update-card.dto";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { SetPaymentSelectionDto } from "./dto/set-payment-selection.dto";
+import { SetBalanceAppliedDto } from "./dto/set-balance-applied.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
@@ -209,6 +210,20 @@ export class CheckoutController {
     @ClientId() clientId: string,
   ) {
     return this.checkoutDraftSessionService.setPaymentSelection(
+      clientId,
+      sessionId,
+      dto,
+    );
+  }
+
+  @Put("session/:sessionId/balance")
+  @UseGuards(InternalTokenGuard)
+  setSessionBalanceApplied(
+    @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Body() dto: SetBalanceAppliedDto,
+    @ClientId() clientId: string,
+  ) {
+    return this.checkoutDraftSessionService.setBalanceApplied(
       clientId,
       sessionId,
       dto,

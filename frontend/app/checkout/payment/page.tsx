@@ -2087,6 +2087,29 @@ export default function PaymentPage() {
     amountDueNow - appliedBalanceAmount - totalGiftCardAmount,
     0
   )
+  const hasRestoredBalanceRef = React.useRef(false)
+  React.useEffect(() => {
+    if (
+      hasRestoredBalanceRef.current ||
+      isTalentCheckout ||
+      !checkout.session ||
+      walletBalance === null
+    ) {
+      return
+    }
+    hasRestoredBalanceRef.current = true
+    const savedBalance = checkout.session.walletAmountUsed ?? 0
+    if (savedBalance > 0 && savedBalance !== maxApplicableBalance) {
+      setCustomAmount(String(savedBalance))
+      setCustomAmountDraft(String(savedBalance))
+      setUseBalance(true)
+    }
+  }, [
+    checkout.session,
+    isTalentCheckout,
+    maxApplicableBalance,
+    walletBalance,
+  ])
   const previousPriceLineValuesRef = React.useRef<Record<
     string,
     number
@@ -2834,7 +2857,13 @@ export default function PaymentPage() {
       Boolean(checkout.sessionId) &&
       totalAmountToBePaid > 0
 
-    if (!mustRecordCard) {
+    const balanceToRecord = Math.round(appliedBalanceAmount * 100) / 100
+    const mustRecordBalance =
+      !isTalentCheckout &&
+      Boolean(checkout.sessionId) &&
+      balanceToRecord !== (checkout.session?.walletAmountUsed ?? 0)
+
+    if (!mustRecordCard && !mustRecordBalance) {
       navigateToReview()
       return
     }
@@ -2842,20 +2871,27 @@ export default function PaymentPage() {
     const savedCardId = selectedCardMethod?.id.startsWith("full-card-")
       ? selectedCardMethod.id.slice("full-card-".length)
       : null
-    if (!savedCardId) return
+    if (mustRecordCard && !savedCardId) return
 
     setIsProcessing(true)
     try {
-      const response = await CheckoutAPI.SetSessionPaymentSelection(
-        checkout.sessionId,
-        { method: "card", id: savedCardId }
-      )
-      if (checkout.session) {
-        checkout.updateSession({
-          ...checkout.session,
-          paymentSelection: response.data,
-        })
+      let nextSession = checkout.session
+      if (mustRecordBalance) {
+        await CheckoutAPI.SetSessionBalance(checkout.sessionId, balanceToRecord)
+        if (nextSession) {
+          nextSession = { ...nextSession, walletAmountUsed: balanceToRecord }
+        }
       }
+      if (mustRecordCard && savedCardId) {
+        const response = await CheckoutAPI.SetSessionPaymentSelection(
+          checkout.sessionId,
+          { method: "card", id: savedCardId }
+        )
+        if (nextSession) {
+          nextSession = { ...nextSession, paymentSelection: response.data }
+        }
+      }
+      if (nextSession) checkout.updateSession(nextSession)
     } catch (error) {
       setIsProcessing(false)
       const failure = error as {
@@ -2869,6 +2905,15 @@ export default function PaymentPage() {
         failure.response?.data?.code === "SESSION_ALREADY_PAID"
       ) {
         setIsCheckoutSessionInactiveDialogOpen(true)
+      } else if (
+        failure.response?.data?.code === "BALANCE_EXCEEDS_AVAILABLE" ||
+        failure.response?.data?.code === "BALANCE_EXCEEDS_AMOUNT_DUE"
+      ) {
+        toast({
+          variant: "destructive",
+          title:
+            "The balance amount is no longer valid. Please review it and try again.",
+        })
       } else if (
         !failure.response ||
         failure.code === "ECONNABORTED" ||

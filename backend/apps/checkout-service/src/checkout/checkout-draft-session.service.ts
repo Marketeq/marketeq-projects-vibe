@@ -26,12 +26,29 @@ import { CheckoutDraftCodeService } from './checkout-draft-code.service';
 import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.service';
 import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { SetPaymentSelectionDto } from './dto/set-payment-selection.dto';
+import { SetBalanceAppliedDto } from './dto/set-balance-applied.dto';
+import { Wallet } from './entities/wallet.entity';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
 export const SESSION_EXPIRY_MINUTES = 30;
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
+
+const amountDueCents = (
+  projectCost: number,
+  promoAmount: number,
+  giftCards: AppliedGiftCard[] | null,
+) =>
+  Math.max(
+    toCents(projectCost) -
+      toCents(promoAmount) -
+      (giftCards ?? []).reduce(
+        (total, giftCard) => total + toCents(Number(giftCard.amountUsed)),
+        0,
+      ),
+    0,
+  );
 
 type FrozenCodes = {
   appliedGiftCards: AppliedGiftCard[] | null;
@@ -72,6 +89,15 @@ export class CheckoutDraftSessionService {
     });
     const giftCardLock = await this.codeService.getGiftCardLock(clientId);
     const paymentSelection = await this.readPaymentSelection(clientId, session);
+    const promoAmount =
+      promo && promo.status === 'valid'
+        ? promoDiscountCents(promo, toCents(projectCost)) / 100
+        : 0;
+    const walletAmountUsed =
+      Math.min(
+        toCents(Number(session.walletAmountUsed ?? 0)),
+        amountDueCents(projectCost, promoAmount, session.appliedGiftCards),
+      ) / 100;
 
     return {
       sessionId: session.id,
@@ -102,7 +128,58 @@ export class CheckoutDraftSessionService {
         ? giftCardLock.lockedUntil.toISOString()
         : null,
       paymentSelection,
+      walletAmountUsed,
     };
+  }
+
+  async setBalanceApplied(
+    clientId: string,
+    sessionId: string,
+    dto: SetBalanceAppliedDto,
+  ) {
+    const session = await this.loadActiveSession(clientId, sessionId);
+    const amountCents = toCents(dto.amount);
+
+    if (amountCents > 0) {
+      const wallet = await this.dataSource.manager.findOne(Wallet, {
+        where: { userId: clientId },
+      });
+      if (amountCents > toCents(Number(wallet?.balance ?? 0))) {
+        throw new UnprocessableEntityException({
+          code: 'BALANCE_EXCEEDS_AVAILABLE',
+          message: 'The amount is more than the available balance',
+        });
+      }
+
+      const { promo } = await this.codeService.listCodes({
+        clientId,
+        giftCardCodes: [],
+        promoCode: session.appliedPromoCode,
+      });
+      const promoAmount =
+        promo && promo.status === 'valid'
+          ? promoDiscountCents(promo, toCents(Number(session.projectCost))) /
+            100
+          : 0;
+      if (
+        amountCents >
+        amountDueCents(
+          Number(session.projectCost),
+          promoAmount,
+          session.appliedGiftCards,
+        )
+      ) {
+        throw new UnprocessableEntityException({
+          code: 'BALANCE_EXCEEDS_AMOUNT_DUE',
+          message: 'The amount is more than the order total',
+        });
+      }
+    }
+
+    await this.dataSource.manager.update(CheckoutSession, session.id, {
+      walletAmountUsed: amountCents / 100,
+    });
+    return { walletAmountUsed: amountCents / 100 };
   }
 
   async setPaymentSelection(

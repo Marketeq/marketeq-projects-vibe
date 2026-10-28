@@ -117,6 +117,13 @@ export const CheckoutAPI = {
       timeout: 4000,
     }),
 
+  SetSessionBalance: (sessionId: string, amount: number) =>
+    AxiosRequest.put(
+      `/v1/checkout/session/${sessionId}/balance`,
+      { amount },
+      { timeout: 4000 }
+    ),
+
   ClearSessionPaymentSelection: (sessionId: string) =>
     AxiosRequest.del(`/v1/checkout/session/${sessionId}/payment/selection`, {
       timeout: 4000,

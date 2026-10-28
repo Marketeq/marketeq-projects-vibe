@@ -21,6 +21,7 @@ export type CheckoutSession = {
     amount: number
   } | null
   giftCardLockedUntil: string | null
+  walletAmountUsed: number
   paymentSelection: {
     method: "card"
     id: string
