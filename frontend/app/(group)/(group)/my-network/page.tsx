@@ -8,6 +8,7 @@ import type { TalentNetworkStatus } from "@/service/http/contracts"
 import { logHireFlowInitiated } from "@/service/http/contracts"
 import { UserAPI } from "@/service/http/user"
 import {
+  useCompanyAdminIds,
   useCompanyMemberPermissions,
   useMyCompanies,
   useUpdateCompanyMember,
@@ -151,6 +152,12 @@ interface AccountMember {
   /** Set for accepted members with a company, and needed to edit permissions. */
   userId?: string
   companyId?: string
+  /**
+   * The viewer holds company_users.role 'admin' on this row's company - the
+   * column user-service's assertIsAdmin gates on. Drives only the menu items
+   * that write to company membership (R3-12).
+   */
+  viewerIsCompanyAdmin: boolean
   /** Invitation date; drives Newest/Oldest sorting. */
   joinedAt?: string | null
 }
@@ -285,9 +292,13 @@ function buildAccountColumns(
       cell: ({ row }) => {
         const isPending = row.original.status === "pending"
         // Editing permissions requires a company_users row to write back to,
-        // and only accepted members tied to a company have one.
+        // and only accepted members tied to a company have one. The write is
+        // assertIsAdmin-gated, so a non-admin viewer is not offered it (R3-12).
         const canEdit =
-          !isPending && !!row.original.userId && !!row.original.companyId
+          !isPending &&
+          !!row.original.userId &&
+          !!row.original.companyId &&
+          row.original.viewerIsCompanyAdmin
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -639,6 +650,7 @@ const ExternalTeamCard = ({
   status,
   userId,
   companyId,
+  viewerIsCompanyAdmin,
   onResend,
   onCancel,
   onEdit,
@@ -648,7 +660,9 @@ const ExternalTeamCard = ({
   onEdit: (member: AccountMember) => void
 }) => {
   const isPending = status === "pending"
-  const canEdit = !isPending && !!userId && !!companyId
+  // Same rule as the list view: the permissions write is assertIsAdmin-gated,
+  // so a non-admin viewer is not offered it (R3-12).
+  const canEdit = !isPending && !!userId && !!companyId && viewerIsCompanyAdmin
 
   // The card always presents the member's name and company title-cased,
   // whatever casing they were typed/stored in. Display only, since the values
@@ -725,6 +739,7 @@ const ExternalTeamCard = ({
                   status,
                   userId,
                   companyId,
+                  viewerIsCompanyAdmin,
                 })
               }
             >
@@ -1593,6 +1608,10 @@ export default function MyTeam() {
 
   const livePermissions = useCompanyMemberPermissions(rosterCompanyIds)
 
+  // R3-12: the menu should only offer what the server will allow. Shares the
+  // member lists already fetched above, so this costs no extra requests.
+  const adminCompanyIds = useCompanyAdminIds(rosterCompanyIds)
+
   const teamMembers = useMemo(() => {
     const pending = pendingQuery.data?.data ?? []
     const acceptedForTeam = acceptedQuery.data?.data ?? []
@@ -1644,6 +1663,8 @@ export default function MyTeam() {
         status,
         userId: status === "active" ? inv.inviteeUserId : undefined,
         companyId: inv.companyId,
+        viewerIsCompanyAdmin:
+          !!inv.companyId && adminCompanyIds.has(inv.companyId),
         joinedAt: inv.createdAt ?? null,
       }
     }
@@ -1669,6 +1690,7 @@ export default function MyTeam() {
     inviteeQuery.data,
     companyById,
     livePermissions,
+    adminCompanyIds,
   ])
 
   const resendInvitation = useResendInvitation()
