@@ -1,67 +1,45 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { resolveDashboardRole, useAuth } from "@/contexts/auth"
-import { ROLE } from "@/types/user"
 import { AlertTriangle } from "@blend-metrics/icons"
 import { Button, Dialog, DialogClose, DialogContent } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
-import { ProjectAPI } from "@/service/http/project"
 import {
+  CREATE_LISTING_BLOCKED_EVENT,
   createListingTitleFor,
-  runCreateListingGate,
   type CreateListingBlock,
 } from "@/src/lib/api/create-listing-gate"
 import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
 
-// G2: gates the start of a talent listing (Project or Service on /my-listings). For a
-// talent, the backend's read-only creation check runs fresh on every click: an open gate
-// (verified or inside the grace period) runs the caller's existing draft creation, a refusal
-// opens the "To publish this job, you must verify ..." modal for what is missing (Cancel /
-// Start Verification), and any other outcome fails closed into the existing
-// status-unavailable popup. Nothing is created or saved while blocked. Anyone who is not a
-// talent keeps the existing behavior (the backend still refuses a closed gate). Cancel, Esc
-// and an outside click only close the modal. Start Verification uses the same one-shot
-// dashboard hand-off as the Apply gate (G3), which opens the existing verification flow.
-export function useCreateListingGate() {
-  const { user } = useAuth()
+// G2: the one modal for every way of starting a listing. ProjectAPI.CreateProjectDraft asks
+// the backend's read-only creation check before it POSTs, and announces a refusal here, so
+// the dashboard buttons, /my-listings (Project and Service), the legacy publish-project,
+// job-listing and edit-listing pages and the my-listings/[slug] fallback all land on this
+// same modal. A refusal shows "To publish this job, you must verify ..." for what is missing
+// (identity and location / identity / location) with Cancel and Start Verification; an
+// unreadable gate shows the existing status-unavailable popup. Nothing is created while
+// blocked. Cancel, Esc and an outside click only close the modal. Start Verification uses
+// the same one-shot dashboard hand-off as the Apply gate (G3), which opens the existing
+// Identity Verification flow.
+export function CreateListingGateHost() {
   const router = useRouter()
   const [block, setBlock] = useState<CreateListingBlock | null>(null)
-  const checking = useRef(false)
-  const isTalent = resolveDashboardRole(user) === ROLE.TALENT
 
-  const runCreate = useCallback(
-    async (proceed: () => unknown) => {
-      if (checking.current) return { proceeded: false }
-      checking.current = true
-      let result
-      try {
-        result = await runCreateListingGate({
-          isTalent,
-          check: () => ProjectAPI.CheckCreateListingGate(),
-          // The check is over once it resolves; the draft creation runs outside the guard
-          // exactly as it did before the gate existed.
-          proceed: () => {
-            checking.current = false
-            return proceed()
-          },
-        })
-      } finally {
-        checking.current = false
-      }
-      setBlock(result.block)
-      return { proceeded: result.proceeded }
-    },
-    [isTalent]
-  )
+  useEffect(() => {
+    const onBlocked = (event: Event) => {
+      setBlock((event as CustomEvent<CreateListingBlock>).detail)
+    }
+    window.addEventListener(CREATE_LISTING_BLOCKED_EVENT, onBlocked)
+    return () => window.removeEventListener(CREATE_LISTING_BLOCKED_EVENT, onBlocked)
+  }, [])
 
   const goVerify = () => {
     setBlock(null)
     router.push(START_VERIFICATION_HREF)
   }
 
-  const createListingGateDialog = (
+  return (
     <>
       <Dialog
         open={block?.kind === "verification"}
@@ -105,6 +83,4 @@ export function useCreateListingGate() {
       />
     </>
   )
-
-  return { runCreate, createListingGateDialog }
 }

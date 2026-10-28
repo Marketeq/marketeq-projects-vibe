@@ -1,5 +1,6 @@
 "use client"
 
+import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate"
 import * as React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import dynamic from "next/dynamic"
@@ -4212,6 +4213,8 @@ function ProjectDetailsInner() {
         }
       } catch (createErr) {
         console.error("Failed to create initial draft:", createErr)
+        // G2: the creation gate refused (the modal is already showing): leave the empty page.
+        if (isCreateListingBlocked(createErr)) router.replace("/my-listings")
       } finally {
         setLoading(false)
       }

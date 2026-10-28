@@ -40,25 +40,85 @@ export function createListingBlockFrom(error: unknown): CreateListingBlock {
 }
 
 /**
- * The whole decision, with its collaborators passed in so it can be exercised without a
- * browser: a non-talent proceeds untouched; a talent's check runs first, and `proceed` (the
- * draft creation) runs only after that check resolved. A check that rejects returns the block
- * to show and never calls `proceed`, so nothing is created or saved while blocked.
+ * Creates a draft behind the gate, with its collaborators passed in so the ordering can be
+ * tested without a browser: `check` runs first and `post` (the draft creation) runs only after
+ * it resolved, so a refused or unreadable check creates nothing. A refusal (from the check, or
+ * from the POST itself on a race) goes to `refuse` and the original error is rethrown, never
+ * swallowed.
  */
-export async function runCreateListingGate(deps: {
-  isTalent: boolean
+export async function createDraftBehindGate<T>(deps: {
   check: () => Promise<unknown>
-  proceed: () => unknown
-}): Promise<{ block: CreateListingBlock | null; proceeded: boolean }> {
-  if (!deps.isTalent) {
-    await deps.proceed()
-    return { block: null, proceeded: true }
-  }
+  post: () => Promise<T>
+  refuse: (error: unknown) => void
+}): Promise<T> {
   try {
     await deps.check()
   } catch (error) {
-    return { block: createListingBlockFrom(error), proceeded: false }
+    deps.refuse(error)
+    throw error
   }
-  await deps.proceed()
-  return { block: null, proceeded: true }
+  try {
+    return await deps.post()
+  } catch (error) {
+    if (isGateRefusal(error)) deps.refuse(error)
+    throw error
+  }
+}
+
+// --- one gate for every listing-creation entry point ---------------------------------
+//
+// ProjectAPI.CreateProjectDraft runs the creation check before it POSTs. When the check (or
+// the POST itself, on a race) is refused, the error is marked and announced here; a single
+// modal host mounted in the root layout listens and shows the G2 modal. Callers keep their
+// own catch, but a refusal is never silent and never leaves a draft behind.
+export const CREATE_LISTING_BLOCKED_EVENT = "marketeq:create-listing-blocked"
+
+const BLOCK_KEY = "createListingBlock"
+
+/** The block a marked error carries, or null for any other error. */
+export function createListingBlockOf(error: unknown): CreateListingBlock | null {
+  if (!error || typeof error !== "object") return null
+  const block = (error as Record<string, unknown>)[BLOCK_KEY]
+  return block ? (block as CreateListingBlock) : null
+}
+
+/** True for an error the creation gate refused (so a page can leave its empty form). */
+export function isCreateListingBlocked(error: unknown): boolean {
+  return createListingBlockOf(error) !== null
+}
+
+/** Marks `error` with its block (no modal). Returns the block. */
+export function markCreateListingBlocked(error: unknown): CreateListingBlock {
+  const block = createListingBlockFrom(error)
+  if (error && typeof error === "object") {
+    try {
+      ;(error as Record<string, unknown>)[BLOCK_KEY] = block
+    } catch {
+      // a frozen error object still gets the modal, it just is not marked
+    }
+  }
+  return block
+}
+
+/** Marks `error` and tells the modal host to show it. Returns the block. */
+export function announceCreateListingBlocked(
+  error: unknown,
+  target: Pick<EventTarget, "dispatchEvent"> | null = typeof window !== "undefined"
+    ? window
+    : null
+): CreateListingBlock {
+  const block = markCreateListingBlocked(error)
+  target?.dispatchEvent(new CustomEvent(CREATE_LISTING_BLOCKED_EVENT, { detail: block }))
+  return block
+}
+
+/** A POST refused by the gate itself (403 VERIFICATION_REQUIRED / 503 unavailable). */
+export function isGateRefusal(error: unknown): boolean {
+  const response = (error as { response?: { status?: unknown; data?: unknown } } | null)
+    ?.response
+  const code = (response?.data as { error?: unknown } | undefined)?.error
+  return (
+    (response?.status === 403 && code === "VERIFICATION_REQUIRED") ||
+    (response?.status === 503 && code === "IDENTITY_VERIFICATION_UNAVAILABLE")
+  )
 }

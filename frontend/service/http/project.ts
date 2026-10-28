@@ -1,6 +1,11 @@
 import { CreateProjectType } from "@/types/project"
 import { getPublicApiUrl, getPublicListingsUrl } from "@/lib/runtime-urls"
 import AxiosRequest from ".."
+import {
+  announceCreateListingBlocked,
+  createDraftBehindGate,
+  markCreateListingBlocked,
+} from "@/src/lib/api/create-listing-gate"
 
 type CreatePhaseTaskPayload = {
   taskName: string
@@ -51,7 +56,11 @@ export const ProjectAPI = {
       timeout: LISTING_REQUEST_TIMEOUT_MS,
     })
   },
-  CreateProjectDraft: (
+  // G2: every draft-creating call, from any page, asks the read-only creation check first.
+  // A refusal (or an unreadable gate) creates nothing: the error is marked, the global G2
+  // modal is announced, and the original error is rethrown for the caller's own handling.
+  // `silent` (automatic background seeding only) skips the modal but still creates nothing.
+  CreateProjectDraft: async (
     data: Partial<CreateProjectType> & {
       title?: string
       shortDescription?: string
@@ -59,10 +68,19 @@ export const ProjectAPI = {
       projectType?: string
       faqs?: Array<{ question: string; answer: string }>
       videoUrl?: string
-    } = {}
+    } = {},
+    options: { silent?: boolean } = {}
   ) => {
-    return AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data, {
-      timeout: LISTING_REQUEST_TIMEOUT_MS,
+    return createDraftBehindGate({
+      check: () => ProjectAPI.CheckCreateListingGate(),
+      post: () =>
+        AxiosRequest.post(`${LISTINGS_BASE}/publish/project/draft`, data, {
+          timeout: LISTING_REQUEST_TIMEOUT_MS,
+        }),
+      refuse: (error) =>
+        options.silent
+          ? markCreateListingBlocked(error)
+          : announceCreateListingBlocked(error),
     })
   },
   GetProjectDraft: (projectId: string) => {

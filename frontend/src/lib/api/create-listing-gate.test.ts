@@ -1,12 +1,16 @@
 // Run like apply-gate.test.ts (from the frontend/ directory): npx tsx --test <file>
 import assert from "node:assert/strict"
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import {
+  announceCreateListingBlocked,
+  createDraftBehindGate,
   createListingBlockFrom,
+  createListingBlockOf,
   createListingTitleFor,
-  runCreateListingGate,
+  isCreateListingBlocked,
+  markCreateListingBlocked,
 } from "./create-listing-gate"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
@@ -41,121 +45,196 @@ describe("createListingBlockFrom: only an explicit refusal names a requirement; 
   })
 })
 
-describe("runCreateListingGate: the draft is created only after the check resolved", () => {
-  // Project and Service share the one code path; both are exercised.
+describe("createDraftBehindGate: the draft POST happens only after the check resolved", () => {
+  const blockedKinds = (b: unknown) => (b as { kind: string }).kind
+  // Project and Service (and every other caller) share the one wrapper; the type rides in the body.
   for (const type of ["project", "service"]) {
-    it(`unverified ${type} click: blocked, the check ran, NO draft/API write`, async () => {
+    it(`unverified ${type}: the check ran, NO draft POST, the refusal is announced and rethrown`, async () => {
       const calls: string[] = []
-      const out = await runCreateListingGate({
-        isTalent: true,
-        check: async () => { calls.push("check"); throw refusal("both") },
-        proceed: () => { calls.push(`create-draft:${type}`) },
-      })
+      const refused: unknown[] = []
+      const err = refusal("both")
+      await assert.rejects(
+        createDraftBehindGate({
+          check: async () => { calls.push("check"); throw err },
+          post: async () => { calls.push(`post:${type}`); return "draft" },
+          refuse: (e) => refused.push(e),
+        }),
+        (e) => e === err
+      )
       assert.deepEqual(calls, ["check"])
-      assert.deepEqual(out, { block: { kind: "verification", missing: "both" }, proceeded: false })
+      assert.deepEqual(refused, [err])
     })
   }
 
-  it("each missing status selects its own variant", async () => {
+  it("each missing status reaches the modal as its own variant", () => {
     for (const missing of ["both", "identity", "location"] as const) {
-      const out = await runCreateListingGate({
-        isTalent: true,
-        check: async () => { throw refusal(missing) },
-        proceed: () => assert.fail("must not create a draft"),
-      })
-      assert.deepEqual(out.block, { kind: "verification", missing })
+      const err = refusal(missing)
+      const target = { dispatchEvent: (e: Event) => { seen = (e as CustomEvent).detail; return true } }
+      let seen: unknown
+      announceCreateListingBlocked(err, target)
+      assert.deepEqual(seen, { kind: "verification", missing })
+      assert.deepEqual(createListingBlockOf(err), { kind: "verification", missing })
     }
   })
 
-  it("an unreadable gate fails closed: no draft", async () => {
-    const out = await runCreateListingGate({
-      isTalent: true,
-      check: async () => { throw new Error("Network Error") },
-      proceed: () => assert.fail("must not create a draft"),
-    })
-    assert.deepEqual(out, { block: { kind: "unavailable" }, proceeded: false })
-  })
-
-  it("verified or grace-period talent (check resolves): check first, then the draft", async () => {
-    const calls: string[] = []
-    const out = await runCreateListingGate({
-      isTalent: true,
-      check: async () => { calls.push("check") },
-      proceed: () => { calls.push("create-draft") },
-    })
-    assert.deepEqual(calls, ["check", "create-draft"])
-    assert.deepEqual(out, { block: null, proceeded: true })
-  })
-
-  it("a non-talent keeps the existing behavior: no check, straight to the draft", async () => {
-    const calls: string[] = []
-    const out = await runCreateListingGate({
-      isTalent: false,
-      check: async () => { calls.push("check") },
-      proceed: () => { calls.push("create-draft") },
-    })
-    assert.deepEqual(calls, ["create-draft"])
-    assert.equal(out.proceeded, true)
-  })
-
-  it("a failure of the draft creation itself still surfaces to the caller", async () => {
+  it("an unreadable gate (network error, 5xx) is announced as unavailable: no draft, not silent", async () => {
+    const refused: unknown[] = []
     await assert.rejects(
-      runCreateListingGate({ isTalent: true, check: async () => {}, proceed: () => { throw new Error("boom") } }),
-      /boom/
+      createDraftBehindGate({
+        check: async () => { throw new Error("Network Error") },
+        post: async () => assert.fail("must not POST"),
+        refuse: (e) => refused.push(e),
+      })
     )
+    assert.equal(refused.length, 1)
+    assert.equal(blockedKinds(createListingBlockFrom(refused[0])), "unavailable")
+  })
+
+  it("verified or grace-period (check resolves): check first, then the POST, result returned", async () => {
+    const calls: string[] = []
+    const out = await createDraftBehindGate({
+      check: async () => { calls.push("check") },
+      post: async () => { calls.push("post"); return { data: { id: "d1" } } },
+      refuse: () => assert.fail("must not refuse"),
+    })
+    assert.deepEqual(calls, ["check", "post"])
+    assert.deepEqual(out, { data: { id: "d1" } })
+  })
+
+  it("a POST refused by the gate on a race is announced too (403 and 503), and rethrown", async () => {
+    for (const err of [refusal("identity"), rejected(503, { error: "IDENTITY_VERIFICATION_UNAVAILABLE" })]) {
+      const refused: unknown[] = []
+      await assert.rejects(
+        createDraftBehindGate({ check: async () => {}, post: async () => { throw err }, refuse: (e) => refused.push(e) }),
+        (e) => e === err
+      )
+      assert.deepEqual(refused, [err])
+    }
+  })
+
+  it("an unrelated POST failure is rethrown without the G2 modal", async () => {
+    await assert.rejects(
+      createDraftBehindGate({ check: async () => {}, post: async () => { throw rejected(500, {}) }, refuse: () => assert.fail("not a gate refusal") })
+    )
+  })
+
+  it("marking works on the error object and survives for the page's own catch", () => {
+    const err = refusal("location")
+    markCreateListingBlocked(err)
+    assert.equal(isCreateListingBlocked(err), true)
+    assert.equal(isCreateListingBlocked(new Error("x")), false)
+    assert.equal(isCreateListingBlocked(null), false)
   })
 })
 
-describe("the hook: modal behavior", () => {
-  const hook = read("utils", "useCreateListingGate.tsx")
+describe("ProjectAPI.CreateProjectDraft is the single gated door", () => {
+  const api = read("service", "http", "project.ts")
+  const fn = api.slice(api.indexOf("CreateProjectDraft: async"), api.indexOf("GetProjectDraft:"))
 
-  it("the only API it can call is the read-only creation check", () => {
-    assert.ok(hook.includes("ProjectAPI.CheckCreateListingGate()"))
-    assert.ok(!/CreateProjectDraft|UpdateProjectDraft|localStorage|sessionStorage|fetch\(/.test(hook))
+  it("checks via GET /publish/create-gate before the POST, through createDraftBehindGate", () => {
+    assert.ok(fn.includes("createDraftBehindGate({"))
+    assert.ok(fn.indexOf("check: () => ProjectAPI.CheckCreateListingGate()") < fn.indexOf("/publish/project/draft"))
+    assert.ok(api.includes("`${LISTINGS_BASE}/publish/create-gate`"))
   })
 
-  it("Cancel, Esc and an outside click only close the modal: no navigation, API or stored state", () => {
-    assert.ok(/<DialogClose asChild>\s*<Button variant="outlined" size="md">\s*Cancel\s*<\/Button>\s*<\/DialogClose>/.test(hook))
-    const onOpenChange = hook.slice(hook.indexOf("onOpenChange={"), hook.indexOf("<DialogContent"))
+  it("announces to the modal unless the caller is the silent background seed", () => {
+    assert.ok(fn.includes("announceCreateListingBlocked(error)"))
+    assert.ok(fn.includes("markCreateListingBlocked(error)"))
+  })
+
+  it("no other code posts to the draft route", () => {
+    const hits: string[] = []
+    const walk = (dir: string) => {
+      for (const e of readdirSync(join(process.cwd(), dir), { withFileTypes: true })) {
+        const rel = `${dir}/${e.name}`
+        if (e.isDirectory()) { if (!/node_modules|\.next/.test(e.name)) walk(rel) }
+        else if (/\.tsx?$/.test(e.name) && !/\.test\./.test(e.name) && read(rel).includes("publish/project/draft")) hits.push(rel)
+      }
+    }
+    for (const d of ["app", "components", "utils", "src", "lib", "hooks", "service"]) { try { walk(d) } catch { /* absent */ } }
+    assert.deepEqual(hits, ["service/http/project.ts"])
+  })
+})
+
+describe("the modal host: copy, close behavior and the verification hand-off", () => {
+  const host = read("utils", "CreateListingGateHost.tsx")
+  const layout = read("app", "layout.tsx")
+
+  it("is mounted once in the root layout, so every page has it", () => {
+    assert.ok(layout.includes('import { CreateListingGateHost } from "@/utils/CreateListingGateHost"'))
+    assert.equal(layout.split("<CreateListingGateHost />").length - 1, 1)
+  })
+
+  it("listens for the announced block and shows the title for what is missing", () => {
+    assert.ok(host.includes("window.addEventListener(CREATE_LISTING_BLOCKED_EVENT, onBlocked)"))
+    assert.ok(host.includes("createListingTitleFor(block.missing)"))
+  })
+
+  it("can call no API: it never creates, checks or stores anything", () => {
+    assert.ok(!/ProjectAPI|CreateProjectDraft|fetch\(|localStorage|sessionStorage/.test(host.replace(/^\s*\/\/.*$/gm, "")))
+  })
+
+  it("Cancel, Esc and an outside click only close the modal", () => {
+    assert.ok(/<DialogClose asChild>\s*<Button variant="outlined" size="md">\s*Cancel\s*<\/Button>\s*<\/DialogClose>/.test(host))
+    const onOpenChange = host.slice(host.indexOf("onOpenChange={"), host.indexOf("<DialogContent"))
     assert.ok(onOpenChange.includes("if (!open) setBlock(null)"))
-    assert.ok(!/router|fetch|check|proceed|Draft|localStorage|sessionStorage/i.test(onOpenChange))
+    assert.ok(!/router|fetch|check|Draft|localStorage|sessionStorage/i.test(onOpenChange))
   })
 
   it("Start Verification closes the modal and launches the existing flow through the G3 hand-off", () => {
-    assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(hook))
-    assert.ok(hook.includes("const goVerify = () => {\n    setBlock(null)\n    router.push(START_VERIFICATION_HREF)\n  }"))
+    assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(host))
+    assert.ok(host.includes("const goVerify = () => {\n    setBlock(null)\n    router.push(START_VERIFICATION_HREF)\n  }"))
     assert.ok(read("src", "lib", "api", "start-verification-handoff.ts").includes("/talent-dashboard?"))
   })
 
   it("unavailable reuses the existing status-unavailable popup", () => {
-    assert.ok(hook.includes('open={block?.kind === "unavailable"}'))
-    assert.ok(hook.includes('reason="status_unavailable"'))
-  })
-
-  it("talent role decides whether the check runs", () => {
-    assert.ok(hook.includes("resolveDashboardRole(user) === ROLE.TALENT"))
+    assert.ok(host.includes('open={block?.kind === "unavailable"}'))
+    assert.ok(host.includes('reason="status_unavailable"'))
   })
 })
 
-describe("/my-listings: Project and Service both go through the gate before any draft", () => {
-  const page = read("app", "(group)", "my-listings", "page.tsx")
+describe("every listing-creation entry point goes through the gated call", () => {
+  const draftCallers = (file: string) => read(...file.split("/")).split("ProjectAPI.CreateProjectDraft(").length - 1
 
-  it("the New Listing chooser offers exactly Project and Service, on one click handler", () => {
+  it("/my-listings New Listing: Project and Service share one handler; a refusal closes the chooser", () => {
+    const page = read("app", "(group)", "my-listings", "page.tsx")
     assert.ok(/type: "project",\s*label: "Project"/.test(page))
     assert.ok(/type: "service",\s*label: "Service"/.test(page))
     assert.equal(page.split("newListingOptions.map(").length - 1, 1)
+    assert.equal(draftCallers("app/(group)/my-listings/page.tsx"), 1)
+    assert.ok(/if \(isCreateListingBlocked\(err\)\) \{\s*setShowNewListingDialog\(false\)/.test(page))
   })
 
-  it("CreateProjectDraft is called once on this page, only inside the runCreate callback", () => {
-    assert.equal(page.split("ProjectAPI.CreateProjectDraft(").length - 1, 1)
-    const run = page.indexOf("await runCreate(async () => {")
-    const draft = page.indexOf("ProjectAPI.CreateProjectDraft(")
-    assert.ok(run > 0 && draft > run)
+  it("the three dashboard Create Project buttons use the gated call, and the read-only component is untouched", () => {
+    const comps = read("components", "talent-dashboard-comps.tsx")
+    assert.equal(comps.split("ProjectAPI.CreateProjectDraft({").length - 1, 3)
+    assert.equal(comps.split("handleCreateProject").length - 1, 7)
+    assert.ok(!/isCreateListingBlocked|CreateListingGate|onBeforeCreate/.test(comps))
   })
 
-  it("renders the gate dialog and closes the chooser (opens no form) when blocked", () => {
-    assert.ok(page.includes("{createListingGateDialog}"))
-    assert.ok(/if \(!proceeded\) \{\s*setShowNewListingDialog\(false\)/.test(page))
+  it("legacy publish-project, job-listing and edit-listing leave the empty form when the gate refuses", () => {
+    for (const f of ["app/publish-project/page.tsx", "app/job-listing/page.tsx", "app/edit-listing/[slug]/page.tsx"]) {
+      const src = read(...f.split("/"))
+      assert.ok(src.includes('import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate"'), f)
+      assert.ok(/if \(isCreateListingBlocked\(error\)\) router\.replace\("\/my-listings"\)/.test(src), f)
+      assert.ok(draftCallers(f) >= 2, f)
+    }
+  })
+
+  it("my-listings/[slug] fallback leaves the empty page when the gate refuses; its save path keeps its toast", () => {
+    const src = read("app", "(group)", "my-listings", "[slug]", "page.tsx")
+    assert.ok(/if \(isCreateListingBlocked\(createErr\)\) router\.replace\("\/my-listings"\)/.test(src))
+    assert.ok(src.includes("toast({ title: toUserMessage(createErr), variant: \"destructive\" })"))
+  })
+
+  it("background seed migration: gate checked once up front, silent, and not marked migrated while blocked", () => {
+    const src = read("src", "lib", "my-listings.ts")
+    const seed = src.slice(src.indexOf("async function ensureSeedListingsInBackend"), src.indexOf("export function useMyListings"))
+    const checkAt = seed.indexOf("await ProjectAPI.CheckCreateListingGate()")
+    assert.ok(checkAt > 0 && checkAt < seed.indexOf("GetMyProjects()"))
+    assert.ok(/CheckCreateListingGate\(\)\s*\} catch \{\s*return\s*\}/.test(seed))
+    assert.ok(seed.indexOf("return") < seed.indexOf('localStorage.setItem(SEED_MIGRATED_KEY, "true")'))
+    assert.ok(seed.includes("CreateProjectDraft(payload, { silent: true })"))
   })
 })
 
