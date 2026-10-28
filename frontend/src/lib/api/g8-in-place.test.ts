@@ -288,18 +288,18 @@ describe("the installer Download dialog: the fallback popup starts verification 
 })
 
 describe("G2 and G3 are unchanged by G8", () => {
-  it("G3 still uses the host through its own hook; G2 keeps its own navigation", () => {
+  it("G3 and G2 still start verification through the shared host (G2 is migrated in a later phase)", () => {
     assert.ok(
       read("utils", "useApplyGate.tsx").includes("void startVerification()")
     )
     assert.ok(
       read("utils", "CreateListingGateHost.tsx").includes(
-        "router.push(START_VERIFICATION_HREF)"
+        "void startVerification()"
       )
     )
   })
 
-  it("the dashboard handoff remains for the gates that still use it", () => {
+  it("the dashboard handoff module is still there", () => {
     assert.ok(
       read("src", "lib", "api", "start-verification-handoff.ts").includes(
         "START_VERIFICATION_HREF"

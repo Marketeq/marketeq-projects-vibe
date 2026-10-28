@@ -327,14 +327,6 @@ describe("G3 Start Verification runs in place: no navigation, no handoff, no ret
       )
       assert.ok(!/talent-dashboard\?/.test(page))
     }
-    // G2 (listing creation) is still not migrated: it does not talk to the host
-    const callers = ["utils/CreateListingGateHost.tsx"].map((f) =>
-      read(...f.split("/"))
-    )
-    for (const source of callers)
-      assert.ok(
-        !/useIdentityVerification|identity-verification-host/.test(source)
-      )
   })
 
   it("the gate decision is unchanged: a fresh read per click, open only for gate_open, everything else blocks", () => {

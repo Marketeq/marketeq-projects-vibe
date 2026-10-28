@@ -309,7 +309,7 @@ describe("G9 does not touch the other gates, and the host stays single", () => {
   it("G2, G3 and G8 keep what they have", () => {
     assert.ok(
       read("utils", "CreateListingGateHost.tsx").includes(
-        "router.push(START_VERIFICATION_HREF)"
+        "void startVerification()"
       )
     )
     assert.ok(
@@ -329,7 +329,7 @@ describe("G9 does not touch the other gates, and the host stays single", () => {
     )
   })
 
-  it("the old dashboard handoff still exists for the gate that uses it (G2)", () => {
+  it("the old dashboard handoff module still exists (G2 no longer uses it)", () => {
     assert.ok(
       read("src", "lib", "api", "start-verification-handoff.ts").includes(
         "START_VERIFICATION_HREF"

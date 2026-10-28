@@ -55,6 +55,9 @@ export default function RootLayout({
             authentication pages. */}
         <IdentityVerificationHostProvider>
           <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+          {/* G2's blocked-listing modal lives inside the host's provider so its Start
+              Verification can open verification in place. */}
+          <CreateListingGateHost />
         </IdentityVerificationHostProvider>
         <Suspense fallback={null}>
           <NProgressBar />
@@ -62,7 +65,6 @@ export default function RootLayout({
         <Toaster />
         <TimezoneSync />
         <InviteWindow />
-        <CreateListingGateHost />
       </QueryProvider>
     </AuthProvider>
   )

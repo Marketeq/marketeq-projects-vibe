@@ -115,6 +115,7 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
       "components/withdraw-funds-dialog.tsx",
       "app/transfer-funds/page.tsx",
       "app/verify-withdrawal/page.tsx",
+      "utils/CreateListingGateHost.tsx",
     ]
     assert.deepEqual(
       filesWith("@/contexts/identity-verification-host"),
@@ -161,20 +162,9 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     ) // observer mount, startVerification
   })
 
-  it("G3 (Apply), G8 (Log Time, Manual Time) and G9 (withdrawals) are migrated: only G2 keeps its own navigation and stays off the host", () => {
-    const unmigrated: Record<string, RegExp> = {
-      "utils/CreateListingGateHost.tsx": /START_VERIFICATION_HREF/,
-    }
-    for (const [file, navigation] of Object.entries(unmigrated)) {
-      const text = readFileSync(join(root, file), "utf8")
-      assert.ok(
-        !/identity-verification-host|useIdentityVerification/.test(text),
-        file
-      )
-      assert.ok(navigation.test(text), `${file} keeps its current navigation`)
-    }
-    // the migrated gates use the host and no longer use the dashboard handoff
+  it("every gate is migrated: G2 (listing creation), G3 (Apply), G8 (Log Time, Manual Time) and G9 (withdrawals) use the host, and none uses the dashboard handoff", () => {
     for (const file of [
+      "utils/CreateListingGateHost.tsx",
       "utils/useApplyGate.tsx",
       "utils/useStartTimeGate.tsx",
       "components/withdraw-funds-dialog.tsx",
@@ -185,7 +175,11 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
       assert.ok(!/START_VERIFICATION_HREF/.test(text), file)
       assert.ok(!/router\.push\("\/talent-dashboard"\)/.test(text), file)
     }
-    // the old handoff stays for the gates that still use it
+    // nothing builds the dashboard handoff link any more; the module and its dashboard
+    // consumer stay (a bookmarked or old link still works), but no gate calls it
+    assert.deepEqual(filesWith("START_VERIFICATION_HREF"), [
+      "src/lib/api/start-verification-handoff.ts",
+    ])
     assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
   })
 
