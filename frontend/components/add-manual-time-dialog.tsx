@@ -20,6 +20,7 @@ import {
   useToast,
 } from "@/components/ui"
 import { createManualTime } from "@/service/http/manual-time"
+import { downloadBlockFor } from "@/src/lib/api/time-tracker-download"
 import { getTasksForContract, type ContractTaskDTO } from "@/service/http/tasks"
 import { getContractsForClient, getContractsForTalent, type ContractDTO } from "@/service/http/contracts"
 import { useAuth } from "@/contexts/auth"
@@ -35,10 +36,15 @@ export function AddManualTimeDialog({
   open,
   onOpenChange,
   onSaved,
+  onVerificationBlocked,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSaved?: () => void
+  // G8: the backend refused the entry with VERIFICATION_REQUIRED. The caller shows the
+  // default Verify your account dialog; nothing was written. Every other failure (including
+  // the verification-unavailable answer) keeps the existing inline error.
+  onVerificationBlocked?: () => void
 }) {
   const { toast } = useToast()
   const { user } = useAuth()
@@ -172,7 +178,9 @@ export function AddManualTimeDialog({
       onSaved?.()
     } catch (e: any) {
       const errorCode = e?.response?.data?.errorCode
-      if (errorCode === "ERR_MANUAL_TIME_OVERLAP" && !confirmOverlap) {
+      if (downloadBlockFor(e) === "verification_required" && onVerificationBlocked) {
+        onVerificationBlocked()
+      } else if (errorCode === "ERR_MANUAL_TIME_OVERLAP" && !confirmOverlap) {
         setShowOverlapConfirm(true)
       } else {
         // US-81.02: exact spec fallback copy when the backend doesn't supply

@@ -6,8 +6,12 @@
 
 const { Client } = require('pg');
 
-const DATABASE_URL =
-  'postgres://supabase_admin:VVLjT29C33ZrP4vzhzmBEGEit3529MAa@72.61.77.231:5433/postgres';
+// The connection string comes from the environment (stored in Doppler); never commit it.
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL is not set. Export it, or run with: doppler run -- node <this script>');
+  process.exit(1);
+}
 const SCHEMA = 'listings';
 
 // Detailed data per project slug

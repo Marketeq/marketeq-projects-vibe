@@ -6,8 +6,12 @@
  */
 const { Client } = require('pg');
 
-const DATABASE_URL = process.env.DATABASE_URL
-  || 'postgres://postgres:VVLjT29C33ZrP4vzhzmBEGEit3529MAa@72.61.77.231:5433/postgres';
+// The connection string comes from the environment (stored in Doppler); never commit it.
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL is not set. Export it, or run with: doppler run -- node <this script>');
+  process.exit(1);
+}
 
 // Must match frontend/src/lib/data/sample-talents.ts
 const talents = [
@@ -78,8 +82,8 @@ async function seed() {
       region: 'auto',
       endpoint: 'https://94ccb1ac46d66f225f369bd07f044f56.r2.cloudflarestorage.com',
       credentials: {
-        accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY || '020b9b97a526421028214dacadd810f3',
-        secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_KEY || 'a6de0a9c8438a1fcd3f4991ded970c4f9cf46068578f5e3319a056794d9a346d',
+        accessKeyId: process.env.CLOUDFLARE_R2_ACCESS_KEY,
+        secretAccessKey: process.env.CLOUDFLARE_R2_SECRET_KEY,
       },
     });
     let token;
