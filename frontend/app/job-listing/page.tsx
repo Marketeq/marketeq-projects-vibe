@@ -20546,6 +20546,7 @@ const ExistingContractFinalReviewStep = ({
 
     return stepFourRoles.length > 0 ? stepFourRoles : finalReviewRoles;
   }, [details.teamRoleRows]);
+  const hasSingleRole = roleOptions.length === 1;
   const [selectedRole, setSelectedRole] = useState(
     roleOptions[0] ?? finalReviewRoles[0],
   );
@@ -20857,43 +20858,45 @@ const ExistingContractFinalReviewStep = ({
             <div className="mt-8 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6">
               <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
                 <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
-                  Role Description
+                  {hasSingleRole ? selectedRole : "Role Description"}
                 </h2>
               </div>
               <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
-                  <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
-                    {visibleRoleOptions.map((role) => (
-                      <Button
-                        key={role}
-                        variant="outlined"
-                        visual="gray"
-                        type="button"
-                        className={cn(
-                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
-                          selectedRole === role &&
-                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500",
-                        )}
-                        onClick={() => setSelectedRole(role)}
-                      >
-                        {role}
-                      </Button>
-                    ))}
-                    {remainingRoleCount > 0 ? (
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        type="button"
-                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
-                        aria-expanded={showAllRoleOptions}
-                        onClick={() => setShowAllRoleOptions((current) => !current)}
-                      >
-                        {showAllRoleOptions
-                          ? "Show Less"
-                          : `+ ${remainingRoleCount} More`}
-                      </Button>
-                    ) : null}
-                  </div>
+                  {!hasSingleRole ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                      {visibleRoleOptions.map((role) => (
+                        <Button
+                          key={role}
+                          variant="outlined"
+                          visual="gray"
+                          type="button"
+                          className={cn(
+                            "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                            selectedRole === role &&
+                              "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500",
+                          )}
+                          onClick={() => setSelectedRole(role)}
+                        >
+                          {role}
+                        </Button>
+                      ))}
+                      {remainingRoleCount > 0 ? (
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          type="button"
+                          className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                          aria-expanded={showAllRoleOptions}
+                          onClick={() => setShowAllRoleOptions((current) => !current)}
+                        >
+                          {showAllRoleOptions
+                            ? "Show Less"
+                            : `+ ${remainingRoleCount} More`}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
                     <FinalReviewRichTextField
