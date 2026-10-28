@@ -10877,6 +10877,8 @@ const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
 const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
 const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
 const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
+const teamRoleReadOnlyPillClassName =
+  "h-7 w-fit max-w-full gap-x-1.5 rounded-[5px] border border-solid border-gray-200 bg-white px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 opacity-65 mix-blend-normal";
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -10999,16 +11001,23 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
           const assignedHourlyRateUsdCents = getCandidateHourlyRateUsdCents(
             assignedMember?.hourlyRate,
           );
-          const assigneeName = assignedMember
-            ? [assignedMember.firstName, assignedMember.username && `@${assignedMember.username}`]
-                .filter(Boolean)
-                .join(" ") || "Assigned Member"
-            : null;
+          const assignedUserId =
+            row?.assignedUserId ?? assignedMember?.userId ?? null;
+          const assignedUsername =
+            assignedMember?.username ?? row?.assignedUsername;
+          const assigneeName = [
+            assignedMember?.firstName,
+            assignedUsername && `@${String(assignedUsername).replace(/^@/, "")}`,
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return createTeamRoleRow(index, {
             role,
-            assignee: assigneeName ?? (row?.assignedUserId ? "Assigned Member" : "Unassigned Member"),
-            assigneeUserId: row?.assignedUserId ?? null,
+            assignee:
+              assigneeName ||
+              (assignedUserId ? "Assigned Member" : "Unassigned Member"),
+            assigneeUserId: assignedUserId,
             assigneeHourlyRateUsdCents: assignedHourlyRateUsdCents,
             location: String(row?.location ?? "USA"),
             experience: toTeamRoleExperience(
@@ -11029,7 +11038,7 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
                     row?.hourlyRateLowUsdCents,
                     row?.hourlyRateHighUsdCents,
                   ),
-            editable: true,
+            editable: !assignedUserId,
           });
         })
         .filter((row): row is TeamRoleRow => Boolean(row))
@@ -21307,7 +21316,10 @@ const TeamRoles = ({
   const teamRoleAutocompleteRequestIdRef = useRef(0);
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
     if (details.teamRoleRows?.length) {
-      return details.teamRoleRows;
+      return details.teamRoleRows.map((row) => ({
+        ...row,
+        editable: row.editable && !row.assigneeUserId,
+      }));
     }
 
     if (!existingContractId) {
@@ -21376,6 +21388,7 @@ const TeamRoles = ({
     [ensureJobListingDraft, jobListingId, setDetails, toast],
   );
   const updateRow = (rowIndex: number, nextValues: Partial<TeamRoleRow>) => {
+    if (!rows[rowIndex]?.editable) return;
     const nextRows = rows.map((row, index) =>
       index === rowIndex ? { ...row, ...nextValues } : row,
     );
@@ -21533,6 +21546,7 @@ const TeamRoles = ({
     setTeamRoleAutocompleteOpen(false);
   };
   const openRenameRoleDialog = (rowIndex: number) => {
+    if (!rows[rowIndex]?.editable) return;
     setRoleDialogMode("rename");
     setActiveRoleIndex(rowIndex);
     setDraftRoleTitle(rows[rowIndex]?.role ?? "");
@@ -21544,6 +21558,10 @@ const TeamRoles = ({
     const role = draftRoleTitle.trim();
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
+      if (!rows[activeRoleIndex]?.editable) {
+        closeRoleDialog();
+        return;
+      }
       if (role) {
         const nextRows = rows.map((row, index) =>
           index === activeRoleIndex
@@ -21574,7 +21592,7 @@ const TeamRoles = ({
   };
   const duplicateRow = (rowIndex: number) => {
     const rowToCopy = rows[rowIndex];
-    if (!rowToCopy) return;
+    if (!rowToCopy?.editable) return;
 
     const nextRows = [
       ...rows.slice(0, rowIndex + 1),
@@ -21592,7 +21610,7 @@ const TeamRoles = ({
     void persistTeamRoleRows(nextRows);
   };
   const removeRow = (rowIndex: number) => {
-    if (rows.length <= 1) return;
+    if (rows.length <= 1 || !rows[rowIndex]?.editable) return;
 
     const nextRows = rows.filter((_, index) => index !== rowIndex);
     setRows(nextRows);
@@ -21758,7 +21776,32 @@ const TeamRoles = ({
                     <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
                       <TableHead className="h-11 w-[239px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] min-w-0 flex-1">Role</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  tabIndex={0}
+                                  className="h-[18px] cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                >
+                                  Role
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span>
+                                  Defines the type of specialist needed for this
+                                  task. Used to match talent and generate the job
+                                  description.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[140px] px-0 py-0">
@@ -21789,7 +21832,32 @@ const TeamRoles = ({
                       </TableHead>
                       <TableHead className="h-11 w-[105px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-16">Experience</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  tabIndex={0}
+                                  className="h-[18px] w-16 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                >
+                                  Experience
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span>
+                                  Helps determine the level of skill needed.
+                                  Impacts estimated delivery time and team
+                                  composition.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[124px] px-0 py-0">
@@ -21899,12 +21967,13 @@ const TeamRoles = ({
                     {rows.map((row, index) => (
                       <TableRow
                         key={`${row.role}-${index}`}
+                        aria-disabled={!row.editable || undefined}
                         className="h-[72px] border-b border-gray-200 hover:bg-transparent"
                       >
                         <TableCell className="h-[72px] w-[239px] px-0 py-0">
                           <div className="flex h-[72px] items-center gap-3 py-4 pl-6 pr-3">
                             {row.editable ? (
-                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start justify-start gap-0">
+                              <div className="flex h-10 min-w-0 flex-1 flex-col items-start justify-start gap-0">
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -21916,12 +21985,42 @@ const TeamRoles = ({
                                     {row.role}
                                   </span>
                                 </Button>
+                                <p className="h-5 max-w-full truncate text-sm font-normal leading-5 text-gray-500">
+                                  {row.assignee}
+                                </p>
                               </div>
                             ) : (
-                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start">
-                                <p className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                                  {row.role}
-                                </p>
+                              <div className="flex h-10 min-w-0 flex-1 flex-col items-start">
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        tabIndex={0}
+                                        className="flex h-10 w-full cursor-default flex-col items-start opacity-65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                      >
+                                        <p className="h-5 max-w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                          {row.role}
+                                        </p>
+                                        <p className="h-5 max-w-full truncate text-sm font-normal leading-5 text-gray-500">
+                                          {row.assignee}
+                                        </p>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      <span>
+                                        This team member is already part of your
+                                        team. You can’t make changes here.
+                                      </span>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               </div>
                             )}
                           </div>
@@ -21941,7 +22040,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLocationPillClassName}
+                                className={cn(teamRoleReadOnlyPillClassName, "pl-[5px]")}
                               >
                                 {renderLocationOptionLabel(row.location)}
                               </Badge>
@@ -21979,7 +22078,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleExperiencePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.experience}
                               </Badge>
@@ -22015,7 +22114,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleSchedulePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.schedule}
                               </Badge>
@@ -22048,7 +22147,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLengthPillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.length}
                               </Badge>
@@ -22060,7 +22159,12 @@ const TeamRoles = ({
                             <TooltipProvider delayDuration={75}>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="cursor-default whitespace-nowrap text-sm leading-5 text-gray-600">
+                                  <span
+                                    className={cn(
+                                      "cursor-default whitespace-nowrap text-sm leading-5 text-gray-600",
+                                      !row.editable && "opacity-65",
+                                    )}
+                                  >
                                     {row.estimate}
                                   </span>
                                 </TooltipTrigger>
