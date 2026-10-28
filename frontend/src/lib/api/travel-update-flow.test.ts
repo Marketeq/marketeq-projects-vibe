@@ -22,6 +22,9 @@ function run(body: string, activeTravelModeUpdate: boolean | undefined) {
     activeTravelModeUpdate,
     persistTravelClassification: (c: string) => calls.push(`persist:${c}`),
     send: (event: string) => calls.push(`send:${event}`),
+    relocatingRef: { current: false },
+    onPermanentlyRelocated: undefined,
+    getIsMounted: () => true,
     setTravelModeNotificationOpen: (v: boolean) => calls.push(`confirmation:${v}`),
     onOpenChange: (v: boolean) => calls.push(`open:${v}`),
     onTravelModeConfirmed: () => calls.push("confirmed"),
@@ -29,8 +32,26 @@ function run(body: string, activeTravelModeUpdate: boolean | undefined) {
   new Function(...Object.keys(stubs), body)(...Object.values(stubs))
   return calls
 }
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+async function runRelocated(activeTravelModeUpdate: boolean | undefined) {
+  const calls: string[] = []
+  const stubs = {
+    activeTravelModeUpdate,
+    persistTravelClassification: (c: string) => calls.push(`persist:${c}`),
+    send: (event: string) => calls.push(`send:${event}`),
+    relocatingRef: { current: false },
+    onPermanentlyRelocated: undefined,
+    getIsMounted: () => true,
+  }
+  await new AsyncFunction(...Object.keys(stubs), relocated)(...Object.values(stubs))
+  return calls
+}
 const temporarily = handlerBefore('Nothing is saved here: closing before a duration is chosen')
-const relocated = handlerBefore('persistTravelClassification("permanently_relocated")')
+// "Permanently relocated" is now a named handler (handlePermanentlyRelocated); the button
+// only calls it. Its body is cut out and run the same way, without the callback prop.
+const relocatedStart = flow.indexOf("const handlePermanentlyRelocated = async () => {")
+const relocated = flow
+  .slice(relocatedStart + "const handlePermanentlyRelocated = async () => {".length, flow.indexOf("\n  }\n", relocatedStart))
 
 describe("active reminder → Temporarily traveling", () => {
   const calls = run(temporarily, true)
@@ -82,8 +103,8 @@ describe("expired popup and first-time → Temporarily traveling: unchanged", ()
 
 describe("Permanently relocated keeps the existing relocation flow in every mode", () => {
   for (const flag of [true, false, undefined]) {
-    it(`flag ${String(flag)}: records the relocation and goes back through the home-country steps`, () => {
-      assert.deepEqual(run(relocated, flag), ["persist:permanently_relocated", "send:RELOCATED"])
+    it(`flag ${String(flag)}: records the relocation and goes back through the home-country steps`, async () => {
+      assert.deepEqual(await runRelocated(flag), ["persist:permanently_relocated", "send:RELOCATED"])
     })
   }
   it("RELOCATED still returns to the start of the flow", () => {
@@ -100,7 +121,8 @@ describe("the protected flow changed only as approved", () => {
     assert.equal((code.match(/activeTravelModeUpdate/g) ?? []).length, 3)
     // PMCM-651 (explicitly approved exception): one optional additive prop, onTravelModeConfirmed,
     // sits between them; see travel-mode-confirmation.test.ts for exactly where it is called.
-    assert.ok(code.includes("  activeTravelModeUpdate,\n  onTravelModeConfirmed,\n  simulateUploadForPreview,"))
+    // onPermanentlyRelocated (travel-update-relocated-detection.test.ts) sits after it, also optional.
+    assert.ok(code.includes("  activeTravelModeUpdate,\n  onTravelModeConfirmed,\n  onPermanentlyRelocated,\n  simulateUploadForPreview,"))
     assert.ok(code.includes("  activeTravelModeUpdate?: boolean"))
     assert.ok(code.includes("if (activeTravelModeUpdate) {"))
   })

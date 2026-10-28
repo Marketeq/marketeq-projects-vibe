@@ -213,14 +213,17 @@ describe('G2 - publish gate on service listings', () => {
       expect(res.body.status).toBe('published');
     });
 
-    it('POST create with status=published is gated; a draft create is not', async () => {
+    it('POST create is gated for a published AND a draft create (PMCM-652), and writes nothing while closed', async () => {
       gate.mockResolvedValue(CLOSED('identity'));
       const before = snapshot();
       await request(app.getHttpServer()).post('/v1/services').set(as()).send({ title: 'a', description: 'b', status: 'published' }).expect(403);
+      const draft = await request(app.getHttpServer()).post('/v1/services').set(as()).send({ title: 'a', description: 'b' }).expect(403);
+      expect(draft.body).toMatchObject({ error: 'VERIFICATION_REQUIRED', missingRequirements: 'identity' });
       noEffects(before);
+      gate.mockResolvedValue(OPEN);
       gate.mockClear();
       await request(app.getHttpServer()).post('/v1/services').set(as()).send({ title: 'a', description: 'b' }).expect(201);
-      expect(gateCalls()).toEqual([]);
+      expect(gateCalls()).toEqual([TALENT]);
     });
 
     it('CMS sync (internal token) is gated on the real owner without disclosing requirements', async () => {
@@ -334,8 +337,7 @@ describe('G2 - publish gate on service listings', () => {
   describe('actions that stay available while the gate is closed', () => {
     beforeEach(() => gate.mockResolvedValue(CLOSED('both')));
 
-    it('create draft, edit draft, read, archive and delete never ask the gate', async () => {
-      await request(app.getHttpServer()).post('/v1/services').set(as()).send({ title: 'a', description: 'b' }).expect(201);
+    it('edit draft, read, archive and delete never ask the gate', async () => {
       await edit(S_DRAFT, { title: 'new title', status: 'draft' }).expect(200);
       await request(app.getHttpServer()).get(`/v1/services/${S_DRAFT}`).expect(200);
       await request(app.getHttpServer()).get('/v1/services').expect(200);

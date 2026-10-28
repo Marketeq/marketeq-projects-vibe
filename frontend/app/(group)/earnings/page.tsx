@@ -16,6 +16,7 @@ import {
   DownloadDesktopTrackerDialog,
   openDesktopTracker,
 } from "@/components/download-desktop-tracker-dialog"
+import { useStartTimeGate } from "@/utils/useStartTimeGate"
 import {
   EarningsTab,
   type EarningsFilters,
@@ -80,14 +81,18 @@ export default function TransactionsPage() {
   // installed, else offer its installer.
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
+  const { runStart, startTimeGateDialog } = useStartTimeGate()
   const handleLogTime = async () => {
     setOpeningDesktopTracker(true)
     try {
-      // Either opens the installed tracker or offers the installer.
-      await openDesktopTracker(() => {
-        setOpeningDesktopTracker(false)
-        setShowDownloadTracker(true)
-      })
+      // G8: the gate is asked first; a refusal opens the blocked modal and nothing
+      // below runs. Otherwise: either opens the installed tracker or offers the installer.
+      await runStart(() =>
+        openDesktopTracker(() => {
+          setOpeningDesktopTracker(false)
+          setShowDownloadTracker(true)
+        })
+      )
     } finally {
       setOpeningDesktopTracker(false)
     }
@@ -394,6 +399,7 @@ export default function TransactionsPage() {
           open={showDownloadTracker}
           onOpenChange={setShowDownloadTracker}
         />
+        {startTimeGateDialog}
       </div>
     </AuthenticatedRoute>
   )

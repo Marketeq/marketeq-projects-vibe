@@ -191,6 +191,7 @@ import {
   type MismatchLaunch,
 } from "@/src/lib/api/location-mismatch"
 import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
+import { startVerificationRequestedInBrowser } from "@/src/lib/api/start-verification-handoff"
 import {
   AccountVerificationGate,
   type ConnectionCheckState,
@@ -294,6 +295,9 @@ export default function TalentDashboard() {
     key: number
     initialState?: "current-location-showcase" | "traveling-showcase"
     activeTravelModeUpdate?: boolean
+    // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
+    // the location with the browser (see refreshLocationForRelocation).
+    detectBrowserLocationOnRelocate?: boolean
   }>({ key: 0 })
   // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
   // locationMismatch decides. It has only its two buttons: no outside click, no Escape,
@@ -853,6 +857,29 @@ export default function TalentDashboard() {
     setVpnProxyModalOpen(true)
   }, [runIdentityVerificationCheck])
 
+  // Start Verification on the Job Apply blocked modal lands here with a one-shot marker.
+  // It is the talent's own click on that button, so it runs the same Verify My Account
+  // action (VPN check, then the flow) instead of asking for a second click. It waits for
+  // the Secure your account dialog like the status read does, runs once, and strips the
+  // marker so a refresh or Back never starts it again.
+  const startVerificationHandledRef = useRef(false)
+  useEffect(() => {
+    if (!startVerificationRequestedInBrowser()) return
+    if (
+      !shouldStartIdentityCheck({
+        user,
+        isTalent: !!user && resolveDashboardRole(user) === ROLE.TALENT,
+        securityDialogOpen: showSecurityModal,
+        alreadyStarted: startVerificationHandledRef.current,
+      })
+    ) {
+      return
+    }
+    startVerificationHandledRef.current = true
+    router.replace("/talent-dashboard")
+    void handleVerifyMyAccount()
+  }, [user, showSecurityModal, handleVerifyMyAccount, router])
+
   // Travel Mode expiry popup: when the backend says Travel Mode ended, show it (verified
   // or not) unless it was closed in THIS login (the opaque loginSessionKey from /me: a
   // refresh keeps it, a new login changes it; the HttpOnly session_id is never read).
@@ -1014,11 +1041,21 @@ export default function TalentDashboard() {
       key: prev.key + 1,
       initialState: "current-location-showcase",
       activeTravelModeUpdate,
+      detectBrowserLocationOnRelocate: true,
     }))
     setIdentityFlowOpen(true)
     },
     [travelPopup]
   )
+
+  // The Update action shows the server-derived location behind its first screen and asks
+  // for no permission. Choosing "Permanently relocated" is the explicit user action that
+  // asks the browser for its location, through the same call Verify My Account uses; a
+  // denied or failed detection yields the flow's own "couldn't detect" state, never a
+  // made-up location.
+  const refreshLocationForRelocation = useCallback(async () => {
+    setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
+  }, [])
 
   // The live Travel Mode card's Update: the same flow and the same detection as the popup's
   // Update for a reminder (Travel Mode in force, so "Temporarily traveling" changes nothing).
@@ -1949,6 +1986,11 @@ export default function TalentDashboard() {
           initialState={flowLaunch.initialState}
           activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
           onTravelModeConfirmed={() => void handleTravelModeConfirmed()}
+          onPermanentlyRelocated={
+            flowLaunch.detectBrowserLocationOnRelocate
+              ? refreshLocationForRelocation
+              : undefined
+          }
         />
       )}
 
