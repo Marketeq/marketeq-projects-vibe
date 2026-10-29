@@ -55,10 +55,37 @@ interface TodayStats {
   trackedSeconds: number
   earnedCents: number
   currency: string
+  /** PMCM-837: minor units per ISO currency. */
+  earnedByCurrency?: Record<string, number>
   goalSeconds: number
   tasks?: TodayTaskStat[]
   lastTask?: { contractId: string; taskId: string } | null
-  yesterday?: { trackedSeconds: number; earnedCents: number; tasks: TodayTaskStat[] }
+  yesterday?: {
+    trackedSeconds: number
+    earnedCents: number
+    earnedByCurrency?: Record<string, number>
+    tasks: TodayTaskStat[]
+  }
+}
+
+// PMCM-837: earnings in the contract's own currency instead of a hard-coded
+// "$". Amounts in different currencies are shown side by side, never summed.
+function formatMoney(minor: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(minor / 100)
+  } catch {
+    return `${currency} ${(minor / 100).toFixed(2)}`
+  }
+}
+
+function formatEarned(
+  byCurrency: Record<string, number> | undefined,
+  totalMinor: number,
+  currency: string,
+): string {
+  const parts = Object.entries(byCurrency ?? {}).filter(([, minor]) => minor > 0)
+  if (parts.length === 0) return formatMoney(totalMinor, currency || "USD")
+  return parts.map(([cur, minor]) => formatMoney(minor, cur)).join(" + ")
 }
 
 // ── Persisted UI state (per device) ─────────────────────────────────────────
@@ -1810,7 +1837,7 @@ export function TimeTrackerApp({
                 ? (dayStats.goalSeconds / 3600).toFixed(1)
                 : day.totalHours
               const earned = dayStats
-                ? `$${(dayStats.earnedCents / 100).toFixed(2)}`
+                ? formatEarned(dayStats.earnedByCurrency, dayStats.earnedCents, todayStats?.currency ?? "USD")
                 : calcDayEarnings(day.contracts, day.hourlyRate)
               return (
                 <div key={dayIdx} className="animate-stagger-in" style={{ animationDelay: `${dayIdx * 100}ms`, animationFillMode: "both" }}>

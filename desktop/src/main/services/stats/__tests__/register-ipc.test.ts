@@ -181,6 +181,39 @@ describe('registerStatsIpc / stats:get-today', () => {
     expect(result.earnedCents).toBe(8000); // 5000 + 3000
   });
 
+  it('keeps earnings in each contract currency apart (PMCM-837)', () => {
+    registerStatsIpc({
+      sessionRepo: makeSessionRepo({
+        totals: [
+          { contract_id: 'c1', total_billable_seconds: 3600 },
+          { contract_id: 'c2', total_billable_seconds: 3600 },
+          { contract_id: 'c3', total_billable_seconds: 1800 },
+        ],
+      }),
+      contractRepo: makeContractRepo({
+        c1: { rate_minor: 5000, currency: 'EUR' },
+        c2: { rate_minor: 3000, currency: 'USD' },
+        c3: { rate_minor: 2000, currency: 'EUR' },
+      }),
+      timer: makeTimer({}),
+      getUserId: () => 'user-1',
+    });
+    const result = handlers.get(IPC.statsGetToday)?.() as TodayStatsDTO;
+    expect(result.earnedByCurrency).toEqual({ EUR: 6000, USD: 3000 });
+  });
+
+  it("reports the live contract's currency before anything is earned (PMCM-837)", () => {
+    registerStatsIpc({
+      sessionRepo: makeSessionRepo({}),
+      contractRepo: makeContractRepo({ c1: { rate_minor: 5000, currency: 'GBP' } }),
+      timer: makeTimer({ pickedContract: { contractId: 'c1', taskId: 't1' } }),
+      getUserId: () => 'user-1',
+    });
+    const result = handlers.get(IPC.statsGetToday)?.() as TodayStatsDTO;
+    expect(result.currency).toBe('GBP');
+    expect(result.earnedByCurrency).toEqual({});
+  });
+
   it('skips a contract that is no longer mirrored locally without throwing', () => {
     registerStatsIpc({
       sessionRepo: makeSessionRepo({

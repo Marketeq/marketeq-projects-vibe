@@ -92,6 +92,7 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
 
     let trackedSeconds = 0;
     let earnedCents = 0;
+    const earnedByCurrency: Record<string, number> = {};
     for (const [contractId, seconds] of byContract) {
       const contract = deps.contractRepo.findById(contractId);
       if (!contract) {
@@ -99,7 +100,9 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
         continue;
       }
       trackedSeconds += seconds;
-      earnedCents += Math.round((seconds * contract.rate_minor) / 3600);
+      const cents = Math.round((seconds * contract.rate_minor) / 3600);
+      earnedCents += cents;
+      earnedByCurrency[contract.currency] = (earnedByCurrency[contract.currency] ?? 0) + cents;
     }
     // PMCM-829: each task's progress bar measures against its contract's
     // cap (daily if set, else weekly) instead of a fixed 8 h.
@@ -110,7 +113,7 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
         capSeconds: contract?.daily_cap_seconds ?? contract?.weekly_cap_seconds ?? null,
       };
     });
-    return { trackedSeconds, earnedCents, tasks };
+    return { trackedSeconds, earnedCents, earnedByCurrency, tasks };
   };
 
   ipcMain.handle(IPC.statsGetToday, (): TodayStatsDTO | IpcErrorResult => {
@@ -138,7 +141,14 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
       return {
         trackedSeconds: today.trackedSeconds,
         earnedCents: today.earnedCents,
-        currency: 'USD',
+        // PMCM-837: the single currency today's earnings are in (the live
+        // contract's when nothing is earned yet); earnedByCurrency has the
+        // split when contracts use different currencies.
+        currency:
+          Object.keys(today.earnedByCurrency)[0] ??
+          (picked ? deps.contractRepo.findById(picked.contractId)?.currency : undefined) ??
+          'USD',
+        earnedByCurrency: today.earnedByCurrency,
         goalSeconds: GOAL_SECONDS,
         tasks: today.tasks,
         lastTask,

@@ -129,6 +129,23 @@ describe('GroupsService.createFromAcceptedOffer', () => {
     }
   });
 
+  it('stores the offer currency, defaulting to USD (PMCM-837)', async () => {
+    const cases: Array<[string | undefined, string]> = [
+      ['EUR', 'EUR'],
+      ['gbp', 'GBP'],
+      [undefined, 'USD'],
+      ['not-a-code', 'USD'],
+    ];
+    for (const [currencyCode, expected] of cases) {
+      const { service, savedContracts } = setup();
+      await service.createFromAcceptedOffer({
+        ...OFFER,
+        terms: { ...OFFER.terms, currencyCode },
+      });
+      expect(savedContracts[0].currencyCode).toBe(expected);
+    }
+  });
+
   it('returns the existing contract on a redelivered event without creating another', async () => {
     const existing = { id: 'contract-existing', offerId: OFFER.offerId } as Contract;
     const { service, manager, savedContracts } = setup(existing);

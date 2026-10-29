@@ -161,7 +161,7 @@ describe('contracts:get-mine — time caps (PMCM-829)', () => {
       'fetch',
       mockFetch(
         [
-          { ...contract('c1', 'client-a'), weeklyCapHours: 20 },
+          { ...contract('c1', 'client-a'), weeklyCapHours: 20, currencyCode: 'EUR' },
           { ...contract('c2', 'client-a'), weeklyCapHours: null },
         ],
         { 'client-a': { id: 'client-a' } },
@@ -175,5 +175,7 @@ describe('contracts:get-mine — time caps (PMCM-829)', () => {
       ['c1', 20 * 3600],
       ['c2', null],
     ]);
+    // PMCM-837: the contract's own currency, USD when the backend sends none.
+    expect(upsert.mock.calls.map(([row]) => row.currency)).toEqual(['EUR', 'USD']);
   });
 });

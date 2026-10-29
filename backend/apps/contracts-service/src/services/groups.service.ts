@@ -39,6 +39,7 @@ export interface AcceptedOfferInput {
     rate: number;
     durationMonths: number;
     workSchedule: { type: string; hoursPerWeek?: number };
+    currencyCode?: string;
   };
 }
 
@@ -68,6 +69,12 @@ function weeklyCapHours(workSchedule?: { type: string; hoursPerWeek?: number }):
   const hours = Number(workSchedule?.hoursPerWeek);
   if (Number.isInteger(hours) && hours > 0) return hours;
   return DEFAULT_WEEKLY_CAP_HOURS[workSchedule?.type ?? ''] ?? null;
+}
+
+// PMCM-837: the contract's rate currency (ISO 4217) as agreed in the offer.
+function currencyCode(code?: string): string {
+  const c = code?.trim().toUpperCase();
+  return c && /^[A-Z]{3}$/.test(c) ? c : 'USD';
 }
 
 @Injectable()
@@ -172,6 +179,7 @@ export class GroupsService {
             rate: offer.terms.rate,
             schedule: WORK_SCHEDULE_TO_CONTRACT[offer.terms.workSchedule?.type] ?? 'custom',
             weeklyCapHours: weeklyCapHours(offer.terms.workSchedule),
+            currencyCode: currencyCode(offer.terms.currencyCode),
             duration: `${offer.terms.durationMonths} ${offer.terms.durationMonths === 1 ? 'month' : 'months'}`,
             ...listingRef,
             status: ContractStatus.PENDING,
