@@ -773,3 +773,115 @@ hook adds them together.
 The smoke test left invitation `d9403334` (seanstest123+team2@gmail.com)
 with permissions `treasurer, auditor`, and its invite-settings row was
 deleted afterwards so the account is back on defaults.
+
+---
+
+## 16. Defects left in frozen files, and what moved on 28 Oct
+
+Written down here because the list below was produced in a session that
+crashed before it could be committed; it existed only in that transcript.
+
+Everything in this section lives in `frontend/components/*.tsx`, which
+`CLAUDE.md` makes read-only. **None of it can be fixed without @CTorres9800.**
+
+### 16.1 `components/invite-window.tsx` — nine
+
+| # | Defect | Ref |
+|---|---|---|
+| 1 | **Link-password field autofills a saved password.** No `autoComplete="new-password"` on the `type="password"` input; `:-webkit-autofill` confirmed in the DOM. The file already uses `autoComplete="off"` on two other fields, so it is this one field that was missed | — |
+| 2 | **Save Settings is unreachable.** The panel defaults to a Custom expiry with no date, and its own validation blocks the save | — |
+| 3 | **The whole settings panel is local state.** Nothing reads or writes the endpoints built in §15 | R3-02 |
+| 4 | Send Invite enables while an address is still an uncommitted chip | — |
+| 5 | One flagged chip blocks the entire send | R3-13 |
+| 6 | No duplicate / existing-member flag when a chip is created | R3-11 |
+| 7 | Invites list does not pre-fill a default role | R2-04 |
+| 8 | Title reads "Invite Your Team"; Figma says "Invite Team Member" | UX-29 |
+| 9 | Manage Roles routes to the list for every send, never to Edit Permissions for one invitee | R3-10 |
+
+**Number 1 is the one to escalate.** It was cosmetic while the field went
+nowhere. §15 built the backend that stores a link password, so the next person
+to wire that panel ships a feature which quietly uploads someone's personal
+saved password as a shared link password.
+
+### 16.2 The other two frozen files
+
+- `components/invite-sent-notification.tsx` — the multi-invitee toast says
+  "sent to N people" instead of listing the addresses (R3-15 / UX-31).
+- `components/invite-company-steps.tsx` — S3 has no "Max image size 1 mb"
+  copy and no client-side size check (the backend half of R3-04 is done), and
+  no Clear link or Logo Tips panel.
+
+### 16.3 Fixed on 28 Oct (not frozen)
+
+**R3-12 — the row menus no longer offer what the server refuses.** Both views
+offered **Edit Permissions** to every viewer, but the write
+(`PATCH /companies/:id/members/:userId`) is `assertIsAdmin`-gated on
+`company_users.role === 'admin'`, so a plain member got "Only company admins
+can perform this action" from a menu item that looked available. Now gated on
+the viewer's own role, read from the member lists the page already fetches —
+no extra requests.
+
+**Resend and Cancel Invite are deliberately left ungated,** and this is worth
+recording as a decision rather than an omission. They go to
+invitations-service, whose `assertCanManageInvitation` admits the team owner,
+the invitation's *creator*, or a holder of `administrator | coordinator |
+onboarder`. `createdByUserId` is not on the frontend's invitation type, so the
+predicate cannot be evaluated client-side at all. Hiding those items on a
+partial rule would remove actions the server allows — worse than offering one
+that 403s. **If these should be gated, the accepted-invitation payload needs
+to carry `createdByUserId`.**
+
+### 16.4 `Remove User` has never been able to work
+
+Not R3-12, found next to it. The item calls `handleCancel`, i.e. the
+invitations **cancel** endpoint, which throws `InvitationNotPendingException`
+for anything not pending. So on an accepted member the server always refuses,
+while `confirmWithUndo` has already told the user "Your invitation has been
+canceled". `useRemoveCompanyMember` exists and the Settings screen uses it
+correctly; My Network is wired to the wrong endpoint.
+
+Not fixed here because it needs per-row company state and a decision on the
+Undo copy. **Whose call: @CTorres9800** — it is a behaviour change on a
+destructive action, not a wiring tidy-up.
+
+### 16.5 The gate blocker answered itself
+
+§14 and the audit logged this as the epic's single biggest obstacle: the
+identity gate shut out every invitee, because `gate_open = (identity VERIFIED
+AND location VERIFIED) OR in-grace` and a new account has no profile.
+
+**dev-main #832 (PMCM-652) deleted that gate from acceptance** — the code now
+reads "Accepting an invitation is deliberately not verification-gated: an
+unverified user may join the team" — and moved gating to listing creation
+instead. So the blocker is gone, but by removal rather than by satisfaction,
+and **no Round 3 document still describes what verification an invitee needs.**
+Nothing in the R3 set is reconciled with this; it arrived from another epic.
+
+The 70 tests in `invitations.accept-gate.spec.ts` went with it, replaced by 7
+in `invitations.accept-ungated.spec.ts` asserting acceptance is *not* gated.
+
+### 16.6 Still a decision, not a task
+
+**R3-05.** `useTeamMemberCount` returns `activeTalent + acceptedExternal`, and
+its own comment cites a "Final Logic doc" specifying exactly that sum — which
+contradicts R3-05's per-tab reading. §15 recorded this as "the frontend hook
+adds them together", i.e. a bug; the hook's comment says it is the spec. One of
+the two documents is wrong and **@CTorres9800 has to say which** before anyone
+changes the number.
+
+### 16.7 Local environment, not code
+
+**All 96 listings-service migrations are unrun locally.** The `listings`
+schema holds one table, `migrations`, with 0 rows. The `GateStateConsumer`
+therefore fails on `relation "listings.account_gate_state" does not exist`,
+RabbitMQ redelivers forever, and that loop had written **1.4GB** of error log.
+The migration exists and is compiled; it has simply never been applied. It
+starts filling the disk again the moment PM2 starts.
+
+**identity-verification-service was logging every SQL statement** and its gate
+sweep runs every 30 seconds, so each pass printed a full 28-column SELECT —
+**8.4GB** in one log, which is what filled the disk and ended the previous
+session. Fixed in code (`logging: ['migration', 'error']`, matching
+payout-service). Note a second, stale nested copy of that compiled file exists
+under `dist/.../src/database/` which the build does not update and nothing
+runs — do not be misled by grepping it.
