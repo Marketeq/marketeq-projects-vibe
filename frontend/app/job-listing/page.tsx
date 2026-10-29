@@ -14803,6 +14803,10 @@ const useDynamicFinalReviewSkills = () => {
       </DialogContent>
     </Dialog>
   )
+
+  return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
+}
+
 const getSelectionTextOffsetInField = (field: HTMLElement | null) => {
   if (typeof window === "undefined" || !field) return undefined
 
@@ -14823,10 +14827,6 @@ const getSelectionTextOffsetInField = (field: HTMLElement | null) => {
   const leadingWhitespace = selectedRaw.length - selectedRaw.trimStart().length
 
   return textBeforeSelection.toString().length + leadingWhitespace
-}
-
-
-  return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
 }
 
 const FinalReviewRichTextField = ({
@@ -14887,12 +14887,12 @@ const FinalReviewRichTextField = ({
     setValue(html)
     onChange?.(html)
   }
-    const selectionOffset = getSelectionTextOffsetInField(fieldRef.current)
-
 
   const handleSmartAssistant = (
     selection: FinalReviewSmartAssistantSelection
   ) => {
+    const selectionOffset = getSelectionTextOffsetInField(fieldRef.current)
+
     onSmartAssistant?.({
       ...selection,
       insertText: (replacementText: string, targetText?: string) => {
@@ -15074,7 +15074,7 @@ const useFinalReviewSmartAssistant = ({
 
       selectedTextInsertRef.current = payload.insertText
       setSelectedText(trimmedText)
-      setMessage("")
+      setMessage(SMART_ASSISTANT_SHORTEN_COMMAND)
     },
     []
   )
@@ -15171,7 +15171,7 @@ const useFinalReviewSmartAssistant = ({
       )
       setIsLoading(true)
       setResult("")
-      setMessage(SMART_ASSISTANT_SHORTEN_COMMAND)
+      setMessage("")
 
       try {
         const listingId = jobListingId ?? (await ensureJobListingDraft?.())
@@ -15507,6 +15507,15 @@ const resolveFinalReviewAssistantField = (
   return "responsibilities"
 }
 
+// AC-JC-84: with no field in focus the panel offers one action per field.
+const getFinalReviewAssistantNoFocusActions = (
+  workType: "Project" | "Service"
+): { label: string; field: SmartAssistantEditableField }[] => [
+  { label: `Change a ${workType} Title`, field: "title" },
+  { label: "Rewrite Overview", field: "overview" },
+  { label: "Rewrite Benefits", field: "benefits" },
+]
+
 type RoleDescriptionDraft = {
   roleTitle?: string
   overview?: string
@@ -15559,15 +15568,6 @@ const useRoleDescriptionPersistence = ({
         const existingIndex = currentDescriptions.findIndex(
           (item: any) => item?.roleTitle === nextDescription.roleTitle
         )
-
-// AC-JC-84: with no field in focus the panel offers one action per field.
-const getFinalReviewAssistantNoFocusActions = (
-  workType: "Project" | "Service"
-): { label: string; field: SmartAssistantEditableField }[] => [
-  { label: `Change a ${workType} Title`, field: "title" },
-  { label: "Rewrite Overview", field: "overview" },
-  { label: "Rewrite Benefits", field: "benefits" },
-]
 
         if (existingIndex >= 0) {
           return currentDescriptions.map((item, index) =>
@@ -16339,6 +16339,12 @@ const FinalServiceReviewStep = ({
       suggestion === "Rewrite Benefits" && "w-[149px]",
       suggestion === "Change a Service Title" && "w-fit"
     )
+  const serviceAssistantVisibleActions = activeAssistantField
+    ? serviceAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Service")
   useEffect(() => {
     window.requestAnimationFrame(() => {
       const scrollContainer = serviceAssistantScrollRef.current
@@ -16352,6 +16358,21 @@ const FinalServiceReviewStep = ({
   useEffect(() => {
     setShowServiceAssistantFollowUps(false)
   }, [latestServiceAssistantItem?.id])
+
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = serviceAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showServiceAssistantFollowUps,
+    serviceAssistantFollowUpSuggestions.length,
+  ])
 
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
@@ -16392,12 +16413,6 @@ const FinalServiceReviewStep = ({
   )
   const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
-  const serviceAssistantVisibleActions = activeAssistantField
-    ? serviceAssistantQuickActions[activeAssistantField].map((label) => ({
-        label,
-        field: activeAssistantField,
-      }))
-    : getFinalReviewAssistantNoFocusActions("Service")
     ensureJobListingDraft,
     roleTitle: selectedRole,
     overview,
@@ -17022,23 +17037,23 @@ const FinalServiceReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {serviceAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowServiceAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showServiceAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showServiceAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -17052,10 +17067,7 @@ const FinalServiceReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getServiceAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
                           )}
                           disabled={serviceAssistant.isLoading}
                           onClick={() =>
@@ -17067,7 +17079,7 @@ const FinalServiceReviewStep = ({
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -17263,6 +17275,21 @@ const FinalProjectReviewStep = ({
     setShowProjectAssistantFollowUps(false)
   }, [latestProjectAssistantItem?.id])
 
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = projectAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showProjectAssistantFollowUps,
+    projectAssistantFollowUpSuggestions.length,
+  ])
+
   const projectAssistantQuickActions: Record<
     SmartAssistantEditableField,
     string[]
@@ -17306,6 +17333,12 @@ const FinalProjectReviewStep = ({
       suggestion === "Rewrite Overview" && "w-[157px]",
       suggestion === "Rewrite Benefits" && "w-[149px]"
     )
+  const projectAssistantVisibleActions = activeAssistantField
+    ? projectAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Project")
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
     if (!jobListingId || didGenerateBasicInformationRef.current) return
@@ -17388,12 +17421,6 @@ const FinalProjectReviewStep = ({
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
       setSelectedRole(roleOptions[0] ?? "")
-  const projectAssistantVisibleActions = activeAssistantField
-    ? projectAssistantQuickActions[activeAssistantField].map((label) => ({
-        label,
-        field: activeAssistantField,
-      }))
-    : getFinalReviewAssistantNoFocusActions("Project")
     }
   }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
@@ -17997,23 +18024,23 @@ const FinalProjectReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {projectAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showProjectAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showProjectAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -18027,10 +18054,7 @@ const FinalProjectReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getProjectAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
                           )}
                           disabled={projectAssistant.isLoading}
                           onClick={() =>
@@ -18042,7 +18066,7 @@ const FinalProjectReviewStep = ({
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -20738,6 +20762,21 @@ const ExistingContractFinalReviewStep = ({
     setShowRoleAssistantFollowUps(false);
   }, [latestRoleAssistantItem?.id]);
 
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = roleAssistantScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [
+    showRoleAssistantFollowUps,
+    roleAssistantFollowUpSuggestions.length,
+  ]);
+
   useEffect(() => {
     if (roleOptions.length === 0 || roleOptions.includes(selectedRole)) {
       return;
@@ -21219,23 +21258,23 @@ const ExistingContractFinalReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
               {roleAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs leading-[18px] font-normal text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowRoleAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showRoleAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showRoleAssistantFollowUps && "rotate-180",
                       )}
                     />
@@ -21249,16 +21288,14 @@ const ExistingContractFinalReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getRoleAssistantSuggestionWidthClass(suggestion) ||
-                              "w-fit",
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
                           )}
                           disabled={roleAssistant.isLoading}
                           onClick={() =>
                             roleAssistant.run(suggestion, "responsibilities")
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
