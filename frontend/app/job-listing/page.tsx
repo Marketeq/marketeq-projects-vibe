@@ -16997,7 +16997,7 @@ const FinalServiceReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -17020,7 +17020,7 @@ const FinalServiceReviewStep = ({
                               type="button"
                               variant="outlined"
                               visual="gray"
-                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={serviceAssistant.isLoading}
                               onClick={() => serviceAssistant.retry(item)}
                             >
@@ -17067,7 +17067,7 @@ const FinalServiceReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={serviceAssistant.isLoading}
                           onClick={() =>
@@ -17982,7 +17982,7 @@ const FinalProjectReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -18005,7 +18005,7 @@ const FinalProjectReviewStep = ({
                               type="button"
                               variant="outlined"
                               visual="gray"
-                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
                                 projectAssistant.retry(item)
@@ -18054,7 +18054,7 @@ const FinalProjectReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={projectAssistant.isLoading}
                           onClick={() =>
@@ -21218,7 +21218,7 @@ const ExistingContractFinalReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-3 font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return;
@@ -21241,7 +21241,7 @@ const ExistingContractFinalReviewStep = ({
                               type="button"
                               variant="outlined"
                               visual="gray"
-                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={roleAssistant.isLoading}
                               onClick={() => roleAssistant.retry(item)}
                             >
@@ -21288,7 +21288,7 @@ const ExistingContractFinalReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-[32px] border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-[12px] text-dark-blue-400 shadow-xs"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={roleAssistant.isLoading}
                           onClick={() =>
