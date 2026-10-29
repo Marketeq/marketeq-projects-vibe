@@ -132,6 +132,22 @@ function formatUtcTime() {
   return `UTC ${h12}:${String(m).padStart(2, "0")} ${ampm}`
 }
 
+// PMCM-830: plain-language text for timer:error codes (timer-service.ts).
+// Unknown codes fall back to the service's own message.
+const TIMER_ERROR_MESSAGES: Record<string, string> = {
+  "DTT-ERR-TIMER.01": "Pick a task before starting the timer.",
+  "DTT-ERR-TIMER.02": "The timer couldn't start. Sign in again and retry.",
+  "DTT-ERR-TIMER.03": "That task isn't available any more. Refresh and pick another.",
+  "DTT-ERR-CAP.01": "You've reached this contract's time limit.",
+  "DTT-ERR-BREAK.01": "No paid break time left today. Take an unpaid break instead.",
+  "DTT-ERR-BREAK.02": "Your break reached the 4-hour limit, so the timer was stopped.",
+  "DTT-ERR-BREAK.03": "Paid break time used up. Your break continues unpaid.",
+}
+
+function timerErrorMessage(code: string, fallback: string): string {
+  return TIMER_ERROR_MESSAGES[code] ?? fallback
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -745,6 +761,10 @@ export function TimeTrackerApp({
   // Floating alert after manual time is submitted for review (AC-091.1)
   const [manualTimeAlert, setManualTimeAlert] = React.useState(false)
   const manualTimeTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  // PMCM-830: timer:error used to go nowhere — the talent never saw why a
+  // start or break was refused.
+  const [timerErrorAlert, setTimerErrorAlert] = React.useState<string | null>(null)
+  const timerErrorTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Manual time entry
   const [showManualTime, setShowManualTime] = React.useState(false)
@@ -903,6 +923,18 @@ export function TimeTrackerApp({
   React.useEffect(() => {
     const off = window.dtt?.timer?.onIdleResolutionNeeded?.((payload) => setPendingIdle(payload))
     return () => { off?.() }
+  }, [])
+
+  React.useEffect(() => {
+    const off = window.dtt?.timer?.onError?.((err) => {
+      setTimerErrorAlert(timerErrorMessage(err.code, err.message))
+      if (timerErrorTimeout.current) clearTimeout(timerErrorTimeout.current)
+      timerErrorTimeout.current = setTimeout(() => setTimerErrorAlert(null), 5000)
+    })
+    return () => {
+      off?.()
+      if (timerErrorTimeout.current) clearTimeout(timerErrorTimeout.current)
+    }
   }, [])
 
   // Crash recovery prompt — asked once on load (the main process holds the
@@ -1866,6 +1898,19 @@ export function TimeTrackerApp({
             <span className="text-sm text-dark-blue-400">
               Task created <span className="font-semibold">&ldquo;{taskCreatedAlert}&rdquo;</span>
             </span>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {timerErrorAlert && ReactDOM.createPortal(
+        <div className="fixed bottom-4 left-4 z-[300] animate-fade-in" role="alert">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white shadow-[0_4px_20px_rgba(0,0,0,0.12)] border border-gray-100">
+            <svg className="h-4 w-4 text-error-500 shrink-0" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M8 4.5v4M8 11h.01" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="text-sm text-dark-blue-400">{timerErrorAlert}</span>
           </div>
         </div>,
         document.body

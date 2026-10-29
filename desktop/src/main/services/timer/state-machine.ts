@@ -51,6 +51,9 @@ export type TimerEvent =
   | { type: 'STOP'; reason: SessionEndReason }
   | { type: 'BREAK_START'; kind: BreakKind }
   | { type: 'BREAK_END' }
+  // PMCM-830 (doc 20 §6.2): the paid allowance ran out mid-break — the break
+  // carries on, unpaid, instead of ending or staying paid.
+  | { type: 'BREAK_ALLOWANCE_EXHAUSTED' }
   | { type: 'IDLE_DETECTED'; idleStartedAt: number; idleSeconds: number }
   | { type: 'IDLE_RESOLVED'; resolution: IdleResolution }
   | { type: 'NETWORK_OFFLINE'; since: number }
@@ -284,6 +287,16 @@ export function transition(
 
     case 'OnBreakPaid':
     case 'OnBreakUnpaid':
+      if (event.type === 'BREAK_ALLOWANCE_EXHAUSTED' && state === 'OnBreakPaid') {
+        return {
+          next: 'OnBreakUnpaid',
+          effects: [
+            { kind: 'close_break' },
+            { kind: 'open_break', breakKind: 'unpaid' },
+            auditEffect(state, 'OnBreakUnpaid', event),
+          ],
+        };
+      }
       if (event.type === 'BREAK_END') {
         return {
           next: 'Running',
