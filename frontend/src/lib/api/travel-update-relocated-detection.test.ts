@@ -213,9 +213,10 @@ describe("Verify My Account is unchanged", () => {
     assert.deepEqual(calls, ["persist:permanently_relocated", "send:RELOCATED"])
   })
   it("only the Update launch sets the flag; Verify My Account's launch drops it", () => {
+    // the dashboard's Update, and the host's default for the live card on any other page
     assert.equal(
       (page.match(/detectBrowserLocationOnRelocate: true/g) ?? []).length,
-      1
+      2
     )
     assert.ok(updateBody.includes("detectBrowserLocationOnRelocate: true"))
     const verify = page.slice(

@@ -15,13 +15,54 @@ import dynamic from "next/dynamic"
 import { usePathname } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
-import { AlertTriangle, CheckCircle, RefreshCw } from "@blend-metrics/icons"
 import {
+  AlertTriangle,
+  CheckCircle,
+  ClockStopwatch,
+  MarkerPin01,
+  Plane,
+  RefreshCw,
+  X,
+} from "@blend-metrics/icons"
+import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
+  AlertTitle,
   Button,
+  CloseButton,
   Dialog,
   DialogContent,
   DialogDescription,
+  IconButton,
 } from "@/components/ui"
+import { StatusAlertsAPI } from "@/service/http/status-alerts"
+import {
+  type DismissalState,
+  buildAlertStack,
+  selectVisibleAlerts,
+} from "@/src/lib/api/status-alert-state"
+import {
+  dismissPersistentAlertOptimistically,
+  RENDERED_STATUS_ALERT_TYPES,
+  type LiveDisplayAlert,
+  dismissLiveAlert,
+  isRenderedAlert,
+} from "@/src/lib/api/status-alert-dismissal"
+import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
+import {
+  type PendingConfirmation,
+  confirmActiveTravelMode,
+} from "@/src/lib/api/travel-mode-confirmation"
+import {
+  readTravelActivationsInLogin,
+  rememberTravelActivationInLogin,
+} from "@/src/lib/api/travel-activation-login"
+import {
+  STATUS_ALERT_CLOSE_LABEL,
+  STATUS_ALERT_DISMISS_ERROR,
+} from "@/src/lib/api/status-alert-copy"
 import {
   checkVpnProxy,
   type VpnProxyDetectionOutcome,
@@ -63,8 +104,17 @@ import {
   successAlertKindFor,
   type SuccessAlertKind,
 } from "@/src/lib/api/home-country-change-result"
-import { isTravelModeInForce } from "@/src/lib/api/travel-popup"
-import { ALERT_RECENCY_WINDOW_MS } from "@/src/lib/api/status-alert-reconcile"
+import {
+  isActiveTravelUpdate,
+  isTravelModeInForce,
+} from "@/src/lib/api/travel-popup"
+import {
+  ALERT_RECENCY_WINDOW_MS,
+  hasNewAlertOfType,
+  hasRecentAlertOfType,
+  isNewTravelActivation,
+  reconcileStatusAlerts,
+} from "@/src/lib/api/status-alert-reconcile"
 import type { StatusAlert } from "@/src/lib/api/status-alerts"
 import {
   identityHostResetKey,
@@ -127,17 +177,15 @@ export interface IdentityHostObserver {
   handleIdentityFlowOpenChange?: (open: boolean) => void
   /** Shows or hides the page's unverified-profile banner. */
   setProfileBannerShown?: (shown: boolean) => void
-  /** The host saw a result whose persistent alert is stored asynchronously. */
-  startAlertReconcile?: (
-    expected: StatusAlert["type"][],
-    options?: { sinceMs?: number }
-  ) => void
   /** A start attempt was refused as not startable: the page re-reads the real status. */
   runIdentityVerificationCheck?: () => Promise<void>
   /** An approval was just shown; the kind says which success alert would follow it. */
   setSuccessAlertKind?: (kind: SuccessAlertKind) => void
-  /** The flow's already-active traveler confirmation ("Temporarily traveling" on Update). */
-  handleTravelModeConfirmed?: () => Promise<void>
+  /**
+   * The live "You are in Travel Mode" card's Update action. A page that has its own popup state
+   * (the dashboard) handles it; any other page gets the host's own default.
+   */
+  handleLiveTravelUpdate?: () => Promise<void>
 }
 
 export type StatusRefreshedListener = (status: string | undefined) => void
@@ -156,6 +204,16 @@ export interface IdentityVerificationHost {
   setCooldownRetryTime: (retryAt: string | null) => void
   /** Closes the verification gate dialog. */
   closeGate: () => void
+  /** The latest identity summary the host holds (the page that reads one hands it over). */
+  summary: IdentityVerificationSummaryView | null
+  setSummary: (summary: IdentityVerificationSummaryView | null) => void
+  /** A result whose persistent alert is stored asynchronously: re-read the list until it is there. */
+  startAlertReconcile: (
+    expected: StatusAlert["type"][],
+    options?: { sinceMs?: number }
+  ) => void
+  /** A page with its own Travel Mode modal asks for the live card to wait (the check-in has priority). */
+  setLiveAlertsHeld: (held: boolean) => void
   /** Hears every identity-status-refreshed event after the host has acted on it. */
   subscribeStatusRefreshed: (listener: StatusRefreshedListener) => () => void
 }
@@ -178,9 +236,12 @@ export function IdentityVerificationHostProvider({
   const { user } = useAuth()
   const pathname = usePathname()
   const hostActive = isIdentityHostActive({ pathname, userId: user?.id })
-  // Didit-return results are handled only while a page that shows them is mounted: the awaiting
-  // marker is consumed by the page that can announce the result, never by another page.
-  const [resultsSurfaceMounted, setResultsSurfaceMounted] = useState(false)
+  // The dashboard reads the identity summary itself (and owns the banner and prompts that need
+  // it). While it is mounted the host does not read a second copy.
+  const pageReadsSummaryRef = useRef(false)
+  const setResultsSurfaceMounted = useCallback((mounted: boolean) => {
+    pageReadsSummaryRef.current = mounted
+  }, [])
   const observerRef = useRef<IdentityHostObserver | null>(null)
   const statusRefreshedListenersRef = useRef(new Set<StatusRefreshedListener>())
   const openOnClosedRef = useRef<(() => void) | null>(null)
@@ -213,11 +274,6 @@ export function IdentityVerificationHostProvider({
     (shown: boolean) => observerRef.current?.setProfileBannerShown?.(shown),
     []
   )
-  const startAlertReconcile = useCallback(
-    (expected: StatusAlert["type"][], options?: { sinceMs?: number }) =>
-      observerRef.current?.startAlertReconcile?.(expected, options),
-    []
-  )
   const runIdentityVerificationCheck = useCallback(
     async () => observerRef.current?.runIdentityVerificationCheck?.(),
     []
@@ -226,10 +282,233 @@ export function IdentityVerificationHostProvider({
     (kind: SuccessAlertKind) => observerRef.current?.setSuccessAlertKind?.(kind),
     []
   )
-  const handleTravelModeConfirmed = useCallback(
-    async () => observerRef.current?.handleTravelModeConfirmed?.(),
+
+  // The identity summary the host holds. The dashboard (which reads it itself, for its banner
+  // and prompts) and every other page share this one copy, so there is one read and one set of
+  // alerts. The persistent alert stack below was moved here from the dashboard unchanged, so an
+  // alert caused by a flow opened over any page is shown on that page.
+  const [travelSummary, setTravelSummary] =
+    useState<IdentityVerificationSummaryView | null>(null)
+  // A page with its own Travel Mode modal (the dashboard check-in) asks the live card to wait.
+  const [liveAlertsHeld, setLiveAlertsHeld] = useState(false)
+  // Persistent status alerts (PMCM-651), kept by notification-service: dismissal is
+  // stored per account on the backend, so it holds across sessions and devices. This
+  // phase renders the Travel Mode alert only.
+  const [statusAlerts, setStatusAlerts] = useState<StatusAlert[]>([])
+  const [statusAlertDismissal, setStatusAlertDismissal] =
+    useState<DismissalState>({
+      dismissedPersistentIds: new Set(),
+      dismissedLiveKeys: new Set(),
+    })
+  const [statusAlertDismissFailed, setStatusAlertDismissFailed] =
+    useState(false)
+  const statusAlertRequestRef = useRef(0)
+  // The live "You are in Travel Mode" card (PMCM-651) is derived from the identity summary,
+  // not stored: its dismissal is per login (loginSessionKey) and lives in this browser only.
+  // A flow opened by its Update action re-reads the summary when it closes (see
+  // handleIdentityFlowOpenChange), so the card goes away once Travel Mode has ended.
+  const statusAlertsRef = useRef<StatusAlert[]>([])
+  const alertReconcileGenRef = useRef(0)
+  const previousTravelSummaryRef =
+    useRef<IdentityVerificationSummaryView | null>(null)
+
+  // Reads the persistent alerts on load and whenever the identity summary is re-read (a
+  // Travel Mode activation in this session arrives as a new alert). Only the latest read
+  // is applied, and a failed read leaves the alerts that are already showing.
+  useEffect(() => {
+    // Talent accounts only, and only where the host is active (never on a public or
+    // authentication page, and never for a client).
+    if (!user || !hostActive || resolveDashboardRole(user) !== ROLE.TALENT) return
+    const request = ++statusAlertRequestRef.current
+    StatusAlertsAPI.list()
+      .then((alerts) => {
+        if (request === statusAlertRequestRef.current) setStatusAlerts(alerts)
+      })
+      .catch((error) => {
+        console.error("[status-alerts] could not load the alerts", error)
+      })
+  }, [user, travelSummary, hostActive])
+
+  useEffect(() => {
+    statusAlertsRef.current = statusAlerts
+  }, [statusAlerts])
+  // A page leaving ends any reconciliation still waiting to read.
+  useEffect(
+    () => () => {
+      alertReconcileGenRef.current = -1
+    },
     []
   )
+
+  // A status alert that this page visit just caused (a Travel Mode activation, an approval) is
+  // stored ASYNCHRONOUSLY by notification-service: the identity service publishes the event
+  // after its write, and the consumer stores it (and supersedes the alert it replaces) a moment
+  // later. The list read that comes with the page, or with a summary, can run before that, so
+  // the list is re-read a bounded number of times (about 3 seconds in all, stopping at the
+  // first read that has a NEW alert of an expected type). Nothing polls; a newer run or the
+  // page leaving ends an older one, and the newest read always wins over an older, slower one.
+  //
+  // The awaited alert is a NEW one (an id the page did not already hold); with sinceMs it is
+  // instead one created at or after that time, which also covers an alert the page's own first
+  // read already contained, and cannot be satisfied by an older alert of the same type.
+  const startAlertReconcile = useCallback(
+    (expected: StatusAlert["type"][], options: { sinceMs?: number } = {}) => {
+      const known = new Set(
+        statusAlertsRef.current
+          .filter((a) => expected.includes(a.type))
+          .map((a) => a.id)
+      )
+      const generation = ++alertReconcileGenRef.current
+      let latestRequest = 0
+      void reconcileStatusAlerts({
+        list: () => {
+          latestRequest = ++statusAlertRequestRef.current
+          return StatusAlertsAPI.list()
+        },
+        isSettled: (alerts) =>
+          expected.some((type) =>
+            options.sinceMs !== undefined
+              ? hasRecentAlertOfType(alerts, type, options.sinceMs)
+              : hasNewAlertOfType(alerts, type, known)
+          ),
+        apply: (alerts) => {
+          if (latestRequest === statusAlertRequestRef.current) {
+            setStatusAlerts(alerts)
+          }
+        },
+        isCurrent: () => generation === alertReconcileGenRef.current,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      })
+    },
+    []
+  )
+
+  // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
+  // traveler prompt, an Update that starts a new period): /me already says so, but the
+  // persistent "Travel Mode is on" alert is not stored yet. An unfinished flow, which creates
+  // no activation, never starts this.
+  useEffect(() => {
+    const previous = previousTravelSummaryRef.current
+    previousTravelSummaryRef.current = travelSummary
+    if (!user || !isNewTravelActivation(previous, travelSummary)) return
+    startAlertReconcile(["travel_mode"])
+  }, [user, travelSummary, startAlertReconcile])
+
+  // Which login this is, for the live cards' per-login dismissal. Unknown until the
+  // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
+  // but also remembers nothing.
+  const liveLoginKey = travelSummary?.loginSessionKey ?? null
+  // Travel Mode activations made in THIS login (kept in this browser under the login's key, so
+  // a refresh keeps them and a new login starts empty): the persistent "Travel Mode is on"
+  // card announces those, and the live Update card waits for a later login. Marked in a layout
+  // effect, before the first paint that shows the new state, so Update never flashes.
+  const [travelActivationsHere, setTravelActivationsHere] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+  useEffect(() => {
+    setTravelActivationsHere(
+      readTravelActivationsInLogin(liveLoginKey, window.localStorage)
+    )
+  }, [liveLoginKey])
+  useLayoutEffect(() => {
+    if (!user || !isNewTravelActivation(previousTravelSummaryRef.current, travelSummary)) return
+    const occurrence = travelSummary?.travelModeEndsAt
+    if (!occurrence) return
+    rememberTravelActivationInLogin(liveLoginKey, occurrence, window.localStorage)
+    setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
+  }, [user, travelSummary, liveLoginKey])
+  useEffect(() => {
+    setStatusAlertDismissal((prev) => ({
+      ...prev,
+      dismissedLiveKeys: readLiveDismissals(liveLoginKey, window.localStorage),
+    }))
+  }, [liveLoginKey])
+  // A live card is dismissed for this login only: hidden now, remembered in this browser
+  // under the login's key, and never sent to the backend.
+  const handleDismissLiveAlert = useCallback(
+    (card: LiveDisplayAlert) =>
+      dismissLiveAlert({
+        alert: card,
+        loginSessionKey: liveLoginKey,
+        storage: window.localStorage,
+        update: setStatusAlertDismissal,
+      }),
+    [liveLoginKey]
+  )
+
+  const statusAlertStack = useMemo(
+    () =>
+      selectVisibleAlerts(
+        buildAlertStack({
+          persistent: statusAlerts.filter((a) =>
+            (RENDERED_STATUS_ALERT_TYPES as readonly string[]).includes(a.type)
+          ),
+          ...statusAlertDismissal,
+          // Nothing live is shown while the profile is loading, or while the check-in
+          // modal has priority (the same rule as the existing Travel Mode popup).
+          loginSessionKey: travelSummary ? liveLoginKey ?? "unkeyed" : undefined,
+          travelModeActive:
+            travelSummary && !liveAlertsHeld
+              ? isTravelModeInForce(travelSummary)
+              : undefined,
+          travelModeOccurrence: travelSummary?.travelModeEndsAt ?? null,
+          travelModeActivatedThisLogin: Boolean(
+            travelSummary?.travelModeEndsAt &&
+              travelActivationsHere.has(travelSummary.travelModeEndsAt)
+          ),
+          travelModeActivatedAt: null,
+        })
+      ),
+    [
+      statusAlerts,
+      statusAlertDismissal,
+      travelSummary,
+      liveLoginKey,
+      travelActivationsHere,
+      liveAlertsHeld,
+    ]
+  )
+
+
+  // The alerts and the summary belong to one signed-in account. Another account, a sign-out,
+  // a role change or a public page starts empty. (Not the page: alerts follow the talent from
+  // page to page.)
+  const accountKey = [
+    hostActive ? "active" : "inactive",
+    user?.id ?? "",
+    user ? resolveDashboardRole(user) ?? "" : "",
+  ].join("|")
+  const accountKeyRef = useRef(accountKey)
+  const summaryReadForRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (accountKeyRef.current === accountKey) return
+    accountKeyRef.current = accountKey
+    summaryReadForRef.current = null
+    previousTravelSummaryRef.current = null
+    alertReconcileGenRef.current += 1
+    setTravelSummary(null)
+    setLiveAlertsHeld(false)
+    setStatusAlerts([])
+    setStatusAlertDismissal({
+      dismissedPersistentIds: new Set(),
+      dismissedLiveKeys: new Set(),
+    })
+    setStatusAlertDismissFailed(false)
+    setTravelActivationsHere(new Set())
+  }, [accountKey])
+
+  // Off the dashboard, the host reads the summary once per account so the live Travel Mode card
+  // and the list of alerts are right wherever the talent is. While the dashboard is mounted it
+  // does the reading (and hands the result over), so there is never a second request.
+  useEffect(() => {
+    if (!hostActive || !user || resolveDashboardRole(user) !== ROLE.TALENT) return
+    if (pageReadsSummaryRef.current || travelSummary !== null) return
+    if (summaryReadForRef.current === accountKey) return
+    summaryReadForRef.current = accountKey
+    void fetchIdentityVerificationSummary().then((next) => {
+      if (next && accountKeyRef.current === accountKey) setTravelSummary(next)
+    })
+  }, [hostActive, user, travelSummary, accountKey])
 
     // A start attempt rejected as not startable re-reads the real status; a
   // verified account closes everything that was open. Whoever subscribed hears every
@@ -306,7 +585,7 @@ export function IdentityVerificationHostProvider({
   useEffect(() => {
     if (!user) return
     if (resolveDashboardRole(user) !== ROLE.TALENT) return
-    if (!hostActive || !resultsSurfaceMounted) return
+    if (!hostActive) return
 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -418,7 +697,7 @@ export function IdentityVerificationHostProvider({
       document.removeEventListener("visibilitychange", onVisible)
       window.removeEventListener("pageshow", onPageShow)
     }
-  }, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])
+  }, [user, startAlertReconcile, hostActive])
 
     // Real required check, attempted only on "Verify My Account" / Retry. Never
   // fakes a clean result and never marks anything verified itself.
@@ -525,7 +804,16 @@ export function IdentityVerificationHostProvider({
         prev.activeTravelModeUpdate ? { ...prev, key: prev.key + 1 } : prev
       )
     }
-    observerRef.current?.handleIdentityFlowOpenChange?.(open)
+    const pageHandler = observerRef.current?.handleIdentityFlowOpenChange
+    if (pageHandler) {
+      pageHandler(open)
+    } else if (!open) {
+      // Any other page: re-read the summary so what the flow completed (a Travel Mode
+      // activation) shows up without a refresh, exactly as the dashboard's close handler does.
+      void fetchIdentityVerificationSummary().then((fresh) => {
+        if (fresh) setTravelSummary(fresh)
+      })
+    }
     if (open) return
     const onClosed = openOnClosedRef.current
     openOnClosedRef.current = null
@@ -541,6 +829,59 @@ export function IdentityVerificationHostProvider({
     },
     []
   )
+
+  // The flow's "Temporarily traveling" for an already-active traveler (Update): Travel Mode is
+  // confirmed again. The backend creates a new persistent "Travel Mode is on" occurrence (the
+  // period's dates are untouched); on success the live Update card is hidden for the rest of
+  // this login (the same per-login marker an activation uses) and the new alert is awaited.
+  // The flow's own toast never mounts (the instance is replaced on close). On failure nothing
+  // is hidden or announced: the Update card stays and the Update screen opens again to retry
+  // with the same confirmation id, so a request that did succeed is stored once.
+  const travelConfirmationRef = useRef<PendingConfirmation>({ current: null })
+  const handleTravelModeConfirmed = useCallback(async () => {
+    const { IdentityVerificationAPI } = await import(
+      "@/service/http/identity-verification"
+    )
+    await confirmActiveTravelMode({
+      confirm: (id) => IdentityVerificationAPI.confirmTravelMode(id),
+      pending: travelConfirmationRef.current,
+      newId: () => globalThis.crypto.randomUUID(),
+      loginSessionKey: liveLoginKey,
+      occurrence: travelSummary?.travelModeEndsAt ?? null,
+      storage: window.localStorage,
+      onConfirmed: (occurrence) => {
+        if (occurrence) {
+          setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
+        }
+        startAlertReconcile(["travel_mode"])
+      },
+      onFailed: (error) => {
+        console.error("[identity-verification] could not confirm Travel Mode", error)
+        openFlow({
+          initialState: "current-location-showcase",
+          activeTravelModeUpdate: true,
+        })
+      },
+    })
+  }, [travelSummary, liveLoginKey, startAlertReconcile, openFlow])
+
+  // The live "You are in Travel Mode" card's Update. The dashboard registers its own (it hides
+  // its popup first); any other page opens the same flow, with the same detection, directly.
+  const handleLiveTravelUpdate = useCallback(async () => {
+    const pageHandler = observerRef.current?.handleLiveTravelUpdate
+    if (pageHandler) return pageHandler()
+    const fresh = await fetchIdentityVerificationSummary()
+    const activeTravelModeUpdate = isActiveTravelUpdate("reminder", fresh)
+    const location = await getDetectedLocation()
+    openFlow(
+      {
+        initialState: "current-location-showcase",
+        activeTravelModeUpdate,
+        detectBrowserLocationOnRelocate: true,
+      },
+      { detectedLocation: location }
+    )
+  }, [openFlow])
 
   const closeGate = useCallback(() => setVerificationGateOpen(false), [])
 
@@ -592,6 +933,10 @@ export function IdentityVerificationHostProvider({
         connectionCheckState,
         setCooldownRetryTime,
         closeGate,
+        summary: travelSummary,
+        setSummary: setTravelSummary,
+        startAlertReconcile,
+        setLiveAlertsHeld,
         subscribeStatusRefreshed,
       },
       observerRef,
@@ -603,6 +948,8 @@ export function IdentityVerificationHostProvider({
       identityFlowOpen,
       connectionCheckState,
       closeGate,
+      travelSummary,
+      startAlertReconcile,
       subscribeStatusRefreshed,
     ]
   )
@@ -755,6 +1102,109 @@ export function IdentityVerificationHostProvider({
               : undefined
           }
         />
+      )}
+
+      {/* Persistent status alerts (PMCM-651): a fixed top-right overlay, outside the dashboard
+          layout, so nothing on the page moves when an alert appears or is dismissed. Same
+          corner as the existing toasts (right 20px), 20px below the header (64px from md up, 92px
+          on phones, where it has a second row). Below md it spans the screen with 16px margins. Newest
+          first, three at most, 12px apart, no timeout. The wrapper ignores the pointer so
+          it never blocks the page; only the cards take it. */}
+      {(statusAlertStack.visible.length > 0 ||
+        statusAlertDismissFailed) && (
+        <div
+          data-status-alert-stack
+          className="pointer-events-none fixed left-4 right-4 top-[112px] z-40 flex flex-col items-end gap-3 md:left-auto md:right-5 md:top-[84px] md:w-[400px]"
+        >
+          {statusAlertStack.visible.filter(isRenderedAlert).map((card) => (
+            // Figma nodes 13101-46846 (Travel Mode, 98px), 13101-47555 (location verification
+            // submitted, 118px), 13101-47566 (verified, 118px) and 13101-47577 (home country
+            // updated, 98px): one card, a different icon and copy each. Figma's 16px padding
+            // sits over its 1px stroke, so padding is 15px here (border-box + 1px border) to
+            // keep the icon 16px from the edge and the content 368px; the 36px close button is
+            // 8px from the corner, i.e. 7px from the padding box.
+            <Alert
+              key={card.key}
+              data-status-alert={card.type}
+              className="pointer-events-auto relative w-full max-w-[400px] items-start md:w-[400px] gap-x-5 rounded-xl border-gray-100 bg-white p-[15px] text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
+            >
+              <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
+                {card.type === "submitted_for_review" ? (
+                  <ClockStopwatch className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+                ) : card.type === "verified" ? (
+                  <CheckCircle className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+                ) : card.type === "home_country_updated" ? (
+                  <MarkerPin01 className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
+                ) : card.type === "travel_mode_ongoing" ? (
+                  <Plane className="size-[24.75px] translate-x-[0.38px] translate-y-[0.38px] text-primary-500" />
+                ) : (
+                  <Plane className="size-[24.75px] text-primary-500" />
+                )}
+              </AlertIcon>
+              <AlertContent className="flex min-w-0 flex-col gap-1 pr-10 pt-0.5">
+                <AlertTitle className="text-sm font-semibold leading-5 text-gray-900">
+                  {card.title}
+                </AlertTitle>
+                <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
+                  {card.body}
+                </AlertDescription>
+                {card.source === "live" && (
+                  // Figma node 13101-47532: 16px under the text block (4px gap + 12px).
+                  <Button
+                    variant="link"
+                    className="mt-3 h-5 w-fit justify-start p-0 text-sm font-semibold leading-5"
+                    onClick={() => void handleLiveTravelUpdate()}
+                  >
+                    {card.actionLabel}
+                  </Button>
+                )}
+              </AlertContent>
+              <IconButton
+                aria-label={STATUS_ALERT_CLOSE_LABEL}
+                className="absolute right-[7px] top-[7px] size-9 text-gray-500"
+                size="md"
+                visual="gray"
+                variant="ghost"
+                onClick={() => {
+                  setStatusAlertDismissFailed(false)
+                  if (card.source === "live") {
+                    handleDismissLiveAlert(card)
+                    return
+                  }
+                  void dismissPersistentAlertOptimistically({
+                    alert: card,
+                    dismiss: StatusAlertsAPI.dismiss,
+                    update: setStatusAlertDismissal,
+                  }).then((outcome) => {
+                    if (outcome.ok) return
+                    console.error(
+                      "[status-alerts] could not dismiss the alert",
+                      outcome.error
+                    )
+                    setStatusAlertDismissFailed(true)
+                  })
+                }}
+              >
+                <X className="size-5" />
+              </IconButton>
+            </Alert>
+          ))}
+          {statusAlertDismissFailed && (
+            <Alert
+              variant="error"
+              data-status-alert-error
+              className="pointer-events-auto w-full max-w-[400px] md:w-[400px]"
+            >
+              <AlertContent>
+                <AlertTitle>{STATUS_ALERT_DISMISS_ERROR}</AlertTitle>
+              </AlertContent>
+              <CloseButton
+                aria-label="Close"
+                onClick={() => setStatusAlertDismissFailed(false)}
+              />
+            </Alert>
+          )}
+        </div>
       )}
       </>
       )}

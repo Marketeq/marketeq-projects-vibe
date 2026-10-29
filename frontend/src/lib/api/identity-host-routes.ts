@@ -4,8 +4,9 @@
 // the root layout) is active. Pure: no UI, no network, no storage.
 //
 // The host is inert, and renders nothing, when nobody is signed in and on the sign-in, sign-up,
-// password-recovery and invitation entry pages, so a public or authentication page never loads
-// or shows any verification UI and never reads any identity state. Every other page may be a
+// password-recovery and invitation entry pages (and during onboarding, before an account has
+// reached the app), so such a page never loads or shows any verification or alert UI and never
+// reads any identity state. Every other page may be a
 // place verification opens over (a signed-in talent applying from a public job page, for
 // instance), so those stay active for a signed-in user.
 
@@ -20,6 +21,7 @@ export const IDENTITY_HOST_PUBLIC_PREFIXES = [
   "/invite",
   "/invite-talent",
   "/identity-verification-preview",
+  "/onboarding",
 ] as const
 
 export function isIdentityHostPublicPath(

@@ -16,6 +16,8 @@ import {
 } from "./identity-host-routes"
 
 const root = process.cwd()
+const count = (source: string, needle: string) =>
+  source.split(needle).length - 1
 const SKIP = new Set([
   "node_modules",
   ".next",
@@ -283,56 +285,61 @@ describe("the host is inert on public and authentication pages, and when nobody 
     assert.ok(host.indexOf("{children}") < at)
   })
 
-  it("reads no identity state unless active and a results page is mounted: the reconciliation effect starts only behind both", () => {
+  it("the Didit-return reconciliation starts only where the host is active", () => {
     const effectStart = host.indexOf(
       "const apply = (summary: IdentityVerificationSummaryView | null)"
     )
-    const guard = host.lastIndexOf(
-      "if (!hostActive || !resultsSurfaceMounted) return",
-      effectStart
-    )
+    const guard = host.lastIndexOf("if (!hostActive) return", effectStart)
     const firstRead = host.indexOf(
       "returnReconcilerRef.current ??=",
       effectStart
     )
     assert.ok(guard > -1 && guard < effectStart && effectStart < firstRead)
-    assert.ok(
-      host.includes(
-        "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
-      )
-    )
+    assert.ok(host.includes("}, [user, startAlertReconcile, hostActive])"))
   })
 
-  it("makes no request at mount: every identity read in the host is inside a handler or the gated effect", () => {
+  it("makes no request at mount: every identity or alert read is behind a click or a guard that needs an active host and a talent", () => {
     const code = host.replace(/\/\/.*$/gm, "")
     const reads = [
       ...code.matchAll(
-        /fetchIdentityVerificationSummary\(|checkVpnProxy\(|getDetectedLocation\(|startIdentityOnlyForDashboard\(|returnReconcilerRef\.current\.run\(/g
+        /fetchIdentityVerificationSummary\(|checkVpnProxy\(|getDetectedLocation\(|startIdentityOnlyForDashboard\(|returnReconcilerRef\.current\.run\(|StatusAlertsAPI\.list\(/g
       ),
     ].map((m) => m.index ?? 0)
-    const handlerAt = code.indexOf("const handleVerifyMyAccount = useCallback(")
-    const handlerEnd = code.indexOf(
-      "}, [runIdentityVerificationCheck])",
-      handlerAt
-    )
-    const relocateAt = code.indexOf(
-      "const refreshLocationForRelocation = useCallback("
-    )
-    const relocateEnd = code.indexOf("}, [])", relocateAt)
-    const effectAt = code.indexOf(
-      "if (!hostActive || !resultsSurfaceMounted) return"
-    )
-    const effectEnd = code.indexOf(
-      "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
-    )
-    assert.ok(reads.length >= 6)
+    const region = (from: string, to: string) => {
+      const a = code.indexOf(from)
+      assert.ok(a > -1, from)
+      return [a, code.indexOf(to, a)] as const
+    }
+    const regions = [
+      region(
+        "const handleVerifyMyAccount = useCallback(",
+        "}, [runIdentityVerificationCheck])"
+      ), // a click
+      region("const refreshLocationForRelocation = useCallback(", "}, [])"), // a click
+      region(
+        "const handleIdentityFlowOpenChange = useCallback(",
+        "const openFlow = useCallback("
+      ), // a flow closing
+      region("const handleLiveTravelUpdate = useCallback(", "}, [openFlow])"), // a click
+      region(
+        "if (!hostActive) return",
+        "}, [user, startAlertReconcile, hostActive])"
+      ), // the return effect, active host only
+      region(
+        "if (!user || !hostActive || resolveDashboardRole(user) !== ROLE.TALENT) return",
+        "}, [user, travelSummary, hostActive])"
+      ), // the alert list
+      region(
+        "if (!hostActive || !user || resolveDashboardRole(user) !== ROLE.TALENT) return",
+        "}, [hostActive, user, travelSummary, accountKey])"
+      ), // the summary read
+      region("const startAlertReconcile = useCallback(", "    []\n  )"), // a result was just seen
+    ]
+    assert.ok(reads.length >= 9)
     for (const at of reads) {
-      const inHandler = at > handlerAt && at < handlerEnd
-      const inRelocate = at > relocateAt && at < relocateEnd
-      const inEffect = at > effectAt && at < effectEnd
       assert.ok(
-        inHandler || inRelocate || inEffect,
-        `identity read at ${at} is outside a handler or the gated effect`
+        regions.some(([from, to]) => at > from && at < to),
+        `read at ${at} is outside a click, a flow close or a guarded effect`
       )
     }
   })
@@ -425,9 +432,7 @@ describe("no duplicate reconciliation, listener or surface across pages", () => 
     )
     const effect = host.slice(
       effectStart,
-      host.indexOf(
-        "}, [user, startAlertReconcile, hostActive, resultsSurfaceMounted])"
-      )
+      host.indexOf("}, [user, startAlertReconcile, hostActive])")
     )
     assert.ok(
       effect.includes(
@@ -524,17 +529,15 @@ describe("one owner for the Didit-return reconciliation, and no duplicates", () 
   })
 })
 
-describe("the dashboard keeps what is its own", () => {
-  it("banner, status alerts, prompts, check-in and Travel Mode popups are not in the host", () => {
+describe("the dashboard keeps what is its own, and the host owns the one alert stack", () => {
+  it("banner, prompts, check-in and Travel Mode popups are not in the host", () => {
     for (const own of [
       "profileBannerShown",
-      "StatusAlertsAPI",
       "locationMismatchOpen",
       "travelerPromptOpen",
       "checkIn",
       "travelPopup",
       "shouldShowTravelExpiryPopup",
-      "reconcileStatusAlerts",
     ]) {
       assert.ok(
         !host.replace(/\/\/.*$/gm, "").includes(own),
@@ -543,20 +546,140 @@ describe("the dashboard keeps what is its own", () => {
     }
   })
 
-  it("the dashboard still owns the load-time status read, the banner and the alert stack", () => {
+  it("the dashboard still owns the load-time status read, the banner and the PMCM-653 check", () => {
     for (const own of [
       "const runIdentityVerificationCheck = useCallback(",
-      "const statusAlertStack = useMemo(",
-      "const startAlertReconcile = useCallback(",
       "const reviewedCheckStartedRef = useRef(false)",
+      "const handleTravelUpdate = useCallback(",
     ]) {
       assert.ok(dashboard.includes(own), own)
     }
   })
+
+  it("the persistent alert stack, its list loading and its reconciliation exist once, in the host", () => {
+    assert.deepEqual(filesWith("data-status-alert-stack"), [HOST])
+    assert.deepEqual(filesWith("StatusAlertsAPI.list("), [HOST])
+    assert.deepEqual(filesWith("reconcileStatusAlerts({"), [HOST])
+    assert.deepEqual(filesWith("buildAlertStack({"), [HOST])
+    for (const gone of [
+      "StatusAlertsAPI",
+      "data-status-alert",
+      "const statusAlertStack",
+      "const startAlertReconcile = useCallback(",
+      "const handleTravelModeConfirmed",
+      "const handleDismissLiveAlert",
+    ]) {
+      assert.ok(!dashboard.includes(gone), `${gone} moved to the host`)
+    }
+  })
+
+  it("the stack is rendered only by an active host, for talents, and never for a client or a public page", () => {
+    const at = host.indexOf("{hostActive && (")
+    assert.ok(host.indexOf("data-status-alert-stack") > at)
+    const listing = host.slice(
+      host.indexOf("Talent accounts only, and only where the host is active"),
+      host.indexOf("}, [user, travelSummary, hostActive])")
+    )
+    assert.ok(
+      listing.includes(
+        "!hostActive || resolveDashboardRole(user) !== ROLE.TALENT"
+      )
+    )
+    assert.ok(
+      listing.indexOf("ROLE.TALENT") < listing.indexOf("StatusAlertsAPI.list()")
+    )
+  })
+
+  it("alerts follow the talent from page to page, and start empty for another account, a sign-out or a public page", () => {
+    assert.match(
+      host,
+      /const accountKey = \[\s+hostActive \? "active" : "inactive",\s+user\?\.id \?\? "",\s+user \? resolveDashboardRole\(user\) \?\? "" : "",\s+\]\.join\("\|"\)/
+    )
+    assert.ok(
+      !host
+        .slice(
+          host.indexOf("const accountKey"),
+          host.indexOf("const accountKeyRef")
+        )
+        .includes("pathname")
+    )
+    const reset = host.slice(
+      host.indexOf("if (accountKeyRef.current === accountKey) return"),
+      host.indexOf("}, [accountKey])")
+    )
+    for (const call of [
+      "setTravelSummary(null)",
+      "setLiveAlertsHeld(false)",
+      "setStatusAlerts([])",
+      "setStatusAlertDismissal({",
+      "setStatusAlertDismissFailed(false)",
+      "setTravelActivationsHere(new Set())",
+      "previousTravelSummaryRef.current = null",
+      "alertReconcileGenRef.current += 1",
+    ]) {
+      assert.ok(reset.includes(call), call)
+    }
+  })
+
+  it("the summary is read once: by the dashboard while it is mounted, else by the host once per account", () => {
+    const reader = host.slice(
+      host.indexOf(
+        "// Off the dashboard, the host reads the summary once per account"
+      ),
+      host.indexOf("}, [hostActive, user, travelSummary, accountKey])")
+    )
+    assert.ok(
+      reader.includes(
+        "if (pageReadsSummaryRef.current || travelSummary !== null) return"
+      )
+    )
+    assert.ok(
+      reader.includes("if (summaryReadForRef.current === accountKey) return")
+    )
+    // the dashboard starts every visit from none and hands over what it reads
+    assert.ok(
+      dashboard.includes("setTravelSummary(null)\n  }, [setTravelSummary])")
+    )
+    assert.ok(
+      dashboard.includes(
+        "summary: travelSummary,\n    setSummary: setTravelSummary,"
+      )
+    )
+    assert.ok(!dashboard.includes("useState<IdentityVerificationSummaryView"))
+  })
+
+  it("the dashboard's check-in holds the live card back, and releases it when it unmounts", () => {
+    assert.ok(
+      dashboard.includes(
+        "setLiveAlertsHeld(checkInHasPriorityNow)\n    return () => setLiveAlertsHeld(false)"
+      )
+    )
+    assert.ok(host.includes("travelSummary && !liveAlertsHeld"))
+  })
+
+  it("the card's Update works on any page: the dashboard's own handler when it is mounted, the host's default otherwise", () => {
+    assert.ok(dashboard.includes("handleLiveTravelUpdate,\n  })"))
+    assert.match(
+      host,
+      /const pageHandler = observerRef\.current\?\.handleLiveTravelUpdate\s+if \(pageHandler\) return pageHandler\(\)/
+    )
+  })
+
+  it("every flow close re-reads the summary on any page, so a completed Travel Mode activation shows its alert without a refresh", () => {
+    assert.match(
+      host,
+      /const pageHandler = observerRef\.current\?\.handleIdentityFlowOpenChange\s+if \(pageHandler\) \{\s+pageHandler\(open\)\s+\} else if \(!open\) \{[\s\S]*?fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
+    )
+    assert.ok(
+      host.includes(
+        'if (!user || !isNewTravelActivation(previous, travelSummary)) return\n    startAlertReconcile(["travel_mode"])'
+      )
+    )
+  })
 })
 
 describe("the observer contract between the host and the dashboard", () => {
-  const called = [...host.matchAll(/observerRef\.current\?\.([A-Za-z]+)\?\./g)]
+  const called = [...host.matchAll(/observerRef\.current\?\.([A-Za-z]+)/g)]
     .map((m) => m[1])
     .sort()
   const registered = (() => {
@@ -566,7 +689,7 @@ describe("the observer contract between the host and the dashboard", () => {
   })()
 
   it("every reaction the host calls is registered by the dashboard, and nothing more", () => {
-    assert.ok(called.length >= 6)
+    assert.ok(called.length >= 5)
     assert.deepEqual([...new Set(called)], registered)
   })
 
@@ -656,8 +779,12 @@ describe("what was moved did not change", () => {
 
   it("the host adds no network call of its own and no storage key", () => {
     const code = host.replace(/\/\/.*$/gm, "")
+    assert.ok(!/\bfetch\(|axios|AxiosRequest/.test(code))
+    // the one direct API use is the Update confirmation that moved here with the alerts
+    assert.equal(count(code, "IdentityVerificationAPI."), 1)
     assert.ok(
-      !/\bfetch\(|axios|AxiosRequest|IdentityVerificationAPI/.test(code)
+      code.indexOf("IdentityVerificationAPI.confirmTravelMode") >
+        code.indexOf("const handleTravelModeConfirmed")
     )
     assert.ok(!/(local|session)Storage\.(get|set|remove)Item\(["'`]/.test(code))
   })

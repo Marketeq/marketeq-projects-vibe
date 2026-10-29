@@ -377,7 +377,9 @@ describe("browser geolocation wiring (source guards)", () => {
     // the Update flow's "Permanently relocated" choice (an explicit user action, wired
     // through the flow's onPermanentlyRelocated prop; see travel-update-relocated-detection.test.ts).
     const calls = page.match(/getDetectedLocation\(/g) ?? []
-    assert.equal(calls.length, 3)
+    // (plus the host's own default for the live card's Update on a page without a popup: also
+    // server-derived only, so it can never trigger the permission prompt)
+    assert.equal(calls.length, 4)
     assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 2)
     assert.ok(page.includes("getDetectedLocation({ useBrowserLocation: true })"))
     assert.ok(page.includes("await getDetectedLocation()"))

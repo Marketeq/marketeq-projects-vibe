@@ -307,9 +307,9 @@ describe("the per-login activation marker", () => {
   })
 })
 
-describe("dashboard wiring", () => {
+describe("host wiring (the alert stack moved from the dashboard to the identity verification host)", () => {
   const page = readFileSync(
-    new URL("../../../app/(group)/talent-dashboard/page.tsx", import.meta.url),
+    new URL("../../../contexts/identity-verification-host.tsx", import.meta.url),
     "utf8"
   )
   it("marks an activation seen in this visit before paint and feeds the stack", () => {

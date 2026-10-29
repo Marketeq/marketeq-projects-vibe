@@ -192,7 +192,7 @@ describe("startIdentityOnly: Didit only, no location step", () => {
 
 describe("dashboard wiring and boundaries (source guards)", () => {
   const page = readDashboardWithHost()
-  const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// Reads the persistent alerts on load"))
+  const check = page.slice(page.indexOf("const runIdentityVerificationCheck"), page.indexOf("// Success alert (Figma node 13101-47566)"))
   const handler = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("}, [runIdentityVerificationCheck])"))
 
   it("the load check reads only the backend summary: banner and cooldown dialog come from it, and it never opens the blocking gate", () => {

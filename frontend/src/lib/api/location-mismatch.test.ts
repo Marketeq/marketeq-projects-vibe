@@ -106,7 +106,7 @@ describe("when the prompt shows", () => {
     }
     const load = page.slice(
       page.indexOf("const runIdentityVerificationCheck"),
-      page.indexOf("// Reads the persistent alerts on load")
+      page.indexOf("// Success alert (Figma node 13101-47566)")
     )
     assert.ok(load.includes("setProfileBannerShown(shouldShowProfileBanner(summary))"))
     assert.ok(!load.includes("setVerificationGateOpen"))

@@ -58,11 +58,15 @@ describe("dashboard verification entry: nothing opens on page load", () => {
     assert.ok(handler.includes("setIdentityFlowOpen(true)"))
     const openFlow = host.slice(host.indexOf("const openFlow = useCallback("))
     assert.ok(openFlow.slice(0, openFlow.indexOf("[]\n  )")).includes("setIdentityFlowOpen(true)"))
-    assert.equal(dashboard.split("openFlow(").length - 1, 3)
+    assert.equal(dashboard.split("openFlow(").length - 1, 2) // Update, a mismatch answer
+    // (the Update confirmation's retry moved to the host with the confirmation; it is asserted next)
+    const hostSource = readIdentityHost()
+    const confirmAt = hostSource.indexOf("const handleTravelModeConfirmed = useCallback(")
+    assert.ok(confirmAt > -1)
+    assert.ok(hostSource.slice(confirmAt, hostSource.indexOf("\n  }, [", confirmAt)).includes("openFlow("))
     for (const owner of [
       "const handleTravelUpdate = useCallback(",
       "const openFlowFromMismatch = useCallback(",
-      "const handleTravelModeConfirmed = useCallback(",
     ]) {
       const from = dashboard.indexOf(owner)
       const next = owner.includes("openFlowFromMismatch")

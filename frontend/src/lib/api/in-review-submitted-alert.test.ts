@@ -145,7 +145,7 @@ describe("the page starts the wait when a verification returns In Review", () =>
       ),
       host.indexOf("// Real required check")
     )
-    assert.match(returnEffect, /\}, \[user, startAlertReconcile, hostActive, resultsSurfaceMounted\]\)/)
+    assert.match(returnEffect, /\}, \[user, startAlertReconcile, hostActive\]\)/)
   })
 
   it("Done on the dialog is not what loads the alert: it only closes it", () => {
