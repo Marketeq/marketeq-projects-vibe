@@ -211,6 +211,13 @@ export class User {
   @OneToMany(() => AffiliatedTeam, (affiliatedTeam) => affiliatedTeam.user)
   affiliatedTeams: AffiliatedTeam[];
 
+  // QA FIXTURE -- test case 13 / PMCM-749, step 1. A schema-affecting entity
+  // change with no accompanying migration. The SOP Check must report
+  // "TypeORM entity changed without a migration" (AC-4.2.1).
+  // Removed with this branch; DO NOT MERGE.
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  qaMigrationCheckFixture: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
