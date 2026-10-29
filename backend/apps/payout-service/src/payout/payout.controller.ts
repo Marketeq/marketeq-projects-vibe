@@ -137,11 +137,11 @@ export class PayoutController {
     @Request() req: any, @Query('page') page?: string, @Query('pageSize') pageSize?: string,
     @Query('status') status?: string, @Query('search') search?: string,
     @Query('dateRange') dateRange?: string, @Query('depositMethodId') depositMethodId?: string,
-    @Query('from') from?: string, @Query('to') to?: string,
+    @Query('from') from?: string, @Query('to') to?: string, @Query('sort') sort?: string,
   ) {
     return this.payoutService.listPayouts(
       req.user.userId, parseInt(page ?? '1', 10) || 1, parseInt(pageSize ?? '20', 10) || 20,
-      status, search, dateRange, depositMethodId, from, to,
+      status, search, dateRange, depositMethodId, from, to, sort,
     );
   }
 
