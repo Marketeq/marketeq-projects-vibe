@@ -115,7 +115,8 @@ describe("dashboard verification entry: banner and action", () => {
 describe("dashboard verification entry: return from Didit", () => {
   it("opens the success modal only from a backend 'complete' result, never on an ordinary load", () => {
     assert.ok(page.includes("const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)"))
-    assert.equal(count("setVerifiedModalOpen(true)"), 1)
+    // two places, both from the backend's answer: a Didit return, and a reviewed session approved later
+    assert.equal(count("setVerifiedModalOpen(true)"), 2)
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("if (shouldShowSuccessModal(summary))", at), at).length < 400)
   })

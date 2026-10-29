@@ -107,10 +107,6 @@ import {
   type MismatchFlowKind,
 } from "@/src/lib/api/travel-location-prompt"
 import {
-  reconcileReviewedSession,
-  resolveReviewedResult,
-} from "@/src/lib/api/reviewed-approval-result"
-import {
   HOME_COUNTRY_UPDATED_ALERT,
   type SuccessAlertKind,
 } from "@/src/lib/api/home-country-change-result"
@@ -193,10 +189,8 @@ export default function TalentDashboard() {
     flowOpen: identityFlowOpen,
     connectionCheckState,
     setCooldownRetryTime,
-    closeGate,
     summary: travelSummary,
     setSummary: setTravelSummary,
-    startAlertReconcile,
     setLiveAlertsHeld,
   } = useIdentityVerification()
   const identityStatusCheckStartedRef = useRef(false)
@@ -317,45 +311,8 @@ export default function TalentDashboard() {
       setHomeCountryUpdatedOpen(true)
     }
   }, [successAlertOpen, successAlertKind])
-  // PMCM-653: a first-time verification that was shown as submitted and is approved
-  // later shows the existing success alert once. The marker only says this browser is
-  // waiting; the backend summary (nextAction complete AND fullyVerified) decides. It is
-  // rechecked on load (one reconcile, then GET /me) and whenever the tab becomes
-  // visible (GET only), with no timer: a review can take days. Nothing is shown while
-  // the review continues, and the marker is consumed in the same step that shows it.
-  const reviewedCheckStartedRef = useRef(false)
-  useEffect(() => {
-    if (!user) return
-    if (resolveDashboardRole(user) !== ROLE.TALENT) return
-
-    const check = async (withReconcile: boolean) => {
-      const outcome = await resolveReviewedResult({
-        storage: window.localStorage,
-        userId: user.id,
-        fetchSummary: fetchIdentityVerificationSummary,
-        reconcile: withReconcile ? reconcileReviewedSession : undefined,
-      })
-      if (outcome !== "approved") return
-      closeGate()
-      setProfileBannerShown(false)
-      // Approved after review: the page's first alert read may have run before the approval
-      // was processed and still show "submitted". The persistent Verified card replaces it;
-      // the old temporary "All set!" alert is not opened (it would sit on top of that card).
-      startAlertReconcile(["verified", "home_country_updated"])
-    }
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void check(false)
-    }
-
-    // StrictMode runs this effect twice; the load check (and its reconcile) runs once.
-    if (!reviewedCheckStartedRef.current) {
-      reviewedCheckStartedRef.current = true
-      void check(true)
-    }
-    document.addEventListener("visibilitychange", onVisible)
-    return () => document.removeEventListener("visibilitychange", onVisible)
-  }, [user, startAlertReconcile, closeGate])
+  // PMCM-653 (a reviewed session approved later) is resolved by the identity verification host,
+  // on whatever page the talent is on; the dashboard no longer runs a second resolver.
 
   // The Identity Verification check (which may open AccountVerificationGate) waits
   // for the "Secure your account" dialog: not while the authenticated user still

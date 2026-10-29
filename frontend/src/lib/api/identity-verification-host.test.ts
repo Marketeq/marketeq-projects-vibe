@@ -334,6 +334,10 @@ describe("the host is inert on public and authentication pages, and when nobody 
         "}, [hostActive, user, travelSummary, accountKey])"
       ), // the summary read
       region("const startAlertReconcile = useCallback(", "    []\n  )"), // a result was just seen
+      region(
+        "const statusRefresher = useMemo(",
+        "[startAlertReconcile, setProfileBannerShown]"
+      ), // status refresh: guarded by active() and event-driven
     ]
     assert.ok(reads.length >= 9)
     for (const at of reads) {
@@ -488,10 +492,12 @@ describe("one owner for the Didit-return reconciliation, and no duplicates", () 
     assert.ok(
       !/hasAwaitingResult|clearAwaitingResult|RESULT_POLL/.test(dashboard)
     )
+    // two listeners, both in the host: the Didit return's, and the status refresher's (one
+    // refresh at a time, read-only; see status-refresh.ts)
     assert.equal(
       host.split('document.addEventListener("visibilitychange", onVisible)')
         .length - 1,
-      1
+      2
     )
     assert.equal(
       host.split('window.addEventListener("pageshow", onPageShow)').length - 1,
@@ -546,10 +552,9 @@ describe("the dashboard keeps what is its own, and the host owns the one alert s
     }
   })
 
-  it("the dashboard still owns the load-time status read, the banner and the PMCM-653 check", () => {
+  it("the dashboard still owns the load-time status read and the banner, and no longer runs a resolver of its own for a reviewed session", () => {
     for (const own of [
       "const runIdentityVerificationCheck = useCallback(",
-      "const reviewedCheckStartedRef = useRef(false)",
       "const handleTravelUpdate = useCallback(",
     ]) {
       assert.ok(dashboard.includes(own), own)

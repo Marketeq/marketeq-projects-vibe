@@ -111,15 +111,12 @@ describe("the page reloads the list once an approval is seen, and opens no secon
       /setVerifiedModalOpen\(true\)[\s\S]*startAlertReconcile\(\["verified", "home_country_updated"\]\)/
     )
     const reviewed = page.slice(
-      page.indexOf('if (outcome !== "approved") return'),
-      page.indexOf(
-        "const onVisible = () => {",
-        page.indexOf('if (outcome !== "approved") return')
-      )
+      page.indexOf("onApproved: () => {"),
+      page.indexOf("[startAlertReconcile, setProfileBannerShown]")
     )
     assert.match(
       reviewed,
-      /startAlertReconcile\(\["verified", "home_country_updated"\]\)/
+      /setVerifiedModalOpen\(true\)\s+startAlertReconcile\(\["verified", "home_country_updated"\]\)/
     )
   })
 

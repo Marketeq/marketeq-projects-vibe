@@ -94,9 +94,12 @@ import {
 } from "@/src/lib/api/detected-location"
 import {
   clearReviewedResult,
+  hasReviewedResult,
   markReviewedResult,
+  reconcileReviewedSession,
   shouldMarkReviewedResult,
 } from "@/src/lib/api/reviewed-approval-result"
+import { createStatusRefresher } from "@/src/lib/api/status-refresh"
 import {
   clearHomeCountryChange,
   consumeHomeCountryChange,
@@ -504,6 +507,8 @@ export function IdentityVerificationHostProvider({
     if (!hostActive || !user || resolveDashboardRole(user) !== ROLE.TALENT) return
     if (pageReadsSummaryRef.current || travelSummary !== null) return
     if (summaryReadForRef.current === accountKey) return
+    // A review marker is resolved by the status refresh below, which reads the summary itself.
+    if (hasReviewedResult(window.localStorage, user.id)) return
     summaryReadForRef.current = accountKey
     void fetchIdentityVerificationSummary().then((next) => {
       if (next && accountKeyRef.current === accountKey) setTravelSummary(next)
@@ -551,6 +556,66 @@ export function IdentityVerificationHostProvider({
     setVerifiedModalOpen(false)
   }
 
+  // Status that changed while the talent was elsewhere (a review approved in another tab, an
+  // alert stored a moment late) is picked up on a page load, when the tab becomes visible and on
+  // a route change: read-only, one refresh at a time, no timer. A reviewed session that was
+  // approved shows the existing Verified result once and loads its alert; the dashboard no
+  // longer runs a resolver of its own. See status-refresh.ts.
+  const refreshLiveRef = useRef({ hostActive, user })
+  refreshLiveRef.current = { hostActive, user }
+  const statusRefresher = useMemo(
+    () =>
+      createStatusRefresher({
+        active: () => {
+          const live = refreshLiveRef.current
+          return Boolean(
+            live.hostActive && live.user && resolveDashboardRole(live.user) === ROLE.TALENT
+          )
+        },
+        dashboardReadsSummary: () => pageReadsSummaryRef.current,
+        awaitingDiditReturn: () => hasAwaitingResult(window.localStorage),
+        storage: () => window.localStorage,
+        userId: () => refreshLiveRef.current.user?.id,
+        hasReviewedMarker: () =>
+          hasReviewedResult(window.localStorage, refreshLiveRef.current.user?.id),
+        // A read that finishes after the account changed is dropped, never applied.
+        readSummary: async () => {
+          const key = accountKeyRef.current
+          const next = await fetchIdentityVerificationSummary()
+          return accountKeyRef.current === key ? next : null
+        },
+        onSummary: (next) => setTravelSummary(next),
+        reconcile: reconcileReviewedSession,
+        onApproved: () => {
+          setVerificationGateOpen(false)
+          setProfileBannerShown(false)
+          setVerifiedModalOpen(true)
+          startAlertReconcile(["verified", "home_country_updated"])
+        },
+      }),
+    [startAlertReconcile, setProfileBannerShown]
+  )
+  const statusLoadCheckedForRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!hostActive || !user) return
+    if (statusLoadCheckedForRef.current === accountKey) return
+    statusLoadCheckedForRef.current = accountKey
+    void statusRefresher.run("load")
+  }, [hostActive, user, accountKey, statusRefresher])
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void statusRefresher.run("visible")
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [statusRefresher])
+  const statusPathRef = useRef(pathname)
+  useEffect(() => {
+    if (statusPathRef.current === pathname) return
+    statusPathRef.current = pathname
+    void statusRefresher.run("route")
+  }, [pathname, statusRefresher])
+
   // Everything above belongs to one account on one page. When the page, the account, the role
   // or the sign-in changes (or a public page is entered, or nobody is signed in), it is all
   // closed and forgotten, exactly as it was when the dashboard unmounted and a new one mounted.
@@ -593,6 +658,9 @@ export function IdentityVerificationHostProvider({
 
     const apply = (summary: IdentityVerificationSummaryView | null) => {
       if (cancelled) return
+      // Off the dashboard nothing else hands the host the post-result summary (the dashboard
+      // reads its own), so keep it current: what the live card and the alert list follow.
+      if (summary && !pageReadsSummaryRef.current) setTravelSummary(summary)
       if (shouldShowSuccessModal(summary)) {
         clearAwaitingResult(window.localStorage)
         setVerificationGateOpen(false)
