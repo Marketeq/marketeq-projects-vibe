@@ -277,7 +277,7 @@ describe("the retry gate after a Didit decline", () => {
   })
 
   // --- Didit opened from the retry gate, then cancelled or finished -------------------------
-  const events = host.slice(host.indexOf("const unsubscribe = subscribeDiditOverlay"), host.indexOf("dropActiveDiditTrip(returnUserId)"))
+  const events = host.slice(host.indexOf("const handleOverlayEvent = (event: DiditOverlayEvent)"), host.indexOf("const watcher = createTripWatcher"))
 
   it("B1. Verify closes the gate WITHOUT consuming the decline, and remembers it launched Didit", () => {
     const verify = host.slice(host.indexOf("if (retryVerifyRunningRef.current) return"), host.indexOf("if (retryVerifyRunningRef.current) return") + 900)

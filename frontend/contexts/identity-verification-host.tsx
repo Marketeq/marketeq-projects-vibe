@@ -108,8 +108,14 @@ import {
   setDiditPresentationGate,
   subscribeDiditOverlay,
   waitForClosingDialogsToLeave,
+  type DiditOverlayEvent,
 } from "@/src/lib/api/didit-overlay"
 import { createDiditLifecycle } from "@/src/lib/api/didit-launch-lifecycle"
+import {
+  createTripAccountGuard,
+  createTripWatcher,
+  readCurrentAccountIdFromAuth,
+} from "@/src/lib/api/trip-account-guard"
 import {
   markRetryGatePresented,
   readAwaitingFlag,
@@ -722,6 +728,28 @@ export function IdentityVerificationHostProvider({
         }).then(() => waitForClosingDialogsToLeave()),
     })
   )
+  // Who is signed in, asked of the canonical auth read (GET /user/me) only while a Didit overlay is
+  // active: on a tab focus / visibility return and before a Didit callback is accepted. One read at
+  // a time, reused for a second, no timer.
+  const [tripGuard] = useState(() =>
+    createTripAccountGuard({ readCurrentAccountId: readCurrentAccountIdFromAuth })
+  )
+  // The signed-in account is no longer the one that launched Didit (or that cannot be verified):
+  // the overlay is closed and its callbacks invalidated, every trip marker and the retry-gate
+  // occurrence are dropped, and nothing is reconciled, confirmed, started, reopened or navigated.
+  // Backend verification state is not touched.
+  const abortDiditTrip = useCallback(
+    (userId: string) => {
+      closeDiditOverlay()
+      diditLifecycle.discard()
+      clearAwaitingResult(window.localStorage)
+      clearHomeCountryChange(window.localStorage)
+      clearReturnOrigins(window.localStorage, userId)
+      acknowledgeRetryGate() // consumes the retry occurrence and closes the retry gate
+      setConnectionCheckState("idle")
+    },
+    [diditLifecycle, acknowledgeRetryGate]
+  )
   useEffect(() => {
     if (identityFlowOpen || verificationGateOpen) return
     const waiters = closeCommitWaitersRef.current.splice(0)
@@ -762,7 +790,8 @@ export function IdentityVerificationHostProvider({
   useEffect(() => {
     if (!returnUserId) return
     const removeGate = setDiditPresentationGate(diditLifecycle.beforePresent)
-    const unsubscribe = subscribeDiditOverlay((event) => {
+    let disposed = false
+    const handleOverlayEvent = (event: DiditOverlayEvent) => {
       clearReturnOrigins(window.localStorage, returnUserId)
       setConnectionCheckState("idle")
       if (event.type === "completed") {
@@ -798,15 +827,36 @@ export function IdentityVerificationHostProvider({
       }
       // Back to where the talent was, on the same step: the dialogs were only closed.
       diditLifecycle.reopen()
+    }
+    // A Didit callback is accepted only if the account that launched it is still the one signed
+    // in (a fresh read); otherwise it is ignored and the trip is dropped.
+    const watcher = createTripWatcher({
+      guard: tripGuard,
+      accountId: returnUserId,
+      isOverlayActive: isDiditOverlayActive,
+      isTabVisible: () => document.visibilityState !== "hidden",
+      isDisposed: () => disposed,
+      abort: () => abortDiditTrip(returnUserId),
     })
+    const unsubscribe = subscribeDiditOverlay((event) => {
+      void watcher.accept(event, handleOverlayEvent)
+    })
+    // Back on this tab while Didit is open: is the signed-in account still the one that launched
+    // it? Only while an overlay is active, only on these events, never on a timer.
+    const onTabReturn = () => void watcher.onTabReturn()
+    document.addEventListener("visibilitychange", onTabReturn)
+    window.addEventListener("focus", onTabReturn)
     return () => {
+      disposed = true
+      document.removeEventListener("visibilitychange", onTabReturn)
+      window.removeEventListener("focus", onTabReturn)
       removeGate()
       unsubscribe()
       dropActiveDiditTrip(returnUserId)
       closeDiditOverlay()
       diditLifecycle.discard()
     }
-  }, [returnUserId, diditLifecycle, dropActiveDiditTrip])
+  }, [returnUserId, diditLifecycle, dropActiveDiditTrip, tripGuard, abortDiditTrip])
 
   // Back from Didit. The backend sends the browser to /talent-dashboard (its callback is not
   // changed), so a return that left from another page is handed straight back to it: the

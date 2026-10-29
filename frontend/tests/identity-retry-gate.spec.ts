@@ -14,6 +14,8 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000"
 const API_URL = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:4000/api"
 // An existing LOCAL talent account (dev-login). No account is named here: set IDV_QA_EMAIL.
 const EMAIL = process.env.IDV_QA_EMAIL
+// A second existing local talent account (unverified is fine), for the account-switch test only.
+const EMAIL_B = process.env.IDV_QA_EMAIL_B
 const AWAITING_KEY = "marketeq:identity-verification:awaiting-result"
 const ORIGIN_PAGE = "/my-jobs"
 
@@ -52,8 +54,11 @@ async function mockDeclinedState(page: Page): Promise<Counters> {
   await page.route("**/identity-verification/me", async (route) => {
     // The real answer supplies every field the page reads; only the verification state is set.
     // (A busy dev gateway can rate-limit a rapid reload with a 429: the state is still served.)
-    const real = await route.fetch()
-    const json = await real.json().catch(() => ({}))
+    // (if the dev gateway resets the connection, the state is still served)
+    const json = await route
+      .fetch()
+      .then((real) => real.json())
+      .catch(() => ({}))
     const body = json?.data ?? json
     Object.assign(body, {
       nextAction: "retry_identity",
@@ -103,6 +108,60 @@ const gate = (page: Page) =>
 test.describe("post-decline retry gate", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page)
+  })
+
+  // First in the file on purpose: it ends with the second account's REAL gate check, and the dev
+  // gateway rate-limits a long burst of requests from one machine.
+  test("the session becomes another account's while Didit is open: coming back to the tab closes it, nothing is sent, the other account can verify on its own", async ({ page }) => {
+    test.skip(!EMAIL_B, "set IDV_QA_EMAIL_B to a second existing local talent account")
+    test.setTimeout(240_000)
+    const c = await mockDeclinedState(page)
+    c.diditUrl = "https://verify.didit.me/session/qa-mock-session-token-0000"
+    const navigations: string[] = []
+    page.on("framenavigated", (f) => { if (f === page.mainFrame()) navigations.push(new URL(f.url()).pathname) })
+    await endDiditTrip(page)
+    await expect(gate(page)).toBeVisible({ timeout: 30_000 })
+    await gate(page).getByRole("button", { name: "Verify My Account" }).click()
+    await expect(page.locator(".didit-modal-overlay.active")).toBeVisible({ timeout: 30_000 })
+    const sessionsBefore = c.kycSessions
+
+    // the signed-in account is replaced in this browser: no sign-out, no reload, no navigation
+    const res = await page.request.post(`${API_URL}/auth/dev-login`, { data: { email: EMAIL_B as string } })
+    const body = await res.json()
+    await page.context().clearCookies()
+    await page.context().addCookies(
+      ["access_token", "refresh_token"].filter((k) => body[k]).map((name) => ({ name, value: body[name] as string, domain: "localhost", path: "/" }))
+    )
+    await page.unroute("**/identity-verification/**") // from here on the identity API is the real one
+    const requestsAfter: string[] = []
+    page.on("request", (r) => {
+      if (r.method() === "POST" && /identity-verification/.test(r.url())) requestsAfter.push(new URL(r.url()).pathname)
+    })
+    const before = navigations.length
+
+    // coming back to the tab: focus and visibility together
+    await page.evaluate(() => { window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange")) })
+    await expect(page.locator(".didit-modal-overlay.active")).toHaveCount(0, { timeout: 15_000 })
+    await page.waitForTimeout(3000)
+    expect(navigations.length).toBe(before) // no navigation
+    expect(new URL(page.url()).pathname).toBe(ORIGIN_PAGE)
+    await expect(gate(page)).toBeHidden()
+    expect(await page.getByRole("dialog").count()).toBe(0)
+    for (const key of [AWAITING_KEY, "marketeq:identity-verification:return-origin"]) {
+      expect(await page.evaluate((k) => window.localStorage.getItem(k), key)).toBeNull()
+    }
+    expect(requestsAfter).toEqual([]) // no reconcile, confirmation or session for either account
+    expect(c.kycSessions).toBe(sessionsBefore)
+
+    // the other account starts its own verification afterwards
+    await page.getByText("Apply Now").first().click()
+    await page.getByRole("button", { name: "Start Verification" }).click()
+    const yes = page.getByRole("button", { name: "Yes, this is my home country" })
+    await Promise.race([
+      yes.waitFor({ timeout: 40_000 }).then(() => yes.click()),
+      page.locator(".didit-modal-overlay.active").waitFor({ timeout: 40_000 }),
+    ]).catch(() => {})
+    await expect(page.locator(".didit-modal-overlay.active")).toBeVisible({ timeout: 60_000 })
   })
 
   test("opens once over the originating page, with Cancel before Verify My Account", async ({ page }) => {
