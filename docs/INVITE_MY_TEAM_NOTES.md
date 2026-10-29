@@ -885,3 +885,100 @@ session. Fixed in code (`logging: ['migration', 'error']`, matching
 payout-service). Note a second, stale nested copy of that compiled file exists
 under `dist/.../src/database/` which the build does not update and nothing
 runs — do not be misled by grepping it.
+
+---
+
+## 17. The Figma and a live run, checked against all 28 child tickets (29 Oct)
+
+Every child of PMCM-706 (707→734) read in Jira, then checked against the design
+file and against a booted stack. **The child tickets are far more specific than
+the epic summary — read the child before calling anything a defect.**
+
+### 17.1 Four things we had logged as defects are not defects
+
+1. **Send Invite staying enabled with a chip still staged is REQUIRED.**
+   AC-10.2 / R3-13: "Send Invite stays available while chips are still staged…
+   Pressing it sends every valid staged chip with the default role." The Figma
+   confirms it — one modal state shows a single chip, Add active and Send Invite
+   solid blue with the Invites list empty. §16.1 item 4 was wrong.
+2. **The invite modal title is correct.** The design reads **"Invite Your Team"**,
+   which is what we render. "Invite Team Member" is the *company-selection*
+   modal's title (AC-01.1) and `invite-company-steps.tsx` renders that correctly
+   too. UX-29 was a misreading of which modal is which — §16.1 item 8 withdrawn.
+3. **The row menu matches the design.** Four items — Edit Permissions, Resend
+   Invite, Cancel Invite, divider, **Remove User in red**. **No View Profile**,
+   so removing it was right.
+4. **The Talent Network card matches.** All Stars pill, favorite star, and the
+   avatar indicator in **three variants** (red watch / green check / amber
+   clock). PMCM-721 FR-4's "accepted or not accepted" prose contradicts its own
+   frames — that is exactly what UX-20 flags as an open gap. **Our card is
+   right; the ticket text is stale.**
+
+### 17.2 Two things the design confirmed, with exact values
+
+- **The Invites row default is `Viewer`** (AC-07.2), visible as a `Viewer ⌄`
+  control in three separate modal states. We render "Select Permissions".
+  **But see 17.4 — the backend applies viewer anyway, so this is presentational.**
+- **Manage Invite Settings must have no Save button** (AC-12.7, R3-14). Our
+  backend already saves per change via `PATCH`; the frozen frontend still has a
+  Save button it should not have.
+
+### 17.3 The §6 blocker is gone — observed, not inferred
+
+Full stack booted; a real invite sent from My Network and the invitee flow
+driven to completion:
+
+```
+POST /api/v1/invitations/accept  201
+```
+
+Invitation `status=accepted`, `invitee_user_id` set, `accepted_at` stamped,
+`company_users` row written, nav count 7 → 8, notification fired. §6's
+*"nobody can accept an invitation locally"* is **resolved**. PMCM-726→730 are
+testable. Test rows were deleted afterwards.
+
+### 17.4 Three findings only the live run produced
+
+1. **Acceptance fires only on "Go to Dashboard."** Deliberate and commented in
+   `app/invite/setup/page.tsx`: the invitee finishes profile and company setup
+   first, and the final click does the roster write. **Every screen before it
+   reads as success** — a tester who stops at the welcome screen leaves the
+   invitation `pending` believing it worked. This must be in the test script.
+2. **A wrong-account accept returns 403 `EMAIL_MISMATCH`**
+   (`invitations.service.ts`: `inv.invitedEmail !== invitee.email`).
+   **PMCM-726 EC-36 says the opposite** — that accepting while logged in with a
+   different email "is allowed and records the accepting account (CTO answer,
+   backend Q-07)". **Ticket and code disagree; @CTorres9800 to settle which.**
+3. **The backend does apply the Viewer default.** The accepted member landed as
+   `company_users.role = 'viewer'` even though the Invites row showed no
+   selection — so 17.2's first item is a display gap, not a access-control one.
+
+### 17.5 What is ready for QA
+
+- **Ready now (15):** 707, 708, 711, 719, 721, 722, 724, 725, 731, 732, and the
+  live-verified chain 726, 727, 728, 729, 730.
+- **Ready with a known-issues note (7):** 709 (no 1 MB client check), 710
+  (confirm the 8-suggestion cap), 713 (no Viewer shown), 714 (confirm the
+  500-char cap), 716 (Invites-list path only), 717 (single invitee only),
+  720 (exclude the count).
+- **Hold for a ruling (1):** 715 — AC-09.1 says a link joiner gets Member;
+  our tokens carry granular roles.
+- **Blocked (4):** 712 and 718 (backends shipped with no caller — the caller
+  lives in frozen `invite-window.tsx`), 723 (Remove User broken and ungated),
+  733 (AC-27.2 depends on 723).
+- **Close or fill in (1):** 734 — empty ticket, overdue since 12 Oct.
+
+### 17.6 Still unresolved and worth a decision
+
+- **Every FR names a `team-service` that does not exist** — `/v1/team/external`
+  (with a per-row `actions` field), `/v1/team/count`, `/v1/roles`,
+  `/v1/contacts/suggestions`, `/v1/members/:id`, `/v1/invite-settings`,
+  `/v1/companies/:companyId/invitations/check`. We built the behaviour across
+  `invitations-service` + `user-service` at different paths. UI testing is
+  unaffected; **any API-level test case written from the FRs fails on the path.**
+- **PMCM-723 FR-1 wants the roster to return the permitted `actions` per row.**
+  That is the right answer to the gating problem: the server already knows who
+  may do what, including the invitation's creator, which the client cannot see.
+- **R3-05 is settled by AC-14.1** — "active members on the open tab only". The
+  "Final Logic doc" comment in `useTeamMemberCount` is contradicted by the PO
+  decision, so the count is a plain defect, not an open question.

@@ -135,3 +135,37 @@ Two fixes the merge itself required, neither side's fault:
 4. The nine `invite-window.tsx` defects and the two other
    `frontend/components/*.tsx` ones remain frozen — see
    `docs/INVITE_MY_TEAM_NOTES.md` §16.
+
+---
+
+## Update 2026-10-29: all 28 child tickets, the Figma, and a live run
+
+Full detail in `docs/INVITE_MY_TEAM_NOTES.md` §17.
+
+**Read the child ticket, not the epic.** The epic summary omits the numbers and
+defaults that decide whether something is a defect. Four things logged as
+defects turned out to be correct as built: Send Invite staying enabled with a
+staged chip (AC-10.2/R3-13 requires it), the "Invite Your Team" modal title
+(UX-29 was a mix-up with the company-selection modal), the row menu composition,
+and the Talent Network card's three availability variants.
+
+**The §6 acceptance blocker is gone, verified live:**
+`POST /api/v1/invitations/accept` → **201**, invitation `accepted`, roster row
+written, count 7 → 8. Test rows deleted after.
+
+**Three gotchas worth keeping:**
+
+1. **Acceptance fires only on "Go to Dashboard"** — every earlier screen reads
+   as success while the invitation stays `pending`. Cost me a wrong diagnosis
+   mid-run; it must be in any test script.
+2. **Wrong-account accept → 403 `EMAIL_MISMATCH`**, which contradicts PMCM-726
+   EC-36 ("allowed, records the accepting account"). Ticket vs code.
+3. **The backend applies the Viewer default** even though the Invites row shows
+   "Select Permissions" — so that gap is presentational only.
+
+**R3-05 is settled** by AC-14.1 ("active members on the open tab only"), so the
+member count is a plain defect needing no ruling — a one-line fix in
+`useTeamNetwork.ts`, still to do.
+
+**Seeds are local only.** No commit on this branch touches a seed file; the SQL
+lives in `~/dev/marketeq-seed/` outside the repo.
