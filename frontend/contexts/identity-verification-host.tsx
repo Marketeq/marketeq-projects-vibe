@@ -69,6 +69,7 @@ import {
 } from "@/src/lib/api/vpn-proxy-detection"
 import {
   clearAwaitingResult,
+  markAwaitingResult,
   hasAwaitingResult,
   IDENTITY_STATUS_REFRESHED_EVENT,
   RESULT_POLL_INTERVAL_MS,
@@ -101,9 +102,23 @@ import {
 } from "@/src/lib/api/reviewed-approval-result"
 import { createStatusRefresher } from "@/src/lib/api/status-refresh"
 import { scheduleOneShot } from "@/src/lib/api/one-shot"
+import {
+  closeDiditOverlay,
+  isDiditOverlayActive,
+  setDiditPresentationGate,
+  subscribeDiditOverlay,
+  waitForClosingDialogsToLeave,
+} from "@/src/lib/api/didit-overlay"
+import { createDiditLifecycle } from "@/src/lib/api/didit-launch-lifecycle"
+import {
+  markRetryGatePresented,
+  readAwaitingFlag,
+  shouldPresentRetryGate,
+} from "@/src/lib/api/retry-gate-presentation"
 import { readReturnCallbackSearch } from "@/src/lib/api/verification-return-origin-browser"
 import {
   buildHandoffTarget,
+  clearReturnOrigins,
   consumeReturnOrigin,
   setReturnOriginAccount,
   shouldHandOffReturn,
@@ -258,6 +273,30 @@ export function IdentityVerificationHostProvider({
   const openOnClosedRef = useRef<(() => void) | null>(null)
 
   const [verificationGateOpen, setVerificationGateOpen] = useState(false)
+  // The gate as the RESULT of a Didit decline (retry_identity): the same gate, with Cancel. The
+  // standard gate above never has it.
+  const [retryGateOpen, setRetryGateOpen] = useState(false)
+  const retryVerifyRunningRef = useRef(false)
+  const retryGateKeyRef = useRef<string | null>(null)
+  // The return marker (its timestamp) of the decline the gate is showing, so the marker can be
+  // put back if the gate is brought back after Didit is cancelled and the provider is remounted.
+  const retryGateFlagRef = useRef<string | null>(null)
+  // True from the moment Verify My Account is pressed on the retry gate until Didit ends.
+  const retryLaunchRef = useRef(false)
+  // The talent has seen and acted on this decline: it is recorded as shown and the return marker
+  // is cleared, so nothing (focus, visibility, a route change, a reload, another /me read) can
+  // present the same occurrence again. A later decline is a new trip with a new marker.
+  const acknowledgeRetryGate = useCallback(() => {
+    const key = retryGateKeyRef.current
+    retryGateKeyRef.current = null
+    retryGateFlagRef.current = null
+    retryLaunchRef.current = false
+    if (key) {
+      markRetryGatePresented(window.localStorage, key)
+      clearAwaitingResult(window.localStorage)
+    }
+    setRetryGateOpen(false)
+  }, [])
   const [connectionCheckState, setConnectionCheckState] =
     useState<ConnectionCheckState>("idle")
   const [vpnProxyResult, setVpnProxyResult] = useState<
@@ -652,6 +691,42 @@ export function IdentityVerificationHostProvider({
   // or the sign-in changes (or a public page is entered, or nobody is signed in), it is all
   // closed and forgotten, exactly as it was when the dashboard unmounted and a new one mounted.
   // A layout effect, so it settles before the new page's own effects start anything.
+  // Didit opens over the page, never over another verification dialog: the flow (or the gate)
+  // that launched it is closed first (see didit-launch-lifecycle.ts). Mirrors in refs so the
+  // lifecycle reads what is open at the moment of launch.
+  const identityFlowOpenRef = useRef(identityFlowOpen)
+  identityFlowOpenRef.current = identityFlowOpen
+  const verificationGateOpenRef = useRef(verificationGateOpen)
+  verificationGateOpenRef.current = verificationGateOpen
+  const closeCommitWaitersRef = useRef<Array<() => void>>([])
+  // Closing a Didit overlay that is still on screen (sign-out, account, role or page change) also
+  // ends the wait for its result: the trip markers belong to that account's trip, so they must not
+  // outlive it and make the next account's page look for (and show) a result that is not its own.
+  const dropActiveDiditTrip = useCallback((userId: string | null | undefined) => {
+    if (!isDiditOverlayActive()) return
+    clearAwaitingResult(window.localStorage)
+    clearHomeCountryChange(window.localStorage)
+    if (userId) clearReturnOrigins(window.localStorage, userId)
+  }, [])
+  const [diditLifecycle] = useState(() =>
+    createDiditLifecycle({
+      getFlowOpen: () => identityFlowOpenRef.current,
+      getGateOpen: () => verificationGateOpenRef.current,
+      setFlowOpen: (open) => setIdentityFlowOpen(open),
+      setGateOpen: (open) => setVerificationGateOpen(open),
+      // Resolves after React has committed the close (so Radix has marked the dialogs closed),
+      // then waits for those dialogs to leave the DOM. Not a frame guess.
+      waitForExit: () =>
+        new Promise<void>((resolve) => {
+          closeCommitWaitersRef.current.push(resolve)
+        }).then(() => waitForClosingDialogsToLeave()),
+    })
+  )
+  useEffect(() => {
+    if (identityFlowOpen || verificationGateOpen) return
+    const waiters = closeCommitWaitersRef.current.splice(0)
+    waiters.forEach((resolve) => resolve())
+  }, [identityFlowOpen, verificationGateOpen])
   const resetKey = identityHostResetKey({
     pathname,
     userId: user?.id,
@@ -661,7 +736,11 @@ export function IdentityVerificationHostProvider({
   useLayoutEffect(() => {
     if (resetKeyRef.current === resetKey) return
     resetKeyRef.current = resetKey
+    dropActiveDiditTrip(user?.id)
+    closeDiditOverlay() // never outlives its account, role or page
+    diditLifecycle.discard() // and never brings an old dialog back
     setVerificationGateOpen(false)
+    acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
     setConnectionCheckState("idle")
     setVpnProxyResult(null)
     setVpnProxyModalOpen(false)
@@ -673,6 +752,61 @@ export function IdentityVerificationHostProvider({
     setCooldownRetryTime(null)
     openOnClosedRef.current = null
   }, [resetKey])
+
+  // Didit opens over this page (see didit-overlay.ts). Its result is only a hint: a finished
+  // session is reconciled and read back exactly like a return from Didit (a fresh reconciler,
+  // then the same effect below), so the matching dialog and alert appear here. A dismissed
+  // overlay (closed, camera denied, expired) is not a result: nothing is reconciled, the
+  // page stays as it was, and the verification step that launched it is usable again.
+  const returnUserId = user?.id
+  useEffect(() => {
+    if (!returnUserId) return
+    const removeGate = setDiditPresentationGate(diditLifecycle.beforePresent)
+    const unsubscribe = subscribeDiditOverlay((event) => {
+      clearReturnOrigins(window.localStorage, returnUserId)
+      setConnectionCheckState("idle")
+      if (event.type === "completed") {
+        diditLifecycle.discard() // the dialogs that launched it stay closed
+        setIdentityFlowOpen(false)
+        if (retryLaunchRef.current) {
+          // Started from the retry gate and finished: the backend's answer decides what is
+          // shown next, and the gate is not brought back. The decline it showed is consumed;
+          // the trip marker is left for the reconcile below.
+          const key = retryGateKeyRef.current
+          retryLaunchRef.current = false
+          retryGateKeyRef.current = null
+          retryGateFlagRef.current = null
+          if (key) markRetryGatePresented(window.localStorage, key)
+        }
+        returnReconcilerRef.current = null // run() is memoized: this is a new trip
+        setReturnGen((g) => g + 1)
+        return
+      }
+      clearAwaitingResult(window.localStorage)
+      clearHomeCountryChange(window.localStorage)
+      if (retryLaunchRef.current) {
+        // Didit was opened from the retry gate and cancelled or dismissed: the same gate comes
+        // back once, on this page, with the decline still unconsumed (its marker is put back so
+        // a remount shows it too). Nothing is started: only Verify My Account launches Didit.
+        retryLaunchRef.current = false
+        const flag = retryGateFlagRef.current
+        if (flag && Number.isFinite(Number(flag))) {
+          markAwaitingResult(window.localStorage, Number(flag))
+        }
+        setRetryGateOpen(true)
+        return
+      }
+      // Back to where the talent was, on the same step: the dialogs were only closed.
+      diditLifecycle.reopen()
+    })
+    return () => {
+      removeGate()
+      unsubscribe()
+      dropActiveDiditTrip(returnUserId)
+      closeDiditOverlay()
+      diditLifecycle.discard()
+    }
+  }, [returnUserId, diditLifecycle, dropActiveDiditTrip])
 
   // Back from Didit. The backend sends the browser to /talent-dashboard (its callback is not
   // changed), so a return that left from another page is handed straight back to it: the
@@ -771,6 +905,7 @@ export function IdentityVerificationHostProvider({
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setVerifiedModalOpen(true)
+        setRetryGateOpen(false)
         // The approval was just processed: its persistent alert (and the Submitted one it
         // replaces) is stored a moment later, so reload the list until it is there.
         startAlertReconcile(["verified", "home_country_updated"])
@@ -795,6 +930,7 @@ export function IdentityVerificationHostProvider({
         if (shouldMarkReviewedResult(summary)) {
           markReviewedResult(window.localStorage, user.id)
         }
+        setRetryGateOpen(false)
         setVerificationGateOpen(false)
         setProfileBannerShown(false)
         setPendingModalOpen(true)
@@ -805,6 +941,29 @@ export function IdentityVerificationHostProvider({
         startAlertReconcile(["submitted_for_review"], {
           sinceMs: Date.now() - ALERT_RECENCY_WINDOW_MS,
         })
+        return
+      }
+      // A Didit result just reconciled to a declined attempt with attempts left: the existing
+      // verification gate opens over this page, once (see retry-gate-presentation.ts), and the
+      // result marker is cleared so nothing can present it again. Nothing is started here: the
+      // gate's own "Verify My Account" is the explicit retry. No alert is created for a decline.
+      const retryGate = shouldPresentRetryGate({
+        summary,
+        userId: user.id,
+        flag: readAwaitingFlag(window.localStorage),
+        storage: window.localStorage,
+      })
+      if (retryGate.present && retryGate.key) {
+        // The occurrence is consumed when the talent acts on the gate (Cancel, Escape, an outside
+        // click or Verify My Account) or the page / account changes (acknowledgeRetryGate), not
+        // here: if this provider is remounted while the gate is open, the result is presented
+        // again instead of being lost.
+        retryGateKeyRef.current = retryGate.key
+        retryGateFlagRef.current = readAwaitingFlag(window.localStorage)
+        setIdentityFlowOpen(false)
+        setProfileBannerShown(shouldShowProfileBanner(summary))
+        setConnectionCheckState("idle")
+        setRetryGateOpen(true)
         return
       }
       // The banner or gate may have opened from an earlier read, before this result
@@ -1258,6 +1417,34 @@ export function IdentityVerificationHostProvider({
         onVerify={() => void handleVerifyMyAccount()}
         onRetryConnectionCheck={() => void handleVerifyMyAccount()}
         onDismissConnectionError={() => setConnectionCheckState("idle")}
+      />
+
+      {/* After a Didit decline (retry_identity): the same gate, with Cancel. Verify My Account is the
+          explicit retry (the same handler as everywhere); Cancel, Escape and an outside click
+          only close it. */}
+      <AccountVerificationGate
+        open={retryGateOpen}
+        reason="unstarted"
+        connectionCheckState="idle"
+        onVerify={() => {
+          // One start per press, however fast it is double clicked: the gate closes on the
+          // next render, so a second click can still land before it has.
+          if (retryVerifyRunningRef.current) return
+          retryVerifyRunningRef.current = true
+          // The gate closes while the check runs, but the decline is not consumed yet: if Didit
+          // opens and is cancelled the gate comes back; if the result arrives it is replaced by
+          // the backend's answer.
+          retryLaunchRef.current = true
+          setRetryGateOpen(false)
+          void handleVerifyMyAccount().finally(() => {
+            retryVerifyRunningRef.current = false
+            // Nothing opened (a limit, a block, an unavailable check): the decline is consumed.
+            if (retryLaunchRef.current && !isDiditOverlayActive()) acknowledgeRetryGate()
+          })
+        }}
+        onRetryConnectionCheck={() => void handleVerifyMyAccount()}
+        onDismissConnectionError={acknowledgeRetryGate}
+        onCancel={acknowledgeRetryGate}
       />
 
       {detectedLocation && (

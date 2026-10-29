@@ -10,6 +10,7 @@
 //               location step is skipped because the backend already trusts it
 //   null      → nothing to ask for right now (in review, waiting for a retry
 //               window, complete, or a value this build doesn't recognise)
+import { openDiditOverlay } from "./didit-overlay"
 import { markAwaitingResult } from "./identity-verification-status"
 import { isDiditHostedUrl } from "./free-kyc"
 import { markCurrentPageAsReturnOrigin } from "./verification-return-origin-browser"
@@ -224,10 +225,23 @@ async function defaultDeps(): Promise<StartIdentityOnlyDeps> {
   )
   return {
     startFreeKyc: () => IdentityVerificationAPI.startFreeKyc(),
-    redirect: (url: string) => window.location.assign(url),
+    // Opens Didit over this page; falls back to the redirect if the overlay cannot run.
+    redirect: (url: string) => void openDiditOverlay(url),
   }
 }
 
-export async function startIdentityOnlyForDashboard(): Promise<StartIdentityOnlyOutcome> {
-  return startIdentityOnly(await defaultDeps())
+// One start at a time: a second call while one is running (a double click on Verify My Account,
+// the gate button and the banner together) shares that call's outcome instead of creating
+// another session.
+let startInFlight: Promise<StartIdentityOnlyOutcome> | null = null
+
+export function startIdentityOnlyForDashboard(): Promise<StartIdentityOnlyOutcome> {
+  if (startInFlight) return startInFlight
+  const run = (async () => startIdentityOnly(await defaultDeps()))()
+  startInFlight = run
+  const clear = () => {
+    if (startInFlight === run) startInFlight = null
+  }
+  run.then(clear, clear)
+  return run
 }
