@@ -465,10 +465,10 @@ describe("host wiring (source-pinned): the later approval is resolved by the ide
     assert.ok(success.includes("setVerifiedModalOpen(true)"))
   })
 
-  it("the check rechecks on load (one reconcile), when the tab becomes visible and on a route change (GET only), with no timer", () => {
+  it("the check rechecks on load (one reconcile), when the tab becomes visible or the window is focused (a spaced reconcile, then GET) and on a route change (GET only), with no timer", () => {
     assert.ok(refresherSource.includes("resolveReviewedResult({"))
-    assert.ok(refresherSource.includes("reconcile: withReconcile ? deps.reconcile : undefined"))
-    assert.ok(refresherSource.includes("resolveMarker(true)") && refresherSource.includes("resolveMarker(false)"))
+    assert.ok(refresherSource.includes("withReconcile && deps.reconcile"))
+    assert.ok(refresherSource.includes("resolveMarker(true)") && refresherSource.includes("resolveMarker(returning && reconcileDue())"))
     assert.ok(block.includes("reconcile: reconcileReviewedSession"))
     assert.ok(block.includes('void statusRefresher.run("load")'))
     assert.ok(block.includes('void statusRefresher.run("visible")'))

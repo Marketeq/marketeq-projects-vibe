@@ -613,9 +613,26 @@ export function IdentityVerificationHostProvider({
     const onVisible = () => {
       if (document.visibilityState === "visible") void statusRefresher.run("visible")
     }
+    // The window regaining focus while the tab stayed visible (no visibility change fires):
+    // the same check. The two together are one refresh (the second is dropped as busy).
+    const onFocus = () => {
+      if (document.visibilityState === "visible") void statusRefresher.run("focus")
+    }
     document.addEventListener("visibilitychange", onVisible)
-    return () => document.removeEventListener("visibilitychange", onVisible)
+    window.addEventListener("focus", onFocus)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible)
+      window.removeEventListener("focus", onFocus)
+    }
   }, [statusRefresher])
+  // An account whose verification is under review (read from any summary, in this or another
+  // browser) is waiting for its result: remember it so the later approval shows once.
+  useEffect(() => {
+    if (!hostActive || !user || resolveDashboardRole(user) !== ROLE.TALENT) return
+    if (!shouldMarkReviewedResult(travelSummary)) return
+    if (hasReviewedResult(window.localStorage, user.id)) return
+    markReviewedResult(window.localStorage, user.id)
+  }, [hostActive, user, travelSummary])
   const statusPathRef = useRef(pathname)
   useEffect(() => {
     if (statusPathRef.current === pathname) return

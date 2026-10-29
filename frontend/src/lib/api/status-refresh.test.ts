@@ -149,12 +149,16 @@ describe("1-2. In Review on any page shows the Submitted alert, even if the firs
 })
 
 describe("3-4. A review approved while the tab was hidden shows Verified once, superseding Submitted", () => {
-  it("visible again: one reconcile-free GET resolves the marker, consumes it and announces approval once", async () => {
+  it("visible again: one reconcile then one GET resolves the marker, consumes it and announces approval once", async () => {
     const h = harness({}, [approved])
     markReviewedResult(h.storage, USER)
     assert.equal(await h.refresher.run("visible"), "approved")
     assert.equal(h.calls.approved, 1)
-    assert.equal(h.calls.reconciles, 0, "GET only on a visibility event")
+    assert.equal(
+      h.calls.reconciles,
+      1,
+      "coming back to the tab reconciles the Didit session (see status-refresh-return.test.ts)"
+    )
     assert.equal(h.calls.reads, 1)
     assert.equal(
       hasReviewedResult(h.storage, USER),
