@@ -9,8 +9,8 @@ export class AddWeeklyCapHoursToContracts1797379200000 implements MigrationInter
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "contracts" ADD COLUMN IF NOT EXISTS "weeklyCapHours" integer`);
-        await queryRunner.query(`UPDATE "contracts" SET "weeklyCapHours" = 40 WHERE "weeklyCapHours" IS NULL AND "schedule" = 'full-time'`);
-        await queryRunner.query(`UPDATE "contracts" SET "weeklyCapHours" = 20 WHERE "weeklyCapHours" IS NULL AND "schedule" = 'part-time'`);
+        await queryRunner.query(`UPDATE "contracts" SET "weeklyCapHours" = 40 WHERE "weeklyCapHours" IS NULL AND LOWER("schedule") = 'full-time'`);
+        await queryRunner.query(`UPDATE "contracts" SET "weeklyCapHours" = 20 WHERE "weeklyCapHours" IS NULL AND LOWER("schedule") = 'part-time'`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
