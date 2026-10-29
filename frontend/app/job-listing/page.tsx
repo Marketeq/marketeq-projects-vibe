@@ -15507,6 +15507,15 @@ const useRoleDescriptionPersistence = ({
           (item: any) => item?.roleTitle === nextDescription.roleTitle
         )
 
+// AC-JC-84: with no field in focus the panel offers one action per field.
+const getFinalReviewAssistantNoFocusActions = (
+  workType: "Project" | "Service"
+): { label: string; field: SmartAssistantEditableField }[] => [
+  { label: `Change a ${workType} Title`, field: "title" },
+  { label: "Rewrite Overview", field: "overview" },
+  { label: "Rewrite Benefits", field: "benefits" },
+]
+
         if (existingIndex >= 0) {
           return currentDescriptions.map((item, index) =>
             index === existingIndex ? nextDescription : item
@@ -16180,7 +16189,7 @@ const FinalServiceReviewStep = ({
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const didGenerateBasicInformationRef = useRef(false)
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -16272,7 +16281,10 @@ const FinalServiceReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]",
+      suggestion === "Change a Service Title" && "w-fit"
     )
   useEffect(() => {
     window.requestAnimationFrame(() => {
@@ -16327,6 +16339,12 @@ const FinalServiceReviewStep = ({
   )
   const isRoleDescriptionLoaded = useRoleDescriptionPersistence({
     jobListingId,
+  const serviceAssistantVisibleActions = activeAssistantField
+    ? serviceAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Service")
     ensureJobListingDraft,
     roleTitle: selectedRole,
     overview,
@@ -16814,21 +16832,21 @@ const FinalServiceReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {serviceAssistantQuickActions[activeAssistantField].map((item) => (
+                {serviceAssistantVisibleActions.map((item) => (
                   <Button
-                    key={`${activeAssistantField}-${item}`}
+                    key={`${item.field}-${item.label}`}
                     className={cn(
                       "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                      getServiceAssistantSuggestionWidthClass(item)
+                      getServiceAssistantSuggestionWidthClass(item.label)
                     )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
-                      serviceAssistant.run(item, activeAssistantField)
+                      serviceAssistant.run(item.label, item.field)
                     }
                   >
-                    <span className="h-5 shrink-0">{item}</span>
+                    <span className="h-5 shrink-0">{item.label}</span>
                   </Button>
                 ))}
               </div>
@@ -16989,7 +17007,8 @@ const FinalServiceReviewStep = ({
                             serviceAssistant.run(
                               suggestion,
                               latestServiceAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
@@ -17059,7 +17078,10 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            serviceAssistant.message
+                          )
                       )
                     }
                   >
@@ -17117,7 +17139,7 @@ const FinalProjectReviewStep = ({
   const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
     useState(false)
   const projectAssistantScrollRef = useRef<HTMLDivElement | null>(null)
@@ -17224,7 +17246,10 @@ const FinalProjectReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Change a Project Title" && "w-[187px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]"
     )
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
@@ -17308,6 +17333,12 @@ const FinalProjectReviewStep = ({
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
       setSelectedRole(roleOptions[0] ?? "")
+  const projectAssistantVisibleActions = activeAssistantField
+    ? projectAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Project")
     }
   }, [roleOptions, selectedRole])
   const loadSavedRoleDescription = useCallback(
@@ -17772,25 +17803,23 @@ const FinalProjectReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {projectAssistantQuickActions[activeAssistantField].map(
-                  (item) => (
-                    <Button
-                      key={`${activeAssistantField}-${item}`}
-                      className={cn(
-                        "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                        getProjectAssistantSuggestionWidthClass(item)
-                      )}
-                      variant="outlined"
-                      visual="gray"
-                      disabled={projectAssistant.isLoading}
-                      onClick={() =>
-                        projectAssistant.run(item, activeAssistantField)
-                      }
-                    >
-                      <span className="h-5 shrink-0">{item}</span>
-                    </Button>
-                  )
-                )}
+                {projectAssistantVisibleActions.map((item) => (
+                  <Button
+                    key={`${item.field}-${item.label}`}
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getProjectAssistantSuggestionWidthClass(item.label)
+                    )}
+                    variant="outlined"
+                    visual="gray"
+                    disabled={projectAssistant.isLoading}
+                    onClick={() =>
+                      projectAssistant.run(item.label, item.field)
+                    }
+                  >
+                    <span className="h-5 shrink-0">{item.label}</span>
+                  </Button>
+                ))}
               </div>
               {projectAssistant.history.length > 0 ? (
                 <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
@@ -17951,7 +17980,8 @@ const FinalProjectReviewStep = ({
                             projectAssistant.run(
                               suggestion,
                               latestProjectAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
@@ -18021,7 +18051,10 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            projectAssistant.message
+                          )
                       )
                     }
                   >
