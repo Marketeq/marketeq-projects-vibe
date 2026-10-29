@@ -116,16 +116,20 @@ describe("decisions 2 and 3: the gate never opens on load and no standalone unve
     )
   })
 
-  it("the gate component and its single use are unchanged, and no second 'not public' surface was added", () => {
+  it("the gate component (plus its one approved optional onCancel) and its standard use are unchanged, and no second 'not public' surface was added", () => {
+    // 2026-10-29: the component gained the optional `onCancel` prop (Cancel button; Escape and
+    // outside click only when it is given), explicitly approved for the post-decline retry
+    // presentation. Without the prop it behaves exactly as before (see retry-gate-presentation.test.ts).
     assert.equal(
       sha(gateComponent),
-      "48a1bb2b47e4db358644a17c3d3e4fedf9c35d64644d4f50585ebfb8926f20a0"
+      "32c64ba56a2475a741fca3d4784d5b699d6a6dca5b946bcf52521a84ad3077e2"
     )
     assert.equal(
       sha(gateUsage),
       "4323afde76692192f2d571d71e38fe2ce4459acdd9bd19615ab2dae12d29cef4"
     )
-    assert.equal(page.split("<AccountVerificationGate").length - 1, 1)
+    // The standard gate, plus the post-decline retry presentation (the same component, with Cancel).
+    assert.equal(page.split("<AccountVerificationGate").length - 1, 2)
     // The only "Your profile is not public" copy on the page is the banner's.
     assert.equal(page.split("Your profile is not public").length - 1, 1)
   })
