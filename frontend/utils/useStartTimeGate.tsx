@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import { resolveDashboardRole, useAuth } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import { AlertTriangle } from "@blend-metrics/icons"
@@ -13,7 +12,7 @@ import {
   startTimeTitleFor,
   type StartTimeBlock,
 } from "@/src/lib/api/start-time-gate"
-import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 
 // G8: gates the Log Time buttons, the web's "start logging time" action (they launch the
 // desktop tracker, or offer its installer). For a talent, the backend's G8 gate is read
@@ -22,11 +21,13 @@ import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handof
 // modal for what is missing (Cancel / Start Verification), and any other outcome fails
 // closed into the existing status-unavailable popup. Nothing is launched, downloaded or
 // created while blocked. Anyone who is not a talent keeps the button's existing behavior.
-// Cancel only closes the modal; the next click asks again. Start Verification uses the
-// same one-shot dashboard hand-off as the Apply gate (G3).
+// Cancel only closes the modal; the next click asks again. Start Verification closes the modal
+// and starts the existing Identity Verification flow in place, through the shared host: the
+// talent stays on this page (no navigation, no reload), and nothing is launched, downloaded or
+// retried afterwards; they click Log Time again.
 export function useStartTimeGate() {
   const { user } = useAuth()
-  const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   const [block, setBlock] = useState<StartTimeBlock | null>(null)
   const checking = useRef(false)
   const isTalent = resolveDashboardRole(user) === ROLE.TALENT
@@ -54,7 +55,7 @@ export function useStartTimeGate() {
 
   const goVerify = () => {
     setBlock(null)
-    router.push(START_VERIFICATION_HREF)
+    void startVerification()
   }
 
   const startTimeGateDialog = (

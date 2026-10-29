@@ -12,6 +12,7 @@
 //               window, complete, or a value this build doesn't recognise)
 import { markAwaitingResult } from "./identity-verification-status"
 import { isDiditHostedUrl } from "./free-kyc"
+import { markCurrentPageAsReturnOrigin } from "./verification-return-origin-browser"
 import type {
   IdentityFlowState,
   IdentityVerificationSummaryView,
@@ -164,6 +165,8 @@ export interface StartIdentityOnlyDeps {
   startFreeKyc: () => Promise<{ data: { url: string } }>
   redirect: (url: string) => void
   markAwaitingResult?: () => void
+  // Remembers the page this started on so the return lands there; see free-kyc.ts.
+  markReturnOrigin?: (hostedUrl: string) => void
 }
 
 const CONFIRMATION_REQUIRED_CODE = "HOME_COUNTRY_CONFIRMATION_REQUIRED"
@@ -201,6 +204,7 @@ export async function startIdentityOnly(
           typeof window === "undefined" ? undefined : window.localStorage
         ))
     )()
+    ;(deps.markReturnOrigin ?? markCurrentPageAsReturnOrigin)(data.url)
     deps.redirect(data.url)
     return "redirected"
   } catch (error) {

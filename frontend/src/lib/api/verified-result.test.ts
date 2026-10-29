@@ -14,6 +14,7 @@ import {
   markAwaitingResult,
   type KeyValueStorage,
 } from "./identity-verification-status"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 
@@ -156,7 +157,7 @@ describe("flag is set only when the browser really leaves for Didit", () => {
 })
 
 describe("dashboard wiring and Figma/Storybook fidelity (source guards)", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
   const modalStart = page.indexOf("<Dialog open={verifiedModalOpen}")
   const modal = page.slice(
     modalStart,

@@ -227,10 +227,10 @@ describe("the modal host: copy, close behavior and the verification hand-off", (
     assert.ok(!/router|fetch|check|Draft|localStorage|sessionStorage/i.test(onOpenChange))
   })
 
-  it("Start Verification closes the modal and launches the existing flow through the G3 hand-off", () => {
+  it("Start Verification closes the modal and starts the existing flow in place through the shared host", () => {
     assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(host))
-    assert.ok(host.includes("const goVerify = () => {\n    setBlock(null)\n    router.push(START_VERIFICATION_HREF)\n  }"))
-    assert.ok(read("src", "lib", "api", "start-verification-handoff.ts").includes("/talent-dashboard?"))
+    assert.ok(host.includes("const goVerify = () => {\n    setBlock(null)\n    void startVerification()\n  }"))
+    assert.ok(host.includes("const { startVerification } = useIdentityVerification()"))
   })
 
   it("unavailable reuses the existing status-unavailable popup", () => {
