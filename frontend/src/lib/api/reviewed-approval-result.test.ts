@@ -468,7 +468,7 @@ describe("host wiring (source-pinned): the later approval is resolved by the ide
   it("the check rechecks on load (one reconcile), when the tab becomes visible or the window is focused (a spaced reconcile, then GET) and on a route change (GET only), with no timer", () => {
     assert.ok(refresherSource.includes("resolveReviewedResult({"))
     assert.ok(refresherSource.includes("withReconcile && deps.reconcile"))
-    assert.ok(refresherSource.includes("resolveMarker(true)") && refresherSource.includes("resolveMarker(returning && reconcileDue())"))
+    assert.ok(refresherSource.includes("resolveMarker(true)") && /returning && \(trigger === "deferred" \|\| !insideSpacing\)/.test(refresherSource))
     assert.ok(block.includes("reconcile: reconcileReviewedSession"))
     assert.ok(block.includes('void statusRefresher.run("load")'))
     assert.ok(block.includes('void statusRefresher.run("visible")'))

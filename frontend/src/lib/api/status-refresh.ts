@@ -17,6 +17,12 @@
 //               unreachable (a local stack). Calls are spaced at least RECONCILE_MIN_INTERVAL_MS
 //               apart after a success; a failure leaves the current page alone, sets no spacing
 //               and is simply tried again by the next event. A route change only reads.
+//   deferred    a return that lands inside that spacing while the session is still under review
+//               would otherwise only read, and an approval that happened in the meantime would stay
+//               unseen until another event. So it schedules exactly ONE deferred reconcile for when
+//               the spacing ends: any further events in the meantime are folded into it. It is a
+//               bounded one-shot (it never schedules itself again, so it is not polling), and it is
+//               cancelled when the session leaves review, on sign-out, an account change or unmount.
 //
 //   dashboard mounted   it reads the summary itself, so the host does only what the dashboard's
 //                       own approval check always did: resolve a review marker, if there is one.
@@ -24,14 +30,19 @@
 //                       read re-loads the alert list), and resolves a review marker.
 //   awaiting a Didit    the return path (its own visibility handler) owns that read: nothing
 //   return              extra is read here.
+import type { IdentityVerificationSummaryView } from "./identity-verification-state"
 import {
-  resolveReviewedResult,
   type ReviewedResultOutcome,
   type ReviewedResultStorage,
+  resolveReviewedResult,
 } from "./reviewed-approval-result"
-import type { IdentityVerificationSummaryView } from "./identity-verification-state"
 
-export type StatusRefreshTrigger = "load" | "visible" | "focus" | "route"
+export type StatusRefreshTrigger =
+  | "load"
+  | "visible"
+  | "focus"
+  | "route"
+  | "deferred"
 
 // Coming back to the tab repeatedly (alt-tab) must not call Didit each time.
 export const RECONCILE_MIN_INTERVAL_MS = 5_000
@@ -65,16 +76,57 @@ export interface StatusRefreshDeps {
   hasReviewedMarker: () => boolean
   /** The clock (milliseconds); injectable for tests. */
   now?: () => number
+  /** One delayed call, cancellable (see one-shot.ts); injectable for tests. */
+  schedule?: (run: () => void, delayMs: number) => () => void
 }
 
 export function createStatusRefresher(deps: StatusRefreshDeps) {
   let inFlight = false
+  // The refresh currently running (so the deferred reconcile can wait for it instead of being
+  // dropped as busy, and still never overlaps it).
+  let current: Promise<unknown> | null = null
   let lastReconciledAt: number | null = null
   const now = () => (deps.now ?? Date.now)()
   const reconcileDue = () =>
-    lastReconciledAt === null || now() - lastReconciledAt >= RECONCILE_MIN_INTERVAL_MS
+    lastReconciledAt === null ||
+    now() - lastReconciledAt >= RECONCILE_MIN_INTERVAL_MS
+  const untilDue = () =>
+    lastReconciledAt === null
+      ? 0
+      : Math.max(0, lastReconciledAt + RECONCILE_MIN_INTERVAL_MS - now())
 
-  async function resolveMarker(withReconcile: boolean): Promise<ReviewedResultOutcome> {
+  // The single deferred reconcile (see the header); null when none is waiting.
+  let cancelDeferred: (() => void) | null = null
+  let deferredFor: string | null | undefined
+  function clearDeferred() {
+    cancelDeferred?.()
+    cancelDeferred = null
+    deferredFor = undefined
+  }
+  function scheduleDeferred() {
+    if (cancelDeferred || !deps.schedule) return // one at a time: further events fold into it
+    deferredFor = deps.userId()
+    cancelDeferred = deps.schedule(() => {
+      const owner = deferredFor
+      cancelDeferred = null
+      deferredFor = undefined
+      // Only for the same signed-in talent, still active and still waiting on a review.
+      if (
+        owner !== deps.userId() ||
+        !deps.active() ||
+        !deps.hasReviewedMarker()
+      )
+        return
+      void (async () => {
+        if (current) await current.catch(() => undefined)
+        await api.run("deferred")
+      })()
+    }, untilDue())
+  }
+
+  async function resolveMarker(
+    withReconcile: boolean
+  ): Promise<ReviewedResultOutcome> {
     let reconciled = false
     const reconcile =
       withReconcile && deps.reconcile
@@ -96,33 +148,60 @@ export function createStatusRefresher(deps: StatusRefreshDeps) {
     // Spaced only after a call that went through: a failed one is retried by the next event.
     if (reconciled) lastReconciledAt = now()
     if (outcome === "approved") deps.onApproved()
+    // Anything but "still under review" ends the wait: nothing is left to reconcile later.
+    if (outcome !== "waiting") clearDeferred()
     return outcome
   }
 
-  return {
-    async run(trigger: StatusRefreshTrigger): Promise<StatusRefreshResult> {
-      if (!deps.active()) return "inactive"
-      if (inFlight) return "busy"
+  const api = {
+    /** Drops a waiting deferred reconcile (sign-out, another account, unmount). */
+    cancel: clearDeferred,
+    run(trigger: StatusRefreshTrigger): Promise<StatusRefreshResult> {
+      if (!deps.active()) return Promise.resolve("inactive")
+      if (inFlight) return Promise.resolve("busy")
       inFlight = true
-      try {
-        if (trigger === "load") {
-          // The host's own once-per-account read covers the summary; only a review marker
-          // needs a decision here (with the one reconcile the dashboard always made).
-          return deps.hasReviewedMarker() ? await resolveMarker(true) : "idle"
+      const started = (async (): Promise<StatusRefreshResult> => {
+        try {
+          if (trigger === "load") {
+            // The host's own once-per-account read covers the summary; only a review marker
+            // needs a decision here (with the one reconcile the dashboard always made).
+            return deps.hasReviewedMarker() ? await resolveMarker(true) : "idle"
+          }
+          if (deps.awaitingDiditReturn()) return "return-path"
+          // Returning to the tab (or window) while under review: reconcile, then read.
+          if (deps.hasReviewedMarker()) {
+            const returning =
+              trigger === "visible" ||
+              trigger === "focus" ||
+              trigger === "deferred"
+            // Decided before this event reconciles: did it land inside the spacing?
+            const insideSpacing = !reconcileDue()
+            // The deferred call exists because the spacing has just ended: it reconciles.
+            const outcome = await resolveMarker(
+              returning && (trigger === "deferred" || !insideSpacing)
+            )
+            // Returned inside the spacing (so it could only read) and still under review: one
+            // deferred reconcile for when the spacing ends.
+            if (
+              outcome === "waiting" &&
+              (trigger === "visible" || trigger === "focus") &&
+              insideSpacing
+            ) {
+              scheduleDeferred()
+            }
+            return outcome
+          }
+          if (deps.dashboardReadsSummary()) return "dashboard"
+          const summary = await deps.readSummary()
+          if (summary) deps.onSummary(summary)
+          return summary ? "refreshed" : "idle"
+        } finally {
+          inFlight = false
         }
-        if (deps.awaitingDiditReturn()) return "return-path"
-        // Returning to the tab (or window) while under review: reconcile, then read.
-        if (deps.hasReviewedMarker()) {
-          const returning = trigger === "visible" || trigger === "focus"
-          return await resolveMarker(returning && reconcileDue())
-        }
-        if (deps.dashboardReadsSummary()) return "dashboard"
-        const summary = await deps.readSummary()
-        if (summary) deps.onSummary(summary)
-        return summary ? "refreshed" : "idle"
-      } finally {
-        inFlight = false
-      }
+      })()
+      current = started
+      return started
     },
   }
+  return api
 }

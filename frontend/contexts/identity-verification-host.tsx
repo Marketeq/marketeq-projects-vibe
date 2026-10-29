@@ -100,6 +100,7 @@ import {
   shouldMarkReviewedResult,
 } from "@/src/lib/api/reviewed-approval-result"
 import { createStatusRefresher } from "@/src/lib/api/status-refresh"
+import { scheduleOneShot } from "@/src/lib/api/one-shot"
 import { readReturnCallbackSearch } from "@/src/lib/api/verification-return-origin-browser"
 import {
   buildHandoffTarget,
@@ -593,6 +594,7 @@ export function IdentityVerificationHostProvider({
         },
         onSummary: (next) => setTravelSummary(next),
         reconcile: reconcileReviewedSession,
+        schedule: scheduleOneShot,
         onApproved: () => {
           setVerificationGateOpen(false)
           setProfileBannerShown(false)
@@ -602,6 +604,12 @@ export function IdentityVerificationHostProvider({
       }),
     [startAlertReconcile, setProfileBannerShown]
   )
+  // A deferred reconcile belongs to one signed-in talent: it is dropped on sign-out, another account
+  // or role, a public page, and when the host unmounts.
+  useEffect(() => {
+    statusRefresher.cancel()
+  }, [accountKey, statusRefresher])
+  useEffect(() => () => statusRefresher.cancel(), [statusRefresher])
   const statusLoadCheckedForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!hostActive || !user) return
