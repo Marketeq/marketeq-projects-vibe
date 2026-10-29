@@ -111,6 +111,24 @@ describe('GroupsService.createFromAcceptedOffer', () => {
     expect(savedContracts[0].title).toBe('Untitled contract');
   });
 
+  it('stores the weekly cap from the offer schedule (PMCM-829)', async () => {
+    const cases: Array<[{ type: string; hoursPerWeek?: number }, number | null]> = [
+      [{ type: 'CUSTOM', hoursPerWeek: 15 }, 15],
+      [{ type: 'FULL_TIME' }, 40],
+      [{ type: 'PART_TIME' }, 20],
+      [{ type: 'PART_TIME', hoursPerWeek: 25 }, 25],
+      [{ type: 'CUSTOM' }, null],
+    ];
+    for (const [workSchedule, expected] of cases) {
+      const { service, savedContracts } = setup();
+      await service.createFromAcceptedOffer({
+        ...OFFER,
+        terms: { ...OFFER.terms, workSchedule },
+      });
+      expect(savedContracts[0].weeklyCapHours).toBe(expected);
+    }
+  });
+
   it('returns the existing contract on a redelivered event without creating another', async () => {
     const existing = { id: 'contract-existing', offerId: OFFER.offerId } as Contract;
     const { service, manager, savedContracts } = setup(existing);

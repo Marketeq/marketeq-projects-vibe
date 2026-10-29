@@ -156,7 +156,8 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             currency: 'USD',
             rate_minor: Math.round((Number(c.rate) || 0) * 100),
             daily_cap_seconds: null,
-            weekly_cap_seconds: null,
+            weekly_cap_seconds:
+              Number(c.weeklyCapHours) > 0 ? Math.round(Number(c.weeklyCapHours) * 3600) : null,
             paid_break_allowance_seconds: 0,
             screenshot_interval_seconds: 60,
             mirrored_at: now,

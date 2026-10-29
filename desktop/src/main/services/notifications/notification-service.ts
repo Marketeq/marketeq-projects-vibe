@@ -23,7 +23,9 @@ export type NotificationCategory =
   | 'authNeedsLogin'
   | 'permissionsChanged'
   | 'networkOffline'
-  | 'networkRestored';
+  | 'networkRestored'
+  | 'capWarning'
+  | 'capReached';
 
 export interface NotificationInput {
   category: NotificationCategory;
@@ -63,6 +65,8 @@ const RATE_LIMIT_WINDOW_MS: Partial<Record<NotificationCategory, number>> = {
   // A flapping connection must not spam the talent.
   networkOffline: 60_000,
   networkRestored: 60_000,
+  // Repeated Play clicks on a capped contract must not stack notices.
+  capReached: 10_000,
 };
 
 export interface NotificationService {
@@ -71,6 +75,10 @@ export interface NotificationService {
   workReminder(elapsedSec: number): void;
   breakReminder(elapsedSec: number): void;
   breakExpiring(remainingSec: number): void;
+  /** PMCM-829: the contract's time cap is close. */
+  capWarning(remainingSec: number): void;
+  /** PMCM-829: the cap was reached — the timer stopped or would not start. */
+  capReached(): void;
   breakExpired(): void;
   idleDetected(seconds: number): void;
   syncError(msg: string): void;
@@ -222,6 +230,20 @@ export function createNotificationService(
         category: 'breakExpired',
         title: 'Break ended',
         body: 'Your break has ended — ready to resume?',
+      });
+    },
+    capWarning(remainingSec) {
+      send({
+        category: 'capWarning',
+        title: 'Time limit almost reached',
+        body: `You have ${formatDuration(Math.max(60, remainingSec))} left on this contract's time limit. The timer stops when it's reached.`,
+      });
+    },
+    capReached() {
+      send({
+        category: 'capReached',
+        title: 'Time limit reached',
+        body: "You've reached this contract's time limit, so the timer can't run until it resets. Time over the limit isn't billed.",
       });
     },
     idleDetected(seconds) {

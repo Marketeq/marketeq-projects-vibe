@@ -211,13 +211,13 @@ describe('stats:get-today relaunch restore', () => {
         ],
         findByIdResult: { started_at: today + 800_000 } as SessionRow,
       }),
-      contractRepo: makeContractRepo({ c1: { rate_minor: 6000 } }),
+      contractRepo: makeContractRepo({ c1: { rate_minor: 6000, weekly_cap_seconds: 20 * 3600 } }),
       timer: makeTimer({ activeSessionId: 's-live', pickedContract: { contractId: 'c1', taskId: 't1' }, elapsedSec: 300 }),
       getUserId: () => 'user-1',
     });
     const result = handlers.get(IPC.statsGetToday)?.() as TodayStatsDTO;
     expect(result.tasks).toEqual([
-      { contractId: 'c1', taskId: 't1', trackedSeconds: 900, firstStartedAt: today + 1000, lastEndedAt: null, liveSeconds: 300 },
+      { contractId: 'c1', taskId: 't1', trackedSeconds: 900, firstStartedAt: today + 1000, lastEndedAt: null, liveSeconds: 300, capSeconds: 20 * 3600 },
     ]);
     expect(result.lastTask).toEqual({ contractId: 'c1', taskId: 't1' });
   });

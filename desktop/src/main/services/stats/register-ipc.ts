@@ -58,7 +58,7 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
 
     // Per-task totals, so a relaunch restores each task's time and range
     // instead of showing every task as "Not started".
-    const byTask = new Map<string, TodayTaskStatDTO>();
+    const byTask = new Map<string, Omit<TodayTaskStatDTO, 'capSeconds'>>();
     for (const r of deps.sessionRepo.sumBillableSecondsByTask({ userId, startAt, endAt })) {
       byTask.set(r.task_id, {
         contractId: r.contract_id,
@@ -101,7 +101,16 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
       trackedSeconds += seconds;
       earnedCents += Math.round((seconds * contract.rate_minor) / 3600);
     }
-    return { trackedSeconds, earnedCents, tasks: [...byTask.values()] };
+    // PMCM-829: each task's progress bar measures against its contract's
+    // cap (daily if set, else weekly) instead of a fixed 8 h.
+    const tasks = [...byTask.values()].map((t) => {
+      const contract = deps.contractRepo.findById(t.contractId);
+      return {
+        ...t,
+        capSeconds: contract?.daily_cap_seconds ?? contract?.weekly_cap_seconds ?? null,
+      };
+    });
+    return { trackedSeconds, earnedCents, tasks };
   };
 
   ipcMain.handle(IPC.statsGetToday, (): TodayStatsDTO | IpcErrorResult => {

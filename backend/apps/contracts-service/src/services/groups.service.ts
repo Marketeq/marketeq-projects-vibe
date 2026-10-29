@@ -57,6 +57,19 @@ const WORK_SCHEDULE_TO_CONTRACT: Record<string, string> = {
   CUSTOM: 'custom',
 };
 
+// PMCM-829: weekly cap when the offer doesn't state hoursPerWeek. Custom
+// schedules always carry it (offer-service validates 1–80).
+const DEFAULT_WEEKLY_CAP_HOURS: Record<string, number> = {
+  FULL_TIME: 40,
+  PART_TIME: 20,
+};
+
+function weeklyCapHours(workSchedule?: { type: string; hoursPerWeek?: number }): number | null {
+  const hours = Number(workSchedule?.hoursPerWeek);
+  if (Number.isInteger(hours) && hours > 0) return hours;
+  return DEFAULT_WEEKLY_CAP_HOURS[workSchedule?.type ?? ''] ?? null;
+}
+
 @Injectable()
 export class GroupsService {
   constructor(
@@ -158,6 +171,7 @@ export class GroupsService {
             title: offer.contractTitle?.trim() || 'Untitled contract',
             rate: offer.terms.rate,
             schedule: WORK_SCHEDULE_TO_CONTRACT[offer.terms.workSchedule?.type] ?? 'custom',
+            weeklyCapHours: weeklyCapHours(offer.terms.workSchedule),
             duration: `${offer.terms.durationMonths} ${offer.terms.durationMonths === 1 ? 'month' : 'months'}`,
             ...listingRef,
             status: ContractStatus.PENDING,

@@ -83,6 +83,11 @@ export class Contract {
   @Column({ type: 'uuid', nullable: true })
   offerId: string | null;
 
+  // PMCM-829: weekly time cap agreed in the offer (workSchedule). Tracked
+  // time over it is not billed. Null = no cap known for this contract.
+  @Column({ type: 'int', nullable: true })
+  weeklyCapHours: number | null;
+
   // Automatic timestamps
   @CreateDateColumn()
   createdAt: Date;
