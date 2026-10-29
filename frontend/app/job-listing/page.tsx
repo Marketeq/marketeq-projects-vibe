@@ -280,6 +280,8 @@ type SmartAssistantEditableField =
   | "benefits"
   | "responsibilities";
 
+const SMART_ASSISTANT_SHORTEN_COMMAND = "Shorten it";
+
 const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   SmartAssistantEditableField,
   number
@@ -15118,7 +15120,7 @@ const useFinalReviewSmartAssistant = ({
       )
       setIsLoading(true)
       setResult("")
-      setMessage("")
+      setMessage(SMART_ASSISTANT_SHORTEN_COMMAND)
 
       try {
         const listingId = jobListingId ?? (await ensureJobListingDraft?.())
