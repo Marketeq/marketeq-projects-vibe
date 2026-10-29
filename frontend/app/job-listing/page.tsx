@@ -2076,10 +2076,13 @@ const escapeHtmlText = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+// `preferredOffset` is the plain-text offset of the selection in the field, so
+// the occurrence the user selected is replaced rather than the first match.
 const replaceFirstTextInRichTextHtml = (
   html: string,
   selectedText: string,
-  replacementText: string
+  replacementText: string,
+  preferredOffset?: number
 ): { html: string; replaced: boolean } => {
   const trimmedSelectedText = selectedText.trim();
 
@@ -2101,20 +2104,47 @@ const replaceFirstTextInRichTextHtml = (
     window.NodeFilter.SHOW_TEXT
   );
   let currentNode = walker.nextNode();
+  let nodeStartOffset = 0;
+  let bestMatch: { node: Node; index: number; distance: number } | null = null;
 
   while (currentNode) {
     const textContent = currentNode.textContent ?? "";
-    const matchIndex = textContent.indexOf(trimmedSelectedText);
+    let matchIndex = textContent.indexOf(trimmedSelectedText);
 
-    if (matchIndex !== -1) {
-      currentNode.textContent =
-        textContent.slice(0, matchIndex) +
-        replacementText +
-        textContent.slice(matchIndex + trimmedSelectedText.length);
-      return { html: container.innerHTML, replaced: true };
+    while (matchIndex !== -1) {
+      const distance =
+        preferredOffset === undefined
+          ? 0
+          : Math.abs(nodeStartOffset + matchIndex - preferredOffset);
+
+      if (!bestMatch || distance < bestMatch.distance) {
+        bestMatch = { node: currentNode, index: matchIndex, distance };
+      }
+
+      if (preferredOffset === undefined || distance === 0) break;
+
+      matchIndex = textContent.indexOf(
+        trimmedSelectedText,
+        matchIndex + trimmedSelectedText.length
+      );
     }
 
+    if (bestMatch && (preferredOffset === undefined || bestMatch.distance === 0)) {
+      break;
+    }
+
+    nodeStartOffset += textContent.length;
     currentNode = walker.nextNode();
+  }
+
+  if (bestMatch) {
+    const textContent = bestMatch.node.textContent ?? "";
+
+    bestMatch.node.textContent =
+      textContent.slice(0, bestMatch.index) +
+      replacementText +
+      textContent.slice(bestMatch.index + trimmedSelectedText.length);
+    return { html: container.innerHTML, replaced: true };
   }
 
   const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
@@ -14777,6 +14807,28 @@ const useDynamicFinalReviewSkills = () => {
       </DialogContent>
     </Dialog>
   )
+const getSelectionTextOffsetInField = (field: HTMLElement | null) => {
+  if (typeof window === "undefined" || !field) return undefined
+
+  const editor = field.querySelector<HTMLElement>(".ProseMirror")
+  const selection = window.getSelection()
+
+  if (!editor || !selection || selection.rangeCount === 0) return undefined
+
+  const range = selection.getRangeAt(0)
+
+  if (!editor.contains(range.startContainer)) return undefined
+
+  const textBeforeSelection = window.document.createRange()
+  textBeforeSelection.selectNodeContents(editor)
+  textBeforeSelection.setEnd(range.startContainer, range.startOffset)
+
+  const selectedRaw = range.toString()
+  const leadingWhitespace = selectedRaw.length - selectedRaw.trimStart().length
+
+  return textBeforeSelection.toString().length + leadingWhitespace
+}
+
 
   return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
 }
@@ -14839,6 +14891,8 @@ const FinalReviewRichTextField = ({
     setValue(html)
     onChange?.(html)
   }
+    const selectionOffset = getSelectionTextOffsetInField(fieldRef.current)
+
 
   const handleSmartAssistant = (
     selection: FinalReviewSmartAssistantSelection
@@ -14849,7 +14903,8 @@ const FinalReviewRichTextField = ({
         const replacement = replaceFirstTextInRichTextHtml(
           valueRef.current,
           targetText ?? selection.selectedText,
-          replacementText
+          replacementText,
+          selectionOffset
         )
 
         const nextValue = replacement.html
