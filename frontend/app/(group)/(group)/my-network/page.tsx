@@ -299,6 +299,13 @@ function buildAccountColumns(
           !!row.original.userId &&
           !!row.original.companyId &&
           row.original.viewerIsCompanyAdmin
+        // AC-17.3: "A viewer with no valid action on a row sees no menu."
+        // Pending rows always offer Resend/Cancel; an Active row offers only
+        // the two admin writes, so a non-admin gets no trigger rather than an
+        // empty dropdown.
+        if (!isPending && !canEdit && !row.original.viewerIsCompanyAdmin) {
+          return null
+        }
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -335,15 +342,20 @@ function buildAccountColumns(
                   </DropdownMenuItem>
                 </>
               ) : (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    visual="destructive"
-                    onSelect={() => onCancel(row.original.id)}
-                  >
-                    <Trash2 className="h-4 w-4" /> Remove User
-                  </DropdownMenuItem>
-                </>
+                /* AC-17.3: on an Active member only the owner and an
+                   Administrator may remove. Same gate as Edit Permissions
+                   above, because both write to company membership. */
+                row.original.viewerIsCompanyAdmin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      visual="destructive"
+                      onSelect={() => onCancel(row.original.id)}
+                    >
+                      <Trash2 className="h-4 w-4" /> Remove User
+                    </DropdownMenuItem>
+                  </>
+                )
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -713,63 +725,71 @@ const ExternalTeamCard = ({
     // grows past its grid cell — swallowing the 24px gap and making adjacent
     // cards look joined. This lets it shrink back to the cell.
     <article className="relative flex min-w-0 flex-1 flex-col rounded-lg p-5 lg:py-[35px] lg:px-[30px] lg:min-h-[396px] bg-white border border-gray-200 shadow-[0px_2px_5px_0px_theme(colors.black/.04)]">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton
-            className="absolute h-6 w-auto top-2.5 px-1.5 right-2.5 text-gray-400"
-            visual="gray"
-            variant="ghost"
-          >
-            <MoreHorizontal className="size-5" />
-          </IconButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-[165px]">
-          {canEdit && (
-            <DropdownMenuItem
-              onSelect={() =>
-                onEdit({
-                  id,
-                  name,
-                  email,
-                  role,
-                  permissions,
-                  avatarSrc,
-                  company,
-                  companyLogoUrl,
-                  status,
-                  userId,
-                  companyId,
-                  viewerIsCompanyAdmin,
-                })
-              }
+      {/* AC-17.3: no valid action for this viewer on this row means no menu at
+          all, not an empty one. Same rule as the list view. */}
+      {(isPending || canEdit || viewerIsCompanyAdmin) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton
+              className="absolute h-6 w-auto top-2.5 px-1.5 right-2.5 text-gray-400"
+              visual="gray"
+              variant="ghost"
             >
-              Edit Permissions
-            </DropdownMenuItem>
-          )}
-          {/* View Profile is gone. R3-12's table names four actions across
-              the two states and this is not one of them; it had no handler
-              either, and a pending invitee has no profile to open. If it
-              comes back it needs a route for an external member, which does
-              not exist today. */}
-          {/* R3-12: a pending row has two actions, an accepted one has
-              Remove User. Pending used to offer Cancel Invite *and* Remove
-              User, both calling the same handler. */}
-          {isPending ? (
-            <>
-              <DropdownMenuItem onSelect={() => onResend(id)}>
-                Resend Invite
+              <MoreHorizontal className="size-5" />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[165px]">
+            {canEdit && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  onEdit({
+                    id,
+                    name,
+                    email,
+                    role,
+                    permissions,
+                    avatarSrc,
+                    company,
+                    companyLogoUrl,
+                    status,
+                    userId,
+                    companyId,
+                    viewerIsCompanyAdmin,
+                  })
+                }
+              >
+                Edit Permissions
               </DropdownMenuItem>
-              <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
-                Cancel Invite
-              </DropdownMenuItem>
-            </>
-          ) : (
-            <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
-              Remove User
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            )}
+            {/* View Profile is gone. R3-12's table names four actions across
+                the two states and this is not one of them; it had no handler
+                either, and a pending invitee has no profile to open. If it
+                comes back it needs a route for an external member, which does
+                not exist today. */}
+            {/* R3-12: a pending row has two actions, an accepted one has
+                Remove User. Pending used to offer Cancel Invite *and* Remove
+                User, both calling the same handler. */}
+            {isPending ? (
+              <>
+                <DropdownMenuItem onSelect={() => onResend(id)}>
+                  Resend Invite
+                </DropdownMenuItem>
+                <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
+                  Cancel Invite
+                </DropdownMenuItem>
+              </>
+            ) : (
+              /* AC-17.3: Remove User is owner/Administrator only, same as the
+                 list view. */
+              viewerIsCompanyAdmin && (
+                <DropdownMenuItem visual="destructive" onSelect={() => onCancel(id)}>
+                  Remove User
+                </DropdownMenuItem>
+              )
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <div className="flex items-center justify-center mt-2">
         {/* The member's own photo when one is set; otherwise the empty dashed
@@ -1503,6 +1523,19 @@ export default function MyTeam() {
   const [sortBy, setSortBy] = useState<SortKey>("name-asc")
   const isGrid = getFirstItem(value) === GRID_LAYOUT
   const [activeTab, setActiveTab] = useState(TALENT_NETWORK_TAB)
+
+  // PMCM-720 AC-14.1: the "N team members" count is active members on the open
+  // tab only. It is rendered by the shared secondary nav, which sits above this
+  // page in the layout and so cannot be handed the tab - publish it on the URL
+  // instead and let useTeamMemberCount read it back. Pages without the param
+  // keep the previous combined total, so only My Team changes.
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", activeTab === TALENT_NETWORK_TAB ? "talent" : "external")
+    const query = params.toString()
+    if (query === searchParams.toString()) return
+    router.replace(`/my-network?${query}`, { scroll: false })
+  }, [activeTab, searchParams, router])
   const [isAddTalentOpen, setIsAddTalentOpen] = useState(false)
   // Recipient chosen in S17. Holding the member (rather than a boolean) keeps
   // the offer modal mounted with their profile after the picker has closed.
