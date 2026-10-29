@@ -47,6 +47,8 @@ import { UpsertProjectDraftDto } from './dto/upsert-project-draft.dto';
 import { UpsertProjectScopeDto } from './dto/upsert-project-scope.dto';
 import { slugify } from '../shared/utils/slugify';
 import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
+import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
+import { VerificationRequiredException } from '../identity-gate/identity-gate.exceptions';
 import sanitizeHtml = require('sanitize-html');
 import {
   DELIVERABLES_ADAPTER,
@@ -147,6 +149,7 @@ export class PublishService {
     private readonly faqAdapter: FaqAdapter,
     private readonly userProfileClient: UserProfileClient,
     private readonly memberGate: MemberAddGate,
+    private readonly identityGate: IdentityVerificationGateClient,
   ) {}
 
   private faqContextFromProject(project: Project): FaqContext {
@@ -488,10 +491,22 @@ export class PublishService {
     return response.data;
   }
 
+  // G2 (PMCM-652): a talent listing cannot be started, as a draft or otherwise, until the
+  // owner's gate is open. 403 VERIFICATION_REQUIRED with the owner's own missing requirement,
+  // or 503 when the gate could not be evaluated (an unanswered gate is a closed gate).
+  async assertCreateGateOpen(userId: string): Promise<void> {
+    const decision = await this.identityGate.checkGate(userId);
+    if (decision.gateOpen) return;
+    throw new VerificationRequiredException(
+      decision.missingRequirements === 'none' ? 'both' : decision.missingRequirements,
+    );
+  }
+
   async createNewProject(
     userId: string,
     dto: CreateProjectDto,
   ): Promise<Project> {
+    await this.assertCreateGateOpen(userId);
     try {
       const payload = {
         ...dto,
@@ -546,6 +561,7 @@ export class PublishService {
     userId: string,
     dto: UpsertProjectDraftDto,
   ): Promise<Project> {
+    await this.assertCreateGateOpen(userId);
     try {
       const title = dto.title ?? '';
       const payload = {

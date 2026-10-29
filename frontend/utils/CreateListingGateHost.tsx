@@ -1,42 +1,45 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { AlertTriangle } from "@blend-metrics/icons"
 import { Button, Dialog, DialogClose, DialogContent } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
 import {
-  joinTeamBlockFrom,
-  joinTeamTitleFor,
-  type JoinTeamBlock,
-} from "@/src/lib/api/join-team-gate"
+  CREATE_LISTING_BLOCKED_EVENT,
+  createListingTitleFor,
+  type CreateListingBlock,
+} from "@/src/lib/api/create-listing-gate"
 import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
 
-// G7: the invitee's "Go to Dashboard" click is what accepts the invitation, and the
-// invitations service runs the verification gate before it writes anything. When that
-// accept is refused, handleAcceptError() opens the matching modal (identity and location /
-// identity / location) with Cancel and Start Verification, or the existing
-// status-unavailable popup when the gate could not be evaluated. It returns false for any
-// other failure so the caller keeps its existing toast. Cancel only closes the modal: the
-// next click on the button sends a fresh accept and gets a fresh answer. "Start
-// Verification" uses the same one-shot dashboard hand-off as the Apply gate (G3).
-export function useJoinTeamGate() {
+// G2: the one modal for every way of starting a listing. ProjectAPI.CreateProjectDraft asks
+// the backend's read-only creation check before it POSTs, and announces a refusal here, so
+// the dashboard buttons, /my-listings (Project and Service), the legacy publish-project,
+// job-listing and edit-listing pages and the my-listings/[slug] fallback all land on this
+// same modal. A refusal shows "To publish this job, you must verify ..." for what is missing
+// (identity and location / identity / location) with Cancel and Start Verification; an
+// unreadable gate shows the existing status-unavailable popup. Nothing is created while
+// blocked. Cancel, Esc and an outside click only close the modal. Start Verification uses
+// the same one-shot dashboard hand-off as the Apply gate (G3), which opens the existing
+// Identity Verification flow.
+export function CreateListingGateHost() {
   const router = useRouter()
-  const [block, setBlock] = useState<JoinTeamBlock | null>(null)
+  const [block, setBlock] = useState<CreateListingBlock | null>(null)
 
-  const handleAcceptError = (error: unknown): boolean => {
-    const next = joinTeamBlockFrom(error)
-    if (!next) return false
-    setBlock(next)
-    return true
-  }
+  useEffect(() => {
+    const onBlocked = (event: Event) => {
+      setBlock((event as CustomEvent<CreateListingBlock>).detail)
+    }
+    window.addEventListener(CREATE_LISTING_BLOCKED_EVENT, onBlocked)
+    return () => window.removeEventListener(CREATE_LISTING_BLOCKED_EVENT, onBlocked)
+  }, [])
 
   const goVerify = () => {
     setBlock(null)
     router.push(START_VERIFICATION_HREF)
   }
 
-  const joinGateDialog = (
+  return (
     <>
       <Dialog
         open={block?.kind === "verification"}
@@ -53,7 +56,7 @@ export function useJoinTeamGate() {
 
           <h1 className="mt-5 mx-auto max-w-[317px] text-lg text-center leading-7 text-dark-blue-400 font-semibold">
             {block?.kind === "verification"
-              ? joinTeamTitleFor(block.missing)
+              ? createListingTitleFor(block.missing)
               : null}
           </h1>
 
@@ -80,6 +83,4 @@ export function useJoinTeamGate() {
       />
     </>
   )
-
-  return { handleAcceptError, joinGateDialog }
 }
