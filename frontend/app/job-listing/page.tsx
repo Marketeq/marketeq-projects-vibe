@@ -14409,17 +14409,13 @@ const VariableInsertIcon = ({ className }: { className?: string }) => (
     className={className}
     width="12"
     height="12"
-    viewBox="0 0 12 12"
+    viewBox="0 0 24 24"
     fill="none"
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
     <path
-      d="M1.5 3.25c0-.414.336-.75.75-.75h5.5c.414 0 .75.336.75.75V5H7.25V3.75h-4.5v4.5h4.5V7H8.5v1.75c0 .414-.336.75-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z"
-      fill="currentColor"
-    />
-    <path
-      d="M7 4.75 10.75 6.5 7 8.25v-1.2H4.75v-1.1H7v-1.2Z"
+      d="M3 17V7h18v4h-2V9H5v6h9v2zm2-2V9zm16.6 5L18 16.425V19.5h-2V13h6.5v2h-3.1l3.6 3.6z"
       fill="currentColor"
     />
   </svg>
@@ -16986,7 +16982,7 @@ const FinalServiceReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -17007,11 +17003,13 @@ const FinalServiceReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={serviceAssistant.isLoading}
                               onClick={() => serviceAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -17957,7 +17955,7 @@ const FinalProjectReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -17978,13 +17976,15 @@ const FinalProjectReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
                                 projectAssistant.retry(item)
                               }
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -21179,7 +21179,7 @@ const ExistingContractFinalReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return;
@@ -21200,11 +21200,13 @@ const ExistingContractFinalReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-[12px] text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={roleAssistant.isLoading}
                               onClick={() => roleAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
