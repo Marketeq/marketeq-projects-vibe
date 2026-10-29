@@ -62,7 +62,8 @@ import { registerUpdaterIpc } from './services/updater/register-ipc';
 import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
-import { registerContractsIpc } from './services/contracts/register-ipc';
+import { createContractStatusFetcher, registerContractsIpc } from './services/contracts/register-ipc';
+import { createContractStatusWatch } from './services/contracts/contract-status-watch';
 import { registerStatsIpc } from './services/stats/register-ipc';
 import {
   createWindowManager,
@@ -827,6 +828,30 @@ async function bootstrap(): Promise<void> {
           logger.warn({ err }, 'timer bus → tray/notifications failed');
         }
       });
+
+      // PMCM-831: stop tracking when the tracked contract is paused,
+      // disputed or ended on the backend (polled until realtime ships).
+      const timer = timerService;
+      const contractStatusWatch = createContractStatusWatch({
+        getTrackedContractId: () => {
+          const snap = timer.getSnapshot();
+          return snap.activeSessionId && snap.pickedContract ? snap.pickedContract.contractId : null;
+        },
+        fetchStatus: createContractStatusFetcher({
+          logger,
+          getAccessToken: () => authService?.getAccessToken() ?? null,
+          getUserId: () => authService?.getCurrentUser()?.id ?? null,
+          apiBaseUrl: process.env.DTT_API_BASE_URL ?? 'http://localhost:4000',
+          onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
+        }),
+        onNotTrackable: async (_contractId, status) => {
+          await timer.stopTimer(status === 'disputed' ? 'disputed' : 'user_stop');
+          notificationService.contractNotTrackable(status);
+        },
+        logger,
+      });
+      contractStatusWatch.start();
+      app.on('before-quit', () => contractStatusWatch.stop());
     }
 
     logger.info('phase 6 window/tray/notifications/onboarding wired');

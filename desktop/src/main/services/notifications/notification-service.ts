@@ -25,7 +25,8 @@ export type NotificationCategory =
   | 'networkOffline'
   | 'networkRestored'
   | 'capWarning'
-  | 'capReached';
+  | 'capReached'
+  | 'contractNotTrackable';
 
 export interface NotificationInput {
   category: NotificationCategory;
@@ -79,6 +80,8 @@ export interface NotificationService {
   capWarning(remainingSec: number): void;
   /** PMCM-829: the cap was reached — the timer stopped or would not start. */
   capReached(): void;
+  /** PMCM-831: the tracked contract was paused/disputed/ended, so the timer stopped. */
+  contractNotTrackable(status: string): void;
   breakExpired(): void;
   idleDetected(seconds: number): void;
   syncError(msg: string): void;
@@ -237,6 +240,19 @@ export function createNotificationService(
         category: 'capWarning',
         title: 'Time limit almost reached',
         body: `You have ${formatDuration(Math.max(60, remainingSec))} left on this contract's time limit. The timer stops when it's reached.`,
+      });
+    },
+    contractNotTrackable(status) {
+      const why =
+        status === 'disputed'
+          ? 'is in dispute'
+          : status === 'paused'
+            ? 'was paused'
+            : 'is no longer active';
+      send({
+        category: 'contractNotTrackable',
+        title: 'Timer stopped',
+        body: `This contract ${why}, so the timer was stopped. Time can't be tracked on it right now.`,
       });
     },
     capReached() {
