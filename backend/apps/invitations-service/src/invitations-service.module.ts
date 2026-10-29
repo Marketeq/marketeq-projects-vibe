@@ -13,12 +13,6 @@ import { HealthController } from './health/health.controller';
 import { InvitationEventsService } from './invitations/invitation-events.service';
 import { CompanyInvitationsController } from './invitations/company-invitations.controller';
 import { CompanyContextGuard } from './guards/company-context.guard';
-import {
-  IdentityVerificationGateClient,
-  IDENTITY_VERIFICATION_CLIENT,
-  IDENTITY_VERIFICATION_RPC_QUEUE,
-  resolveBrokerUrl,
-} from './invitations/identity-verification-gate.client';
 
 @Module({
   imports: [
@@ -40,29 +34,6 @@ import {
             queueOptions: { durable: true },
           },
         }),
-      },
-      {
-        // Request/reply to identity-verification-service for the G7
-        // verification gate. Own queue (its RPC queue, not the notification
-        // queue above). Broker URL resolves RABBITMQ_URI then RABBITMQ_URL
-        // (the frozen env templates only define RABBITMQ_URL). There is
-        // deliberately NO localhost fallback: with neither set the client
-        // has no broker, IdentityVerificationGateClient refuses before
-        // sending, and every acceptance fails closed with 503.
-        name: IDENTITY_VERIFICATION_CLIENT,
-        imports: [ConfigModule],
-        inject: [ConfigService],
-        useFactory: (config: ConfigService) => {
-          const url = resolveBrokerUrl(config);
-          return {
-            transport: Transport.RMQ,
-            options: {
-              urls: url ? [url] : [],
-              queue: IDENTITY_VERIFICATION_RPC_QUEUE,
-              queueOptions: { durable: true },
-            },
-          };
-        },
       },
     ]),
     TypeOrmModule.forRootAsync({
@@ -90,7 +61,6 @@ import {
     UserServiceClient,
     InvitationEventsService,
     CompanyContextGuard,
-    IdentityVerificationGateClient,
   ],
 })
 export class InvitationsServiceModule {}

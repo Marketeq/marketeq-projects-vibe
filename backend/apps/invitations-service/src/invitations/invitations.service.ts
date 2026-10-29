@@ -25,13 +25,11 @@ import {
   InvitationNotFoundException,
   InvitationNotPendingException,
   TokenExpiredException,
-  VerificationRequiredException,
   LinkPasswordRequiredException,
   LinkPasswordInvalidException,
   LinkAccessDeniedException,
   InvitationForbiddenException,
 } from '../common/invitation-exceptions';
-import { IdentityVerificationGateClient } from './identity-verification-gate.client';
 import { InviteSettingsService } from './invite-settings.service';
 import { InviteAccessLevel, InviteSettings } from '../entities/invite-settings.entity';
 
@@ -147,7 +145,6 @@ export class InvitationsService {
     private readonly events: InvitationEventsService,
     @Inject('RABBITMQ_CLIENT')
     private readonly rabbitmq: ClientProxy,
-    private readonly identityGate: IdentityVerificationGateClient,
     private readonly inviteSettings: InviteSettingsService,
   ) {
     // R3-03: email invitations are valid for a fixed 30 days (720h). This was
@@ -1285,34 +1282,9 @@ export class InvitationsService {
     return this.repo.findOne({ where: { token } });
   }
 
-  /**
-   * Asks identity-verification-service for the acting user's gate decision and
-   * refuses the action unless it is open. The decision is the owning service's
-   * (gate_open = is_verified OR in_grace); nothing is recomputed here. If the
-   * decision cannot be obtained the client throws
-   * IdentityVerificationUnavailableException - an unanswered gate stays closed.
-   * The error carries only this user's own outstanding requirement.
-   */
-  private async assertVerificationGateOpen(userId: string): Promise<void> {
-    const decision = await this.identityGate.checkGate(userId);
-    if (decision.gateOpen) return;
-    // The client only returns a closed gate that names what is missing (a
-    // closed gate reporting 'none' is rejected there as malformed); the
-    // 'none' branch narrows the type and keeps this closed if that invariant
-    // is ever loosened.
-    throw new VerificationRequiredException(
-      decision.missingRequirements === 'none' ? 'both' : decision.missingRequirements,
-    );
-  }
-
   async accept(dto: AcceptInvitationDto, invitee: { id: string; email: string }): Promise<Invitation | Record<string, any>> {
-    // Verification gate G7 (accept an invitation, gated at acceptance). Runs
-    // before anything else in this method - token resolution, both roster
-    // writes, the status flip, events and emails all follow it - so a blocked
-    // acceptance leaves no trace. Both accept routes (/invitations/accept and
-    // /v1/invitations/accept) share this one method.
-    await this.assertVerificationGateOpen(invitee.id);
-
+    // Accepting an invitation is deliberately not verification-gated (PMCM-652):
+    // an unverified user may join the team.
     const inv = await this.resolveInvitationForRead(dto.token);
 
     if (!inv) {

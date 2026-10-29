@@ -60,43 +60,6 @@ export class InvitationNotFoundException extends InvitationApiException {
   }
 }
 
-/** Which of the acting user's own verification requirements is outstanding. */
-export type OutstandingVerificationRequirement = 'identity' | 'location' | 'both';
-
-/**
- * Account-verification gate G7 (accept an invitation, gated at acceptance):
- * the acting user has not satisfied gate_open = is_verified OR in_grace.
- * Carries only the acting user's own outstanding requirement - never a
- * status value, failure reason, document or vendor detail, and never anything
- * about another account. Same `{ success, error, message }` envelope as the
- * rest of this service, plus `missingRequirements`; InvitationExceptionFilter
- * renders any body carrying `error` as-is.
- */
-export class VerificationRequiredException extends HttpException {
-  constructor(missingRequirements: OutstandingVerificationRequirement) {
-    super(
-      {
-        success: false,
-        error: 'VERIFICATION_REQUIRED',
-        message: 'Verify your account to accept this invitation.',
-        missingRequirements,
-      },
-      HttpStatus.FORBIDDEN,
-    );
-  }
-}
-
-/**
- * The gate could not be evaluated (identity-verification-service unreachable,
- * timed out, not configured, or answered with something unusable). The action
- * is refused, not allowed: an unanswered gate is a closed gate.
- */
-export class IdentityVerificationUnavailableException extends InvitationApiException {
-  constructor(message = "We couldn't confirm your verification status. Please try again shortly.") {
-    super(HttpStatus.SERVICE_UNAVAILABLE, 'IDENTITY_VERIFICATION_UNAVAILABLE', message);
-  }
-}
-
 /**
  * The invite link is password-protected (Link Settings → Enable Link Password)
  * and the request carried no password. Distinct from a wrong password so the

@@ -3,7 +3,6 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { of } from 'rxjs';
 import * as request from 'supertest';
 import * as bcrypt from 'bcryptjs';
 import { Invitation, InvitationStatus } from '../entities/invitation.entity';
@@ -18,14 +17,9 @@ import { InvitationsService } from './invitations.service';
 import { InviteSettingsService } from './invite-settings.service';
 import { InvitationEventsService } from './invitation-events.service';
 import { UserServiceClient } from './user-service.client';
-import {
-  IDENTITY_VERIFICATION_CLIENT,
-  IdentityVerificationGateClient,
-} from './identity-verification-gate.client';
 import { generateInviteLinkToken } from '../auth/token.util';
 
-// Same reason as invitations.accept-gate.spec.ts: backend/jest.config.js has
-// no moduleNameMapper for the @libs/* tsconfig paths.
+// backend/jest.config.js has no moduleNameMapper for the @libs/* tsconfig paths.
 jest.mock(
   '@libs/auth',
   () => {
@@ -150,7 +144,6 @@ describe('invite links obey Link Settings (R3-02)', () => {
       providers: [
         InvitationsService,
         InviteSettingsService,
-        IdentityVerificationGateClient,
         { provide: getRepositoryToken(Invitation), useValue: invitationRepo },
         { provide: getRepositoryToken(InviteSettings), useValue: settingsRepo },
         {
@@ -172,15 +165,6 @@ describe('invite links obey Link Settings (R3-02)', () => {
           },
         },
         { provide: 'RABBITMQ_CLIENT', useValue: { emit: jest.fn() } },
-        {
-          // Gate held open: this suite is about Link Settings, not G7.
-          provide: IDENTITY_VERIFICATION_CLIENT,
-          useValue: {
-            send: jest.fn().mockReturnValue(
-              of({ gateOpen: true, missingRequirements: 'none' }),
-            ),
-          },
-        },
       ],
     }).compile();
 
