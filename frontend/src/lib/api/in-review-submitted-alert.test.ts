@@ -10,6 +10,10 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import {
+  readDashboardWithHost,
+  readIdentityHost,
+} from "./dashboard-host-source"
+import {
   ALERT_RECENCY_WINDOW_MS,
   ALERT_RECONCILE_DELAYS_MS,
   hasRecentAlertOfType,
@@ -17,7 +21,6 @@ import {
 } from "./status-alert-reconcile"
 import { buildAlertStack, selectVisibleAlerts } from "./status-alert-state"
 import type { StatusAlert } from "./status-alerts"
-import { readDashboardWithHost, readIdentityHost } from "./dashboard-host-source"
 
 const page = readDashboardWithHost()
 
@@ -145,7 +148,10 @@ describe("the page starts the wait when a verification returns In Review", () =>
       ),
       host.indexOf("// Real required check")
     )
-    assert.match(returnEffect, /\}, \[user, startAlertReconcile, hostActive\]\)/)
+    assert.match(
+      returnEffect,
+      /\}, \[user, startAlertReconcile, hostActive, returnGen\]\)/
+    )
   })
 
   it("Done on the dialog is not what loads the alert: it only closes it", () => {

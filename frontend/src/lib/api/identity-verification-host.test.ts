@@ -185,15 +185,15 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
     assert.ok(dashboard.includes("startVerificationRequestedInBrowser"))
   })
 
-  it("the host never navigates: closing a flow leaves the page it was opened over", () => {
+  it("the host navigates only to hand a return from Didit back to its origin page: closing a flow leaves the page it was opened over", () => {
     const code = host.replace(/\/\/.*$/gm, "")
-    assert.ok(
-      !/useRouter|router\.|next\/navigation"[^;]*useRouter|location\.(replace|reload)|history\./.test(
-        code
-      )
-    )
-    // the only window.location use is the Didit hand-off inside the (read-only) flow, not here
-    assert.ok(!/window\.location/.test(code))
+    // one router, one call, in the Didit-return hand-off (see verification-return-origin.ts)
+    assert.equal(count(code, "useRouter()"), 1)
+    assert.equal(count(code, "router.replace(target)"), 1)
+    assert.equal(count(code, "router."), 1)
+    assert.ok(!/location\.(replace|reload|assign)|history\./.test(code))
+    // the host never reads a result, or anything else, from the URL itself
+    assert.ok(!/window\.location|useSearchParams|URLSearchParams/.test(code))
   })
 })
 
@@ -295,7 +295,9 @@ describe("the host is inert on public and authentication pages, and when nobody 
       effectStart
     )
     assert.ok(guard > -1 && guard < effectStart && effectStart < firstRead)
-    assert.ok(host.includes("}, [user, startAlertReconcile, hostActive])"))
+    assert.ok(
+      host.includes("}, [user, startAlertReconcile, hostActive, returnGen])")
+    )
   })
 
   it("makes no request at mount: every identity or alert read is behind a click or a guard that needs an active host and a talent", () => {
@@ -323,7 +325,7 @@ describe("the host is inert on public and authentication pages, and when nobody 
       region("const handleLiveTravelUpdate = useCallback(", "}, [openFlow])"), // a click
       region(
         "if (!hostActive) return",
-        "}, [user, startAlertReconcile, hostActive])"
+        "}, [user, startAlertReconcile, hostActive, returnGen])"
       ), // the return effect, active host only
       region(
         "if (!user || !hostActive || resolveDashboardRole(user) !== ROLE.TALENT) return",
@@ -436,7 +438,7 @@ describe("no duplicate reconciliation, listener or surface across pages", () => 
     )
     const effect = host.slice(
       effectStart,
-      host.indexOf("}, [user, startAlertReconcile, hostActive])")
+      host.indexOf("}, [user, startAlertReconcile, hostActive, returnGen])")
     )
     assert.ok(
       effect.includes(

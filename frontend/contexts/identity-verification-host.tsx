@@ -12,7 +12,7 @@ import {
   type ReactNode,
 } from "react"
 import dynamic from "next/dynamic"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import {
@@ -100,6 +100,13 @@ import {
   shouldMarkReviewedResult,
 } from "@/src/lib/api/reviewed-approval-result"
 import { createStatusRefresher } from "@/src/lib/api/status-refresh"
+import { readReturnCallbackSearch } from "@/src/lib/api/verification-return-origin-browser"
+import {
+  buildHandoffTarget,
+  consumeReturnOrigin,
+  setReturnOriginAccount,
+  shouldHandOffReturn,
+} from "@/src/lib/api/verification-return-origin"
 import {
   clearHomeCountryChange,
   consumeHomeCountryChange,
@@ -642,6 +649,77 @@ export function IdentityVerificationHostProvider({
     openOnClosedRef.current = null
   }, [resetKey])
 
+  // Back from Didit. The backend sends the browser to /talent-dashboard (its callback is not
+  // changed), so a return that left from another page is handed straight back to it: the
+  // origin route stored when verification started (internal, per account, consumed here) with
+  // every callback parameter carried over. The decision is made before anything is painted and
+  // the result is NOT processed on the dashboard: the Didit-return handling below waits until
+  // the origin page is reached, so the result dialog and alert appear there. No origin (a
+  // bookmark, another account, expired, unavailable storage) and nothing changes: the result
+  // shows on the dashboard as before. A reload, Back or restored page is never handed off.
+  const router = useRouter()
+  const [handingOff, setHandingOff] = useState(false)
+  const [returnGen, setReturnGen] = useState(0)
+  const handoffRef = useRef<{ target: string; pathname: string } | null>(null)
+  const handoffDecidedRef = useRef(false)
+  useEffect(() => {
+    setReturnOriginAccount(user?.id ?? null)
+    return () => setReturnOriginAccount(null)
+  }, [user?.id])
+  useLayoutEffect(() => {
+    if (handoffDecidedRef.current) return
+    if (!hostActive || !user || resolveDashboardRole(user) !== ROLE.TALENT) return
+    handoffDecidedRef.current = true // one decision per page load
+    let navigationType: string | undefined
+    try {
+      const entry = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined
+      navigationType = entry?.type
+    } catch {
+      navigationType = undefined
+    }
+    if (
+      !shouldHandOffReturn({
+        pathname,
+        navigationType,
+        awaitingResult: hasAwaitingResult(window.localStorage),
+      })
+    ) {
+      return
+    }
+    const search = readReturnCallbackSearch()
+    const origin = consumeReturnOrigin({
+      storage: window.localStorage,
+      userId: user.id,
+      callbackSearch: search,
+    })
+    const target = origin ? buildHandoffTarget(origin, search) : null
+    if (!target) return
+    handoffRef.current = { target, pathname: new URL(target, "http://x").pathname }
+    setHandingOff(true)
+    router.replace(target)
+  }, [hostActive, user, pathname, router])
+  useEffect(() => {
+    const handoff = handoffRef.current
+    if (!handoff) return
+    if (pathname !== handoff.pathname) return
+    handoffRef.current = null
+    setHandingOff(false)
+    setReturnGen((g) => g + 1) // the Didit-return handling now runs on the origin page
+  }, [pathname])
+  useEffect(() => {
+    if (!handingOff) return
+    // One-shot guard, not polling: if the navigation never lands, fall back to the dashboard.
+    const guard = setTimeout(() => {
+      if (!handoffRef.current) return
+      handoffRef.current = null
+      setHandingOff(false)
+      setReturnGen((g) => g + 1)
+    }, 5000)
+    return () => clearTimeout(guard)
+  }, [handingOff])
+
   // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
   const returnReconcilerRef = useRef<ReturnType<
     typeof createReturnReconciler
@@ -651,6 +729,8 @@ export function IdentityVerificationHostProvider({
     if (!user) return
     if (resolveDashboardRole(user) !== ROLE.TALENT) return
     if (!hostActive) return
+    // Handing the return to its origin page: the result is processed there, not here.
+    if (handoffRef.current) return
 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -765,7 +845,7 @@ export function IdentityVerificationHostProvider({
       document.removeEventListener("visibilitychange", onVisible)
       window.removeEventListener("pageshow", onPageShow)
     }
-  }, [user, startAlertReconcile, hostActive])
+  }, [user, startAlertReconcile, hostActive, returnGen])
 
     // Real required check, attempted only on "Verify My Account" / Retry. Never
   // fakes a clean result and never marks anything verified itself.
@@ -1024,7 +1104,7 @@ export function IdentityVerificationHostProvider({
 
   return (
     <IdentityVerificationHostContext.Provider value={value}>
-      {children}
+      {handingOff ? null : children}
 
       {hostActive && (
       <>
