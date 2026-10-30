@@ -18,9 +18,10 @@ import {
   startStillTraveling,
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 const http = read("service", "http", "identity-verification.ts")
 const mismatchSource = read("src", "lib", "api", "location-mismatch.ts")

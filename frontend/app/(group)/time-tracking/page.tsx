@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/contexts/auth"
 import { useStartTimeGate } from "@/utils/useStartTimeGate"
-import { useRouter } from "next/navigation"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
-import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import {
   type ContractDTO,
@@ -3796,14 +3795,15 @@ export default function TimeTrackingPage() {
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
   const { runStart, startTimeGateDialog } = useStartTimeGate()
-  const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   // G8: Add Manual Time refused by the backend's verification gate. The default Verify your
   // account dialog opens over the form; no entry was written.
   const [manualTimeBlocked, setManualTimeBlocked] = useState(false)
   const goVerifyManualTime = () => {
+    // Verification opens over this page. The Add Manual Time form stays open underneath with
+    // what was entered, and nothing is saved or retried afterwards.
     setManualTimeBlocked(false)
-    setShowManualTimeDialog(false)
-    router.push(START_VERIFICATION_HREF)
+    void startVerification()
   }
   const [appliedFilters, setAppliedFilters] =
     useState<AppliedFilters>(emptyAppliedFilters)
@@ -5057,6 +5057,7 @@ export default function TimeTrackingPage() {
       <DownloadDesktopTrackerDialog
         open={showDownloadTracker}
         onOpenChange={setShowDownloadTracker}
+        onStartVerification={startVerification}
       />
       {startTimeGateDialog}
 
