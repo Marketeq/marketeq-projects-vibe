@@ -6267,7 +6267,7 @@ function ProjectDetailsInner() {
                                         <div className="flex min-w-0 items-center text-sm text-dark-blue-400">
                                           <span className="shrink-0 whitespace-nowrap font-extralight">
                                             {phase.phaseLabel}
-                                          </span>{" "}
+                                          </span>{"\u00a0"}
                                           <span
                                             className="min-w-0 truncate font-semibold"
                                             title={phase.phaseName}
