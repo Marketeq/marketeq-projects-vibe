@@ -19,6 +19,7 @@ import {
   RESULT_POLL_MAX_ATTEMPTS,
   type KeyValueStorage,
 } from "./identity-verification-status"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 
@@ -409,7 +410,7 @@ describe("return reconciliation: reconcile once, then /me", () => {
 })
 
 describe("dashboard wiring and boundaries (source guards)", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
   const effect = page.slice(page.indexOf("const returnReconcilerRef"), page.indexOf("Real required check"))
 
   it("reconciles only when the awaiting-result flag is present, through the shared once-only reconciler", () => {

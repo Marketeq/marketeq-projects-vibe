@@ -6,6 +6,7 @@ import { describe, it } from "node:test"
 import { createHash } from "node:crypto"
 import { cooldownRetryAt, formatRetryAt, shouldShowProfileBanner, verifyActionFor } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const summary = (over: Record<string, unknown>) =>
@@ -52,7 +53,7 @@ describe("the retry time reads as a date and a time, never a duration", () => {
 })
 
 describe("the screen: approved copy and the Figma frame 13101-47396", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
   const start = page.indexOf("open={cooldownRetryTime !== null}")
   const dialog = page.slice(page.lastIndexOf("<Dialog", start), page.indexOf("</Dialog>", start) + "</Dialog>".length)
 
@@ -103,7 +104,7 @@ describe("the screen: approved copy and the Figma frame 13101-47396", () => {
 })
 
 describe("wiring: every place that reads the backend's answer feeds it", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
 
   it("the load check, the return effect and the Verify action all feed the dialog from the backend's retry time", () => {
     assert.equal((page.match(/setCooldownRetryTime\(cooldownRetryAt\(summary\)\)/g) ?? []).length, 1) // load check

@@ -21,9 +21,10 @@ import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const gateComponent = read("components", "account-verification-gate.tsx")
 const sha = (s: string) =>
   createHash("sha256").update(s.replace(/\s+/g, "")).digest("hex")

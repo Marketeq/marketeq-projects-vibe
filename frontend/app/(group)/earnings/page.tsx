@@ -17,6 +17,7 @@ import {
   openDesktopTracker,
 } from "@/components/download-desktop-tracker-dialog"
 import { useStartTimeGate } from "@/utils/useStartTimeGate"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import {
   EarningsTab,
   type EarningsFilters,
@@ -82,6 +83,7 @@ export default function TransactionsPage() {
   const [showDownloadTracker, setShowDownloadTracker] = useState(false)
   const [openingDesktopTracker, setOpeningDesktopTracker] = useState(false)
   const { runStart, startTimeGateDialog } = useStartTimeGate()
+  const { startVerification } = useIdentityVerification()
   const handleLogTime = async () => {
     setOpeningDesktopTracker(true)
     try {
@@ -398,6 +400,7 @@ export default function TransactionsPage() {
         <DownloadDesktopTrackerDialog
           open={showDownloadTracker}
           onOpenChange={setShowDownloadTracker}
+          onStartVerification={startVerification}
         />
         {startTimeGateDialog}
       </div>
