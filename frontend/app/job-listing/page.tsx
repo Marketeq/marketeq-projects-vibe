@@ -13568,7 +13568,10 @@ const ProjectScopeEditStep = ({
                   ))}
                 </div>
               ) : (
-                visiblePhases.map((phase, phaseIndex) => {
+                visiblePhases.map((phase) => {
+                // Search only filters the list, so a phase keeps its number and
+                // day range from its position in the full scope.
+                const phaseIndex = phases.indexOf(phase)
                 const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
                 const isExpanded = expandedPhaseNames.includes(phaseName)
                 const phaseNameParts = phaseName.split(" ")
