@@ -8,9 +8,10 @@ import { join } from "node:path"
 import { describe, it } from "node:test"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
+// The Storybook story is not listed: frontend/stories/ is read-only (CLAUDE.md), so the story
+// keeps its Learn More until @CTorres9800 updates the design source.
 const identityFiles = [
   ["components", "identity-verification-flow.tsx"],
-  ["stories", "identity-verification-entire.stories.tsx"],
   ["contexts", "identity-verification-host.tsx"],
   ["app", "identity-verification-preview", "preview-client.tsx"],
 ]
@@ -22,8 +23,8 @@ describe("identity-verification Learn More", () => {
     }
   })
 
-  it("keeps the footer copy in the component and the Storybook story", () => {
-    for (const f of identityFiles.slice(0, 2)) {
+  it("keeps the footer copy in the component", () => {
+    for (const f of identityFiles.slice(0, 1)) {
       assert.match(
         read(...f),
         /Your data is encrypted and handled securely\./,
