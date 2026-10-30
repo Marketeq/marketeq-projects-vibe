@@ -124,10 +124,13 @@ export const CheckoutAPI = {
       { timeout: 4000 }
     ),
 
-  SubmitSessionPayment: (sessionId: string) =>
+  SubmitSessionPayment: (
+    sessionId: string,
+    data: { authorized: boolean; expectedTotal: number }
+  ) =>
     AxiosRequest.post(
       `/v1/checkout/session/${sessionId}/payment/submit`,
-      undefined,
+      data,
       { timeout: 10000 }
     ),
 

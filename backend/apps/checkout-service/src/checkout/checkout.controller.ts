@@ -30,6 +30,7 @@ import { UpdateCardDto } from "./dto/update-card.dto";
 import { CreateDraftSessionDto } from "./dto/create-draft-session.dto";
 import { SetPaymentSelectionDto } from "./dto/set-payment-selection.dto";
 import { SetBalanceAppliedDto } from "./dto/set-balance-applied.dto";
+import { SubmitPaymentDto } from "./dto/submit-payment.dto";
 import { ClientId } from "../decorators/client-id.decorator";
 import { StripeService } from "../stripe/stripe.service";
 import { JwtAuthGuard } from "../guards/jwt-auth.guard";
@@ -235,9 +236,16 @@ export class CheckoutController {
   @UseGuards(InternalTokenGuard)
   submitSessionPayment(
     @Param('sessionId', ParseUUIDPipe) sessionId: string,
+    @Body() dto: SubmitPaymentDto,
     @ClientId() clientId: string,
+    @Headers('x-client-email') clientEmail?: string,
   ) {
-    return this.checkoutDraftSessionService.submitPayment(clientId, sessionId);
+    return this.checkoutDraftSessionService.submitPayment(
+      clientId,
+      sessionId,
+      dto,
+      clientEmail,
+    );
   }
 
   @Delete("session/:sessionId/payment/selection")

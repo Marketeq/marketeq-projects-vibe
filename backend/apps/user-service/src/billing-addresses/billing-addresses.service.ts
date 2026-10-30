@@ -60,4 +60,12 @@ export class BillingAddressesService {
     });
     return toView(await this.repo.save(row));
   }
+
+  async getOne(
+    userId: string,
+    id: string,
+  ): Promise<BillingAddressView | null> {
+    const row = await this.repo.findOne({ where: { id, userId } });
+    return row ? toView(row) : null;
+  }
 }

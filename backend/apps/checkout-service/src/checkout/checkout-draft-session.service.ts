@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -18,7 +19,8 @@ import {
   AppliedGiftCard,
   CheckoutSession,
 } from './entities/checkout-session.entity';
-import { Order } from './entities/order.entity';
+import { Order, OrderPaymentSnapshotEntry } from './entities/order.entity';
+import type { SavedCardView } from './saved-cards.service';
 import { Payment, PaymentMethod } from './entities/payment.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
 import { CheckoutSummaryService } from './checkout-summary.service';
@@ -29,6 +31,7 @@ import { CheckoutDraftPricingService } from './pricing/checkout-draft-pricing.se
 import { ApplyDraftCodeDto } from './dto/draft-code.dto';
 import { SetPaymentSelectionDto } from './dto/set-payment-selection.dto';
 import { SetBalanceAppliedDto } from './dto/set-balance-applied.dto';
+import { SubmitPaymentDto } from './dto/submit-payment.dto';
 import { Wallet } from './entities/wallet.entity';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
@@ -216,19 +219,150 @@ export class CheckoutDraftSessionService {
     await this.replaceLines(session.id, null);
   }
 
-  async submitPayment(clientId: string, sessionId: string) {
+  async submitPayment(
+    clientId: string,
+    sessionId: string,
+    dto: SubmitPaymentDto,
+    clientEmail?: string,
+  ) {
+    if (dto?.authorized !== true) {
+      throw new BadRequestException({
+        code: 'AUTHORIZATION_REQUIRED',
+        message: 'Confirm the payment authorization before submitting',
+      });
+    }
+    if (typeof dto.expectedTotal !== 'number') {
+      throw new BadRequestException({
+        code: 'EXPECTED_TOTAL_REQUIRED',
+        message: 'The total shown to the client is required',
+      });
+    }
+    const existingOrder = await this.dataSource.manager.findOne(Order, {
+      where: { sessionId },
+    });
+    if (existingOrder) {
+      if (existingOrder.clientId !== clientId) {
+        throw new NotFoundException('Session not found');
+      }
+      return this.withOrder(clientId, sessionId, existingOrder);
+    }
     const session = await this.loadActiveSession(clientId, sessionId);
+    const due = await this.amountDue(clientId, session);
+    if (toCents(due) !== toCents(dto.expectedTotal)) {
+      throw new ConflictException({
+        code: 'AMOUNT_CHANGED',
+        message: 'The total changed since it was shown',
+        currentTotal: due,
+      });
+    }
     const selection = await this.readPaymentSelection(clientId, session);
-    if (!selection && (await this.amountDue(clientId, session)) > 0) {
+    if (!selection && due > 0) {
       throw new UnprocessableEntityException({
         code: 'PAYMENT_SELECTION_REQUIRED',
         message: 'Select a payment method before submitting',
       });
     }
-    await this.dataSource.manager.update(CheckoutSession, session.id, {
-      status: 'success',
+    const order = await this.createOrder(clientId, session, due, clientEmail);
+    // await this.dataSource.manager.update(CheckoutSession, session.id, {
+    //   status: 'success',
+    // });
+    return this.withOrder(clientId, sessionId, order);
+  }
+
+  private async withOrder(clientId: string, sessionId: string, order: Order) {
+    return {
+      ...(await this.getSession(clientId, sessionId)),
+      order: { orderId: order.orderId, status: order.status },
+    };
+  }
+
+  private async buildPaymentSnapshot(
+    clientId: string,
+    sessionId: string,
+  ): Promise<OrderPaymentSnapshotEntry[]> {
+    const lines = await this.dataSource.manager.find(Payment, {
+      where: { sessionId },
+      order: { createdAt: 'ASC' },
     });
-    return this.getSession(clientId, sessionId);
+    const capturedAt = new Date().toISOString();
+    return Promise.all(
+      lines.map(async (line) => {
+        const card = line.savedMethodId
+          ? ((await this.paymentSelections.find(
+              line.method,
+              clientId,
+              line.savedMethodId,
+            )) as SavedCardView | null)
+          : null;
+        const billingAddress =
+          card?.billingAddressId
+            ? await this.summaryService.fetchBillingAddress(
+                clientId,
+                card.billingAddressId,
+              )
+            : null;
+        return {
+          paymentId: line.id,
+          phase: line.phase,
+          method: line.method,
+          card: card
+            ? {
+                brand: card.brand,
+                funding: card.funding,
+                last4: card.last4,
+                expMonth: card.expMonth,
+                expYear: card.expYear,
+              }
+            : null,
+          billingAddress,
+          capturedAt,
+        };
+      }),
+    );
+  }
+
+  private async createOrder(
+    clientId: string,
+    session: CheckoutSession,
+    due: number,
+    clientEmail?: string,
+  ): Promise<Order> {
+    const draftSummary = await this.draftService.getSessionSummary(session.id);
+    if (!draftSummary?.listingId) {
+      throw new NotFoundException('Session not found');
+    }
+    const paymentSnapshot = await this.buildPaymentSnapshot(clientId, session.id);
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        await manager.query(
+          `SELECT "id" FROM "checkout"."sessions" WHERE "id" = $1 FOR UPDATE`,
+          [session.id],
+        );
+        const existing = await manager.findOne(Order, {
+          where: { sessionId: session.id },
+        });
+        if (existing) return existing;
+        await manager.insert(Order, {
+          sessionId: session.id,
+          clientId,
+          listingId: draftSummary.listingId,
+          orderCost: due,
+          status: 'processing',
+          confirmationEmail: clientEmail?.trim() || null,
+          paymentSnapshot,
+        });
+        return manager.findOneOrFail(Order, {
+          where: { sessionId: session.id },
+        });
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        return this.dataSource.manager.findOneOrFail(Order, {
+          where: { sessionId: session.id },
+        });
+      }
+      throw error;
+    }
   }
 
   private async readPaymentSelection(clientId: string, session: CheckoutSession) {

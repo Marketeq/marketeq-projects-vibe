@@ -135,8 +135,16 @@ export class CheckoutDraftGatewayService {
     return this.forward('put', `/session/${sessionId}/balance`, clientId, `set the applied balance of checkout session ${sessionId}`, { body });
   }
 
-  async submitSessionPayment(sessionId: string, clientId: string) {
-    return this.forward('post', `/session/${sessionId}/payment/submit`, clientId, `submit the payment of checkout session ${sessionId}`);
+  async submitSessionPayment(
+    sessionId: string,
+    body: Record<string, unknown>,
+    clientId: string,
+    clientEmail?: string,
+  ) {
+    return this.forward('post', `/session/${sessionId}/payment/submit`, clientId, `submit the payment of checkout session ${sessionId}`, {
+      body,
+      ...(clientEmail ? { headers: { 'x-client-email': clientEmail } } : {}),
+    });
   }
 
   async clearSessionPaymentSelection(sessionId: string, clientId: string) {
@@ -283,12 +291,16 @@ export class CheckoutDraftGatewayService {
     path: string,
     clientId: string,
     action: string,
-    options: { body?: unknown; params?: Record<string, unknown> } = {},
+    options: {
+      body?: unknown;
+      params?: Record<string, unknown>;
+      headers?: Record<string, string>;
+    } = {},
   ) {
     try {
       const url = `${this.checkoutUrl}/v1/checkout${path}`;
       const config = {
-        headers: this.headers(clientId),
+        headers: { ...this.headers(clientId), ...options.headers },
         ...(options.params ? { params: options.params } : {}),
       };
       const request =

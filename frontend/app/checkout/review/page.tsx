@@ -1096,9 +1096,36 @@ export default function ConfirmationPage() {
     const submitProjectPayment = async () => {
       try {
         await new Promise((resolve) => window.setTimeout(resolve, 1500))
-        await CheckoutAPI.SubmitSessionPayment(checkout.sessionId)
+        await CheckoutAPI.SubmitSessionPayment(checkout.sessionId, {
+          authorized: hasAuthorizedPayment,
+          expectedTotal: Math.round(totalDueToday * 100) / 100,
+        })
       } catch (error) {
         setIsSubmittingPayment(false)
+        const failureData = (
+          error as {
+            response?: {
+              data?: { code?: string; message?: { code?: string } | string }
+            }
+          }
+        ).response?.data
+        const failureNested =
+          typeof failureData?.message === "object" ? failureData.message : null
+        if ((failureData?.code ?? failureNested?.code) === "AMOUNT_CHANGED") {
+          setHasAuthorizedPayment(false)
+          setSubmitError(
+            "The total amount has changed. Please refresh the page"
+          )
+          try {
+            const response = await CheckoutAPI.GetSession(checkout.sessionId)
+            checkout.updateSession(response.data as CheckoutSession)
+          } catch {
+            setSubmitError(
+              "Something went wrong while processing your payment. Please try again or contact support"
+            )
+          }
+          return
+        }
         if (!openSessionDialogForFailure(error)) {
           setSubmitError(
             "Something went wrong while processing your payment. Please try again or contact support"
@@ -1106,7 +1133,7 @@ export default function ConfirmationPage() {
         }
         return
       }
-      window.location.assign(`${basePath}/thank-you?${slugQuery}`)
+      // window.location.assign(`${basePath}/thank-you?${slugQuery}`)
     }
     void submitProjectPayment()
   }

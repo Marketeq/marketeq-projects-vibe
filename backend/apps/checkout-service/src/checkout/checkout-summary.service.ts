@@ -10,6 +10,7 @@ import { ClientProxy, RmqRecordBuilder } from '@nestjs/microservices';
 import { firstValueFrom, timeout } from 'rxjs';
 import { CheckoutRateSelectionDto } from './dto/calculate-rate-estimate.dto';
 import { LISTINGS_RPC, PRICING_RPC, USER_RPC } from './rpc-clients';
+import type { OrderSnapshotAddress } from './entities/order.entity';
 
 export type SummaryScopeTask = {
   id: string;
@@ -393,6 +394,34 @@ export class CheckoutSummaryService {
       .filter((part) => typeof part === 'string' && part.trim())
       .join(' ');
     return { email, name: name || undefined };
+  }
+
+  async fetchBillingAddress(
+    userId: string,
+    id: string,
+  ): Promise<OrderSnapshotAddress | null> {
+    try {
+      const address = await this.call<Record<string, any>>(
+        this.users,
+        'user.billing-address.get',
+        { userId, id },
+      );
+      return {
+        fullName: address.fullName,
+        addressLine1: address.addressLine1,
+        addressLine2: address.addressLine2 ?? null,
+        city: address.city,
+        state: address.state ?? null,
+        postalCode: address.postalCode,
+        country: address.country,
+        phoneNumber: address.phoneNumber,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Failed to fetch billing address ${id} for user ${userId}: ${errorMessage(err)}`,
+      );
+      return null;
+    }
   }
 
   async assertUserExists(userId: string): Promise<void> {
