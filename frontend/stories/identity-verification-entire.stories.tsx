@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { cn } from "@/utils/functions"
 import { useStateMachine } from "@/utils/hooks"
 import {
@@ -506,10 +505,7 @@ function IdentityVerification() {
 
             <div className="mt-6 text-center">
               <span className="text-xs leading-none text-gray-500">
-                Your data is encrypted and handled securely.{" "}
-                <Link href="#" className="focus-visible:outline-none underline">
-                  Learn More
-                </Link>
+                Your data is encrypted and handled securely.
               </span>
             </div>
           </div>
