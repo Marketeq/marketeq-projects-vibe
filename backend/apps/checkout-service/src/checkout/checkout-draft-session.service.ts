@@ -7,6 +7,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import {
   CheckoutDraftValidationService,
@@ -33,6 +34,7 @@ import { SetPaymentSelectionDto } from './dto/set-payment-selection.dto';
 import { SetBalanceAppliedDto } from './dto/set-balance-applied.dto';
 import { SubmitPaymentDto } from './dto/submit-payment.dto';
 import { Wallet } from './entities/wallet.entity';
+import { WalletTransaction } from './entities/wallet-transaction.entity';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
@@ -54,6 +56,14 @@ const amountDueCents = (
       ),
     0,
   );
+
+type RequestMeta = { sourceIp?: string; userAgent?: string };
+
+class BalanceShortError extends Error {
+  constructor(readonly availableCents: number) {
+    super('The wallet balance no longer covers the applied amount');
+  }
+}
 
 type FrozenCodes = {
   appliedGiftCards: AppliedGiftCard[] | null;
@@ -224,6 +234,7 @@ export class CheckoutDraftSessionService {
     sessionId: string,
     dto: SubmitPaymentDto,
     clientEmail?: string,
+    requestMeta: RequestMeta = {},
   ) {
     if (dto?.authorized !== true) {
       throw new BadRequestException({
@@ -262,10 +273,17 @@ export class CheckoutDraftSessionService {
         message: 'Select a payment method before submitting',
       });
     }
-    const order = await this.createOrder(clientId, session, due, clientEmail);
-    // await this.dataSource.manager.update(CheckoutSession, session.id, {
-    //   status: 'success',
-    // });
+    const order = await this.createOrder(
+      clientId,
+      session,
+      due,
+      clientEmail,
+      await this.appliedBalanceCents(clientId, session),
+      requestMeta,
+    );
+    await this.dataSource.manager.update(CheckoutSession, session.id, {
+      status: 'success',
+    });
     return this.withOrder(clientId, sessionId, order);
   }
 
@@ -325,7 +343,9 @@ export class CheckoutDraftSessionService {
     clientId: string,
     session: CheckoutSession,
     due: number,
-    clientEmail?: string,
+    clientEmail: string | undefined,
+    balanceCents: number,
+    requestMeta: RequestMeta,
   ): Promise<Order> {
     const draftSummary = await this.draftService.getSessionSummary(session.id);
     if (!draftSummary?.listingId) {
@@ -351,11 +371,35 @@ export class CheckoutDraftSessionService {
           confirmationEmail: clientEmail?.trim() || null,
           paymentSnapshot,
         });
-        return manager.findOneOrFail(Order, {
+        const created = await manager.findOneOrFail(Order, {
           where: { sessionId: session.id },
         });
+        await this.spendBalance(
+          manager,
+          clientId,
+          created.orderId,
+          balanceCents,
+          requestMeta,
+        );
+        return created;
       });
     } catch (error) {
+      if (error instanceof BalanceShortError) {
+        await this.resetBalanceToAvailable(
+          clientId,
+          session.id,
+          error.availableCents,
+        );
+        const refreshed = await this.dataSource.manager.findOneOrFail(
+          CheckoutSession,
+          { where: { id: session.id } },
+        );
+        throw new ConflictException({
+          code: 'AMOUNT_CHANGED',
+          message: 'The total changed since it was shown',
+          currentTotal: await this.amountDue(clientId, refreshed),
+        });
+      }
       if ((error as { code?: string }).code === '23505') {
         return this.dataSource.manager.findOneOrFail(Order, {
           where: { sessionId: session.id },
@@ -363,6 +407,73 @@ export class CheckoutDraftSessionService {
       }
       throw error;
     }
+  }
+
+  private async appliedBalanceCents(
+    clientId: string,
+    session: CheckoutSession,
+  ): Promise<number> {
+    const projectCost = Number(session.projectCost);
+    const { promo } = await this.codeService.listCodes({
+      clientId,
+      giftCardCodes: [],
+      promoCode: session.appliedPromoCode,
+    });
+    const promoAmount =
+      promo && promo.status === 'valid'
+        ? promoDiscountCents(promo, toCents(projectCost)) / 100
+        : 0;
+    return Math.min(
+      toCents(Number(session.walletAmountUsed ?? 0)),
+      amountDueCents(projectCost, promoAmount, session.appliedGiftCards),
+    );
+  }
+
+  private async spendBalance(
+    manager: EntityManager,
+    clientId: string,
+    orderId: string,
+    balanceCents: number,
+    requestMeta: RequestMeta,
+  ): Promise<void> {
+    if (balanceCents <= 0) return;
+    const wallets = await manager.query(
+      `SELECT "balance" FROM "checkout"."wallets" WHERE "userId" = $1 FOR UPDATE`,
+      [clientId],
+    );
+    const availableCents = wallets.length
+      ? toCents(Number(wallets[0].balance))
+      : 0;
+    if (availableCents < balanceCents) {
+      throw new BalanceShortError(availableCents);
+    }
+    await manager.query(
+      `UPDATE "checkout"."wallets" SET "balance" = "balance" - ($1::numeric / 100), "updatedAt" = now() WHERE "userId" = $2`,
+      [balanceCents, clientId],
+    );
+    await manager.insert(WalletTransaction, {
+      id: randomUUID(),
+      userId: clientId,
+      type: 'payment',
+      amount: balanceCents / 100,
+      status: 'completed',
+      orderId,
+      reason: `Balance applied to order ${orderId}`,
+      sourceIp: requestMeta.sourceIp?.trim().slice(0, 64) || null,
+      userAgent: requestMeta.userAgent?.trim().slice(0, 500) || null,
+      createdBy: clientId,
+    });
+  }
+
+  private async resetBalanceToAvailable(
+    clientId: string,
+    sessionId: string,
+    availableCents: number,
+  ): Promise<void> {
+    await this.dataSource.manager.update(CheckoutSession, sessionId, {
+      walletAmountUsed: availableCents / 100,
+    });
+    await this.syncPaymentAmount(clientId, sessionId);
   }
 
   private async readPaymentSelection(clientId: string, session: CheckoutSession) {

@@ -1,6 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } from 'typeorm';
 
-export type WalletTransactionType = 'topup' | 'giftcard' | 'payment';
+export type WalletTransactionType =
+  | 'topup'
+  | 'giftcard'
+  | 'payment'
+  | 'refund';
 export type WalletTransactionStatus = 'pending' | 'completed';
 
 @Entity('wallet_transactions')
@@ -12,7 +16,7 @@ export class WalletTransaction {
   @Column('uuid')
   userId: string;
 
-  @Column({ type: 'enum', enum: ['topup', 'giftcard', 'payment'] })
+  @Column({ type: 'enum', enum: ['topup', 'giftcard', 'payment', 'refund'] })
   type: WalletTransactionType;
 
   @Column({ type: 'decimal', precision: 10, scale: 2 })
@@ -20,6 +24,10 @@ export class WalletTransaction {
 
   @Column({ type: 'enum', enum: ['pending', 'completed'], default: 'pending' })
   status: WalletTransactionStatus;
+
+  @Index()
+  @Column({ type: 'varchar', length: 14, nullable: true })
+  orderId: string | null;
 
   @Column({ type: 'text', nullable: true })
   reason: string | null;

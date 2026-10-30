@@ -1133,7 +1133,7 @@ export default function ConfirmationPage() {
         }
         return
       }
-      // window.location.assign(`${basePath}/thank-you?${slugQuery}`)
+      window.location.assign(`${basePath}/thank-you?${slugQuery}`)
     }
     void submitProjectPayment()
   }

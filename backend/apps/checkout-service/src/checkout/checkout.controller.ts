@@ -239,12 +239,15 @@ export class CheckoutController {
     @Body() dto: SubmitPaymentDto,
     @ClientId() clientId: string,
     @Headers('x-client-email') clientEmail?: string,
+    @Headers('x-client-ip') sourceIp?: string,
+    @Headers('x-client-user-agent') userAgent?: string,
   ) {
     return this.checkoutDraftSessionService.submitPayment(
       clientId,
       sessionId,
       dto,
       clientEmail,
+      { sourceIp, userAgent },
     );
   }
 

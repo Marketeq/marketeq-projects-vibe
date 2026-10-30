@@ -9,11 +9,14 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { CheckoutDraftGatewayService } from './checkout-draft.service';
 import { UserEmail, UserId } from './user-id.decorator';
+import { resolveClientIp } from '../controllers/client-ip.controller';
 
 // Both prefixes, because the frontend's base URL is not consistent about the
 // `/api` segment (see ClientIpController for the same issue/fix). Registered
@@ -151,8 +154,12 @@ export class CheckoutDraftController {
     @Body() body: Record<string, unknown>,
     @UserId() clientId: string,
     @UserEmail() clientEmail: string | undefined,
+    @Req() req: Request,
   ) {
-    return this.checkoutDraftService.submitSessionPayment(sessionId, body, clientId, clientEmail);
+    return this.checkoutDraftService.submitSessionPayment(sessionId, body, clientId, clientEmail, {
+      sourceIp: resolveClientIp(req) ?? undefined,
+      userAgent: req.headers['user-agent'],
+    });
   }
 
   @Delete('session/:sessionId/payment/selection')

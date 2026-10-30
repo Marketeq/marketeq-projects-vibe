@@ -140,10 +140,18 @@ export class CheckoutDraftGatewayService {
     body: Record<string, unknown>,
     clientId: string,
     clientEmail?: string,
+    requestMeta: { sourceIp?: string; userAgent?: string } = {},
   ) {
+    const headers: Record<string, string> = {
+      ...(clientEmail ? { 'x-client-email': clientEmail } : {}),
+      ...(requestMeta.sourceIp ? { 'x-client-ip': requestMeta.sourceIp } : {}),
+      ...(requestMeta.userAgent
+        ? { 'x-client-user-agent': requestMeta.userAgent.slice(0, 500) }
+        : {}),
+    };
     return this.forward('post', `/session/${sessionId}/payment/submit`, clientId, `submit the payment of checkout session ${sessionId}`, {
       body,
-      ...(clientEmail ? { headers: { 'x-client-email': clientEmail } } : {}),
+      headers,
     });
   }
 

@@ -9,6 +9,7 @@ import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { CheckoutSession } from './entities/checkout-session.entity';
 import { Payment } from './entities/payment.entity';
 import { Order } from './entities/order.entity';
+import { WalletTransaction } from './entities/wallet-transaction.entity';
 
 const CARD = {
   id: 'card-1',
@@ -28,6 +29,7 @@ type Options = {
   order?: Record<string, unknown> | null;
   insertError?: unknown;
   address?: unknown;
+  walletBalance?: string | null;
 };
 
 const ADDRESS = {
@@ -51,14 +53,21 @@ const buildService = (
   session: Record<string, unknown> | null,
   options: Options = {},
 ) => {
-  const update = jest.fn().mockResolvedValue(undefined);
+  const state = session ? { ...session } : null;
+  const update = jest
+    .fn()
+    .mockImplementation(
+      async (entity: unknown, _id: unknown, patch: Record<string, unknown>) => {
+        if (entity === CheckoutSession && state) Object.assign(state, patch);
+      },
+    );
   const remove = jest.fn().mockResolvedValue(undefined);
   const insert = jest.fn().mockImplementation(async (entity: unknown) => {
     if (entity === Order && options.insertError) throw options.insertError;
   });
   const manager = {
     findOne: jest.fn().mockImplementation(async (entity: unknown) => {
-      if (entity === CheckoutSession) return session;
+      if (entity === CheckoutSession) return state;
       if (entity === Payment) return options.line ?? null;
       if (entity === Order) return options.order ?? null;
       return null;
@@ -76,11 +85,21 @@ const buildService = (
           ]
         : [],
     ),
-    findOneOrFail: jest.fn().mockResolvedValue(NEW_ORDER),
+    findOneOrFail: jest
+      .fn()
+      .mockImplementation(async (entity: unknown) =>
+        entity === CheckoutSession ? state : NEW_ORDER,
+      ),
     update,
     delete: remove,
     insert,
-    query: jest.fn().mockResolvedValue([{ expired: options.expired ?? false }]),
+    query: jest.fn().mockImplementation(async (sql: string) =>
+      sql.includes('"wallets"') && sql.includes('SELECT')
+        ? options.walletBalance === null
+          ? []
+          : [{ balance: options.walletBalance ?? '100000.00' }]
+        : [{ expired: options.expired ?? false }],
+    ),
   };
   const fetchBillingAddress = jest
     .fn()
@@ -113,7 +132,15 @@ const buildService = (
     {} as never,
     registry,
   );
-  return { service, update, remove, insert, savedCards, fetchBillingAddress };
+  return {
+    service,
+    update,
+    remove,
+    insert,
+    savedCards,
+    fetchBillingAddress,
+    query: manager.query,
+  };
 };
 
 const pending = {
@@ -336,7 +363,9 @@ describe('session submit', () => {
       authorized: true,
       expectedTotal: 5000,
     });
-    expect(update).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(CheckoutSession, 'session-1', {
+      status: 'success',
+    });
     expect(result).toMatchObject({
       order: { orderId: 'C01-00001-0001', status: 'processing' },
     });
@@ -356,7 +385,9 @@ describe('session submit', () => {
       authorized: true,
       expectedTotal: 5000,
     });
-    expect(insert).toHaveBeenCalledTimes(1);
+    expect(
+      insert.mock.calls.filter(([entity]) => entity === Order),
+    ).toHaveLength(1);
     expect(insert).toHaveBeenCalledWith(Order, {
       sessionId: 'session-1',
       clientId: 'client-1',
@@ -436,6 +467,156 @@ describe('session submit', () => {
       Order,
       expect.objectContaining({ paymentSnapshot: [] }),
     );
+  });
+
+  describe('balance', () => {
+    const withBalance = {
+      ...pending,
+      walletAmountUsed: '3000.00',
+      appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+    };
+    const card = { line: { method: 'card', savedMethodId: 'card-1' } };
+
+    it('takes the applied balance from the wallet and writes a payment ledger row for the order', async () => {
+      const { service, insert, query } = buildService(withBalance, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await service.submitPayment(
+        'client-1',
+        'session-1',
+        { authorized: true, expectedTotal: 5000 },
+        undefined,
+        { sourceIp: '203.0.113.9', userAgent: 'Mozilla/5.0' },
+      );
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('FOR UPDATE'),
+        ['client-1'],
+      );
+      expect(query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE "checkout"."wallets"'),
+        [300000, 'client-1'],
+      );
+      expect(insert).toHaveBeenCalledWith(WalletTransaction, {
+        id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        userId: 'client-1',
+        type: 'payment',
+        amount: 3000,
+        status: 'completed',
+        orderId: 'C01-00001-0001',
+        reason: 'Balance applied to order C01-00001-0001',
+        sourceIp: '203.0.113.9',
+        userAgent: 'Mozilla/5.0',
+        createdBy: 'client-1',
+      });
+    });
+
+    it('does not touch the wallet when no balance is applied', async () => {
+      const { service, insert, query } = buildService(pending, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await service.submitPayment('client-1', 'session-1', seen);
+      expect(
+        query.mock.calls.some(([sql]: [string]) => sql.includes('"wallets"')),
+      ).toBe(false);
+      expect(
+        insert.mock.calls.some(([entity]) => entity === WalletTransaction),
+      ).toBe(false);
+    });
+
+    it('takes only the amount due when the applied balance is larger', async () => {
+      const { service, insert } = buildService(
+        { ...pending, walletAmountUsed: '20000.00' },
+        { line: null },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await service.submitPayment('client-1', 'session-1', {
+        authorized: true,
+        expectedTotal: 0,
+      });
+      expect(insert).toHaveBeenCalledWith(
+        WalletTransaction,
+        expect.objectContaining({ amount: 10000 }),
+      );
+    });
+
+    it('keeps the ip and user agent null when none are sent and caps long ones', async () => {
+      const first = buildService(withBalance, card);
+      jest.spyOn(first.service, 'getSession').mockResolvedValue({} as never);
+      await first.service.submitPayment('client-1', 'session-1', {
+        authorized: true,
+        expectedTotal: 5000,
+      });
+      expect(first.insert).toHaveBeenCalledWith(
+        WalletTransaction,
+        expect.objectContaining({ sourceIp: null, userAgent: null }),
+      );
+      const second = buildService(withBalance, card);
+      jest.spyOn(second.service, 'getSession').mockResolvedValue({} as never);
+      await second.service.submitPayment(
+        'client-1',
+        'session-1',
+        { authorized: true, expectedTotal: 5000 },
+        undefined,
+        { sourceIp: '1'.repeat(100), userAgent: 'x'.repeat(900) },
+      );
+      const ledger = second.insert.mock.calls.find(
+        ([entity]) => entity === WalletTransaction,
+      )![1];
+      expect(ledger.sourceIp).toHaveLength(64);
+      expect(ledger.userAgent).toHaveLength(500);
+    });
+
+    it('answers AMOUNT_CHANGED with the new total and lowers the applied balance when the wallet is short', async () => {
+      const { service, update } = buildService(withBalance, {
+        ...card,
+        walletBalance: '1000.00',
+      });
+      await expect(
+        service.submitPayment('client-1', 'session-1', {
+          authorized: true,
+          expectedTotal: 5000,
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'AMOUNT_CHANGED', currentTotal: 7000 },
+      });
+      expect(update).toHaveBeenCalledWith(CheckoutSession, 'session-1', {
+        walletAmountUsed: 1000,
+      });
+    });
+
+    it('treats a client with no wallet row as a zero balance', async () => {
+      const { service, update } = buildService(withBalance, {
+        ...card,
+        walletBalance: null,
+      });
+      await expect(
+        service.submitPayment('client-1', 'session-1', {
+          authorized: true,
+          expectedTotal: 5000,
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'AMOUNT_CHANGED', currentTotal: 8000 },
+      });
+      expect(update).toHaveBeenCalledWith(CheckoutSession, 'session-1', {
+        walletAmountUsed: 0,
+      });
+    });
+
+    it('does not spend anything again on a repeat call', async () => {
+      const { service, insert, query } = buildService(withBalance, {
+        ...card,
+        order: NEW_ORDER,
+      });
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await service.submitPayment('client-1', 'session-1', {
+        authorized: true,
+        expectedTotal: 5000,
+      });
+      expect(insert).not.toHaveBeenCalled();
+      expect(
+        query.mock.calls.some(([sql]: [string]) => sql.includes('"wallets"')),
+      ).toBe(false);
+    });
   });
 
   it('stores the client email from the header on the order', async () => {

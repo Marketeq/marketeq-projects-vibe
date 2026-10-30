@@ -59,7 +59,7 @@ export class ClientIpController {
  * wrong-but-plausible address is worse than an absent one here: it would be
  * offered to someone as the value to whitelist.
  */
-function resolveClientIp(req: Request): string | null {
+export function resolveClientIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for']
   const chain = Array.isArray(forwarded) ? forwarded.join(',') : forwarded
 
