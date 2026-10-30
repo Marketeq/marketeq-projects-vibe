@@ -207,13 +207,16 @@ describe("G9 Verify My Account starts verification in place through the shared h
     )
   })
 
-  it("the shared gate component is byte-identical to dev-main, so its design and non-dismissible behavior are unchanged", () => {
+  it("the shared gate component keeps its design and non-dismissible default (plus the one approved optional onCancel, absent for this caller)", () => {
     const gate = read("components", "account-verification-gate.tsx")
+    // 2026-10-29: the optional `onCancel` prop was added (explicitly approved) for the
+    // post-decline retry presentation. G9 passes none, so Escape and outside click stay disabled.
     assert.equal(
       createHash("sha256").update(gate).digest("hex"),
-      "ae2f12ce616dce592059e9edf4feff93aae09750480ce32a4d9d9af907f88fac"
+      "dc6c5d0ca29595da3c544853db3b4d4538679483d1270f753e803a5a1a16dee0"
     )
-    assert.ok(gate.includes("onEscapeKeyDown={(e) => e.preventDefault()}"))
+    assert.ok(gate.includes("onEscapeKeyDown={cancel ? undefined : (e) => e.preventDefault()}"))
+    assert.ok(!read("components", "withdraw-funds-dialog.tsx").includes("onCancel="))
   })
 })
 

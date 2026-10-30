@@ -691,7 +691,7 @@ These are reusable composed modules built from base UI components. Located at `f
 - **File**: `account-verification-gate.tsx`
 - **Import**: `import { AccountVerificationGate, type ConnectionCheckState } from "@/components/account-verification-gate"`
 - **Exports**: `AccountVerificationGate`, `AccountVerificationGateReason`, `ConnectionCheckState`
-- **Key Props**: `open`, `reason: "unstarted" | "status_unavailable"`, `connectionCheckState: "idle" | "checking" | "unavailable"`, `onVerify`, `onRetryConnectionCheck`, `onDismissConnectionError`
+- **Key Props**: `open`, `reason: "unstarted" | "status_unavailable"`, `connectionCheckState: "idle" | "checking" | "unavailable"`, `onVerify`, `onRetryConnectionCheck`, `onDismissConnectionError`, optional `onCancel` (when omitted — the default — there is no Cancel button and Escape / outside click stay disabled; when given, Cancel is shown before "Verify My Account" and Escape / outside click do the same, once)
 - **Usage**: Talent dashboard "Verify My Account" entry prompt for Identity Verification (Figma node 13101-47588), including the connection-check error and Retry state
 - **Dependencies**: Dialog, DialogContent, Button (base UI only), AlertTriangle / RefreshCw icons
 

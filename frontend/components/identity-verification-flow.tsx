@@ -115,6 +115,10 @@ import type { DetectedLocation } from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
 import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-kyc"
 import {
+  openDiditOverlay,
+  subscribeDiditOverlay,
+} from "@/src/lib/api/didit-overlay"
+import {
   recordTravelClassification,
   recordTravelDuration,
   SKIPPED_TRAVEL_DURATION_LABEL,
@@ -840,6 +844,17 @@ export function IdentityVerificationFlow({
   // components and states are kept, just no longer reachable from here).
   const [startingFreeKyc, setStartingFreeKyc] = useState(false)
   const startingFreeKycRef = useRef(false)
+  // Didit now opens over this screen: if it is dismissed without a result (closed, camera
+  // denied, expired), the same screen is usable again. A result is handled by the host.
+  useEffect(
+    () =>
+      subscribeDiditOverlay((event) => {
+        if (event.type !== "dismissed") return
+        startingFreeKycRef.current = false
+        setStartingFreeKyc(false)
+      }),
+    []
+  )
   const handleHomeCountryYes = async () => {
     if (startingFreeKycRef.current) return
     startingFreeKycRef.current = true
@@ -856,7 +871,7 @@ export function IdentityVerificationFlow({
         return {
           confirmHomeCountry: () => IdentityVerificationAPI.confirmHomeCountry(),
           startFreeKyc: () => IdentityVerificationAPI.startFreeKyc(),
-          redirect: (url: string) => window.location.assign(url),
+          redirect: (url: string) => void openDiditOverlay(url),
         }
       },
     })
