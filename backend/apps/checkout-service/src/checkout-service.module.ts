@@ -9,6 +9,7 @@ import { PromoCode } from './checkout/entities/promo-code.entity';
 import { PromoRedemption } from './checkout/entities/promo-redemption.entity';
 import { GiftCardAttempt } from './checkout/entities/gift-card-attempt.entity';
 import { WalletTransaction } from './checkout/entities/wallet-transaction.entity';
+import { GiftCardRedemption } from './checkout/entities/gift-card-redemption.entity';
 import { PaymentFailure } from './checkout/entities/payment-failure.entity';
 import { InstallmentPayment } from './checkout/entities/installment-payment.entity';
 import { SavedBankAccount } from './checkout/entities/saved-bank-account.entity';
@@ -65,7 +66,7 @@ const requireRabbitmqUrl = (): string => {
         SavedBankAccount, WireTransfer, StripeMetadata,
         CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
         PromoCode, PromoRedemption, GiftCardAttempt,
-        StripeCustomer, SavedCard, Order, Payment,
+        StripeCustomer, SavedCard, Order, Payment, GiftCardRedemption,
       ],
       synchronize: false,
       extra: {
@@ -82,7 +83,7 @@ const requireRabbitmqUrl = (): string => {
       SavedBankAccount, WireTransfer, StripeMetadata,
       CheckoutDraft, CheckoutDraftPhaseEntity, CheckoutDraftTaskEntity,
       PromoCode, PromoRedemption, GiftCardAttempt,
-        StripeCustomer, SavedCard, Order, Payment,
+        StripeCustomer, SavedCard, Order, Payment, GiftCardRedemption,
     ]),
     ClientsModule.register(
       [

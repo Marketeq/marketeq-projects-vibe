@@ -19,7 +19,7 @@ export class PromoRedemption {
   @Column({ name: 'draft_id', type: 'uuid' })
   draftId: string;
 
-  @Column({ name: 'order_id', type: 'uuid' })
+  @Column({ name: 'order_id', type: 'varchar', length: 14 })
   orderId: string;
 
   @Column({

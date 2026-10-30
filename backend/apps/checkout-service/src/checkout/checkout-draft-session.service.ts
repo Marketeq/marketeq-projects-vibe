@@ -35,6 +35,8 @@ import { SetBalanceAppliedDto } from './dto/set-balance-applied.dto';
 import { SubmitPaymentDto } from './dto/submit-payment.dto';
 import { Wallet } from './entities/wallet.entity';
 import { WalletTransaction } from './entities/wallet-transaction.entity';
+import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
+import { PromoRedemption } from './entities/promo-redemption.entity';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
@@ -64,6 +66,22 @@ class BalanceShortError extends Error {
     super('The wallet balance no longer covers the applied amount');
   }
 }
+
+type AvailableGiftCard = { code: string; availableCents: number };
+
+class GiftCardShortError extends Error {
+  constructor(readonly available: AvailableGiftCard[]) {
+    super('A gift card no longer covers the applied amount');
+  }
+}
+
+class PromoUnavailableError extends Error {
+  constructor() {
+    super('The promo code can no longer be used');
+  }
+}
+
+const giftCardKey = (code: string) => code.replace(/-/g, '').toUpperCase();
 
 type FrozenCodes = {
   appliedGiftCards: AppliedGiftCard[] | null;
@@ -279,6 +297,7 @@ export class CheckoutDraftSessionService {
       due,
       clientEmail,
       await this.appliedBalanceCents(clientId, session),
+      await this.appliedPromoCents(clientId, session),
       requestMeta,
     );
     await this.dataSource.manager.update(CheckoutSession, session.id, {
@@ -345,6 +364,7 @@ export class CheckoutDraftSessionService {
     due: number,
     clientEmail: string | undefined,
     balanceCents: number,
+    promoCents: number,
     requestMeta: RequestMeta,
   ): Promise<Order> {
     const draftSummary = await this.draftService.getSessionSummary(session.id);
@@ -381,6 +401,20 @@ export class CheckoutDraftSessionService {
           balanceCents,
           requestMeta,
         );
+        await this.spendGiftCards(
+          manager,
+          clientId,
+          created.orderId,
+          session.appliedGiftCards,
+          requestMeta,
+        );
+        await this.spendPromo(
+          manager,
+          clientId,
+          session,
+          created.orderId,
+          promoCents,
+        );
         return created;
       });
     } catch (error) {
@@ -390,15 +424,22 @@ export class CheckoutDraftSessionService {
           session.id,
           error.availableCents,
         );
-        const refreshed = await this.dataSource.manager.findOneOrFail(
-          CheckoutSession,
-          { where: { id: session.id } },
-        );
-        throw new ConflictException({
-          code: 'AMOUNT_CHANGED',
-          message: 'The total changed since it was shown',
-          currentTotal: await this.amountDue(clientId, refreshed),
+        throw await this.amountChanged(clientId, session.id);
+      }
+      if (error instanceof PromoUnavailableError) {
+        await this.dataSource.manager.update(CheckoutSession, session.id, {
+          appliedPromoCode: null,
         });
+        await this.syncPaymentAmount(clientId, session.id);
+        throw await this.amountChanged(clientId, session.id);
+      }
+      if (error instanceof GiftCardShortError) {
+        await this.resetGiftCardsToAvailable(
+          clientId,
+          session.id,
+          error.available,
+        );
+        throw await this.amountChanged(clientId, session.id);
       }
       if ((error as { code?: string }).code === '23505') {
         return this.dataSource.manager.findOneOrFail(Order, {
@@ -407,6 +448,21 @@ export class CheckoutDraftSessionService {
       }
       throw error;
     }
+  }
+
+  private async amountChanged(
+    clientId: string,
+    sessionId: string,
+  ): Promise<ConflictException> {
+    const refreshed = await this.dataSource.manager.findOneOrFail(
+      CheckoutSession,
+      { where: { id: sessionId } },
+    );
+    return new ConflictException({
+      code: 'AMOUNT_CHANGED',
+      message: 'The total changed since it was shown',
+      currentTotal: await this.amountDue(clientId, refreshed),
+    });
   }
 
   private async appliedBalanceCents(
@@ -463,6 +519,190 @@ export class CheckoutDraftSessionService {
       userAgent: requestMeta.userAgent?.trim().slice(0, 500) || null,
       createdBy: clientId,
     });
+  }
+
+  private async appliedPromoCents(
+    clientId: string,
+    session: CheckoutSession,
+  ): Promise<number> {
+    const { promo } = await this.codeService.listCodes({
+      clientId,
+      giftCardCodes: [],
+      promoCode: session.appliedPromoCode,
+    });
+    return promo && promo.status === 'valid'
+      ? promoDiscountCents(promo, toCents(Number(session.projectCost)))
+      : 0;
+  }
+
+  private async spendPromo(
+    manager: EntityManager,
+    clientId: string,
+    session: CheckoutSession,
+    orderId: string,
+    discountCents: number,
+  ): Promise<void> {
+    if (discountCents <= 0 || !session.appliedPromoCode) return;
+    const rows: Array<{
+      id: string;
+      discount_type: 'percent' | 'fixed';
+      discount_value: string;
+      applies_to: string;
+      starts_at: Date | null;
+      expires_at: Date | null;
+      max_redemptions: number | null;
+      max_per_client: number | null;
+      active: boolean;
+    }> = await manager.query(
+      `SELECT "id", "discount_type", "discount_value", "applies_to", "starts_at", "expires_at", "max_redemptions", "max_per_client", "active"
+       FROM "checkout"."promo_codes"
+       WHERE "id" = $1
+       FOR UPDATE`,
+      [session.appliedPromoCode],
+    );
+    const promo = rows[0];
+    const now = Date.now();
+    const usable =
+      !!promo &&
+      promo.active &&
+      promo.applies_to !== 'service' &&
+      (!promo.starts_at || new Date(promo.starts_at).getTime() <= now) &&
+      (!promo.expires_at || new Date(promo.expires_at).getTime() >= now);
+    if (!usable) throw new PromoUnavailableError();
+    if (
+      promoDiscountCents(
+        {
+          discountType: promo.discount_type,
+          discountValue: Number(promo.discount_value),
+        },
+        toCents(Number(session.projectCost)),
+      ) !== discountCents
+    ) {
+      throw new PromoUnavailableError();
+    }
+    const [counts] = await manager.query(
+      `SELECT count(*)::int AS "total", (count(*) FILTER (WHERE "client_id" = $2))::int AS "mine"
+       FROM "checkout"."promo_redemptions"
+       WHERE "promo_code_id" = $1 AND "voided_at" IS NULL`,
+      [promo.id, clientId],
+    );
+    if (
+      (promo.max_redemptions !== null && counts.total >= promo.max_redemptions) ||
+      (promo.max_per_client !== null && counts.mine >= promo.max_per_client)
+    ) {
+      throw new PromoUnavailableError();
+    }
+    const drafts = await manager.query(
+      `SELECT "id" FROM "checkout"."drafts" WHERE "sessionId" = $1`,
+      [session.id],
+    );
+    if (!drafts.length) throw new NotFoundException('Session not found');
+    await manager.insert(PromoRedemption, {
+      promoCodeId: promo.id,
+      clientId,
+      draftId: drafts[0].id,
+      orderId,
+      discountAmount: discountCents / 100,
+    });
+  }
+
+  private async spendGiftCards(
+    manager: EntityManager,
+    clientId: string,
+    orderId: string,
+    applied: AppliedGiftCard[] | null,
+    requestMeta: RequestMeta,
+  ): Promise<void> {
+    const wanted = new Map<string, { code: string; cents: number }>();
+    for (const card of applied ?? []) {
+      const cents = toCents(Number(card.amountUsed));
+      if (cents <= 0) continue;
+      const key = giftCardKey(card.code);
+      const entry = wanted.get(key);
+      if (entry) entry.cents += cents;
+      else wanted.set(key, { code: card.code, cents });
+    }
+    if (wanted.size === 0) return;
+
+    const rows: Array<{
+      id: string;
+      key: string;
+      remainingAmount: string;
+      isActive: boolean;
+      expiresAt: Date | null;
+      redeemedByUserId: string | null;
+    }> = await manager.query(
+      `SELECT "id", REPLACE(UPPER("code"), '-', '') AS "key", "remainingAmount", "isActive", "expiresAt", "redeemedByUserId"
+       FROM "checkout"."gift_cards"
+       WHERE REPLACE(UPPER("code"), '-', '') = ANY($1)
+       ORDER BY "code"
+       FOR UPDATE`,
+      [[...wanted.keys()]],
+    );
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const now = Date.now();
+    const keys = [...wanted.keys()].sort();
+
+    const available: AvailableGiftCard[] = keys.map((key) => {
+      const want = wanted.get(key)!;
+      const row = byKey.get(key);
+      const usable =
+        !!row &&
+        row.isActive &&
+        (!row.expiresAt || new Date(row.expiresAt).getTime() >= now) &&
+        (!row.redeemedByUserId || row.redeemedByUserId === clientId);
+      const remainingCents = usable ? toCents(Number(row.remainingAmount)) : 0;
+      return {
+        code: want.code,
+        availableCents: Math.min(remainingCents, want.cents),
+      };
+    });
+    if (available.some((card, i) => card.availableCents < wanted.get(keys[i])!.cents)) {
+      throw new GiftCardShortError(available);
+    }
+
+    for (const key of keys) {
+      const { cents } = wanted.get(key)!;
+      const row = byKey.get(key)!;
+      await manager.query(
+        `UPDATE "checkout"."gift_cards"
+         SET "remainingAmount" = "remainingAmount" - ($1::numeric / 100),
+             "isActive" = ("remainingAmount" - ($1::numeric / 100)) > 0,
+             "redeemedByUserId" = $3
+         WHERE "id" = $2`,
+        [cents, row.id, clientId],
+      );
+      await manager.insert(GiftCardRedemption, {
+        id: randomUUID(),
+        giftCardId: row.id,
+        userId: clientId,
+        type: 'payment',
+        amount: cents / 100,
+        status: 'completed',
+        orderId,
+        reason: `Gift card applied to order ${orderId}`,
+        sourceIp: requestMeta.sourceIp?.trim().slice(0, 64) || null,
+        userAgent: requestMeta.userAgent?.trim().slice(0, 500) || null,
+        createdBy: clientId,
+      });
+    }
+  }
+
+  private async resetGiftCardsToAvailable(
+    clientId: string,
+    sessionId: string,
+    available: AvailableGiftCard[],
+  ): Promise<void> {
+    const kept = available
+      .filter((card) => card.availableCents > 0)
+      .map((card) => ({
+        code: card.code,
+        amountUsed: card.availableCents / 100,
+      }));
+    await this.dataSource.manager.update(CheckoutSession, sessionId, {
+      appliedGiftCards: kept.length > 0 ? kept : null,
+    });
+    await this.syncPaymentAmount(clientId, sessionId);
   }
 
   private async resetBalanceToAvailable(
