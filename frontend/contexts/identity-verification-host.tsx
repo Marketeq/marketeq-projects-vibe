@@ -125,6 +125,7 @@ import {
   hasRecentAlertOfType,
   isNewTravelActivation,
   reconcileStatusAlerts,
+  TRAVEL_ACTIVATION_RECONCILE_DELAYS_MS,
 } from "@/src/lib/api/status-alert-reconcile"
 import type { StatusAlert } from "@/src/lib/api/status-alerts"
 import {
@@ -389,6 +390,10 @@ export function IdentityVerificationHostProvider({
         },
         isCurrent: () => generation === alertReconcileGenRef.current,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        // A Travel Mode activation waits longer for its alert than the other results do.
+        delaysMs: expected.every((type) => type === "travel_mode")
+          ? TRAVEL_ACTIVATION_RECONCILE_DELAYS_MS
+          : undefined,
       })
     },
     []
