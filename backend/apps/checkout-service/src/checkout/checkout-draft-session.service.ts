@@ -37,10 +37,16 @@ import { Wallet } from './entities/wallet.entity';
 import { WalletTransaction } from './entities/wallet-transaction.entity';
 import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
 import { PromoRedemption } from './entities/promo-redemption.entity';
+import { SavedCard } from './entities/saved-card.entity';
+import { StripeCustomer } from './entities/stripe-customer.entity';
+import { StripeService } from '../stripe/stripe.service';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
 export const SESSION_EXPIRY_MINUTES = 30;
+
+const CHARGE_TIMEOUT_MS = 25_000;
+const CHARGE_ATTEMPT = 1;
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
 
@@ -60,6 +66,13 @@ const amountDueCents = (
   );
 
 type RequestMeta = { sourceIp?: string; userAgent?: string };
+
+type ChargeTarget = {
+  paymentId: string;
+  amount: number;
+  customerId: string;
+  paymentMethodId: string;
+};
 
 class BalanceShortError extends Error {
   constructor(readonly availableCents: number) {
@@ -101,6 +114,7 @@ export class CheckoutDraftSessionService {
     private readonly pricingService: CheckoutDraftPricingService,
     private readonly savedCardsService: SavedCardsService,
     private readonly paymentSelections: PaymentSelectionRegistry,
+    private readonly stripeService: StripeService,
   ) {}
 
   async getSession(clientId: string, sessionId: string) {
@@ -291,7 +305,8 @@ export class CheckoutDraftSessionService {
         message: 'Select a payment method before submitting',
       });
     }
-    const order = await this.createOrder(
+    const chargeTarget = await this.resolveChargeTarget(clientId, session, due);
+    const created = await this.createOrder(
       clientId,
       session,
       due,
@@ -300,10 +315,127 @@ export class CheckoutDraftSessionService {
       await this.appliedPromoCents(clientId, session),
       requestMeta,
     );
-    await this.dataSource.manager.update(CheckoutSession, session.id, {
-      status: 'success',
-    });
+    const order = await this.chargeOrder(
+      clientId,
+      session,
+      created,
+      chargeTarget,
+    );
+    if (order.status === 'paid') {
+      await this.dataSource.manager.update(CheckoutSession, session.id, {
+        status: 'success',
+      });
+    }
     return this.withOrder(clientId, sessionId, order);
+  }
+
+  private async resolveChargeTarget(
+    clientId: string,
+    session: CheckoutSession,
+    due: number,
+  ): Promise<ChargeTarget | null> {
+    if (due <= 0) return null;
+    const unusable = () =>
+      new UnprocessableEntityException({
+        code: 'PAYMENT_SELECTION_REQUIRED',
+        message: 'Select a payment method before submitting',
+      });
+    const line = await this.dataSource.manager.findOne(Payment, {
+      where: { sessionId: session.id, phase: 'initial' },
+      order: { createdAt: 'ASC' },
+    });
+    if (!line?.savedMethodId || line.method !== 'card') throw unusable();
+    const [card, customer] = await Promise.all([
+      this.dataSource.manager.findOne(SavedCard, {
+        where: { id: line.savedMethodId, userId: clientId },
+      }),
+      this.dataSource.manager.findOne(StripeCustomer, {
+        where: { userId: clientId },
+      }),
+    ]);
+    if (!card || !customer) throw unusable();
+    return {
+      paymentId: line.id,
+      amount: due,
+      customerId: customer.stripeCustomerId,
+      paymentMethodId: card.stripePaymentMethodId,
+    };
+  }
+
+  private async chargeOrder(
+    clientId: string,
+    session: CheckoutSession,
+    order: Order,
+    target: ChargeTarget | null,
+  ): Promise<Order> {
+    if (target) {
+      const claim = await this.dataSource.manager.update(
+        Payment,
+        { id: target.paymentId, status: 'pending' },
+        { status: 'processing' },
+      );
+      if (!claim?.affected) {
+        return this.dataSource.manager.findOneOrFail(Order, {
+          where: { orderId: order.orderId },
+        });
+      }
+      let intent: { id: string; status: string };
+      try {
+        intent = await this.stripeService.createPaymentIntent({
+          amount: target.amount,
+          customerId: target.customerId,
+          paymentMethodId: target.paymentMethodId,
+          paymentMethodTypes: ['card'],
+          confirm: true,
+          offSession: true,
+          metadata: {
+            clientId,
+            listingId: order.listingId,
+            sessionId: session.id,
+            orderId: order.orderId,
+            paymentId: target.paymentId,
+          },
+          idempotencyKey: `payment-${target.paymentId}-${CHARGE_ATTEMPT}`,
+          timeoutMs: CHARGE_TIMEOUT_MS,
+        });
+      } catch (error) {
+        const failedIntentId = (error as { payment_intent?: { id?: string } })
+          .payment_intent?.id;
+        if (failedIntentId) {
+          await this.dataSource.manager.update(Payment, target.paymentId, {
+            stripePaymentIntentId: failedIntentId,
+          });
+        }
+        this.logger.warn(
+          `Charge failed for order ${order.orderId}: ${error instanceof Error ? error.message : error}`,
+        );
+        throw new BadGatewayException({
+          code: 'CHARGE_NOT_COMPLETED',
+          message: 'The payment could not be completed',
+        });
+      }
+      const succeeded = intent.status === 'succeeded';
+      await this.dataSource.manager.update(Payment, target.paymentId, {
+        stripePaymentIntentId: intent.id,
+        ...(succeeded ? { status: 'paid' as const } : {}),
+      });
+      if (!succeeded) {
+        this.logger.warn(
+          `Charge for order ${order.orderId} ended as ${intent.status}`,
+        );
+        throw new BadGatewayException({
+          code: 'CHARGE_NOT_COMPLETED',
+          message: 'The payment could not be completed',
+        });
+      }
+    }
+    await this.dataSource.manager.update(Order, order.orderId, {
+      status: 'paid',
+      paidAt: new Date(),
+    });
+    return this.dataSource.manager.findOneOrFail(Order, {
+      where: { orderId: order.orderId },
+    });
   }
 
   private async withOrder(clientId: string, sessionId: string, order: Order) {

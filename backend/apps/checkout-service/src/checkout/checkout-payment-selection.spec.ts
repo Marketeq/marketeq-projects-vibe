@@ -3,6 +3,8 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  BadGatewayException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { CheckoutDraftSessionService } from './checkout-draft-session.service';
 import { PaymentSelectionRegistry } from './payment-selection.registry';
@@ -12,6 +14,8 @@ import { Order } from './entities/order.entity';
 import { WalletTransaction } from './entities/wallet-transaction.entity';
 import { GiftCardRedemption } from './entities/gift-card-redemption.entity';
 import { PromoRedemption } from './entities/promo-redemption.entity';
+import { SavedCard } from './entities/saved-card.entity';
+import { StripeCustomer } from './entities/stripe-customer.entity';
 
 const CARD = {
   id: 'card-1',
@@ -37,6 +41,10 @@ type Options = {
   promoRow?: Record<string, unknown> | null;
   promoCounts?: { total: number; mine: number };
   draftId?: string | null;
+  charge?: Record<string, unknown> | Error;
+  customer?: null;
+  savedCardRow?: null;
+  claim?: number;
 };
 
 const ADDRESS = {
@@ -54,6 +62,7 @@ const NEW_ORDER = {
   orderId: 'C01-00001-0001',
   status: 'processing',
   clientId: 'client-1',
+  listingId: 'listing-1',
 };
 
 const buildService = (
@@ -61,11 +70,17 @@ const buildService = (
   options: Options = {},
 ) => {
   const state = session ? { ...session } : null;
+  const orderState: Record<string, unknown> = { ...NEW_ORDER };
   const update = jest
     .fn()
     .mockImplementation(
-      async (entity: unknown, _id: unknown, patch: Record<string, unknown>) => {
+      async (entity: unknown, id: unknown, patch: Record<string, unknown>) => {
         if (entity === CheckoutSession && state) Object.assign(state, patch);
+        if (entity === Order) Object.assign(orderState, patch);
+        return {
+          affected:
+            entity === Payment && typeof id === 'object' ? (options.claim ?? 1) : 1,
+        };
       },
     );
   const remove = jest.fn().mockResolvedValue(undefined);
@@ -75,8 +90,22 @@ const buildService = (
   const manager = {
     findOne: jest.fn().mockImplementation(async (entity: unknown) => {
       if (entity === CheckoutSession) return state;
-      if (entity === Payment) return options.line ?? null;
+      if (entity === Payment) {
+        return options.line
+          ? { id: 'pay-1', phase: 'initial', method: 'card', savedMethodId: 'card-1', ...options.line }
+          : null;
+      }
       if (entity === Order) return options.order ?? null;
+      if (entity === SavedCard) {
+        return options.savedCardRow === null
+          ? null
+          : { id: 'card-1', stripePaymentMethodId: 'pm_test_1' };
+      }
+      if (entity === StripeCustomer) {
+        return options.customer === null
+          ? null
+          : { userId: 'client-1', stripeCustomerId: 'cus_test_1' };
+      }
       return null;
     }),
     find: jest.fn().mockImplementation(async (entity: unknown) =>
@@ -95,7 +124,7 @@ const buildService = (
     findOneOrFail: jest
       .fn()
       .mockImplementation(async (entity: unknown) =>
-        entity === CheckoutSession ? state : NEW_ORDER,
+        entity === CheckoutSession ? state : orderState,
       ),
     update,
     delete: remove,
@@ -174,6 +203,12 @@ const buildService = (
       .fn()
       .mockResolvedValue(options.findCard === undefined ? CARD : options.findCard),
   };
+  const stripe = {
+    createPaymentIntent: jest.fn().mockImplementation(async () => {
+      if (options.charge instanceof Error) throw options.charge;
+      return options.charge ?? { id: 'pi_1', status: 'succeeded' };
+    }),
+  };
   const registry = new PaymentSelectionRegistry(savedCards as never);
   const service = new CheckoutDraftSessionService(
     dataSource as never,
@@ -186,6 +221,7 @@ const buildService = (
     {} as never,
     {} as never,
     registry,
+    stripe as never,
   );
   return {
     service,
@@ -196,6 +232,7 @@ const buildService = (
     fetchBillingAddress,
     query: manager.query,
     transaction,
+    stripe,
   };
 };
 
@@ -423,7 +460,7 @@ describe('session submit', () => {
       status: 'success',
     });
     expect(result).toMatchObject({
-      order: { orderId: 'C01-00001-0001', status: 'processing' },
+      order: { orderId: 'C01-00001-0001', status: 'paid' },
     });
   });
 
@@ -1306,6 +1343,249 @@ describe('session submit', () => {
         jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
         await submit(service, 0);
         expect(redemptions(insert)[0][1]).toMatchObject({ discountAmount: 1000 });
+      });
+    });
+  });
+
+  describe('charge', () => {
+    const card = { line: { method: 'card', savedMethodId: 'card-1' } };
+    const submit = (service: CheckoutDraftSessionService, expectedTotal: number) =>
+      service.submitPayment('client-1', 'session-1', {
+        authorized: true,
+        expectedTotal,
+      });
+    const withCredits = {
+      ...pending,
+      walletAmountUsed: '3000.00',
+      appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+    };
+
+    it('charges the saved card off session for the amount due with the order in the metadata', async () => {
+      const { service, stripe } = buildService(pending, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 10000);
+      expect(stripe.createPaymentIntent).toHaveBeenCalledTimes(1);
+      expect(stripe.createPaymentIntent).toHaveBeenCalledWith({
+        amount: 10000,
+        customerId: 'cus_test_1',
+        paymentMethodId: 'pm_test_1',
+        paymentMethodTypes: ['card'],
+        confirm: true,
+        offSession: true,
+        metadata: {
+          clientId: 'client-1',
+          listingId: 'listing-1',
+          sessionId: 'session-1',
+          orderId: 'C01-00001-0001',
+          paymentId: 'pay-1',
+        },
+        idempotencyKey: 'payment-pay-1-1',
+        timeoutMs: 25000,
+      });
+    });
+
+    it('charges only what is left after the wallet and the gift cards', async () => {
+      const { service, stripe } = buildService(withCredits, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 5000);
+      expect(stripe.createPaymentIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: 5000 }),
+      );
+    });
+
+    it('moves the payment row to processing, then paid with the payment intent id', async () => {
+      const { service, update } = buildService(pending, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 10000);
+      expect(update).toHaveBeenCalledWith(
+        Payment,
+        { id: 'pay-1', status: 'pending' },
+        { status: 'processing' },
+      );
+      expect(update).toHaveBeenCalledWith(Payment, 'pay-1', {
+        stripePaymentIntentId: 'pi_1',
+        status: 'paid',
+      });
+    });
+
+    it('marks the order paid with the time and the session success, and returns the paid order', async () => {
+      const { service, update } = buildService(pending, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      const result = await submit(service, 10000);
+      expect(update).toHaveBeenCalledWith(Order, 'C01-00001-0001', {
+        status: 'paid',
+        paidAt: expect.any(Date),
+      });
+      expect(update).toHaveBeenCalledWith(CheckoutSession, 'session-1', {
+        status: 'success',
+      });
+      expect(result).toMatchObject({
+        order: { orderId: 'C01-00001-0001', status: 'paid' },
+      });
+    });
+
+    it('charges after the credits were spent and the order was created', async () => {
+      const { service, insert, stripe } = buildService(withCredits, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 5000);
+      const charged = stripe.createPaymentIntent.mock.invocationCallOrder[0];
+      const spent = insert.mock.calls
+        .map(([entity], i) => ({ entity, at: insert.mock.invocationCallOrder[i] }))
+        .filter(({ entity }) =>
+          [Order, WalletTransaction, GiftCardRedemption].includes(entity),
+        );
+      expect(spent).toHaveLength(3);
+      expect(spent.every(({ at }) => at < charged)).toBe(true);
+    });
+
+    it('does not call Stripe when the credits cover the whole total, and still marks the order paid', async () => {
+      const { service, stripe, update } = buildService(
+        { ...pending, appliedGiftCards: [{ code: 'A', amountUsed: 10000 }] },
+        { line: null },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 0);
+      expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
+      expect(update).toHaveBeenCalledWith(Order, 'C01-00001-0001', {
+        status: 'paid',
+        paidAt: expect.any(Date),
+      });
+      expect(update).toHaveBeenCalledWith(CheckoutSession, 'session-1', {
+        status: 'success',
+      });
+    });
+
+    it('never charges again on a repeat call', async () => {
+      const { service, stripe, update } = buildService(pending, {
+        ...card,
+        order: NEW_ORDER,
+      });
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 10000);
+      expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('does not charge or mark the session paid when another request already claimed the payment', async () => {
+      const { service, stripe, update } = buildService(pending, {
+        ...card,
+        claim: 0,
+      });
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      const result = await submit(service, 10000);
+      expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalledWith(
+        CheckoutSession,
+        'session-1',
+        expect.anything(),
+      );
+      expect(result).toMatchObject({ order: { status: 'processing' } });
+    });
+
+    describe('when Stripe does not complete the payment', () => {
+      it('answers CHARGE_NOT_COMPLETED and leaves the order and the session unpaid when the call fails', async () => {
+        const { service, update } = buildService(pending, {
+          ...card,
+          charge: new Error('Your card was declined.'),
+        });
+        await expect(submit(service, 10000)).rejects.toMatchObject({
+          status: 502,
+          response: { code: 'CHARGE_NOT_COMPLETED' },
+        });
+        expect(update).not.toHaveBeenCalledWith(Order, expect.anything(), expect.anything());
+        expect(update).not.toHaveBeenCalledWith(
+          CheckoutSession,
+          'session-1',
+          { status: 'success' },
+        );
+        expect(update).not.toHaveBeenCalledWith(
+          Payment,
+          'pay-1',
+          expect.objectContaining({ status: 'paid' }),
+        );
+      });
+
+      it('keeps the payment intent id Stripe puts on the error', async () => {
+        const { service, update } = buildService(pending, {
+          ...card,
+          charge: Object.assign(new Error('declined'), {
+            payment_intent: { id: 'pi_failed' },
+          }),
+        });
+        await expect(submit(service, 10000)).rejects.toBeInstanceOf(
+          BadGatewayException,
+        );
+        expect(update).toHaveBeenCalledWith(Payment, 'pay-1', {
+          stripePaymentIntentId: 'pi_failed',
+        });
+      });
+
+      it('treats any answer other than succeeded as not completed and keeps the intent id', async () => {
+        const { service, update } = buildService(pending, {
+          ...card,
+          charge: { id: 'pi_2', status: 'requires_action' },
+        });
+        await expect(submit(service, 10000)).rejects.toMatchObject({
+          response: { code: 'CHARGE_NOT_COMPLETED' },
+        });
+        expect(update).toHaveBeenCalledWith(Payment, 'pay-1', {
+          stripePaymentIntentId: 'pi_2',
+        });
+        expect(update).not.toHaveBeenCalledWith(Order, expect.anything(), expect.anything());
+      });
+    });
+
+    describe('when the card cannot be charged', () => {
+      it.each([
+        ['the Stripe customer is missing', { customer: null }],
+        ['the saved card row is missing', { savedCardRow: null }],
+        ['the line is not a card', { line: { method: 'ach', savedMethodId: 'card-1' } }],
+      ])('answers 422 before anything is spent when %s', async (_label, extra) => {
+        const { service, insert, stripe } = buildService(withCredits, {
+          ...card,
+          ...extra,
+        });
+        await expect(submit(service, 5000)).rejects.toBeInstanceOf(
+          UnprocessableEntityException,
+        );
+        expect(insert).not.toHaveBeenCalled();
+        expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('when a credit is no longer usable', () => {
+      it.each([
+        ['the wallet is short', { walletBalance: '1000.00' }],
+        ['a gift card is short', { giftCards: { A: { remainingAmount: '500.00' } } }],
+      ])('does not call Stripe when %s', async (_label, extra) => {
+        const { service, stripe } = buildService(withCredits, {
+          ...card,
+          ...extra,
+        });
+        await expect(submit(service, 5000)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
+      });
+
+      it('does not call Stripe when the promo code is no longer usable', async () => {
+        const { service, stripe } = buildService(
+          { ...pending, appliedPromoCode: 'promo-1' },
+          {
+            ...card,
+            promo: {
+              code: 'TEST10',
+              status: 'valid',
+              discountType: 'percent',
+              discountValue: 10,
+            },
+            promoRow: { active: false },
+          },
+        );
+        await expect(submit(service, 9000)).rejects.toBeInstanceOf(
+          ConflictException,
+        );
+        expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
       });
     });
   });
