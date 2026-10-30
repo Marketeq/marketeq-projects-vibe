@@ -51,7 +51,6 @@
 // header for the split and why).
 
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
 import { useMountedState } from "react-use"
 import type { Map as LeafletMap } from "leaflet"
 import {
@@ -1088,10 +1087,7 @@ export function IdentityVerificationFlow({
 
             <div className="mt-6 text-center">
               <span className="text-xs leading-5 text-gray-500">
-                Your data is encrypted and handled securely.{" "}
-                <Link href="#" className="focus-visible:outline-none underline">
-                  Learn More
-                </Link>
+                Your data is encrypted and handled securely.
               </span>
             </div>
           </div>
