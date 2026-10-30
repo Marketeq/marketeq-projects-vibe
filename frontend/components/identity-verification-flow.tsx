@@ -126,6 +126,11 @@ import {
 } from "@/src/lib/api/travel-mode-backend"
 import { type TravelDuration } from "@/src/lib/api/travel-mode-reminder"
 import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "@/lib/travel-duration-option-styles"
+import {
   getAcceptedDocuments,
   type AcceptedDocumentTypeId,
 } from "@/src/lib/api/accepted-documents"
@@ -1899,32 +1904,57 @@ export function IdentityVerificationFlow({
               setTravelModeSaveFailed(false)
             }}
           >
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="A few days"
                 id="travel-duration-a-few-days"
               />{" "}
-              <Label htmlFor="travel-duration-a-few-days">A few days</Label>
+              <Label
+                htmlFor="travel-duration-a-few-days"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                A few days
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="1–2 weeks"
                 id="travel-duration-1-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-1-2-weeks">1–2 weeks</Label>
+              <Label
+                htmlFor="travel-duration-1-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                1–2 weeks
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="More than 2 weeks"
                 id="travel-duration-more-than-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-more-than-2-weeks">
+              <Label
+                htmlFor="travel-duration-more-than-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
                 More than 2 weeks
               </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="Not sure" id="travel-duration-not-sure" />{" "}
-              <Label htmlFor="travel-duration-not-sure">Not sure</Label>
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
+              <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
+                value="Not sure"
+                id="travel-duration-not-sure"
+              />{" "}
+              <Label
+                htmlFor="travel-duration-not-sure"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                Not sure
+              </Label>
             </div>
           </RadioGroup>
 

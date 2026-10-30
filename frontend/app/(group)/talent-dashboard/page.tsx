@@ -67,6 +67,11 @@ import {
   shouldShowProfileBanner,
 } from "@/src/lib/api/identity-next-step"
 import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "@/lib/travel-duration-option-styles"
+import {
   isPasswordSetupRequired,
   shouldStartIdentityCheck,
 } from "@/src/lib/api/identity-check-gate"
@@ -914,15 +919,15 @@ export default function TalentDashboard() {
               onValueChange={(label) => void handleCheckInAnswer(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                <div key={label} className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
                   <RadioGroupItem
-                    className="cursor-pointer disabled:cursor-not-allowed"
+                    className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                     value={label}
                     id={`check-in-duration-${index}`}
                   />
                   <Label
                     htmlFor={`check-in-duration-${index}`}
-                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                    className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
                   >
                     {label}
                   </Label>
@@ -1057,15 +1062,15 @@ export default function TalentDashboard() {
               onValueChange={(label) => void handleCheckInRevise(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                <div key={label} className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
                   <RadioGroupItem
-                    className="cursor-pointer disabled:cursor-not-allowed"
+                    className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                     value={label}
                     id={`check-in-revise-duration-${index}`}
                   />
                   <Label
                     htmlFor={`check-in-revise-duration-${index}`}
-                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                    className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
                   >
                     {label}
                   </Label>
