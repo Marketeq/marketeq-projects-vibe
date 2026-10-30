@@ -72,6 +72,18 @@ export function createScreenshotRepo(db: DbHandle) {
     clearLocalPath(id: string): void {
       run(db, `UPDATE screenshot SET local_path = NULL WHERE id = ?`, [id]);
     },
+    /** Rows that still point at an image file (written by builds before PMCM-832). */
+    listWithLocalFiles(): ScreenshotRow[] {
+      return many(
+        db,
+        ScreenshotRow,
+        `SELECT * FROM screenshot WHERE local_path IS NOT NULL OR blur_path IS NOT NULL`,
+        [],
+      );
+    },
+    clearLocalFiles(id: string): void {
+      run(db, `UPDATE screenshot SET local_path = NULL, blur_path = NULL WHERE id = ?`, [id]);
+    },
     deleteById(id: string): void {
       run(db, `DELETE FROM screenshot WHERE id = ?`, [id]);
     },

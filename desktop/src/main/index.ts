@@ -7,7 +7,7 @@
 //   4. Register the typed IPC handlers.
 //   5. Create the main BrowserWindow.
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, safeStorage } from 'electron';
 import path from 'node:path';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
@@ -579,8 +579,15 @@ async function bootstrap(): Promise<void> {
       // the doc 16 sync queue) ever needs to know a token expired.
       onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
+    // PMCM-832: queued screenshots are encrypted at rest with the OS key
+    // store (DPAPI / Keychain) and wiped once the upload is acknowledged.
+    const outboxCipher = {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (plain: string) => safeStorage.encryptString(plain).toString('base64'),
+      decrypt: (sealed: string) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+    };
     const outbox = createOutbox({
-      store: createSqliteOutboxStore(db),
+      store: createSqliteOutboxStore(db, outboxCipher, logger),
       logger,
     });
     // Rows a previous run left mid-request go back in the queue before the
