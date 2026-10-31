@@ -124,6 +124,7 @@ export class CheckoutDraftService {
     const draft = await this.repo.findOne({ where: { sessionId } });
     if (!draft) return null;
     return {
+      draftId: draft.id,
       listingId: draft.listingId,
       title: draft.title,
       mediaUrl: draft.mediaUrl,
@@ -1082,6 +1083,7 @@ export class CheckoutDraftService {
       const draft = await loadOwnedDraft(manager, clientId, draftId, {
         lock: true,
       });
+      await assertDraftNotPaid(manager, draft);
       await this.discardDraft(manager, draft);
     });
     return { deleted: true };

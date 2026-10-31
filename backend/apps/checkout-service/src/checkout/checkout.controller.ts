@@ -217,6 +217,12 @@ export class CheckoutController {
     );
   }
 
+  @Get("orders/:orderId")
+  @UseGuards(InternalTokenGuard)
+  getOrder(@Param('orderId') orderId: string, @ClientId() clientId: string) {
+    return this.checkoutDraftSessionService.getOrder(clientId, orderId);
+  }
+
   @Put("session/:sessionId/balance")
   @UseGuards(InternalTokenGuard)
   setSessionBalanceApplied(

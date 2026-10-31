@@ -26,6 +26,7 @@ export type OrderPaymentSnapshotEntry = {
   paymentId: string;
   phase: PaymentPhase;
   method: PaymentMethod;
+  amount: number;
   card: {
     brand: string;
     funding: string;
@@ -34,6 +35,21 @@ export type OrderPaymentSnapshotEntry = {
     expYear: number;
   } | null;
   billingAddress: OrderSnapshotAddress | null;
+  capturedAt: string;
+};
+
+export type OrderPaymentDetailsSnapshot = {
+  projectCost: number;
+  tax: number;
+  promo: {
+    code: string;
+    type: 'percent' | 'fixed';
+    value: number;
+    amount: number;
+  } | null;
+  giftCards: { code: string; amount: number }[];
+  balanceApplied: number;
+  total: number;
   capturedAt: string;
 };
 
@@ -71,6 +87,9 @@ export class Order {
 
   @Column({ type: 'jsonb', nullable: true })
   paymentSnapshot: OrderPaymentSnapshotEntry[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  paymentDetailsSnapshot: OrderPaymentDetailsSnapshot | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   paidAt: Date | null;

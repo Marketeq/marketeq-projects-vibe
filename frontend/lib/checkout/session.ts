@@ -6,6 +6,8 @@ export type CheckoutSession = {
   listingId: string
   slug: string | null
   contractId: string | null
+  orderId: string | null
+  draftId: string | null
   projectCost: number
   title: string | null
   mediaUrl: string | null

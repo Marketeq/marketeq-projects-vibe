@@ -45,6 +45,7 @@ type Options = {
   customer?: null;
   savedCardRow?: null;
   claim?: number;
+  lines?: Array<Record<string, unknown>>;
 };
 
 const ADDRESS = {
@@ -108,19 +109,22 @@ const buildService = (
       }
       return null;
     }),
-    find: jest.fn().mockImplementation(async (entity: unknown) =>
-      entity === Payment && options.line
+    find: jest.fn().mockImplementation(async (entity: unknown) => {
+      if (entity !== Payment) return [];
+      if (options.lines) return options.lines;
+      return options.line
         ? [
             {
               id: 'pay-1',
               phase: 'initial',
               method: 'card',
               savedMethodId: 'card-1',
+              amount: '10000.00',
               ...options.line,
             },
           ]
-        : [],
-    ),
+        : [];
+    }),
     findOneOrFail: jest
       .fn()
       .mockImplementation(async (entity: unknown) =>
@@ -152,6 +156,7 @@ const buildService = (
             : [
                 {
                   id: 'promo-1',
+                  code: 'TEST10',
                   discount_type: 'percent',
                   discount_value: '10.00',
                   applies_to: 'project',
@@ -471,7 +476,9 @@ describe('session submit', () => {
         walletAmountUsed: '3000.00',
         appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
       },
-      { line: { method: 'card', savedMethodId: 'card-1' } },
+      {
+        line: { method: 'card', savedMethodId: 'card-1', amount: '5000.00' },
+      },
     );
     jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
     await service.submitPayment('client-1', 'session-1', {
@@ -493,6 +500,7 @@ describe('session submit', () => {
           paymentId: 'pay-1',
           phase: 'initial',
           method: 'card',
+          amount: 5000,
           card: {
             brand: 'unionpay',
             funding: 'credit',
@@ -522,6 +530,7 @@ describe('session submit', () => {
           expect.objectContaining({
             paymentId: 'pay-1',
             phase: 'initial',
+            amount: 10000,
             card: expect.objectContaining({ last4: '0005' }),
             billingAddress: ADDRESS,
           }),
@@ -544,6 +553,78 @@ describe('session submit', () => {
         paymentSnapshot: [expect.objectContaining({ billingAddress: null })],
       }),
     );
+  });
+
+  it('stores the amount of the payment line as a number in the snapshot', async () => {
+    const { service, insert } = buildService(pending, {
+      line: { method: 'card', savedMethodId: 'card-1', amount: '10000.00' },
+    });
+    jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+    await service.submitPayment('client-1', 'session-1', seen);
+    const entry = insert.mock.calls.find(([entity]) => entity === Order)![1]
+      .paymentSnapshot[0];
+    expect(entry.amount).toBe(10000);
+    expect(typeof entry.amount).toBe('number');
+  });
+
+  it('keeps the cents of the payment line amount in the snapshot', async () => {
+    const { service, insert } = buildService(pending, {
+      line: { method: 'card', savedMethodId: 'card-1', amount: '2500.50' },
+    });
+    jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+    await service.submitPayment('client-1', 'session-1', seen);
+    expect(insert).toHaveBeenCalledWith(
+      Order,
+      expect.objectContaining({
+        paymentSnapshot: [expect.objectContaining({ amount: 2500.5 })],
+      }),
+    );
+  });
+
+  it('keeps one snapshot entry per payment line with its own amount and phase', async () => {
+    const { service, insert } = buildService(pending, {
+      line: { method: 'card', savedMethodId: 'card-1' },
+      lines: [
+        {
+          id: 'pay-1',
+          phase: 'initial',
+          method: 'card',
+          savedMethodId: 'card-1',
+          amount: '6000.00',
+        },
+        {
+          id: 'pay-2',
+          phase: 'initial',
+          method: 'card',
+          savedMethodId: 'card-2',
+          amount: '4000.00',
+        },
+        {
+          id: 'pay-3',
+          phase: 'recurring',
+          method: 'card',
+          savedMethodId: 'card-1',
+          amount: '1500.25',
+        },
+      ],
+    });
+    jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+    await service.submitPayment('client-1', 'session-1', seen);
+    const snapshot = insert.mock.calls.find(([entity]) => entity === Order)![1]
+      .paymentSnapshot;
+    expect(
+      snapshot.map(
+        (entry: { paymentId: string; phase: string; amount: number }) => ({
+          paymentId: entry.paymentId,
+          phase: entry.phase,
+          amount: entry.amount,
+        }),
+      ),
+    ).toEqual([
+      { paymentId: 'pay-1', phase: 'initial', amount: 6000 },
+      { paymentId: 'pay-2', phase: 'initial', amount: 4000 },
+      { paymentId: 'pay-3', phase: 'recurring', amount: 1500.25 },
+    ]);
   });
 
   it('stores an empty snapshot when the credits cover the total', async () => {
@@ -1492,7 +1573,11 @@ describe('session submit', () => {
           status: 502,
           response: { code: 'CHARGE_NOT_COMPLETED' },
         });
-        expect(update).not.toHaveBeenCalledWith(Order, expect.anything(), expect.anything());
+        expect(update).not.toHaveBeenCalledWith(
+          Order,
+          expect.anything(),
+          expect.objectContaining({ status: 'paid' }),
+        );
         expect(update).not.toHaveBeenCalledWith(
           CheckoutSession,
           'session-1',
@@ -1531,7 +1616,11 @@ describe('session submit', () => {
         expect(update).toHaveBeenCalledWith(Payment, 'pay-1', {
           stripePaymentIntentId: 'pi_2',
         });
-        expect(update).not.toHaveBeenCalledWith(Order, expect.anything(), expect.anything());
+        expect(update).not.toHaveBeenCalledWith(
+          Order,
+          expect.anything(),
+          expect.objectContaining({ status: 'paid' }),
+        );
       });
     });
 
@@ -1587,6 +1676,209 @@ describe('session submit', () => {
         );
         expect(stripe.createPaymentIntent).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('order snapshots', () => {
+    const card = { line: { method: 'card', savedMethodId: 'card-1' } };
+    const TEN = {
+      code: 'TEST10',
+      status: 'valid',
+      discountType: 'percent',
+      discountValue: 10,
+    };
+    const submit = (
+      service: CheckoutDraftSessionService,
+      expectedTotal: number,
+    ) =>
+      service.submitPayment('client-1', 'session-1', {
+        authorized: true,
+        expectedTotal,
+      });
+    const details = (update: jest.Mock) =>
+      update.mock.calls
+        .filter(
+          ([entity, , patch]) => entity === Order && patch?.paymentDetailsSnapshot,
+        )
+        .map(([, , patch]) => patch.paymentDetailsSnapshot);
+
+    it('writes the price breakdown of an order with no credits', async () => {
+      const { service, update } = buildService(pending, card);
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 10000);
+      expect(details(update)).toEqual([
+        {
+          projectCost: 10000,
+          tax: 0,
+          promo: null,
+          giftCards: [],
+          balanceApplied: 0,
+          total: 10000,
+          capturedAt: expect.any(String),
+        },
+      ]);
+    });
+
+    it('writes the promo, gift card and balance amounts that were really spent', async () => {
+      const { service, update, insert } = buildService(
+        {
+          ...pending,
+          appliedPromoCode: 'promo-1',
+          walletAmountUsed: '3000.00',
+          appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+        },
+        { ...card, promo: TEN },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 4000);
+      expect(details(update)).toEqual([
+        {
+          projectCost: 10000,
+          tax: 0,
+          promo: { code: 'TEST10', type: 'percent', value: 10, amount: 1000 },
+          giftCards: [{ code: 'A', amount: 2000 }],
+          balanceApplied: 3000,
+          total: 4000,
+          capturedAt: expect.any(String),
+        },
+      ]);
+      expect(insert).toHaveBeenCalledWith(
+        Order,
+        expect.objectContaining({ orderCost: 4000 }),
+      );
+    });
+
+    it('adds up: project cost minus promo, gift cards and balance is the total', async () => {
+      const { service, update } = buildService(
+        {
+          ...pending,
+          appliedPromoCode: 'promo-1',
+          walletAmountUsed: '3000.00',
+          appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+        },
+        { ...card, promo: TEN },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 4000);
+      const [snapshot] = details(update);
+      const giftTotal = snapshot.giftCards.reduce(
+        (sum: number, entry: { amount: number }) => sum + entry.amount,
+        0,
+      );
+      expect(
+        snapshot.projectCost -
+          snapshot.promo.amount -
+          giftTotal -
+          snapshot.balanceApplied,
+      ).toBe(snapshot.total);
+    });
+
+    it('lists several gift cards by code with their own amounts', async () => {
+      const { service, update } = buildService(
+        {
+          ...pending,
+          appliedGiftCards: [
+            { code: 'B', amountUsed: 2000 },
+            { code: 'A', amountUsed: 500 },
+          ],
+        },
+        card,
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 7500);
+      expect(details(update)[0].giftCards).toEqual([
+        { code: 'A', amount: 500 },
+        { code: 'B', amount: 2000 },
+      ]);
+    });
+
+    it('writes a fixed promo as it is', async () => {
+      const { service, update } = buildService(
+        { ...pending, appliedPromoCode: 'promo-1' },
+        {
+          ...card,
+          promo: { ...TEN, discountType: 'fixed', discountValue: 500 },
+          promoRow: { discount_type: 'fixed', discount_value: '500.00' },
+        },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 9500);
+      expect(details(update)[0]).toMatchObject({
+        promo: { code: 'TEST10', type: 'fixed', value: 500, amount: 500 },
+        total: 9500,
+      });
+    });
+
+    it('writes a total of 0 when the credits cover the whole price', async () => {
+      const { service, update } = buildService(
+        { ...pending, appliedGiftCards: [{ code: 'A', amountUsed: 10000 }] },
+        { line: null },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 0);
+      expect(details(update)[0]).toMatchObject({
+        giftCards: [{ code: 'A', amount: 10000 }],
+        balanceApplied: 0,
+        total: 0,
+      });
+    });
+
+    it('writes the breakdown after the credits were spent, in the same transaction', async () => {
+      const { service, update, insert, transaction } = buildService(
+        {
+          ...pending,
+          appliedPromoCode: 'promo-1',
+          walletAmountUsed: '3000.00',
+          appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+        },
+        { ...card, promo: TEN },
+      );
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 4000);
+      const written = update.mock.calls
+        .map(([entity, , patch], i) => ({
+          entity,
+          patch,
+          at: update.mock.invocationCallOrder[i],
+        }))
+        .find(
+          ({ entity, patch }) => entity === Order && patch?.paymentDetailsSnapshot,
+        )!.at;
+      const spendCalls = insert.mock.calls
+        .map(([entity], i) => ({ entity, at: insert.mock.invocationCallOrder[i] }))
+        .filter(({ entity }) =>
+          [WalletTransaction, GiftCardRedemption, PromoRedemption].includes(
+            entity,
+          ),
+        );
+      expect(spendCalls).toHaveLength(3);
+      expect(spendCalls.every(({ at }) => at < written)).toBe(true);
+      expect(transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('writes no breakdown when a credit turns out to be short', async () => {
+      const { service, update } = buildService(
+        {
+          ...pending,
+          walletAmountUsed: '3000.00',
+          appliedGiftCards: [{ code: 'A', amountUsed: 2000 }],
+        },
+        { ...card, walletBalance: '1000.00' },
+      );
+      await expect(submit(service, 5000)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(details(update)).toHaveLength(0);
+    });
+
+    it('writes nothing again on a repeat call', async () => {
+      const { service, update } = buildService(pending, {
+        ...card,
+        order: NEW_ORDER,
+      });
+      jest.spyOn(service, 'getSession').mockResolvedValue({} as never);
+      await submit(service, 10000);
+      expect(details(update)).toHaveLength(0);
     });
   });
 

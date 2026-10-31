@@ -20,7 +20,11 @@ import {
   AppliedGiftCard,
   CheckoutSession,
 } from './entities/checkout-session.entity';
-import { Order, OrderPaymentSnapshotEntry } from './entities/order.entity';
+import {
+  Order,
+  OrderPaymentDetailsSnapshot,
+  OrderPaymentSnapshotEntry,
+} from './entities/order.entity';
 import type { SavedCardView } from './saved-cards.service';
 import { Payment, PaymentMethod } from './entities/payment.entity';
 import { CreateDraftSessionDto } from './dto/create-draft-session.dto';
@@ -44,6 +48,8 @@ import { PaymentSelectionRegistry } from './payment-selection.registry';
 import { promoDiscountCents } from './pricing/promo.adjustment';
 
 export const SESSION_EXPIRY_MINUTES = 30;
+
+const ORDER_ID_PATTERN = /^C01-\d{5}-\d{4}$/;
 
 const CHARGE_TIMEOUT_MS = 25_000;
 const CHARGE_ATTEMPT = 1;
@@ -157,6 +163,8 @@ export class CheckoutDraftSessionService {
       listingId,
       slug: (project?.slug as string | undefined) ?? null,
       contractId: session.contractId,
+      orderId: order?.orderId ?? null,
+      draftId: draftSummary?.draftId ?? null,
       projectCost,
       title: draftSummary?.title ?? null,
       mediaUrl: draftSummary?.mediaUrl ?? null,
@@ -181,6 +189,35 @@ export class CheckoutDraftSessionService {
         : null,
       paymentSelection,
       walletAmountUsed,
+    };
+  }
+
+  async getOrder(clientId: string, orderId: string) {
+    if (!ORDER_ID_PATTERN.test(orderId)) {
+      throw new BadRequestException({
+        code: 'INVALID_ORDER_ID',
+        message: 'The order id is not valid',
+      });
+    }
+    const order = await this.dataSource.manager.findOne(Order, {
+      where: { orderId, clientId },
+    });
+    if (!order) {
+      throw new NotFoundException({
+        code: 'ORDER_NOT_FOUND',
+        message: 'Order not found',
+      });
+    }
+    return {
+      orderId: order.orderId,
+      sessionId: order.sessionId,
+      status: order.status,
+      orderCost: Number(order.orderCost),
+      createdAt: order.createdAt,
+      paidAt: order.paidAt,
+      confirmationEmail: order.confirmationEmail,
+      paymentSnapshot: order.paymentSnapshot ?? [],
+      paymentDetailsSnapshot: order.paymentDetailsSnapshot ?? null,
     };
   }
 
@@ -474,6 +511,7 @@ export class CheckoutDraftSessionService {
           paymentId: line.id,
           phase: line.phase,
           method: line.method,
+          amount: Number(line.amount),
           card: card
             ? {
                 brand: card.brand,
@@ -526,27 +564,39 @@ export class CheckoutDraftSessionService {
         const created = await manager.findOneOrFail(Order, {
           where: { sessionId: session.id },
         });
-        await this.spendBalance(
+        const spentBalanceCents = await this.spendBalance(
           manager,
           clientId,
           created.orderId,
           balanceCents,
           requestMeta,
         );
-        await this.spendGiftCards(
+        const spentGiftCards = await this.spendGiftCards(
           manager,
           clientId,
           created.orderId,
           session.appliedGiftCards,
           requestMeta,
         );
-        await this.spendPromo(
+        const spentPromo = await this.spendPromo(
           manager,
           clientId,
           session,
           created.orderId,
           promoCents,
         );
+        const paymentDetailsSnapshot: OrderPaymentDetailsSnapshot = {
+          projectCost: Number(session.projectCost),
+          tax: 0,
+          promo: spentPromo,
+          giftCards: spentGiftCards,
+          balanceApplied: spentBalanceCents / 100,
+          total: due,
+          capturedAt: new Date().toISOString(),
+        };
+        await manager.update(Order, created.orderId, {
+          paymentDetailsSnapshot,
+        });
         return created;
       });
     } catch (error) {
@@ -623,8 +673,8 @@ export class CheckoutDraftSessionService {
     orderId: string,
     balanceCents: number,
     requestMeta: RequestMeta,
-  ): Promise<void> {
-    if (balanceCents <= 0) return;
+  ): Promise<number> {
+    if (balanceCents <= 0) return 0;
     const wallets = await manager.query(
       `SELECT "balance" FROM "checkout"."wallets" WHERE "userId" = $1 FOR UPDATE`,
       [clientId],
@@ -651,6 +701,7 @@ export class CheckoutDraftSessionService {
       userAgent: requestMeta.userAgent?.trim().slice(0, 500) || null,
       createdBy: clientId,
     });
+    return balanceCents;
   }
 
   private async appliedPromoCents(
@@ -673,10 +724,11 @@ export class CheckoutDraftSessionService {
     session: CheckoutSession,
     orderId: string,
     discountCents: number,
-  ): Promise<void> {
-    if (discountCents <= 0 || !session.appliedPromoCode) return;
+  ): Promise<OrderPaymentDetailsSnapshot['promo']> {
+    if (discountCents <= 0 || !session.appliedPromoCode) return null;
     const rows: Array<{
       id: string;
+      code: string;
       discount_type: 'percent' | 'fixed';
       discount_value: string;
       applies_to: string;
@@ -686,7 +738,7 @@ export class CheckoutDraftSessionService {
       max_per_client: number | null;
       active: boolean;
     }> = await manager.query(
-      `SELECT "id", "discount_type", "discount_value", "applies_to", "starts_at", "expires_at", "max_redemptions", "max_per_client", "active"
+      `SELECT "id", "code", "discount_type", "discount_value", "applies_to", "starts_at", "expires_at", "max_redemptions", "max_per_client", "active"
        FROM "checkout"."promo_codes"
        WHERE "id" = $1
        FOR UPDATE`,
@@ -736,6 +788,12 @@ export class CheckoutDraftSessionService {
       orderId,
       discountAmount: discountCents / 100,
     });
+    return {
+      code: promo.code,
+      type: promo.discount_type,
+      value: Number(promo.discount_value),
+      amount: discountCents / 100,
+    };
   }
 
   private async spendGiftCards(
@@ -744,7 +802,7 @@ export class CheckoutDraftSessionService {
     orderId: string,
     applied: AppliedGiftCard[] | null,
     requestMeta: RequestMeta,
-  ): Promise<void> {
+  ): Promise<OrderPaymentDetailsSnapshot['giftCards']> {
     const wanted = new Map<string, { code: string; cents: number }>();
     for (const card of applied ?? []) {
       const cents = toCents(Number(card.amountUsed));
@@ -754,7 +812,7 @@ export class CheckoutDraftSessionService {
       if (entry) entry.cents += cents;
       else wanted.set(key, { code: card.code, cents });
     }
-    if (wanted.size === 0) return;
+    if (wanted.size === 0) return [];
 
     const rows: Array<{
       id: string;
@@ -793,8 +851,9 @@ export class CheckoutDraftSessionService {
       throw new GiftCardShortError(available);
     }
 
+    const spent: OrderPaymentDetailsSnapshot['giftCards'] = [];
     for (const key of keys) {
-      const { cents } = wanted.get(key)!;
+      const { cents, code } = wanted.get(key)!;
       const row = byKey.get(key)!;
       await manager.query(
         `UPDATE "checkout"."gift_cards"
@@ -817,7 +876,9 @@ export class CheckoutDraftSessionService {
         userAgent: requestMeta.userAgent?.trim().slice(0, 500) || null,
         createdBy: clientId,
       });
+      spent.push({ code, amount: cents / 100 });
     }
+    return spent;
   }
 
   private async resetGiftCardsToAvailable(

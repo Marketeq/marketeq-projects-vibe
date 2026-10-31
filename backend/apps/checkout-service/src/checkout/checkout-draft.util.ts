@@ -26,21 +26,29 @@ export const loadOwnedDraft = async (
     where: { id: draftId, clientId },
     ...(options.lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
   });
-  if (!draft || isDraftExpired(draft)) {
+  if (!draft) throw new NotFoundException('Draft not found');
+  if (isDraftExpired(draft) && !(await isDraftPaid(manager, draft))) {
     throw new NotFoundException('Draft not found');
   }
   return draft;
+};
+
+export const isDraftPaid = async (
+  manager: EntityManager,
+  draft: Pick<CheckoutDraft, 'sessionId'>,
+): Promise<boolean> => {
+  if (!draft.sessionId) return false;
+  const session = await manager.findOne(CheckoutSession, {
+    where: { id: draft.sessionId },
+  });
+  return session?.status === 'success';
 };
 
 export const assertDraftNotPaid = async (
   manager: EntityManager,
   draft: Pick<CheckoutDraft, 'sessionId'>,
 ): Promise<void> => {
-  if (!draft.sessionId) return;
-  const session = await manager.findOne(CheckoutSession, {
-    where: { id: draft.sessionId },
-  });
-  if (session?.status === 'success') {
+  if (await isDraftPaid(manager, draft)) {
     throw new ConflictException({
       code: 'SESSION_ALREADY_PAID',
       message: 'This checkout has already been paid',

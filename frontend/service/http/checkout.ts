@@ -109,6 +109,9 @@ export const CheckoutAPI = {
   GetSession: (sessionId: string) =>
     AxiosRequest.get(`/v1/checkout/session/${sessionId}`, { timeout: 10000 }),
 
+  GetOrder: (orderId: string) =>
+    AxiosRequest.get(`/v1/checkout/orders/${orderId}`, { timeout: 10000 }),
+
   SetSessionPaymentSelection: (
     sessionId: string,
     data: { method: CheckoutPaymentMethod; id: string }

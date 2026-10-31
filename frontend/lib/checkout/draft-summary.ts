@@ -81,10 +81,11 @@ export const getDraftDurationLabel = (days: number | null): string | null => {
 
 export const getDraftDateRangeLabel = (
   days: number | null,
-  shortMonth = false
+  shortMonth = false,
+  startDate: Date = new Date()
 ): string | null => {
   if (!days || days <= 0) return null
-  const start = new Date()
+  const start = new Date(startDate)
   const end = new Date(start)
   end.setUTCDate(end.getUTCDate() + workingDaysToCalendarDays(days))
   const formatter = shortMonth ? shortMonthYearFormatter : monthYearFormatter

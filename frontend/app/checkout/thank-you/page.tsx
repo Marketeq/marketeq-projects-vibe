@@ -1,21 +1,45 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   usePathname,
   useRouter,
   useSearchParams,
 } from "next/navigation"
 import { useCheckout } from "@/contexts/checkout"
+import { getCheckoutDraftTeam } from "@/lib/checkout/draft-team"
+import type { CheckoutDraftTeamRow } from "@/lib/checkout/draft-team"
+import {
+  formatOrderDate,
+  formatPaymentAmount,
+  formatPaymentDate,
+  getCheckoutOrder,
+  getOrderPaymentRows,
+  getOrderPriceBreakdown,
+  getProjectDetails,
+  getTeamMembers,
+  groupOrderPaymentRows,
+  type CheckoutOrder,
+  type OrderPaymentRow,
+} from "@/lib/checkout/order"
 import { UserAPI } from "@/service/http/user"
 import {
+  AlertCircle,
   ArrowRight,
   Bank,
   CheckCircle,
+  CreditCard,
   PhoneCall,
   Printer,
   Users03,
 } from "@blend-metrics/icons"
+import {
+  DinersClubDefault,
+  Jcbdefault,
+  MastercardDefault,
+  UnionPayDefault,
+} from "@blend-metrics/icons/payment-methods"
 import type { UserProfile } from "@/types/user"
 import { CalBookingButton } from "@/components/cal-booking-button"
 import { CheckoutNavigation } from "@/components/checkout-navigation"
@@ -26,12 +50,17 @@ import {
 } from "@/components/hire-me-button"
 import {
   ApplePay1,
+  Discover,
   GPay1,
   Klarna,
   WireTransfer,
 } from "@/components/icons/payment-icons"
 import NextImage from "@/components/next-image"
 import {
+  Alert,
+  AlertContent,
+  AlertIcon,
+  AlertTitle,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -123,9 +152,11 @@ type AppliedGiftCard = {
 type ReviewPaymentRow = {
   id: string
   method: InstallmentPaymentMethod
-  amount: number
+  amount: number | null
   label: string
   showBillingAddress?: boolean
+  expiryLabel?: string | null
+  billingAddressLabel?: string | null
 }
 
 const formatter = new Intl.NumberFormat("en-US", {
@@ -157,6 +188,11 @@ const getCardBrandLabel = (method: InstallmentPaymentMethod) => {
   }
 
   if (source.includes("visa")) return "Visa"
+  if (source.includes("mastercard")) return "Mastercard"
+  if (source.includes("discover")) return "Discover"
+  if (source.includes("diners")) return "Diners Club"
+  if (source.includes("jcb")) return "JCB"
+  if (source.includes("unionpay")) return "UnionPay"
 
   return method.title || "Credit card"
 }
@@ -222,11 +258,86 @@ const PaymentMethodIcon = ({
     return <WireTransfer className="h-[31px] w-[46.5px] shrink-0" />
   }
 
-  return getCardBrandLabel(method).toLowerCase().includes("amex") ? (
+  const brandLabel = getCardBrandLabel(method).toLowerCase()
+
+  if (brandLabel.includes("mastercard")) {
+    return <MastercardDefault className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  if (brandLabel.includes("discover")) {
+    return <Discover className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  if (brandLabel.includes("diners")) {
+    return <DinersClubDefault className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  if (brandLabel.includes("jcb")) {
+    return <Jcbdefault className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  if (brandLabel.includes("unionpay")) {
+    return <UnionPayDefault className="h-[30px] w-[45px] shrink-0" />
+  }
+
+  return brandLabel.includes("amex") ? (
     <Amex className="h-[30px] w-[45px] shrink-0" />
   ) : (
     <Visa className="h-[30px] w-[45px] shrink-0" />
   )
+}
+
+const orderPaymentMethodTypes: Record<string, InstallmentPaymentMethodType> = {
+  card: "CREDIT_DEBIT_CARD",
+  ach: "BANK_ACCOUNT",
+  wire: "WIRE_TRANSFER",
+  klarna: "KLARNA",
+  google_pay: "GOOGLE_PAY",
+  apple_pay: "APPLE_PAY",
+}
+
+const orderPaymentMethodTitles: Record<string, string> = {
+  ach: "Bank account",
+  wire: "Wire transfer",
+  klarna: "Klarna",
+  google_pay: "Google Pay",
+  apple_pay: "Apple Pay",
+}
+
+const orderCardBrandNames: Record<string, string> = {
+  visa: "Visa",
+  amex: "American Express",
+  mastercard: "Mastercard",
+  discover: "Discover",
+  diners: "Diners Club",
+  jcb: "JCB",
+  unionpay: "UnionPay",
+}
+
+const toReviewPaymentRow = (
+  row: OrderPaymentRow,
+  label: string
+): ReviewPaymentRow => {
+  const type = orderPaymentMethodTypes[row.method] ?? "CREDIT_DEBIT_CARD"
+  const brandName = (row.brand && orderCardBrandNames[row.brand]) || "Card"
+  return {
+    id: row.id,
+    method: {
+      id: row.id,
+      method: type,
+      title:
+        type === "CREDIT_DEBIT_CARD"
+          ? `${brandName} ${row.funding === "debit" ? "debit" : "credit"} card`
+          : (orderPaymentMethodTitles[row.method] ?? "Payment method"),
+      subtitle: row.last4 ? `ending in *${row.last4}` : "",
+      cardNumber: row.last4 ?? undefined,
+    },
+    amount: row.amount,
+    label,
+    showBillingAddress: Boolean(row.billingAddressLabel),
+    expiryLabel: row.expiryLabel ? `Expires: ${row.expiryLabel}` : null,
+    billingAddressLabel: row.billingAddressLabel,
+  }
 }
 
 export default function ConfirmationPage() {
@@ -244,6 +355,67 @@ export default function ConfirmationPage() {
     ? listingQuery
     : `sessionId=${encodeURIComponent(checkout.sessionId)}`
   const basePath = isTalentCheckout ? "/talent-checkout" : "/checkout"
+  const orderId = checkout.session?.orderId ?? null
+  const [orderLoad, setOrderLoad] = React.useState<{
+    status: "loading" | "ready" | "error"
+    order: CheckoutOrder | null
+    timedOut: boolean
+  }>({ status: "loading", order: null, timedOut: false })
+  const [orderRetryKey, setOrderRetryKey] = React.useState(0)
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+    if (!orderId) {
+      setOrderLoad({ status: "error", order: null, timedOut: false })
+      return
+    }
+    let isActive = true
+    setOrderLoad({ status: "loading", order: null, timedOut: false })
+    getCheckoutOrder(orderId)
+      .then((order) => {
+        if (!isActive) return
+        setOrderLoad({
+          status: order ? "ready" : "error",
+          order,
+          timedOut: false,
+        })
+      })
+      .catch((error) => {
+        if (!isActive) return
+        setOrderLoad({
+          status: "error",
+          order: null,
+          timedOut: (error as { code?: string })?.code === "ECONNABORTED",
+        })
+      })
+    return () => {
+      isActive = false
+    }
+  }, [isTalentCheckout, orderId, orderRetryKey])
+  const isOrderLoading = !isTalentCheckout && orderLoad.status === "loading"
+  const draftId = checkout.session?.draftId ?? null
+  const [teamLoad, setTeamLoad] = React.useState<{
+    status: "loading" | "ready" | "error"
+    rows: CheckoutDraftTeamRow[]
+  }>({ status: "loading", rows: [] })
+  React.useEffect(() => {
+    if (isTalentCheckout) return
+    if (!draftId) {
+      setTeamLoad({ status: "error", rows: [] })
+      return
+    }
+    let isActive = true
+    setTeamLoad({ status: "loading", rows: [] })
+    getCheckoutDraftTeam(draftId).then((rows) => {
+      if (!isActive) return
+      setTeamLoad(
+        rows ? { status: "ready", rows } : { status: "error", rows: [] }
+      )
+    })
+    return () => {
+      isActive = false
+    }
+  }, [isTalentCheckout, draftId])
+  const isTeamLoading = !isTalentCheckout && teamLoad.status === "loading"
   const decodedSlug = safeDecodeSlug(slug)
   const [talentProfile, setTalentProfile] = React.useState<UserProfile | null>(
     null
@@ -326,9 +498,18 @@ export default function ConfirmationPage() {
       label: "Monthly Payment Amount",
       showBillingAddress: false,
     }))
-  const orderReference = "C01-12345-6789"
-  const orderDateLabel = "November 5th, 2025 at 11:11 PM EST"
-  const confirmationEmail = "jack2024@gmail.com"
+  const loadedOrder = orderLoad.order
+  const orderReference = isTalentCheckout
+    ? "C01-12345-6789"
+    : (loadedOrder?.orderId ?? "")
+  const orderDateLabel = isTalentCheckout
+    ? "November 5th, 2025 at 11:11 PM EST"
+    : loadedOrder
+      ? formatOrderDate(loadedOrder.paidAt ?? loadedOrder.createdAt)
+      : ""
+  const confirmationEmail = isTalentCheckout
+    ? "jack2024@gmail.com"
+    : (loadedOrder?.confirmationEmail ?? "")
   const downloadInvoice = React.useCallback(
     (invoiceText: string) => {
       const blob = new Blob([invoiceText], {
@@ -345,9 +526,9 @@ export default function ConfirmationPage() {
   )
 
   const formatInvoicePaymentLine = (row: ReviewPaymentRow) =>
-    `${getPaymentMethodTitle(row.method)} - ${row.label}: ${formatter.format(
-      row.amount
-    )}`
+    `${getPaymentMethodTitle(row.method)} - ${row.label}: ${
+      row.amount === null ? "-" : formatPaymentAmount(row.amount)
+    }`
 
   const renderProjectPaymentRow = (
     row: ReviewPaymentRow,
@@ -357,39 +538,35 @@ export default function ConfirmationPage() {
       key={row.id}
       className={
         options?.isLast
-          ? "grid grid-cols-2"
-          : "grid grid-cols-2 border-b border-gray-200"
+          ? "grid min-h-[87px] grid-cols-2"
+          : "grid min-h-[87px] grid-cols-2 border-b border-gray-200"
       }
     >
-      <div className="flex items-start gap-x-3 py-4">
+      <div className="flex gap-x-3 pb-[15px] pt-4">
         <PaymentMethodIcon method={row.method} />
-        <div className="flex-auto space-y-1">
-          <h2 className="text-sm font-semibold text-dark-blue-400">
+        <div className="flex flex-col gap-y-1">
+          <p className="text-sm font-semibold leading-[normal]">
             {getPaymentMethodTitle(row.method)}
-          </h2>
-          {row.method.method === "CREDIT_DEBIT_CARD" ? (
-            <p className="text-xs font-light text-dark-blue-400">
-              Expires: 09/2027
+          </p>
+          {row.expiryLabel ? (
+            <p className="text-xs font-light leading-[normal]">
+              {row.expiryLabel}
             </p>
           ) : null}
-          <p className="text-xs font-light text-dark-blue-400">
-            {row.label}:{" "}
-            <span className="font-semibold">
-              {formatter.format(row.amount)}
-            </span>
-          </p>
+          {row.amount !== null ? (
+            <p className="text-xs font-light leading-[normal]">
+              {row.label}:{" "}
+              <span className="font-semibold">
+                {formatPaymentAmount(row.amount)}
+              </span>
+            </p>
+          ) : null}
         </div>
       </div>
-      {row.showBillingAddress ? (
-        <div className="px-3 py-4">
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold text-dark-blue-400">
-              Billing Address
-            </h2>
-            <p className="text-xs font-light text-dark-blue-400">
-              2125 Chestnut Street, San Francisco, CA 94123
-            </p>
-          </div>
+      {row.showBillingAddress && row.billingAddressLabel ? (
+        <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
+          <p className="font-semibold">Billing Address</p>
+          <p className="font-light">{row.billingAddressLabel}</p>
         </div>
       ) : (
         <div />
@@ -703,10 +880,7 @@ export default function ConfirmationPage() {
                     </p>
                   </div>
 
-                  <CalBookingButton
-                    className="text-primary-500 bg-primary-50 hover:bg-primary-500 hover:text-white"
-                    visual="primary"
-                  >
+                  <CalBookingButton variant="light" visual="primary">
                     <PhoneCall className="size-[15px]" />
                     Schedule Call
                   </CalBookingButton>
@@ -937,7 +1111,7 @@ export default function ConfirmationPage() {
 
                   <div className="grid mt-2.5">
                     <Button
-                      className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-500 hover:text-white"
+                      className="border-2 border-primary-500 bg-transparent text-primary-500 hover:bg-primary-50"
                       onClick={() => {
                         const paymentLines =
                           paymentMode === "AT_ONCE"
@@ -1056,17 +1230,20 @@ export default function ConfirmationPage() {
     )
   }
 
-  const isInstallmentPlan =
-    paymentPlan === "IN_INSTALLMENTS" ||
-    searchParams.get("pay") === "IN_INSTALLMENTS"
+  const orderPaymentRows = loadedOrder ? getOrderPaymentRows(loadedOrder) : []
+  const groupedPaymentRows = groupOrderPaymentRows(orderPaymentRows)
+  const hasRecurringPayments = groupedPaymentRows.recurring.length > 0
   const designedInitialPaymentRows: ReviewPaymentRow[] =
-    initialInstallmentRows.length > 0
-      ? initialInstallmentRows
-      : []
+    groupedPaymentRows.initial.map((row) =>
+      toReviewPaymentRow(row, "Payment Amount")
+    )
   const designedRecurringPaymentRows: ReviewPaymentRow[] =
-    recurringInstallmentRows.length > 0
-      ? recurringInstallmentRows
-      : []
+    groupedPaymentRows.recurring.map((row) =>
+      toReviewPaymentRow(row, "Recurring Payment Amount")
+    )
+  const projectDetails = getProjectDetails(checkout.session, loadedOrder)
+  const teamMembers = getTeamMembers(teamLoad.rows)
+  const priceBreakdown = loadedOrder ? getOrderPriceBreakdown(loadedOrder) : null
 
   return (
     <div className="bg-gray-50 pt-[64px]">
@@ -1084,45 +1261,94 @@ export default function ConfirmationPage() {
                 Thank you for launching your project with Marketeq!
               </h1>
 
-              <div className="flex w-full flex-col gap-y-3">
-                <div className="flex w-full items-center gap-x-2">
-                  <p className="text-base leading-5 text-[#122A4B]">
-                    A copy of your invoice and order details has been sent to{" "}
-                    <span className="font-bold">{confirmationEmail}</span>
-                  </p>
-                  <Button
-                    className="text-xs leading-5 underline"
-                    variant="link"
-                    visual="gray"
-                  >
-                    Change Email
-                  </Button>
-                </div>
+              {orderLoad.status === "error" ? (
+                <Alert
+                  variant="error"
+                  className="w-fit max-w-full items-center rounded-[5px] p-4"
+                >
+                  <AlertIcon className="shrink-0">
+                    <AlertCircle className="size-5" />
+                  </AlertIcon>
+                  <AlertContent className="flex min-w-0 items-center gap-x-3">
+                    <AlertTitle className="text-sm leading-5 text-error-600">
+                      {orderLoad.timedOut
+                        ? "Connection timed out. Please check your internet connection and try again."
+                        : "We were unable to load your order confirmation. Please contact support with your order reference number."}
+                    </AlertTitle>
+                    <Button
+                      className="shrink-0 text-sm leading-5 underline"
+                      variant="link"
+                      visual="gray"
+                      onClick={() => setOrderRetryKey((key) => key + 1)}
+                    >
+                      Retry
+                    </Button>
+                  </AlertContent>
+                </Alert>
+              ) : (
+                <div className="flex w-full flex-col gap-y-3">
+                  <div className="flex w-full items-center gap-x-2">
+                    <p className="text-base leading-5 text-[#122A4B]">
+                      A copy of your invoice and order details has been sent to{" "}
+                      {isOrderLoading ? (
+                        <span className="inline-block h-4 w-48 animate-pulse rounded bg-gray-200 align-middle" />
+                      ) : (
+                        <span className="font-bold">{confirmationEmail}</span>
+                      )}
+                    </p>
+                    <Button
+                      asChild
+                      className="text-xs leading-5 underline"
+                      variant="link"
+                      visual="gray"
+                    >
+                      <Link href="/settings">Change Email</Link>
+                    </Button>
+                  </div>
 
-                <div className="flex items-center gap-x-3 text-base leading-5 text-gray-500">
-                  <span>Your Order ID: {orderReference}</span>
-                  <span className="h-[17px] w-0.5 shrink-0 bg-gray-200" />
-                  <span>Order Date: {orderDateLabel}</span>
+                  <div className="flex items-center gap-x-3 text-base leading-5 text-gray-500">
+                    <span className="inline-flex items-center gap-x-1">
+                      Your Order ID:{" "}
+                      {isOrderLoading ? (
+                        <span className="inline-block h-4 w-32 animate-pulse rounded bg-gray-200" />
+                      ) : (
+                        orderReference
+                      )}
+                    </span>
+                    <span className="h-[17px] w-0.5 shrink-0 bg-gray-200" />
+                    <span className="inline-flex items-center gap-x-1">
+                      Order Date:{" "}
+                      {isOrderLoading ? (
+                        <span className="inline-block h-4 w-56 animate-pulse rounded bg-gray-200" />
+                      ) : (
+                        orderDateLabel
+                      )}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <p className="text-base leading-6 text-[#122A4B]">
                 Need to make changes to your order? View{" "}
                 <Button
                   className="text-base leading-6 underline"
                   variant="link"
-                  onClick={() =>
-                    router.push(`${basePath}/review?${searchParams.toString()}`)
-                  }
                 >
                   Order Details
                 </Button>{" "}
                 or{" "}
                 <Button
+                  asChild
                   className="text-base leading-6 underline"
                   variant="link"
                 >
-                  Contact Us
+                  <Link
+                    href="/contact-support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Contact Us
+                  </Link>
                 </Button>
               </p>
             </div>
@@ -1133,7 +1359,7 @@ export default function ConfirmationPage() {
             variant="outlined"
             visual="gray"
             size="lg"
-            onClick={() => router.push("/client-dashboard")}
+            onClick={() => router.push("/")}
           >
             Continue Browsing <ArrowRight className="size-[15px] text-gray-500" />
           </Button>
@@ -1152,28 +1378,31 @@ export default function ConfirmationPage() {
                 <div className="relative w-[181px] flex-none self-stretch overflow-hidden rounded-md border border-[#DFDFDF] bg-white">
                   <NextImage
                     className="object-cover"
-                    src="/dashboard.png"
-                    alt="Dashboard"
+                    src={projectDetails.imageUrl}
+                    alt={projectDetails.title}
                     sizes="50vw"
                     fill
                   />
                 </div>
                 <div className="flex h-[92px] flex-auto flex-col items-start justify-between">
                   <h1 className="text-sm font-medium leading-5 text-dark-blue-400">
-                    Marketeq Client Portal - Redesigning and Optimizing Website
-                    for Enhanced User Experience.
+                    {projectDetails.title}
                   </h1>
 
                   <div className="flex items-center gap-x-2">
                     <Users03 className="size-[15px] shrink-0" />
                     <span className="text-xs font-semibold leading-5 text-dark-blue-400">
-                      8 team members
+                      {projectDetails.teamLabel}
                     </span>
                   </div>
 
-                  <p className="whitespace-pre text-[13px] capitalize leading-5 text-dark-blue-400">
-                    {"January 2024  -  August 2024"}
-                  </p>
+                  {isOrderLoading ? (
+                    <span className="inline-block h-4 w-44 animate-pulse rounded bg-gray-200" />
+                  ) : (
+                    <p className="whitespace-pre text-[13px] capitalize leading-5 text-dark-blue-400">
+                      {projectDetails.dateRange}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -1188,231 +1417,157 @@ export default function ConfirmationPage() {
                   </p>
                 </div>
 
-                <article className="flex items-center justify-between">
-                  <div className="flex items-center gap-x-3">
-                    <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="John Villago" />
-                      <AvatarFallback>J</AvatarFallback>
-                    </Avatar>
-
-                    <div className="text-sm leading-5 text-dark-blue-400">
-                      <h1 className="font-semibold">John Villago</h1>
-                      <p className="font-light">Account Manager</p>
-                    </div>
+                {isTeamLoading ? (
+                  <div className="flex flex-col gap-y-6">
+                    {[0, 1].map((key) => (
+                      <div key={key} className="flex items-center gap-x-3">
+                        <div className="size-10 shrink-0 animate-pulse rounded-full bg-gray-200" />
+                        <div className="flex flex-col gap-y-2">
+                          <div className="h-4 w-32 animate-pulse rounded bg-gray-200" />
+                          <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                ) : teamMembers.length > 0 ? (
+                  teamMembers.map((member, index) => (
+                    <article
+                      key={member.id}
+                      className={
+                        index === 0
+                          ? "flex items-center justify-between"
+                          : "flex items-center justify-between border-t border-gray-200 pt-6"
+                      }
+                    >
+                      <div className="flex items-center gap-x-3">
+                        <Avatar size="md" className="shrink-0">
+                          {member.avatarUrl ? (
+                            <AvatarImage
+                              src={member.avatarUrl}
+                              alt={member.name}
+                            />
+                          ) : null}
+                          <AvatarFallback>{member.initial}</AvatarFallback>
+                        </Avatar>
 
-                  <CalBookingButton
-                    className="bg-primary-50 px-3.5 text-xs leading-5 text-primary-500 hover:bg-primary-500 hover:text-white"
-                    visual="primary"
-                  >
-                    <PhoneCall className="size-[15px]" />
-                    Schedule Call
-                  </CalBookingButton>
-                </article>
+                        <div className="text-sm leading-5 text-dark-blue-400">
+                          <h1 className="font-semibold">{member.name}</h1>
+                          {member.role ? (
+                            <p className="font-light">{member.role}</p>
+                          ) : null}
+                        </div>
+                      </div>
 
-                <article className="flex items-center justify-between border-t border-gray-200 pt-6">
-                  <div className="flex items-center gap-x-3">
-                    <Avatar size="md" className="shrink-0">
-                      <AvatarImage src="/man.jpg" alt="Larah Varghese" />
-                      <AvatarFallback>L</AvatarFallback>
-                    </Avatar>
-
-                    <div className="text-sm leading-5 text-dark-blue-400">
-                      <h1 className="font-semibold">Larah Varghese</h1>
-                      <p className="font-light">Project Manager</p>
-                    </div>
-                  </div>
-
-                  <CalBookingButton
-                    className="bg-primary-50 px-3.5 text-xs leading-5 text-primary-500 hover:bg-primary-500 hover:text-white"
-                    visual="primary"
-                  >
-                    <PhoneCall className="size-[15px]" />
-                    Schedule Call
-                  </CalBookingButton>
-                </article>
+                      <CalBookingButton
+                        className="px-3.5 text-xs leading-5"
+                        variant="light"
+                        visual="primary"
+                      >
+                        <PhoneCall className="size-[15px]" />
+                        Schedule Call
+                      </CalBookingButton>
+                    </article>
+                  ))
+                ) : teamLoad.status === "error" ? (
+                  <p className="text-sm font-light leading-[normal] text-dark-blue-400">
+                    Team details are unavailable right now.
+                  </p>
+                ) : (
+                  <p className="text-sm font-light leading-[normal] text-dark-blue-400">
+                    Your team is being assigned. You will receive an email
+                    confirmation shortly.{" "}
+                    <Button
+                      asChild
+                      className="text-sm leading-[normal] underline"
+                      variant="link"
+                    >
+                      <Link href="/contact-support">Contact Us</Link>
+                    </Button>
+                  </p>
+                )}
               </div>
             </div>
 
-            <Card className="mt-8 flex-col items-stretch justify-normal overflow-hidden text-dark-blue-400">
-              <div className="flex flex-col gap-y-1.5 border-b border-gray-200 px-6 py-5">
-                <h1 className="text-lg font-semibold leading-7">
-                  Payment Methods
-                </h1>
-                <p className="text-sm leading-[normal]">
-                  <span className="font-light">
-                    The following payment methods will be billed for the total
-                    amount of
-                  </span>{" "}
-                  <span className="font-bold">
-                    {formatter.format(totalDueToday)}
-                  </span>
-                </p>
-                <p className="text-sm leading-[normal]">
-                  <span className="font-light">
-                    You will see a charge on your bank statement from
-                  </span>{" "}
-                  <span className="font-bold">Marketeq</span>
-                </p>
-              </div>
-
-              {isInstallmentPlan ? (
-              <div className="flex flex-col gap-y-6 p-6">
-                <div className="flex flex-col gap-y-3">
-                  <h2 className="text-base font-semibold leading-[19px]">
-                    Initial One-Time Payment
-                  </h2>
-                  <div className="flex min-h-[87px] gap-x-3 border-b border-gray-200 py-4">
-                    <div className="inline-flex h-[31px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-[#DADADA] bg-white text-[#A6A7AA]">
-                      <Bank className="size-4" />
-                    </div>
-                    <div className="flex flex-col gap-y-1">
-                      <p className="text-sm font-semibold leading-[normal]">
-                        Bank of America checking ending in *1234
-                      </p>
-                      <p className="text-xs font-light leading-[normal]">
-                        Payment Amount:{" "}
-                        <span className="font-semibold">$45,000</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-y-3">
-                  <h2 className="text-base font-semibold leading-[19px]">
-                    Recurring Payments
-                  </h2>
+            {isOrderLoading || orderPaymentRows.length > 0 ? (
+              <Card className="mt-8 flex-col items-stretch justify-normal overflow-hidden text-dark-blue-400">
+                <div className="flex flex-col gap-y-1.5 border-b border-gray-200 px-6 py-5">
+                  <h1 className="text-lg font-semibold leading-7">
+                    Payment Methods
+                  </h1>
                   <p className="text-sm leading-[normal]">
                     <span className="font-light">
-                      Your following payment methods will be debited on
+                      The following payment methods will be billed for the
+                      total amount of
                     </span>{" "}
-                    <span className="font-bold">1st of every month</span>{" "}
-                    <span className="font-light">
-                      for the amount referenced below until the
-                    </span>{" "}
-                    <span className="font-bold">
-                      completion of your project.
-                    </span>
+                    {isOrderLoading || !loadedOrder ? (
+                      <span className="inline-block h-4 w-20 animate-pulse rounded bg-gray-200 align-middle" />
+                    ) : (
+                      <span className="font-bold">
+                        {formatPaymentAmount(loadedOrder.orderCost)}
+                      </span>
+                    )}
                   </p>
-
-                  <div>
-                    <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
-                      <div className="flex gap-x-3 pb-[15px] pt-4">
-                        <Amex className="h-[30px] w-[45px] shrink-0" />
-                        <div className="flex flex-col gap-y-1">
-                          <p className="text-sm font-semibold leading-[normal]">
-                            AMEX credit card ending in *1234
-                          </p>
-                          <p className="text-xs font-light leading-[normal]">
-                            Expires: 09/2027
-                          </p>
-                          <p className="text-xs font-light leading-[normal]">
-                            Weekly Payment Amount:{" "}
-                            <span className="font-semibold">$1,406</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
-                        <p className="font-semibold">Billing Address</p>
-                        <p className="font-light">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 pt-4">
-                      <div className="flex gap-x-3">
-                        <Visa className="h-[30px] w-[45px] shrink-0" />
-                        <div className="flex flex-col gap-y-1">
-                          <p className="text-sm font-semibold leading-[normal]">
-                            Visa debit card ending in *1234
-                          </p>
-                          <p className="text-xs font-light leading-[normal]">
-                            Expires: 09/2027
-                          </p>
-                          <p className="text-xs font-light leading-[normal]">
-                            Weekly Payment Amount:{" "}
-                            <span className="font-semibold">$1,406</span>
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-y-1 px-3 text-xs leading-[normal]">
-                        <p className="font-semibold">Billing Address</p>
-                        <p className="font-light">
-                          2125 Chestnut Street, San Francisco, CA 94123
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              ) : (
-              <div className="px-6">
-                <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
-                  <div className="flex gap-x-3 pb-[15px] pt-4">
-                    <Amex className="h-[30px] w-[45px] shrink-0" />
-                    <div className="flex flex-col gap-y-1">
-                      <p className="text-sm font-semibold leading-[normal]">
-                        AMEX credit card ending in *1234
-                      </p>
-                      <p className="text-xs font-light leading-[normal]">
-                        Expires: 09/2027
-                      </p>
-                      <p className="text-xs font-light leading-[normal]">
-                        Payment Amount:{" "}
-                        <span className="font-semibold">$4,000</span>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
-                    <p className="font-semibold">Billing Address</p>
-                    <p className="font-light">
-                      2125 Chestnut Street, San Francisco, CA 94123
-                    </p>
-                  </div>
+                  <p className="text-sm leading-[normal]">
+                    <span className="font-light">
+                      You will see a charge on your bank statement from
+                    </span>{" "}
+                    <span className="font-bold">Marketeq</span>
+                  </p>
                 </div>
 
-                <div className="grid min-h-[87px] grid-cols-2 border-b border-gray-200">
-                  <div className="flex gap-x-3 pb-[15px] pt-4">
-                    <Visa className="h-[30px] w-[45px] shrink-0" />
-                    <div className="flex flex-col gap-y-1">
-                      <p className="text-sm font-semibold leading-[normal]">
-                        Visa debit card ending in *1234
+                {isOrderLoading ? (
+                  <div className="flex flex-col gap-y-4 p-6">
+                    <div className="h-14 animate-pulse rounded bg-gray-100" />
+                    <div className="h-14 animate-pulse rounded bg-gray-100" />
+                  </div>
+                ) : hasRecurringPayments ? (
+                  <div className="flex flex-col gap-y-6 p-6">
+                    <div className="flex flex-col gap-y-3">
+                      <h2 className="text-base font-semibold leading-[19px]">
+                        Initial One-Time Payment
+                      </h2>
+                      <div>
+                        {designedInitialPaymentRows.map((row) =>
+                          renderProjectPaymentRow(row)
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-y-3">
+                      <h2 className="text-base font-semibold leading-[19px]">
+                        Recurring Payments
+                      </h2>
+                      <p className="text-sm leading-[normal]">
+                        <span className="font-light">
+                          Your following payment methods will be debited on a
+                          recurring basis for the amount referenced below until
+                          the
+                        </span>{" "}
+                        <span className="font-bold">
+                          completion of your project.
+                        </span>
                       </p>
-                      <p className="text-xs font-light leading-[normal]">
-                        Expires: 09/2027
-                      </p>
-                      <p className="text-xs font-light leading-[normal]">
-                        Payment Amount:{" "}
-                        <span className="font-semibold">$40,000</span>
-                      </p>
+                      <div>
+                        {designedRecurringPaymentRows.map((row, index) =>
+                          renderProjectPaymentRow(row, {
+                            isLast:
+                              index === designedRecurringPaymentRows.length - 1,
+                          })
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-y-1 px-3 py-4 text-xs leading-[normal]">
-                    <p className="font-semibold">Billing Address</p>
-                    <p className="font-light">
-                      2125 Chestnut Street, San Francisco, CA 94123
-                    </p>
+                ) : (
+                  <div className="px-6">
+                    {designedInitialPaymentRows.map((row, index) =>
+                      renderProjectPaymentRow(row, {
+                        isLast: index === designedInitialPaymentRows.length - 1,
+                      })
+                    )}
                   </div>
-                </div>
-
-                <div className="flex min-h-[87px] gap-x-3 py-4">
-                  <div className="inline-flex h-[31px] w-[45px] shrink-0 items-center justify-center rounded-[4px] border border-[#DADADA] bg-white text-[#A6A7AA]">
-                    <Bank className="size-4" />
-                  </div>
-                  <div className="flex flex-col gap-y-1">
-                    <p className="text-sm font-semibold leading-[normal]">
-                      Bank of America checking ending in *1234
-                    </p>
-                    <p className="text-xs font-light leading-[normal]">
-                      Payment Amount:{" "}
-                      <span className="font-semibold">$45,000</span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-              )}
-            </Card>
+                )}
+              </Card>
+            ) : null}
 
             <Card className="mt-8 justify-normal gap-x-2 py-[23px] pl-[23px] pr-[31px] shadow-[0px_1px_5px_0px_rgba(16,24,40,.02)]">
               <div className="flex min-w-0 flex-auto flex-col gap-y-2">
@@ -1444,47 +1599,83 @@ export default function ConfirmationPage() {
 
               <div className="flex flex-col gap-y-2 p-5">
                 <div className="flex flex-col gap-y-4">
-                  <div className="flex flex-col gap-y-2 text-xs leading-[normal] text-dark-blue-400">
-                    <div className="flex items-center justify-between">
-                      <p className="font-light">Project cost</p>
-                      <p>{formatter.format(projectCost)}</p>
+                  {isOrderLoading ? (
+                    <div className="flex flex-col gap-y-3">
+                      <div className="h-4 animate-pulse rounded bg-gray-200" />
+                      <div className="h-4 animate-pulse rounded bg-gray-200" />
+                      <div className="h-5 animate-pulse rounded bg-gray-200" />
                     </div>
-                    <div className="flex items-center justify-between">
-                      <p className="font-light">Estimated tax *</p>
-                      <p>
-                        {estimatedProjectTax === 0
-                          ? "$0.00"
-                          : formatter.format(estimatedProjectTax)}
-                      </p>
-                    </div>
-                    {appliedBalanceAmount > 0 ? (
-                      <div className="flex items-center justify-between">
-                        <p className="font-light">Balance applied</p>
-                        <p>- {formatter.format(appliedBalanceAmount)}</p>
+                  ) : loadedOrder ? (
+                    <>
+                      <div className="flex flex-col gap-y-2 text-xs leading-[normal] text-dark-blue-400">
+                        {priceBreakdown?.projectCost != null ? (
+                          <div className="flex items-center justify-between">
+                            <p className="font-light">Project cost</p>
+                            <p>{formatPaymentAmount(priceBreakdown.projectCost)}</p>
+                          </div>
+                        ) : null}
+                        {priceBreakdown?.projectCost != null ? (
+                          <div className="flex items-center justify-between">
+                            <p className="font-light">Estimated tax *</p>
+                            <p>
+                              {priceBreakdown.tax === 0
+                                ? "$0.00"
+                                : formatPaymentAmount(priceBreakdown.tax)}
+                            </p>
+                          </div>
+                        ) : null}
+                        {priceBreakdown && priceBreakdown.balanceApplied > 0 ? (
+                          <div className="flex items-center justify-between">
+                            <p className="font-light">Balance applied</p>
+                            <p>
+                              - {formatPaymentAmount(priceBreakdown.balanceApplied)}
+                            </p>
+                          </div>
+                        ) : null}
+                        {priceBreakdown?.promo ? (
+                          <div className="flex items-center justify-between">
+                            <p className="font-light">Promo code applied</p>
+                            <p>- {formatPaymentAmount(priceBreakdown.promo.amount)}</p>
+                          </div>
+                        ) : null}
+                        {priceBreakdown && priceBreakdown.giftCards.length > 0 ? (
+                          <div className="flex items-center justify-between">
+                            <p className="font-light">
+                              {priceBreakdown.giftCards.length === 1
+                                ? "Gift card applied"
+                                : `${priceBreakdown.giftCards.length} Gift cards applied`}
+                            </p>
+                            <p>
+                              - {formatPaymentAmount(priceBreakdown.giftCardTotal)}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                    {totalGiftCardAmount > 0 ? (
-                      <div className="flex items-center justify-between">
-                        <p className="font-light">Gift card applied</p>
-                        <p>- {formatter.format(totalGiftCardAmount)}</p>
-                      </div>
-                    ) : null}
-                  </div>
 
-                  <div className="flex items-center justify-between text-base font-bold leading-[normal] text-dark-blue-400">
-                    <p>Total</p>
-                    <p>{formatter.format(totalDueToday)}</p>
-                  </div>
+                      <div className="flex items-center justify-between text-base font-bold leading-[normal] text-dark-blue-400">
+                        <p>Total</p>
+                        <p>
+                          {formatPaymentAmount(
+                            priceBreakdown?.total ?? loadedOrder.orderCost
+                          )}
+                        </p>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-col gap-y-2.5">
-                  <div className="flex items-center justify-between rounded-[4px] bg-primary-25 p-2 text-[10px] leading-[13px] text-dark-blue-400">
-                    <p>Your monthly payments start from</p>
-                    <p className="font-bold">Jan 1st, 2025</p>
-                  </div>
+                  {hasRecurringPayments && priceBreakdown?.firstRecurringPaymentOn ? (
+                    <div className="flex items-center justify-between rounded-[4px] bg-primary-25 p-2 text-[10px] leading-[13px] text-dark-blue-400">
+                      <p>Your recurring payments start from</p>
+                      <p className="font-bold">
+                        {formatPaymentDate(priceBreakdown.firstRecurringPaymentOn)}
+                      </p>
+                    </div>
+                  ) : null}
 
                   <Button
-                    className="w-full border-2 border-primary-500 bg-white text-primary-500 hover:bg-primary-500 hover:text-white"
+                    className="w-full border-2 border-primary-500 bg-white text-primary-500 hover:bg-primary-50"
                     size="md"
                     variant="outlined"
                     visual="primary"
@@ -1497,33 +1688,52 @@ export default function ConfirmationPage() {
                         `Email: ${confirmationEmail}`,
                         "",
                         "Payment Details",
-                        `Project cost: ${formatter.format(projectCost)}`,
-                        `Estimated tax *: ${
-                          estimatedProjectTax === 0
-                            ? "$0.00"
-                            : formatter.format(estimatedProjectTax)
-                        }`,
-                        appliedBalanceAmount > 0
-                          ? `Balance applied: - ${formatter.format(
-                              appliedBalanceAmount
+                        priceBreakdown?.projectCost != null
+                          ? `Project cost: ${formatPaymentAmount(
+                              priceBreakdown.projectCost
                             )}`
                           : "",
-                        totalGiftCardAmount > 0
-                          ? `Gift card applied: - ${formatter.format(
-                              totalGiftCardAmount
+                        priceBreakdown?.projectCost != null
+                          ? `Estimated tax *: ${
+                              priceBreakdown.tax === 0
+                                ? "$0.00"
+                                : formatPaymentAmount(priceBreakdown.tax)
+                            }`
+                          : "",
+                        priceBreakdown && priceBreakdown.balanceApplied > 0
+                          ? `Balance applied: - ${formatPaymentAmount(
+                              priceBreakdown.balanceApplied
                             )}`
                           : "",
-                        `Total: ${formatter.format(totalDueToday)}`,
+                        priceBreakdown?.promo
+                          ? `Promo code applied: - ${formatPaymentAmount(
+                              priceBreakdown.promo.amount
+                            )}`
+                          : "",
+                        priceBreakdown && priceBreakdown.giftCardTotal > 0
+                          ? `Gift card applied: - ${formatPaymentAmount(
+                              priceBreakdown.giftCardTotal
+                            )}`
+                          : "",
+                        `Total: ${formatPaymentAmount(
+                          priceBreakdown?.total ?? loadedOrder?.orderCost ?? 0
+                        )}`,
                         "",
-                        "Initial One-Time Payment",
+                        hasRecurringPayments
+                          ? "Initial One-Time Payment"
+                          : "Payment Methods",
                         ...designedInitialPaymentRows.map(
                           formatInvoicePaymentLine
                         ),
-                        "",
-                        "Recurring Payments",
-                        ...designedRecurringPaymentRows.map(
-                          formatInvoicePaymentLine
-                        ),
+                        ...(hasRecurringPayments
+                          ? [
+                              "",
+                              "Recurring Payments",
+                              ...designedRecurringPaymentRows.map(
+                                formatInvoicePaymentLine
+                              ),
+                            ]
+                          : []),
                       ]
                         .filter(Boolean)
                         .join("\n")

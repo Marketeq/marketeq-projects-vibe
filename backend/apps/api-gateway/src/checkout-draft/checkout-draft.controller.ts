@@ -116,6 +116,12 @@ export class CheckoutDraftController {
     return this.checkoutDraftService.getCheckoutSession(sessionId, clientId);
   }
 
+  @Get('orders/:orderId')
+  @UseGuards(JwtAuthGuard)
+  getCheckoutOrder(@Param('orderId') orderId: string, @UserId() clientId: string) {
+    return this.checkoutDraftService.getCheckoutOrder(orderId, clientId);
+  }
+
   @Get('session/:sessionId/payment-methods')
   @UseGuards(JwtAuthGuard)
   getSessionPaymentMethods(

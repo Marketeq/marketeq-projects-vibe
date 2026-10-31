@@ -111,6 +111,10 @@ export class CheckoutDraftGatewayService {
     return this.forward('get', `/session/${sessionId}`, clientId, `get checkout session ${sessionId}`);
   }
 
+  async getCheckoutOrder(orderId: string, clientId: string) {
+    return this.forward('get', `/orders/${encodeURIComponent(orderId)}`, clientId, `get checkout order ${orderId}`);
+  }
+
   async getSessionPaymentMethods(
     sessionId: string,
     clientId: string,
