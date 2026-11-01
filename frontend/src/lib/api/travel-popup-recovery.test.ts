@@ -20,6 +20,7 @@ import {
   travelLocationPromptKey,
 } from "./travel-location-prompt"
 import type { DismissalStorage } from "./travel-expiry-popup"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 function memoryStorage(): DismissalStorage & { dump: () => Record<string, string> } {
   const map = new Map<string, string>()
@@ -40,7 +41,7 @@ const offered = (over: Record<string, unknown>, storage: DismissalStorage) =>
   shouldOfferTravelerPrompt({ summary: summary({ travelModeLocationMismatch: true, ...over }), storage })
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const between = (source: string, from: string, to: string) =>
   source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)))
 
@@ -49,7 +50,7 @@ describe("opening a flow from the popup writes nothing", () => {
     const open = between(page, "const openFlowFromMismatch", "const handleIdentityFlowOpenChange")
     assert.ok(!/markTravelerPromptShown|markTravelerPromptCompleted|localStorage/.test(open))
     const still = between(page, "const handleStillTraveling", "const handleTravelerStillTraveling")
-    const change = between(page, "const handleChangeHomeCountry", "const vpnProxyModalCopy")
+    const change = between(page, "const handleChangeHomeCountry", "// Skip, X, Escape or a click outside")
     for (const handler of [still, change]) {
       assert.ok(!/markTravelerPromptShown|markTravelerPromptCompleted|localStorage|IdentityVerificationAPI|recordTravel/.test(handler))
     }

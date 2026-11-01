@@ -9,6 +9,7 @@ import {
   type PasswordSetupUser,
 } from "./identity-check-gate"
 import { gateReasonForStatus } from "./identity-verification-status"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 
@@ -218,10 +219,10 @@ describe("already-verified identity: the check runs but no gate opens", () => {
 })
 
 describe("page wiring and boundaries (source guards)", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
   const effect = page.slice(
     page.indexOf("// The Identity Verification check (which may open"),
-    page.indexOf("// Real required check")
+    page.indexOf("// Start Verification on the Job Apply blocked modal")
   )
 
   it("the identity check effect is gated by the pure rule with the real dialog state", () => {

@@ -58,7 +58,7 @@ describe("the dialog hands a gate refusal to its caller and keeps every other pa
 
 describe("/time-tracking shows the default Verify your account dialog for it", () => {
   const page = read("app", "(group)", "time-tracking", "page.tsx")
-  const handler = page.slice(page.indexOf("const goVerifyManualTime"), page.indexOf("}", page.indexOf("router.push(START_VERIFICATION_HREF)")) + 1)
+  const handler = page.slice(page.indexOf("const goVerifyManualTime"), page.indexOf("}", page.indexOf("void startVerification()")) + 1)
 
   it("wires the dialog's prop to state that opens the existing AccountVerificationGate", () => {
     assert.ok(page.includes("onVerificationBlocked={() => setManualTimeBlocked(true)}"))
@@ -68,10 +68,11 @@ describe("/time-tracking shows the default Verify your account dialog for it", (
     assert.ok(!page.includes("onOpenChange={setManualTimeBlocked"))
   })
 
-  it("Verify My Account closes both dialogs and uses the startVerification hand-off", () => {
+  it("Verify My Account closes the popup and starts verification in place; the form stays open underneath", () => {
     assert.ok(handler.includes("setManualTimeBlocked(false)"))
-    assert.ok(handler.includes("setShowManualTimeDialog(false)"))
-    assert.ok(handler.includes("router.push(START_VERIFICATION_HREF)"))
+    assert.ok(!handler.includes("setShowManualTimeDialog"))
+    assert.ok(handler.includes("void startVerification()"))
+    assert.ok(!handler.includes("router"))
     assert.ok(page.includes("onVerify={goVerifyManualTime}"))
     assert.ok(page.includes("onRetryConnectionCheck={goVerifyManualTime}"))
   })
@@ -87,6 +88,8 @@ describe("/time-tracking shows the default Verify your account dialog for it", (
   it("the gate dialog is the shared one, unmodified", () => {
     const gate = read("components", "account-verification-gate.tsx")
     assert.ok(gate.includes('"Your profile is not public"'))
-    assert.ok(gate.includes("onEscapeKeyDown={(e) => e.preventDefault()}"))
+    // Non-dismissible by default; only a caller that passes the optional onCancel (the
+    // post-decline retry presentation) makes Escape cancel.
+    assert.ok(gate.includes("onEscapeKeyDown={cancel ? undefined : (e) => e.preventDefault()}"))
   })
 })
