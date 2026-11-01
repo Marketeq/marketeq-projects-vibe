@@ -402,7 +402,7 @@ describe("the host closes and forgets everything when the page, the account or t
     for (const call of [
       "setVerificationGateOpen(false)",
       'setConnectionCheckState("idle")',
-      "setVpnProxyResult(null)",
+      "checkSessionRef.current.invalidate()", // PMCM-637: a check in flight is dropped (the detection copy is kept so a closing modal does not change)
       "setVpnProxyModalOpen(false)",
       "setIdentityFlowOpen(false)",
       "setDetectedLocation(null)",

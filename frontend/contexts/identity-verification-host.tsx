@@ -63,10 +63,15 @@ import {
   STATUS_ALERT_CLOSE_LABEL,
   STATUS_ALERT_DISMISS_ERROR,
 } from "@/src/lib/api/status-alert-copy"
+import { checkVpnProxy } from "@/src/lib/api/vpn-proxy-detection"
 import {
-  checkVpnProxy,
-  type VpnProxyDetectionOutcome,
-} from "@/src/lib/api/vpn-proxy-detection"
+  createConnectionCheckSession,
+  detectionOf,
+  gateConnectionStateFor,
+  shouldShowCheckingGate,
+  vpnProxyModalCopyFor,
+  type VpnProxyDetection,
+} from "@/src/lib/api/vpn-proxy-check-session"
 import {
   clearAwaitingResult,
   markAwaitingResult,
@@ -306,10 +311,20 @@ export function IdentityVerificationHostProvider({
   }, [])
   const [connectionCheckState, setConnectionCheckState] =
     useState<ConnectionCheckState>("idle")
-  const [vpnProxyResult, setVpnProxyResult] = useState<
-    VpnProxyDetectionOutcome | "checking" | null
-  >(null)
+  // The last FINAL detection the modal showed. It changes only when a newer detection arrives,
+  // never to "checking", "none" or "unavailable", so a Reload (and the modal's close animation)
+  // keeps the copy that is on screen instead of falling back to another variant.
+  const [vpnProxyDetection, setVpnProxyDetection] =
+    useState<VpnProxyDetection | null>(null)
   const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
+  // One connection check at a time; any change of context invalidates the one in flight.
+  const checkSessionRef = useRef(createConnectionCheckSession())
+  // A Retry pressed on the connection-error presentation: it stays visible until the answer.
+  const [retryingFromUnavailable, setRetryingFromUnavailable] = useState(false)
+  const vpnProxyModalOpenRef = useRef(false)
+  vpnProxyModalOpenRef.current = vpnProxyModalOpen
+  const connectionCheckStateRef = useRef<ConnectionCheckState>("idle")
+  connectionCheckStateRef.current = connectionCheckState
   const [identityFlowOpen, setIdentityFlowOpen] = useState(false)
   const [detectedLocation, setDetectedLocation] =
     useState<DetectedLocation | null>(null)
@@ -774,8 +789,9 @@ export function IdentityVerificationHostProvider({
     diditLifecycle.discard() // and never brings an old dialog back
     setVerificationGateOpen(false)
     acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
+    checkSessionRef.current.invalidate() // a check still in flight belongs to the page/account it started on
+    setRetryingFromUnavailable(false)
     setConnectionCheckState("idle")
-    setVpnProxyResult(null)
     setVpnProxyModalOpen(false)
     setIdentityFlowOpen(false)
     setDetectedLocation(null)
@@ -1088,16 +1104,38 @@ export function IdentityVerificationHostProvider({
 
     // Real required check, attempted only on "Verify My Account" / Retry. Never
   // fakes a clean result and never marks anything verified itself.
+  //
+  // PMCM-637: one check runs at a time (a second press shares it), and every answer is applied
+  // only while its check is still the current one. A page, account or role change, a dismissal
+  // or an unmount invalidates it (checkSessionRef), so a late answer cannot open a modal, start
+  // verification or start Didit; every step after an await below re-checks that.
   const handleVerifyMyAccount = useCallback(async () => {
+    await checkSessionRef.current.run(async (isCurrent) => {
+    const retrying = connectionCheckStateRef.current === "unavailable"
+    // A page-level gate closes before the check ends: the shared gate's own "Checking..."
+    // treatment stands in for it, unless the check is already shown (the detection modal's
+    // disabled Reload, the open gate) or the page has its own checking state.
+    const showChecking = shouldShowCheckingGate({
+      detectionModalOpen: vpnProxyModalOpenRef.current,
+      gateOpen: verificationGateOpenRef.current,
+      pageShowsOwnChecking: pageReadsSummaryRef.current,
+    })
+    setRetryingFromUnavailable(retrying)
+    if (showChecking) setVerificationGateOpen(true)
     setConnectionCheckState("checking")
-    setVpnProxyResult("checking")
     const outcome = await checkVpnProxy()
-    setVpnProxyResult(outcome)
+    if (!isCurrent()) return
+    setRetryingFromUnavailable(false)
+    // Only a final detection changes the modal copy (never "checking", "none" or "unavailable").
+    const detection = detectionOf(outcome)
+    if (detection) setVpnProxyDetection(detection)
 
     if (outcome === "none") {
       setVpnProxyModalOpen(false)
+      if (showChecking) setVerificationGateOpen(false)
       // The backend's state is re-read now, not trusted from page load.
       const summary = await fetchIdentityVerificationSummary()
+      if (!isCurrent()) return
       const action = verifyActionFor(summary)
       if (action.kind === "limit") {
         setConnectionCheckState("idle")
@@ -1122,6 +1160,7 @@ export function IdentityVerificationHostProvider({
         )
         const started = await startIdentityOnlyForDashboard()
         if (started === "redirected") return // the browser is leaving for Didit
+        if (!isCurrent()) return
         if (started === "not_startable") {
           setConnectionCheckState("idle")
           void runIdentityVerificationCheck()
@@ -1136,7 +1175,9 @@ export function IdentityVerificationHostProvider({
       setConnectionCheckState("idle")
       setVerificationGateOpen(false)
       // Explicit user action: the only place browser location is requested.
-      setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
+      const location = await getDetectedLocation({ useBrowserLocation: true })
+      if (!isCurrent()) return
+      setDetectedLocation(location)
       // A flow last started by the Travel Mode Update action starts fresh here. A traveler
       // whose Travel Mode is already in force is told so (from the /me read above), so
       // "Temporarily traveling" closes with the existing confirmation instead of asking for
@@ -1163,7 +1204,17 @@ export function IdentityVerificationHostProvider({
     setConnectionCheckState("idle")
     setVerificationGateOpen(false)
     setVpnProxyModalOpen(true)
+    })
   }, [runIdentityVerificationCheck])
+
+  // Dismissing the detection modal (its button, Escape or an outside click) or the connection
+  // error ends the check in flight: a late answer must not bring either back.
+  const dismissConnectionCheck = useCallback(() => {
+    checkSessionRef.current.invalidate()
+    setRetryingFromUnavailable(false)
+    setConnectionCheckState("idle")
+  }, [])
+  useEffect(() => () => checkSessionRef.current.invalidate(), [])
 
     // The Update action shows the server-derived location behind its first screen and asks
   // for no permission. Choosing "Permanently relocated" is the explicit user action that
@@ -1289,27 +1340,9 @@ export function IdentityVerificationHostProvider({
     []
   )
 
-    const vpnProxyModalCopy =
-    vpnProxyResult === "vpn_detected"
-      ? {
-          title: "VPN Detected",
-          description:
-            "To protect the integrity of your account and to verify your actual location, we do not allow using vpn services.",
-          instruction: "Please turn off your VPN to continue",
-        }
-      : vpnProxyResult === "proxy_detected"
-        ? {
-            title: "Proxy Detected",
-            description:
-              "To protect the integrity of your account and to verify your actual location, we do not allow the use of proxy services.",
-            instruction: "Please disable your proxy to continue",
-          }
-        : {
-            title: "VPN & Proxy Detected",
-            description:
-              "To protect the integrity of your account and to verify your actual location, we do not allow the use of vpn or proxy services.",
-            instruction: "Please disable your VPN and proxy to continue",
-          }
+  // From the last final detection only (see vpnProxyDetection): null until one has arrived, and
+  // the modal below is not rendered until then.
+  const vpnProxyModalCopy = vpnProxyModalCopyFor(vpnProxyDetection)
 
   const value = useMemo<IdentityVerificationHostContextValue>(
     () => ({
@@ -1347,10 +1380,14 @@ export function IdentityVerificationHostProvider({
 
       {hostActive && (
       <>
+      {vpnProxyModalCopy && (
       <Dialog
         open={vpnProxyModalOpen}
         onOpenChange={(open) => {
-          if (!open) setVpnProxyModalOpen(false)
+          if (!open) {
+            dismissConnectionCheck()
+            setVpnProxyModalOpen(false)
+          }
         }}
       >
         <DialogContent className="w-[469px]">
@@ -1380,13 +1417,17 @@ export function IdentityVerificationHostProvider({
             <Button
               variant="outlined"
               size="md"
-              onClick={() => setVpnProxyModalOpen(false)}
+              onClick={() => {
+                dismissConnectionCheck()
+                setVpnProxyModalOpen(false)
+              }}
             >
               Dismiss
             </Button>
             <Button
               className="text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
               size="md"
+              disabled={connectionCheckState === "checking"}
               onClick={() => void handleVerifyMyAccount()}
             >
               <RefreshCw className="size-[15px]" />
@@ -1395,6 +1436,7 @@ export function IdentityVerificationHostProvider({
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       <Dialog open={verifiedModalOpen} onOpenChange={setVerifiedModalOpen}>
         <DialogContent className="max-w-[456px] pt-[50px]">
@@ -1468,10 +1510,13 @@ export function IdentityVerificationHostProvider({
       <AccountVerificationGate
         open={verificationGateOpen}
         reason="unstarted"
-        connectionCheckState={connectionCheckState}
+        connectionCheckState={gateConnectionStateFor(
+          connectionCheckState,
+          retryingFromUnavailable
+        )}
         onVerify={() => void handleVerifyMyAccount()}
         onRetryConnectionCheck={() => void handleVerifyMyAccount()}
-        onDismissConnectionError={() => setConnectionCheckState("idle")}
+        onDismissConnectionError={dismissConnectionCheck}
       />
 
       {/* After a Didit decline (retry_identity): the same gate, with Cancel. Verify My Account is the

@@ -16,6 +16,13 @@
 // origin/dev-main at the time of the decision (the banner and the Verify My Account handler
 // were not touched by PMCM-651). Changing those blocks on purpose means a new decision:
 // update the hash in the same commit and say why.
+//
+// PMCM-637 changed both pinned blocks on purpose (the Verify My Account handler and the standard
+// gate's props), to fix the VPN/proxy modal flashing the wrong copy and answers landing after the
+// page, account or modal had changed. The steps of the flow (connection check, fresh summary,
+// decision, Didit, location) and their order are untouched; what was added is one-check-at-a-time
+// gating, a currency check after every await, and the gate's existing "Checking..." state while
+// a check runs. The hashes below were updated for that.
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
@@ -91,9 +98,13 @@ describe("decision 1: the orange inline banner is preserved, with its in-memory 
 })
 
 describe("decisions 2 and 3: the gate never opens on load and no standalone unverified modal/card exists", () => {
-  it("the gate opens in exactly one place: the Verify My Account handler's 'unavailable' branch", () => {
-    assert.equal(page.split("setVerificationGateOpen(true)").length - 1, 1)
-    assert.ok(handler.includes("setVerificationGateOpen(true)"))
+  it("the gate opens only inside the Verify My Account handler: its 'unavailable' branch and (PMCM-637) its own 'Checking...' presentation", () => {
+    // PMCM-637: while the connection check runs on a page whose own gate has already closed, the
+    // handler opens this same gate in its existing "Checking..." state (nothing new is drawn).
+    // Both opens are inside the click handler; nothing opens it on load.
+    assert.equal(page.split("setVerificationGateOpen(true)").length - 1, 2)
+    assert.equal(handler.split("setVerificationGateOpen(true)").length - 1, 2)
+    assert.ok(handler.includes("if (showChecking) setVerificationGateOpen(true)"))
   })
 
   it("the first-time-gate trigger exists but is not wired to the page", () => {
@@ -126,7 +137,7 @@ describe("decisions 2 and 3: the gate never opens on load and no standalone unve
     )
     assert.equal(
       sha(gateUsage),
-      "4323afde76692192f2d571d71e38fe2ce4459acdd9bd19615ab2dae12d29cef4"
+      "ffd99a676f6063b257391da9ec016ff75dd94563da4816a57e7a6fa9004cb2b9"
     )
     // The standard gate, plus the post-decline retry presentation (the same component, with Cancel).
     assert.equal(page.split("<AccountVerificationGate").length - 1, 2)
@@ -136,10 +147,10 @@ describe("decisions 2 and 3: the gate never opens on load and no standalone unve
 })
 
 describe("decision 4: the Verify My Account flow is unchanged", () => {
-  it("the handler is byte-identical to dev-main's", () => {
+  it("the handler is as PMCM-637 left it (steps and order of dev-main's flow, plus its gating)", () => {
     assert.equal(
       sha(handler),
-      "b2d0a31b1f27c8e87aeea70ae4c8103a0983f006c5dac57284042a4912de4425"
+      "f046d7344027e330fcdf9935d3141f6cacbc524318e17be25c872fd4a7f9d8cd"
     )
   })
 
