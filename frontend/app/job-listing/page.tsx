@@ -9061,6 +9061,25 @@ const durationOptions = [
 
 const projectDurationUnits = ["days", "weeks", "months", "quarters", "years"];
 
+// AC-JC-30: a custom duration in any unit is stored as whole months, the same
+// conversion the Team and Individual step uses.
+const convertCustomDurationToMonths = (amount: number, unit: string) => {
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+
+  switch (unit) {
+    case "days":
+      return Math.max(1, Math.ceil(amount / 30));
+    case "weeks":
+      return Math.max(1, Math.ceil(amount / 4));
+    case "quarters":
+      return amount * 3;
+    case "years":
+      return amount * 12;
+    default:
+      return amount;
+  }
+};
+
 const getDurationSelectionFromMonths = (months?: number) => {
   if (typeof months !== "number" || !Number.isFinite(months)) {
     return "3-months-0";
@@ -9382,8 +9401,8 @@ const DescribeProjectStep = ({
   const durationMonths =
     selectedDurationOption?.unit === "months"
       ? Number(selectedDurationOption.value)
-      : isCustomDurationSelected && customDurationUnit === "months"
-        ? customDurationAmount || undefined
+      : isCustomDurationSelected
+        ? convertCustomDurationToMonths(customDurationAmount, customDurationUnit)
         : undefined;
   const getDraftDurationMonths = useCallback(
     (
@@ -9401,11 +9420,11 @@ const DescribeProjectStep = ({
         return Number(nextSelectedDurationOption.value);
       }
 
-      if (
-        nextSelectedDurationOption?.value === "Other" &&
-        nextCustomDurationUnit === "months"
-      ) {
-        return nextCustomDurationAmount || undefined;
+      if (nextSelectedDurationOption?.value === "Other") {
+        return convertCustomDurationToMonths(
+          nextCustomDurationAmount,
+          nextCustomDurationUnit,
+        );
       }
 
       return undefined;
@@ -13581,7 +13600,10 @@ const ProjectScopeEditStep = ({
                   ))}
                 </div>
               ) : (
-                visiblePhases.map((phase, phaseIndex) => {
+                visiblePhases.map((phase) => {
+                // Search only filters the list, so a phase keeps its number and
+                // day range from its position in the full scope.
+                const phaseIndex = phases.indexOf(phase)
                 const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
                 const isExpanded = expandedPhaseNames.includes(phaseName)
                 const phaseNameParts = phaseName.split(" ")
