@@ -771,11 +771,11 @@ describe("what was moved did not change", () => {
   it("openFlow bumps the remount key, keeps the held location when none is given, and opens", () => {
     const open = host.slice(host.indexOf("const openFlow = useCallback("))
     const body = open.slice(0, open.indexOf("\n  )\n"))
-    assert.ok(
-      body.includes(
-        "if (options.detectedLocation) setDetectedLocation(options.detectedLocation)"
-      )
-    )
+    // BTB-387: the held location is still kept when none is given; only an earlier consent
+    // denial is dropped, so a flow that starts again never inherits it.
+    assert.ok(body.includes("setDetectedLocation((prev) =>"))
+    assert.ok(body.includes("? withoutConsentDenied(options.detectedLocation)"))
+    assert.ok(body.includes(": prev && withoutConsentDenied(prev)"))
     assert.ok(
       body.includes(
         "setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))"

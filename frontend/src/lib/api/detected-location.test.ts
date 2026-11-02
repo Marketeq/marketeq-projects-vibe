@@ -5,7 +5,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
-import { getDetectedLocation } from "./detected-location"
+import { getDetectedLocation, withoutConsentDenied } from "./detected-location"
 import {
   readDashboardPage,
   readDashboardWithHost,
@@ -226,6 +226,17 @@ const COUNTRY_ONLY_BODY = {
   latitude: null,
   longitude: null,
 }
+const UNDETECTED = {
+  city: "",
+  region: "",
+  countryCode: "",
+  countryName: "",
+  latitude: null,
+  longitude: null,
+  detected: false,
+  serviceUnavailable: false,
+}
+const DENIED = { ...UNDETECTED, consentDenied: true }
 const GRANTED = { status: "ok" as const, latitude: 41.878113, longitude: -87.629799 }
 
 describe("getDetectedLocation with browser geolocation", () => {
@@ -270,24 +281,52 @@ describe("getDetectedLocation with browser geolocation", () => {
     })
   })
 
+  // The browser could not give a position: denied, the prompt dismissed (the browser
+  // reports that as unavailable/denied), timeout, unsupported, or unavailable. None of
+  // them may reach the IP lookup unless the user allows it in the consent dialog.
   for (const status of ["denied", "unavailable", "timeout", "unsupported"] as const) {
-    it(`${status}: keeps the server country, shows no city, region or pin, and never calls the GPS endpoint`, async () => {
+    it(`${status}: asks first; Deny shows nothing IP-derived and never looks it up or calls the GPS endpoint`, async () => {
+      let asked = 0
       const result = await getDetectedLocation({
         useBrowserLocation: true,
         getPosition: async () => ({ status }),
         fetchGpsLocation: async () => assert.fail("must not send coordinates"),
-        fetchLocation: async () => COUNTRY_ONLY_BODY,
+        fetchLocation: async () => assert.fail("must not look up the IP unasked"),
+        requestApproximateConsent: async () => {
+          asked += 1
+          return "deny"
+        },
       })
-      assert.deepEqual(result, {
-        city: "",
-        region: "",
-        countryCode: "US",
-        countryName: "United States",
-        latitude: null,
-        longitude: null,
-        detected: false,
-        serviceUnavailable: false,
+      assert.equal(asked, 1)
+      assert.deepEqual(result, DENIED)
+    })
+
+    it(`${status}: with no consent callback the answer is Deny, never a silent IP lookup`, async () => {
+      const result = await getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status }),
+        fetchLocation: async () => assert.fail("must not look up the IP unasked"),
       })
+      // not a user denial: nobody was asked, so nothing is disabled
+      assert.deepEqual(result, UNDETECTED)
+      assert.ok(!("consentDenied" in result))
+    })
+
+    it(`${status}: Allow runs the existing server lookup once and shows what it found`, async () => {
+      let lookups = 0
+      const result = await getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status }),
+        fetchGpsLocation: async () => assert.fail("must not send coordinates"),
+        fetchLocation: async () => {
+          lookups += 1
+          return SERVER_BODY
+        },
+        requestApproximateConsent: async () => "allow",
+      })
+      assert.equal(lookups, 1)
+      assert.equal(result.city, "Chicago")
+      assert.equal(result.detected, true)
     })
   }
 
@@ -314,7 +353,7 @@ describe("getDetectedLocation with browser geolocation", () => {
     assert.equal(result.longitude, null)
   })
 
-  it("an unavailable, failed or malformed GPS lookup falls back to the country-only path", async () => {
+  it("an unavailable, failed or malformed GPS lookup asks before using the network location", async () => {
     for (const gps of [
       async () => ({ ...GPS_RESOLVED, status: "unavailable", city: null, latitude: null, longitude: null }),
       async () => {
@@ -324,17 +363,32 @@ describe("getDetectedLocation with browser geolocation", () => {
       async () => ({ ...GPS_RESOLVED, status: "resolved", latitude: null, longitude: null }),
       async () => ({ ...GPS_RESOLVED, status: "weird" }),
     ]) {
-      const result = await getDetectedLocation({
+      let asked = 0
+      const denied = await getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => GRANTED,
+        fetchGpsLocation: gps,
+        fetchLocation: async () => assert.fail("must not look up the IP unasked"),
+        requestApproximateConsent: async () => {
+          asked += 1
+          return "deny"
+        },
+      })
+      assert.equal(asked, 1)
+      assert.deepEqual(denied, DENIED)
+
+      const allowed = await getDetectedLocation({
         useBrowserLocation: true,
         getPosition: async () => GRANTED,
         fetchGpsLocation: gps,
         fetchLocation: async () => COUNTRY_ONLY_BODY,
+        requestApproximateConsent: async () => "allow",
       })
-      assert.equal(result.detected, false)
-      assert.equal(result.serviceUnavailable, false)
-      assert.equal(result.countryCode, "US")
-      assert.equal(result.latitude, null)
-      assert.ok(!result.locationMismatch)
+      assert.equal(allowed.detected, false)
+      assert.equal(allowed.serviceUnavailable, false)
+      assert.equal(allowed.countryCode, "US")
+      assert.equal(allowed.latitude, null)
+      assert.ok(!allowed.locationMismatch)
     }
   })
 
@@ -367,6 +421,257 @@ describe("getDetectedLocation with browser geolocation", () => {
   })
 })
 
+describe("approximate-location consent for one detection attempt", () => {
+  it("GPS success is unchanged: no question, no IP lookup", async () => {
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => GRANTED,
+      fetchGpsLocation: async () => GPS_RESOLVED,
+      fetchLocation: async () => assert.fail("no IP lookup after a GPS success"),
+      requestApproximateConsent: async () => assert.fail("must not ask after a GPS success"),
+    })
+    assert.equal(result.city, "Chicago")
+    assert.equal(result.detected, true)
+  })
+
+  it("a GPS/IP country mismatch is unchanged: no question, no pin", async () => {
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => GRANTED,
+      fetchGpsLocation: async () => ({ ...GPS_RESOLVED, status: "country_mismatch" }),
+      fetchLocation: async () => assert.fail("no IP lookup on a mismatch"),
+      requestApproximateConsent: async () => assert.fail("must not ask on a mismatch"),
+    })
+    assert.equal(result.locationMismatch, true)
+    assert.equal(result.latitude, null)
+  })
+
+  it("without the browser option nothing is asked and the server lookup runs as before (Travel Mode Update)", async () => {
+    const result = await getDetectedLocation({
+      requestApproximateConsent: async () => assert.fail("must not ask"),
+      isCurrent: () => true,
+      fetchLocation: async () => SERVER_BODY,
+    })
+    assert.equal(result.city, "Chicago")
+  })
+
+  it("Deny never surfaces a city-level IP result, however precise the server would have been", async () => {
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" }),
+      fetchLocation: async () => SERVER_BODY,
+      requestApproximateConsent: async () => "deny",
+    })
+    const text = JSON.stringify(result)
+    for (const leak of ["Chicago", "Illinois", "United States", "41.88", "-87.63", "US"]) {
+      assert.ok(!text.includes(leak), leak)
+    }
+  })
+
+  it("a cancelled question (navigation, logout, account switch) fetches and shows nothing", async () => {
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" }),
+      fetchLocation: async () => assert.fail("must not look up after cancel"),
+      requestApproximateConsent: async () => "cancelled",
+    })
+    assert.equal(result.cancelled, true)
+    assert.equal(result.detected, false)
+    assert.equal(result.countryCode, "")
+  })
+
+  it("an attempt that went stale while the browser prompt was open never asks", async () => {
+    let live = true
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      isCurrent: () => live,
+      getPosition: async () => {
+        live = false
+        return { status: "denied" }
+      },
+      requestApproximateConsent: async () => assert.fail("a stale attempt must not open the dialog"),
+      fetchLocation: async () => assert.fail("a stale attempt must not look up"),
+    })
+    assert.equal(result.cancelled, true)
+  })
+
+  it("an attempt that went stale while the GPS answer was pending never asks", async () => {
+    let live = true
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      isCurrent: () => live,
+      getPosition: async () => GRANTED,
+      fetchGpsLocation: async () => {
+        live = false
+        return { ...GPS_RESOLVED, status: "unavailable" }
+      },
+      requestApproximateConsent: async () => assert.fail("a stale attempt must not open the dialog"),
+      fetchLocation: async () => assert.fail("a stale attempt must not look up"),
+    })
+    assert.equal(result.cancelled, true)
+  })
+
+  it("an Allow that arrives after the attempt went stale does not look anything up", async () => {
+    let live = true
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      isCurrent: () => live,
+      getPosition: async () => ({ status: "timeout" }),
+      requestApproximateConsent: async () => {
+        live = false
+        return "allow"
+      },
+      fetchLocation: async () => assert.fail("must not look up for a stale attempt"),
+    })
+    assert.equal(result.cancelled, true)
+  })
+
+  it("a lookup answer that arrives after the attempt went stale is discarded", async () => {
+    let live = true
+    for (const fetchLocation of [
+      async () => {
+        live = false
+        return SERVER_BODY
+      },
+      async () => {
+        live = false
+        throw new Error("down")
+      },
+    ]) {
+      live = true
+      const result = await getDetectedLocation({
+        useBrowserLocation: true,
+        isCurrent: () => live,
+        getPosition: async () => ({ status: "unsupported" }),
+        requestApproximateConsent: async () => "allow",
+        fetchLocation,
+      })
+      assert.equal(result.cancelled, true)
+      assert.equal(result.city, "")
+      assert.equal(result.serviceUnavailable, false)
+    }
+  })
+
+  it("the consent answer is not remembered: every attempt asks again", async () => {
+    let asked = 0
+    const options = {
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" as const }),
+      fetchLocation: async () => SERVER_BODY,
+      requestApproximateConsent: async () => {
+        asked += 1
+        return "allow" as const
+      },
+    }
+    await getDetectedLocation(options)
+    await getDetectedLocation(options)
+    assert.equal(asked, 2)
+  })
+})
+
+describe("explicit consent denial state", () => {
+  it("only an answered Deny sets consentDenied", async () => {
+    const denied = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" }),
+      requestApproximateConsent: async () => "deny",
+      fetchLocation: async () => assert.fail("no lookup after Deny"),
+    })
+    assert.equal(denied.consentDenied, true)
+  })
+
+  it("Allow keeps the normal IP-fallback result, with no denial flag", async () => {
+    const allowed = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" }),
+      requestApproximateConsent: async () => "allow",
+      fetchLocation: async () => SERVER_BODY,
+    })
+    assert.equal(allowed.city, "Chicago")
+    assert.equal(allowed.detected, true)
+    assert.ok(!allowed.consentDenied)
+  })
+
+  it("other location failures never set it", async () => {
+    const results = await Promise.all([
+      // service failure after Allow
+      getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status: "timeout" }),
+        requestApproximateConsent: async () => "allow",
+        fetchLocation: async () => {
+          throw new Error("down")
+        },
+      }),
+      // country-only result after Allow
+      getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status: "unsupported" }),
+        requestApproximateConsent: async () => "allow",
+        fetchLocation: async () => COUNTRY_ONLY_BODY,
+      }),
+      // invalid shape after Allow
+      getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status: "unsupported" }),
+        requestApproximateConsent: async () => "allow",
+        fetchLocation: async () => "<html>",
+      }),
+      // cancelled attempt
+      getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => ({ status: "denied" }),
+        requestApproximateConsent: async () => "cancelled",
+      }),
+      // GPS/IP mismatch
+      getDetectedLocation({
+        useBrowserLocation: true,
+        getPosition: async () => GRANTED,
+        fetchGpsLocation: async () => ({ ...GPS_RESOLVED, status: "country_mismatch" }),
+      }),
+      // plain server lookup (Travel Mode Update)
+      getDetectedLocation({ fetchLocation: async () => COUNTRY_ONLY_BODY }),
+      // lookup that finds nothing
+      getDetectedLocation({
+        fetchLocation: async () => ({ ...COUNTRY_ONLY_BODY, countryCode: null, countryName: null }),
+      }),
+    ])
+    for (const r of results) assert.ok(!r.consentDenied)
+    assert.equal(results[0].serviceUnavailable, true)
+    assert.equal(results[4].locationMismatch, true)
+  })
+
+  it("a flow that starts again drops the denial and nothing else", async () => {
+    const denied = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" }),
+      requestApproximateConsent: async () => "deny",
+    })
+    const cleared = withoutConsentDenied(denied)
+    assert.ok(!("consentDenied" in cleared))
+    assert.deepEqual({ ...cleared }, { ...UNDETECTED })
+    assert.equal(denied.consentDenied, true) // the original is not mutated
+    const plain = { ...UNDETECTED }
+    assert.equal(withoutConsentDenied(plain), plain)
+  })
+
+  it("a restart asks again and its answer replaces the old denial", async () => {
+    let answers = ["deny", "allow"] as const
+    let i = 0
+    const options = {
+      useBrowserLocation: true,
+      getPosition: async () => ({ status: "denied" as const }),
+      requestApproximateConsent: async () => answers[i++],
+      fetchLocation: async () => SERVER_BODY,
+    }
+    const first = await getDetectedLocation(options)
+    const second = await getDetectedLocation(options)
+    assert.equal(first.consentDenied, true)
+    assert.ok(!second.consentDenied)
+    assert.equal(second.city, "Chicago")
+  })
+})
+
 describe("browser geolocation wiring (source guards)", () => {
   const page = readDashboardWithHost()
 
@@ -380,7 +685,9 @@ describe("browser geolocation wiring (source guards)", () => {
     // (plus the host's own default for the live card's Update on a page without a popup: also
     // server-derived only, so it can never trigger the permission prompt)
     assert.equal(calls.length, 4)
-    assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 2)
+    // (two call sites plus the host's consent wrapper, which only branches on the option:
+    // see location-consent.test.ts)
+    assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 3)
     assert.ok(page.includes("getDetectedLocation({ useBrowserLocation: true })"))
     assert.ok(page.includes("await getDetectedLocation()"))
     // The explicit verify action lives in the host; before it (the host's imports, state and

@@ -153,11 +153,12 @@ describe("Temporarily traveling does not invoke it", () => {
 })
 
 describe("denied permission or failed detection uses the existing failure state", () => {
-  it("denied GPS falls back to the server lookup: country only, detected false, no coordinates", async () => {
+  it("denied GPS, then Allow in the consent dialog, uses the server lookup: country only, detected false, no coordinates", async () => {
     const loc = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
       fetchLocation: async () => COUNTRY_ONLY,
+      requestApproximateConsent: async () => "allow",
     })
     assert.equal(loc.detected, false)
     assert.deepEqual([loc.latitude, loc.longitude, loc.city], [null, null, ""])
@@ -169,6 +170,7 @@ describe("denied permission or failed detection uses the existing failure state"
       fetchLocation: async () => {
         throw new Error("down")
       },
+      requestApproximateConsent: async () => "allow",
     })
     assert.equal(loc.detected, false)
     assert.equal(loc.serviceUnavailable, true)

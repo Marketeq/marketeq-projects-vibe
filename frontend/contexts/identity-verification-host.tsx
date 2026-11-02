@@ -65,6 +65,10 @@ import {
 } from "@/src/lib/api/status-alert-copy"
 import { checkVpnProxy } from "@/src/lib/api/vpn-proxy-detection"
 import {
+  createLocationConsentGate,
+  type LocationConsentAnswer,
+} from "@/src/lib/api/location-consent"
+import {
   createConnectionCheckSession,
   detectionOf,
   gateConnectionStateFor,
@@ -95,8 +99,10 @@ import {
   type IdentityVerificationSummaryView,
 } from "@/src/lib/api/identity-verification-state"
 import {
-  getDetectedLocation,
+  getDetectedLocation as detectLocation,
   type DetectedLocation,
+  type GetDetectedLocationOptions,
+  withoutConsentDenied,
 } from "@/src/lib/api/detected-location"
 import {
   clearReviewedResult,
@@ -322,6 +328,51 @@ export function IdentityVerificationHostProvider({
   // A Retry pressed on the connection-error presentation: it stays visible until the answer.
   const [retryingFromUnavailable, setRetryingFromUnavailable] = useState(false)
   const vpnProxyModalOpenRef = useRef(false)
+  // "Allow approximate location?" — asked only when the browser gave no position (see
+  // detected-location.ts). It authorizes the network (IP) lookup for ONE detection attempt
+  // and is never stored. It is not the browser permission and never re-asks for it.
+  const [locationConsentOpen, setLocationConsentOpen] = useState(false)
+  const [locationConsentGate] = useState(() =>
+    createLocationConsentGate(setLocationConsentOpen)
+  )
+  // Bumped when the page, account or role changes and on unmount: a detection that started
+  // before then is stale (its question is cancelled and its answer is never applied).
+  const locationAttemptRef = useRef(0)
+  const locationAbortsRef = useRef(new Set<AbortController>())
+  // Every detection that asks for the browser's location goes through this, so the two entry
+  // points (Verify My Account, "Permanently relocated") share ONE consent behavior without
+  // their own code changing: when the browser gives no position, the user is asked before the
+  // network (IP) lookup runs, and the attempt is dropped if the page/account changes meanwhile.
+  // A call that does not ask the browser (Travel Mode Update) is passed through untouched.
+  const getDetectedLocation = useCallback(
+    (options: GetDetectedLocationOptions = {}) => {
+      if (!options.useBrowserLocation) return detectLocation(options)
+      const attempt = locationAttemptRef.current
+      // The wait for the browser's own permission prompt can be long (the user may not
+      // have answered yet), so it is cancellable: a route/account/role change or an
+      // unmount aborts it, and nothing is left listening.
+      const controller = new AbortController()
+      locationAbortsRef.current.add(controller)
+      return detectLocation({
+        ...options,
+        requestApproximateConsent: locationConsentGate.request,
+        cancelApproximateConsent: locationConsentGate.cancel,
+        signal: controller.signal,
+        isCurrent: () => attempt === locationAttemptRef.current,
+      }).finally(() => locationAbortsRef.current.delete(controller))
+    },
+    [locationConsentGate]
+  )
+  const answerLocationConsent = useCallback(
+    (answer: LocationConsentAnswer) => locationConsentGate.decide(answer),
+    [locationConsentGate]
+  )
+  const cancelLocationDetection = useCallback(() => {
+    locationAttemptRef.current += 1
+    locationConsentGate.cancel()
+    locationAbortsRef.current.forEach((controller) => controller.abort())
+    locationAbortsRef.current.clear()
+  }, [locationConsentGate])
   vpnProxyModalOpenRef.current = vpnProxyModalOpen
   const connectionCheckStateRef = useRef<ConnectionCheckState>("idle")
   connectionCheckStateRef.current = connectionCheckState
@@ -790,6 +841,7 @@ export function IdentityVerificationHostProvider({
     setVerificationGateOpen(false)
     acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
     checkSessionRef.current.invalidate() // a check still in flight belongs to the page/account it started on
+    cancelLocationDetection() // and so does a pending location question
     setRetryingFromUnavailable(false)
     setConnectionCheckState("idle")
     setVpnProxyModalOpen(false)
@@ -1215,6 +1267,8 @@ export function IdentityVerificationHostProvider({
     setConnectionCheckState("idle")
   }, [])
   useEffect(() => () => checkSessionRef.current.invalidate(), [])
+  // Unmount: a pending location question and a detection in flight belong to nobody.
+  useEffect(() => cancelLocationDetection, [cancelLocationDetection])
 
     // The Update action shows the server-derived location behind its first screen and asks
   // for no permission. Choosing "Permanently relocated" is the explicit user action that
@@ -1260,7 +1314,12 @@ export function IdentityVerificationHostProvider({
 
   const openFlow = useCallback(
     (launch: IdentityFlowLaunch, options: IdentityFlowOpenOptions = {}) => {
-      if (options.detectedLocation) setDetectedLocation(options.detectedLocation)
+      // A flow that starts again never inherits an earlier consent denial.
+      setDetectedLocation((prev) =>
+        options.detectedLocation
+          ? withoutConsentDenied(options.detectedLocation)
+          : prev && withoutConsentDenied(prev)
+      )
       setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))
       openOnClosedRef.current = options.onClosed ?? null
       setIdentityFlowOpen(true)
@@ -1563,6 +1622,57 @@ export function IdentityVerificationHostProvider({
           }
         />
       )}
+
+      {/* Approximate-location consent. Mounted after the flow so, for "Permanently relocated"
+          (asked while the flow is open), it stacks above it. Escape, an outside click and the
+          dialog closing any other way all count as Deny. Allow authorizes the network (IP)
+          lookup only; it never overrides or re-asks the browser's location permission. */}
+      <Dialog
+        open={locationConsentOpen}
+        onOpenChange={(open) => {
+          if (!open) answerLocationConsent("deny")
+        }}
+      >
+        <DialogContent
+          className="w-[calc(100%-32px)] max-w-[531px] pt-[50px]"
+          accessibilityTitle="Location Access Needed"
+        >
+          <div className="flex items-center justify-center">
+            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+              <AlertTriangle className="size-6" />
+            </div>
+          </div>
+
+          <div className="mt-5 px-[19px]">
+            <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+              Location Access Needed
+            </h1>
+            <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+              We couldn’t access your device location. Allow Marketeq to estimate your
+              approximate location using your network connection.
+            </DialogDescription>
+          </div>
+
+          <div className="mt-[50px] flex justify-center items-center gap-x-3">
+            <Button
+              className="w-[133px] bg-white"
+              variant="outlined"
+              visual="gray"
+              size="md"
+              onClick={() => answerLocationConsent("deny")}
+            >
+              Deny
+            </Button>
+            <Button
+              className="w-[105px] text-primary-500 bg-primary-50 shadow-none hover:text-white hover:bg-primary-500"
+              size="md"
+              onClick={() => answerLocationConsent("allow")}
+            >
+              Allow
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Persistent status alerts (PMCM-651): a fixed top-right overlay, outside the dashboard
           layout, so nothing on the page moves when an alert appears or is dismissed. Same

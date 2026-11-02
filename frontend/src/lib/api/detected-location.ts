@@ -20,8 +20,10 @@
 
 import {
   getBrowserPosition,
+  onGeolocationGranted,
   type BrowserPositionResult,
 } from "./browser-geolocation"
+import type { LocationConsentDecision } from "./location-consent"
 
 export interface DetectedLocation {
   city: string
@@ -41,7 +43,29 @@ export interface DetectedLocation {
    *  unexpected response shape/etc.), as opposed to succeeding with an
    *  empty result. See file header. */
   serviceUnavailable: boolean
+  /** True when the detection attempt was abandoned (navigation, logout, account
+   *  switch, a newer attempt) before it produced anything. The result carries no
+   *  location and must not be applied to the UI. */
+  cancelled?: boolean
+  /** True only when the user explicitly pressed Deny (or Escape / clicked outside) on the
+   *  approximate-location consent dialog. It is an explicit state, never inferred from
+   *  missing coordinates or from any other failure. The dialog shows its "couldn't detect"
+   *  screen with both actions disabled while it is set. */
+  consentDenied?: boolean
 }
+
+/** The same location without a consent denial (used when a flow starts again). */
+export function withoutConsentDenied(
+  location: DetectedLocation
+): DetectedLocation {
+  if (!location.consentDenied) return location
+  const { consentDenied: _denied, ...rest } = location
+  return rest
+}
+
+// How many times a grant during the consent question may send the attempt back to the
+// browser position (a guard against a misbehaving permission source, not a product limit).
+const MAX_PERMISSION_PASSES = 3
 
 const MOCK_OVERRIDE_KEY = "__mock_detected_location"
 
@@ -158,9 +182,28 @@ export interface GetDetectedLocationOptions {
   // ONLY an explicit user action — Verify My Account / Retry — may pass this;
   // it must never run on page load.
   useBrowserLocation?: boolean
+  // Asked when the browser could not provide a usable position (denied, dismissed,
+  // timeout, unsupported, unavailable, or its coordinates could not be resolved by
+  // the server). Resolves to the user's answer on "may Marketeq estimate your
+  // location from your network connection?". Only "allow" runs the server/IP lookup.
+  // When this is absent the answer is "deny": the IP lookup never runs unasked.
+  requestApproximateConsent?: () => Promise<LocationConsentDecision>
+  // False once this attempt is no longer the live one (navigation, logout, account
+  // switch, a newer attempt). Checked after every await so a stale answer neither
+  // opens the consent question, fetches, nor returns a location.
+  isCurrent?: () => boolean
+  // Cancels the wait for the browser's own permission prompt (navigation, logout,
+  // account switch, a newer attempt). The wait ends as a cancelled attempt.
+  signal?: AbortSignal
+  // Closes the consent question when the browser permission is granted while it is
+  // open (the browser's answer wins over the IP question).
+  cancelApproximateConsent?: () => void
   // Test seams; default to the real browser API and service endpoints.
   fetchLocation?: () => Promise<unknown>
-  getPosition?: () => Promise<BrowserPositionResult>
+  getPosition?: (signal?: AbortSignal) => Promise<BrowserPositionResult>
+  // Calls back once when the browser permission changes to "granted"; returns a
+  // function that stops watching.
+  watchGeolocationGranted?: (onGranted: () => void) => () => void
   fetchGpsLocation?: (latitude: number, longitude: number) => Promise<unknown>
 }
 
@@ -247,31 +290,83 @@ export async function getDetectedLocation(
     if (override) return override
   }
 
-  // Browser geolocation: only on explicit opt-in. Any shortfall (denied,
-  // unavailable, timeout, unsupported, a failed or inconclusive server call)
-  // falls through to the server-derived country-only path below.
+  const isCurrent = options.isCurrent ?? (() => true)
+  const cancelled = (): DetectedLocation => ({
+    ...UNDETECTED_LOCATION,
+    cancelled: true,
+  })
+
+  // Browser geolocation: only on explicit opt-in. A usable GPS result is returned as
+  // before. Any shortfall (denied, dismissed, timeout, unsupported, unavailable, or a
+  // failed, inconclusive or malformed server answer for the coordinates) no longer
+  // falls straight through to the IP lookup: the user is asked first, and only an
+  // explicit "allow" runs it.
   if (options.useBrowserLocation) {
-    const position = await (options.getPosition ?? getBrowserPosition)()
-    if (position.status === "ok") {
-      try {
-        const gps = await (options.fetchGpsLocation ?? fetchServerGpsLocation)(
-          position.latitude,
-          position.longitude
-        )
-        if (isValidGpsLocationResponse(gps)) {
-          if (gps.status === "resolved") {
-            const resolved = toDetectedLocation(gps)
-            if (resolved.detected) return resolved
-          } else if (gps.status === "country_mismatch") {
-            return toDetectedLocation(
-              { ...gps, latitude: null, longitude: null },
-              { locationMismatch: true }
-            )
+    // Normally one pass. A second pass happens only when the browser permission is
+    // granted WHILE the consent question is open: the browser's answer then wins.
+    for (let pass = 0; ; pass++) {
+      const position = await (
+        options.getPosition ?? ((signal) => getBrowserPosition(undefined, { signal }))
+      )(options.signal)
+      if (position.status === "cancelled" || !isCurrent()) return cancelled()
+      if (position.status === "ok") {
+        try {
+          const gps = await (options.fetchGpsLocation ?? fetchServerGpsLocation)(
+            position.latitude,
+            position.longitude
+          )
+          if (!isCurrent()) return cancelled()
+          if (isValidGpsLocationResponse(gps)) {
+            if (gps.status === "resolved") {
+              const resolved = toDetectedLocation(gps)
+              if (resolved.detected) return resolved
+            } else if (gps.status === "country_mismatch") {
+              return toDetectedLocation(
+                { ...gps, latitude: null, longitude: null },
+                { locationMismatch: true }
+              )
+            }
           }
+        } catch {
+          // inconclusive: ask before using the network location
         }
-      } catch {
-        // fall through to the country-only path
+        if (!isCurrent()) return cancelled()
       }
+
+      // Nobody to ask: nothing IP-derived is looked up, but this is not a user denial.
+      if (!options.requestApproximateConsent)
+        return { ...UNDETECTED_LOCATION }
+
+      // Ask, while watching the browser permission: if it is granted meanwhile, the
+      // question is withdrawn and the browser position is tried again.
+      let grantedMeanwhile: () => void = () => {}
+      const granted = new Promise<"granted">((resolve) => {
+        grantedMeanwhile = () => resolve("granted")
+      })
+      const stopWatching =
+        pass < MAX_PERMISSION_PASSES
+          ? (options.watchGeolocationGranted ?? onGeolocationGranted)(
+              () => grantedMeanwhile()
+            )
+          : () => {}
+      const answered = await Promise.race([
+        options.requestApproximateConsent().then((decision) => ({ decision })),
+        granted,
+      ])
+      stopWatching()
+      if (answered === "granted") {
+        options.cancelApproximateConsent?.()
+        if (!isCurrent()) return cancelled()
+        continue
+      }
+      const { decision } = answered
+      if (decision === "cancelled" || !isCurrent()) return cancelled()
+      // Deny: nothing IP-derived is looked up or shown (no country, city, state,
+      // coordinates or map). The explicit denial is carried so the "couldn't detect"
+      // screen can disable its actions; it is never inferred from missing data.
+      if (decision !== "allow")
+        return { ...UNDETECTED_LOCATION, consentDenied: true }
+      break
     }
   }
 
@@ -279,8 +374,10 @@ export async function getDetectedLocation(
   try {
     data = await (options.fetchLocation ?? fetchServerLocation)()
   } catch {
+    if (!isCurrent()) return cancelled()
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }
   }
+  if (!isCurrent()) return cancelled()
 
   if (!isValidDetectedLocationResponse(data)) {
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }

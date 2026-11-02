@@ -1088,6 +1088,7 @@ export function IdentityVerificationFlow({
                 size="md"
                 variant="outlined"
                 visual="gray"
+                disabled={detectedLocation.consentDenied === true}
                 onClick={() => send("NO")}
               >
                 No, I&rsquo;m currently traveling
@@ -1097,7 +1098,9 @@ export function IdentityVerificationFlow({
                 size="md"
                 variant="ghost"
                 disabled={
-                  startingFreeKyc || detectedLocation.locationMismatch === true
+                  startingFreeKyc ||
+                  detectedLocation.locationMismatch === true ||
+                  detectedLocation.consentDenied === true
                 }
                 onClick={() => void handleHomeCountryYes()}
               >
