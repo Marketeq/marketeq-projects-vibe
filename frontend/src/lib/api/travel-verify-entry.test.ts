@@ -5,10 +5,11 @@ import { join } from "node:path"
 import { describe, it } from "node:test"
 
 import { isTravelModeInForce } from "./travel-popup"
+import { readDashboardWithHost, readIdentityHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const flow = read("components", "identity-verification-flow.tsx")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 // The /me fields the backend sends (profile-status.response.dto.ts): an end time exists only
 // for a valid activation, and the expired flag is false until that end time passes.
@@ -63,7 +64,8 @@ describe("isTravelModeInForce", () => {
 })
 
 describe("Verify My Account launches the flow with the traveler's real state", () => {
-  const verify = page.slice(page.indexOf("const handleVerifyMyAccount"), page.indexOf("// Travel Mode expiry popup"))
+  const host = readIdentityHost()
+  const verify = host.slice(host.indexOf("const handleVerifyMyAccount"), host.indexOf("}, [runIdentityVerificationCheck])"))
 
   it("derives the flag from the /me summary re-read in the same call, not from stale state", () => {
     assert.ok(verify.includes("const summary = await fetchIdentityVerificationSummary()"))

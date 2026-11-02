@@ -27,6 +27,7 @@ import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 import { csrfHeader } from "@/src/lib/csrf"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 
 const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
@@ -172,14 +173,17 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   onVerified?: () => void
 }) {
   const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   const [step, setStep] = React.useState<StepId>("amount")
 
   // G9: the payout service's identity gate answered 403/503 - the existing
-  // Verify My Account popup opens; "Verify My Account" continues on the talent dashboard.
+  // Verify My Account popup opens; "Verify My Account" closes it and starts the existing
+  // verification flow in place through the shared host. This dialog and what was entered stay
+  // open underneath, and the withdrawal is never retried: Confirm is clicked again.
   const [verificationBlock, setVerificationBlock] = React.useState<WithdrawalVerificationBlock>(null)
   const goVerify = () => {
     setVerificationBlock(null)
-    router.push("/talent-dashboard")
+    void startVerification()
   }
   const [gateAllowed, setGateAllowed] = React.useState<boolean | null>(null)
   const [gateBlockedBy, setGateBlockedBy] = React.useState<string | undefined>(undefined)

@@ -116,9 +116,9 @@ describe("the hook: gate first, nothing is created while blocked", () => {
     assert.ok(!/router|fetch|check|proceed|localStorage|sessionStorage/i.test(onOpenChange))
   })
 
-  it("Start Verification closes the modal and uses the G3 startVerification hand-off", () => {
+  it("Start Verification closes the modal and starts verification in place through the shared host", () => {
     assert.ok(/<Button size="md" onClick=\{goVerify\}>\s*Start Verification\s*<\/Button>/.test(hook))
-    assert.ok(hook.includes("const goVerify = () => {\n    setBlock(null)\n    router.push(START_VERIFICATION_HREF)\n  }"))
+    assert.ok(hook.includes("const goVerify = () => {\n    setBlock(null)\n    void startVerification()\n  }"))
   })
 
   it("unavailable reuses the existing status-unavailable popup", () => {
@@ -133,8 +133,11 @@ describe("other G8 actions keep their existing handling", () => {
     assert.ok(!dialog.includes("useStartTimeGate") && !dialog.includes("start-time-gate"))
     assert.ok(dialog.includes("await checkTimeTrackerDownload()"))
     assert.ok(dialog.includes("<AccountVerificationGate"))
+    // In place now: the pages hand it the shared host's action (see g8-in-place.test.ts); its
+    // earlier dashboard continuation is only the fallback when no action is supplied.
+    assert.ok(dialog.includes("onStartVerification"))
     assert.ok(dialog.includes('router.push("/talent-dashboard")'))
-    assert.ok(!dialog.includes("startVerification"))
+    assert.ok(!dialog.includes("identity-verification-host"))
   })
 
   it("Add Manual Time (POST /manual-time, also G8-gated server side) is untouched", () => {

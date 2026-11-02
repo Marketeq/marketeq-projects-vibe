@@ -18,6 +18,7 @@ import "@/styles/globals.css"
 import "@/styles/nprogress.css"
 import QueryProvider from "../src/features/shared/query-provider"
 import { CreateListingGateHost } from "@/utils/CreateListingGateHost"
+import { IdentityVerificationHostProvider } from "@/contexts/identity-verification-host"
 
 export const dynamic = "force-dynamic"
 
@@ -49,14 +50,21 @@ export default function RootLayout({
   const content = (
     <AuthProvider>
       <QueryProvider>
-        <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+        {/* The one identity verification host: it can open verification over any page, and
+            stays inert (renders and reads nothing) when signed out and on the public
+            authentication pages. */}
+        <IdentityVerificationHostProvider>
+          <div className="min-h-screen flex flex-col bg-gray-50">{children}</div>
+          {/* G2's blocked-listing modal lives inside the host's provider so its Start
+              Verification can open verification in place. */}
+          <CreateListingGateHost />
+        </IdentityVerificationHostProvider>
         <Suspense fallback={null}>
           <NProgressBar />
         </Suspense>
         <Toaster />
         <TimezoneSync />
         <InviteWindow />
-        <CreateListingGateHost />
       </QueryProvider>
     </AuthProvider>
   )
