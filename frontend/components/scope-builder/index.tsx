@@ -1361,22 +1361,21 @@ const TaskDialog = ({
             <Label htmlFor="experience" className="text-gray-700" size="sm">
               Experience
             </Label>
+            {/* Reuses this file's own Dropdown (below) — already shows
+            the Network/Network1-4 icons per level for the table-cell
+            editor; this TaskDialog was the one place still rendering
+            text-only via the plain Select. Same icon-equipped component
+            edit-listing's and publish-project's own TaskDialogs already
+            use for this exact field. */}
             <Controller
               control={control}
               name="experience"
               render={({ field: { value, onChange } }) => (
-                <Select value={value} onValueChange={onChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select one" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {EXPERIENCE_LEVELS.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {level}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Dropdown
+                  value={value}
+                  onValueChange={onChange}
+                  placeholder="Select one"
+                />
               )}
             />
             <HookFormErrorMessage

@@ -23,9 +23,10 @@ import {
   successAlertKindFor,
 } from "./home-country-change-result"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 
 class FakeStorage implements FlagStorage {

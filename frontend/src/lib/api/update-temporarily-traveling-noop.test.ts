@@ -9,18 +9,26 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
+import { readDashboardWithHost, readIdentityHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 
+// The close branch lives in the identity verification host; the page's own reaction to a
+// close (re-reading /me) is the page's handler of the same name.
+const host = readIdentityHost()
+const hostHandler = host.slice(
+  host.indexOf("const handleIdentityFlowOpenChange = useCallback("),
+  host.indexOf("const openFlow = useCallback(")
+)
+const closeBranch = hostHandler.slice(
+  hostHandler.indexOf("if (!open) {"),
+  hostHandler.indexOf("observerRef.current?.handleIdentityFlowOpenChange")
+)
 const handler = page.slice(
   page.indexOf("const handleIdentityFlowOpenChange = useCallback("),
   page.indexOf("[markTravelerPromptCompleted]")
-)
-const closeBranch = handler.slice(
-  handler.indexOf("if (!open) {"),
-  handler.indexOf("const kind = mismatchFlowKindRef.current")
 )
 // The "Temporarily traveling" button on "Tell us more about you current location".
 const temporarilyButton = flow.slice(

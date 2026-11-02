@@ -17,6 +17,7 @@ import {
   travelLocationPromptKey,
 } from "./travel-location-prompt"
 import type { DismissalStorage } from "./travel-expiry-popup"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 function memoryStorage(): DismissalStorage & { dump: () => Record<string, string> } {
   const map = new Map<string, string>()
@@ -43,7 +44,7 @@ const offered = (loginSessionKey: string | null, storage: DismissalStorage) =>
   shouldOfferTravelerPrompt({ summary: summaryFor(loginSessionKey), storage })
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 const auth = read("contexts", "auth.tsx")
 const dialogStart = page.indexOf("open={locationMismatchOpen || travelerPromptOpen}")
@@ -130,7 +131,7 @@ describe("'I’m still traveling' on an active Travel Mode completes when its ac
 })
 
 describe("'Change my home country' saves and marks nothing", () => {
-  const handler = between(page, "const handleChangeHomeCountry", "const vpnProxyModalCopy")
+  const handler = between(page, "const handleChangeHomeCountry", "// Skip, X, Escape or a click outside")
   it("only opens the flow: no marker, no classification request", () => {
     assert.ok(!/markTravelerPrompt|localStorage|recordTravel|IdentityVerificationAPI/.test(handler))
     assert.ok(handler.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))

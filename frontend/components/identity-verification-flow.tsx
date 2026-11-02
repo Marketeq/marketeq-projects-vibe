@@ -51,7 +51,6 @@
 // header for the split and why).
 
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
 import { useMountedState } from "react-use"
 import type { Map as LeafletMap } from "leaflet"
 import {
@@ -116,12 +115,21 @@ import type { DetectedLocation } from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
 import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-kyc"
 import {
+  openDiditOverlay,
+  subscribeDiditOverlay,
+} from "@/src/lib/api/didit-overlay"
+import {
   recordTravelClassification,
   recordTravelDuration,
   SKIPPED_TRAVEL_DURATION_LABEL,
   type TravelModeDeps,
 } from "@/src/lib/api/travel-mode-backend"
 import { type TravelDuration } from "@/src/lib/api/travel-mode-reminder"
+import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "@/lib/travel-duration-option-styles"
 import {
   getAcceptedDocuments,
   type AcceptedDocumentTypeId,
@@ -841,6 +849,17 @@ export function IdentityVerificationFlow({
   // components and states are kept, just no longer reachable from here).
   const [startingFreeKyc, setStartingFreeKyc] = useState(false)
   const startingFreeKycRef = useRef(false)
+  // Didit now opens over this screen: if it is dismissed without a result (closed, camera
+  // denied, expired), the same screen is usable again. A result is handled by the host.
+  useEffect(
+    () =>
+      subscribeDiditOverlay((event) => {
+        if (event.type !== "dismissed") return
+        startingFreeKycRef.current = false
+        setStartingFreeKyc(false)
+      }),
+    []
+  )
   const handleHomeCountryYes = async () => {
     if (startingFreeKycRef.current) return
     startingFreeKycRef.current = true
@@ -857,7 +876,7 @@ export function IdentityVerificationFlow({
         return {
           confirmHomeCountry: () => IdentityVerificationAPI.confirmHomeCountry(),
           startFreeKyc: () => IdentityVerificationAPI.startFreeKyc(),
-          redirect: (url: string) => window.location.assign(url),
+          redirect: (url: string) => void openDiditOverlay(url),
         }
       },
     })
@@ -1088,10 +1107,7 @@ export function IdentityVerificationFlow({
 
             <div className="mt-6 text-center">
               <span className="text-xs leading-5 text-gray-500">
-                Your data is encrypted and handled securely.{" "}
-                <Link href="#" className="focus-visible:outline-none underline">
-                  Learn More
-                </Link>
+                Your data is encrypted and handled securely.
               </span>
             </div>
           </div>
@@ -1888,32 +1904,57 @@ export function IdentityVerificationFlow({
               setTravelModeSaveFailed(false)
             }}
           >
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="A few days"
                 id="travel-duration-a-few-days"
               />{" "}
-              <Label htmlFor="travel-duration-a-few-days">A few days</Label>
+              <Label
+                htmlFor="travel-duration-a-few-days"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                A few days
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="1–2 weeks"
                 id="travel-duration-1-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-1-2-weeks">1–2 weeks</Label>
+              <Label
+                htmlFor="travel-duration-1-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                1–2 weeks
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="More than 2 weeks"
                 id="travel-duration-more-than-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-more-than-2-weeks">
+              <Label
+                htmlFor="travel-duration-more-than-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
                 More than 2 weeks
               </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="Not sure" id="travel-duration-not-sure" />{" "}
-              <Label htmlFor="travel-duration-not-sure">Not sure</Label>
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
+              <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
+                value="Not sure"
+                id="travel-duration-not-sure"
+              />{" "}
+              <Label
+                htmlFor="travel-duration-not-sure"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                Not sure
+              </Label>
             </div>
           </RadioGroup>
 

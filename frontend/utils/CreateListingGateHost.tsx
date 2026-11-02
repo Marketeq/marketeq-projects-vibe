@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { AlertTriangle } from "@blend-metrics/icons"
 import { Button, Dialog, DialogClose, DialogContent } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
@@ -10,7 +9,7 @@ import {
   createListingTitleFor,
   type CreateListingBlock,
 } from "@/src/lib/api/create-listing-gate"
-import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handoff"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 
 // G2: the one modal for every way of starting a listing. ProjectAPI.CreateProjectDraft asks
 // the backend's read-only creation check before it POSTs, and announces a refusal here, so
@@ -19,11 +18,13 @@ import { START_VERIFICATION_HREF } from "@/src/lib/api/start-verification-handof
 // same modal. A refusal shows "To publish this job, you must verify ..." for what is missing
 // (identity and location / identity / location) with Cancel and Start Verification; an
 // unreadable gate shows the existing status-unavailable popup. Nothing is created while
-// blocked. Cancel, Esc and an outside click only close the modal. Start Verification uses
-// the same one-shot dashboard hand-off as the Apply gate (G3), which opens the existing
-// Identity Verification flow.
+// blocked. Cancel, Esc and an outside click only close the modal. Start Verification closes the
+// modal and starts the existing Identity Verification flow in place, over whatever page the
+// modal is on, through the shared host (so this component is mounted inside its provider, in
+// the root layout): no navigation, no reload, and no draft is created or retried afterwards;
+// the talent clicks the original create action again.
 export function CreateListingGateHost() {
-  const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   const [block, setBlock] = useState<CreateListingBlock | null>(null)
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function CreateListingGateHost() {
 
   const goVerify = () => {
     setBlock(null)
-    router.push(START_VERIFICATION_HREF)
+    void startVerification()
   }
 
   return (
