@@ -16,11 +16,9 @@ import {
 } from "./status-alert-reconcile"
 import { buildAlertStack, selectVisibleAlerts } from "./status-alert-state"
 import type { StatusAlert } from "./status-alerts"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
-const page = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const page = readDashboardWithHost()
 const handler = page.slice(
   page.indexOf("const handleIdentityFlowOpenChange = useCallback("),
   page.indexOf("[markTravelerPromptCompleted]")
@@ -178,12 +176,12 @@ describe("the whole first-time flow, end to end without a refresh", () => {
 describe("the alert list is loaded for talent accounts only", () => {
   it("a client landing on the talent dashboard (it redirects) makes no status-alert request", () => {
     const loader = page.slice(
-      page.indexOf("Talent accounts only: a client that lands here"),
-      page.indexOf("}, [user, travelSummary])")
+      page.indexOf("Talent accounts only, and only where the host is active"),
+      page.indexOf("}, [user, travelSummary, hostActive])")
     )
     assert.match(
       loader,
-      /resolveDashboardRole\(user\) !== ROLE\.TALENT\) return/
+      /!hostActive \|\| resolveDashboardRole\(user\) !== ROLE\.TALENT\) return/
     )
     assert.match(loader, /StatusAlertsAPI\.list\(\)/)
     assert.ok(

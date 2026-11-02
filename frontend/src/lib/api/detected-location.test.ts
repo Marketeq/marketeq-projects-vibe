@@ -6,6 +6,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import { getDetectedLocation } from "./detected-location"
+import {
+  readDashboardPage,
+  readDashboardWithHost,
+  readIdentityHost,
+} from "./dashboard-host-source"
 
 const SERVER_BODY = {
   countryCode: "US",
@@ -60,7 +65,7 @@ describe("verification flow location source", () => {
 
   it("the dashboard calls getDetectedLocation() with no mock opt-in", () => {
     assert.ok(
-      !read("app", "(group)", "talent-dashboard", "page.tsx").includes(
+      !readDashboardWithHost().includes(
         "allowDevMock"
       )
     )
@@ -363,7 +368,7 @@ describe("getDetectedLocation with browser geolocation", () => {
 })
 
 describe("browser geolocation wiring (source guards)", () => {
-  const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+  const page = readDashboardWithHost()
 
   it("is requested only from the explicit verify action, never on page load", () => {
     // Three call sites: the explicit verify action (which may ask for the browser's
@@ -372,15 +377,21 @@ describe("browser geolocation wiring (source guards)", () => {
     // the Update flow's "Permanently relocated" choice (an explicit user action, wired
     // through the flow's onPermanentlyRelocated prop; see travel-update-relocated-detection.test.ts).
     const calls = page.match(/getDetectedLocation\(/g) ?? []
-    assert.equal(calls.length, 3)
+    // (plus the host's own default for the live card's Update on a page without a popup: also
+    // server-derived only, so it can never trigger the permission prompt)
+    assert.equal(calls.length, 4)
     assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 2)
     assert.ok(page.includes("getDetectedLocation({ useBrowserLocation: true })"))
     assert.ok(page.includes("await getDetectedLocation()"))
-    const handler = page.slice(page.indexOf("const handleVerifyMyAccount"))
-    assert.ok(handler.indexOf("getDetectedLocation(") > -1)
-    const beforeHandler = page.slice(0, page.indexOf("const handleVerifyMyAccount"))
+    // The explicit verify action lives in the host; before it (the host's imports, state and
+    // return effect) nothing asks for a position, and neither does the page's load code.
+    const host = readIdentityHost()
+    const handlerAt = host.indexOf("const handleVerifyMyAccount")
+    assert.ok(host.indexOf("getDetectedLocation(", handlerAt) > -1)
+    const beforeHandler = host.slice(0, handlerAt)
     assert.ok(!beforeHandler.includes("getDetectedLocation("))
     assert.ok(!beforeHandler.includes("getBrowserPosition"))
+    assert.ok(!readDashboardPage().includes("getBrowserPosition"))
   })
 
   it("navigator.geolocation is touched only by the browser-geolocation helper", () => {

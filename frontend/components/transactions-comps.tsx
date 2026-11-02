@@ -1798,7 +1798,9 @@ const StatCard = ({
   return (
     // Figma: exact 2×2 corners — top row items-center (label ↔ amount),
     // bottom row items-center (extra ↔ status/trend/meta), equal card heights.
-    <div className="flex-1 h-full min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
+    // BTB-384: no h-full — height:100% stopped the parent row's items-stretch
+    // from evening out the three cards once one of them wraps below 4xl.
+    <div className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
       {/* BTB-383/384: below 4xl (1600px) the three cards are too narrow for
           label + aside + amount on one row — the label overlapped the amount
           and the Next Payout date was cut off. There the amount sits under

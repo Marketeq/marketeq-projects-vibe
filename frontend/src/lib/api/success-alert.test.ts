@@ -3,9 +3,10 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 const alertStart = page.indexOf('<ToastProvider duration={5000} swipeDirection="right">')
 const alertEnd = page.indexOf("</ToastProvider>", alertStart) + "</ToastProvider>".length
@@ -18,7 +19,8 @@ const modal = page.slice(modalStart, modalEnd)
 describe("success alert: sequence (modal unchanged, alert only after Done)", () => {
   it("the alert is rendered, and sits outside the success modal", () => {
     assert.ok(alertStart > -1 && alertEnd > alertStart)
-    assert.ok(alertStart >= modalEnd, "the alert is not part of the modal")
+    // (the modal is hosted by the identity verification host now, so only containment matters)
+    assert.ok(alertEnd <= modalStart || alertStart >= modalEnd, "the alert is not part of the modal")
   })
 
   it("Done only closes the modal, in one handler: the persistent Verified card is the notification and no second top-right alert opens", () => {
