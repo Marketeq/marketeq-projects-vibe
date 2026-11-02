@@ -71,6 +71,7 @@ export class InvitationsController {
   async getSettings(@Query() dto: GetInviteSettingsDto, @Req() req: RequestWithUser) {
     const actor = actorOf(req);
     const accountId = dto.accountId ?? actor.id;
+    await this.settings.assertCanRead(accountId, actor.id, dto.companyId);
     const settings = await this.settings.get(accountId);
     return { success: true, data: this.settings.toPublic(settings) };
   }

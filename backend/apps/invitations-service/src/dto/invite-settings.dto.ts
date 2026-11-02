@@ -89,6 +89,11 @@ export class GetInviteSettingsDto {
   @IsUUID()
   @IsOptional()
   accountId?: string;
+
+  /** Company the caller is acting through, when reading another account's. */
+  @IsUUID()
+  @IsOptional()
+  companyId?: string;
 }
 
 /** What the API returns. The password hash has no representation here. */

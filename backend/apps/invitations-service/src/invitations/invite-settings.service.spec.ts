@@ -237,4 +237,42 @@ describe('InviteSettingsService', () => {
       );
     });
   });
+
+  describe('who may read the settings', () => {
+    it('always allows the account owner', async () => {
+      await expect(svc.assertCanRead('account-1', 'account-1')).resolves.toBeUndefined();
+      expect(userService.getCompanyMembership).not.toHaveBeenCalled();
+    });
+
+    it('allows any member of a company the account owns', async () => {
+      userService.getCompany.mockResolvedValue({ id: 'c1', ownerUserId: 'account-1' });
+      userService.getCompanyMembership.mockResolvedValue({ permissions: [] });
+
+      await expect(svc.assertCanRead('account-1', 'other-user', 'c1')).resolves.toBeUndefined();
+    });
+
+    it('refuses a member of some other account\'s company', async () => {
+      userService.getCompany.mockResolvedValue({ id: 'c1', ownerUserId: 'someone-else' });
+      userService.getCompanyMembership.mockResolvedValue({ permissions: ['administrator'] });
+
+      await expect(svc.assertCanRead('account-1', 'other-user', 'c1')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('refuses a non-member of the account\'s company', async () => {
+      userService.getCompany.mockResolvedValue({ id: 'c1', ownerUserId: 'account-1' });
+      userService.getCompanyMembership.mockResolvedValue(null);
+
+      await expect(svc.assertCanRead('account-1', 'other-user', 'c1')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
+    it('refuses a stranger who names another account with no company', async () => {
+      await expect(svc.assertCanRead('account-1', 'other-user')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
 });

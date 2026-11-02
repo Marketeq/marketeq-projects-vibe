@@ -158,6 +158,33 @@ export class InviteSettingsService {
   }
 
   /**
+   * Who may read an account's invite settings.
+   *
+   * The account owner, or anyone acting through a company that account owns
+   * and holding any membership in it. Without this, any signed-in user could
+   * read any account's link settings by passing its id.
+   */
+  async assertCanRead(
+    accountId: string,
+    actorId: string,
+    companyId?: string,
+  ): Promise<void> {
+    if (accountId === actorId) return;
+
+    if (companyId) {
+      const [company, membership] = await Promise.all([
+        this.userService.getCompany(companyId).catch(() => null),
+        this.userService.getCompanyMembership(companyId, actorId).catch(() => null),
+      ]);
+      if (company?.ownerUserId === accountId && membership) return;
+    }
+
+    throw new ForbiddenException(
+      'You do not have access to this account\'s invite settings',
+    );
+  }
+
+  /**
    * When a link issued at `issuedAtMs` stops working, or null for "never".
    *
    * Read live at accept time rather than baked into the token, so a change
