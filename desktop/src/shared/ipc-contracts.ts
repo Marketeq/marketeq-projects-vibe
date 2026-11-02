@@ -167,8 +167,6 @@ export interface ScreenshotTakenEvent {
   width: number;
   height: number;
   bytes: number;
-  filePath: string;
-  blurPath: string | null;
   displayId: string;
   /** 1 for the primary display, then 2, 3… left to right. */
   screenNumber: number;
