@@ -88,6 +88,10 @@ export class Contract {
   @Column({ type: 'int', nullable: true })
   weeklyCapHours: number | null;
 
+  // PMCM-837: ISO 4217 currency of `rate`, from the accepted offer.
+  @Column({ type: 'char', length: 3, default: 'USD' })
+  currencyCode: string;
+
   // Automatic timestamps
   @CreateDateColumn()
   createdAt: Date;

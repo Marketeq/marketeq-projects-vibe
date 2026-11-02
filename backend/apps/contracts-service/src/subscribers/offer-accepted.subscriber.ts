@@ -20,6 +20,7 @@ interface TermsPayload {
   rate: number;
   durationMonths: number;
   workSchedule: { type: string; hoursPerWeek?: number };
+  currencyCode?: string;
 }
 
 interface OfferEventPayload {

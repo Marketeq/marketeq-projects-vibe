@@ -153,7 +153,7 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             name: c.title || 'Untitled',
             client_name: c.clientId || 'unknown',
             status: c.status === 'active' ? 'active' : c.status === 'paused' ? 'paused' : 'ended',
-            currency: 'USD',
+            currency: /^[A-Z]{3}$/.test(c.currencyCode ?? '') ? c.currencyCode! : 'USD',
             rate_minor: Math.round((Number(c.rate) || 0) * 100),
             daily_cap_seconds: null,
             weekly_cap_seconds:

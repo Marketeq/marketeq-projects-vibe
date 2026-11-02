@@ -262,6 +262,8 @@ export interface TodayStatsDTO {
   trackedSeconds: number;
   earnedCents: number;
   currency: string;
+  /** PMCM-837: minor units earned per ISO currency — amounts in different currencies are never added together. */
+  earnedByCurrency: Record<string, number>;
   goalSeconds: number;
   /** Per-task totals for today — restored into the task list on relaunch. */
   tasks: TodayTaskStatDTO[];
@@ -271,6 +273,7 @@ export interface TodayStatsDTO {
   yesterday: {
     trackedSeconds: number;
     earnedCents: number;
+    earnedByCurrency: Record<string, number>;
     tasks: TodayTaskStatDTO[];
   };
 }
@@ -577,6 +580,8 @@ export interface BackendContract {
   note: string | null;
   /** PMCM-829: weekly time cap agreed in the offer; null = no cap. */
   weeklyCapHours?: number | null;
+  /** PMCM-837: ISO 4217 currency of `rate`. */
+  currencyCode?: string;
   createdAt: string;
   updatedAt: string;
 }
