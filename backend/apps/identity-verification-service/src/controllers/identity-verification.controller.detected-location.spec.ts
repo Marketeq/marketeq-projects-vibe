@@ -73,7 +73,7 @@ describe('GET /v1/identity-verification/detected-location', () => {
   it('returns the sanitized display fields, including country name, and no IP address', async () => {
     const res = await request(app.getHttpServer())
       .get('/v1/identity-verification/detected-location')
-      .set('X-Forwarded-For', CLIENT_IP)
+      .set('CF-Connecting-IP', CLIENT_IP)
       .expect(200);
     expect(res.body).toEqual({
       countryCode: 'US', countryName: 'United States', city: 'Chicago',
@@ -86,8 +86,8 @@ describe('GET /v1/identity-verification/detected-location', () => {
   });
 
   it('display and home-country confirmation receive the very same effective IP', async () => {
-    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('X-Forwarded-For', CLIENT_IP).expect(200);
-    await request(app.getHttpServer()).post('/v1/identity-verification/home-country/confirm').set('X-Forwarded-For', CLIENT_IP).expect(200);
+    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('CF-Connecting-IP', CLIENT_IP).expect(200);
+    await request(app.getHttpServer()).post('/v1/identity-verification/home-country/confirm').set('CF-Connecting-IP', CLIENT_IP).expect(200);
     expect(display.mock.calls[0][0]).toBe(confirm.mock.calls[0][1]);
     expect(display.mock.calls[0][0]).toBe(DEV_IP);
   });
@@ -95,7 +95,7 @@ describe('GET /v1/identity-verification/detected-location', () => {
   it('the dev override is honored only on the server: browser-supplied IPs (headers, query) are ignored', async () => {
     await request(app.getHttpServer())
       .get('/v1/identity-verification/detected-location?ip=192.0.2.9')
-      .set('X-Forwarded-For', CLIENT_IP)
+      .set('CF-Connecting-IP', CLIENT_IP)
       .set('X-Real-IP', '192.0.2.10')
       .set('X-Dev-Client-Ip', '192.0.2.11')
       .expect(200);
@@ -104,8 +104,8 @@ describe('GET /v1/identity-verification/detected-location', () => {
 
   it('outside development the override is ignored and the request-derived IP is used', async () => {
     process.env.NODE_ENV = 'production';
-    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('X-Forwarded-For', CLIENT_IP).expect(200);
-    await request(app.getHttpServer()).post('/v1/identity-verification/home-country/confirm').set('X-Forwarded-For', CLIENT_IP).expect(200);
+    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('CF-Connecting-IP', CLIENT_IP).expect(200);
+    await request(app.getHttpServer()).post('/v1/identity-verification/home-country/confirm').set('CF-Connecting-IP', CLIENT_IP).expect(200);
     expect(display.mock.calls[0][0]).toBe(CLIENT_IP);
     expect(confirm.mock.calls[0][1]).toBe(CLIENT_IP);
   });
@@ -126,9 +126,9 @@ describe('GET /v1/identity-verification/detected-location', () => {
   });
 
   it('never logs either IP', async () => {
-    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('X-Forwarded-For', CLIENT_IP).expect(200);
+    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('CF-Connecting-IP', CLIENT_IP).expect(200);
     display.mockRejectedValue(new LocationLookupUnavailableException({ reason: 'request_failed' }));
-    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('X-Forwarded-For', CLIENT_IP).expect(503);
+    await request(app.getHttpServer()).get('/v1/identity-verification/detected-location').set('CF-Connecting-IP', CLIENT_IP).expect(503);
     const all = logged.join('\n');
     expect(all).not.toContain(CLIENT_IP);
     expect(all).not.toContain(DEV_IP);
@@ -138,7 +138,7 @@ describe('GET /v1/identity-verification/detected-location', () => {
     const post = (body: unknown) =>
       request(app.getHttpServer())
         .post('/v1/identity-verification/detected-location/coordinates')
-        .set('X-Forwarded-For', CLIENT_IP)
+        .set('CF-Connecting-IP', CLIENT_IP)
         .send(body as object);
 
     it('passes the same effective IP and only the two numbers to the service, and returns no IP', async () => {

@@ -4,7 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HttpModule } from '@nestjs/axios';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { Invitation } from './entities/invitation.entity';
+import { InviteSettings } from './entities/invite-settings.entity';
 import { InvitationsService } from './invitations/invitations.service';
+import { InviteSettingsService } from './invitations/invite-settings.service';
 import { InvitationsController } from './invitations/invitations.controller';
 import { UserServiceClient } from './invitations/user-service.client';
 import { HealthController } from './health/health.controller';
@@ -42,7 +44,7 @@ import { CompanyContextGuard } from './guards/company-context.guard';
         return {
           type: 'postgres',
           url: config.get<string>('DATABASE_URL'),
-          entities: [Invitation],
+          entities: [Invitation, InviteSettings],
           synchronize: false,
           migrationsRun: true,
           migrations: [__dirname + '/migrations/*{.ts,.js}'],
@@ -50,11 +52,12 @@ import { CompanyContextGuard } from './guards/company-context.guard';
         }
       },
     }),
-    TypeOrmModule.forFeature([Invitation]),
+    TypeOrmModule.forFeature([Invitation, InviteSettings]),
   ],
   controllers: [InvitationsController, CompanyInvitationsController, HealthController],
   providers: [
     InvitationsService,
+    InviteSettingsService,
     UserServiceClient,
     InvitationEventsService,
     CompanyContextGuard,

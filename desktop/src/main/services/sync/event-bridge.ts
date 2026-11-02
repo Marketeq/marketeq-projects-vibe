@@ -21,11 +21,11 @@ import type {
   TimerService,
   TimerBusEvent,
 } from '../timer/timer-service';
-import type { ScreenshotService } from '../capture/screenshot-service';
+import type { CapturedScreenshot, ScreenshotService } from '../capture/screenshot-service';
 import type { ActivityMonitor } from '../capture/activity-monitor';
 import { readIconAsBase64 } from '../capture/app-icon-service';
 import { getInputLevels } from '../capture/input-activity';
-import type { ScreenshotTakenEvent, ActivitySample } from '../../../shared/ipc-contracts';
+import type { ActivitySample } from '../../../shared/ipc-contracts';
 
 export interface EventBridgeDeps {
   outbox: Outbox;
@@ -63,6 +63,21 @@ export interface EventBridgeDeps {
     ended_at: number | null;
     duration_seconds: number;
     source?: 'live' | 'manual' | 'recovered';
+  }>;
+  /** PMCM-830: a session's local break rows (repos.break.listForSession). */
+  listBreaksForSession?: (sessionId: string) => Array<{
+    id: string;
+    kind: 'paid' | 'unpaid';
+    started_at: number;
+    ended_at: number | null;
+  }>;
+  /** PMCM-830: a session's local idle rows with the talent's decision (repos.idle.listForSession). */
+  listIdlesForSession?: (sessionId: string) => Array<{
+    id: string;
+    started_at: number;
+    ended_at: number;
+    seconds: number;
+    resolution: 'keep' | 'discard' | 'convert_to_break' | null;
   }>;
   logger?: Logger;
 }
@@ -144,6 +159,50 @@ export function createEventBridge(deps: EventBridgeDeps) {
           },
         });
       }
+
+      // PMCM-830 (DTT-US-075): breaks and idle decisions never reached the
+      // backend. Each closed break is created then ended (the API splits
+      // the two); each resolved idle carries the talent's decision. Ids are
+      // the local row ids, so a re-sent row is a no-op server side.
+      for (const brk of deps.listBreaksForSession?.(closedId) ?? []) {
+        if (brk.ended_at == null) continue;
+        deps.outbox.enqueue({
+          kind: 'break.start',
+          method: 'POST',
+          path: `/sessions/${closedId}/breaks`,
+          id: `req_brk-start-${brk.id}`,
+          payload: {
+            id: brk.id,
+            kind: brk.kind,
+            startedAt: new Date(brk.started_at).toISOString(),
+            idempotencyKey: `brk-start-${brk.id}`,
+          },
+        });
+        deps.outbox.enqueue({
+          kind: 'break.end',
+          method: 'PATCH',
+          path: `/breaks/${brk.id}`,
+          id: `req_brk-end-${brk.id}`,
+          payload: { endedAt: new Date(brk.ended_at).toISOString() },
+        });
+      }
+      for (const idle of deps.listIdlesForSession?.(closedId) ?? []) {
+        if (idle.resolution == null) continue;
+        deps.outbox.enqueue({
+          kind: 'idle.create',
+          method: 'POST',
+          path: `/sessions/${closedId}/idles`,
+          id: `req_idle-${idle.id}`,
+          payload: {
+            id: idle.id,
+            startedAt: new Date(idle.started_at).toISOString(),
+            endedAt: new Date(idle.ended_at).toISOString(),
+            seconds: idle.seconds,
+            resolution: idle.resolution,
+            idempotencyKey: `idle-${idle.id}`,
+          },
+        });
+      }
     }
 
     if (!deviceId || !snap.activeSessionId) return;
@@ -173,7 +232,7 @@ export function createEventBridge(deps: EventBridgeDeps) {
   // ---- Capture events ------------------------------------------------------
 
   if (deps.screenshotService) {
-    const offShot = deps.screenshotService.subscribe(async (e: ScreenshotTakenEvent) => {
+    const offShot = deps.screenshotService.subscribe(async (e: CapturedScreenshot) => {
       try {
         const userId = deps.getUserId?.() ?? null;
         if (!userId) {
@@ -185,18 +244,9 @@ export function createEventBridge(deps: EventBridgeDeps) {
         const snap = deps.timer.getSnapshot();
         const contract = snap.pickedContract;
         
-        let imageBase64: string | undefined;
-        try {
-          const fs = require('fs');
-          if (e.filePath && fs.existsSync(e.filePath)) {
-            const buf = fs.readFileSync(e.filePath);
-            if (buf.length > 0) {
-              imageBase64 = buf.toString('base64');
-            }
-          }
-        } catch (err) {
-          log?.warn({ err }, 'event-bridge: failed to read screenshot file for upload');
-        }
+        // The capture is held in memory only (PMCM-832); the outbox stores
+        // it encrypted until the backend acknowledges the upload.
+        const imageBase64 = e.jpeg.length > 0 ? e.jpeg.toString('base64') : undefined;
 
         // Real keyboard/mouse activity for the trailing screenshot interval,
         // measured separately. input-activity records only THAT input occurred,
