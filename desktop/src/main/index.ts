@@ -814,6 +814,10 @@ async function bootstrap(): Promise<void> {
             notificationService.breakExpiring(evt.payload.remainingSec);
           } else if (evt.channel === TIMER_CHANNELS.breakExpired) {
             notificationService.breakExpired();
+          } else if (evt.channel === TIMER_CHANNELS.capWarning) {
+            notificationService.capWarning(evt.payload.remainingSec);
+          } else if (evt.channel === TIMER_CHANNELS.capReached) {
+            notificationService.capReached();
           } else if (evt.channel === TIMER_CHANNELS.idleResolutionNeeded) {
             notificationService.idleDetected(evt.payload.seconds);
           }

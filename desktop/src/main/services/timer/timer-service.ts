@@ -59,6 +59,16 @@ const MAX_SESSION_SEC = 14 * 60 * 60; // 14 hours
 /** How often (seconds) a Running session persists its billable total. */
 const CHECKPOINT_EVERY_SEC = 15;
 const MAX_BREAK_SEC = 4 * 60 * 60; // 4 hours
+/** PMCM-829: warn this long before a contract's time cap is reached. */
+const CAP_WARNING_SEC = 15 * 60;
+
+/** Local midnight of the Monday that starts `now`'s week (DST-safe). */
+export function startOfLocalWeek(now: Date = new Date()): number {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
 
 // -----------------------------------------------------------------------------
 // IPC channel names — exported so the preload + renderer can reference them.
@@ -83,6 +93,8 @@ export const TIMER_CHANNELS = {
   breakExpired: 'break:expired',
   workReminder: 'timer:work-reminder',
   breakReminder: 'timer:break-reminder',
+  capWarning: 'timer:cap-warning',
+  capReached: 'timer:cap-reached',
 } as const;
 
 export type TimerChannel = (typeof TIMER_CHANNELS)[keyof typeof TIMER_CHANNELS];
@@ -124,6 +136,8 @@ export interface BusEventMap {
   [TIMER_CHANNELS.breakExpired]: { breakId: string; kind: BreakKind };
   [TIMER_CHANNELS.workReminder]: { elapsedSec: number };
   [TIMER_CHANNELS.breakReminder]: { elapsedSec: number };
+  [TIMER_CHANNELS.capWarning]: { contractId: string; remainingSec: number };
+  [TIMER_CHANNELS.capReached]: { contractId: string };
 }
 
 export type TimerBusEvent =
@@ -151,7 +165,12 @@ export type TimerBusEvent =
       payload: { breakId: string; kind: BreakKind };
     }
   | { channel: typeof TIMER_CHANNELS.workReminder; payload: { elapsedSec: number } }
-  | { channel: typeof TIMER_CHANNELS.breakReminder; payload: { elapsedSec: number } };
+  | { channel: typeof TIMER_CHANNELS.breakReminder; payload: { elapsedSec: number } }
+  | {
+      channel: typeof TIMER_CHANNELS.capWarning;
+      payload: { contractId: string; remainingSec: number };
+    }
+  | { channel: typeof TIMER_CHANNELS.capReached; payload: { contractId: string } };
 
 // -----------------------------------------------------------------------------
 // Dependencies
@@ -249,8 +268,66 @@ export function createTimerService(deps: TimerServiceDeps) {
       if (snap.elapsedSec >= MAX_SESSION_SEC) {
         logger.warn({ sessionId: activeSessionId }, 'max session duration reached — auto-stopping');
         void safeDispatch({ type: 'STOP', reason: 'user_stop' });
+        return;
       }
+      enforceCap(snap.elapsedSec);
     }, 1000);
+  }
+
+  // --------- time caps (PMCM-829) -------------------------------------------
+  // The contract's remaining cap is measured once per session against its
+  // CLOSED sessions (they can't change while this one runs), then the live
+  // elapsed time is subtracted every tick. undefined = not measured yet.
+  let capBudgetSec: number | null | undefined;
+  let capWarned = false;
+
+  /**
+   * Seconds left under the contract's daily and weekly caps, from closed
+   * sessions only; null when the contract has no cap.
+   */
+  function closedCapRemainingSec(contractId: string, now: Date = new Date()): number | null {
+    const contract = repos.contract.findById(contractId);
+    if (!contract) return null;
+    const userId = deps.getUserId?.() ?? repos.user.findFirst()?.id ?? null;
+    if (!userId) return null;
+    const used = (startAt: number, endAt: number) =>
+      repos.session
+        .sumBillableSecondsByContract({ userId, startAt, endAt })
+        .find((r) => r.contract_id === contractId)?.total_billable_seconds ?? 0;
+
+    const limits: number[] = [];
+    if (contract.weekly_cap_seconds != null) {
+      const weekStart = startOfLocalWeek(now);
+      const nextWeek = new Date(weekStart);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      limits.push(contract.weekly_cap_seconds - used(weekStart, nextWeek.getTime()));
+    }
+    if (contract.daily_cap_seconds != null) {
+      const dayStart = new Date(now);
+      dayStart.setHours(0, 0, 0, 0);
+      const nextDay = new Date(dayStart);
+      nextDay.setDate(nextDay.getDate() + 1);
+      limits.push(contract.daily_cap_seconds - used(dayStart.getTime(), nextDay.getTime()));
+    }
+    return limits.length ? Math.max(0, Math.min(...limits)) : null;
+  }
+
+  function enforceCap(elapsedSec: number) {
+    if (!pickedContract) return;
+    if (capBudgetSec === undefined) {
+      capBudgetSec = closedCapRemainingSec(pickedContract.contractId);
+    }
+    if (capBudgetSec === null) return;
+    const remaining = capBudgetSec - elapsedSec;
+    const { contractId } = pickedContract;
+    if (remaining <= 0) {
+      logger.warn({ sessionId: activeSessionId, contractId }, 'contract time cap reached — auto-stopping');
+      emit(TIMER_CHANNELS.capReached, { contractId });
+      void safeDispatch({ type: 'STOP', reason: 'user_stop' });
+    } else if (remaining <= CAP_WARNING_SEC && !capWarned) {
+      capWarned = true;
+      emit(TIMER_CHANNELS.capWarning, { contractId, remainingSec: remaining });
+    }
   }
 
   function stopTickLoop() {
@@ -536,6 +613,8 @@ export function createTimerService(deps: TimerServiceDeps) {
       accumulatedRunningSec = 0;
       sessionStartedAt = null;
       activeTimeEntryId = null;
+      capBudgetSec = undefined;
+      capWarned = false;
       reminders.clearAll();
     }
   }
@@ -675,6 +754,14 @@ export function createTimerService(deps: TimerServiceDeps) {
         'timer start refused: task not mirrored locally',
       );
       emitError('DTT-ERR-TIMER.03', 'selected task not found');
+      return snapshot();
+    }
+    // PMCM-829: a contract at its time cap can't start tracking — the time
+    // would not be billed.
+    if (closedCapRemainingSec(input.contractId) === 0) {
+      logger.warn({ contractId: input.contractId }, 'timer start refused: contract time cap reached');
+      emit(TIMER_CHANNELS.capReached, { contractId: input.contractId });
+      emitError('DTT-ERR-CAP.01', 'contract time cap reached');
       return snapshot();
     }
     await safeDispatch({

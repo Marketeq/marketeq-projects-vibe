@@ -47,6 +47,8 @@ interface TodayTaskStat {
   lastEndedAt: number | null
   /** The live session's share of trackedSeconds (0 unless running). */
   liveSeconds?: number
+  /** PMCM-829: the contract cap the progress bar measures against; null = none. */
+  capSeconds?: number | null
 }
 
 interface TodayStats {
@@ -931,7 +933,7 @@ export function TimeTrackerApp({
       timeRange: `${formatTimeOfDay(new Date(stat.firstStartedAt))} - ${
         stat.lastEndedAt ? formatTimeOfDay(new Date(stat.lastEndedAt)) : "now"
       }`,
-      progress: Math.min(Math.round((stat.trackedSeconds / (8 * 3600)) * 100), 100),
+      progress: Math.min(Math.round((stat.trackedSeconds / (stat.capSeconds || 8 * 3600)) * 100), 100),
     })
     const todayByTask = new Map((todayStats.tasks ?? []).map((t) => [t.taskId, t]))
     const yesterdayByTask = new Map((todayStats.yesterday?.tasks ?? []).map((t) => [t.taskId, t]))

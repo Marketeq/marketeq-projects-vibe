@@ -254,6 +254,8 @@ export interface TodayTaskStatDTO {
   lastEndedAt: number | null;
   /** The live session's share of trackedSeconds (0 unless this task is running). */
   liveSeconds: number;
+  /** PMCM-829: the contract's time cap the progress bar measures against (daily, else weekly); null = no cap. */
+  capSeconds: number | null;
 }
 
 export interface TodayStatsDTO {
@@ -573,6 +575,8 @@ export interface BackendContract {
   teamId: string | null;
   jobId: string | null;
   note: string | null;
+  /** PMCM-829: weekly time cap agreed in the offer; null = no cap. */
+  weeklyCapHours?: number | null;
   createdAt: string;
   updatedAt: string;
 }

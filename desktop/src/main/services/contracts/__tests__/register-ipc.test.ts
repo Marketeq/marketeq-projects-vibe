@@ -141,3 +141,39 @@ describe('contracts:get-mine — client avatar', () => {
     expect(out.map((c) => [c.id, c.clientAvatarUrl])).toEqual([['c1', null]]);
   });
 });
+
+describe('contracts:get-mine — time caps (PMCM-829)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("mirrors each contract's weekly cap into local SQLite, in seconds", async () => {
+    handlers.clear();
+    const upsert = vi.fn();
+    registerContractsIpc({
+      getAccessToken: () => 'token',
+      getUserId: () => 'talent-1',
+      apiBaseUrl: API,
+      contractRepo: { upsert } as never,
+      taskRepo: { upsert: vi.fn() } as never,
+    });
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(
+        [
+          { ...contract('c1', 'client-a'), weeklyCapHours: 20 },
+          { ...contract('c2', 'client-a'), weeklyCapHours: null },
+        ],
+        { 'client-a': { id: 'client-a' } },
+      ),
+    );
+
+    await getMine();
+
+    const caps = upsert.mock.calls.map(([row]) => [row.id, row.weekly_cap_seconds]);
+    expect(caps).toEqual([
+      ['c1', 20 * 3600],
+      ['c2', null],
+    ]);
+  });
+});
