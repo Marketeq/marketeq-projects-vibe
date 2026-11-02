@@ -167,8 +167,6 @@ export interface ScreenshotTakenEvent {
   width: number;
   height: number;
   bytes: number;
-  filePath: string;
-  blurPath: string | null;
   displayId: string;
   /** 1 for the primary display, then 2, 3… left to right. */
   screenNumber: number;
@@ -254,12 +252,16 @@ export interface TodayTaskStatDTO {
   lastEndedAt: number | null;
   /** The live session's share of trackedSeconds (0 unless this task is running). */
   liveSeconds: number;
+  /** PMCM-829: the contract's time cap the progress bar measures against (daily, else weekly); null = no cap. */
+  capSeconds: number | null;
 }
 
 export interface TodayStatsDTO {
   trackedSeconds: number;
   earnedCents: number;
   currency: string;
+  /** PMCM-837: minor units earned per ISO currency — amounts in different currencies are never added together. */
+  earnedByCurrency: Record<string, number>;
   goalSeconds: number;
   /** Per-task totals for today — restored into the task list on relaunch. */
   tasks: TodayTaskStatDTO[];
@@ -269,6 +271,7 @@ export interface TodayStatsDTO {
   yesterday: {
     trackedSeconds: number;
     earnedCents: number;
+    earnedByCurrency: Record<string, number>;
     tasks: TodayTaskStatDTO[];
   };
 }
@@ -573,6 +576,10 @@ export interface BackendContract {
   teamId: string | null;
   jobId: string | null;
   note: string | null;
+  /** PMCM-829: weekly time cap agreed in the offer; null = no cap. */
+  weeklyCapHours?: number | null;
+  /** PMCM-837: ISO 4217 currency of `rate`. */
+  currencyCode?: string;
   createdAt: string;
   updatedAt: string;
 }

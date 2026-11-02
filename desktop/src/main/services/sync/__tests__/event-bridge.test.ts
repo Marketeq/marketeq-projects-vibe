@@ -143,3 +143,56 @@ describe('event-bridge — time entries on session close (crash recovery source 
     expect('source' in entries[1].payload).toBe(false);
   });
 });
+
+describe('event-bridge — breaks and idle decisions on session close (PMCM-830)', () => {
+  it('creates then ends each closed break, and sends each resolved idle with its decision', () => {
+    const { outbox, enqueue } = makeOutbox();
+    let emit: ((evt: unknown) => void) | null = null;
+    const timer = {
+      attachEventBus: vi.fn((cb: (evt: unknown) => void) => { emit = cb; return () => undefined; }),
+      getSnapshot: vi.fn(() => ({ activeSessionId: null, pickedContract: null, elapsedSec: 0 })),
+    } as unknown as TimerService;
+    createEventBridge({
+      outbox,
+      timer,
+      getDeviceId: () => 'dev_1',
+      getSessionById: () => ({ ended_at: 2_000_000, end_reason: 'user_stop', billable_seconds: 600 }),
+      listBreaksForSession: () => [
+        { id: 'brk_paid', kind: 'paid' as const, started_at: 1_000_000, ended_at: 1_060_000 },
+        { id: 'brk_open', kind: 'unpaid' as const, started_at: 1_900_000, ended_at: null },
+      ],
+      listIdlesForSession: () => [
+        { id: 'idl_kept', started_at: 1_100_000, ended_at: 1_400_000, seconds: 300, resolution: 'discard' as const },
+        { id: 'idl_open', started_at: 1_500_000, ended_at: 1_600_000, seconds: 100, resolution: null },
+      ],
+    });
+
+    const state = (activeSessionId: string | null) =>
+      emit!({ channel: 'timer:state-changed', payload: { activeSessionId, pickedContract: null, elapsedSec: 0, updatedAt: 0 } });
+    state('ses_1');
+    state(null);
+
+    const rows = enqueue.mock.calls.map(([row]) => row);
+    const starts = rows.filter((r) => r.kind === 'break.start');
+    const ends = rows.filter((r) => r.kind === 'break.end');
+    const idles = rows.filter((r) => r.kind === 'idle.create');
+
+    expect(starts).toHaveLength(1); // the still-open break is not sent
+    expect(starts[0]).toMatchObject({
+      method: 'POST',
+      path: '/sessions/ses_1/breaks',
+      payload: { id: 'brk_paid', kind: 'paid', startedAt: new Date(1_000_000).toISOString() },
+    });
+    expect(ends).toHaveLength(1);
+    expect(ends[0]).toMatchObject({
+      method: 'PATCH',
+      path: '/breaks/brk_paid',
+      payload: { endedAt: new Date(1_060_000).toISOString() },
+    });
+    expect(idles).toHaveLength(1); // the undecided idle is not sent
+    expect(idles[0]).toMatchObject({
+      path: '/sessions/ses_1/idles',
+      payload: { id: 'idl_kept', seconds: 300, resolution: 'discard' },
+    });
+  });
+});
