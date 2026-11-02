@@ -635,6 +635,8 @@ async function bootstrap(): Promise<void> {
         getUserId: () => authService?.getCurrentUser()?.id ?? null,
         getSessionById: (id) => repos.session.findById(id),
         listTimeEntriesForSession: (sessionId) => repos.timeEntry.listForSession(sessionId),
+        listBreaksForSession: (sessionId) => repos.break.listForSession(sessionId),
+        listIdlesForSession: (sessionId) => repos.idle.listForSession(sessionId),
         logger,
       }).detach;
     }

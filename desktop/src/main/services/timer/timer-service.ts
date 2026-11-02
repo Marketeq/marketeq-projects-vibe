@@ -383,8 +383,63 @@ export function createTimerService(deps: TimerServiceDeps) {
     return sec;
   }
 
+  // --------- paid breaks (PMCM-830, doc 20 §6.2) ----------------------------
+  // Paid break time is billable up to the contract's daily allowance. The
+  // allowance left when a paid break opens is its budget; closed paid breaks
+  // add what they earned to paidBreakAccruedSec.
+  let paidBreakAccruedSec = 0;
+  let paidBreakBudgetSec = 0;
+  /** Wall-clock start of the current run of breaks (paid → unpaid counts as one). */
+  let breakChainStartedAt: number | null = null;
+  let breakWatchHandle: NodeJS.Timeout | null = null;
+  let breakTicksSinceCheckpoint = 0;
+
+  function currentPaidBreakSec(): number {
+    const active = breakManager.getActive();
+    if (!active || active.kind !== 'paid') return 0;
+    return Math.min(breakManager.elapsedSeconds(), paidBreakBudgetSec);
+  }
+
   function totalBillableSec(): number {
-    return accumulatedRunningSec + currentRunningSec();
+    return accumulatedRunningSec + currentRunningSec() + paidBreakAccruedSec + currentPaidBreakSec();
+  }
+
+  // While on a break (no Running tick): enforce the 4 h break cap live,
+  // downgrade a paid break once its allowance is used, keep the contract
+  // cap honest for paid break time, and checkpoint for crash recovery.
+  function startBreakWatch() {
+    if (breakWatchHandle) return;
+    breakWatchHandle = setInterval(() => {
+      const state = machine.getState();
+      if (state !== 'OnBreakPaid' && state !== 'OnBreakUnpaid') return;
+      if (breakChainStartedAt != null && Date.now() - breakChainStartedAt >= MAX_BREAK_SEC * 1000) {
+        logger.warn({ sessionId: activeSessionId }, 'break reached the 4-hour cap — stopping session');
+        emitError('DTT-ERR-BREAK.02', 'break reached the 4-hour cap; the timer was stopped');
+        void safeDispatch({ type: 'STOP', reason: 'user_stop' });
+        return;
+      }
+      if (state === 'OnBreakPaid') {
+        if (breakManager.elapsedSeconds() >= paidBreakBudgetSec) {
+          emitError('DTT-ERR-BREAK.03', 'paid break allowance used up; the break continues unpaid');
+          void safeDispatch({ type: 'BREAK_ALLOWANCE_EXHAUSTED' });
+          return;
+        }
+        enforceCap(totalBillableSec());
+      }
+      breakTicksSinceCheckpoint += 1;
+      if (breakTicksSinceCheckpoint >= CHECKPOINT_EVERY_SEC) {
+        breakTicksSinceCheckpoint = 0;
+        checkpointSession();
+      }
+    }, 1000);
+  }
+
+  function stopBreakWatch() {
+    if (breakWatchHandle) {
+      clearInterval(breakWatchHandle);
+      breakWatchHandle = null;
+    }
+    breakTicksSinceCheckpoint = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -436,31 +491,33 @@ export function createTimerService(deps: TimerServiceDeps) {
   function ctx(): Ctx {
     return {
       hasActiveSession: activeSessionId != null,
-      // Phase 2 does not yet wire a contract-aware break allowance service
-      // (that lives in a later phase). For now we honour the contract's
-      // paid_break_allowance_seconds field directly by subtracting today's
-      // usage, which is a good-enough approximation until the allowance
-      // service ships.
+      // The contract's paid_break_allowance_seconds minus today's paid breaks.
       paidBreakRemainingSeconds: computePaidBreakRemaining(),
     };
   }
 
+  // PMCM-830: the allowance is per local day across every session on the
+  // contract (it used to reset with each new session).
   function computePaidBreakRemaining(): number {
     if (!pickedContract) return 0;
     const contract = repos.contract.findById(pickedContract.contractId);
     if (!contract) return 0;
     const allowance = contract.paid_break_allowance_seconds;
-    if (allowance <= 0) return 0;
-    // Naive: sum paid break durations in this session so far.
-    if (!activeSessionId) return allowance;
-    const breaks = repos.break.listForSession(activeSessionId);
-    let used = 0;
-    const now = Date.now();
-    for (const b of breaks) {
-      if (b.kind !== 'paid') continue;
-      const end = b.ended_at ?? now;
-      used += Math.max(0, Math.floor((end - b.started_at) / 1000));
-    }
+    if (!(allowance > 0)) return 0;
+    const userId = deps.getUserId?.() ?? repos.user.findFirst()?.id ?? null;
+    if (!userId) return 0;
+    const now = new Date();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
+    const nextDay = new Date(dayStart);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const used = repos.break.sumPaidSecondsForContract({
+      userId,
+      contractId: pickedContract.contractId,
+      startAt: dayStart.getTime(),
+      endAt: nextDay.getTime(),
+      now: now.getTime(),
+    });
     return Math.max(0, allowance - used);
   }
 
@@ -582,15 +639,19 @@ export function createTimerService(deps: TimerServiceDeps) {
     }
 
     // Break reminders.
-    if ((to === 'OnBreakPaid' || to === 'OnBreakUnpaid') && from !== to) {
+    const wasOnBreak = from === 'OnBreakPaid' || from === 'OnBreakUnpaid';
+    const isOnBreak = to === 'OnBreakPaid' || to === 'OnBreakUnpaid';
+    if (isOnBreak && from !== to) {
       reminders.scheduleBreakReminder(Date.now());
     }
-    if (
-      (from === 'OnBreakPaid' || from === 'OnBreakUnpaid') &&
-      to !== 'OnBreakPaid' &&
-      to !== 'OnBreakUnpaid'
-    ) {
+    if (isOnBreak && !wasOnBreak) {
+      breakChainStartedAt = Date.now();
+      startBreakWatch();
+    }
+    if (wasOnBreak && !isOnBreak) {
       reminders.clearAll();
+      breakChainStartedAt = null;
+      stopBreakWatch();
     }
 
     // Idle resolution prompt signal — when we enter IdleSoftPaused the
@@ -611,6 +672,8 @@ export function createTimerService(deps: TimerServiceDeps) {
     if (to === 'Idle' && from !== 'Idle') {
       pickedContract = null;
       accumulatedRunningSec = 0;
+      paidBreakAccruedSec = 0;
+      paidBreakBudgetSec = 0;
       sessionStartedAt = null;
       activeTimeEntryId = null;
       capBudgetSec = undefined;
@@ -680,12 +743,17 @@ export function createTimerService(deps: TimerServiceDeps) {
 
   function handleOpenBreak(kind: BreakKind) {
     if (!activeSessionId) return;
-    // Doc 22 — cap paid breaks to 4h hard ceiling. We rely on break-manager
-    // for the actual timers.
+    // Doc 22 — the 4 h break cap is enforced live by startBreakWatch().
+    // PMCM-830: a paid break may earn only the allowance left right now.
+    paidBreakBudgetSec = kind === 'paid' ? computePaidBreakRemaining() : 0;
     breakManager.start({ sessionId: activeSessionId, kind, plannedDurationSec: null });
   }
 
   function handleCloseBreak() {
+    // Bank what the closing paid break earned before the break manager
+    // forgets it (currentPaidBreakSec reads the active break).
+    paidBreakAccruedSec += currentPaidBreakSec();
+    paidBreakBudgetSec = 0;
     const ended = breakManager.end();
     if (ended && activeSessionId) {
       const durSec = Math.floor((Date.now() - ended.startedAt) / 1000);
@@ -899,6 +967,7 @@ export function createTimerService(deps: TimerServiceDeps) {
 
   function dispose() {
     stopTickLoop();
+    stopBreakWatch();
     idleDetector?.stop();
     breakManager.dispose();
     reminders.dispose();
