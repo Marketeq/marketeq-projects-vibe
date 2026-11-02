@@ -86,6 +86,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   IconButton,
+  Input,
+  Label,
   ScrollArea,
   ScrollBar,
   Table,
@@ -1198,12 +1200,12 @@ const AddTalentMemberModal = ({
           <>
             <div className="flex flex-col gap-6 px-5 pb-2 pt-[6px]">
               <div className="flex flex-col gap-2">
-                <label
+                <Label
                   htmlFor="offer-recipient"
                   className="text-[14px] font-semibold leading-5 text-dark-blue-400"
                 >
                   Select recipient
-                </label>
+                </Label>
 
                 {recipient ? (
                   <div className="flex min-h-[44px] flex-wrap items-center gap-2 rounded-[8px] border border-primary-500 px-3 py-2">
@@ -1219,14 +1221,19 @@ const AddTalentMemberModal = ({
                       >
                         @{recipient.username}
                       </NextLink>
-                      <button
+                      <IconButton
                         type="button"
+                        visual="gray"
+                        variant="ghost"
+                        size="sm"
                         aria-label={`Remove ${recipient.name}`}
-                        className="text-primary-500 hover:opacity-70"
+                        /* Sized down to sit inside the chip: the component's
+                           own h-9/w-9 and padding are overridden here. */
+                        className="h-auto w-auto min-w-0 p-0 text-primary-500 hover:bg-transparent hover:opacity-70"
                         onClick={clearRecipient}
                       >
                         <X className="size-4" />
-                      </button>
+                      </IconButton>
                     </span>
                   </div>
                 ) : (
@@ -1239,10 +1246,14 @@ const AddTalentMemberModal = ({
                           : "border-gray-300 focus-within:border-primary-500"
                       )}
                     >
-                      <input
+                      <Input
                         id="offer-recipient"
                         autoComplete="off"
-                        className="h-5 min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] leading-5 text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-0"
+                        /* The bordered box is the wrapper above (it also holds
+                           the chip), so Input's own height, border, radius,
+                           padding, shadow and focus ring are overridden away
+                           and only its behaviour is used. */
+                        className="h-5 min-w-0 flex-1 rounded-none border-0 bg-transparent p-0 text-[14px] leading-5 text-gray-900 shadow-none placeholder:text-gray-500 focus:border-0 focus:outline-none focus:ring-0"
                         placeholder="Search by name or username"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
@@ -1261,10 +1272,16 @@ const AddTalentMemberModal = ({
                     {matches.length > 0 && (
                       <div className="absolute inset-x-0 top-full z-20 mt-1 max-h-[308px] overflow-y-auto rounded-[8px] border border-gray-200 bg-white py-1 shadow-lg">
                         {matches.map((member) => (
-                          <button
+                          <Button
                             key={member.id}
                             type="button"
-                            className="flex w-full items-center gap-x-3 px-3 py-2.5 text-left hover:bg-gray-50"
+                            visual="gray"
+                            variant="ghost"
+                            size="sm"
+                            /* A full-width result row, not a pill: the
+                               component's height, centring and horizontal
+                               padding are overridden. */
+                            className="flex h-auto w-full items-center justify-start gap-x-3 rounded-none px-3 py-2.5 text-left font-normal hover:bg-gray-50"
                             onClick={() => chooseRecipient(member)}
                           >
                             <Avatar className="size-9 flex-none">
@@ -1282,7 +1299,7 @@ const AddTalentMemberModal = ({
                             <span className="truncate text-[15px] font-normal leading-5 text-gray-500">
                               @{member.username}
                             </span>
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     )}
