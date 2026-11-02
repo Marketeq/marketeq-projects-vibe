@@ -280,6 +280,8 @@ type SmartAssistantEditableField =
   | "benefits"
   | "responsibilities";
 
+const SMART_ASSISTANT_SHORTEN_COMMAND = "Shorten it";
+
 const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   SmartAssistantEditableField,
   number
@@ -2074,10 +2076,13 @@ const escapeHtmlText = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+// `preferredOffset` is the plain-text offset of the selection in the field, so
+// the occurrence the user selected is replaced rather than the first match.
 const replaceFirstTextInRichTextHtml = (
   html: string,
   selectedText: string,
-  replacementText: string
+  replacementText: string,
+  preferredOffset?: number
 ): { html: string; replaced: boolean } => {
   const trimmedSelectedText = selectedText.trim();
 
@@ -2099,20 +2104,47 @@ const replaceFirstTextInRichTextHtml = (
     window.NodeFilter.SHOW_TEXT
   );
   let currentNode = walker.nextNode();
+  let nodeStartOffset = 0;
+  let bestMatch: { node: Node; index: number; distance: number } | null = null;
 
   while (currentNode) {
     const textContent = currentNode.textContent ?? "";
-    const matchIndex = textContent.indexOf(trimmedSelectedText);
+    let matchIndex = textContent.indexOf(trimmedSelectedText);
 
-    if (matchIndex !== -1) {
-      currentNode.textContent =
-        textContent.slice(0, matchIndex) +
-        replacementText +
-        textContent.slice(matchIndex + trimmedSelectedText.length);
-      return { html: container.innerHTML, replaced: true };
+    while (matchIndex !== -1) {
+      const distance =
+        preferredOffset === undefined
+          ? 0
+          : Math.abs(nodeStartOffset + matchIndex - preferredOffset);
+
+      if (!bestMatch || distance < bestMatch.distance) {
+        bestMatch = { node: currentNode, index: matchIndex, distance };
+      }
+
+      if (preferredOffset === undefined || distance === 0) break;
+
+      matchIndex = textContent.indexOf(
+        trimmedSelectedText,
+        matchIndex + trimmedSelectedText.length
+      );
     }
 
+    if (bestMatch && (preferredOffset === undefined || bestMatch.distance === 0)) {
+      break;
+    }
+
+    nodeStartOffset += textContent.length;
     currentNode = walker.nextNode();
+  }
+
+  if (bestMatch) {
+    const textContent = bestMatch.node.textContent ?? "";
+
+    bestMatch.node.textContent =
+      textContent.slice(0, bestMatch.index) +
+      replacementText +
+      textContent.slice(bestMatch.index + trimmedSelectedText.length);
+    return { html: container.innerHTML, replaced: true };
   }
 
   const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
@@ -14399,17 +14431,13 @@ const VariableInsertIcon = ({ className }: { className?: string }) => (
     className={className}
     width="12"
     height="12"
-    viewBox="0 0 12 12"
+    viewBox="0 0 24 24"
     fill="none"
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
     <path
-      d="M1.5 3.25c0-.414.336-.75.75-.75h5.5c.414 0 .75.336.75.75V5H7.25V3.75h-4.5v4.5h4.5V7H8.5v1.75c0 .414-.336.75-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z"
-      fill="currentColor"
-    />
-    <path
-      d="M7 4.75 10.75 6.5 7 8.25v-1.2H4.75v-1.1H7v-1.2Z"
+      d="M3 17V7h18v4h-2V9H5v6h9v2zm2-2V9zm16.6 5L18 16.425V19.5h-2V13h6.5v2h-3.1l3.6 3.6z"
       fill="currentColor"
     />
   </svg>
@@ -14801,6 +14829,28 @@ const useDynamicFinalReviewSkills = () => {
   return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
 }
 
+const getSelectionTextOffsetInField = (field: HTMLElement | null) => {
+  if (typeof window === "undefined" || !field) return undefined
+
+  const editor = field.querySelector<HTMLElement>(".ProseMirror")
+  const selection = window.getSelection()
+
+  if (!editor || !selection || selection.rangeCount === 0) return undefined
+
+  const range = selection.getRangeAt(0)
+
+  if (!editor.contains(range.startContainer)) return undefined
+
+  const textBeforeSelection = window.document.createRange()
+  textBeforeSelection.selectNodeContents(editor)
+  textBeforeSelection.setEnd(range.startContainer, range.startOffset)
+
+  const selectedRaw = range.toString()
+  const leadingWhitespace = selectedRaw.length - selectedRaw.trimStart().length
+
+  return textBeforeSelection.toString().length + leadingWhitespace
+}
+
 const FinalReviewRichTextField = ({
   title,
   initialValue = "",
@@ -14863,13 +14913,16 @@ const FinalReviewRichTextField = ({
   const handleSmartAssistant = (
     selection: FinalReviewSmartAssistantSelection
   ) => {
+    const selectionOffset = getSelectionTextOffsetInField(fieldRef.current)
+
     onSmartAssistant?.({
       ...selection,
       insertText: (replacementText: string, targetText?: string) => {
         const replacement = replaceFirstTextInRichTextHtml(
           valueRef.current,
           targetText ?? selection.selectedText,
-          replacementText
+          replacementText,
+          selectionOffset
         )
 
         const nextValue = replacement.html
@@ -15043,7 +15096,7 @@ const useFinalReviewSmartAssistant = ({
 
       selectedTextInsertRef.current = payload.insertText
       setSelectedText(trimmedText)
-      setMessage("")
+      setMessage(SMART_ASSISTANT_SHORTEN_COMMAND)
     },
     []
   )
@@ -15475,6 +15528,15 @@ const resolveFinalReviewAssistantField = (
 
   return "responsibilities"
 }
+
+// AC-JC-84: with no field in focus the panel offers one action per field.
+const getFinalReviewAssistantNoFocusActions = (
+  workType: "Project" | "Service"
+): { label: string; field: SmartAssistantEditableField }[] => [
+  { label: `Change a ${workType} Title`, field: "title" },
+  { label: "Rewrite Overview", field: "overview" },
+  { label: "Rewrite Benefits", field: "benefits" },
+]
 
 type RoleDescriptionDraft = {
   roleTitle?: string
@@ -16202,7 +16264,7 @@ const FinalServiceReviewStep = ({
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const didGenerateBasicInformationRef = useRef(false)
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -16294,8 +16356,17 @@ const FinalServiceReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]",
+      suggestion === "Change a Service Title" && "w-fit"
     )
+  const serviceAssistantVisibleActions = activeAssistantField
+    ? serviceAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Service")
   useEffect(() => {
     window.requestAnimationFrame(() => {
       const scrollContainer = serviceAssistantScrollRef.current
@@ -16309,6 +16380,21 @@ const FinalServiceReviewStep = ({
   useEffect(() => {
     setShowServiceAssistantFollowUps(false)
   }, [latestServiceAssistantItem?.id])
+
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = serviceAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showServiceAssistantFollowUps,
+    serviceAssistantFollowUpSuggestions.length,
+  ])
 
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
@@ -16836,21 +16922,21 @@ const FinalServiceReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {serviceAssistantQuickActions[activeAssistantField].map((item) => (
+                {serviceAssistantVisibleActions.map((item) => (
                   <Button
-                    key={`${activeAssistantField}-${item}`}
+                    key={`${item.field}-${item.label}`}
                     className={cn(
                       "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                      getServiceAssistantSuggestionWidthClass(item)
+                      getServiceAssistantSuggestionWidthClass(item.label)
                     )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
-                      serviceAssistant.run(item, activeAssistantField)
+                      serviceAssistant.run(item.label, item.field)
                     }
                   >
-                    <span className="h-5 shrink-0">{item}</span>
+                    <span className="h-5 shrink-0">{item.label}</span>
                   </Button>
                 ))}
               </div>
@@ -16933,7 +17019,7 @@ const FinalServiceReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -16954,11 +17040,13 @@ const FinalServiceReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={serviceAssistant.isLoading}
                               onClick={() => serviceAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -16971,23 +17059,23 @@ const FinalServiceReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {serviceAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowServiceAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showServiceAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showServiceAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -17001,21 +17089,19 @@ const FinalServiceReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getServiceAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={serviceAssistant.isLoading}
                           onClick={() =>
                             serviceAssistant.run(
                               suggestion,
                               latestServiceAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -17081,7 +17167,10 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            serviceAssistant.message
+                          )
                       )
                     }
                   >
@@ -17139,7 +17228,7 @@ const FinalProjectReviewStep = ({
   const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
     useState(false)
   const projectAssistantScrollRef = useRef<HTMLDivElement | null>(null)
@@ -17208,6 +17297,21 @@ const FinalProjectReviewStep = ({
     setShowProjectAssistantFollowUps(false)
   }, [latestProjectAssistantItem?.id])
 
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = projectAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showProjectAssistantFollowUps,
+    projectAssistantFollowUpSuggestions.length,
+  ])
+
   const projectAssistantQuickActions: Record<
     SmartAssistantEditableField,
     string[]
@@ -17246,8 +17350,17 @@ const FinalProjectReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Change a Project Title" && "w-[187px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]"
     )
+  const projectAssistantVisibleActions = activeAssistantField
+    ? projectAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Project")
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
     if (!jobListingId || didGenerateBasicInformationRef.current) return
@@ -17794,25 +17907,23 @@ const FinalProjectReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {projectAssistantQuickActions[activeAssistantField].map(
-                  (item) => (
-                    <Button
-                      key={`${activeAssistantField}-${item}`}
-                      className={cn(
-                        "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                        getProjectAssistantSuggestionWidthClass(item)
-                      )}
-                      variant="outlined"
-                      visual="gray"
-                      disabled={projectAssistant.isLoading}
-                      onClick={() =>
-                        projectAssistant.run(item, activeAssistantField)
-                      }
-                    >
-                      <span className="h-5 shrink-0">{item}</span>
-                    </Button>
-                  )
-                )}
+                {projectAssistantVisibleActions.map((item) => (
+                  <Button
+                    key={`${item.field}-${item.label}`}
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getProjectAssistantSuggestionWidthClass(item.label)
+                    )}
+                    variant="outlined"
+                    visual="gray"
+                    disabled={projectAssistant.isLoading}
+                    onClick={() =>
+                      projectAssistant.run(item.label, item.field)
+                    }
+                  >
+                    <span className="h-5 shrink-0">{item.label}</span>
+                  </Button>
+                ))}
               </div>
               {projectAssistant.history.length > 0 ? (
                 <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
@@ -17893,7 +18004,7 @@ const FinalProjectReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -17914,13 +18025,15 @@ const FinalProjectReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
                                 projectAssistant.retry(item)
                               }
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -17933,23 +18046,23 @@ const FinalProjectReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {projectAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showProjectAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showProjectAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -17963,21 +18076,19 @@ const FinalProjectReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getProjectAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={projectAssistant.isLoading}
                           onClick={() =>
                             projectAssistant.run(
                               suggestion,
                               latestProjectAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -18043,7 +18154,10 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            projectAssistant.message
+                          )
                       )
                     }
                   >
@@ -20670,6 +20784,21 @@ const ExistingContractFinalReviewStep = ({
     setShowRoleAssistantFollowUps(false);
   }, [latestRoleAssistantItem?.id]);
 
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = roleAssistantScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [
+    showRoleAssistantFollowUps,
+    roleAssistantFollowUpSuggestions.length,
+  ]);
+
   useEffect(() => {
     if (roleOptions.length === 0 || roleOptions.includes(selectedRole)) {
       return;
@@ -21111,7 +21240,7 @@ const ExistingContractFinalReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-3 font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return;
@@ -21132,11 +21261,13 @@ const ExistingContractFinalReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={roleAssistant.isLoading}
                               onClick={() => roleAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -21149,23 +21280,23 @@ const ExistingContractFinalReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
               {roleAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs leading-[18px] font-normal text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowRoleAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showRoleAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showRoleAssistantFollowUps && "rotate-180",
                       )}
                     />
@@ -21179,16 +21310,14 @@ const ExistingContractFinalReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getRoleAssistantSuggestionWidthClass(suggestion) ||
-                              "w-fit",
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={roleAssistant.isLoading}
                           onClick={() =>
                             roleAssistant.run(suggestion, "responsibilities")
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>

@@ -37,9 +37,11 @@ describe("dashboard verification entry: nothing opens on page load", () => {
     const end = page.indexOf("}, [runIdentityVerificationCheck])", start)
     assert.ok(start > -1 && end > start)
     const inHandler = page.slice(start, end)
-    for (const opener of ["setVerificationGateOpen(true)", "setVpnProxyModalOpen(true)"]) {
-      assert.equal(count(opener), 1, `${opener} appears exactly once in the file`)
-      assert.ok(inHandler.includes(opener), `${opener} is inside the click handler`)
+    // PMCM-637: the gate is opened twice, both inside the handler: its 'unavailable' branch and
+    // its own "Checking..." state while a check runs on a page whose gate already closed.
+    for (const [opener, times] of [["setVerificationGateOpen(true)", 2], ["setVpnProxyModalOpen(true)", 1]] as const) {
+      assert.equal(count(opener), times, `${opener} appears ${times}x in the file`)
+      assert.equal(inHandler.split(opener).length - 1, times, `${opener} is only inside the click handler`)
     }
   })
 
