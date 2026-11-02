@@ -363,6 +363,8 @@ export function IdentityVerificationHostProvider({
     },
     [locationConsentGate]
   )
+  // Deny is the non-consenting choice, so it holds the dialog's initial focus.
+  const denyLocationButtonRef = useRef<HTMLButtonElement>(null)
   const answerLocationConsent = useCallback(
     (answer: LocationConsentAnswer) => locationConsentGate.decide(answer),
     [locationConsentGate]
@@ -1636,6 +1638,10 @@ export function IdentityVerificationHostProvider({
         <DialogContent
           className="w-[calc(100%-32px)] max-w-[531px] pt-[50px]"
           accessibilityTitle="Location Access Needed"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            denyLocationButtonRef.current?.focus()
+          }}
         >
           <div className="flex items-center justify-center">
             <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
@@ -1655,7 +1661,8 @@ export function IdentityVerificationHostProvider({
 
           <div className="mt-[50px] flex justify-center items-center gap-x-3">
             <Button
-              className="w-[133px] bg-white"
+              ref={denyLocationButtonRef}
+              className="w-[133px] bg-white focus-visible:ring-4 focus-visible:ring-primary-100"
               variant="outlined"
               visual="gray"
               size="md"
@@ -1664,7 +1671,7 @@ export function IdentityVerificationHostProvider({
               Deny
             </Button>
             <Button
-              className="w-[105px] text-primary-500 bg-primary-50 shadow-none hover:text-white hover:bg-primary-500"
+              className="w-[133px] text-primary-500 bg-primary-50 shadow-none hover:text-white hover:bg-primary-500 focus-visible:ring-4 focus-visible:ring-primary-100"
               size="md"
               onClick={() => answerLocationConsent("allow")}
             >

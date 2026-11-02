@@ -210,7 +210,20 @@ describe("the host's wiring (source guards)", () => {
     assert.ok(dialog.includes("<AlertTriangle"))
     assert.ok(dialog.includes('variant="outlined"'))
     assert.ok(dialog.includes('visual="gray"'))
-    assert.ok(dialog.includes("w-[133px]") && dialog.includes("w-[105px]"))
+    // both buttons are exactly the same width (133px) and nothing else sizes them
+    assert.equal(dialog.split("w-[133px]").length - 1, 2)
+    assert.ok(!dialog.includes("w-[105px]"))
+    // keyboard-only focus ring, applied locally (the shared Button is untouched), on both
+    assert.equal(
+      dialog.split("focus-visible:ring-4 focus-visible:ring-primary-100").length - 1,
+      2
+    )
+    // initial focus is on Deny (the non-consenting choice), not on the page behind
+    assert.ok(dialog.includes("ref={denyLocationButtonRef}"))
+    assert.match(
+      host,
+      /onOpenAutoFocus=\{\(event\) => \{\s*event\.preventDefault\(\)\s*denyLocationButtonRef\.current\?\.focus\(\)/
+    )
     assert.ok(dialog.includes("text-primary-500 bg-primary-50"))
     assert.ok(!dialog.includes("RefreshCw"))
   })
