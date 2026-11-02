@@ -657,8 +657,13 @@ function InviteSetup() {
                 You&apos;ve been added to {invitedCompany.name}
               </h1>
               <p className="mt-2 text-base leading-[19.36px] font-light text-dark-blue-400">
-                {inviterFirstName} added you to this company with the following
-                roles...
+                {/* Only promise a list when there is one to show. An invite
+                    link used to carry no permissions at all, so this read
+                    "with the following roles..." above a row that named
+                    none. */}
+                {invitedRoleNames.length > 0
+                  ? `${inviterFirstName} added you to this company with the following roles...`
+                  : `${inviterFirstName} added you to this company.`}
               </p>
 
               <div
@@ -917,7 +922,9 @@ function InviteSetup() {
                 title={`You're all set${firstName ? ` ${firstName}` : ""}!`}
                 subtitle={
                   joinedCompany
-                    ? `Here's what you can do as a member of ${joinedCompany.name}.`
+                    ? // A company whose name already ends in a full stop
+                      // ("Alliance Corp.") was rendering "Alliance Corp..".
+                      `Here's what you can do as a member of ${joinedCompany.name.replace(/\.$/, "")}.`
                     : "Here's what you can do next on Marketeq."
                 }
               />

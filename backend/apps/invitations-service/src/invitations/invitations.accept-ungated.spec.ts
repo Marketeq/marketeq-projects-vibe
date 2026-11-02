@@ -10,6 +10,8 @@ import { InvitationsController } from './invitations.controller';
 import { InvitationsService } from './invitations.service';
 import { InvitationEventsService } from './invitation-events.service';
 import { UserServiceClient } from './user-service.client';
+import { InviteSettingsService } from './invite-settings.service';
+import { InviteSettings } from '../entities/invite-settings.entity';
 
 // backend/jest.config.js has no moduleNameMapper for the @libs/* tsconfig
 // paths, so anything importing @libs/auth (here: decorators/public.decorator.ts,
@@ -112,6 +114,19 @@ describe('invitation acceptance - not verification-gated (PMCM-652)', () => {
         { provide: UserServiceClient, useValue: userService },
         { provide: InvitationEventsService, useValue: events },
         { provide: 'RABBITMQ_CLIENT', useValue: rabbit },
+        // Real service over an empty table: no stored row means Link Settings
+        // defaults, which is what an account that never opened the panel has.
+        // Only reached by the link-token fallback, but provided so acceptance
+        // runs against real settings code rather than a guessed stub.
+        InviteSettingsService,
+        {
+          provide: getRepositoryToken(InviteSettings),
+          useValue: {
+            findOne: jest.fn().mockResolvedValue(null),
+            save: jest.fn().mockImplementation((v: unknown) => Promise.resolve(v)),
+            create: jest.fn().mockImplementation((v: unknown) => v),
+          },
+        },
       ],
     }).compile();
 

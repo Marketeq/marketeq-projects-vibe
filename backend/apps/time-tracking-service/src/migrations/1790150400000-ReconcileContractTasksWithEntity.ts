@@ -73,10 +73,33 @@ export class ReconcileContractTasksWithEntity1790150400000
       END $$;
     `);
 
+    // Guarded like the steps above rather than with ADD COLUMN IF NOT EXISTS:
+    // Postgres checks table ownership before it evaluates IF NOT EXISTS, and on
+    // the live DB contract_tasks is owned by supabase_admin, not the app role.
+    // An unguarded ALTER there fails with "must be owner" even when both
+    // columns already exist, and with migrationsRun that stops the service
+    // from booting.
     await queryRunner.query(`
-      ALTER TABLE time_tracking.contract_tasks
-        ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
-        ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'time_tracking' AND table_name = 'contract_tasks'
+            AND column_name = 'created_at'
+        ) THEN
+          ALTER TABLE time_tracking.contract_tasks
+            ADD COLUMN created_at timestamptz NOT NULL DEFAULT now();
+        END IF;
+
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'time_tracking' AND table_name = 'contract_tasks'
+            AND column_name = 'updated_at'
+        ) THEN
+          ALTER TABLE time_tracking.contract_tasks
+            ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+        END IF;
+      END $$;
     `);
   }
 

@@ -20,7 +20,11 @@ export const identityVerificationDataSourceOptions: DataSourceOptions = {
   entities: [path.join(__dirname, '..', 'entities', '*.entity{.ts,.js}')],
   migrations: [path.join(__dirname, 'migrations', '*{.ts,.js}')],
   synchronize: false,
-  logging: process.env.NODE_ENV !== 'production',
+  // Statement logging off outside production: the gate sweep runs every 30s and
+  // logged its full hosted_kyc_sessions SELECT each time, which grew this
+  // service's PM2 log to 8.4GB and filled the disk. Errors and migrations only,
+  // matching payout-service.
+  logging: ['migration', 'error'],
 };
 
 const dataSource = new DataSource(identityVerificationDataSourceOptions);
