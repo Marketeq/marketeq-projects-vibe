@@ -1654,7 +1654,7 @@ export function IdentityVerificationHostProvider({
               Location Access Needed
             </h1>
             <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
-              We couldn’t access your device location. Allow Marketeq to estimate your
+              We couldn’t access your device location. Allow access to estimate your
               approximate location using your network connection.
             </DialogDescription>
           </div>

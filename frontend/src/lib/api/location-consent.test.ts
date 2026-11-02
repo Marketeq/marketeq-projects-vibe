@@ -183,13 +183,20 @@ describe("one detection attempt, end to end", () => {
 describe("the host's wiring (source guards)", () => {
   it("asks the exact approved copy, with Deny and Allow", () => {
     assert.ok(host.includes("Location Access Needed"))
-    assert.ok(
-      host.includes(
-        "We couldn’t access your device location. Allow Marketeq to estimate your"
+    // the whole description, as one sentence pair (source line breaks and indentation ignored)
+    const at = host.indexOf("open={locationConsentOpen}")
+    const dialog = host.slice(at, host.indexOf("</Dialog>", at))
+    const description = dialog
+      .slice(
+        dialog.indexOf("<DialogDescription"),
+        dialog.indexOf("</DialogDescription>")
       )
-    )
-    assert.ok(
-      host.includes("approximate location using your network connection.")
+      .replace(/^<DialogDescription[^>]*>/, "")
+      .replace(/\s+/g, " ")
+      .trim()
+    assert.equal(
+      description,
+      "We couldn’t access your device location. Allow access to estimate your approximate location using your network connection."
     )
     assert.match(host, /answerLocationConsent\("deny"\)\}\s*>\s*Deny/)
     assert.match(host, /answerLocationConsent\("allow"\)\}\s*>\s*Allow/)
@@ -215,7 +222,8 @@ describe("the host's wiring (source guards)", () => {
     assert.ok(!dialog.includes("w-[105px]"))
     // keyboard-only focus ring, applied locally (the shared Button is untouched), on both
     assert.equal(
-      dialog.split("focus-visible:ring-4 focus-visible:ring-primary-100").length - 1,
+      dialog.split("focus-visible:ring-4 focus-visible:ring-primary-100")
+        .length - 1,
       2
     )
     // initial focus is on Deny (the non-consenting choice), not on the page behind
