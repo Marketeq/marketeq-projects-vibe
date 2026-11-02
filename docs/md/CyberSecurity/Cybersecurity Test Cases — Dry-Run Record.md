@@ -363,9 +363,40 @@ Nor do any of the tables (`security_credential_rotations`, `security_allowlist_c
 | 7 — Network rules survive a reboot | CTO, a maintenance window, and `iptables-persistent` installed |
 | 24 — Remove stale access when no longer needed | CTO exports of GitHub org + Render team members, and an HR roster. The case already predicts FAIL: no offboarding checklist exists. |
 
-Cases 8, 9 and 10 need a different kind of help: superuser access to `supabase-dev` **and** a fixture nobody has built — two schemas (`svc_a`, `svc_b`), two roles (`svc_a_rw`, `svc_b_rw`), a table in each, and a published view `svc_b.orders_v1`. Case 10 additionally lists "documented request/approval location agreed" as a precondition, and no one has agreed one.
+Cases 8, 9 and 10 need a different kind of help: superuser access to `supabase-dev`, and a fixture that did not exist — two schemas (`svc_a`, `svc_b`), two roles (`svc_a_rw`, `svc_b_rw`), a table in each, and a published view `svc_b.orders_v1`. Case 10 additionally lists "documented request/approval location agreed" as a precondition, and no one has agreed one.
 
-Write the fixture as a single idempotent SQL script checked in alongside the cases. Three test cases blocked on the same unbuilt setup is one task, not three.
+**The fixture now exists**: `fixtures/svc-read-access-fixture.sql`, with the grant and the revoke as separate files, because case 8 needs cross-schema access denied and case 10 needs the grant absent until approved — a fixture that applied the grant would make both untestable. Idempotent, and verified on PostgreSQL 16 before it was committed. All three cases now need only database access.
+
+### **Case 10 — Review and document every new cross-schema read (US-3.3)**
+
+**Verdict: AC-3.3.1 and AC-3.3.2 FAIL. AC-3.3.3 PASSES, conditionally.**
+
+The mechanism half was executed against a throwaway PostgreSQL 16 instance using the fixture above. The governance half was read against the repository.
+
+| Criterion | Verdict |
+|---|---|
+| AC-3.3.1 — a read-access request cannot be granted until the owner approves | **FAIL** |
+| AC-3.3.2 — each grant records view, role, approver and date somewhere findable | **FAIL** |
+| AC-3.3.3 — after revocation, queries fail with a permissions error, not empty rows | **PASS**, if revocation uses `REVOKE` |
+
+**AC-3.3.1 and AC-3.3.2: the policy exists, the mechanism does not.** `docs/md/Database Architecture/Microservice Data Ownership & Database Access Policy.md` states the requirement plainly — read access must be "Explicit, Approved, Auditable", cross-service reads must go through versioned views, each service must use a dedicated role, "all new cross-schema access must be reviewed" and "all schema contracts must be documented". It then stops. It names no approver, no request process, no record format and no location for the register. AC-3.3.2 asks for view definition, granted role, approving party and date, findable by engineers; not one of those fields exists anywhere in the repository.
+
+The precondition is unmet underneath that. The only database usernames in the service env templates are `postgres` and a generic `user` — no `_rw` or `_ro` roles exist, though the policy mandates them. There are no per-service roles, so there are no cross-schema grants to govern yet.
+
+These are not failing tests so much as acceptance criteria for governance that has been written down as principle and never implemented. Status should distinguish that from "built wrong".
+
+**AC-3.3.3 passes, and the condition matters more than the pass.** Executed in full:
+
+| Action | Result |
+|---|---|
+| `svc_a_rw` reads `svc_b.orders_v1` before the grant | `ERROR: permission denied for schema svc_b` |
+| after the approved grant | exactly the view's five columns; `internal_notes` withheld |
+| `svc_a_rw` reads the base table `svc_b.orders` | `ERROR: permission denied for table orders` (also case 9 step 2) |
+| after `REVOKE SELECT` on the view | `ERROR: permission denied for view orders_v1`, exit code 1 |
+
+But the same read contract gated with **row-level security** instead of a grant returns `(0 rows)` and **exit code 0** when access is withdrawn — exactly the silent empty result AC-3.3.3 forbids. Both are reasonable readings of "revoke access to a view"; only one satisfies the criterion.
+
+**Action:** add one line to the Data Ownership policy stating that access to a read contract is withdrawn with `REVOKE`, never by RLS or by dropping rows from the view. Without it, a future implementer can satisfy the policy and fail AC-3.3.3.
 
 ---
 
@@ -408,7 +439,8 @@ These are corrections to the documents, separate from the repository work:
 | Failed, cause identified | 4 | 2, 3, 15 (code/SOP defects) and 5 (defective test step) |
 | Partly runnable | 3 | 4, 14 (gitleaks half only), 16 (steps 1–2 only) |
 | Blocked — not implemented | 6 | 1, 11, 18, 20, 21, 22 |
-| Blocked — needs CTO or access | 7 | 6, 7, 8, 9, 10, 19, 24 |
+| Blocked — needs CTO or access | 6 | 6, 7, 8, 9, 19, 24 |
+| Partly executed, governance half failed | 1 | 10 |
 | Blocked — needs our push | 1 | 26 |
 
 Twenty-six cases, every one accounted for.
