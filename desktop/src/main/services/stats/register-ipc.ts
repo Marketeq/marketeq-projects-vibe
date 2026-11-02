@@ -58,7 +58,7 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
 
     // Per-task totals, so a relaunch restores each task's time and range
     // instead of showing every task as "Not started".
-    const byTask = new Map<string, TodayTaskStatDTO>();
+    const byTask = new Map<string, Omit<TodayTaskStatDTO, 'capSeconds'>>();
     for (const r of deps.sessionRepo.sumBillableSecondsByTask({ userId, startAt, endAt })) {
       byTask.set(r.task_id, {
         contractId: r.contract_id,
@@ -92,6 +92,7 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
 
     let trackedSeconds = 0;
     let earnedCents = 0;
+    const earnedByCurrency: Record<string, number> = {};
     for (const [contractId, seconds] of byContract) {
       const contract = deps.contractRepo.findById(contractId);
       if (!contract) {
@@ -99,9 +100,20 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
         continue;
       }
       trackedSeconds += seconds;
-      earnedCents += Math.round((seconds * contract.rate_minor) / 3600);
+      const cents = Math.round((seconds * contract.rate_minor) / 3600);
+      earnedCents += cents;
+      earnedByCurrency[contract.currency] = (earnedByCurrency[contract.currency] ?? 0) + cents;
     }
-    return { trackedSeconds, earnedCents, tasks: [...byTask.values()] };
+    // PMCM-829: each task's progress bar measures against its contract's
+    // cap (daily if set, else weekly) instead of a fixed 8 h.
+    const tasks = [...byTask.values()].map((t) => {
+      const contract = deps.contractRepo.findById(t.contractId);
+      return {
+        ...t,
+        capSeconds: contract?.daily_cap_seconds ?? contract?.weekly_cap_seconds ?? null,
+      };
+    });
+    return { trackedSeconds, earnedCents, earnedByCurrency, tasks };
   };
 
   ipcMain.handle(IPC.statsGetToday, (): TodayStatsDTO | IpcErrorResult => {
@@ -129,7 +141,14 @@ export function registerStatsIpc(deps: StatsIpcDeps): () => void {
       return {
         trackedSeconds: today.trackedSeconds,
         earnedCents: today.earnedCents,
-        currency: 'USD',
+        // PMCM-837: the single currency today's earnings are in (the live
+        // contract's when nothing is earned yet); earnedByCurrency has the
+        // split when contracts use different currencies.
+        currency:
+          Object.keys(today.earnedByCurrency)[0] ??
+          (picked ? deps.contractRepo.findById(picked.contractId)?.currency : undefined) ??
+          'USD',
+        earnedByCurrency: today.earnedByCurrency,
         goalSeconds: GOAL_SECONDS,
         tasks: today.tasks,
         lastTask,

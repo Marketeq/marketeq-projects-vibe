@@ -18,7 +18,7 @@ import pino from 'pino';
 import { createScreenshotRepo } from '../../../db/repos/screenshot.repo';
 import { createSessionRepo } from '../../../db/repos/session.repo';
 import { createPreferenceRepo } from '../../../db/repos/preference.repo';
-import { createScreenshotService } from '../screenshot-service';
+import { createScreenshotService, type CapturedScreenshot } from '../screenshot-service';
 
 // better-sqlite3 is compiled against the Electron Node ABI in this repo,
 // which the plain `node` vitest runner cannot load. We probe it once and
@@ -193,20 +193,30 @@ d('ScreenshotService integration (fake electron)', () => {
       options: { intervalSeconds: 600 },
     });
 
+    const captured: CapturedScreenshot[] = [];
+    svc.subscribe((e) => captured.push(e));
     const events = await svc.captureOnce();
     expect(events.length).toBe(1);
     const evt = events[0]!;
-    expect(fs.existsSync(evt.filePath)).toBe(true);
-    expect(fs.existsSync(evt.blurPath!)).toBe(true);
+    // PMCM-832: the image is handed over in memory and never written to disk.
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.id).toBe(evt.id);
+    expect(captured[0]!.jpeg.length).toBe(evt.bytes);
+    expect('jpeg' in evt).toBe(false);
+    const jpgs = (fs.readdirSync(tmpRoot, { recursive: true }) as string[]).filter((p) =>
+      p.endsWith('.jpg'),
+    );
+    expect(jpgs).toEqual([]);
 
     const row = db
-      .prepare<[], { id: string; local_path: string; blur_path: string }>(
+      .prepare<[], { id: string; local_path: string | null; blur_path: string | null }>(
         `SELECT id, local_path, blur_path FROM screenshot WHERE session_id = 'ses_t'`,
       )
       .get();
     expect(row).toBeDefined();
-    expect(row?.local_path).toBe(evt.filePath);
-    expect(row?.blur_path).toBe(evt.blurPath);
+    expect(row?.id).toBe(evt.id);
+    expect(row?.local_path).toBeNull();
+    expect(row?.blur_path).toBeNull();
 
     const stats = svc.getStats();
     expect(stats.capturedCount).toBe(1);
