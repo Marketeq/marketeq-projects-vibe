@@ -10,6 +10,10 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import {
+  readDashboardWithHost,
+  readIdentityHost,
+} from "./dashboard-host-source"
+import {
   ALERT_RECENCY_WINDOW_MS,
   ALERT_RECONCILE_DELAYS_MS,
   hasRecentAlertOfType,
@@ -18,10 +22,7 @@ import {
 import { buildAlertStack, selectVisibleAlerts } from "./status-alert-state"
 import type { StatusAlert } from "./status-alerts"
 
-const page = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const page = readDashboardWithHost()
 
 const NOW = Date.parse("2026-10-26T03:00:00.000Z")
 const SINCE = NOW - ALERT_RECENCY_WINDOW_MS
@@ -140,15 +141,17 @@ describe("the page starts the wait when a verification returns In Review", () =>
 
   it("it uses the shared bounded helper: no interval, no fixed delay before the first read", () => {
     assert.doesNotMatch(pendingBranch, /setInterval|setTimeout|5000/)
-    const returnEffect = page.slice(
-      page.indexOf(
+    const host = readIdentityHost()
+    const returnEffect = host.slice(
+      host.indexOf(
         "const apply = (summary: IdentityVerificationSummaryView | null)"
       ),
-      page.indexOf(
-        "// PMCM-653: a first-time verification that was shown as submitted"
-      )
+      host.indexOf("// Real required check")
     )
-    assert.match(returnEffect, /\}, \[user, startAlertReconcile\]\)/)
+    assert.match(
+      returnEffect,
+      /\}, \[user, startAlertReconcile, hostActive, returnGen\]\)/
+    )
   })
 
   it("Done on the dialog is not what loads the alert: it only closes it", () => {

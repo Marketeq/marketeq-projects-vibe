@@ -265,6 +265,21 @@ describe('Free KYC state machine and attempt cycle (Part 1)', () => {
       expect(w.attempts).toHaveLength(0);
     });
 
+    // The in-page Didit overlay relies on this: a session ended through Didit's own exit
+    // confirmation (Abandoned) is terminal. It is never resumed under the 15-minute window; the
+    // next start replaces it with a new session, and no attempt is consumed by either.
+    it('an explicitly Abandoned session is terminal: the next start creates a new session, not a resume', async () => {
+      const w = world();
+      const first = await w.start();
+      await w.send(first, 'Abandoned');
+      expect(sessionStatus(w, first)).toBe(HostedKycSessionStatus.ABANDONED);
+      const second = await w.start();
+      expect(second).not.toBe(first);
+      expect(sessionStatus(w, first)).toBe(HostedKycSessionStatus.ABANDONED);
+      expect(w.sessions).toHaveLength(2);
+      expect(w.attempts).toHaveLength(0);
+    });
+
     it('Declined (first) → failed with one attempt', async () => {
       const w = world();
       const id = await w.start();

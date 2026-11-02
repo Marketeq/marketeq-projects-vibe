@@ -21,6 +21,7 @@ import {
   type PendingConfirmation,
   confirmActiveTravelMode,
 } from "./travel-mode-confirmation"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const fakeStorage = () => {
   const store = new Map<string, string>()
@@ -308,13 +309,8 @@ describe("Update > Temporarily traveling for an already-active traveler", () => 
   })
 
   it("9. no legacy toast: the page replaces the flow instance on close and nothing in the page opens one", () => {
-    const page = readFileSync(
-      new URL(
-        "../../../app/(group)/talent-dashboard/page.tsx",
-        import.meta.url
-      ),
-      "utf8"
-    )
+    // The flow instance is replaced by the identity verification host, which the page mounts.
+    const page = readDashboardWithHost()
     assert.match(
       page,
       /prev\.activeTravelModeUpdate \? \{ \.\.\.prev, key: prev\.key \+ 1 \} : prev/
@@ -400,10 +396,7 @@ describe("the callback fires only for this exact branch of the flow (read-only f
 })
 
 describe("the dashboard wires the confirmation", () => {
-  const page = readFileSync(
-    new URL("../../../app/(group)/talent-dashboard/page.tsx", import.meta.url),
-    "utf8"
-  )
+  const page = readDashboardWithHost()
   it("passes the callback and confirms through the backend endpoint, awaiting the new alert", () => {
     assert.match(
       page,
