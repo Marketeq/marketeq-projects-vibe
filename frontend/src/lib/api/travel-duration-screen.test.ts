@@ -27,7 +27,7 @@ describe("duration radios: clicking the text selects the option", () => {
   for (const [label, id] of options) {
     it(`"${label}": the radio has id ${id} and its label points at it with htmlFor`, () => {
       assert.ok(durationScreen.includes(`id="${id}"`))
-      assert.ok(durationScreen.includes(`<Label htmlFor="${id}">`))
+      assert.match(durationScreen, new RegExp(`<Label\\s+htmlFor="${id}"[\\s>]`))
     })
   }
 
