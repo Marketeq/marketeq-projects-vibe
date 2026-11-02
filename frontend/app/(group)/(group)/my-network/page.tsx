@@ -1541,18 +1541,6 @@ export default function MyTeam() {
   const isGrid = getFirstItem(value) === GRID_LAYOUT
   const [activeTab, setActiveTab] = useState(TALENT_NETWORK_TAB)
 
-  // PMCM-720 AC-14.1: the "N team members" count is active members on the open
-  // tab only. It is rendered by the shared secondary nav, which sits above this
-  // page in the layout and so cannot be handed the tab - publish it on the URL
-  // instead and let useTeamMemberCount read it back. Pages without the param
-  // keep the previous combined total, so only My Team changes.
-  useEffect(() => {
-    const params = new URLSearchParams(searchParams.toString())
-    params.set("tab", activeTab === TALENT_NETWORK_TAB ? "talent" : "external")
-    const query = params.toString()
-    if (query === searchParams.toString()) return
-    router.replace(`/my-network?${query}`, { scroll: false })
-  }, [activeTab, searchParams, router])
   const [isAddTalentOpen, setIsAddTalentOpen] = useState(false)
   // Recipient chosen in S17. Holding the member (rather than a boolean) keeps
   // the offer modal mounted with their profile after the picker has closed.
