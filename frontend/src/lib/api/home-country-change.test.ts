@@ -399,8 +399,14 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
     assert.equal((handler.match(/IdentityVerificationAPI\./g) ?? []).length, 1)
     assert.match(
       dialog,
-      /travelerPromptOpen\s*\?\s*void handleTravelerStillTraveling\(\)\s*:\s*void handleStillTraveling\(\)/
+      /void \(travelerPromptOpen\s*\?\s*handleTravelerStillTraveling\(\)\s*:\s*handleStillTraveling\(\)\)/
     )
+    // Each handler is still called from exactly one place, and only after the press is recorded for the
+    // spinner (the busy flag still disables both buttons).
+    assert.equal((dialog.match(/handleTravelerStillTraveling\(\)/g) ?? []).length, 1)
+    assert.equal((dialog.match(/handleStillTraveling\(\)/g) ?? []).length, 1)
+    assert.ok(dialog.includes('setLocationMismatchAction("still-traveling")'))
+    assert.ok(dialog.includes("aria-busy={"))
   })
 
   it("'Change my home country' is the existing handler for both prompts and closes the traveler prompt", () => {

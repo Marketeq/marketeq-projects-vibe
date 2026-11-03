@@ -321,6 +321,14 @@ export function IdentityVerificationHostProvider({
   const checkSessionRef = useRef(createConnectionCheckSession())
   // A Retry pressed on the connection-error presentation: it stays visible until the answer.
   const [retryingFromUnavailable, setRetryingFromUnavailable] = useState(false)
+  // The detection modal's Reload press, for its loading spinner only: the check itself is still
+  // the single shared one above. The token keeps an older press from clearing a newer one.
+  const [reloadPending, setReloadPending] = useState(false)
+  const reloadTokenRef = useRef(0)
+  // The live Travel Mode card's Update press, for its spinner only (see handleLiveTravelUpdate).
+  const [liveUpdatePending, setLiveUpdatePending] = useState(false)
+  const liveUpdateTokenRef = useRef(0)
+  const liveUpdateRunningRef = useRef(false)
   const vpnProxyModalOpenRef = useRef(false)
   vpnProxyModalOpenRef.current = vpnProxyModalOpen
   const connectionCheckStateRef = useRef<ConnectionCheckState>("idle")
@@ -564,6 +572,9 @@ export function IdentityVerificationHostProvider({
     alertReconcileGenRef.current += 1
     setTravelSummary(null)
     setLiveAlertsHeld(false)
+    liveUpdateTokenRef.current += 1
+    liveUpdateRunningRef.current = false
+    setLiveUpdatePending(false)
     setStatusAlerts([])
     setStatusAlertDismissal({
       dismissedPersistentIds: new Set(),
@@ -791,6 +802,8 @@ export function IdentityVerificationHostProvider({
     acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
     checkSessionRef.current.invalidate() // a check still in flight belongs to the page/account it started on
     setRetryingFromUnavailable(false)
+    reloadTokenRef.current += 1
+    setReloadPending(false)
     setConnectionCheckState("idle")
     setVpnProxyModalOpen(false)
     setIdentityFlowOpen(false)
@@ -1207,6 +1220,16 @@ export function IdentityVerificationHostProvider({
     })
   }, [runIdentityVerificationCheck])
 
+  const handleReload = useCallback(async () => {
+    const token = ++reloadTokenRef.current
+    setReloadPending(true)
+    try {
+      await handleVerifyMyAccount()
+    } finally {
+      if (reloadTokenRef.current === token) setReloadPending(false)
+    }
+  }, [handleVerifyMyAccount])
+
   // Dismissing the detection modal (its button, Escape or an outside click) or the connection
   // error ends the check in flight: a late answer must not bring either back.
   const dismissConnectionCheck = useCallback(() => {
@@ -1321,6 +1344,24 @@ export function IdentityVerificationHostProvider({
     )
   }, [openFlow])
 
+  // The card's Update, with its own spinner. The card stays on screen while this runs (it goes
+  // away only when it is closed, the check-in priority hold applies or the account changes), and
+  // a second press while one is running is ignored.
+  const handleLiveTravelUpdatePress = useCallback(async () => {
+    if (liveUpdateRunningRef.current) return
+    liveUpdateRunningRef.current = true
+    const token = ++liveUpdateTokenRef.current
+    setLiveUpdatePending(true)
+    try {
+      await handleLiveTravelUpdate()
+    } finally {
+      if (liveUpdateTokenRef.current === token) {
+        liveUpdateRunningRef.current = false
+        setLiveUpdatePending(false)
+      }
+    }
+  }, [handleLiveTravelUpdate])
+
   const closeGate = useCallback(() => setVerificationGateOpen(false), [])
 
   // Verify My Account, with the flow's code requested first so it is ready when the location
@@ -1425,12 +1466,14 @@ export function IdentityVerificationHostProvider({
               Dismiss
             </Button>
             <Button
-              className="text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
+              className="min-w-[103px] text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
               size="md"
+              leftIcon={<RefreshCw className="size-[15px]" />}
               disabled={connectionCheckState === "checking"}
-              onClick={() => void handleVerifyMyAccount()}
+              loading={reloadPending}
+              aria-busy={reloadPending}
+              onClick={() => void handleReload()}
             >
-              <RefreshCw className="size-[15px]" />
               Reload
             </Button>
           </div>
@@ -1612,8 +1655,10 @@ export function IdentityVerificationHostProvider({
                   // Figma node 13101-47532: 16px under the text block (4px gap + 12px).
                   <Button
                     variant="link"
-                    className="mt-3 h-5 w-fit justify-start p-0 text-sm font-semibold leading-5"
-                    onClick={() => void handleLiveTravelUpdate()}
+                    className="mt-3 h-5 w-fit min-w-[73px] justify-start p-0 text-sm font-semibold leading-5"
+                    loading={liveUpdatePending}
+                    aria-busy={liveUpdatePending}
+                    onClick={() => void handleLiveTravelUpdatePress()}
                   >
                     {card.actionLabel}
                   </Button>
