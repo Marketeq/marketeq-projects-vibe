@@ -29,6 +29,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import { readDashboardWithHost } from "./dashboard-host-source"
+import { gateWithoutLoadingUi } from "./gate-loading-ui"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const page = readDashboardWithHost()
@@ -147,12 +148,23 @@ describe("decisions 2 and 3: the gate never opens on load and no standalone unve
     // 2026-10-29: the component gained the optional `onCancel` prop (Cancel button; Escape and
     // outside click only when it is given), explicitly approved for the post-decline retry
     // presentation. Without the prop it behaves exactly as before (see retry-gate-presentation.test.ts).
+    // Button loading states (approved): the gate gained an optional `retrying` prop, a spinner +
+    // aria-busy on Retry and Verify, and reserved width; the host passes `retrying` on its standard
+    // gate. Taking exactly those additions back out gives the hashes this test always pinned, so
+    // nothing else can change without it failing; the current gate is pinned as well.
     assert.equal(
-      sha(gateComponent),
+      sha(gateWithoutLoadingUi(gateComponent)),
       "32c64ba56a2475a741fca3d4784d5b699d6a6dca5b946bcf52521a84ad3077e2"
     )
     assert.equal(
-      sha(gateUsage),
+      sha(gateComponent),
+      "b3bcace93db0536026a9a4a30fecce318d1f7911b4fbe9462fcc687fd0ca827f"
+    )
+    const retryingProp =
+      '        retrying={retryingFromUnavailable && connectionCheckState === "checking"}\n'
+    assert.equal(gateUsage.split(retryingProp).length - 1, 1)
+    assert.equal(
+      sha(gateUsage.replace(retryingProp, "")),
       "ffd99a676f6063b257391da9ec016ff75dd94563da4816a57e7a6fa9004cb2b9"
     )
     // The standard gate, plus the post-decline retry presentation (the same component, with Cancel).

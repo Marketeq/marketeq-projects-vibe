@@ -250,7 +250,10 @@ describe("the retry gate after a Didit decline", () => {
   })
 
   it("A5. the standard gate, the cooldown dialog and Verify's explicit retry are unchanged", () => {
-    assert.match(host, /open=\{verificationGateOpen\}[\s\S]{0,200}onVerify=\{\(\) => void handleVerifyMyAccount\(\)\}/)
+    // (+ the optional `retrying` prop the loading states added, passed only on this standard gate)
+    assert.match(host, /open=\{verificationGateOpen\}[\s\S]{0,320}onVerify=\{\(\) => void handleVerifyMyAccount\(\)\}/)
+    assert.match(host, /retrying=\{retryingFromUnavailable && connectionCheckState === "checking"\}/)
+    assert.equal(host.split("retrying={").length - 1, 1) // the retry gate after a decline does not get it
     assert.match(host, /open=\{cooldownRetryTime !== null\}/)
     assert.match(host, /You’ve used all three attempts/)
     const verify = host.slice(host.indexOf("if (retryVerifyRunningRef.current) return"), host.indexOf("if (retryVerifyRunningRef.current) return") + 900)
