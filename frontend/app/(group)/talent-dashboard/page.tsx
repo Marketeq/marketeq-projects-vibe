@@ -199,6 +199,21 @@ export default function TalentDashboard() {
     setLiveAlertsHeld,
   } = useIdentityVerification()
   const identityStatusCheckStartedRef = useRef(false)
+  // The banner's own Verify My Account press, for its loading spinner only. The shared host
+  // already runs one check at a time and disables the button while it does; this only shows
+  // the spinner on the button that was pressed (not when the check came from elsewhere). The
+  // token keeps an older press from clearing a newer one.
+  const [bannerVerifyPending, setBannerVerifyPending] = useState(false)
+  const bannerVerifyTokenRef = useRef(0)
+  const handleBannerVerifyMyAccount = useCallback(async () => {
+    const token = ++bannerVerifyTokenRef.current
+    setBannerVerifyPending(true)
+    try {
+      await handleVerifyMyAccount()
+    } finally {
+      if (bannerVerifyTokenRef.current === token) setBannerVerifyPending(false)
+    }
+  }, [handleVerifyMyAccount])
   // Travel Mode popup (Figma node 13101-46860): the latest backend answer and which
   // popup, if any, is showing. "reminder" = a day-3/day-7 occurrence this tab claimed;
   // "expiry" = Travel Mode ended for an account that is not fully verified yet.
@@ -210,6 +225,11 @@ export default function TalentDashboard() {
   // no X, so it is closed only by answering it.
   const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
   const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
+  // Which of the prompt's two buttons started the request in flight, so only that one shows
+  // the spinner while the other stays disabled (the busy flag above still guards both).
+  const [locationMismatchAction, setLocationMismatchAction] = useState<
+    "still-traveling" | "change-home-country" | null
+  >(null)
   // The same dialog for an account whose Travel Mode is in force and that was detected
   // in another country (travelModeLocationMismatch). Offered once per login: see
   // travel-location-prompt.ts. The login is marked only when a button is chosen.
@@ -856,7 +876,7 @@ export default function TalentDashboard() {
               </DialogDescription>
             </div>
 
-            <div className="mt-[50px] flex items-center justify-center gap-x-3">
+            <div className="mx-auto mt-[50px] flex w-[calc(100%+2rem)] max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3">
               <Button
                 variant="outlined"
                 visual="gray"
@@ -867,9 +887,12 @@ export default function TalentDashboard() {
                 {CHECK_IN_COPY.prompt.stillTraveling}
               </Button>
               <Button
+                className="min-w-[227px]"
                 variant="light"
                 size="md"
                 disabled={checkInStarting}
+                loading={checkInStarting}
+                aria-busy={checkInStarting}
                 onClick={() => void handleCheckInUpdateHomeCountry()}
               >
                 {CHECK_IN_COPY.prompt.updateHomeCountry}
@@ -1122,23 +1145,45 @@ export default function TalentDashboard() {
               checking if you’re still away.
             </DialogDescription>
 
-            <div className="mt-[50px] grid grid-cols-2 gap-x-3">
+            <div className="mx-auto mt-[50px] grid w-full max-w-[calc(100vw-2rem)] grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
               <Button
                 variant="outlined"
                 size="md"
                 disabled={locationMismatchBusy}
-                onClick={() =>
-                  travelerPromptOpen
-                    ? void handleTravelerStillTraveling()
-                    : void handleStillTraveling()
+                loading={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "still-traveling"
                 }
+                aria-busy={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "still-traveling"
+                }
+                onClick={() => {
+                  if (locationMismatchBusy) return
+                  setLocationMismatchAction("still-traveling")
+                  void (travelerPromptOpen
+                    ? handleTravelerStillTraveling()
+                    : handleStillTraveling())
+                }}
               >
                 I’m still traveling
               </Button>
               <Button
                 size="md"
                 disabled={locationMismatchBusy}
-                onClick={() => void handleChangeHomeCountry()}
+                loading={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "change-home-country"
+                }
+                aria-busy={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "change-home-country"
+                }
+                onClick={() => {
+                  if (locationMismatchBusy) return
+                  setLocationMismatchAction("change-home-country")
+                  void handleChangeHomeCountry()
+                }}
               >
                 Change my home country
               </Button>
@@ -1292,9 +1337,11 @@ export default function TalentDashboard() {
                     <div className="mt-3 flex items-center gap-x-3 text-sm font-semibold">
                       <Button
                         variant="link"
-                        className="h-5 gap-x-2 p-0 text-sm font-semibold leading-5 text-warning-600"
+                        className="h-5 min-w-[178px] justify-start gap-x-2 p-0 text-sm font-semibold leading-5 text-warning-600"
                         disabled={connectionCheckState === "checking"}
-                        onClick={() => void handleVerifyMyAccount()}
+                        loading={bannerVerifyPending}
+                        aria-busy={bannerVerifyPending}
+                        onClick={() => void handleBannerVerifyMyAccount()}
                       >
                         Verify My Account
                         <ArrowRight className="size-5" />
