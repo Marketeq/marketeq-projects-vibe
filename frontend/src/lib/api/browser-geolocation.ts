@@ -14,8 +14,8 @@
 // getCurrentPosition's `timeout` (measured in real Chrome: with the prompt
 // unanswered the permission state stays "prompt" and the error callback fires
 // with code 3 exactly when the timeout elapses). A user who simply had not
-// answered yet was therefore reported as a failure, the approximate-location
-// consent opened under Chrome's prompt, and a later "Allow" went nowhere.
+// answered yet was therefore reported as a failure, the "turn on location"
+// dialog opened under Chrome's prompt, and a later "Allow" went nowhere.
 //
 // So the request is made with the largest native timeout, which never fires
 // while the prompt waits, and OUR OWN timer measures only the time after the
@@ -237,43 +237,22 @@ export function getBrowserPosition(
   })
 }
 
+export type GeolocationPermissionState = "granted" | "denied" | "prompt"
+
 /**
- * Calls `listener` once when the browser's geolocation permission CHANGES to
- * "granted" (e.g. the user allows it in Chrome's prompt or site settings). A
- * permission that is already granted never triggers it, and repeated change
- * events trigger it once. Returns a function that stops watching. Without the
- * Permissions API it watches nothing.
+ * The browser's current geolocation permission, or undefined when it cannot be read
+ * (no Permissions API, or the query fails). Read-only: it never prompts.
  */
-export function onGeolocationGranted(
-  listener: () => void,
+export async function queryGeolocationPermission(
   permissions: PermissionsLike | null | undefined = browserPermissions()
-): () => void {
-  if (!permissions) return () => {}
-  let disposed = false
-  let fired = false
-  let status: PermissionStatusLike | undefined
-  let previous: string | undefined
-  const onChange = () => {
-    if (disposed || !status) return
-    const state = status.state
-    const becameGranted = state === "granted" && previous !== "granted"
-    previous = state
-    if (becameGranted && !fired) {
-      fired = true
-      listener()
-    }
-  }
-  void permissions
-    .query({ name: "geolocation" })
-    .then((current) => {
-      if (disposed) return
-      status = current
-      previous = current.state
-      current.addEventListener("change", onChange)
-    })
-    .catch(() => {})
-  return () => {
-    disposed = true
-    if (status) status.removeEventListener("change", onChange)
+): Promise<GeolocationPermissionState | undefined> {
+  if (!permissions) return undefined
+  try {
+    const { state } = await permissions.query({ name: "geolocation" })
+    return state === "granted" || state === "denied" || state === "prompt"
+      ? state
+      : undefined
+  } catch {
+    return undefined
   }
 }

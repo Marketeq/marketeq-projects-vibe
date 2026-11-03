@@ -134,7 +134,7 @@ describe("Change my home country loads the location exactly like the original fl
     assert.deepEqual(location, await originalPath(options))
     assert.equal(location.locationMismatch, true)
     assert.equal(location.detected, false)
-    assert.match(flow, /startingFreeKyc \|\|\s*detectedLocation\.locationMismatch === true/, "Yes stays disabled on a conflict")
+    assert.ok(flow.includes("startingFreeKyc || detectedLocation.locationMismatch === true"), "Yes stays disabled on a conflict")
   })
 
   it("the screen draws the pin and map from the loaded coordinates and prints city, region and country", () => {

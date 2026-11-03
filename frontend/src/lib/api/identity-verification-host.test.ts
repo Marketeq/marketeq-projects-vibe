@@ -320,6 +320,12 @@ describe("the host is inert on public and authentication pages, and when nobody 
         "}, [runIdentityVerificationCheck])"
       ), // a click
       region("const refreshLocationForRelocation = useCallback(", "}, [])"), // a click
+      // BTB-387: the location dialog's Try Again asks the device for its location again; the
+      // call is only ever made by that click (createLocationRecovery.tryAgain).
+      region(
+        "const [locationRecovery] = useState(",
+        "onChange: setLocationRecoveryState"
+      ),
       region(
         "const handleIdentityFlowOpenChange = useCallback(",
         "const openFlow = useCallback("
@@ -771,11 +777,11 @@ describe("what was moved did not change", () => {
   it("openFlow bumps the remount key, keeps the held location when none is given, and opens", () => {
     const open = host.slice(host.indexOf("const openFlow = useCallback("))
     const body = open.slice(0, open.indexOf("\n  )\n"))
-    // BTB-387: the held location is still kept when none is given; only an earlier consent
-    // denial is dropped, so a flow that starts again never inherits it.
-    assert.ok(body.includes("setDetectedLocation((prev) =>"))
-    assert.ok(body.includes("? withoutConsentDenied(options.detectedLocation)"))
-    assert.ok(body.includes(": prev && withoutConsentDenied(prev)"))
+    assert.ok(
+      body.includes(
+        "if (options.detectedLocation) setDetectedLocation(options.detectedLocation)"
+      )
+    )
     assert.ok(
       body.includes(
         "setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))"

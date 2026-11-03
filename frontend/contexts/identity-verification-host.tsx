@@ -11,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { flushSync } from "react-dom"
 import dynamic from "next/dynamic"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
@@ -65,9 +66,14 @@ import {
 } from "@/src/lib/api/status-alert-copy"
 import { checkVpnProxy } from "@/src/lib/api/vpn-proxy-detection"
 import {
-  createLocationConsentGate,
-  type LocationConsentAnswer,
-} from "@/src/lib/api/location-consent"
+  createLocationRecovery,
+  type LocationRecoveryState,
+  type RecoveryHooks,
+} from "@/src/lib/api/location-recovery"
+import {
+  currentBrowserEnvironment,
+  getLocationInstructions,
+} from "@/src/lib/api/location-instructions"
 import {
   createConnectionCheckSession,
   detectionOf,
@@ -102,7 +108,7 @@ import {
   getDetectedLocation as detectLocation,
   type DetectedLocation,
   type GetDetectedLocationOptions,
-  withoutConsentDenied,
+  type LocationFailureReason,
 } from "@/src/lib/api/detected-location"
 import {
   clearReviewedResult,
@@ -272,6 +278,49 @@ interface IdentityVerificationHostContextValue {
 const IdentityVerificationHostContext =
   createContext<IdentityVerificationHostContextValue | null>(null)
 
+// The sentence added to "Turn on location to continue" for each way the device location can
+// fail. The first sentence is always the same; this one says what is different.
+const LOCATION_FAILURE_COPY: Record<LocationFailureReason, string> = {
+  blocked: "Location is currently blocked for this site in your browser.",
+  dismissed:
+    "The location request was closed without an answer. Select Try Again and choose Allow when your browser asks.",
+  unsupported:
+    "This browser can't share its location. Try Chrome, Edge, Safari or Firefox.",
+  device_unavailable:
+    "Your device couldn't provide a location. Make sure Location Services are turned on.",
+  timeout: "Your device took too long to find your location.",
+  resolve_failed: "We couldn't read your location. Select Try Again.",
+}
+
+// The instructions view of the dialog above: steps for the detected browser, then the
+// device-level (Location Services) steps. Rendered inside the same dialog.
+function LocationHowTo() {
+  const instructions = getLocationInstructions(currentBrowserEnvironment())
+  return (
+    <div className="mt-5 px-[19px]">
+      <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+        How to turn on location
+      </h1>
+      <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+        Steps for {instructions.browserName}
+      </DialogDescription>
+      <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+        {instructions.browserSteps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+      <h2 className="mt-5 text-sm font-semibold leading-5 text-dark-blue-400">
+        {instructions.deviceHeading}
+      </h2>
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+        {instructions.deviceSteps.map((step) => (
+          <li key={step}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 export function IdentityVerificationHostProvider({
   children,
 }: {
@@ -336,53 +385,79 @@ export function IdentityVerificationHostProvider({
   const liveUpdateTokenRef = useRef(0)
   const liveUpdateRunningRef = useRef(false)
   const vpnProxyModalOpenRef = useRef(false)
-  // "Allow approximate location?" — asked only when the browser gave no position (see
-  // detected-location.ts). It authorizes the network (IP) lookup for ONE detection attempt
-  // and is never stored. It is not the browser permission and never re-asks for it.
-  const [locationConsentOpen, setLocationConsentOpen] = useState(false)
-  const [locationConsentGate] = useState(() =>
-    createLocationConsentGate(setLocationConsentOpen)
-  )
   // Bumped when the page, account or role changes and on unmount: a detection that started
-  // before then is stale (its question is cancelled and its answer is never applied).
+  // before then is stale (its answer is never applied).
   const locationAttemptRef = useRef(0)
   const locationAbortsRef = useRef(new Set<AbortController>())
   // Every detection that asks for the browser's location goes through this, so the two entry
-  // points (Verify My Account, "Permanently relocated") share ONE consent behavior without
-  // their own code changing: when the browser gives no position, the user is asked before the
-  // network (IP) lookup runs, and the attempt is dropped if the page/account changes meanwhile.
+  // points (Verify My Account, "Permanently relocated") and the dialog's Try Again share ONE
+  // behaviour without their own code changing. It only ever asks for the DEVICE location (no
+  // network/IP fallback); the attempt is dropped if the page/account changes meanwhile.
   // A call that does not ask the browser (Travel Mode Update) is passed through untouched.
   const getDetectedLocation = useCallback(
     (options: GetDetectedLocationOptions = {}) => {
       if (!options.useBrowserLocation) return detectLocation(options)
       const attempt = locationAttemptRef.current
       // The wait for the browser's own permission prompt can be long (the user may not
-      // have answered yet), so it is cancellable: a route/account/role change or an
-      // unmount aborts it, and nothing is left listening.
+      // have answered yet), so it is cancellable: a route/account/role change, an unmount
+      // or the caller's own signal aborts it, and nothing is left listening.
       const controller = new AbortController()
       locationAbortsRef.current.add(controller)
+      options.signal?.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      })
+      if (options.signal?.aborted) controller.abort()
       return detectLocation({
         ...options,
-        requestApproximateConsent: locationConsentGate.request,
-        cancelApproximateConsent: locationConsentGate.cancel,
         signal: controller.signal,
-        isCurrent: () => attempt === locationAttemptRef.current,
+        isCurrent: () =>
+          attempt === locationAttemptRef.current &&
+          (options.isCurrent?.() ?? true),
       }).finally(() => locationAbortsRef.current.delete(controller))
     },
-    [locationConsentGate]
+    []
   )
-  // Deny is the non-consenting choice, so it holds the dialog's initial focus.
-  const denyLocationButtonRef = useRef<HTMLButtonElement>(null)
-  const answerLocationConsent = useCallback(
-    (answer: LocationConsentAnswer) => locationConsentGate.decide(answer),
-    [locationConsentGate]
+  // "Turn on location to continue": shown when the device location could not be obtained.
+  // Verification stays blocked while it is open; the location-confirmation flow opens only
+  // when a retry produces the device location.
+  const [locationRecoveryState, setLocationRecoveryState] =
+    useState<LocationRecoveryState>({
+      open: false,
+      reason: "blocked",
+      view: "main",
+      busy: false,
+    })
+  const [locationRecovery] = useState(() =>
+    createLocationRecovery({
+      detect: ({ signal, isCurrent }) =>
+        getDetectedLocation({ useBrowserLocation: true, signal, isCurrent }),
+      onChange: setLocationRecoveryState,
+    })
   )
+  const openLocationRecovery = useCallback(
+    (reason: LocationFailureReason, hooks: RecoveryHooks) =>
+      locationRecovery.open(reason, hooks),
+    [locationRecovery]
+  )
+  const tryAgainButtonRef = useRef<HTMLButtonElement>(null)
+  // Focus stays inside the dialog: on Try Again when it opens, when it switches between its
+  // two views, and when a retry that failed lets the button work again (a button that was
+  // disabled while loading drops focus). Never on the page behind it.
+  useEffect(() => {
+    if (locationRecoveryState.open && !locationRecoveryState.busy) {
+      tryAgainButtonRef.current?.focus()
+    }
+  }, [
+    locationRecoveryState.open,
+    locationRecoveryState.view,
+    locationRecoveryState.busy,
+  ])
   const cancelLocationDetection = useCallback(() => {
     locationAttemptRef.current += 1
-    locationConsentGate.cancel()
+    locationRecovery.abort()
     locationAbortsRef.current.forEach((controller) => controller.abort())
     locationAbortsRef.current.clear()
-  }, [locationConsentGate])
+  }, [locationRecovery])
   vpnProxyModalOpenRef.current = vpnProxyModalOpen
   const connectionCheckStateRef = useRef<ConnectionCheckState>("idle")
   connectionCheckStateRef.current = connectionCheckState
@@ -854,7 +929,7 @@ export function IdentityVerificationHostProvider({
     setVerificationGateOpen(false)
     acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
     checkSessionRef.current.invalidate() // a check still in flight belongs to the page/account it started on
-    cancelLocationDetection() // and so does a pending location question
+    cancelLocationDetection() // and so does a pending location request or its dialog
     setRetryingFromUnavailable(false)
     reloadTokenRef.current += 1
     setReloadPending(false)
@@ -1244,6 +1319,23 @@ export function IdentityVerificationHostProvider({
       // Explicit user action: the only place browser location is requested.
       const location = await getDetectedLocation({ useBrowserLocation: true })
       if (!isCurrent()) return
+      // The device location is required. Without it the "Turn on location to continue"
+      // dialog opens instead and the flow stays closed (BTB-387); a successful Try Again
+      // opens it. There is no network (IP) fallback.
+      if (location.cancelled) return
+      if (location.locationFailure) {
+        openLocationRecovery(location.locationFailure, {
+          // A successful Try Again opens the flow through openFlow (a fresh instance), with
+          // the same Travel Mode awareness as below.
+          onSuccess: (resolved) =>
+            openFlow(
+              isTravelModeInForce(summary) ? { activeTravelModeUpdate: true } : {},
+              { detectedLocation: resolved }
+            ),
+          onDismiss: () => {},
+        })
+        return
+      }
       setDetectedLocation(location)
       // A flow last started by the Travel Mode Update action starts fresh here. A traveler
       // whose Travel Mode is already in force is told so (from the /me read above), so
@@ -1292,16 +1384,38 @@ export function IdentityVerificationHostProvider({
     setConnectionCheckState("idle")
   }, [])
   useEffect(() => () => checkSessionRef.current.invalidate(), [])
-  // Unmount: a pending location question and a detection in flight belong to nobody.
+  // Unmount: a pending location request and its dialog belong to nobody.
   useEffect(() => cancelLocationDetection, [cancelLocationDetection])
 
-    // The Update action shows the server-derived location behind its first screen and asks
-  // for no permission. Choosing "Permanently relocated" is the explicit user action that
-  // asks the browser for its location, through the same call Verify My Account uses; a
-  // denied or failed detection yields the flow's own "couldn't detect" state, never a
-  // made-up location.
+  // The Update action shows the server-derived location behind its first screen and asks
+  // for no permission (out of scope for BTB-387: it keeps its IP-only behaviour). Choosing
+  // "Permanently relocated" is the explicit user action that asks the browser for its
+  // location, through the same call Verify My Account uses. If the device location cannot be
+  // obtained, the "Turn on location to continue" dialog opens over the flow and this call
+  // waits: the flow moves on only after a successful Try Again. Cancel returns to the same
+  // screen (a fresh instance) and the flow does not continue.
   const refreshLocationForRelocation = useCallback(async () => {
-    setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
+    const location = await getDetectedLocation({ useBrowserLocation: true })
+    if (location.cancelled) return
+    if (!location.locationFailure) {
+      setDetectedLocation(location)
+      return
+    }
+    await new Promise<void>((resolve) => {
+      openLocationRecovery(location.locationFailure!, {
+        onSuccess: (resolved) => {
+          setDetectedLocation(resolved)
+          resolve()
+        },
+        onDismiss: (kind) => {
+          if (kind === "cancel") {
+            // Replace the flow instance before it is told to continue.
+            flushSync(() => setFlowLaunch((prev) => ({ ...prev, key: prev.key + 1 })))
+          }
+          resolve()
+        },
+      })
+    })
   }, [])
 
   // The flow opened or closed. What the page re-reads afterwards (its own summary, prompts
@@ -1339,12 +1453,7 @@ export function IdentityVerificationHostProvider({
 
   const openFlow = useCallback(
     (launch: IdentityFlowLaunch, options: IdentityFlowOpenOptions = {}) => {
-      // A flow that starts again never inherits an earlier consent denial.
-      setDetectedLocation((prev) =>
-        options.detectedLocation
-          ? withoutConsentDenied(options.detectedLocation)
-          : prev && withoutConsentDenied(prev)
-      )
+      if (options.detectedLocation) setDetectedLocation(options.detectedLocation)
       setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))
       openOnClosedRef.current = options.onClosed ?? null
       setIdentityFlowOpen(true)
@@ -1669,22 +1778,26 @@ export function IdentityVerificationHostProvider({
         />
       )}
 
-      {/* Approximate-location consent. Mounted after the flow so, for "Permanently relocated"
-          (asked while the flow is open), it stacks above it. Escape, an outside click and the
-          dialog closing any other way all count as Deny. Allow authorizes the network (IP)
-          lookup only; it never overrides or re-asks the browser's location permission. */}
+      {/* "Turn on location to continue" (BTB-387). Shown when the DEVICE location could not be
+          obtained (denied, dismissed, blocked, unavailable); there is no IP fallback and the
+          location-confirmation flow stays closed until a Try Again produces the device
+          location. Mounted after the flow so, for "Permanently relocated" (asked while the flow
+          is open), it stacks above it. "Show me how" switches this same dialog to its
+          instructions view (never a second modal); Back returns. Escape, an outside click and
+          Cancel all give up. A web page cannot open the browser's settings, so the user is told
+          where to click. */}
       <Dialog
-        open={locationConsentOpen}
+        open={locationRecoveryState.open}
         onOpenChange={(open) => {
-          if (!open) answerLocationConsent("deny")
+          if (!open) locationRecovery.cancel()
         }}
       >
         <DialogContent
-          className="w-[calc(100%-32px)] max-w-[531px] pt-[50px]"
-          accessibilityTitle="Location Access Needed"
+          className="w-[calc(100%-32px)] max-w-[531px] max-h-[calc(100dvh-32px)] overflow-y-auto pt-[50px]"
+          accessibilityTitle="Turn on location to continue"
           onOpenAutoFocus={(event) => {
             event.preventDefault()
-            denyLocationButtonRef.current?.focus()
+            tryAgainButtonRef.current?.focus()
           }}
         >
           <div className="flex items-center justify-center">
@@ -1693,33 +1806,53 @@ export function IdentityVerificationHostProvider({
             </div>
           </div>
 
-          <div className="mt-5 px-[19px]">
-            <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
-              Location Access Needed
-            </h1>
-            <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
-              We couldn’t access your device location. Allow access to estimate your
-              approximate location using your network connection.
-            </DialogDescription>
-          </div>
+          {locationRecoveryState.view === "main" ? (
+            <div className="mt-5 px-[19px]">
+              <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+                Turn on location to continue
+              </h1>
+              <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+                Location permission must be turned on in your browser before
+                verification can continue.{" "}
+                {LOCATION_FAILURE_COPY[locationRecoveryState.reason]}
+              </DialogDescription>
+              <div className="mt-3 flex justify-center">
+                <Button
+                  className="h-auto p-0 text-sm font-semibold focus-visible:ring-4 focus-visible:ring-primary-100"
+                  variant="link"
+                  onClick={() => locationRecovery.showHowTo()}
+                >
+                  Show me how
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <LocationHowTo />
+          )}
 
           <div className="mt-[50px] flex justify-center items-center gap-x-3">
             <Button
-              ref={denyLocationButtonRef}
               className="w-[133px] bg-white focus-visible:ring-4 focus-visible:ring-primary-100"
               variant="outlined"
               visual="gray"
               size="md"
-              onClick={() => answerLocationConsent("deny")}
+              onClick={() =>
+                locationRecoveryState.view === "main"
+                  ? locationRecovery.cancel()
+                  : locationRecovery.back()
+              }
             >
-              Deny
+              {locationRecoveryState.view === "main" ? "Cancel" : "Back"}
             </Button>
             <Button
+              ref={tryAgainButtonRef}
               className="w-[133px] text-primary-500 bg-primary-50 shadow-none hover:text-white hover:bg-primary-500 focus-visible:ring-4 focus-visible:ring-primary-100"
               size="md"
-              onClick={() => answerLocationConsent("allow")}
+              loading={locationRecoveryState.busy}
+              aria-busy={locationRecoveryState.busy}
+              onClick={() => void locationRecovery.tryAgain()}
             >
-              Allow
+              Try Again
             </Button>
           </div>
         </DialogContent>

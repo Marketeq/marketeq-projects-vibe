@@ -117,11 +117,14 @@ describe("Permanently relocated runs browser-based detection", () => {
     ])
   })
 
-  it("the dashboard's callback is exactly getDetectedLocation({ useBrowserLocation: true })", () => {
+  it("the dashboard's callback asks with exactly getDetectedLocation({ useBrowserLocation: true }) and applies a device location", () => {
+    // BTB-387: the same call as Verify My Account; a failure opens the "Turn on location to
+    // continue" dialog instead of applying anything (see location-recovery-host.test.ts).
     assert.match(
       refreshBody,
-      /setDetectedLocation\(await getDetectedLocation\(\{ useBrowserLocation: true \}\)\)/
+      /const location = await getDetectedLocation\(\{ useBrowserLocation: true \}\)/
     )
+    assert.match(refreshBody, /setDetectedLocation\(location\)/)
   })
 
   it("the next screen gets city/state/country and coordinates (map tiles + red pin) from browser GPS", async () => {
@@ -160,28 +163,32 @@ describe("Temporarily traveling does not invoke it", () => {
   })
 })
 
-describe("denied permission or failed detection uses the existing failure state", () => {
-  it("denied GPS, then Allow in the consent dialog, uses the server lookup: country only, detected false, no coordinates", async () => {
+describe("denied permission or failed detection never produces a made-up location", () => {
+  it("denied GPS is a locationFailure with nothing from the server: no country, city or coordinates", async () => {
     const loc = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
+      getPermissionState: async () => "denied",
       fetchLocation: async () => COUNTRY_ONLY,
-      requestApproximateConsent: async () => "allow",
     })
     assert.equal(loc.detected, false)
-    assert.deepEqual([loc.latitude, loc.longitude, loc.city], [null, null, ""])
+    assert.equal(loc.locationFailure, "blocked")
+    assert.deepEqual(
+      [loc.latitude, loc.longitude, loc.city, loc.countryCode],
+      [null, null, "", ""]
+    )
   })
-  it("a failed server call is serviceUnavailable with nothing fabricated", async () => {
+  it("the server lookup is never made on this path, so its failure cannot matter", async () => {
     const loc: DetectedLocation = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
+      getPermissionState: async () => "denied",
       fetchLocation: async () => {
-        throw new Error("down")
+        throw new Error("must not be called")
       },
-      requestApproximateConsent: async () => "allow",
     })
-    assert.equal(loc.detected, false)
-    assert.equal(loc.serviceUnavailable, true)
+    assert.equal(loc.locationFailure, "blocked")
+    assert.equal(loc.serviceUnavailable, false)
     assert.equal(loc.latitude, null)
   })
   it("the flow's text for both states is unchanged", () => {

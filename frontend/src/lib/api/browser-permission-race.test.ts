@@ -3,9 +3,9 @@
 //   --target es2020 --skipLibCheck --esModuleInterop --types node --lib es2020,dom
 //   && node --test <tmp>/src/lib/api/browser-permission-race.test.js
 //
-// BTB-387 race: the custom "Location Access Needed" dialog opened UNDER Chrome's own
-// permission prompt because the position request's timeout kept running while the
-// prompt waited for the user. Everything here is deterministic: a fake clock, a fake
+// BTB-387 race: the recovery dialog opened UNDER Chrome's own permission prompt
+// because the position request's timeout kept running while the prompt waited for
+// the user. Everything here is deterministic: a fake clock, a fake
 // geolocation and a fake Permissions API stand in for the browser.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -17,10 +17,9 @@ import {
   type PermissionStatusLike,
   type PermissionsLike,
   getBrowserPosition,
-  onGeolocationGranted,
+  queryGeolocationPermission,
 } from "./browser-geolocation"
 import { getDetectedLocation } from "./detected-location"
-import { createLocationConsentGate } from "./location-consent"
 
 const flush = () => new Promise<void>((r) => setImmediate(r))
 
@@ -430,50 +429,44 @@ describe("getBrowserPosition: the native prompt is not a timeout", () => {
   })
 })
 
-describe("onGeolocationGranted", () => {
-  it("fires once when the permission CHANGES to granted; repeated events do not repeat it", async () => {
-    const p = fakePermissions("denied")
-    let calls = 0
-    onGeolocationGranted(() => calls++, p.permissions)
-    await flush()
-    p.set("granted")
-    p.set("granted")
-    p.set("prompt")
-    p.set("granted")
-    assert.equal(calls, 1)
+describe("queryGeolocationPermission", () => {
+  it("reads the three states without prompting", async () => {
+    for (const state of ["prompt", "granted", "denied"] as const) {
+      assert.equal(
+        await queryGeolocationPermission(fakePermissions(state).permissions),
+        state
+      )
+    }
   })
 
-  it("an already-granted permission does not fire it", async () => {
-    const p = fakePermissions("granted")
-    let calls = 0
-    onGeolocationGranted(() => calls++, p.permissions)
-    await flush()
-    p.set("granted")
-    assert.equal(calls, 0)
-  })
-
-  it("stops watching when disposed, even before the permission query resolves", async () => {
-    const p = fakePermissions("prompt")
-    let calls = 0
-    const stop = onGeolocationGranted(() => calls++, p.permissions)
-    stop()
-    await flush()
-    assert.equal(p.listeners.size, 0)
-    p.set("granted")
-    assert.equal(calls, 0)
-    const stop2 = onGeolocationGranted(() => calls++, p.permissions)
-    await flush()
-    stop2()
-    assert.equal(p.listeners.size, 0)
-  })
-
-  it("without the Permissions API it watches nothing", () => {
-    assert.doesNotThrow(() => onGeolocationGranted(() => {}, null)())
+  it("is undefined without the Permissions API or when the query fails or answers oddly", async () => {
+    assert.equal(await queryGeolocationPermission(null), undefined)
+    assert.equal(
+      await queryGeolocationPermission({
+        query: async () => {
+          throw new Error("unsupported")
+        },
+      }),
+      undefined
+    )
+    assert.equal(
+      await queryGeolocationPermission({
+        query: async () =>
+          ({
+            ...fakePermissions("prompt").permissions,
+            state: "weird",
+          }) as never,
+      }),
+      undefined
+    )
   })
 })
 
 // ---------------------------------------------------------------------------
-// The whole detection, with the real position wrapper over the fakes.
+// The whole detection, with the real position wrapper over the fakes. The browser's
+// own prompt comes first; the "Turn on location" dialog (see location-recovery.ts) is
+// only ever shown for a definitive failure, and nothing here ever reaches the network
+// (IP) lookup.
 // ---------------------------------------------------------------------------
 const GPS_RESOLVED = {
   status: "resolved",
@@ -485,14 +478,12 @@ const GPS_RESOLVED = {
   latitude: 41.88,
   longitude: -87.63,
 }
-const IP_BODY = { ...GPS_RESOLVED, status: undefined }
 
 function detection(initial: "prompt" | "granted" | "denied" = "prompt") {
   const g = fakeGeo()
   const p = fakePermissions(initial)
   const clock = fakeClock()
-  const gate = createLocationConsentGate()
-  const counts = { consent: 0, ipLookups: 0, gpsCalls: 0, cancelConsent: 0 }
+  const counts = { ipLookups: 0, gpsCalls: 0 }
   const controller = new AbortController()
   let live = true
   const run = () =>
@@ -506,30 +497,20 @@ function detection(initial: "prompt" | "granted" | "denied" = "prompt") {
           timers: clock.timers,
           signal,
         }),
-      watchGeolocationGranted: (listener) =>
-        onGeolocationGranted(listener, p.permissions),
+      getPermissionState: () => queryGeolocationPermission(p.permissions),
       fetchGpsLocation: async () => {
         counts.gpsCalls++
         return GPS_RESOLVED
       },
       fetchLocation: async () => {
         counts.ipLookups++
-        return IP_BODY
-      },
-      requestApproximateConsent: () => {
-        counts.consent++
-        return gate.request()
-      },
-      cancelApproximateConsent: () => {
-        counts.cancelConsent++
-        gate.cancel()
+        return GPS_RESOLVED
       },
     })
   return {
     g,
     p,
     clock,
-    gate,
     counts,
     controller,
     run,
@@ -539,20 +520,18 @@ function detection(initial: "prompt" | "granted" | "denied" = "prompt") {
   }
 }
 
-describe("detection: Chrome's prompt first, the custom dialog only after a definitive outcome", () => {
-  it("1) prompt unanswered beyond the old timeout: no custom dialog, no IP lookup", async () => {
+describe("detection: Chrome's prompt first, a failure only after a definitive outcome", () => {
+  it("1) a prompt left unanswered far beyond the old timeout produces no failure", async () => {
     const d = detection("prompt")
     const result = watch(d.run())
     await flush()
     d.clock.advance(5 * 60_000)
     await flush()
     assert.equal(result.done, false)
-    assert.equal(d.counts.consent, 0)
-    assert.equal(d.gate.pending, false)
     assert.equal(d.counts.ipLookups, 0)
   })
 
-  it("2) the user then allows: the GPS path succeeds, with no dialog and no IP lookup", async () => {
+  it("2) the user then allows: the GPS path succeeds, with no failure and no IP lookup", async () => {
     const d = detection("prompt")
     const result = watch(d.run())
     await flush()
@@ -562,131 +541,78 @@ describe("detection: Chrome's prompt first, the custom dialog only after a defin
     await flush()
     assert.equal(result.value?.city, "Chicago")
     assert.equal(result.value?.detected, true)
+    assert.equal(result.value?.locationFailure, undefined)
     assert.equal(d.counts.gpsCalls, 1)
-    assert.equal(d.counts.consent, 0)
     assert.equal(d.counts.ipLookups, 0)
   })
 
-  it("3) an explicit Block opens the custom dialog exactly once", async () => {
+  it("3) an explicit Block is reported as blocked", async () => {
     const d = detection("prompt")
     const result = watch(d.run())
     await flush()
     d.p.set("denied")
     d.g.fail(1)
     await flush()
-    assert.equal(d.counts.consent, 1)
-    assert.equal(d.gate.pending, true)
+    assert.equal(result.value?.locationFailure, "blocked")
     assert.equal(d.counts.ipLookups, 0)
-    d.gate.decide("deny")
-    await flush()
-    assert.equal(result.value?.consentDenied, true)
-    assert.equal(d.counts.consent, 1)
+    assert.equal(result.value?.countryCode, "")
   })
 
-  it("4) closing the Chrome prompt (X) opens the custom dialog exactly once", async () => {
+  it("4) closing the Chrome prompt (code 1 while the permission still reads 'prompt') is dismissed", async () => {
     const d = detection("prompt")
     const result = watch(d.run())
     await flush()
     d.g.fail(1)
     await flush()
-    assert.equal(d.counts.consent, 1)
-    d.gate.decide("allow")
-    await flush()
-    assert.equal(d.counts.ipLookups, 1)
-    assert.equal(result.value?.city, "Chicago")
+    assert.equal(result.value?.locationFailure, "dismissed")
+    assert.equal(d.counts.ipLookups, 0)
   })
 
-  it("an unsupported browser opens the dialog once", async () => {
-    const clock = fakeClock()
-    const gate = createLocationConsentGate()
-    let asked = 0
-    const result = watch(
-      getDetectedLocation({
-        useBrowserLocation: true,
-        getPosition: () =>
-          getBrowserPosition(undefined, {
-            permissions: null,
-            timers: clock.timers,
-          }),
-        watchGeolocationGranted: () => () => {},
-        requestApproximateConsent: () => {
-          asked++
-          return gate.request()
-        },
-        fetchLocation: async () => IP_BODY,
-      })
-    )
-    await flush()
-    assert.equal(asked, 1)
-    gate.decide("deny")
-    await flush()
-    assert.equal(result.value?.consentDenied, true)
+  it("an unsupported browser is reported as unsupported", async () => {
+    const result = await getDetectedLocation({
+      useBrowserLocation: true,
+      getPosition: () =>
+        getBrowserPosition(undefined, {
+          permissions: null,
+          timers: fakeClock().timers,
+        }),
+      fetchLocation: async () => assert.fail("must not look up the IP"),
+    })
+    assert.equal(result.locationFailure, "unsupported")
   })
 
-  it("permission granted but no coordinates in time (timeout) opens the dialog once", async () => {
+  it("permission granted but the device cannot provide a position (code 2) is device_unavailable", async () => {
     const d = detection("granted")
     const result = watch(d.run())
     await flush()
-    assert.equal(d.counts.consent, 0)
-    d.clock.advance(10_000)
+    d.g.fail(2)
     await flush()
-    assert.equal(d.counts.consent, 1)
-    d.gate.decide("deny")
-    await flush()
-    assert.equal(result.value?.consentDenied, true)
+    assert.equal(result.value?.locationFailure, "device_unavailable")
   })
 
-  it("5) permission becomes granted while the dialog is open: it is withdrawn and GPS wins", async () => {
-    const d = detection("prompt")
+  it("permission granted but no coordinates in time is a timeout, and only after the timeout", async () => {
+    const d = detection("granted")
     const result = watch(d.run())
     await flush()
-    d.g.fail(1) // dismissed -> the custom dialog opens
+    d.clock.advance(9_999)
     await flush()
-    assert.equal(d.counts.consent, 1)
-    assert.equal(d.gate.pending, true)
-    d.p.set("granted") // ... and then the user allows location after all
+    assert.equal(result.done, false)
+    d.clock.advance(1)
     await flush()
-    assert.equal(d.counts.cancelConsent, 1)
-    assert.equal(d.gate.pending, false)
-    assert.equal(d.g.requests.length, 2) // a fresh browser position was requested
-    d.g.requests[1].ok({ coords: { latitude: 41.88, longitude: -87.63 } })
-    await flush()
-    assert.equal(result.value?.city, "Chicago")
-    assert.equal(result.value?.consentDenied, undefined)
-    assert.equal(d.counts.consent, 1) // never asked a second time
-    assert.equal(d.counts.ipLookups, 0)
+    assert.equal(result.value?.locationFailure, "timeout")
   })
 
-  it("7) repeated permission events while the dialog is open withdraw it once and request one position", async () => {
+  it("6) a late GPS answer after the outcome cannot replace it", async () => {
     const d = detection("prompt")
     const result = watch(d.run())
     await flush()
     d.g.fail(1)
     await flush()
-    for (let i = 0; i < 4; i++) d.p.set("granted")
-    await flush()
-    assert.equal(d.counts.cancelConsent, 1)
-    assert.equal(d.g.requests.length, 2)
-    d.g.requests[1].ok({ coords: { latitude: 41.88, longitude: -87.63 } })
-    await flush()
-    assert.equal(result.value?.detected, true)
-    assert.equal(d.counts.gpsCalls, 1)
-  })
-
-  it("6) once the user answers the dialog, a late permission change cannot replace that outcome", async () => {
-    const d = detection("prompt")
-    const result = watch(d.run())
-    await flush()
-    d.g.fail(1)
-    await flush()
-    d.gate.decide("deny")
-    await flush()
-    assert.equal(result.value?.consentDenied, true)
+    assert.equal(result.value?.locationFailure, "dismissed")
     d.p.set("granted")
     d.g.succeed()
     await flush()
-    assert.equal(result.value?.consentDenied, true)
-    assert.equal(d.counts.cancelConsent, 0)
+    assert.equal(result.value?.locationFailure, "dismissed")
     assert.equal(d.counts.gpsCalls, 0)
   })
 
@@ -698,59 +624,41 @@ describe("detection: Chrome's prompt first, the custom dialog only after a defin
     d.controller.abort() // what the host's reset / unmount does
     await flush()
     assert.equal(result.value?.cancelled, true)
+    assert.equal(result.value?.locationFailure, undefined)
     assert.equal(d.p.listeners.size, 0)
     assert.equal(d.clock.pending, 0)
     d.p.set("granted")
     d.g.succeed()
     await flush()
-    assert.equal(d.counts.consent, 0)
     assert.equal(d.counts.gpsCalls, 0)
     assert.equal(d.counts.ipLookups, 0)
   })
-
-  it("8b) cancelling while the dialog is open drops the dialog's answer and the permission watcher", async () => {
-    const d = detection("prompt")
-    const result = watch(d.run())
-    await flush()
-    d.g.fail(1)
-    await flush()
-    d.stale()
-    d.gate.cancel()
-    await flush()
-    assert.equal(result.value?.cancelled, true)
-    assert.equal(d.p.listeners.size, 0)
-    d.p.set("granted")
-    await flush()
-    assert.equal(d.g.requests.length, 1) // no retry for a dead attempt
-  })
 })
 
-describe("the host's wiring (source guards)", () => {
+describe("the host's wiring of the native-prompt wait (source guards)", () => {
   const host = readFileSync(
     join(process.cwd(), "contexts", "identity-verification-host.tsx"),
     "utf8"
   )
 
-  it("every browser-location attempt carries an abort signal and can cancel the dialog", () => {
+  it("every browser-location attempt carries an abort signal", () => {
     const at = host.indexOf("const getDetectedLocation = useCallback(")
-    const wrapper = host.slice(at, host.indexOf("[locationConsentGate]", at))
+    const wrapper = host.slice(at, host.indexOf("[]\n  )", at))
     assert.ok(wrapper.includes("new AbortController()"))
     assert.ok(wrapper.includes("signal: controller.signal"))
-    assert.ok(
-      wrapper.includes("cancelApproximateConsent: locationConsentGate.cancel")
-    )
     assert.ok(wrapper.includes("locationAbortsRef.current.delete(controller)"))
   })
 
   it("reset and unmount abort every pending wait", () => {
     const at = host.indexOf("const cancelLocationDetection = useCallback(")
-    const body = host.slice(at, host.indexOf("[locationConsentGate]", at))
+    const body = host.slice(at, host.indexOf("[locationRecovery]", at))
     assert.ok(
       body.includes(
         "locationAbortsRef.current.forEach((controller) => controller.abort())"
       )
     )
     assert.ok(body.includes("locationAbortsRef.current.clear()"))
+    assert.ok(body.includes("locationRecovery.abort()"))
   })
 })
 
