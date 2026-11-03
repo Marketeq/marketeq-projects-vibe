@@ -1457,7 +1457,6 @@ export const TaskDialog = ({
       task: "",
       role: "",
       location: "",
-      experience: "Medior",
       workSchedule: undefined,
       estimatedHours: undefined,
       duration: {
@@ -1473,7 +1472,7 @@ export const TaskDialog = ({
         task: "",
         role: "",
         location: "",
-        experience: "Medior",
+        experience: undefined,
         workSchedule: undefined,
         estimatedHours: undefined,
         duration: { type: "hours", value: undefined as any },
@@ -1617,6 +1616,55 @@ export const TaskDialog = ({
               <HookFormErrorMessage
                 errors={errors}
                 name="role"
+                render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="experience" className="text-gray-700" size="sm">
+                Experience
+              </Label>
+              <Controller
+                control={control}
+                name="experience"
+                render={({ field: { value, onChange } }) => (
+                  <Select value={value ?? ""} onValueChange={onChange}>
+                    <SelectTrigger
+                      id="experience"
+                      className={cn(
+                        "w-full text-base",
+                        hookFormHasError({ errors, name: "experience" }) &&
+                          "border-error-300"
+                      )}
+                    >
+                      <SelectValue placeholder="Select one" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[
+                        ["Student", "Student (0 - 2 years)", Network],
+                        ["Junior", "Junior (2 - 3 years)", Network1],
+                        ["Medior", "Medior (3 - 5 years)", Network2],
+                        ["Senior", "Senior (5 - 10 years)", Network3],
+                        ["Guru", "Guru (10+ years)", Network4],
+                      ].map(([level, label, Icon]) => (
+                        <SelectItem
+                          key={level as string}
+                          value={level as string}
+                          className="font-medium"
+                        >
+                          <span className="flex items-center gap-x-2">
+                            <Icon className="size-4 shrink-0" />
+                            {label as string}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <HookFormErrorMessage
+                errors={errors}
+                name="experience"
                 render={({ message }) => <ErrorMessage>{message}</ErrorMessage>}
               />
             </div>
