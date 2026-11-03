@@ -22,12 +22,15 @@ export function EditorPreviewBar({
   lastSavedAt,
   onEdit,
   onPublish,
+  hasPublishError = false,
   onClose,
 }: {
   projectName: string
   lastSavedAt?: string | null
   onEdit?: () => void
   onPublish?: () => void
+  /** A Publish attempt left an error on screen: Publish shows red until it is fixed. */
+  hasPublishError?: boolean
   onClose?: () => void
 }) {
   return (
@@ -66,6 +69,7 @@ export function EditorPreviewBar({
 
           <Button
             type="button"
+            visual={hasPublishError ? "error" : "primary"}
             onClick={onPublish}
             className="h-auto px-[14px] py-2 text-xs font-semibold"
           >

@@ -360,6 +360,10 @@ export function PublishDialog({
   const isTitleValid = titleValue.trim().length > 0
   const isTitleAtLimit = titleValue.length >= MAX_TITLE_LENGTH
   const hasBlockingErrors = !coverImage || !isTitleValid
+  // The cover-image and title errors only show after a Publish attempt.
+  // While any of them is on screen the Publish button turns red, and it goes
+  // back to blue on its own as soon as the last one is fixed.
+  const isShowingPublishErrors = attemptedSubmit && hasBlockingErrors
 
   const handlePublish = () => {
     if (publishing) return
@@ -857,7 +861,12 @@ export function PublishDialog({
               Cancel
             </Button>
           </DialogClose>
-          <Button size="lg" onClick={handlePublish} disabled={publishing}>
+          <Button
+            size="lg"
+            visual={isShowingPublishErrors ? "error" : "primary"}
+            onClick={handlePublish}
+            disabled={publishing}
+          >
             Publish
           </Button>
         </DialogFooter>

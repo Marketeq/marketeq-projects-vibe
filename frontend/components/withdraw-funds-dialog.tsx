@@ -165,8 +165,11 @@ const SummaryTile = ({ icon, value, label }: { icon: React.ReactNode; value: str
   </div>
 )
 
-export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
+export function WithdrawFundsDialog({ open, onOpenChange, onVerified, initialAmount }: {
   open: boolean; onOpenChange: (open: boolean) => void
+  // PMCM-806 AC-04: the failed-withdrawal email's "Try again" reopens this
+  // dialog with the failed amount already entered. Applied once per open.
+  initialAmount?: string
   // Fires once the magic link is confirmed (from any device/tab) while this
   // modal is still open on the "verify" step — lets the parent page refresh
   // its balance/recent-activity without a manual reload.
@@ -396,6 +399,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   React.useEffect(() => {
     if (!open) return
     resetAll()
+    if (initialAmount) setAmount(initialAmount)
     loadGate(); loadBalance(); loadMethods()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
