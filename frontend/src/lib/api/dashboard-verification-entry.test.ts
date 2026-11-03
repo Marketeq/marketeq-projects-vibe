@@ -98,7 +98,17 @@ describe("dashboard verification entry: banner and action", () => {
     assert.ok(page.includes("Your profile is not public"))
     assert.ok(page.includes("To access full platform features, please verify your account"))
     assert.ok(/Verify My Account\s*<ArrowRight/.test(page))
-    assert.ok(page.includes("onClick={() => void handleVerifyMyAccount()}"))
+    // Loading-state UI (approved): the banner calls a thin wrapper that awaits the SAME single host
+    // handler exactly once, for its own spinner only. The button is still disabled by the shared check
+    // state, and the label and arrow are unchanged.
+    assert.ok(page.includes("onClick={() => void handleBannerVerifyMyAccount()}"))
+    const wrapper = page.slice(
+      page.indexOf("const handleBannerVerifyMyAccount = useCallback("),
+      page.indexOf("}, [handleVerifyMyAccount])")
+    )
+    assert.ok(wrapper.length > 0)
+    assert.equal((wrapper.match(/await handleVerifyMyAccount\(\)/g) ?? []).length, 1)
+    assert.ok(page.includes('disabled={connectionCheckState === "checking"}\n                        loading={bannerVerifyPending}\n                        aria-busy={bannerVerifyPending}'))
   })
 
   it("dismissing the banner is in memory only", () => {

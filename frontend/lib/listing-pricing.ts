@@ -48,6 +48,24 @@ export const PERIOD_FULL_LABELS: Readonly<Record<PricingPeriod, string>> = {
   year: "Yearly",
 }
 
+// Display-only connector override for the "Starting At $X per/every
+// [period]" price row (public listing page's sidebar + the owner preview's
+// identical row). The label itself uses the existing PERIOD_WIDGET_LABELS
+// ("2 weeks" for biweek) — only the connector word differs from every other
+// usage of that map. Neither the stored PricingPeriod value nor
+// PERIOD_WIDGET_LABELS are affected; this is read only by that row's own
+// render code, which stacks every offered option on top of itself so
+// switching periods never changes the connector's or the trigger's width.
+export const PERIOD_PRICE_ROW_CONNECTOR: Readonly<
+  Record<PricingPeriod, "per" | "every">
+> = {
+  week: "per",
+  biweek: "every",
+  month: "per",
+  quarter: "per",
+  year: "per",
+}
+
 const PERIOD_DAYS: Readonly<Record<PricingPeriod, number>> = {
   week: 7,
   biweek: 14,

@@ -67,6 +67,68 @@ print(json.dumps({'title': 'URGENT: forced push to ${params.BRANCH} by @${params
         stage('Audit') {
             when { expression { return params.FORCED == false } }
             steps {
+                sh '''cat > review_audit.py <<'REVIEW_AUDIT_PY'
+import fnmatch, json, sys
+
+# Paths owned by the repo owner: the auth, login, profile and infrastructure
+# files the SOP treats as off-limits. Deliberately NOT every owned path --
+# CODEOWNERS opens with "* @Marketeq/code-review", which owns everything, and
+# several rules own whole service directories. Auditing on those would flag
+# most merges (741 merged, 47 carry an approval), and an alert that fires on
+# everything is an alert nobody reads.
+OWNER = '@CTorres9800'
+
+def specific_rules(text):
+    rules = []
+    for line in text.splitlines():
+        line = line.split('#', 1)[0].strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) < 2 or parts[0] == '*':
+            continue
+        rules.append((parts[0], parts[1:]))
+    return rules
+
+def owners_for(path, rules):
+    found = []
+    for pattern, owners in rules:
+        p = pattern[1:] if pattern.startswith('/') else pattern
+        if p.endswith('/'):
+            hit = path.startswith(p)
+        elif any(c in p for c in '*?['):
+            hit = fnmatch.fnmatch(path, p) or fnmatch.fnmatch(path, '*/' + p)
+        else:
+            hit = path == p or path.startswith(p + '/')
+        if hit:
+            found = owners
+    return found
+
+data = json.load(sys.stdin)
+rules = specific_rules(data.get('codeowners', ''))
+author = (data.get('author') or '').lower()
+
+sensitive = [f for f in data.get('files', []) if OWNER in owners_for(f, rules)]
+if not sensitive:
+    print('')
+    sys.exit(0)
+
+# Latest review state per reviewer. The author's own review never counts, and a
+# later CHANGES_REQUESTED overrides an earlier approval from the same person.
+latest = {}
+for r in data.get('reviews', []):
+    who = ((r.get('user') or {}).get('login') or '').lower()
+    if not who or who == author:
+        continue
+    latest[who] = (r.get('state') or '').upper()
+
+if any(st == 'APPROVED' for st in latest.values()):
+    print('')
+    sys.exit(0)
+
+print(json.dumps({'files': sensitive[:10], 'count': len(sensitive)}))
+REVIEW_AUDIT_PY
+echo "review_audit.py written"'''
                 withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
                     sh """#!/bin/bash
                         export COMMIT_SHA="${params.COMMIT_SHA}"
@@ -189,6 +251,62 @@ print(json.dumps({'title': 'Direct push to ${params.BRANCH} by @${params.PUSHER}
                         HEAD_SHA_PR=\$(curl -sf -H "Authorization: token \$GH_TOKEN" \
                             "https://api.github.com/repos/${env.REPO}/pulls/\${PR_NUM}" | \
                             python3 -c "import sys,json; print(json.load(sys.stdin).get('head',{}).get('sha',''))" 2>/dev/null)
+
+                        # --- Review audit: AC-3.3.1 (grant approval) and US-6.1 (case 16) ---
+                        # Was a PR touching an off-limits path merged with nobody but its
+                        # author approving it? Scoped to repo-owner paths; see review_audit.py.
+                        PR_JSON=\$(curl -sf -H "Authorization: token \$GH_TOKEN" \
+                            "https://api.github.com/repos/${env.REPO}/pulls/\${PR_NUM}" 2>/dev/null || echo '{}')
+                        curl -sf -H "Authorization: token \$GH_TOKEN" \
+                            "https://api.github.com/repos/${env.REPO}/pulls/\${PR_NUM}/files?per_page=100" \
+                            > pr_files.json 2>/dev/null || echo '[]' > pr_files.json
+                        curl -sf -H "Authorization: token \$GH_TOKEN" \
+                            "https://api.github.com/repos/${env.REPO}/pulls/\${PR_NUM}/reviews?per_page=100" \
+                            > pr_reviews.json 2>/dev/null || echo '[]' > pr_reviews.json
+                        curl -sf -H "Authorization: token \$GH_TOKEN" -H "Accept: application/vnd.github.raw" \
+                            "https://api.github.com/repos/${env.REPO}/contents/.github/CODEOWNERS?ref=${params.COMMIT_SHA}" \
+                            > codeowners.txt 2>/dev/null || : > codeowners.txt
+
+                        echo "\$PR_JSON" > pr.json
+                        python3 -c "
+import json
+pr = json.load(open('pr.json'))
+print(json.dumps({
+    'codeowners': open('codeowners.txt').read(),
+    'author': (pr.get('user') or {}).get('login', ''),
+    'files': [f['filename'] for f in json.load(open('pr_files.json'))],
+    'reviews': json.load(open('pr_reviews.json')),
+}))
+" > audit_input.json 2>/dev/null || echo '{}' > audit_input.json
+
+                        UNAPPROVED=\$(python3 review_audit.py < audit_input.json 2>/dev/null || echo "")
+                        if [ -n "\$UNAPPROVED" ]; then
+                            echo "PR #\$PR_NUM touched off-limits paths and merged unapproved: \$UNAPPROVED"
+                            echo "\$UNAPPROVED" > unapproved.json
+                            python3 -c "
+import json
+d = json.load(open('unapproved.json'))
+files = chr(10).join('- ' + f for f in d['files'])
+more = '' if d['count'] <= 10 else chr(10) + '...and ' + str(d['count'] - 10) + ' more.'
+body = ('## Merged without owner approval' + chr(10) + chr(10) +
+        'This PR changed ' + str(d['count']) + ' file(s) under paths owned by @CTorres9800 '
+        'and was merged with no approving review from anyone other than its author.' + chr(10) + chr(10) +
+        files + more + chr(10) + chr(10) +
+        'These paths are off-limits under CODE_REVIEW_SOP SS1.3 and SS1.4. Required '
+        'reviewers cannot be enforced on this GitHub plan, so this is detected after '
+        'the fact rather than prevented.' + chr(10) + chr(10) +
+        '**Action required:** @CTorres9800 to confirm the change was intended. '
+        'Fix forward -- keep the code and open a follow-up PR if not.' + chr(10) + chr(10) +
+        'Posted by Jenkins CI')
+print(json.dumps({'body': body}))
+" > review_comment.json
+                            curl -sf -X POST -H "Authorization: token \$GH_TOKEN" -H "Content-Type: application/json" \
+                                -d @review_comment.json \
+                                "https://api.github.com/repos/${env.REPO}/issues/\${PR_NUM}/comments" > /dev/null 2>&1 || true
+                            echo "Posted unapproved-merge warning -- report only"
+                        else
+                            echo "Review audit PASSED for PR #\$PR_NUM"
+                        fi
 
                         STATUSES=\$(curl -sf -H "Authorization: token \$GH_TOKEN" \
                             "https://api.github.com/repos/${env.REPO}/commits/\${HEAD_SHA_PR}/statuses?per_page=100" 2>/dev/null || echo '[]')

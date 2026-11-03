@@ -137,6 +137,7 @@ import {
   costPerPeriod,
   formatDuration,
   normalizePeriod,
+  PERIOD_PRICE_ROW_CONNECTOR,
   PERIOD_WIDGET_LABELS,
   resolvePeriod,
   scopeDurationDays,
@@ -976,7 +977,7 @@ const Chats = () => {
             onChange={onChange}
           />
           <InputRightElement className="items-end pb-[13px]">
-            <TooltipProvider>
+            <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger
                   className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
@@ -1293,7 +1294,7 @@ function SortableGalleryItem({
               )}
             >
               {/* Drag handle */}
-              <TooltipProvider delayDuration={300}>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
@@ -1327,7 +1328,7 @@ function SortableGalleryItem({
                     included) and only swaps the stored URL on success —
                     on failure the original image is left untouched since
                     nothing is placed until finalUrl resolves. */}
-                <TooltipProvider delayDuration={200}>
+                <TooltipProvider delayDuration={0}>
                   <Tooltip>
                     {/* PMCM-256 fix: ImageEditor's state machine has no
                         EDIT transition from its initial "ideal" state —
@@ -1371,7 +1372,7 @@ function SortableGalleryItem({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
+                <TooltipProvider delayDuration={0}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -1400,7 +1401,7 @@ function SortableGalleryItem({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
+                <TooltipProvider delayDuration={0}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -1424,7 +1425,7 @@ function SortableGalleryItem({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <TooltipProvider delayDuration={200}>
+                <TooltipProvider delayDuration={0}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -7632,7 +7633,7 @@ function ProjectDetailsInner() {
                                             <div>
                                               <span className="text-sm font-semibold text-dark-blue-400 inline-flex items-center gap-x-1">
                                                 Select Label
-                                                <TooltipProvider>
+                                                <TooltipProvider delayDuration={0}>
                                                   <Tooltip>
                                                     <TooltipTrigger asChild>
                                                       <HelpCircle className="size-3.5 text-gray-400 cursor-help" />
@@ -10717,7 +10718,7 @@ function ProjectDetailsInner() {
                       <div>
                         <span className="text-sm font-semibold text-primary-500 inline-flex items-center gap-x-1.5">
                           Budget Calculator
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Info className="size-3.5 text-gray-400 cursor-help" />
@@ -10747,7 +10748,7 @@ function ProjectDetailsInner() {
                       <div>
                         <span className="text-sm font-semibold text-primary-500 inline-flex items-center gap-x-1.5">
                           Duration
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Info className="size-3.5 text-gray-400 cursor-help" />
@@ -10842,8 +10843,15 @@ function ProjectDetailsInner() {
                       <span className="text-2xl leading-none font-bold text-dark-blue-400">
                         {formatBudget(budgetTotalCents, budgetPeriod)}
                       </span>
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        per
+                      <span
+                        className={cn(
+                          "font-medium leading-none text-dark-blue-400",
+                          PERIOD_PRICE_ROW_CONNECTOR[budgetPeriod] === "every"
+                            ? "text-xs"
+                            : "text-sm"
+                        )}
+                      >
+                        {PERIOD_PRICE_ROW_CONNECTOR[budgetPeriod]}
                       </span>
                     </div>
 
@@ -10853,7 +10861,17 @@ function ProjectDetailsInner() {
                           className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                           iconClassName="ml-1"
                           placeholder="Select"
-                        />
+                        >
+                          {({ value }: { value: PricingPeriod }) =>
+                            value === "biweek" ? (
+                              <span className="text-xs whitespace-nowrap">
+                                {PERIOD_WIDGET_LABELS[value]}
+                              </span>
+                            ) : (
+                              PERIOD_WIDGET_LABELS[value]
+                            )
+                          }
+                        </ListboxButton>
                         <ListboxOptions className="w-[153px]">
                           {availableBudgetPeriods.map((period) => (
                             <ListboxOption key={period} value={period}>
@@ -11023,7 +11041,7 @@ function ProjectDetailsInner() {
                     // trigger wraps a focusable span around it (same
                     // pattern this file already uses elsewhere for a
                     // disabled control under a Tooltip).
-                    <TooltipProvider>
+                    <TooltipProvider delayDuration={0}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="inline-block" tabIndex={0}>
@@ -11054,7 +11072,7 @@ function ProjectDetailsInner() {
                       </Tooltip>
                     </TooltipProvider>
                   ) : hasChanges ? (
-                    <TooltipProvider>
+                    <TooltipProvider delayDuration={0}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <Button
@@ -11088,7 +11106,7 @@ function ProjectDetailsInner() {
                       </Tooltip>
                     </TooltipProvider>
                   ) : isPublished ? (
-                    <TooltipProvider>
+                    <TooltipProvider delayDuration={0}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <DropdownMenu>
@@ -11125,7 +11143,7 @@ function ProjectDetailsInner() {
                       </Tooltip>
                     </TooltipProvider>
                   ) : (
-                    <TooltipProvider>
+                    <TooltipProvider delayDuration={0}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <DropdownMenu>
@@ -11169,7 +11187,7 @@ function ProjectDetailsInner() {
                     </TooltipProvider>
                   )}
                   {canViewAsClient && (
-                  <TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -11193,7 +11211,7 @@ function ProjectDetailsInner() {
                     </Tooltip>
                   </TooltipProvider>
                   )}
-                  <TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <IconButton
@@ -11358,7 +11376,17 @@ function ProjectDetailsInner() {
                   <h2 className="text-base font-semibold text-dark-blue-400">
                     Level Up Your Project Listing Skills
                   </h2>
-                  <HelpCircle className="size-4 text-gray-400" />
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="size-4 text-gray-400" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Short tutorials to help you write a stronger listing
+                        and attract the right talent.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
 
                 <div className="mt-6 space-y-3">
