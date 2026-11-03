@@ -1018,6 +1018,14 @@ export class NotificationService {
     // Withdraw action both live on the Earnings Overview tab.
     const detailPath = `/earnings?tab=payouts&payout=${encodeURIComponent(payload.payoutRequestId)}`;
     const overviewPath = '/earnings?tab=overview';
+    // AC-04: "Review payout method" opens the method that failed (the Overview
+    // tab opens its Edit dialog from `?method=<id>`), and "Try again" opens the
+    // Withdraw dialog pre-filled with the amount (`?withdrawAmount=`). Without a
+    // method id the contractor still lands on Deposit Methods to replace it.
+    const reviewMethodPath = payload.depositMethodId
+      ? `${overviewPath}&method=${encodeURIComponent(payload.depositMethodId)}`
+      : overviewPath;
+    const tryAgainPath = `${overviewPath}&withdrawAmount=${encodeURIComponent(payload.amountUsd)}`;
 
     const push = buildWithdrawalPush({
       kind,
@@ -1076,8 +1084,8 @@ export class NotificationService {
       failureReason,
       reference: payload.payoutRequestId,
       transactionUrl: `${appBase}${detailPath}`,
-      reviewMethodUrl: `${appBase}${overviewPath}`,
-      tryAgainUrl: `${appBase}${overviewPath}`,
+      reviewMethodUrl: `${appBase}${reviewMethodPath}`,
+      tryAgainUrl: `${appBase}${tryAgainPath}`,
       logoUrl: this.resolveLogoUrl(),
       supportEmail: process.env.SUPPORT_EMAIL?.trim() || 'support@marketeqdigital.com',
       socialLinks: this.resolveSocialLinks(),

@@ -2427,6 +2427,62 @@ export const OverviewTab = ({
     }
   }, [])
 
+  // PMCM-806 AC-04: the failed/cancelled withdrawal email links here.
+  // "Review payout method" → ?method=<id> opens that method's Edit dialog;
+  // "Try again" → ?withdrawAmount=<usd> opens Withdraw Funds pre-filled. Each
+  // waits for the data its normal entry point needs, then drops its param so a
+  // refresh doesn't reopen it. A method that no longer exists, or a withdrawal
+  // the Withdraw Funds button would refuse, just leaves the contractor here.
+  const searchParams = useSearchParams()
+  const linkedMethodId = searchParams.get("method")
+  const linkedWithdrawAmount = searchParams.get("withdrawAmount")
+  const [prefillAmount, setPrefillAmount] = React.useState<string | undefined>(
+    undefined
+  )
+  React.useEffect(() => {
+    if (!linkedMethodId || methodsLoading) return
+    const m = methodsError
+      ? undefined
+      : methods.find((x: any) => x.id === linkedMethodId)
+    if (m) {
+      setEditingMethod({ ...m })
+      setEditBankForm(createEditBankFormFromMethod(m))
+      setEditBankError("")
+      setEditBankSaveState(null)
+    }
+    router.replace("/earnings?tab=overview", { scroll: false })
+  }, [linkedMethodId, methodsLoading, methodsError, methods, router])
+  React.useEffect(() => {
+    if (!linkedWithdrawAmount) return
+    if (methodsLoading || (!balance && !balanceError)) return
+    const amountOk = /^\d+(\.\d{1,2})?$/.test(linkedWithdrawAmount)
+    // Same gate as the Withdraw Funds button (US-11 minimum, BTB-345 verified method).
+    let allowed = false
+    if (amountOk && balance && !methodsError) {
+      const grossUsd = parseFloat(balance.availableBalance)
+      const grossDisplay = parseFloat(balance.availableBalanceDisplay)
+      const rate = grossUsd > 0 ? grossDisplay / grossUsd : 1
+      const withdrawable = Math.max(0, grossDisplay - reserveUsd * rate)
+      allowed =
+        withdrawable >= 50 &&
+        methods.some((m: any) => m.verificationStatus === "verified")
+    }
+    if (allowed) {
+      setPrefillAmount(linkedWithdrawAmount)
+      setWithdrawOpen(true)
+    }
+    router.replace("/earnings?tab=overview", { scroll: false })
+  }, [
+    linkedWithdrawAmount,
+    methodsLoading,
+    methodsError,
+    methods,
+    balance,
+    balanceError,
+    reserveUsd,
+    router,
+  ])
+
   const handleAddMethod = async () => {
     try {
       const payload: any = { methodType: addForm.methodType }
@@ -7937,7 +7993,11 @@ export const OverviewTab = ({
       </div>
       <WithdrawFundsDialog
         open={withdrawOpen}
-        onOpenChange={setWithdrawOpen}
+        onOpenChange={(next) => {
+          setWithdrawOpen(next)
+          if (!next) setPrefillAmount(undefined)
+        }}
+        initialAmount={prefillAmount}
         onVerified={() => {
           loadBalance()
           loadSummary()
