@@ -3467,6 +3467,9 @@ type JobListingDraftDetails = {
   briefFilename?: string;
   briefSizeBytes?: number;
   tools?: string[];
+  // Set once the tools list has been generated or edited, so a list the client
+  // emptied on purpose is not regenerated when they return to the step.
+  toolsReviewed?: boolean;
   jobType?: string;
   ndaEnabled?: boolean;
   ndaDocumentId?: string | null;
@@ -10642,7 +10645,11 @@ const ReviewToolsTechnologiesStep = ({
   const { toggleValidation } = useStepContext();
   const { details, setDetails } = useJobListingDraftContext();
   const [tools, setTools] = useState(() =>
-    details.tools?.length ? details.tools : serviceToolTags,
+    details.tools?.length
+      ? details.tools
+      : details.toolsReviewed
+        ? []
+        : serviceToolTags,
   );
   const [isGeneratingTools, setIsGeneratingTools] = useState(false);
   const [toolAutocompleteOptions, setToolAutocompleteOptions] = useState<
@@ -10672,7 +10679,11 @@ const ReviewToolsTechnologiesStep = ({
   const updateTools = useCallback(
     (nextTools: string[]) => {
       setTools(nextTools);
-      setDetails((current) => ({ ...current, tools: nextTools }));
+      setDetails((current) => ({
+        ...current,
+        tools: nextTools,
+        toolsReviewed: true,
+      }));
     },
     [setDetails],
   );
@@ -10726,6 +10737,7 @@ const ReviewToolsTechnologiesStep = ({
     if (
       !jobListingId ||
       didRequestGeneratedToolsRef.current ||
+      details.toolsReviewed ||
       details.tools?.length
     ) {
       return;
@@ -10755,6 +10767,8 @@ const ReviewToolsTechnologiesStep = ({
   }, [
     details.deliverables,
     details.description,
+    details.toolsReviewed,
+    details.tools?.length,
     jobListingId,
     source,
     updateTools,
