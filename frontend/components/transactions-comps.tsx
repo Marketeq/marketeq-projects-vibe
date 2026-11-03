@@ -1801,22 +1801,17 @@ const StatCard = ({
     // BTB-384: no h-full — height:100% stopped the parent row's items-stretch
     // from evening out the three cards once one of them wraps below 4xl.
     <div className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
-      {/* BTB-383/384: below 4xl (1600px) the three cards are too narrow for
-          label + aside + amount on one row — the label overlapped the amount
-          and the Next Payout date was cut off. There the amount sits under
-          the label, in every card at once so the three stay aligned; at 4xl
-          and up it's the Figma single row. */}
-      <div className="flex flex-col items-start gap-1 min-w-0 4xl:flex-row 4xl:items-center 4xl:justify-between 4xl:gap-4">
-        <div className="min-w-0 w-full 4xl:w-auto 4xl:flex-1">
-          {/* Figma "Frame 1948757701": label + aside share one fixed row,
-              never wrapping to a second line — flex-wrap here let a long
-              date (e.g. "Sunday, Sep 27th") drop onto its own row, making
-              this card's top section taller than its two siblings even
-              though all three share the same h-full/items-stretch height. */}
-          <div className="flex items-baseline gap-x-2 min-w-0">
+      {/* BTB-383/384: Figma keeps the amount on the right of the label at
+          every width. When the card is too narrow for label + aside + amount
+          on one line, the aside (e.g. the Next Payout date) wraps under the
+          label instead of being truncated, and a long label wraps rather than
+          running under the amount — nothing is cut off and nothing overlaps. */}
+      <div className="flex items-start justify-between gap-4 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 min-w-0">
             <p
               className={cn(
-                "text-sm whitespace-nowrap shrink-0",
+                "text-sm",
                 visual === "emphasis"
                   ? "font-semibold text-[#22376B]"
                   : "font-medium text-[#667085]"
@@ -1825,7 +1820,9 @@ const StatCard = ({
               {label}
             </p>
             {aside ? (
-              <span className="text-sm text-[#667085] truncate">{aside}</span>
+              <span className="text-sm text-[#667085] whitespace-nowrap">
+                {aside}
+              </span>
             ) : null}
           </div>
           {sublabel && !aside ? (
@@ -1910,7 +1907,7 @@ export const formatMethodOptionLabel = (m: any): string => {
   if (m.methodType === "CRYPTO") {
     const address = m.cryptoAddress
       ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-      : (m.displayLabel ?? "")
+      : formatPayoutMethodMask(m.displayLabel ?? "")
     return [m.nickname || m.cryptoProvider || "Crypto Wallet", address]
       .filter(Boolean)
       .join(" ")
@@ -1918,10 +1915,13 @@ export const formatMethodOptionLabel = (m: any): string => {
   // Bank methods (and anything else without a dedicated branch above): a
   // nickname must not swallow the masked account number — combine them,
   // same as splitMethodLabel() below does for this exact case.
+  // BTB-385: "...6789", never the "••••6789" stored in displayLabel.
   if (m.nickname) {
-    return `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`.trim()
+    return formatPayoutMethodMask(
+      `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`
+    )
   }
-  return m.displayLabel || m.methodType
+  return m.displayLabel ? formatPayoutMethodMask(m.displayLabel) : m.methodType
 }
 
 function splitMethodLabel(m: {
@@ -1939,7 +1939,7 @@ function splitMethodLabel(m: {
   if (m.methodType === "CRYPTO") {
     const address = m.cryptoAddress
       ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-      : (m.displayLabel ?? "")
+      : formatPayoutMethodMask(m.displayLabel ?? "")
     return {
       name: m.nickname || m.cryptoProvider || "Crypto Wallet",
       sub: address,
@@ -3200,7 +3200,7 @@ export const OverviewTab = ({
     if (m.methodType === "CRYPTO") {
       const address = m.cryptoAddress
         ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-        : (m.displayLabel ?? "")
+        : formatPayoutMethodMask(m.displayLabel ?? "")
       return {
         name: m.nickname || m.cryptoProvider || "Crypto Wallet",
         sub: address,
@@ -9568,8 +9568,15 @@ function toScheduleActivityItem(a: {
   })
   const sortAt = new Date(a.createdAt).getTime()
   const m = a.metadata ?? {}
+  // BTB-385: the stored method labels carry "••••6789"; Figma shows "...6789".
+  const primaryLabel = m.primaryMethodLabel
+    ? formatPayoutMethodMask(m.primaryMethodLabel)
+    : undefined
+  const secondaryLabel = m.secondaryMethodLabel
+    ? formatPayoutMethodMask(m.secondaryMethodLabel)
+    : undefined
   const splitDescription = (primaryPercent: number, secondaryPercent: number) =>
-    `${m.primaryMethodLabel ?? "Primary method"} ${primaryPercent}% • ${m.secondaryMethodLabel ?? "Secondary method"} ${secondaryPercent}%`
+    `${primaryLabel ?? "Primary method"} ${primaryPercent}% • ${secondaryLabel ?? "Secondary method"} ${secondaryPercent}%`
 
   let description = "Your deposit schedule was updated."
   switch (a.action) {
@@ -9583,8 +9590,8 @@ function toScheduleActivityItem(a: {
       )
       break
     case "split.disabled":
-      description = m.primaryMethodLabel
-        ? `${m.primaryMethodLabel} 100%`
+      description = primaryLabel
+        ? `${primaryLabel} 100%`
         : "Split payout turned off."
       break
     case "schedule.updated":
@@ -11834,8 +11841,11 @@ export const PayoutsTab = ({
     <div className="space-y-5">
       {/* Stats Cards — Figma: navy labels, 2×2 rows, bottom-aligned meta,
           equal flex-grow so all three cards stay the same width (Figma
-          "Frame 1948757691": gap 20px, each card flex-grow:1). */}
-      <div className="flex gap-5 items-stretch">
+          "Frame 1948757691": gap 20px, each card flex-grow:1).
+          BTB-383/384: below xl (1280px) a third of the row is too narrow for
+          the label, date and amount side by side, so the cards stack there —
+          each keeps the Figma layout, amount on the right of the label. */}
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch">
         <StatCard
           visual="emphasis"
           label="Next Payout"
