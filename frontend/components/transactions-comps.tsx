@@ -9947,6 +9947,14 @@ function DateRangeFilterPopoverContent({
     [preset, handlePresetChange]
   )
 
+  // BTB-307/BTB-329: earnings and payouts only exist up to today, and the API
+  // rejects a future startDate ("startDate cannot be in the future") with an
+  // error Retry can't clear. The DS DualCalendar can't disable later days
+  // (no maxValue prop, and DS files are read-only), so a range that reaches
+  // past today is refused on Apply with an error toast instead of being sent.
+  const { toast } = useToast()
+  const todayKey = formatDate(new Date(), "yyyy-MM-dd")
+
   if (preset !== "custom range") {
     return (
       <div className="bg-white rounded-lg border border-gray-200 shadow-xl">
@@ -9965,7 +9973,17 @@ function DateRangeFilterPopoverContent({
       onCancel={onCancel}
       onApply={(applied) => {
         if (!applied) return
-        onCommit("custom", formatDate(applied.start, "yyyy-MM-dd"), formatDate(applied.end, "yyyy-MM-dd"))
+        const start = formatDate(applied.start, "yyyy-MM-dd")
+        const end = formatDate(applied.end, "yyyy-MM-dd")
+        if (start > todayKey || end > todayKey) {
+          toast({
+            title: "Invalid date range",
+            description: "Dates can't be later than today.",
+            variant: "destructive",
+          })
+          return
+        }
+        onCommit("custom", start, end)
       }}
       left={() => sidebar}
     />
