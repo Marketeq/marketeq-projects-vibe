@@ -11934,7 +11934,11 @@ const NoScopeRoleInfoStep = ({
                   hasWordLimitError &&
                     "border-error-300 focus:border-error-300 focus:ring-error-100",
                 )}
-                placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                placeholder={
+                  isTeamMode
+                    ? "Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                    : "Add key tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                }
                 value={roleDescription}
                 isInvalid={hasWordLimitError}
                 onChange={(event) => setRoleDescription(event.target.value)}
