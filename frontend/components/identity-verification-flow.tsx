@@ -913,6 +913,9 @@ export function IdentityVerificationFlow({
   // `onPermanentlyRelocated` the flow first waits for the caller's refreshed location, and
   // ignores a second click meanwhile (one classification write per choice).
   const relocatingRef = useRef(false)
+  // The wait for the caller's refreshed location, for the card's spinner only (the ref above is the
+  // guard). Never set when there is no callback: that path moves on at once.
+  const [relocating, setRelocating] = useState(false)
   const handlePermanentlyRelocated = async () => {
     if (relocatingRef.current) return
     persistTravelClassification("permanently_relocated")
@@ -921,10 +924,12 @@ export function IdentityVerificationFlow({
       return
     }
     relocatingRef.current = true
+    setRelocating(true)
     try {
       await onPermanentlyRelocated()
     } finally {
       relocatingRef.current = false
+      if (getIsMounted()) setRelocating(false)
     }
     if (!getIsMounted()) return
     send("RELOCATED")
@@ -936,12 +941,18 @@ export function IdentityVerificationFlow({
   // submits the selected duration and never a made-up one (its button is disabled until
   // one is chosen); Skip submits an explicit "Not sure" and ignores any earlier selection.
   const [activatingTravelMode, setActivatingTravelMode] = useState(false)
+  // Which of the two buttons started the save, so only that one shows the spinner (the other is
+  // just disabled by activatingTravelMode).
+  const [activatingTravelAction, setActivatingTravelAction] = useState<
+    "skip" | "confirm" | null
+  >(null)
   const activatingTravelModeRef = useRef(false)
   const activateTravelMode = async (skipped: boolean) => {
     if (activatingTravelModeRef.current) return
     const duration = skipped ? SKIPPED_TRAVEL_DURATION_LABEL : travelDuration
     if (duration === null) return
     activatingTravelModeRef.current = true
+    setActivatingTravelAction(skipped ? "skip" : "confirm")
     setActivatingTravelMode(true)
     setTravelModeSaveFailed(false)
     const saved = await travelModeDeps().then((deps) =>
@@ -950,6 +961,7 @@ export function IdentityVerificationFlow({
     activatingTravelModeRef.current = false
     if (!getIsMounted()) return
     setActivatingTravelMode(false)
+    setActivatingTravelAction(null)
     if (!saved) {
       setTravelModeSaveFailed(true)
       return
@@ -1083,22 +1095,25 @@ export function IdentityVerificationFlow({
               Is this your home country?
             </h1>
 
-            <div className="mt-6 flex items-center justify-center gap-x-3">
+            <div className="mx-auto mt-6 flex w-full max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3">
               <Button
                 size="md"
                 variant="outlined"
                 visual="gray"
+                disabled={startingFreeKyc}
                 onClick={() => send("NO")}
               >
                 No, I&rsquo;m currently traveling
               </Button>
               <Button
-                className="bg-primary-50 hover:bg-primary-500 hover:text-white"
+                className="min-w-[250px] bg-primary-50 hover:bg-primary-500 hover:text-white"
                 size="md"
                 variant="ghost"
                 disabled={
                   startingFreeKyc || detectedLocation.locationMismatch === true
                 }
+                loading={startingFreeKyc}
+                aria-busy={startingFreeKyc}
                 onClick={() => void handleHomeCountryYes()}
               >
                 Yes, this is my home country
@@ -1794,6 +1809,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
+              disabled={relocating}
               onClick={() => send("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -1834,7 +1850,8 @@ export function IdentityVerificationFlow({
                 // leaves the account exactly as it was.
                 send("NEXT")
               }}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
                 <Luggage02 className="size-5 shrink-0 text-primary-500" />{" "}
@@ -1847,10 +1864,21 @@ export function IdentityVerificationFlow({
             </button>
             <button
               onClick={() => void handlePermanentlyRelocated()}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              aria-busy={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
-                <Home03 className="size-5 shrink-0 text-primary-500" />{" "}
+                {relocating ? (
+                  <Spinner
+                    size={20}
+                    strokeWidth={2}
+                    className="shrink-0 stroke-primary-500"
+                    trackClassName="stroke-gray-200"
+                  />
+                ) : (
+                  <Home03 className="size-5 shrink-0 text-primary-500" />
+                )}{" "}
                 <span className="text-sm font-medium text-dark-blue-400">
                   Permanently relocated
                 </span>
@@ -1869,6 +1897,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
+              disabled={activatingTravelMode}
               onClick={() => send("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -1987,12 +2016,18 @@ export function IdentityVerificationFlow({
               variant="outlined"
               visual="gray"
               disabled={activatingTravelMode}
+              loading={activatingTravelMode && activatingTravelAction === "skip"}
+              aria-busy={activatingTravelMode && activatingTravelAction === "skip"}
               onClick={() => void activateTravelMode(true)}
             >
               Skip
             </Button>
             <Button
               disabled={activatingTravelMode || travelDuration === null}
+              loading={activatingTravelMode && activatingTravelAction === "confirm"}
+              aria-busy={
+                activatingTravelMode && activatingTravelAction === "confirm"
+              }
               onClick={() => void activateTravelMode(false)}
             >
               Confirm
