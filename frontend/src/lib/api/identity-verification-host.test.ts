@@ -136,7 +136,9 @@ describe("one provider, mounted once in the root layout inside AuthProvider", ()
       [HOST, "app/identity-verification-preview/preview-client.tsx"].sort()
     )
     assert.equal(host.split("<IdentityVerificationFlow").length - 1, 1)
-    assert.equal(host.split('reason="unstarted"').length - 1, 1)
+    // One standard gate, and the post-decline retry presentation (the same component, with Cancel).
+    assert.equal(host.split('reason="unstarted"').length - 1, 2)
+    assert.equal(host.split("<AccountVerificationGate").length - 1, 2)
     assert.ok(!dashboard.includes("<IdentityVerificationFlow"))
     assert.ok(!dashboard.includes('reason="unstarted"'))
   })
@@ -400,7 +402,7 @@ describe("the host closes and forgets everything when the page, the account or t
     for (const call of [
       "setVerificationGateOpen(false)",
       'setConnectionCheckState("idle")',
-      "setVpnProxyResult(null)",
+      "checkSessionRef.current.invalidate()", // PMCM-637: a check in flight is dropped (the detection copy is kept so a closing modal does not change)
       "setVpnProxyModalOpen(false)",
       "setIdentityFlowOpen(false)",
       "setDetectedLocation(null)",

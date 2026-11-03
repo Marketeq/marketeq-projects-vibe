@@ -7,7 +7,7 @@
 //   4. Register the typed IPC handlers.
 //   5. Create the main BrowserWindow.
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, safeStorage } from 'electron';
 import path from 'node:path';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
@@ -62,7 +62,8 @@ import { registerUpdaterIpc } from './services/updater/register-ipc';
 import type { ReleaseChannel } from './services/updater/channels';
 import { createErrorHandler } from './services/error-handler';
 import { createPowerMonitorService } from './services/power-monitor';
-import { registerContractsIpc } from './services/contracts/register-ipc';
+import { createContractStatusFetcher, registerContractsIpc } from './services/contracts/register-ipc';
+import { createContractStatusWatch } from './services/contracts/contract-status-watch';
 import { registerStatsIpc } from './services/stats/register-ipc';
 import {
   createWindowManager,
@@ -578,8 +579,15 @@ async function bootstrap(): Promise<void> {
       // the doc 16 sync queue) ever needs to know a token expired.
       onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
     });
+    // PMCM-832: queued screenshots are encrypted at rest with the OS key
+    // store (DPAPI / Keychain) and wiped once the upload is acknowledged.
+    const outboxCipher = {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (plain: string) => safeStorage.encryptString(plain).toString('base64'),
+      decrypt: (sealed: string) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+    };
     const outbox = createOutbox({
-      store: createSqliteOutboxStore(db),
+      store: createSqliteOutboxStore(db, outboxCipher, logger),
       logger,
     });
     // Rows a previous run left mid-request go back in the queue before the
@@ -635,6 +643,8 @@ async function bootstrap(): Promise<void> {
         getUserId: () => authService?.getCurrentUser()?.id ?? null,
         getSessionById: (id) => repos.session.findById(id),
         listTimeEntriesForSession: (sessionId) => repos.timeEntry.listForSession(sessionId),
+        listBreaksForSession: (sessionId) => repos.break.listForSession(sessionId),
+        listIdlesForSession: (sessionId) => repos.idle.listForSession(sessionId),
         logger,
       }).detach;
     }
@@ -814,6 +824,10 @@ async function bootstrap(): Promise<void> {
             notificationService.breakExpiring(evt.payload.remainingSec);
           } else if (evt.channel === TIMER_CHANNELS.breakExpired) {
             notificationService.breakExpired();
+          } else if (evt.channel === TIMER_CHANNELS.capWarning) {
+            notificationService.capWarning(evt.payload.remainingSec);
+          } else if (evt.channel === TIMER_CHANNELS.capReached) {
+            notificationService.capReached();
           } else if (evt.channel === TIMER_CHANNELS.idleResolutionNeeded) {
             notificationService.idleDetected(evt.payload.seconds);
           }
@@ -821,6 +835,30 @@ async function bootstrap(): Promise<void> {
           logger.warn({ err }, 'timer bus → tray/notifications failed');
         }
       });
+
+      // PMCM-831: stop tracking when the tracked contract is paused,
+      // disputed or ended on the backend (polled until realtime ships).
+      const timer = timerService;
+      const contractStatusWatch = createContractStatusWatch({
+        getTrackedContractId: () => {
+          const snap = timer.getSnapshot();
+          return snap.activeSessionId && snap.pickedContract ? snap.pickedContract.contractId : null;
+        },
+        fetchStatus: createContractStatusFetcher({
+          logger,
+          getAccessToken: () => authService?.getAccessToken() ?? null,
+          getUserId: () => authService?.getCurrentUser()?.id ?? null,
+          apiBaseUrl: process.env.DTT_API_BASE_URL ?? 'http://localhost:4000',
+          onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
+        }),
+        onNotTrackable: async (_contractId, status) => {
+          await timer.stopTimer(status === 'disputed' ? 'disputed' : 'user_stop');
+          notificationService.contractNotTrackable(status);
+        },
+        logger,
+      });
+      contractStatusWatch.start();
+      app.on('before-quit', () => contractStatusWatch.stop());
     }
 
     logger.info('phase 6 window/tray/notifications/onboarding wired');

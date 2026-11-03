@@ -1,8 +1,9 @@
 // src/main/services/capture/cleanup-job.ts
 //
-// Retention sweep per doc 17 §Retention: purge local screenshot rows +
-// their on-disk JPEG + blur files when they are older than N days
-// (default 30, tunable via the `dtt.screenshotRetentionDays` preference).
+// Retention sweep per doc 17 §Retention: purge local screenshot rows when
+// they are older than N days (default 30, tunable via the
+// `dtt.screenshotRetentionDays` preference). Also deletes any JPEG + blur
+// file a build from before PMCM-832 wrote to disk.
 //
 // Runs once at boot and then on a fixed 24-hour timer. All errors are
 // logged but never bubble — the loop must survive transient I/O issues.
@@ -60,22 +61,32 @@ export function createCleanupJob(deps: Deps): CleanupJob {
     const cutoff = now - days * DAY_MS;
     let deletedRows = 0;
     let deletedFiles = 0;
-    try {
-      const rows = deps.screenshotRepo.listOlderThan(cutoff);
-      for (const row of rows) {
-        for (const p of [row.local_path, row.blur_path]) {
-          if (p && typeof p === 'string') {
-            try {
-              fs.unlinkSync(p);
-              deletedFiles += 1;
-            } catch (err) {
-              const code = (err as { code?: string }).code;
-              if (code !== 'ENOENT') {
-                log.debug({ err, p }, 'failed to unlink screenshot file');
-              }
+    const unlinkFiles = (paths: Array<string | null | undefined>): void => {
+      for (const p of paths) {
+        if (p && typeof p === 'string') {
+          try {
+            fs.unlinkSync(p);
+            deletedFiles += 1;
+          } catch (err) {
+            const code = (err as { code?: string }).code;
+            if (code !== 'ENOENT') {
+              log.debug({ err, p }, 'failed to unlink screenshot file');
             }
           }
         }
+      }
+    };
+    try {
+      // PMCM-832: screenshots are no longer written to disk. Image files an
+      // older build left behind are removed whatever their age; the rows
+      // stay until the retention cutoff like any other.
+      for (const row of deps.screenshotRepo.listWithLocalFiles()) {
+        unlinkFiles([row.local_path, row.blur_path]);
+        deps.screenshotRepo.clearLocalFiles(row.id);
+      }
+      const rows = deps.screenshotRepo.listOlderThan(cutoff);
+      for (const row of rows) {
+        unlinkFiles([row.local_path, row.blur_path]);
         try {
           deps.screenshotRepo.deleteById(row.id);
           deletedRows += 1;

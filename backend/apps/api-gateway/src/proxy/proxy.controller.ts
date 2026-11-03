@@ -46,6 +46,7 @@ const SERVICE_PREFIX_MAP: Record<string, string> = {
   screenshots: 'timeTracking',   // time-tracking-service screenshot endpoints
   'time-tracking': 'timeTracking', // time-tracking-service general endpoints
   sessions: 'timeTracking',      // time-tracking-service session endpoints
+  breaks: 'timeTracking',        // PMCM-830: PATCH /breaks/:id (ending a break) — was unmapped, so every synced break stayed open server side
   metadata: 'timeTracking',      // time-tracking-service metadata/tooltips
   'manual-time': 'timeTracking', // time-tracking-service manual-time entries — was
                                   // missing entirely, so GET/POST /manual-time always 404'd

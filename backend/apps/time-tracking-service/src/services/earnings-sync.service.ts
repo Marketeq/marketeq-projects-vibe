@@ -3,6 +3,11 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import axios from 'axios';
 import { EventsService } from './events.service';
+import { ContractPartiesClient } from '../contracts/contract-parties.client';
+
+// earnings-service bills each synced screenshot as this many minutes
+// (internal-sync.service.ts durationMinutes). Caps are converted with it.
+const BILLED_MINUTES_PER_SCREENSHOT = 10;
 
 @Injectable()
 export class EarningsSyncService {
@@ -11,7 +16,18 @@ export class EarningsSyncService {
   constructor(
     @InjectDataSource() private readonly ds: DataSource,
     private readonly events: EventsService,
+    private readonly parties: ContractPartiesClient,
   ) {}
+
+  // PMCM-829: the contract's weekly cap, in billable screenshots. Null when
+  // the contract has no cap. A failed lookup throws, so nothing is synced
+  // uncapped — the next screenshot event for the day re-syncs it.
+  private async weeklyCapScreenshots(contractId: string): Promise<number | null> {
+    const parties = await this.parties.getParties([contractId]);
+    const hours = parties.get(contractId)?.weeklyCapHours;
+    if (hours == null || !(hours > 0)) return null;
+    return Math.floor((hours * 60) / BILLED_MINUTES_PER_SCREENSHOT);
+  }
 
   async syncScreenshot(params: {
     userId: string;
@@ -52,7 +68,44 @@ export class EarningsSyncService {
 
       if (!aggRows.length) return;
       const agg = aggRows[0];
-      const screenshotCount = agg.screenshot_count ?? 0;
+      let screenshotCount = agg.screenshot_count ?? 0;
+
+      // PMCM-829: time over the contract's weekly cap is not billed. The
+      // week's billable screenshots are taken in capture order (ISO week,
+      // Monday start) and only the first `cap` of them count; this
+      // task+day bills its share of those.
+      const cap = await this.weeklyCapScreenshots(contractId);
+      if (cap !== null && screenshotCount > 0) {
+        const capRows = await this.ds.query(
+          `WITH rules AS (
+             SELECT coalesce((SELECT blurred_billable FROM time_tracking.admin_settings WHERE scope_id = $2), true) AS blurred_billable
+           ), week AS (
+             SELECT task_id, captured_at,
+                    row_number() OVER (ORDER BY captured_at, id) AS rn
+             FROM time_tracking.screenshots, rules
+             WHERE user_id     = $1
+               AND contract_id = $2
+               AND is_deleted  = false
+               AND is_flagged  = false
+               AND (is_blurred = false OR rules.blurred_billable)
+               AND captured_at IS NOT NULL
+               AND date_trunc('week', captured_at) = date_trunc('week', $4::date)
+           )
+           SELECT count(*)::int AS billable
+           FROM week
+           WHERE rn <= $5
+             AND ($3::text IS NULL OR task_id = $3)
+             AND date_trunc('day', captured_at) = $4::date`,
+          [userId, contractId, taskId, day, cap],
+        );
+        const billable = capRows[0]?.billable ?? 0;
+        if (billable < screenshotCount) {
+          this.logger.log(
+            `EarningsSync: weekly cap reached for ${contractId} — billing ${billable} of ${screenshotCount} screenshots on ${day}`,
+          );
+          screenshotCount = billable;
+        }
+      }
 
       let taskName: string | null = null;
       if (taskId) {

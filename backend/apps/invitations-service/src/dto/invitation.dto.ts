@@ -96,6 +96,66 @@ export class ListInvitationsDto {
 export class AcceptInvitationDto {
   @IsString()
   token: string;
+
+  /**
+   * Password for a link protected by Link Settings → Enable Link Password
+   * (R3-02). Only consulted on the invite-link path; a per-invitation accept
+   * token is already a secret and is not password-gated on top.
+   */
+  @IsString()
+  @IsOptional()
+  linkPassword?: string;
+}
+
+/**
+ * Change a pending invitation's grant (R3-10).
+ *
+ * Only `permissions` is really in play: the invite dialog has no role picker
+ * any more, and `role` stays here for the same back-compat reason it stays on
+ * CreateInvitationsDto.
+ */
+export class UpdateInvitationDto {
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  permissions?: string[];
+
+  @Transform(toRoleOrDefault)
+  @IsEnum(InvitationRole)
+  @IsOptional()
+  role?: InvitationRole;
+}
+
+/**
+ * Pre-flight duplicate check for the invite field (R3-11).
+ *
+ * The same two checks `createInvites` runs per address, exposed so a chip can
+ * be flagged the moment it is created instead of at send time. Send still
+ * re-checks: this answer is a snapshot, and somebody else may invite the same
+ * person in between.
+ */
+export class CheckInvitationsDto {
+  @IsUUID()
+  teamId: string;
+
+  @IsUUID()
+  @IsOptional()
+  companyId?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  emails: string[];
+}
+
+/** Optional hold before a resend actually goes out (R3-09). */
+export class ResendInvitationDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(60000)
+  holdMs?: number;
 }
 
 export class ShareProjectLinkDto {

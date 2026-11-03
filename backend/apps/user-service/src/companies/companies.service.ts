@@ -83,18 +83,61 @@ export class CompaniesService {
     });
   }
 
-  async findAllForUser(userId: string): Promise<Company[]> {
+  /**
+   * The companies a caller belongs to, each with its roster size.
+   *
+   * `memberCount` is here because the company selector in the invite flow
+   * draws "N Members" under every row and had no number to draw: the frontend
+   * defaulted it to 1, so a seven-person company read "1 Member". One grouped
+   * count rather than a count per row.
+   */
+  async findAllForUser(
+    userId: string,
+  ): Promise<(Company & { memberCount: number })[]> {
     const memberships = await this.companyUserRepo.find({ where: { userId } });
     if (memberships.length === 0) return [];
     const ids = memberships.map((m) => m.companyId);
-    return this.companyRepo.find({ where: { id: In(ids) } });
+
+    const [companies, counts] = await Promise.all([
+      this.companyRepo.find({ where: { id: In(ids) } }),
+      this.companyUserRepo
+        .createQueryBuilder('cu')
+        .select('cu.company_id', 'companyId')
+        .addSelect('COUNT(*)', 'count')
+        .where('cu.company_id IN (:...ids)', { ids })
+        .groupBy('cu.company_id')
+        .getRawMany<{ companyId: string; count: string }>(),
+    ]);
+
+    const byCompany = new Map(counts.map((r) => [r.companyId, Number(r.count)]));
+    return companies.map((company) => ({
+      ...company,
+      // A company always has at least the caller's own membership, which is
+      // how they came to be in this list at all.
+      memberCount: byCompany.get(company.id) ?? 1,
+    }));
   }
 
-  async search(q?: string): Promise<Company[]> {
+  /**
+   * Name search over the companies the caller **owns**, never the global
+   * directory.
+   *
+   * R3-06 settles this: an invited person cannot find or join a company
+   * someone else registered, so the search returns only their own. A new
+   * invitee owns none and is left with "Register a company with this name",
+   * which the design already puts first in the list.
+   *
+   * It was an unscoped `ILike` over every row before, which both contradicted
+   * that decision and let any signed-in user enumerate the whole company
+   * directory a letter at a time. `ownerUserId` rather than membership is
+   * deliberate: the decision says owns, and the one caller (the invitee's
+   * "Add Your Company" step) is about registering their own company.
+   */
+  async search(q: string | undefined, ownerUserId: string): Promise<Company[]> {
     const query = q?.trim();
-    if (!query) return [];
+    if (!query || !ownerUserId) return [];
     return this.companyRepo.find({
-      where: { name: ILike(`%${query}%`) },
+      where: { name: ILike(`%${query}%`), ownerUserId },
       take: 20,
       order: { name: 'ASC' },
     });
@@ -257,5 +300,20 @@ export class CompaniesService {
       where: { companyId, userId },
     });
     return !!membership;
+  }
+
+  /**
+   * The membership row itself, for callers that need the grant and not just
+   * its existence.
+   *
+   * invitations-service uses this to apply R3-12: which row actions a viewer
+   * is offered depends on the permission roles they hold in the company that
+   * owns the invitation, and `checkMembership` alone cannot answer that.
+   */
+  async getMembership(
+    companyId: string,
+    userId: string,
+  ): Promise<CompanyUser | null> {
+    return this.companyUserRepo.findOne({ where: { companyId, userId } });
   }
 }

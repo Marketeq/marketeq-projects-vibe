@@ -91,7 +91,22 @@ export class CompaniesInternalController {
     @Param('userId') userId: string,
   ) {
     this.assertInternalToken(token);
-    const isMember = await this.companies.checkMembership(id, userId);
-    return { success: true, isMember };
+    // `isMember` is what this route has always returned and stays first for
+    // the callers that only check that. `member` is additive: invitations-
+    // service needs the permission roles behind the membership to apply the
+    // R3-12 row-action table, and had no way to read them by user id.
+    const member = await this.companies.getMembership(id, userId);
+    return {
+      success: true,
+      isMember: !!member,
+      member: member
+        ? {
+            companyId: member.companyId,
+            userId: member.userId,
+            role: member.role,
+            permissions: member.permissions ?? [],
+          }
+        : null,
+    };
   }
 }

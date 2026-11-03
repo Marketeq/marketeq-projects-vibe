@@ -21,6 +21,8 @@ export interface ContractParties {
   clientId: string;
   talentId: string;
   status: string;
+  // PMCM-829: weekly time cap from the contract. Null = no cap.
+  weeklyCapHours?: number | null;
 }
 
 interface PartiesRequest {

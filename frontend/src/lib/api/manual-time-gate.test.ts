@@ -88,6 +88,8 @@ describe("/time-tracking shows the default Verify your account dialog for it", (
   it("the gate dialog is the shared one, unmodified", () => {
     const gate = read("components", "account-verification-gate.tsx")
     assert.ok(gate.includes('"Your profile is not public"'))
-    assert.ok(gate.includes("onEscapeKeyDown={(e) => e.preventDefault()}"))
+    // Non-dismissible by default; only a caller that passes the optional onCancel (the
+    // post-decline retry presentation) makes Escape cancel.
+    assert.ok(gate.includes("onEscapeKeyDown={cancel ? undefined : (e) => e.preventDefault()}"))
   })
 })

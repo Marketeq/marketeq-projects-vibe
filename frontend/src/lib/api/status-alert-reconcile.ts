@@ -17,6 +17,17 @@ import { isTravelModeInForce } from "./travel-popup"
 /** The wait before each re-read: 0.4s, then 0.9s later, then 1.8s later (3.1s in all). */
 export const ALERT_RECONCILE_DELAYS_MS = [400, 900, 1800] as const
 
+/**
+ * The wait before each re-read after a Travel Mode activation (about 20s in all, 6 reads at most).
+ * The default 3.1s window is shorter than a slow queue or a cold notification-service takes to
+ * store the alert; the shared host then gave up and the "Travel Mode is on" card only appeared
+ * on the next focus, visibility or route event. Still bounded, still stops at the first read that
+ * has the new alert, and still ended by a newer run, an account change or the page leaving.
+ */
+export const TRAVEL_ACTIVATION_RECONCILE_DELAYS_MS = [
+  400, 900, 1800, 3000, 5000, 9000,
+] as const
+
 interface TravelState {
   travelModeEndsAt: string | null
   travelModeExpired: boolean | null
