@@ -11887,7 +11887,7 @@ const NoScopeRoleInfoStep = ({
             <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
-                : "Describe role you need"}
+                : "Describe the role you need"}
             </h1>
 
             <div
