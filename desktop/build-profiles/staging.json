@@ -1,0 +1,5 @@
+{
+  "profile": "staging",
+  "apiBaseUrl": "https://marketeq-backend.onrender.com",
+  "webBaseUrl": "https://staging-marketeq-projects.vercel.app"
+}

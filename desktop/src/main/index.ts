@@ -7,8 +7,9 @@
 //   4. Register the typed IPC handlers.
 //   5. Create the main BrowserWindow.
 
-import { app, BrowserWindow, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, safeStorage } from 'electron';
 import path from 'node:path';
+import { readBuildConfig, resolveApiBaseUrl } from './config/endpoints';
 import { ensureSingleInstance } from './lifecycle/single-instance';
 import { logger } from './logger';
 import { initDatabase, closeDatabase } from './db/connection';
@@ -79,6 +80,8 @@ const QUIT_TIMEOUT_MS = 3_000;
 // Extra time the last-resort force exit allows for the ordered teardown.
 const QUIT_FORCE_EXIT_MARGIN_MS = 500;
 let windowManager: WindowManager | null = null;
+// Backend gateway URL, resolved once at boot (see config/endpoints.ts).
+let apiBaseUrl = '';
 
 // The Marketeq logo ships next to the app (extraResources) when packaged and
 // lives in desktop/resources/ in dev. Windows prefers the multi-size .ico.
@@ -158,6 +161,23 @@ async function bootstrap(): Promise<void> {
     },
   });
   detachErrorHandler = errorHandler.install();
+
+  try {
+    apiBaseUrl = resolveApiBaseUrl({
+      env: process.env,
+      isPackaged: app.isPackaged,
+      buildConfig: readBuildConfig(app.getAppPath()),
+    });
+    logger.info({ apiBaseUrl }, 'api base url resolved');
+  } catch (err) {
+    logger.error({ err }, 'fatal: no API base URL for this build');
+    dialog.showErrorBox(
+      'Marketeq Time Tracker',
+      'This build is not configured with a server address. Please install the latest version.',
+    );
+    app.exit(1);
+    return;
+  }
 
   try {
     const db = initDatabase();
@@ -264,7 +284,7 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    const httpPort = createFetchAuthHttpPort({ logger });
+    const httpPort = createFetchAuthHttpPort({ logger, baseUrl: apiBaseUrl });
     authService = createAuthService({
       logger,
       repos,
@@ -308,7 +328,7 @@ async function bootstrap(): Promise<void> {
     // after the stored session is restored, rather than after the sync
     // stack, so a cold start acknowledges as early as possible.
     const auth = authService;
-    const launchApiBase = `${(process.env.DTT_API_BASE_URL ?? 'http://localhost:4000').replace(/\/+$/, '')}/time-tracking/desktop-launch`;
+    const launchApiBase = `${apiBaseUrl}/time-tracking/desktop-launch`;
     const launchAckUrl = `${launchApiBase}/ack`;
     acknowledgeLaunch = (launchId) => {
       void (async () => {
@@ -376,8 +396,6 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    const apiBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     detachContractsIpc = registerContractsIpc({
       logger,
       getAccessToken: () => authService?.getAccessToken() ?? null,
@@ -568,8 +586,6 @@ async function bootstrap(): Promise<void> {
   try {
     const db = initDatabase();
     const repos = createRepos(db);
-    const apiBaseUrl =
-      process.env.DTT_API_BASE_URL ?? 'http://localhost:4000';
     const api = createApiClient({
       baseUrl: apiBaseUrl,
       logger,
@@ -848,7 +864,7 @@ async function bootstrap(): Promise<void> {
           logger,
           getAccessToken: () => authService?.getAccessToken() ?? null,
           getUserId: () => authService?.getCurrentUser()?.id ?? null,
-          apiBaseUrl: process.env.DTT_API_BASE_URL ?? 'http://localhost:4000',
+          apiBaseUrl,
           onUnauthorized: () => authService?.handleUnauthorized() ?? Promise.resolve(false),
         }),
         onNotTrackable: async (_contractId, status) => {
