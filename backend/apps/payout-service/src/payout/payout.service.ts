@@ -973,6 +973,7 @@ export class PayoutService {
   async listPayouts(
     contractorId: string, page: number, pageSize: number, status?: string, search?: string,
     dateRange?: string, depositMethodId?: string, fromIso?: string, toIso?: string,
+    sort?: string,
   ) {
     const clampedSize = Math.min(Math.max(pageSize, 1), 50);
     const clampedPage = Math.max(page, 1);
@@ -1002,8 +1003,16 @@ export class PayoutService {
         { term: `%${search.trim().toLowerCase()}%` });
     }
 
+    // BTB-382: the Amount column header sorts the list. Anything other than
+    // the two amount values keeps the default newest-first order.
+    if (sort === 'amount_desc' || sort === 'amount_asc') {
+      qb.orderBy('p.amountUsd', sort === 'amount_desc' ? 'DESC' : 'ASC')
+        .addOrderBy('p.createdAt', 'DESC');
+    } else {
+      qb.orderBy('p.createdAt', 'DESC');
+    }
+
     const [rows, totalCount] = await qb
-      .orderBy('p.createdAt', 'DESC')
       .skip((clampedPage - 1) * clampedSize)
       .take(clampedSize)
       .getManyAndCount();

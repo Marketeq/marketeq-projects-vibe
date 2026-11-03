@@ -24,9 +24,10 @@ import {
   reviewedResultKey,
   shouldMarkReviewedResult,
 } from "./reviewed-approval-result"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 function memoryStorage(): ReviewedResultStorage & { data: Map<string, string> } {
   const data = new Map<string, string>()
@@ -437,10 +438,11 @@ describe("the marker", () => {
   })
 })
 
-describe("dashboard wiring (source-pinned)", () => {
+describe("host wiring (source-pinned): the later approval is resolved by the identity verification host, not the dashboard", () => {
+  const refresherSource = readFileSync(join(process.cwd(), "src", "lib", "api", "status-refresh.ts"), "utf8")
   const block = page.slice(
-    page.indexOf("const reviewedCheckStartedRef"),
-    page.indexOf("// The Identity Verification check (which may open AccountVerificationGate)")
+    page.indexOf("// Status that changed while the talent was elsewhere"),
+    page.indexOf("// Everything above belongs to one account on one page")
   )
 
   it("the submitted modal marks the wait for either kind, and keeps clearing the home-country flag", () => {
@@ -463,20 +465,24 @@ describe("dashboard wiring (source-pinned)", () => {
     assert.ok(success.includes("setVerifiedModalOpen(true)"))
   })
 
-  it("the check rechecks on load (one reconcile) and on tab focus (GET only), with no timer", () => {
-    assert.ok(block.includes("resolveReviewedResult({"))
-    assert.ok(block.includes("reconcile: withReconcile ? reconcileReviewedSession : undefined"))
-    assert.ok(block.includes("void check(true)"))
+  it("the check rechecks on load (one reconcile), when the tab becomes visible or the window is focused (a spaced reconcile, then GET) and on a route change (GET only), with no timer", () => {
+    assert.ok(refresherSource.includes("resolveReviewedResult({"))
+    assert.ok(refresherSource.includes("withReconcile && deps.reconcile"))
+    assert.ok(refresherSource.includes("resolveMarker(true)") && /returning && \(trigger === "deferred" \|\| !insideSpacing\)/.test(refresherSource))
+    assert.ok(block.includes("reconcile: reconcileReviewedSession"))
+    assert.ok(block.includes('void statusRefresher.run("load")'))
+    assert.ok(block.includes('void statusRefresher.run("visible")'))
+    assert.ok(block.includes('void statusRefresher.run("route")'))
     assert.ok(block.includes('document.addEventListener("visibilitychange", onVisible)'))
-    assert.ok(block.includes("void check(false)"))
-    assert.ok(block.includes("removeEventListener"))
-    assert.ok(!/setInterval|setTimeout/.test(block), "no polling")
+    assert.ok(block.includes('document.removeEventListener("visibilitychange", onVisible)'))
+    assert.ok(!/setInterval|setTimeout/.test(block + refresherSource), "no polling")
   })
 
-  it("it no longer opens the temporary success alert: the persistent Verified card (reloaded after the approval) is the notification, and no new markup is built", () => {
+  it("an approved review shows the existing Verified result once and loads its alert; no new markup is built", () => {
     assert.ok(block.includes('startAlertReconcile(["verified", "home_country_updated"])'))
+    assert.ok(block.includes("setVerifiedModalOpen(true)"))
     assert.ok(!block.includes("setSuccessAlertOpen"))
-    assert.ok(!block.includes("<"), "no JSX in the effect")
+    assert.ok(!/<[A-Za-z][A-Za-z0-9.]*[\s/>]/.test(block.replace(/useRef<[^>]*>|useMemo<[^>]*>/g, "")), "no JSX in the refresher")
     assert.equal(
       page.split("All set! Your identity and location are verified.").length - 1,
       1,
@@ -485,10 +491,11 @@ describe("dashboard wiring (source-pinned)", () => {
     assert.ok(page.includes("You now have full access to all features."))
   })
 
-  it("it runs for talents only and never sets the alert from the marker alone", () => {
-    assert.ok(block.includes("resolveDashboardRole(user) !== ROLE.TALENT"))
-    assert.ok(block.includes('if (outcome !== "approved") return'))
-    assert.ok(!block.includes("hasReviewedResult"), "the page never decides from the marker")
+  it("it runs for talents on an active host only and never decides from the marker alone; the dashboard has no resolver of its own", () => {
+    assert.ok(block.includes("live.hostActive && live.user && resolveDashboardRole(live.user) === ROLE.TALENT"))
+    assert.ok(refresherSource.includes('if (outcome === "approved") deps.onApproved()'))
+    const dashboard = readFileSync(join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"), "utf8")
+    assert.ok(!/resolveReviewedResult|reconcileReviewedSession|reviewedCheckStartedRef/.test(dashboard))
   })
 
   it("a home-country result keeps its own flow: the generic alert swap and notification are untouched", () => {

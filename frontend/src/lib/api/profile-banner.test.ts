@@ -6,9 +6,10 @@ import { join } from "node:path"
 import { describe, it } from "node:test"
 import { shouldShowProfileBanner, verifyActionFor } from "./identity-next-step"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 const bannerStart = page.indexOf("{profileBannerShown && !profileBannerDismissed && (")
 const bannerEnd = page.indexOf("</Alert>", bannerStart) + "</Alert>".length

@@ -292,7 +292,7 @@ describe("flow wiring (source guard)", () => {
   it("only the dev preview page opts in to the Free KYC simulation; the real callers never do", () => {
     const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
     assert.ok(read("app", "identity-verification-preview", "preview-client.tsx").includes("simulateFreeKycForPreview"))
-    assert.equal(read("app", "(group)", "talent-dashboard", "page.tsx").includes("simulateFreeKycForPreview"), false)
+    assert.equal(readDashboardWithHost().includes("simulateFreeKycForPreview"), false)
     assert.equal(read("components", "account-verification-gate.tsx").includes("simulateFreeKycForPreview"), false)
   })
 
@@ -308,6 +308,7 @@ import {
   checkIdentityVerificationStatus,
   gateReasonForStatus,
 } from "./identity-verification-status"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const MOCK_KEY = "__mock_identity_verification_status"
 
@@ -339,10 +340,7 @@ describe("checkIdentityVerificationStatus mock handling", () => {
   })
 
   it("the real dashboard page never opts into the mock", () => {
-    const page = readFileSync(
-      join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-      "utf8"
-    )
+    const page = readDashboardWithHost()
     assert.ok(!page.includes("allowDevMock"))
   })
 
@@ -422,10 +420,7 @@ describe("409 IDENTITY_VERIFICATION_NOT_STARTABLE", () => {
   })
 
   it("a refreshed verified status reaches the dashboard, which closes the flow", () => {
-    const page = readFileSync(
-      join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-      "utf8"
-    )
+    const page = readDashboardWithHost()
     assert.match(page, /IDENTITY_STATUS_REFRESHED_EVENT/)
     assert.match(
       page,

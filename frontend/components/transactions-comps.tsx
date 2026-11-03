@@ -1798,9 +1798,16 @@ const StatCard = ({
   return (
     // Figma: exact 2×2 corners — top row items-center (label ↔ amount),
     // bottom row items-center (extra ↔ status/trend/meta), equal card heights.
-    <div className="flex-1 h-full min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4 min-w-0">
-        <div className="min-w-0 flex-1">
+    // BTB-384: no h-full — height:100% stopped the parent row's items-stretch
+    // from evening out the three cards once one of them wraps below 4xl.
+    <div className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
+      {/* BTB-383/384: below 4xl (1600px) the three cards are too narrow for
+          label + aside + amount on one row — the label overlapped the amount
+          and the Next Payout date was cut off. There the amount sits under
+          the label, in every card at once so the three stay aligned; at 4xl
+          and up it's the Figma single row. */}
+      <div className="flex flex-col items-start gap-1 min-w-0 4xl:flex-row 4xl:items-center 4xl:justify-between 4xl:gap-4">
+        <div className="min-w-0 w-full 4xl:w-auto 4xl:flex-1">
           {/* Figma "Frame 1948757701": label + aside share one fixed row,
               never wrapping to a second line — flex-wrap here let a long
               date (e.g. "Sunday, Sep 27th") drop onto its own row, making
@@ -1831,8 +1838,8 @@ const StatCard = ({
       </div>
 
       {hasBottom ? (
-        <div className="mt-auto flex items-center justify-between gap-4 min-w-0">
-          <div className="min-w-0 flex-1 text-sm text-[#667085] truncate">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-4 gap-y-1 min-w-0">
+          <div className="min-w-0 flex-1 basis-auto text-sm text-[#667085] truncate">
             {extra ?? null}
           </div>
           <div className="shrink-0 flex items-center justify-end gap-1 text-sm">
@@ -2419,6 +2426,65 @@ export const OverviewTab = ({
       setMethodsLoading(false)
     }
   }, [])
+
+  // PMCM-806 AC-04: the failed/cancelled withdrawal email links here.
+  // "Review payout method" → ?method=<id> opens that method's Edit dialog;
+  // "Try again" → ?withdrawAmount=<usd> opens Withdraw Funds pre-filled. Each
+  // waits for the data its normal entry point needs, then drops its param so a
+  // refresh doesn't reopen it. A method that no longer exists, or a withdrawal
+  // the Withdraw Funds button would refuse, just leaves the contractor here.
+  const searchParams = useSearchParams()
+  const linkedMethodId = searchParams.get("method")
+  const linkedWithdrawAmount = searchParams.get("withdrawAmount")
+  const [prefillAmount, setPrefillAmount] = React.useState<string | undefined>(
+    undefined
+  )
+  React.useEffect(() => {
+    if (!linkedMethodId || methodsLoading) return
+    const m = methodsError
+      ? undefined
+      : methods.find((x: any) => x.id === linkedMethodId)
+    if (m) {
+      setEditingMethod({ ...m })
+      setEditBankForm(createEditBankFormFromMethod(m))
+      setEditBankError("")
+      setEditBankSaveState(null)
+    }
+    router.replace("/earnings?tab=overview", { scroll: false })
+  }, [linkedMethodId, methodsLoading, methodsError, methods, router])
+  React.useEffect(() => {
+    if (!linkedWithdrawAmount) return
+    // reserveUsd comes from the schedule fetch; until it lands it reads 0 and
+    // the gate below would overstate what is withdrawable.
+    if (methodsLoading || scheduleLoading || (!balance && !balanceError)) return
+    const amountOk = /^\d+(\.\d{1,2})?$/.test(linkedWithdrawAmount)
+    // Same gate as the Withdraw Funds button (US-11 minimum, BTB-345 verified method).
+    let allowed = false
+    if (amountOk && balance && !methodsError) {
+      const grossUsd = parseFloat(balance.availableBalance)
+      const grossDisplay = parseFloat(balance.availableBalanceDisplay)
+      const rate = grossUsd > 0 ? grossDisplay / grossUsd : 1
+      const withdrawable = Math.max(0, grossDisplay - reserveUsd * rate)
+      allowed =
+        withdrawable >= 50 &&
+        methods.some((m: any) => m.verificationStatus === "verified")
+    }
+    if (allowed) {
+      setPrefillAmount(linkedWithdrawAmount)
+      setWithdrawOpen(true)
+    }
+    router.replace("/earnings?tab=overview", { scroll: false })
+  }, [
+    linkedWithdrawAmount,
+    methodsLoading,
+    methodsError,
+    methods,
+    balance,
+    balanceError,
+    scheduleLoading,
+    reserveUsd,
+    router,
+  ])
 
   const handleAddMethod = async () => {
     try {
@@ -3154,7 +3220,12 @@ export const OverviewTab = ({
       : m.displayLabel || "Bank Account"
     const maskMatch = label.match(/^(.*?)\s*(••••\d+|\.{3,4}\d+)$/)
     if (maskMatch) {
-      return { name: maskMatch[1].trim(), sub: maskMatch[2] }
+      // BTB-385: bank last-4 reads "...6789" on every screen (Figma), not
+      // the "••••6789" stored in displayLabel.
+      return {
+        name: maskMatch[1].trim(),
+        sub: formatPayoutMethodMask(maskMatch[2]),
+      }
     }
     return { name: label, sub: "" }
   }
@@ -4034,7 +4105,9 @@ export const OverviewTab = ({
                       )}{" "}
                       to{" "}
                       <BankIcon className="size-3.5 inline text-[#98A2B3]" />{" "}
-                      {previousPayout.methodLabel ?? "Method unavailable"}
+                      {previousPayout.methodLabel
+                        ? formatPayoutMethodMask(previousPayout.methodLabel)
+                        : "Method unavailable"}
                     </p>
                   </div>
                   <FigmaAmount
@@ -7672,7 +7745,7 @@ export const OverviewTab = ({
                     <p>
                       Earnings currently eligible for manual withdrawal.{" "}
                       {reserveUsd > 0
-                        ? `This amount excludes your $${reserveUsd.toFixed(2)} reserve balance and any pending transactions.`
+                        ? `This amount excludes your $${formatAmountWithCents(reserveUsd)} reserve balance and any pending transactions.`
                         : "This amount excludes any pending transactions."}{" "}
                       You can update these preferences under{" "}
                       <button
@@ -7923,7 +7996,11 @@ export const OverviewTab = ({
       </div>
       <WithdrawFundsDialog
         open={withdrawOpen}
-        onOpenChange={setWithdrawOpen}
+        onOpenChange={(next) => {
+          setWithdrawOpen(next)
+          if (!next) setPrefillAmount(undefined)
+        }}
+        initialAmount={prefillAmount}
         onVerified={() => {
           loadBalance()
           loadSummary()
@@ -9416,8 +9493,10 @@ function toActivityItem(p: {
     addSuffix: true,
   })
   const sortAt = new Date(at).getTime()
-  const method = p.methodLabel ?? "your payout method"
-  const amount = parseFloat(p.amountUsd).toFixed(2)
+  const method = p.methodLabel
+    ? formatPayoutMethodMask(p.methodLabel)
+    : "your payout method"
+  const amount = formatAmountWithCents(p.amountUsd)
   // BTB-343: Figma names the two withdrawal events "Deposit Initiated" (the
   // withdrawal was started and is on its way) and "Deposit Sent" (it left).
   // pending_verification and awaiting_edd used to fall through to "Payout
@@ -11355,14 +11434,16 @@ const PayoutDetailDialog = ({
             {[
               [
                 "Amount",
-                `$${parseFloat(detail.amountUsd).toFixed(2)} ${detail.currency}`,
+                `$${formatAmountWithCents(detail.amountUsd)} ${detail.currency}`,
               ],
-              ["Fee", `$${parseFloat(detail.feeUsd).toFixed(2)}`],
+              ["Fee", `$${formatAmountWithCents(detail.feeUsd)}`],
               [
                 "Net Transfer",
-                `$${parseFloat(detail.netAmountUsd).toFixed(2)}`,
+                `$${formatAmountWithCents(detail.netAmountUsd)}`,
               ],
-              ["Method", detail.methodLabel ?? detail.methodType ?? "—"],
+              ["Method", detail.methodLabel
+                ? formatPayoutMethodMask(detail.methodLabel)
+                : (detail.methodType ?? "—")],
               ["Status", getPayoutStatusBadge(detail.status).label],
               [
                 "Source",
@@ -11471,6 +11552,11 @@ export const PayoutsTab = ({
   const [dateTo, setDateTo] = useState("")
   const [datePickerOpen, setDatePickerOpen] = useState(false)
   const [depositMethodId, setDepositMethodId] = useState("")
+  // BTB-382: null = the default newest-first order; the Amount header
+  // switches to amount order and then flips it.
+  const [amountSortOrder, setAmountSortOrder] = useState<"asc" | "desc" | null>(
+    null
+  )
   const [accountOptions, setAccountOptions] = useState<DepositMethodOption[]>(
     []
   )
@@ -11649,6 +11735,7 @@ export const PayoutsTab = ({
           qs.set("dateRange", dateRange)
         }
         if (depositMethodId) qs.set("depositMethodId", depositMethodId)
+        if (amountSortOrder) qs.set("sort", `amount_${amountSortOrder}`)
         const res = await payoutFetch(`/payouts?${qs.toString()}`)
         const data = await res.json()
         if (!res.ok) throw new Error(data.message ?? "Failed to load")
@@ -11664,7 +11751,7 @@ export const PayoutsTab = ({
         if (!silent) setLoading(false)
       }
     },
-    [currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId]
+    [currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId, amountSortOrder]
   )
 
   useEffect(() => {
@@ -12016,7 +12103,20 @@ export const PayoutsTab = ({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Amount</TableHead>
+              <TableHead
+                className="cursor-pointer select-none"
+                onClick={() => {
+                  setAmountSortOrder((o) => (o === "desc" ? "asc" : "desc"))
+                  setCurrentPage(1)
+                }}
+              >
+                Amount{" "}
+                {amountSortOrder === "asc" ? (
+                  <ArrowUp className="size-3 inline ml-0.5 text-gray-400" />
+                ) : (
+                  <ArrowDown className="size-3 inline ml-0.5 text-gray-400" />
+                )}
+              </TableHead>
               <TableHead>External Account</TableHead>
               <TableHead>Initiated on</TableHead>
               <TableHead>Est. Arrival</TableHead>
@@ -12088,7 +12188,7 @@ export const PayoutsTab = ({
                     onClick={() => setDetailId(row.id)}
                   >
                     <TableCell className="text-sm font-medium text-dark-blue-400">
-                      ${parseFloat(row.amountUsd).toFixed(2)} {row.currency}
+                      ${formatAmountWithCents(row.amountUsd)} {row.currency}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -12107,7 +12207,9 @@ export const PayoutsTab = ({
                           <BankIcon className="size-4 text-gray-400" />
                         )}
                         <span className="text-sm text-gray-500">
-                          {row.methodLabel ?? row.methodType ?? "—"}
+                          {row.methodLabel
+                            ? formatPayoutMethodMask(row.methodLabel)
+                            : (row.methodType ?? "—")}
                         </span>
                       </div>
                     </TableCell>

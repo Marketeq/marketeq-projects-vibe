@@ -64,6 +64,13 @@ export function buildTeamInvitationEmail(
   const rawInviterName = params.inviterName?.trim();
   const inviterName = rawInviterName ? capitalizeWords(rawInviterName) : undefined;
   const companyName = capitalizeWords(params.companyName);
+  // "join Marketeq on Marketeq" reads like a typo, and for an invitation to
+  // the Marketeq company itself that is exactly what came out. Drop the
+  // platform suffix when the company is already named after it; keep it
+  // everywhere else, where it is what tells the recipient which product the
+  // invitation is for.
+  const platformSuffix =
+    companyName.trim().toLowerCase() === 'marketeq' ? '' : ' on Marketeq';
   const displayName = inviterName || inviterEmail || 'A teammate';
   const acceptUrl = safeUrl(params.acceptUrl) ?? '#';
   const avatarUrl = safeUrl(params.inviterAvatarUrl);
@@ -103,7 +110,7 @@ export function buildTeamInvitationEmail(
 
                   <tr><td align="center" style="padding:20px 0 0 0;font-family:${FONT};font-size:12px;line-height:15px;font-weight:700;color:${INK};">
                     <strong>${inviterLabel}</strong> has invited you to join
-                    their company &ldquo;<strong>${escapeHtml(companyName)}</strong>&rdquo; on Marketeq.
+                    their company &ldquo;<strong>${escapeHtml(companyName)}</strong>&rdquo;${platformSuffix}.
                   </td></tr>
 
                   ${noteBlock}
@@ -130,7 +137,7 @@ export function buildTeamInvitationEmail(
   const text = [
     'You received an invitation!',
     '',
-    `${inviterLabelText} has invited you to join their company "${companyName}" on Marketeq.`,
+    `${inviterLabelText} has invited you to join their company "${companyName}"${platformSuffix}.`,
     note ? `Note from ${displayName}: ${note}` : '',
     '',
     `Accept your invite: ${params.acceptUrl}`,
@@ -141,7 +148,7 @@ export function buildTeamInvitationEmail(
     .join('\n');
 
   return {
-    subject: `${displayName} invited you to join ${companyName} on Marketeq`,
+    subject: `${displayName} invited you to join ${companyName}${platformSuffix}`,
     html,
     text,
   };

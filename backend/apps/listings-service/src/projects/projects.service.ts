@@ -26,6 +26,8 @@ import { ReportProjectDto } from './dto/report-project.dto';
 import { isSameAccount } from '../identity-gate/viewer.decorator';
 import { RosterGateService } from '../identity-gate/roster-gate.service';
 import { MemberAddGate, MemberAddResult } from '../identity-gate/member-add-gate';
+import { IdentityVerificationGateClient } from '../identity-gate/identity-verification-gate.client';
+import { VerificationRequiredException } from '../identity-gate/identity-gate.exceptions';
 
 @Injectable()
 export class ProjectsService {
@@ -49,6 +51,7 @@ export class ProjectsService {
     private readonly relatedTerms: RelatedTermsService,
     private readonly rosterGate: RosterGateService,
     private readonly memberGate: MemberAddGate,
+    private readonly identityGate: IdentityVerificationGateClient,
   ) {}
 
   async getSuggestedQuestions(projectId: string): Promise<string[]> {
@@ -508,6 +511,14 @@ export class ProjectsService {
   async create(dto: Partial<Project>, userId: string) {
     if (!userId) {
       throw new ForbiddenException('You do not have permission to create a project');
+    }
+
+    // G2 (PMCM-652): creating a talent listing, drafts included, needs an open gate.
+    const decision = await this.identityGate.checkGate(userId);
+    if (!decision.gateOpen) {
+      throw new VerificationRequiredException(
+        decision.missingRequirements === 'none' ? 'both' : decision.missingRequirements,
+      );
     }
 
     const writable = this.filterWritableProjectFields(dto);

@@ -134,7 +134,52 @@ export interface OutboxStore {
 
 import type { DbHandle } from '../../db/connection';
 
-function parseRow(raw: Record<string, unknown>): OutboxRow {
+/**
+ * Encrypts payloads at rest (PMCM-832). Production wires Electron's
+ * safeStorage (DPAPI on Windows, Keychain on macOS); `available()` is checked
+ * on every write because safeStorage can be unavailable before app ready
+ * (and on Linux without a keyring).
+ */
+export interface OutboxPayloadCipher {
+  available(): boolean;
+  encrypt(plain: string): string;
+  decrypt(sealed: string): string;
+}
+
+// Kinds whose payload carries screen images (the screenshot itself plus the
+// active apps' icons). Their payload is only ever written encrypted, and is
+// wiped once the backend acknowledges the upload (PMCM-832, DTT-119/218).
+export const SEALED_KINDS: ReadonlySet<OutboxKind> = new Set<OutboxKind>([
+  'screenshot.confirm',
+]);
+
+/**
+ * The payload without any image data. Used when no cipher is available, so
+ * a screenshot is never written to disk in the clear: the capture metadata
+ * still syncs, the image does not.
+ */
+export function stripImages(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const { imageBase64: _image, apps, ...rest } = payload as Record<string, unknown>;
+  return {
+    ...rest,
+    ...(Array.isArray(apps)
+      ? {
+          apps: apps.map((a) => {
+            if (!a || typeof a !== 'object') return a;
+            const { iconBase64: _icon, ...app } = a as Record<string, unknown>;
+            return app;
+          }),
+        }
+      : {}),
+  };
+}
+
+function parseRowWith(
+  raw: Record<string, unknown>,
+  cipher?: OutboxPayloadCipher | null,
+  log?: Logger,
+): OutboxRow {
   let payload: unknown = null;
   try {
     payload = raw.body_json ? JSON.parse(raw.body_json as string) : null;
@@ -142,12 +187,21 @@ function parseRow(raw: Record<string, unknown>): OutboxRow {
     payload = null;
   }
   const kindFromBody = extractKindFromBody(payload);
+  let data = stripInternalKind(payload);
+  if (payload && typeof payload === 'object' && 'sealed' in (payload as Record<string, unknown>)) {
+    data = null;
+    try {
+      if (cipher) data = JSON.parse(cipher.decrypt((payload as { sealed: string }).sealed));
+    } catch (err) {
+      log?.warn({ err, id: raw.id }, 'outbox: could not decrypt sealed payload');
+    }
+  }
   return {
     id: raw.id as string,
     kind: (kindFromBody ?? 'session.start') as OutboxKind,
     method: raw.method as HttpMethod,
     path: raw.path as string,
-    payload: stripInternalKind(payload),
+    payload: data,
     status: raw.status as OutboxStatus,
     attempts: Number(raw.attempts ?? 0),
     lastError: (raw.last_error as string | null) ?? null,
@@ -160,7 +214,18 @@ function parseRow(raw: Record<string, unknown>): OutboxRow {
 
 // We store the discriminator inside body_json under `__outboxKind` so we can
 // round-trip the OutboxKind across the existing schema without a column.
-function wrapBody(kind: OutboxKind, payload: unknown): string {
+// Sealed kinds store `sealed` (the encrypted payload JSON) in place of `data`.
+function wrapBody(
+  kind: OutboxKind,
+  payload: unknown,
+  cipher?: OutboxPayloadCipher | null,
+): string {
+  if (SEALED_KINDS.has(kind) && payload != null) {
+    if (cipher?.available()) {
+      return JSON.stringify({ __outboxKind: kind, sealed: cipher.encrypt(JSON.stringify(payload)) });
+    }
+    return JSON.stringify({ __outboxKind: kind, data: stripImages(payload) });
+  }
   return JSON.stringify({ __outboxKind: kind, data: payload });
 }
 function extractKindFromBody(payload: unknown): OutboxKind | null {
@@ -184,7 +249,16 @@ function stripInternalKind(payload: unknown): unknown {
   return payload;
 }
 
-export function createSqliteOutboxStore(db: DbHandle): OutboxStore {
+export function createSqliteOutboxStore(
+  db: DbHandle,
+  cipher?: OutboxPayloadCipher | null,
+  logger?: Logger,
+): OutboxStore {
+  const log = logger?.child({ svc: 'outbox-store' });
+  if (!cipher) {
+    log?.warn('outbox: no payload cipher, screenshot images will not be queued');
+  }
+  const parseRow = (raw: Record<string, unknown>) => parseRowWith(raw, cipher, log);
   return {
     insert(row: OutboxRow): void {
       db.prepare(
@@ -197,7 +271,7 @@ export function createSqliteOutboxStore(db: DbHandle): OutboxStore {
         row.createdAt,
         row.method,
         row.path,
-        wrapBody(row.kind, row.payload),
+        wrapBody(row.kind, row.payload, cipher),
         row.status,
         row.attempts,
         row.lastError,
@@ -239,6 +313,14 @@ export function createSqliteOutboxStore(db: DbHandle): OutboxStore {
         row.completedAt,
         row.id,
       );
+      // Once the backend has the screenshot, the queued image is wiped:
+      // nothing of it outlives the acknowledged upload.
+      if (row.status === 'completed' && SEALED_KINDS.has(row.kind)) {
+        db.prepare(`UPDATE sync_queue SET body_json = ? WHERE id = ?`).run(
+          wrapBody(row.kind, null),
+          row.id,
+        );
+      }
     },
     count(status: OutboxStatus): number {
       const r = db
