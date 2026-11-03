@@ -59,3 +59,44 @@ export class InvitationNotFoundException extends InvitationApiException {
     super(HttpStatus.NOT_FOUND, 'NOT_FOUND', message);
   }
 }
+
+/**
+ * The invite link is password-protected (Link Settings → Enable Link Password)
+ * and the request carried no password. Distinct from a wrong password so the
+ * client can tell "ask for it" from "ask again".
+ */
+export class LinkPasswordRequiredException extends InvitationApiException {
+  constructor(message = 'This invite link requires a password') {
+    super(HttpStatus.UNAUTHORIZED, 'LINK_PASSWORD_REQUIRED', message);
+  }
+}
+
+export class LinkPasswordInvalidException extends InvitationApiException {
+  constructor(message = 'That password is not correct') {
+    super(HttpStatus.UNAUTHORIZED, 'LINK_PASSWORD_INVALID', message);
+  }
+}
+
+/**
+ * Link Settings → Who Has Access refuses this person: the link is restricted
+ * to invited guests and they hold no pending invitation, or it is owner-only.
+ *
+ * Deliberately says nothing about which rule rejected them or who the owner
+ * is — an invite link is a URL anyone can hold, so its errors must not
+ * describe the account behind it.
+ */
+export class LinkAccessDeniedException extends InvitationApiException {
+  constructor(message = 'This invite link is not available to you') {
+    super(HttpStatus.FORBIDDEN, 'LINK_ACCESS_DENIED', message);
+  }
+}
+
+/**
+ * The acting user holds none of the permission roles R3-12 requires for the
+ * action they attempted on this invitation.
+ */
+export class InvitationForbiddenException extends InvitationApiException {
+  constructor(message = 'You do not have permission to manage this invitation') {
+    super(HttpStatus.FORBIDDEN, 'INVITATION_FORBIDDEN', message);
+  }
+}

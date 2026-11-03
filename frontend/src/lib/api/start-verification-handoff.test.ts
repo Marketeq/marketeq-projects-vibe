@@ -8,11 +8,9 @@ import {
   startVerificationRequestedInBrowser,
   START_VERIFICATION_HREF,
 } from "./start-verification-handoff"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
-const dashboard = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const dashboard = readDashboardWithHost()
 
 describe("Start Verification hand-off marker", () => {
   it("the href targets the dashboard with the exact one-shot marker", () => {

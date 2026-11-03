@@ -6264,26 +6264,32 @@ function ProjectDetailsInner() {
                                             "mt-6 pt-6 border-t border-gray-200"
                                         )}
                                       >
-                                        <p className="text-sm text-dark-blue-400">
-                                          <span className="font-extralight">
+                                        <div className="flex min-w-0 items-center text-sm text-dark-blue-400">
+                                          <span className="shrink-0 whitespace-nowrap font-extralight">
                                             {phase.phaseLabel}
-                                          </span>{" "}
-                                          <span className="font-semibold">
+                                          </span>{"\u00a0"}
+                                          <span
+                                            className="min-w-0 truncate font-semibold"
+                                            title={phase.phaseName}
+                                          >
                                             {phase.phaseName}
                                           </span>
-                                        </p>
+                                        </div>
                                         <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
                                           {(phase.items ?? [])
                                             .slice(0, 6)
                                             .map((item, i) => (
                                               <div
                                                 key={`${item}-${i}`}
-                                                className="flex items-center gap-x-3"
+                                                className="flex min-w-0 items-center gap-x-3"
                                               >
                                                 <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
                                                   <Check className="size-2" />
                                                 </span>
-                                                <p className="text-sm font-extralight leading-tight text-dark-blue-400">
+                                                <p
+                                                  className="min-w-0 truncate text-sm font-extralight leading-tight text-dark-blue-400"
+                                                  title={formatDeliverable(item)}
+                                                >
                                                   {formatDeliverable(item)}
                                                 </p>
                                               </div>

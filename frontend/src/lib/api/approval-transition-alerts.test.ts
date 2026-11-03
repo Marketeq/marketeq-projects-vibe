@@ -16,11 +16,9 @@ import {
 } from "./status-alert-reconcile"
 import { buildAlertStack, selectVisibleAlerts } from "./status-alert-state"
 import type { StatusAlert } from "./status-alerts"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
-const page = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const page = readDashboardWithHost()
 const count = (needle: string) => page.split(needle).length - 1
 
 const NOW = Date.parse("2026-10-26T03:00:00.000Z")
@@ -113,15 +111,12 @@ describe("the page reloads the list once an approval is seen, and opens no secon
       /setVerifiedModalOpen\(true\)[\s\S]*startAlertReconcile\(\["verified", "home_country_updated"\]\)/
     )
     const reviewed = page.slice(
-      page.indexOf('if (outcome !== "approved") return'),
-      page.indexOf(
-        "const onVisible = () => {",
-        page.indexOf('if (outcome !== "approved") return')
-      )
+      page.indexOf("onApproved: () => {"),
+      page.indexOf("[startAlertReconcile, setProfileBannerShown]")
     )
     assert.match(
       reviewed,
-      /startAlertReconcile\(\["verified", "home_country_updated"\]\)/
+      /setVerifiedModalOpen\(true\)\s+startAlertReconcile\(\["verified", "home_country_updated"\]\)/
     )
   })
 

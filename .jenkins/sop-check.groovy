@@ -45,15 +45,25 @@ pipeline {
         stage('Checkout') {
             steps {
                 withCredentials([string(credentialsId: 'github-token', variable: 'GH_TOKEN')]) {
-                    sh '''
+                    sh '''#!/bin/bash
+                        set -euo pipefail
                         rm -rf repo && mkdir repo && cd repo
-                        git clone --depth=50 "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" .
-                        git fetch origin "${BASE_REF}" --depth=1 || true
-                        git rev-parse FETCH_HEAD > ../base_sha.txt 2>/dev/null || true
-                        if [ -n "${HEAD_SHA}" ]; then
-                            git fetch origin "${HEAD_SHA}" --depth=1 || true
-                            git checkout "${HEAD_SHA}" || true
+                        # Full commit history, blobs on demand. --depth left the merge base
+                        # unreachable, so "git diff BASE...HEAD" below failed with "no merge
+                        # base", the error was discarded, and every section inspected an
+                        # empty file list while the job reported PASSED.
+                        # Do not reintroduce --depth.
+                        git clone --filter=blob:none "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" .
+                        git rev-parse "origin/${BASE_REF}" > ../base_sha.txt
+                        if [ -n "${PR_NUMBER:-}" ]; then
+                            # Fetch the PR ref, not the bare SHA: a bare-SHA fetch is refused
+                            # unless the server allows reachable-SHA1-in-want.
+                            git fetch origin "pull/${PR_NUMBER}/head:pr-${PR_NUMBER}"
+                            git checkout --detach "pr-${PR_NUMBER}"
+                        elif [ -n "${HEAD_SHA:-}" ]; then
+                            git checkout --detach "${HEAD_SHA}"
                         fi
+                        echo "Checked out $(git rev-parse --short HEAD); base ${BASE_REF} $(cut -c1-7 ../base_sha.txt)"
                     '''
                 }
             }
@@ -66,9 +76,19 @@ pipeline {
                         cd repo
                         BASE_SHA=$(cat ../base_sha.txt 2>/dev/null | tr -d '[:space:]')
 [ -z "$BASE_SHA" ] && BASE_SHA=$(git rev-parse "origin/${BASE_REF}" 2>/dev/null || git rev-parse HEAD~1)
-                        CHANGED_FILES=$(git diff --name-only "$BASE_SHA"...HEAD 2>/dev/null || echo "")
-                        ADDED_FILES=$(git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD 2>/dev/null || echo "")
-                        DIFF_LINE_COUNT=$(git diff --shortstat "$BASE_SHA"...HEAD 2>/dev/null | awk '{print $4+$6}' || echo "0")
+                        # Fail loudly rather than report a pass on an empty diff. Every section
+                        # below reads these three variables; if the merge base is missing they
+                        # all come out empty and nothing can be detected.
+                        if ! git merge-base "$BASE_SHA" HEAD >/dev/null 2>&1; then
+                            echo "FAIL: no merge base between ${BASE_REF} ($BASE_SHA) and HEAD."
+                            echo "The checkout is incomplete, so every check below would inspect an"
+                            echo "empty file list and this job would report PASSED without looking."
+                            exit 1
+                        fi
+                        CHANGED_FILES=$(git diff --name-only "$BASE_SHA"...HEAD)
+                        ADDED_FILES=$(git diff --name-only --diff-filter=A "$BASE_SHA"...HEAD)
+                        DIFF_LINE_COUNT=$(git diff --shortstat "$BASE_SHA"...HEAD | awk '{print $4+$6}')
+                        echo "Changed files in range: $(printf '%s\n' "$CHANGED_FILES" | grep -c . || true)"
                         DIFF_LINE_COUNT=${DIFF_LINE_COUNT:-0}
 
                         VIOLATIONS=()
@@ -260,6 +280,15 @@ pipeline {
                         done <<< "$CHANGED_FILES"
                         if [ "$ENTITY_CHANGED" = "1" ] && [ "$MIGRATION_ADDED" = "0" ]; then
                             add "TypeORM entity changed without a migration"
+                        fi
+
+                        # Section 4b: synchronize must always be an unconditional false.
+                        # This guard existed only in .github/workflows/sop-check.yml, which
+                        # does not run (no Actions billing), so it has never been enforced
+                        # on Jenkins. It is the guard against the 2026-08-04 incident.
+                        SYNC_TRUE=$(git diff "$BASE_SHA"...HEAD -- 'backend/apps/**/*.ts' | grep -E '^\\+[^+].*synchronize:' | grep -vE 'synchronize:\\s*false' || true)
+                        if [ -n "$SYNC_TRUE" ]; then
+                            add "TypeORM synchronize is not false -- all environments share one database, so any value other than an unconditional false will auto-drop or alter production tables. This caused a P0 outage on 2026-08-04 (5,286 DROP COLUMN statements). Use a migration instead. See SOP 3.4."
                         fi
 
                         # Section 5: Junk files

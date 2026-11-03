@@ -26,8 +26,9 @@ import {
   resolveReviewedResult,
   shouldMarkReviewedResult,
 } from "./reviewed-approval-result"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
-const page = readFileSync(join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"), "utf8")
+const page = readDashboardWithHost()
 const flowOf = (name: string) => {
   const start = page.indexOf(name)
   return page.slice(start, start + 6000)

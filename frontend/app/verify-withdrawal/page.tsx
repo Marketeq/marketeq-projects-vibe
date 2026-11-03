@@ -15,6 +15,8 @@ import { MarketeqLogo } from "@/components/icons/marketeq-logo"
 import { Spinner } from "@/components/ui/spinner/spinner"
 import { Button } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { useAuth } from "@/contexts/auth"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 import { Bank, Check, X } from "@blend-metrics/icons"
 
@@ -51,6 +53,8 @@ function ErrorMessages(kind: "expired" | "used" | "invalid") {
 
 function VerifyWithdrawal() {
   const router = useRouter()
+  const { user } = useAuth()
+  const { startVerification } = useIdentityVerification()
   const searchParams = useSearchParams()
   const [state, setState] = useState<VerifyState>({ kind: "loading" })
   const [resending, setResending] = useState(false)
@@ -171,7 +175,11 @@ function VerifyWithdrawal() {
         open={state.kind === "verification"}
         reason={state.kind === "verification" && state.block === "verification_unavailable" ? "status_unavailable" : "unstarted"}
         connectionCheckState="idle"
-        onVerify={() => router.push("/talent-dashboard")}
+        // Signed in: verification opens over this page and the link stays as it is (it is not
+        // retried by itself; reload or reopen the link after verifying). Signed out (this page
+        // must work logged out): there is nothing to verify in place, so it continues to the
+        // dashboard, which asks for sign-in first, as before.
+        onVerify={() => (user ? void startVerification() : router.push("/talent-dashboard"))}
         onRetryConnectionCheck={() => setRetryTick((t) => t + 1)}
         onDismissConnectionError={() => setState({ kind: "invalid" })}
       />

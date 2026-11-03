@@ -19,6 +19,7 @@
 //     in place, inside this same dialog, with its own Retry — never a
 //     separate popup, never treated as a clean pass.
 
+import { useEffect, useRef } from "react"
 import { AlertTriangle, RefreshCw } from "@blend-metrics/icons"
 import { Button, Dialog, DialogContent } from "@/components/ui"
 
@@ -32,6 +33,7 @@ export function AccountVerificationGate({
   onVerify,
   onRetryConnectionCheck,
   onDismissConnectionError,
+  onCancel,
 }: {
   open: boolean
   reason: AccountVerificationGateReason
@@ -39,16 +41,42 @@ export function AccountVerificationGate({
   onVerify: () => void
   onRetryConnectionCheck: () => void
   onDismissConnectionError: () => void
+  // Optional. Absent (every existing caller): no Cancel button, and Escape and clicking
+  // outside stay disabled exactly as before. Present: a Cancel button is shown before
+  // "Verify My Account", and Escape and clicking outside do the same as Cancel. It is called at
+  // most once per time the gate is opened, however many events one dismissal produces.
+  onCancel?: () => void
 }) {
   const connectionUnavailable = connectionCheckState === "unavailable"
 
+  const cancelFired = useRef(false)
+  useEffect(() => {
+    if (open) cancelFired.current = false
+  }, [open])
+  const cancel = onCancel
+    ? () => {
+        if (cancelFired.current) return
+        cancelFired.current = true
+        onCancel()
+      }
+    : undefined
+
   return (
-    <Dialog open={open}>
+    <Dialog
+      open={open}
+      onOpenChange={
+        cancel
+          ? (next) => {
+              if (!next) cancel()
+            }
+          : undefined
+      }
+    >
       <DialogContent
         className="w-[469px] pt-[50px]"
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={cancel ? undefined : (e) => e.preventDefault()}
+        onPointerDownOutside={cancel ? undefined : (e) => e.preventDefault()}
+        onInteractOutside={cancel ? undefined : (e) => e.preventDefault()}
       >
         <div className="flex items-center justify-center">
           <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
@@ -99,7 +127,18 @@ export function AccountVerificationGate({
                 : "You can try again to continue"}
             </p>
 
-            <div className="mt-6 flex justify-center">
+            <div
+              className={
+                cancel
+                  ? "mt-6 flex justify-center items-center gap-x-3"
+                  : "mt-6 flex justify-center"
+              }
+            >
+              {cancel && (
+                <Button variant="outlined" onClick={cancel}>
+                  Cancel
+                </Button>
+              )}
               <Button
                 onClick={onVerify}
                 disabled={connectionCheckState === "checking"}

@@ -10,6 +10,11 @@ import {
   CHECK_IN_DURATION_LABELS,
   durationCopyFor,
 } from "./travel-check-in"
+import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "../../../lib/travel-duration-option-styles"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const page = read("app", "(group)", "talent-dashboard", "page.tsx")
@@ -32,7 +37,10 @@ describe("a simple vertical radio list with an accessible label per option", () 
       assert.equal((group.match(/<Label\b/g) ?? []).length, 1)
       assert.equal((group.match(/<RadioGroupItem\b/g) ?? []).length, 1)
       // the first-time TravelingForm story's row (flex, gap-x-3, default Label) plus feedback only
-      assert.ok(/className="group flex w-fit origin-left items-center gap-x-3 /.test(group))
+      assert.ok(
+        group.includes("className={TRAVEL_DURATION_OPTION_ROW_CLASS}") ||
+          /className="group flex w-fit origin-left items-center gap-x-3 /.test(group)
+      )
       assert.ok(group.indexOf("<RadioGroupItem") < group.indexOf("<Label"))
       assert.ok(group.includes(`htmlFor={\`${prefix}\${index}\`}`))
       assert.ok(group.includes(`id={\`${prefix}\${index}\`}`))
@@ -46,7 +54,8 @@ describe("a simple vertical radio list with an accessible label per option", () 
     it(`${where}: the group is named, pointer on the radio, and no raw controls`, () => {
       assert.ok(group.includes("aria-label="))
       assert.ok(
-        group.includes('className="cursor-pointer disabled:cursor-not-allowed"')
+        group.includes("className={TRAVEL_DURATION_OPTION_RADIO_CLASS}") ||
+          group.includes('className="cursor-pointer disabled:cursor-not-allowed"')
       )
       assert.ok(!/<(button|input|label)\b/.test(group))
     })
@@ -62,6 +71,11 @@ describe("a simple vertical radio list with an accessible label per option", () 
     })
 
     it(`${where}: hover darkens and bolds only the text; press is a tiny scale; reduced motion respected`, () => {
+      const styled =
+        group +
+        TRAVEL_DURATION_OPTION_ROW_CLASS +
+        TRAVEL_DURATION_OPTION_RADIO_CLASS +
+        TRAVEL_DURATION_OPTION_LABEL_CLASS
       for (const c of [
         "group-hover:font-semibold",
         "group-hover:text-gray-900",
@@ -72,7 +86,7 @@ describe("a simple vertical radio list with an accessible label per option", () 
         "motion-reduce:transition-none",
         "motion-reduce:active:scale-100",
       ]) {
-        assert.ok(group.includes(c), c)
+        assert.ok(styled.includes(c), c)
       }
       // text hover is on the Label, the press scale on the row; neither changes size or spacing
       assert.ok(!/\b(m[trblxy]?-|p[trblxy]?-|gap-y|space-y|w-\[|h-\[|scale-(1[1-9]|[2-9])\d)/.test(
@@ -81,13 +95,15 @@ describe("a simple vertical radio list with an accessible label per option", () 
     })
 
     it(`${where}: a disabled option shows no hover or press feedback`, () => {
+      const styled =
+        group + TRAVEL_DURATION_OPTION_ROW_CLASS + TRAVEL_DURATION_OPTION_LABEL_CLASS
       for (const c of [
         "has-[:disabled]:active:scale-100",
-        "group-has-[:disabled]:group-hover:font-medium",
+        "group-has-[:disabled]:group-has-[[data-state=unchecked]]:group-hover:font-medium",
         "group-has-[:disabled]:group-hover:text-gray-800",
         "group-has-[:disabled]:cursor-not-allowed",
       ]) {
-        assert.ok(group.includes(c), c)
+        assert.ok(styled.includes(c), c)
       }
     })
   }
