@@ -5,7 +5,7 @@
 //
 //   1. DTT_API_BASE_URL / TTS_API_URL env var — runtime override (local dev,
 //      E2E, pointing an installed build at another environment).
-//   2. `build-config.json` written by `scripts/write-build-config.js` from a
+//   2. `build-config.json` written by `scripts/build-profile.js` from a
 //      committed profile in `build-profiles/` (e.g. staging) at build time.
 //   3. Dev only (unpackaged): the local gateway on http://localhost:4000, per
 //      DEVOPS_SOP §4 — local development runs the backend locally.
