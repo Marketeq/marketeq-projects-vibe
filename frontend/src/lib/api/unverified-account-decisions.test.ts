@@ -56,10 +56,26 @@ const handler = between(
 const gateUsage = between(page, "<AccountVerificationGate", "/>")
 
 describe("decision 1: the orange inline banner is preserved, with its in-memory dismissal", () => {
-  it("the banner markup is byte-identical to dev-main's", () => {
+  it("the banner markup is dev-main's, plus only the approved loading-state UI", () => {
+    // Button loading states (Christopher: buttons gave no feedback). The ONLY differences from
+    // dev-main's banner are: `loading` and `aria-busy` on the Verify My Account button, its onClick going
+    // through a thin wrapper that awaits the same handler once, and room reserved for the spinner
+    // (`min-w-[178px] justify-start`). Copy, visibility, the arrow, the warning Alert and the in-memory
+    // dismissal are untouched. Taking exactly those four additions back out gives dev-main's hash
+    // below, so nothing else in the banner can change without this test failing.
+    const withoutLoadingUi = banner
+      .replace("loading={bannerVerifyPending}", "")
+      .replace("aria-busy={bannerVerifyPending}", "")
+      .replace("void handleBannerVerifyMyAccount()", "void handleVerifyMyAccount()")
+      .replace("h-5 min-w-[178px] justify-start gap-x-2", "h-5 gap-x-2")
+    assert.equal(
+      sha(withoutLoadingUi),
+      "4b2da826a1e9691f6ee0425050879d1358263d4d3ada4d1bd2410635e3d0276e"
+    )
+    // And the banner as it is now.
     assert.equal(
       sha(banner),
-      "4b2da826a1e9691f6ee0425050879d1358263d4d3ada4d1bd2410635e3d0276e"
+      "23e52af9ab50142fa72eb0454ff2f962e5f6d3fe5c10fdd1012451979102b693"
     )
   })
 
@@ -155,7 +171,14 @@ describe("decision 4: the Verify My Account flow is unchanged", () => {
   })
 
   it("the banner and the gate share that one handler", () => {
-    assert.ok(banner.includes("void handleVerifyMyAccount()"))
+    // The banner reaches the handler through its loading-state wrapper, which awaits it exactly once;
+    // the gate calls it directly. One handler, as before.
+    assert.ok(banner.includes("void handleBannerVerifyMyAccount()"))
+    const wrapper = page.slice(
+      page.indexOf("const handleBannerVerifyMyAccount = useCallback("),
+      page.indexOf("}, [handleVerifyMyAccount])")
+    )
+    assert.equal((wrapper.match(/await handleVerifyMyAccount\(\)/g) ?? []).length, 1)
     assert.ok(gateUsage.includes("void handleVerifyMyAccount()"))
   })
 })
