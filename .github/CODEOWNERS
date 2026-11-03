@@ -127,6 +127,15 @@
 /docs/DEVOPS_SOP.md                                 @CTorres9800 @Marketeq/code-review
 /docs/DEVOPS_SOP.docx                               @CTorres9800 @Marketeq/code-review
 
+# ----- Cross-schema read governance (AC-3.3.1) -----
+# A cross-schema read grant is a change to the owning service's public surface,
+# so the grant migration and the register row are reviewed, not merged quietly.
+# CODEOWNERS cannot express a literal space, so '*' stands in for one here --
+# these patterns match the "Database Architecture" and "Cross-Schema Read
+# Grants" paths, which do contain spaces.
+/docs/md/Database*Architecture/Cross-Schema*Read*Grants*  @CTorres9800 @Marketeq/code-review
+/docs/md/CyberSecurity/fixtures/                    @CTorres9800 @Marketeq/code-review
+
 # ----- Backend services -----
 /backend/apps/user-service/                         @Marketeq/code-review
 /backend/apps/listings-service/                     @Marketeq/code-review
