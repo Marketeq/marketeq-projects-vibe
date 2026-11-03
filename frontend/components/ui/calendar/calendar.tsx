@@ -9,7 +9,6 @@ import { RadioGroup, RadioGroupItem } from "@radix-ui/react-radio-group"
 import { SelectTrigger } from "@radix-ui/react-select"
 import {
   addMonths,
-  endOfDay,
   endOfMonth,
   endOfWeek,
   endOfYear,
@@ -50,11 +49,7 @@ const CalendarCell = ({
   date,
   ...props
 }: React.ComponentProps<typeof AriaCalendarCell>) => {
-  // BTB-304/BTB-321: build the local calendar day. `new Date("2026-10-08")`
-  // parses as UTC midnight, which west of UTC is still the previous local
-  // day — so tomorrow's cell also got data-today and two dates looked
-  // highlighted (react-aria already sets data-today on the real today).
-  const isSameAsToday = isToday(new Date(date.year, date.month - 1, date.day))
+  const isSameAsToday = isToday(new Date(date.toString()))
   const dataAttr = isSameAsToday ? { "data-today": true } : {}
 
   return <AriaCalendarCell {...dataAttr} date={date} {...props} />
@@ -462,7 +457,6 @@ const DualCalendar = ({
   onValueChange,
   onCancel,
   onApply,
-  maxValue,
 }: {
   left?: () => React.ReactNode
   focusedValue?: Date
@@ -471,11 +465,6 @@ const DualCalendar = ({
   onValueChange?: (value: RangeValue) => void
   onCancel?: () => void
   onApply?: (value: RangeValue | undefined) => void
-  // Optional and additive (same as Calendar's minValue) — existing callers
-  // that don't pass it are unaffected. Forwarded to AriaRangeCalendar's own
-  // maxValue, which greys out and blocks every later day, and typed dates
-  // after it are not applied (BTB-307/BTB-329: no future earnings dates).
-  maxValue?: Date
 }) => {
   const [date, setDate] = React.useState<{
     start: string
@@ -541,51 +530,45 @@ const DualCalendar = ({
     [handleSelectionChange]
   )
 
-  // BTB-308: the typed fields take the "Jan 6, 2022" format only — letters,
-  // digits, commas and single spaces — and a range is only taken from them
-  // when it is complete, start <= end, and not past maxValue.
-  const sanitizeTypedDate = (value: string) =>
-    value
-      .replace(/[^A-Za-z0-9, ]/g, "")
-      .replace(/^\s+/, "")
-      .replace(/\s{2,}/g, " ")
-  const parseTypedDate = (value: string) => {
-    if (!/^[A-Za-z]{3} \d{1,2}, \d{4}$/.test(value.trim())) return null
-    const parsed = parse(value.trim(), "LLL d, yyyy", new Date())
-    return isValid(parsed) ? parsed : null
-  }
-  const typedRange = (start: string, end: string): RangeValue | null => {
-    const s = parseTypedDate(start)
-    const e = parseTypedDate(end)
-    if (!s || !e || s > e) return null
-    if (maxValue && e > endOfDay(maxValue)) return null
-    return { start: s, end: e }
-  }
-  // Apply stays off while the typed fields hold something that isn't an
-  // allowed range (half-typed, start after end, or a future date).
-  const typedFieldsInvalid =
-    (date.start !== "" || date.end !== "") && !typedRange(date.start, date.end)
-
   const onStartDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = sanitizeTypedDate(event.target.value)
+    const { target } = event
+    const { value } = target
     setDate((prev) => ({
       ...prev,
       start: value,
     }))
-    const range = typedRange(value, date.end)
-    if (range) handleSelectionChange(range)
+
+    const parsedEndDate = parse(date.end, "LLL d, yyyy", new Date())
+    if (!isValid(parsedEndDate)) return
+
+    const parsedStartDate = parse(value, "LLL d, yyyy", new Date())
+    if (isValid(parsedStartDate)) {
+      handleSelectionChange({
+        start: parsedStartDate,
+        end: parsedEndDate,
+      })
+    }
   }
 
-  // The end field used to bail out before storing the keystroke whenever the
-  // start field wasn't a valid date, so it could not be typed into at all.
   const onEndDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = sanitizeTypedDate(event.target.value)
+    const parsedStartDate = parse(date.start, "LLL d, yyyy", new Date())
+    if (!isValid(parsedStartDate)) return
+
+    const { target } = event
+    const { value } = target
+
     setDate((prev) => ({
       ...prev,
       end: value,
     }))
-    const range = typedRange(date.start, value)
-    if (range) handleSelectionChange(range)
+
+    const parsedEndDate = parse(value, "LLL d, yyyy", new Date())
+    if (isValid(parsedEndDate)) {
+      handleSelectionChange({
+        start: parsedStartDate,
+        end: parsedEndDate,
+      })
+    }
   }
 
   return (
@@ -596,9 +579,6 @@ const DualCalendar = ({
           visibleDuration={{ months: 2 }}
           value={calendarValue}
           onChange={handleAriaChange}
-          maxValue={
-            maxValue ? parseDate(format(maxValue, "yyyy-MM-dd")) : undefined
-          }
           className="flex-1"
         >
           <header className="flex justify-between items-center px-6 pt-5">
@@ -686,12 +666,7 @@ const DualCalendar = ({
             >
               Cancel
             </Button>
-            <Button
-              type="button"
-              size="md"
-              disabled={typedFieldsInvalid}
-              onClick={() => onApply?.(state)}
-            >
+            <Button type="button" size="md" onClick={() => onApply?.(state)}>
               Apply
             </Button>
           </div>
