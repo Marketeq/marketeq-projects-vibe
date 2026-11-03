@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
 import { describe, it } from "node:test"
 import { withdrawalBlockFor } from "./withdrawal-verification"
+import { gateWithoutLoadingUi } from "./gate-loading-ui"
 
 const root = process.cwd()
 const read = (...p: string[]) => readFileSync(join(root, ...p), "utf8")
@@ -211,9 +212,17 @@ describe("G9 Verify My Account starts verification in place through the shared h
     const gate = read("components", "account-verification-gate.tsx")
     // 2026-10-29: the optional `onCancel` prop was added (explicitly approved) for the
     // post-decline retry presentation. G9 passes none, so Escape and outside click stay disabled.
+    // Button loading states (approved): the gate gained only the additions gateWithoutLoadingUi takes
+    // back out (an optional `retrying` prop, a spinner + aria-busy on Retry and Verify, and reserved
+    // width). With them removed it is byte-for-byte the gate this test always pinned; the gate as it
+    // is now is pinned too.
+    assert.equal(
+      createHash("sha256").update(gateWithoutLoadingUi(gate)).digest("hex"),
+      "dc6c5d0ca29595da3c544853db3b4d4538679483d1270f753e803a5a1a16dee0"
+    )
     assert.equal(
       createHash("sha256").update(gate).digest("hex"),
-      "dc6c5d0ca29595da3c544853db3b4d4538679483d1270f753e803a5a1a16dee0"
+      "eff8b6e88fd430ba53344fa07743fe8a46883863a223d8022019e24f361bf8fb"
     )
     assert.ok(gate.includes("onEscapeKeyDown={cancel ? undefined : (e) => e.preventDefault()}"))
     assert.ok(!read("components", "withdraw-funds-dialog.tsx").includes("onCancel="))

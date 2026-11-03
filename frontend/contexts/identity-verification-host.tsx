@@ -1557,6 +1557,7 @@ export function IdentityVerificationHostProvider({
           connectionCheckState,
           retryingFromUnavailable
         )}
+        retrying={retryingFromUnavailable && connectionCheckState === "checking"}
         onVerify={() => void handleVerifyMyAccount()}
         onRetryConnectionCheck={() => void handleVerifyMyAccount()}
         onDismissConnectionError={dismissConnectionCheck}
