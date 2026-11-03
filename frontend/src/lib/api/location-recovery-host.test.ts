@@ -99,6 +99,28 @@ describe("the dialog", () => {
     assert.ok(d.includes("locationRecovery.cancel()"))
   })
 
+  it("the minimum spinner time is scoped to the new recovery action only", () => {
+    // It lives in the recovery controller and nowhere on the location path itself.
+    const read = (f: string) =>
+      readFileSync(join(process.cwd(), "src", "lib", "api", f), "utf8")
+    assert.ok(!read("detected-location.ts").includes("minBusy"))
+    assert.ok(!read("browser-geolocation.ts").includes("minBusy"))
+    // the host passes it only to createLocationRecovery, and the shared wrapper has no timer
+    assert.equal(host.split("minBusyMs").length - 1, 1)
+    const at = host.indexOf("const getDetectedLocation = useCallback(")
+    const wrapper = host.slice(at, host.indexOf("[]\n  )", at))
+    assert.ok(!/setTimeout|minBusy/.test(wrapper))
+  })
+
+  it("the busy spinner lasts long enough to be seen (the controller is given a minimum)", () => {
+    const at = host.indexOf("const [locationRecovery] = useState(")
+    const creation = host.slice(
+      at,
+      host.indexOf("const openLocationRecovery", at)
+    )
+    assert.match(creation, /minBusyMs: \d{3,4},/)
+  })
+
   it("Try Again shows loading while a request is in flight (the shared Button's own loading state)", () => {
     const d = dialogSource()
     assert.ok(d.includes("loading={locationRecoveryState.busy}"))
@@ -168,6 +190,69 @@ describe("the dialog", () => {
     ]) {
       assert.ok(map.includes(`${reason}:`), reason)
     }
+  })
+})
+
+describe("the instructions view: browser steps first, then two expandable device rows", () => {
+  const howTo = () =>
+    host.slice(
+      host.indexOf("function LocationHowTo()"),
+      host.indexOf("export function IdentityVerificationHostProvider")
+    )
+
+  it("shows the browser steps first and the device rows after them", () => {
+    const h = howTo()
+    assert.ok(h.indexOf("instructions.browserSteps.map") > -1)
+    assert.ok(
+      h.indexOf("instructions.browserSteps.map") <
+        h.indexOf("instructions.deviceSections.map")
+    )
+  })
+
+  it("has no visible 'Steps for <browser>' line under the title (kept only as a screen-reader description)", () => {
+    const h = howTo()
+    const at = h.indexOf("Steps for")
+    assert.ok(at > -1)
+    const tag = h.slice(h.lastIndexOf("<DialogDescription", at), at)
+    assert.ok(tag.includes('className="sr-only"'))
+    assert.equal(h.split("Steps for").length - 1, 1)
+  })
+
+  it("each row is a real button with aria-expanded and aria-controls pointing at its steps", () => {
+    const h = howTo()
+    assert.ok(h.includes("aria-expanded={expanded}"))
+    assert.ok(h.includes("aria-controls={panelId}"))
+    assert.ok(h.includes("aria-describedby={headingId}"))
+    assert.ok(h.includes("id={panelId}"))
+    assert.ok(h.includes("hidden={!expanded}"))
+    assert.ok(h.includes("Show me how"))
+    assert.ok(h.includes("<Button"))
+    assert.ok(!/<button/.test(h), "no raw <button>")
+  })
+
+  it("only one section is open at a time, and the open one can be pressed again to collapse", () => {
+    const h = howTo()
+    assert.ok(h.includes("useState<DeviceSectionId | null>(null)"))
+    assert.ok(h.includes("nextOpenDeviceSection(current, section.id)"))
+  })
+
+  it("both operating systems are always rendered: nothing is detected or hidden", () => {
+    const h = howTo()
+    assert.ok(h.includes("instructions.deviceSections.map"))
+    assert.ok(!/detectPlatform|platform|navigator|userAgent/.test(h))
+  })
+
+  it("stays inside the same dialog (no second modal) and leaves Back and Try Again alone", () => {
+    const h = howTo()
+    assert.ok(!/<Dialog[ >]/.test(h))
+    const d = dialogSource()
+    assert.ok(d.includes("<LocationHowTo />"))
+    assert.ok(
+      d.includes(
+        'locationRecoveryState.view === "main"\n                  ? locationRecovery.cancel()\n                  : locationRecovery.back()'
+      ) || d.includes("locationRecovery.back()")
+    )
+    assert.ok(d.includes("void locationRecovery.tryAgain()"))
   })
 })
 

@@ -6,8 +6,8 @@ import {
   browserDisplayName,
   currentBrowserEnvironment,
   detectBrowser,
-  detectPlatform,
   getLocationInstructions,
+  nextOpenDeviceSection,
 } from "./location-instructions"
 
 const UA = {
@@ -31,7 +31,7 @@ const UA = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 OPR/110.0.0.0",
 }
 
-describe("browser and platform detection", () => {
+describe("browser detection", () => {
   it("recognises Chrome, Edge, Safari and Firefox (Edge before Chrome, Chrome before Safari)", () => {
     assert.equal(detectBrowser({ userAgent: UA.chromeMac }), "chrome")
     assert.equal(detectBrowser({ userAgent: UA.chromeWin }), "chrome")
@@ -46,15 +46,6 @@ describe("browser and platform detection", () => {
     assert.equal(detectBrowser({ userAgent: UA.opera }), "other")
     assert.equal(detectBrowser({}), "other")
     assert.equal(detectBrowser({ userAgent: "curl/8.0" }), "other")
-  })
-
-  it("detects macOS and Windows, and does not mistake an iPhone for a Mac", () => {
-    assert.equal(detectPlatform({ userAgent: UA.chromeMac }), "mac")
-    assert.equal(detectPlatform({ platform: "macOS" }), "mac")
-    assert.equal(detectPlatform({ userAgent: UA.chromeWin }), "windows")
-    assert.equal(detectPlatform({ platform: "Windows" }), "windows")
-    assert.equal(detectPlatform({ userAgent: UA.iphoneSafari }), "other")
-    assert.equal(detectPlatform({}), "other")
   })
 
   it("has a display name for each", () => {
@@ -106,52 +97,105 @@ describe("the steps", () => {
     assert.match(browserSteps.join(" "), /site settings/i)
   })
 
-  it("macOS devices get the Location Services path, naming the browser", () => {
-    const { deviceHeading, deviceSteps } = steps(UA.chromeMac)
-    assert.match(deviceHeading, /Mac/)
+  it("both operating systems are ALWAYS offered, for every browser and device (never guessed or hidden)", () => {
+    for (const ua of [...Object.values(UA), ""]) {
+      const { deviceSections } = steps(ua)
+      assert.deepEqual(
+        deviceSections.map((s) => s.id),
+        ["mac", "windows"]
+      )
+    }
+  })
+
+  it("the two rows have exactly the approved headings", () => {
+    const [mac, windows] = steps(UA.chromeWin).deviceSections
+    assert.equal(
+      mac.heading,
+      "Still not working? Check Location Services on your Mac"
+    )
+    assert.equal(
+      windows.heading,
+      "Still not working? Check Location Services on Windows"
+    )
+  })
+
+  it("the Mac steps name the Location Services path and the user's browser", () => {
+    const [mac] = steps(UA.chromeMac).deviceSections
     assert.match(
-      deviceSteps[0],
+      mac.steps[0],
       /System Settings → Privacy & Security → Location Services/
     )
-    assert.match(deviceSteps[1], /Chrome/)
-    assert.match(steps(UA.safariMac).deviceSteps[1], /Safari/)
-    assert.match(steps(UA.firefoxMac).deviceSteps[1], /Firefox/)
+    assert.match(mac.steps[1], /Chrome/)
+    assert.match(steps(UA.safariMac).deviceSections[0].steps[1], /Safari/)
+    assert.match(steps(UA.firefoxMac).deviceSections[0].steps[1], /Firefox/)
   })
 
-  it("Windows devices get the Location services path, naming the browser", () => {
-    const { deviceHeading, deviceSteps } = steps(UA.edgeWin)
-    assert.match(deviceHeading, /Windows/)
-    assert.match(deviceSteps[0], /Settings → Privacy & security → Location/)
-    assert.match(deviceSteps[1], /Edge/)
-    assert.match(steps(UA.firefoxWin).deviceSteps[1], /Firefox/)
+  it("the Windows steps name the Location services path and the user's browser", () => {
+    const [, windows] = steps(UA.edgeWin).deviceSections
+    assert.match(windows.steps[0], /Settings → Privacy & security → Location/)
+    assert.match(windows.steps[1], /Edge/)
+    assert.match(steps(UA.firefoxWin).deviceSections[1].steps[1], /Firefox/)
   })
 
-  it("other devices get a generic device step", () => {
-    const { deviceSteps } = steps(UA.iphoneSafari)
-    assert.match(deviceSteps[0], /device settings/)
+  it("an unknown browser or device still gets both rows, naming 'your browser'", () => {
+    const { deviceSections } = steps(UA.iphoneSafari)
+    assert.equal(deviceSections.length, 2)
+    const generic = steps("")
+    assert.match(generic.deviceSections[0].steps[1], /your browser/)
   })
 
-  it("every browser ends its steps by sending the user back to Try Again", () => {
+  it("every browser step list and both device step lists end by sending the user back to Try Again", () => {
     for (const ua of Object.values(UA)) {
-      const { browserSteps, deviceSteps } = steps(ua)
+      const { browserSteps, deviceSections } = steps(ua)
       assert.match(browserSteps[browserSteps.length - 1], /Try Again/)
-      assert.match(deviceSteps[deviceSteps.length - 1], /Try Again/)
+      for (const section of deviceSections) {
+        assert.match(section.steps[section.steps.length - 1], /Try Again/)
+      }
     }
   })
 
   it("no step points the user at a chrome:// address (a page cannot open it and it would not work)", () => {
     for (const ua of Object.values(UA)) {
-      const { browserSteps, deviceSteps } = steps(ua)
-      assert.ok(
-        ![...browserSteps, ...deviceSteps].some((s) =>
-          /chrome:\/\/|about:preferences/.test(s)
-        )
-      )
+      const { browserSteps, deviceSections } = steps(ua)
+      const all = [...browserSteps, ...deviceSections.flatMap((d) => d.steps)]
+      assert.ok(!all.some((s) => /chrome:\/\/|about:preferences/.test(s)))
     }
   })
 
   it("an empty environment (server render) never throws", () => {
     assert.doesNotThrow(() => getLocationInstructions({}))
     assert.doesNotThrow(() => currentBrowserEnvironment())
+  })
+})
+
+describe("one device section open at a time", () => {
+  it("pressing a closed row opens it", () => {
+    assert.equal(nextOpenDeviceSection(null, "mac"), "mac")
+    assert.equal(nextOpenDeviceSection(null, "windows"), "windows")
+  })
+
+  it("pressing the other row switches (the first closes)", () => {
+    assert.equal(nextOpenDeviceSection("mac", "windows"), "windows")
+    assert.equal(nextOpenDeviceSection("windows", "mac"), "mac")
+  })
+
+  it("pressing the open row again collapses it", () => {
+    assert.equal(nextOpenDeviceSection("mac", "mac"), null)
+    assert.equal(nextOpenDeviceSection("windows", "windows"), null)
+  })
+
+  it("never leaves both open", () => {
+    let open: "mac" | "windows" | null = null
+    for (const press of [
+      "mac",
+      "windows",
+      "windows",
+      "mac",
+      "mac",
+      "windows",
+    ] as const) {
+      open = nextOpenDeviceSection(open, press)
+      assert.ok(open === null || open === "mac" || open === "windows")
+    }
   })
 })

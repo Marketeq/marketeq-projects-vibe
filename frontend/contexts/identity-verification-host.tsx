@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -19,6 +20,7 @@ import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
   ClockStopwatch,
   MarkerPin01,
   Plane,
@@ -73,6 +75,8 @@ import {
 import {
   currentBrowserEnvironment,
   getLocationInstructions,
+  nextOpenDeviceSection,
+  type DeviceSectionId,
 } from "@/src/lib/api/location-instructions"
 import {
   createConnectionCheckSession,
@@ -292,16 +296,22 @@ const LOCATION_FAILURE_COPY: Record<LocationFailureReason, string> = {
   resolve_failed: "We couldn't read your location. Select Try Again.",
 }
 
-// The instructions view of the dialog above: steps for the detected browser, then the
-// device-level (Location Services) steps. Rendered inside the same dialog.
+// The instructions view of the dialog above: steps for the detected browser first, then two
+// help rows — Location Services on a Mac and on Windows — each with its own "Show me how"
+// button that expands that row's steps in place. Both rows are always offered (the operating
+// system is never guessed or hidden) and only one is open at a time. Rendered inside the same
+// dialog; it never opens another modal.
 function LocationHowTo() {
   const instructions = getLocationInstructions(currentBrowserEnvironment())
+  const [openSection, setOpenSection] = useState<DeviceSectionId | null>(null)
+  const idBase = useId()
   return (
     <div className="mt-5 px-[19px]">
       <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
         How to turn on location
       </h1>
-      <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+      {/* Not shown on screen; the dialog still gets its description for assistive tech. */}
+      <DialogDescription className="sr-only">
         Steps for {instructions.browserName}
       </DialogDescription>
       <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
@@ -309,14 +319,54 @@ function LocationHowTo() {
           <li key={step}>{step}</li>
         ))}
       </ol>
-      <h2 className="mt-5 text-sm font-semibold leading-5 text-dark-blue-400">
-        {instructions.deviceHeading}
-      </h2>
-      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
-        {instructions.deviceSteps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
+      <div className="mt-5 divide-y divide-gray-200 border-y border-gray-200">
+        {instructions.deviceSections.map((section) => {
+          const expanded = openSection === section.id
+          const headingId = `${idBase}-${section.id}-heading`
+          const panelId = `${idBase}-${section.id}-steps`
+          return (
+            <div key={section.id} className="py-3">
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <h2
+                  id={headingId}
+                  className="text-sm font-semibold leading-5 text-dark-blue-400"
+                >
+                  {section.heading}
+                </h2>
+                <Button
+                  className="h-auto shrink-0 p-0 text-sm font-semibold focus-visible:ring-4 focus-visible:ring-primary-100"
+                  variant="link"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  aria-describedby={headingId}
+                  rightIcon={
+                    <ChevronDown
+                      aria-hidden="true"
+                      className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+                    />
+                  }
+                  onClick={() =>
+                    setOpenSection((current) =>
+                      nextOpenDeviceSection(current, section.id)
+                    )
+                  }
+                >
+                  Show me how
+                </Button>
+              </div>
+              <ol
+                id={panelId}
+                hidden={!expanded}
+                className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400"
+              >
+                {section.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -432,6 +482,9 @@ export function IdentityVerificationHostProvider({
       detect: ({ signal, isCurrent }) =>
         getDetectedLocation({ useBrowserLocation: true, signal, isCurrent }),
       onChange: setLocationRecoveryState,
+      // A blocked permission refuses in milliseconds; keep Try Again's spinner up long
+      // enough to be seen so the press visibly does something.
+      minBusyMs: 700,
     })
   )
   const openLocationRecovery = useCallback(

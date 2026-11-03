@@ -7,27 +7,32 @@
 //
 // Pure functions of a user-agent string and a platform: no DOM, no network, fully
 // testable. The browser is a best guess from the user agent; anything unrecognised gets
-// generic steps.
+// generic steps. The operating-system (Location Services) help is NOT chosen from the user
+// agent: both the Mac and the Windows sections are always offered.
 
 export type BrowserKind = "chrome" | "edge" | "safari" | "firefox" | "other"
-export type PlatformKind = "mac" | "windows" | "other"
 
 export interface BrowserEnvironment {
   userAgent?: string
-  /** navigator.userAgentData?.platform, else navigator.platform. */
-  platform?: string
+}
+
+export type DeviceSectionId = "mac" | "windows"
+
+export interface DeviceSection {
+  id: DeviceSectionId
+  /** The row's text, e.g. "Still not working? Check Location Services on your Mac". */
+  heading: string
+  /** The steps revealed by the row's "Show me how" button. */
+  steps: string[]
 }
 
 export interface LocationInstructions {
   browser: BrowserKind
-  platform: PlatformKind
   browserName: string
-  /** Steps in the browser's own site controls. */
+  /** Steps in the browser's own site controls (always shown first). */
   browserSteps: string[]
-  /** Heading for the device-level (Location Services) section. */
-  deviceHeading: string
-  /** Steps for the operating system's Location Services. */
-  deviceSteps: string[]
+  /** Both operating systems' Location Services help, always offered, collapsed by default. */
+  deviceSections: [DeviceSection, DeviceSection]
 }
 
 export function detectBrowser(env: BrowserEnvironment): BrowserKind {
@@ -37,15 +42,6 @@ export function detectBrowser(env: BrowserEnvironment): BrowserKind {
   if (/OPR\/|Opera/.test(ua)) return "other"
   if (/Chrome\/|Chromium\/|CriOS\//.test(ua)) return "chrome"
   if (/Safari\//.test(ua) && /Version\//.test(ua)) return "safari"
-  return "other"
-}
-
-export function detectPlatform(env: BrowserEnvironment): PlatformKind {
-  const text = `${env.platform ?? ""} ${env.userAgent ?? ""}`
-  // iPhone/iPad user agents also contain "Mac OS X": they are not a Mac.
-  if (/iPhone|iPad|iPod|Android/i.test(text)) return "other"
-  if (/Mac/i.test(text)) return "mac"
-  if (/Win/i.test(text)) return "windows"
   return "other"
 }
 
@@ -101,64 +97,52 @@ function browserStepsFor(browser: BrowserKind): string[] {
   }
 }
 
-function deviceStepsFor(
-  platform: PlatformKind,
-  browserName: string
-): { heading: string; steps: string[] } {
-  if (platform === "mac") {
-    return {
+function deviceSectionsFor(browserName: string): [DeviceSection, DeviceSection] {
+  return [
+    {
+      id: "mac",
       heading: "Still not working? Check Location Services on your Mac",
       steps: [
         "Open System Settings → Privacy & Security → Location Services.",
         `Turn on Location Services, then turn on the switch for ${browserName}.`,
         TRY_AGAIN_STEP,
       ],
-    }
-  }
-  if (platform === "windows") {
-    return {
-      heading: "Still not working? Check Location services in Windows",
+    },
+    {
+      id: "windows",
+      heading: "Still not working? Check Location Services on Windows",
       steps: [
         "Open Settings → Privacy & security → Location.",
         `Turn on Location services, and allow desktop apps (including ${browserName}) to use your location.`,
         TRY_AGAIN_STEP,
       ],
-    }
-  }
-  return {
-    heading: "Still not working? Check your device's location settings",
-    steps: [
-      `Open your device settings and make sure location is turned on and allowed for ${browserName}.`,
-      TRY_AGAIN_STEP,
-    ],
-  }
+    },
+  ]
+}
+
+/** One section open at a time; pressing the open one again closes it. */
+export function nextOpenDeviceSection(
+  current: DeviceSectionId | null,
+  pressed: DeviceSectionId
+): DeviceSectionId | null {
+  return current === pressed ? null : pressed
 }
 
 export function getLocationInstructions(
   env: BrowserEnvironment
 ): LocationInstructions {
   const browser = detectBrowser(env)
-  const platform = detectPlatform(env)
   const browserName = browserDisplayName(browser)
-  const device = deviceStepsFor(platform, browserName)
   return {
     browser,
-    platform,
     browserName,
     browserSteps: browserStepsFor(browser),
-    deviceHeading: device.heading,
-    deviceSteps: device.steps,
+    deviceSections: deviceSectionsFor(browserName),
   }
 }
 
 /** The running browser's environment (empty on the server). */
 export function currentBrowserEnvironment(): BrowserEnvironment {
   if (typeof navigator === "undefined") return {}
-  const withData = navigator as Navigator & {
-    userAgentData?: { platform?: string }
-  }
-  return {
-    userAgent: navigator.userAgent,
-    platform: withData.userAgentData?.platform || navigator.platform,
-  }
+  return { userAgent: navigator.userAgent }
 }

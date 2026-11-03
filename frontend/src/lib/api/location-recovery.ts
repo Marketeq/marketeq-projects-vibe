@@ -9,7 +9,10 @@
 //   tryAgain()   asks the browser for the device location again. One request at a time:
 //                a second press while one is in flight is ignored. A GPS result closes
 //                the dialog and hands the location to onSuccess; another failure keeps
-//                the dialog open with the new reason.
+//                the dialog open with the new reason. The busy state (the button's
+//                spinner) lasts at least `minBusyMs`: a browser that refuses at once
+//                (a blocked permission answers in milliseconds) would otherwise flash
+//                it for a frame, and the press would look like it did nothing.
 //   showHowTo()  switches to the instructions view (the same dialog, not a second one).
 //   back()       returns from the instructions to the main view.
 //   cancel()     the user gave up (Cancel, Escape, outside click): closes the dialog.
@@ -68,7 +71,17 @@ export function createLocationRecovery(config: {
   /** Requests the device location once (the same call Verify My Account makes). */
   detect: (context: RecoveryDetectContext) => Promise<DetectedLocation>
   onChange?: (state: LocationRecoveryState) => void
+  /** The least time a retry stays busy, so its spinner is actually seen. Default 0. */
+  minBusyMs?: number
+  /** Test seam: waits this many milliseconds. Defaults to a timer. */
+  wait?: (ms: number) => Promise<void>
+  /** Test seam: the clock, in milliseconds. Defaults to Date.now. */
+  now?: () => number
 }): LocationRecovery {
+  const minBusyMs = config.minBusyMs ?? 0
+  const wait =
+    config.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const now = config.now ?? (() => Date.now())
   let state: LocationRecoveryState = CLOSED
   let hooks: RecoveryHooks | null = null
   let generation = 0
@@ -106,6 +119,7 @@ export function createLocationRecovery(config: {
       const own = new AbortController()
       controller = own
       set({ ...state, busy: true })
+      const startedAt = now()
       let result: DetectedLocation
       try {
         result = await config.detect({
@@ -126,6 +140,11 @@ export function createLocationRecovery(config: {
           locationFailure: "resolve_failed",
         }
       }
+      // Keep the spinner up for at least minBusyMs; the answer is applied after that, and
+      // only if this attempt is still the live one (Cancel, abort or a new dialog during
+      // the wait drops it).
+      const remaining = minBusyMs - (now() - startedAt)
+      if (remaining > 0 && !result.cancelled) await wait(remaining)
       if (mine !== generation || !state.open) return // closed or replaced meanwhile
       controller = null
       if (result.cancelled) {

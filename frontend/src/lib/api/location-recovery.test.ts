@@ -219,6 +219,191 @@ describe("Try Again", () => {
   })
 })
 
+describe("the busy state is long enough to be seen (minBusyMs)", () => {
+  // A hand-driven clock and wait, so nothing here sleeps.
+  function timed(minBusyMs: number) {
+    let clock = 0
+    const waits: Array<{ ms: number; release: () => void }> = []
+    const requests: Array<(location: DetectedLocation) => void> = []
+    const events: string[] = []
+    const recovery = createLocationRecovery({
+      detect: () =>
+        new Promise<DetectedLocation>((resolve) => {
+          requests.push(resolve)
+        }),
+      minBusyMs,
+      now: () => clock,
+      wait: (ms) =>
+        new Promise<void>((resolve) => {
+          waits.push({ ms, release: resolve })
+        }),
+    })
+    recovery.open("blocked", {
+      onSuccess: (l) => events.push(`success:${l.city}`),
+      onDismiss: (k) => events.push(`dismiss:${k}`),
+    })
+    return {
+      recovery,
+      waits,
+      requests,
+      events,
+      tick: (ms: number) => (clock += ms),
+    }
+  }
+
+  it("an instant refusal keeps the spinner up for the minimum, then shows the new reason", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.tick(30) // the browser refused after 30 ms
+    t.requests[0](failure("blocked"))
+    await flush()
+    assert.equal(t.recovery.state.busy, true) // still spinning
+    assert.equal(t.waits.length, 1)
+    assert.equal(t.waits[0].ms, 670)
+    t.tick(670)
+    t.waits[0].release()
+    await p
+    assert.equal(t.recovery.state.busy, false)
+    assert.equal(t.recovery.state.open, true)
+  })
+
+  it("an instant success also shows the spinner first, then hands over the location", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.tick(10)
+    t.requests[0](gps)
+    await flush()
+    assert.equal(t.recovery.state.busy, true)
+    assert.deepEqual(t.events, []) // nothing opens before the spinner has been seen
+    t.waits[0].release()
+    await p
+    assert.deepEqual(t.events, ["success:Chicago"])
+  })
+
+  it("an answer slower than the minimum is applied at once (no extra wait)", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.tick(900)
+    t.requests[0](failure("timeout"))
+    await p
+    assert.equal(t.waits.length, 0)
+    assert.equal(t.recovery.state.reason, "timeout")
+  })
+
+  it("double clicks during the wait are ignored", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.requests[0](failure("blocked"))
+    await flush()
+    await t.recovery.tryAgain()
+    await t.recovery.tryAgain()
+    assert.equal(t.requests.length, 1)
+    t.waits[0].release()
+    await p
+  })
+
+  it("Cancel during the wait drops the answer: no success, no reopened dialog", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.requests[0](gps)
+    await flush()
+    t.recovery.cancel()
+    t.waits[0].release()
+    await p
+    assert.equal(t.recovery.state.open, false)
+    assert.deepEqual(t.events, ["dismiss:cancel"])
+  })
+
+  it("a cancelled detection does not wait at all", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.requests[0]({ ...base, cancelled: true })
+    await p
+    assert.equal(t.waits.length, 0)
+    assert.equal(t.recovery.state.busy, false)
+  })
+
+  it("the minimum never delays the device request: it starts synchronously with the press, before any wait", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    // nothing has been awaited yet, and the request is already out
+    assert.equal(t.requests.length, 1)
+    assert.equal(t.waits.length, 0)
+    assert.equal(t.recovery.state.busy, true)
+    t.requests[0](gps)
+    await flush()
+    t.waits[0].release()
+    await p
+  })
+
+  it("exactly one device request per press, with or without the minimum, across failures and a success", async () => {
+    const t = timed(700)
+    for (let press = 1; press <= 3; press++) {
+      const p = t.recovery.tryAgain()
+      assert.equal(t.requests.length, press) // one new request per press, none extra
+      t.requests[press - 1](press < 3 ? failure("blocked") : gps)
+      await flush()
+      t.waits[press - 1].release()
+      await p
+    }
+    assert.equal(t.requests.length, 3)
+    assert.equal(t.waits.length, 3) // the only extra thing a press does is wait; it never asks again
+    assert.deepEqual(t.events, ["success:Chicago"])
+  })
+
+  it("the wait changes nothing about the answer: same reason, same location, same hooks", async () => {
+    const withMin = timed(700)
+    const p1 = withMin.recovery.tryAgain()
+    withMin.requests[0](failure("timeout"))
+    await flush()
+    withMin.waits[0].release()
+    await p1
+    const plain = harness()
+    plain.open("blocked")
+    const p2 = plain.recovery.tryAgain()
+    plain.requests[0].settle(failure("timeout"))
+    await p2
+    assert.deepEqual(withMin.recovery.state, plain.recovery.state)
+  })
+
+  it("navigation, logout, account or role change and unmount during the wait drop the answer", async () => {
+    const t = timed(700)
+    const p = t.recovery.tryAgain()
+    t.requests[0](gps) // the device answered; the spinner is still showing
+    await flush()
+    t.recovery.abort() // what the host does on a reset or an unmount
+    t.waits[0].release()
+    await p
+    assert.equal(t.recovery.state.open, false)
+    assert.deepEqual(t.events, ["dismiss:abort"]) // no success, nothing opens, nothing reopens
+  })
+
+  it("an abort during the wait cancels the request's signal, so a still-pending GPS wait is released", async () => {
+    let seen: AbortSignal | undefined
+    const recovery = createLocationRecovery({
+      detect: ({ signal }) => {
+        seen = signal
+        return new Promise<DetectedLocation>(() => {}) // the native prompt is never answered
+      },
+      minBusyMs: 700,
+    })
+    recovery.open("blocked", { onSuccess: () => {}, onDismiss: () => {} })
+    void recovery.tryAgain()
+    assert.equal(seen?.aborted, false)
+    recovery.abort()
+    assert.equal(seen?.aborted, true)
+  })
+
+  it("the default (no minimum) behaves exactly as before", async () => {
+    const h = harness()
+    h.open()
+    const p = h.recovery.tryAgain()
+    h.requests[0].settle(failure("blocked"))
+    await p
+    assert.equal(h.recovery.state.busy, false)
+  })
+})
+
 describe("giving up and cancelling", () => {
   it("Cancel closes the dialog and tells the caller it was a cancel", () => {
     const h = harness()
