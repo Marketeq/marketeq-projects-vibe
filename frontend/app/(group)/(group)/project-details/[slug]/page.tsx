@@ -27,6 +27,7 @@ import {
   availablePeriods,
   costPerPeriod,
   formatDuration,
+  PERIOD_PRICE_ROW_CONNECTOR,
   PERIOD_WIDGET_LABELS,
   resolvePeriod,
   scopeDurationDays,
@@ -6829,8 +6830,15 @@ export default function ProjectDetails({
                         return price > 0 ? `$${price.toLocaleString()}` : "—"
                       })()}
                     </span>
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      {selectedPeriod === "biweek" ? "every" : "per"}
+                    <span
+                      className={cn(
+                        "font-medium leading-none text-dark-blue-400",
+                        PERIOD_PRICE_ROW_CONNECTOR[selectedPeriod] === "every"
+                          ? "text-xs"
+                          : "text-sm"
+                      )}
+                    >
+                      {PERIOD_PRICE_ROW_CONNECTOR[selectedPeriod]}
                     </span>
                   </div>
 
@@ -6840,7 +6848,17 @@ export default function ProjectDetails({
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto whitespace-nowrap"
                         iconClassName="ml-1"
                         placeholder="Select"
-                      />
+                      >
+                        {({ value }: { value: PricingPeriod }) =>
+                          value === "biweek" ? (
+                            <span className="text-xs whitespace-nowrap">
+                              {PERIOD_WIDGET_LABELS[value]}
+                            </span>
+                          ) : (
+                            PERIOD_WIDGET_LABELS[value]
+                          )
+                        }
+                      </ListboxButton>
                       <ListboxOptions className="w-[153px]">
                         {(sidebarPricing?.periodOptions ?? []).map((opt) => (
                           <ListboxOption key={opt.value} value={opt.value}>

@@ -137,6 +137,7 @@ import {
   costPerPeriod,
   formatDuration,
   normalizePeriod,
+  PERIOD_PRICE_ROW_CONNECTOR,
   PERIOD_WIDGET_LABELS,
   resolvePeriod,
   scopeDurationDays,
@@ -10842,8 +10843,15 @@ function ProjectDetailsInner() {
                       <span className="text-2xl leading-none font-bold text-dark-blue-400">
                         {formatBudget(budgetTotalCents, budgetPeriod)}
                       </span>
-                      <span className="text-sm font-medium leading-none text-dark-blue-400">
-                        per
+                      <span
+                        className={cn(
+                          "font-medium leading-none text-dark-blue-400",
+                          PERIOD_PRICE_ROW_CONNECTOR[budgetPeriod] === "every"
+                            ? "text-xs"
+                            : "text-sm"
+                        )}
+                      >
+                        {PERIOD_PRICE_ROW_CONNECTOR[budgetPeriod]}
                       </span>
                     </div>
 
@@ -10853,7 +10861,17 @@ function ProjectDetailsInner() {
                           className="text-sm lowercase py-[5px] px-[7px] h-max w-auto"
                           iconClassName="ml-1"
                           placeholder="Select"
-                        />
+                        >
+                          {({ value }: { value: PricingPeriod }) =>
+                            value === "biweek" ? (
+                              <span className="text-xs whitespace-nowrap">
+                                {PERIOD_WIDGET_LABELS[value]}
+                              </span>
+                            ) : (
+                              PERIOD_WIDGET_LABELS[value]
+                            )
+                          }
+                        </ListboxButton>
                         <ListboxOptions className="w-[153px]">
                           {availableBudgetPeriods.map((period) => (
                             <ListboxOption key={period} value={period}>
