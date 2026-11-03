@@ -2454,7 +2454,9 @@ export const OverviewTab = ({
   }, [linkedMethodId, methodsLoading, methodsError, methods, router])
   React.useEffect(() => {
     if (!linkedWithdrawAmount) return
-    if (methodsLoading || (!balance && !balanceError)) return
+    // reserveUsd comes from the schedule fetch; until it lands it reads 0 and
+    // the gate below would overstate what is withdrawable.
+    if (methodsLoading || scheduleLoading || (!balance && !balanceError)) return
     const amountOk = /^\d+(\.\d{1,2})?$/.test(linkedWithdrawAmount)
     // Same gate as the Withdraw Funds button (US-11 minimum, BTB-345 verified method).
     let allowed = false
@@ -2479,6 +2481,7 @@ export const OverviewTab = ({
     methods,
     balance,
     balanceError,
+    scheduleLoading,
     reserveUsd,
     router,
   ])
