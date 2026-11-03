@@ -98,8 +98,18 @@ describe("banner: spacing above the Welcome row (Figma content column gap 32px)"
 
 describe("banner: action", () => {
   it("Verify My Account runs the same handler as the gate, and is disabled only while that check runs", () => {
-    assert.ok(banner.includes("onClick={() => void handleVerifyMyAccount()}"))
+    // The banner calls its own thin wrapper (loading spinner only), which awaits the same single handler once.
+    assert.ok(banner.includes("onClick={() => void handleBannerVerifyMyAccount()}"))
+    const wrapper = page.slice(
+      page.indexOf("const handleBannerVerifyMyAccount = useCallback("),
+      page.indexOf("}, [handleVerifyMyAccount])")
+    )
+    assert.equal((wrapper.match(/await handleVerifyMyAccount\(\)/g) ?? []).length, 1)
     assert.ok(banner.includes('disabled={connectionCheckState === "checking"}'))
+    assert.ok(banner.includes("loading={bannerVerifyPending}"))
+    assert.ok(banner.includes("aria-busy={bannerVerifyPending}"))
+    // Width stays stable: the label is unchanged and room for the spinner is reserved.
+    assert.ok(banner.includes("min-w-[178px] justify-start"))
     assert.equal((page.match(/handleVerifyMyAccount/g) ?? []).length >= 4, true)
   })
 })

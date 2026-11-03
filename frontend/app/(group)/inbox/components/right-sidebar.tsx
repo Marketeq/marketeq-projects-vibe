@@ -7,6 +7,7 @@ import { apiFetch } from "@/src/lib/api"
 import { createOffer } from "@/service/http/offers"
 import type { ContractType, WorkScheduleResponse } from "@/types/offer"
 import { getCurrentUser } from "@/utils/auth"
+import { cn } from "@/utils/functions"
 import { useOnlineUsers } from "@/utils/useOnlineUsers"
 import {
   AlertTriangle,
@@ -68,6 +69,7 @@ import {
   DropdownMenuRadioTrigger,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  ErrorMessage,
   IconButton,
   Input,
   InputGroup,
@@ -254,6 +256,31 @@ const RightSidebar = ({
   const [resendSubmitError, setResendSubmitError] = useState<string | null>(null)
   const [resendOfferContext, setResendOfferContext] =
     useState<ResendOfferContext | null>(null)
+  const [resendScheduleError, setResendScheduleError] = useState<
+    string | null
+  >(null)
+
+  // BTB-283: resendRate/resendDuration hold a formatted DISPLAY string
+  // ("$0/hr", "0 Months"), so the submit button's own !resendRate/
+  // !resendDuration checks below never catch a zero value — both strings
+  // are non-empty and therefore truthy. Numeric derivation catches it the
+  // same way hire-me-button's isCustomRateIncomplete/
+  // isCustomDurationIncomplete do; resendSchedule doesn't need this (its
+  // own onChange already resets to "" for a non-positive value, see below).
+  const resendRateNumeric = Number(resendRate.replace(/[^\d.]/g, ""))
+  const resendDurationNumeric = Number(resendDuration.match(/\d+/)?.[0] ?? 0)
+  const isResendCustomRateIncomplete =
+    resendCustomRateOpen && !(resendRateNumeric > 0)
+  const isResendCustomDurationIncomplete =
+    resendCustomDurationOpen && !(resendDurationNumeric > 0)
+  const resendRateError =
+    isResendCustomRateIncomplete && resendRate !== ""
+      ? "Rate must be greater than $0."
+      : null
+  const resendDurationError =
+    isResendCustomDurationIncomplete && resendDuration !== ""
+      ? "Duration must be at least 1 month."
+      : null
 
   useEffect(() => {
     const handleOpenResendOffer = (event: Event) => {
@@ -368,7 +395,9 @@ const RightSidebar = ({
       !resendDuration ||
       !resendSchedule ||
       !resendStartDateConfirmed ||
-      !resendDate
+      !resendDate ||
+      isResendCustomRateIncomplete ||
+      isResendCustomDurationIncomplete
     ) {
       return
     }
@@ -659,7 +688,14 @@ const RightSidebar = ({
                 ))}
               </div>
               {resendCustomRateOpen ? (
-                <Input className="mt-2" type="number" min={1} placeholder="Enter hourly rate" onChange={(event) => setResendRate(event.target.value ? `$${event.target.value}/hr` : "")} />
+                <>
+                  <Input className="mt-2" type="number" min={1} placeholder="Enter hourly rate" onChange={(event) => setResendRate(event.target.value ? `$${event.target.value}/hr` : "")} />
+                  {/* BTB-283: always mounted while this row is open so the
+                  error appearing/disappearing never resizes the modal. */}
+                  <ErrorMessage className={cn("mt-1", !resendRateError && "invisible")}>
+                    {resendRateError || " "}
+                  </ErrorMessage>
+                </>
               ) : null}
               <Button variant="link" visual="gray" size="sm" className="ml-auto mt-2 flex h-[18px] p-0 text-xs text-dark-blue-400" onClick={() => { setResendCustomRateOpen((open) => !open); setResendRate("") }}>Custom Rate</Button>
             </div>
@@ -672,7 +708,14 @@ const RightSidebar = ({
                 ))}
               </div>
               {resendCustomDurationOpen ? (
-                <Input className="mt-2" type="number" min={1} placeholder="Enter duration in months" onChange={(event) => setResendDuration(event.target.value ? `${event.target.value} Months` : "")} />
+                <>
+                  <Input className="mt-2" type="number" min={1} placeholder="Enter duration in months" onChange={(event) => setResendDuration(event.target.value ? `${event.target.value} Months` : "")} />
+                  {/* BTB-283: always mounted while this row is open so the
+                  error appearing/disappearing never resizes the modal. */}
+                  <ErrorMessage className={cn("mt-1", !resendDurationError && "invisible")}>
+                    {resendDurationError || " "}
+                  </ErrorMessage>
+                </>
               ) : null}
               <Button variant="link" visual="gray" size="sm" className="ml-auto mt-2 flex h-[18px] p-0 text-xs text-dark-blue-400" onClick={() => { setResendCustomDurationOpen((open) => !open); setResendDuration("") }}>Custom Duration</Button>
             </div>
@@ -688,9 +731,38 @@ const RightSidebar = ({
                 ))}
               </div>
               {resendCustomScheduleOpen ? (
-                <Input className="mt-2" type="number" min={1} max={24} placeholder="Hours per day (max 24)" onChange={(event) => { const hours = Math.min(24, Number(event.target.value)); setResendSchedule(hours > 0 ? `${hours} hours per day` : "") }} />
+                <>
+                  <Input
+                    className="mt-2"
+                    type="number"
+                    min={1}
+                    max={24}
+                    placeholder="Hours per day (max 24)"
+                    onChange={(event) => {
+                      const raw = event.target.value
+                      const hours = Math.min(24, Number(raw))
+                      // BTB-283: same whole-value shape as the error cleared
+                      // below — a typed "0" already reset resendSchedule to
+                      // "" (pre-existing), this just surfaces why.
+                      if (raw !== "" && !(hours > 0)) {
+                        setResendScheduleError(
+                          "Hours must be greater than 0."
+                        )
+                        setResendSchedule("")
+                        return
+                      }
+                      setResendScheduleError(null)
+                      setResendSchedule(hours > 0 ? `${hours} hours per day` : "")
+                    }}
+                  />
+                  {/* BTB-283: always mounted while this row is open so the
+                  error appearing/disappearing never resizes the modal. */}
+                  <ErrorMessage className={cn("mt-1", !resendScheduleError && "invisible")}>
+                    {resendScheduleError || " "}
+                  </ErrorMessage>
+                </>
               ) : null}
-              <Button variant="link" visual="gray" size="sm" className="ml-auto mt-2 flex h-[18px] p-0 text-xs text-dark-blue-400" onClick={() => { setResendCustomScheduleOpen((open) => !open); setResendSchedule("") }}>Custom Work Schedule</Button>
+              <Button variant="link" visual="gray" size="sm" className="ml-auto mt-2 flex h-[18px] p-0 text-xs text-dark-blue-400" onClick={() => { setResendCustomScheduleOpen((open) => !open); setResendSchedule(""); setResendScheduleError(null) }}>Custom Work Schedule</Button>
             </div>
 
             <div className="mt-5">
@@ -812,6 +884,8 @@ const RightSidebar = ({
                 !resendProjectSelected ||
                 !resendOfferContext?.jobListingId ||
                 !(resendOfferContext?.talentId || otherId || user.id) ||
+                isResendCustomRateIncomplete ||
+                isResendCustomDurationIncomplete ||
                 resendSubmitting
               }
               onClick={submitResentOffer}
