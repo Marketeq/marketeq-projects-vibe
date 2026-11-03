@@ -9940,6 +9940,12 @@ function DateRangeFilterPopoverContent({
     [preset, handlePresetChange]
   )
 
+  // BTB-307/BTB-329: earnings and payouts only exist up to today — every
+  // later day is disabled in the calendar, and the API rejects a future
+  // startDate ("startDate cannot be in the future") with an error Retry
+  // can't clear. Fixed for the popover's lifetime.
+  const today = React.useMemo(() => new Date(), [])
+
   if (preset !== "custom range") {
     return (
       <div className="bg-white rounded-lg border border-gray-200 shadow-xl">
@@ -9956,6 +9962,7 @@ function DateRangeFilterPopoverContent({
           : undefined
       }
       onCancel={onCancel}
+      maxValue={today}
       onApply={(applied) => {
         if (!applied) return
         onCommit("custom", formatDate(applied.start, "yyyy-MM-dd"), formatDate(applied.end, "yyyy-MM-dd"))
