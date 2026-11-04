@@ -6,8 +6,8 @@ import {
   browserDisplayName,
   currentBrowserEnvironment,
   detectBrowser,
+  detectDeviceSection,
   getLocationInstructions,
-  nextOpenDeviceSection,
 } from "./location-instructions"
 
 const UA = {
@@ -107,15 +107,15 @@ describe("the steps", () => {
     }
   })
 
-  it("the two rows have exactly the approved headings", () => {
-    const [mac, windows] = steps(UA.chromeWin).deviceSections
-    assert.equal(
-      mac.heading,
-      "Still not working? Check Location Services on your Mac"
+  it("the two tabs are labelled Mac and Windows, under the approved lead-in", () => {
+    const instructions = steps(UA.chromeWin)
+    assert.deepEqual(
+      instructions.deviceSections.map((s) => s.label),
+      ["Mac", "Windows"]
     )
     assert.equal(
-      windows.heading,
-      "Still not working? Check Location Services on Windows"
+      instructions.deviceHeading,
+      "Still not working? Check Location Services"
     )
   })
 
@@ -168,34 +168,35 @@ describe("the steps", () => {
   })
 })
 
-describe("one device section open at a time", () => {
-  it("pressing a closed row opens it", () => {
-    assert.equal(nextOpenDeviceSection(null, "mac"), "mac")
-    assert.equal(nextOpenDeviceSection(null, "windows"), "windows")
+describe("which operating-system tab is selected first", () => {
+  it("Windows for a Windows user agent, whatever the browser", () => {
+    for (const ua of [UA.chromeWin, UA.edgeWin, UA.firefoxWin]) {
+      assert.equal(detectDeviceSection({ userAgent: ua }), "windows")
+    }
   })
 
-  it("pressing the other row switches (the first closes)", () => {
-    assert.equal(nextOpenDeviceSection("mac", "windows"), "windows")
-    assert.equal(nextOpenDeviceSection("windows", "mac"), "mac")
+  it("Mac for a Mac user agent, whatever the browser", () => {
+    for (const ua of [UA.chromeMac, UA.edgeMac, UA.safariMac, UA.firefoxMac]) {
+      assert.equal(detectDeviceSection({ userAgent: ua }), "mac")
+    }
   })
 
-  it("pressing the open row again collapses it", () => {
-    assert.equal(nextOpenDeviceSection("mac", "mac"), null)
-    assert.equal(nextOpenDeviceSection("windows", "windows"), null)
+  it("falls back to Mac when the user agent is missing, empty or unrecognised", () => {
+    assert.equal(detectDeviceSection({}), "mac")
+    assert.equal(detectDeviceSection({ userAgent: "" }), "mac")
+    assert.equal(detectDeviceSection({ userAgent: UA.iphoneSafari }), "mac")
+    assert.equal(
+      detectDeviceSection({ userAgent: "Mozilla/5.0 (X11; Linux x86_64)" }),
+      "mac"
+    )
   })
 
-  it("never leaves both open", () => {
-    let open: "mac" | "windows" | null = null
-    for (const press of [
-      "mac",
-      "windows",
-      "windows",
-      "mac",
-      "mac",
-      "windows",
-    ] as const) {
-      open = nextOpenDeviceSection(open, press)
-      assert.ok(open === null || open === "mac" || open === "windows")
+  it("never removes a tab: both are offered whichever is selected", () => {
+    for (const ua of [UA.chromeWin, UA.chromeMac, ""]) {
+      assert.equal(
+        getLocationInstructions({ userAgent: ua }).deviceSections.length,
+        2
+      )
     }
   })
 })

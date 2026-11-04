@@ -5,7 +5,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -20,13 +19,14 @@ import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
   CheckCircle,
-  ChevronDown,
   ClockStopwatch,
   MarkerPin01,
   Plane,
   RefreshCw,
   X,
 } from "@blend-metrics/icons"
+import { MicrosoftBrand } from "@blend-metrics/icons/brands"
+import { AppleSolid } from "@blend-metrics/icons/social-solid"
 import {
   Alert,
   AlertContent,
@@ -39,6 +39,10 @@ import {
   DialogContent,
   DialogDescription,
   IconButton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from "@/components/ui"
 import { StatusAlertsAPI } from "@/service/http/status-alerts"
 import {
@@ -74,8 +78,8 @@ import {
 } from "@/src/lib/api/location-recovery"
 import {
   currentBrowserEnvironment,
+  detectDeviceSection,
   getLocationInstructions,
-  nextOpenDeviceSection,
   type DeviceSectionId,
 } from "@/src/lib/api/location-instructions"
 import {
@@ -287,7 +291,7 @@ const IdentityVerificationHostContext =
 const LOCATION_FAILURE_COPY: Record<LocationFailureReason, string> = {
   blocked: "Location is currently blocked for this site in your browser.",
   dismissed:
-    "The location request was closed without an answer. Select Try Again and choose Allow when your browser asks.",
+    "Select Try Again and choose Allow when your browser asks.",
   unsupported:
     "This browser can't share its location. Try Chrome, Edge, Safari or Firefox.",
   device_unavailable:
@@ -296,15 +300,32 @@ const LOCATION_FAILURE_COPY: Record<LocationFailureReason, string> = {
   resolve_failed: "We couldn't read your location. Select Try Again.",
 }
 
-// The instructions view of the dialog above: steps for the detected browser first, then two
-// help rows — Location Services on a Mac and on Windows — each with its own "Show me how"
-// button that expands that row's steps in place. Both rows are always offered (the operating
-// system is never guessed or hidden) and only one is open at a time. Rendered inside the same
-// dialog; it never opens another modal.
+// The instructions view of the dialog above: steps for the detected browser first, then
+// "Still not working? Check Location Services" with two equal-width tabs, Mac and Windows.
+// Both tabs are always offered; the one for the user's own operating system is selected first.
+// That is read from the user agent when this view mounts, which only happens after "Show me
+// how" is pressed (never during server rendering), and falls back to Mac. Rendered inside the
+// same dialog; it never opens another modal.
+const DEVICE_TAB_ICONS: Record<DeviceSectionId, ReactNode> = {
+  mac: (
+    <AppleSolid
+      aria-hidden="true"
+      className="size-[18px] shrink-0 text-gray-500"
+    />
+  ),
+  windows: (
+    <MicrosoftBrand
+      aria-hidden="true"
+      className="size-[18px] shrink-0 text-gray-500 [&_path]:fill-current"
+    />
+  ),
+}
+
 function LocationHowTo() {
   const instructions = getLocationInstructions(currentBrowserEnvironment())
-  const [openSection, setOpenSection] = useState<DeviceSectionId | null>(null)
-  const idBase = useId()
+  const [deviceTab, setDeviceTab] = useState<DeviceSectionId>(() =>
+    detectDeviceSection(currentBrowserEnvironment())
+  )
   return (
     <div className="mt-5 px-[19px]">
       <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
@@ -319,54 +340,42 @@ function LocationHowTo() {
           <li key={step}>{step}</li>
         ))}
       </ol>
-      <div className="mt-5 divide-y divide-gray-200 border-y border-gray-200">
-        {instructions.deviceSections.map((section) => {
-          const expanded = openSection === section.id
-          const headingId = `${idBase}-${section.id}-heading`
-          const panelId = `${idBase}-${section.id}-steps`
-          return (
-            <div key={section.id} className="py-3">
-              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                <h2
-                  id={headingId}
-                  className="text-sm font-semibold leading-5 text-dark-blue-400"
-                >
-                  {section.heading}
-                </h2>
-                <Button
-                  className="h-auto shrink-0 p-0 text-sm font-semibold focus-visible:ring-4 focus-visible:ring-primary-100"
-                  variant="link"
-                  aria-expanded={expanded}
-                  aria-controls={panelId}
-                  aria-describedby={headingId}
-                  rightIcon={
-                    <ChevronDown
-                      aria-hidden="true"
-                      className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`}
-                    />
-                  }
-                  onClick={() =>
-                    setOpenSection((current) =>
-                      nextOpenDeviceSection(current, section.id)
-                    )
-                  }
-                >
-                  Show me how
-                </Button>
-              </div>
-              <ol
-                id={panelId}
-                hidden={!expanded}
-                className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400"
-              >
-                {section.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </div>
-          )
-        })}
-      </div>
+      <h2 className="mt-5 text-sm font-semibold leading-5 text-dark-blue-400">
+        {instructions.deviceHeading}
+      </h2>
+      <Tabs
+        className="mt-2"
+        value={deviceTab}
+        onValueChange={(value) => setDeviceTab(value as DeviceSectionId)}
+        unanimated
+      >
+        <TabsList className="grid grid-cols-2 gap-0 px-0 pt-0">
+          {instructions.deviceSections.map((section) => (
+            <TabsTrigger
+              key={section.id}
+              value={section.id}
+              containerClassName="justify-center"
+              className="w-full rounded-t-[5px] pb-3 pt-1 focus-visible:ring-4 focus-visible:ring-primary-100"
+            >
+              {DEVICE_TAB_ICONS[section.id]}
+              {section.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {instructions.deviceSections.map((section) => (
+          <TabsContent
+            key={section.id}
+            value={section.id}
+            className="mt-3 rounded-[5px] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-100"
+          >
+            <ol className="list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+              {section.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   )
 }
@@ -1899,8 +1908,9 @@ export function IdentityVerificationHostProvider({
             </Button>
             <Button
               ref={tryAgainButtonRef}
-              className="w-[133px] text-primary-500 bg-primary-50 shadow-none hover:text-white hover:bg-primary-500 focus-visible:ring-4 focus-visible:ring-primary-100"
+              className="w-[133px] text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500 focus-visible:ring-4 focus-visible:ring-primary-100"
               size="md"
+              leftIcon={<RefreshCw className="size-[15px]" />}
               loading={locationRecoveryState.busy}
               aria-busy={locationRecoveryState.busy}
               onClick={() => void locationRecovery.tryAgain()}

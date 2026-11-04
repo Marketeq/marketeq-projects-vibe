@@ -121,6 +121,84 @@ describe("the dialog", () => {
     assert.match(creation, /minBusyMs: \d{3,4},/)
   })
 
+  // BTB-387: the approved Try Again button — RefreshCw (15px) as leftIcon, as in the Storybook
+  // Rescan / Reload dialogs and the production Retry in account-verification-gate.
+  describe("Try Again button", () => {
+    const tryAgainButton = () => {
+      const d = dialogSource()
+      const at = d.lastIndexOf("<Button", d.indexOf("ref={tryAgainButtonRef}"))
+      return d.slice(at, d.indexOf("</Button>", at) + "</Button>".length)
+    }
+    const buttonSource = read("components", "ui", "button", "button.tsx")
+
+    it("supplies the idle refresh icon through leftIcon, 15px, imported from @blend-metrics/icons", () => {
+      const b = tryAgainButton()
+      assert.ok(b.includes('leftIcon={<RefreshCw className="size-[15px]" />}'))
+      assert.match(
+        host,
+        /import \{[^}]*\bRefreshCw\b[^}]*\} from "@blend-metrics\/icons"/
+      )
+      // never also as a child: it would then sit beside the spinner instead of being replaced
+      const children = b.slice(b.indexOf(">\n") + 2, b.lastIndexOf("</Button>"))
+      assert.ok(!children.includes("RefreshCw"))
+    })
+
+    it("the shared Button replaces leftIcon with its spinner while loading (and the label stays)", () => {
+      assert.match(
+        buttonSource,
+        /\{loading\s*\?\s*loadingIcon \|\| \(\s*<svg\s+className="animate-spin[\s\S]*?\)\s*:\s*leftIcon\}\s*\{children\}/
+      )
+      // no loadingIcon override on Try Again, so the shared spinner is what shows
+      assert.ok(!tryAgainButton().includes("loadingIcon"))
+    })
+
+    it("the label 'Try Again' is a plain child, shown in both idle and loading states", () => {
+      const b = tryAgainButton()
+      assert.match(b, />\s*Try Again\s*<\/Button>/)
+      assert.ok(!/busy\s*\?[^:]*Try Again/.test(b))
+      assert.ok(!/busy\s*&&/.test(b))
+    })
+
+    it("keeps loading, aria-busy and the Button's own disabled-while-loading behaviour", () => {
+      const b = tryAgainButton()
+      assert.ok(b.includes("loading={locationRecoveryState.busy}"))
+      assert.ok(b.includes("aria-busy={locationRecoveryState.busy}"))
+      assert.ok(!b.includes("disabled"))
+      assert.match(buttonSource, /disabled=\{disabled \|\| loading\}/)
+    })
+
+    it("is a fixed 133px wide in idle and loading (one static class, nothing depends on busy), like Cancel and Back", () => {
+      const b = tryAgainButton()
+      const className = b.match(/className="([^"]*)"/)?.[1] ?? ""
+      assert.ok(className.split(" ").includes("w-[133px]"))
+      assert.ok(!/className=\{/.test(b))
+      assert.ok(!/min-w|max-w/.test(className))
+    })
+
+    it("uses the Storybook colours, the default faint shadow and the existing focus ring", () => {
+      const className = tryAgainButton().match(/className="([^"]*)"/)?.[1] ?? ""
+      for (const token of [
+        "text-primary-500",
+        "bg-primary-50",
+        "hover:text-white",
+        "hover:bg-primary-500",
+        "focus-visible:ring-4",
+        "focus-visible:ring-primary-100",
+      ]) {
+        assert.ok(className.split(" ").includes(token), token)
+      }
+      assert.ok(!className.includes("shadow-none"))
+      assert.ok(tryAgainButton().includes('size="md"'))
+    })
+
+    it("still goes only through the controller: one request per press, with the 700 ms minimum", () => {
+      const b = tryAgainButton()
+      assert.ok(b.includes("onClick={() => void locationRecovery.tryAgain()}"))
+      assert.equal(b.split("locationRecovery.").length - 1, 1)
+      assert.match(host, /minBusyMs: 700,/)
+    })
+  })
+
   it("Try Again shows loading while a request is in flight (the shared Button's own loading state)", () => {
     const d = dialogSource()
     assert.ok(d.includes("loading={locationRecoveryState.busy}"))
@@ -139,7 +217,8 @@ describe("the dialog", () => {
     )
     assert.ok(d.includes('variant="outlined"'))
     assert.ok(d.includes('variant="link"'))
-    assert.ok(!d.includes("RefreshCw"))
+    // The refresh icon belongs to Try Again alone (checked in its own block below).
+    assert.equal(d.split("<RefreshCw").length - 1, 1)
   })
 
   it("initial focus is on Try Again, not on the page behind", () => {
@@ -175,6 +254,19 @@ describe("the dialog", () => {
     )
   })
 
+  it("the closed-prompt sentence no longer says the request was closed without an answer", () => {
+    assert.ok(!host.includes("closed without an answer"))
+    const map = host.slice(
+      host.indexOf("const LOCATION_FAILURE_COPY"),
+      host.indexOf("function LocationHowTo()")
+    )
+    assert.ok(
+      map.includes(
+        '"Select Try Again and choose Allow when your browser asks."'
+      )
+    )
+  })
+
   it("has a short sentence for each way the location can fail", () => {
     const map = host.slice(
       host.indexOf("const LOCATION_FAILURE_COPY"),
@@ -193,20 +285,22 @@ describe("the dialog", () => {
   })
 })
 
-describe("the instructions view: browser steps first, then two expandable device rows", () => {
+describe("the instructions view: browser steps first, then Mac / Windows tabs", () => {
   const howTo = () =>
     host.slice(
       host.indexOf("function LocationHowTo()"),
       host.indexOf("export function IdentityVerificationHostProvider")
     )
+  const tabsSource = read("components", "ui", "tabs", "tabs.tsx")
 
-  it("shows the browser steps first and the device rows after them", () => {
+  it("shows the browser steps first and the device tabs after them", () => {
     const h = howTo()
     assert.ok(h.indexOf("instructions.browserSteps.map") > -1)
     assert.ok(
       h.indexOf("instructions.browserSteps.map") <
         h.indexOf("instructions.deviceSections.map")
     )
+    assert.ok(h.indexOf("<Tabs") > h.indexOf("instructions.browserSteps.map"))
   })
 
   it("has no visible 'Steps for <browser>' line under the title (kept only as a screen-reader description)", () => {
@@ -218,28 +312,99 @@ describe("the instructions view: browser steps first, then two expandable device
     assert.equal(h.split("Steps for").length - 1, 1)
   })
 
-  it("each row is a real button with aria-expanded and aria-controls pointing at its steps", () => {
+  it("uses the shared Tabs, TabsList, TabsTrigger and TabsContent, two equal-width tabs", () => {
     const h = howTo()
-    assert.ok(h.includes("aria-expanded={expanded}"))
-    assert.ok(h.includes("aria-controls={panelId}"))
-    assert.ok(h.includes("aria-describedby={headingId}"))
-    assert.ok(h.includes("id={panelId}"))
-    assert.ok(h.includes("hidden={!expanded}"))
-    assert.ok(h.includes("Show me how"))
-    assert.ok(h.includes("<Button"))
+    for (const part of ["<Tabs", "<TabsList", "<TabsTrigger", "<TabsContent"]) {
+      assert.ok(h.includes(part), part)
+    }
+    assert.match(
+      host,
+      /import \{[^}]*\bTabs,\s*TabsContent,\s*TabsList,\s*TabsTrigger,?[^}]*\} from "@\/components\/ui"/
+    )
+    assert.ok(h.includes("grid grid-cols-2"))
     assert.ok(!/<button/.test(h), "no raw <button>")
   })
 
-  it("only one section is open at a time, and the open one can be pressed again to collapse", () => {
+  it("has no nested 'Show me how' buttons and no expand / collapse behaviour", () => {
     const h = howTo()
-    assert.ok(h.includes("useState<DeviceSectionId | null>(null)"))
-    assert.ok(h.includes("nextOpenDeviceSection(current, section.id)"))
+    assert.ok(!h.includes("Show me how"))
+    for (const gone of [
+      "aria-expanded",
+      "aria-controls",
+      "hidden={",
+      "ChevronDown",
+      "nextOpenDeviceSection",
+      "useId",
+      "<Button",
+    ]) {
+      assert.ok(!h.includes(gone), gone)
+    }
+    assert.ok(!/useState<DeviceSectionId \| null>/.test(h))
   })
 
-  it("both operating systems are always rendered: nothing is detected or hidden", () => {
+  it("selects the tab immediately (no fade / slide) and the choice is controlled state", () => {
+    const h = howTo()
+    const tabs = h.slice(h.indexOf("<Tabs"), h.indexOf("<TabsList"))
+    assert.match(tabs, /\n\s+unanimated\s*\n/)
+    assert.ok(h.includes("value={deviceTab}"))
+    assert.match(
+      h,
+      /onValueChange=\{\(value\) =>\s*setDeviceTab\(value as DeviceSectionId\)\s*\}/
+    )
+  })
+
+  it("starts on the user's operating system, read when the view mounts (after the Show me how press), falling back to Mac", () => {
+    const h = howTo()
+    assert.ok(
+      h.includes(
+        "useState<DeviceSectionId>(() =>\n    detectDeviceSection(currentBrowserEnvironment())"
+      )
+    )
+    // never at module level / during the server render of the closed page
+    assert.ok(!/detectDeviceSection|navigator|userAgent/.test(host.slice(0, host.indexOf("function LocationHowTo()")).replace(/\/\/.*$/gm, "").replace(/import[\s\S]*?from "[^"]*"/g, "")))
+    // the view only mounts from the main view's Show me how press
+    assert.ok(dialogSource().includes('locationRecoveryState.view === "main" ? ('))
+    assert.ok(dialogSource().includes("<LocationHowTo />"))
+  })
+
+  it("both tabs are always rendered, each with an 18px neutral-gray icon from the existing icon package", () => {
     const h = howTo()
     assert.ok(h.includes("instructions.deviceSections.map"))
-    assert.ok(!/detectPlatform|platform|navigator|userAgent/.test(h))
+    assert.match(host, /import \{ MicrosoftBrand \} from "@blend-metrics\/icons\/brands"/)
+    assert.match(host, /import \{ AppleSolid \} from "@blend-metrics\/icons\/social-solid"/)
+    const icons = host.slice(
+      host.indexOf("const DEVICE_TAB_ICONS"),
+      host.indexOf("function LocationHowTo()")
+    )
+    assert.equal(icons.split("size-[18px]").length - 1, 2)
+    assert.equal(icons.split("text-gray-500").length - 1, 2)
+    assert.equal(icons.split('aria-hidden="true"').length - 1, 2)
+    assert.ok(icons.includes("[&_path]:fill-current")) // the Microsoft mark ships in four colours
+    assert.ok(!/<svg/.test(icons), "no custom SVG")
+  })
+
+  it("keeps a visible keyboard focus ring on the tabs and on each panel (the shared Tabs have none of their own)", () => {
+    const h = howTo()
+    assert.ok(h.includes("focus-visible:ring-4 focus-visible:ring-primary-100"))
+    // the panel is focusable (Tab moves from the active tab into it): local, keyboard-only ring
+    const panel = h.slice(h.indexOf("<TabsContent"), h.indexOf("<ol", h.indexOf("<TabsContent")))
+    const cls = panel.match(/className="([^"]*)"/)?.[1].split(" ") ?? []
+    for (const token of [
+      "focus-visible:outline-none",
+      "focus-visible:ring-4",
+      "focus-visible:ring-primary-100",
+    ]) {
+      assert.ok(cls.includes(token), token)
+    }
+    assert.ok(!cls.some((c) => /^(focus:|ring-\d|ring$)/.test(c)), "never shown for mouse focus")
+    assert.equal(h.split("<TabsContent").length - 1, 1) // one definition, rendered for both OS panels
+    // arrow-key navigation, Home / End and selection come from the shared Tabs (Radix)
+    assert.ok(tabsSource.includes('from "@radix-ui/react-tabs"'))
+  })
+
+  it("does not touch the shared Tabs or Button components", () => {
+    assert.ok(!howTo().includes("components/ui/tabs"))
+    assert.ok(tabsSource.includes("export { Tabs, TabsList, TabsTrigger, TabsContent"))
   })
 
   it("stays inside the same dialog (no second modal) and leaves Back and Try Again alone", () => {

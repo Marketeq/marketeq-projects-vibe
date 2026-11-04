@@ -7,8 +7,9 @@
 //
 // Pure functions of a user-agent string and a platform: no DOM, no network, fully
 // testable. The browser is a best guess from the user agent; anything unrecognised gets
-// generic steps. The operating-system (Location Services) help is NOT chosen from the user
-// agent: both the Mac and the Windows sections are always offered.
+// generic steps. The operating-system (Location Services) help is offered for both a Mac and
+// Windows, always: the user agent only picks which of the two tabs is selected first, and
+// the other stays one click away.
 
 export type BrowserKind = "chrome" | "edge" | "safari" | "firefox" | "other"
 
@@ -20,9 +21,9 @@ export type DeviceSectionId = "mac" | "windows"
 
 export interface DeviceSection {
   id: DeviceSectionId
-  /** The row's text, e.g. "Still not working? Check Location Services on your Mac". */
-  heading: string
-  /** The steps revealed by the row's "Show me how" button. */
+  /** The tab's label: "Mac" or "Windows". */
+  label: string
+  /** The Location Services steps shown when this tab is selected. */
   steps: string[]
 }
 
@@ -31,7 +32,9 @@ export interface LocationInstructions {
   browserName: string
   /** Steps in the browser's own site controls (always shown first). */
   browserSteps: string[]
-  /** Both operating systems' Location Services help, always offered, collapsed by default. */
+  /** The lead-in above the Mac / Windows tabs. */
+  deviceHeading: string
+  /** Both operating systems' Location Services help: one tab each, always offered. */
   deviceSections: [DeviceSection, DeviceSection]
 }
 
@@ -101,7 +104,7 @@ function deviceSectionsFor(browserName: string): [DeviceSection, DeviceSection] 
   return [
     {
       id: "mac",
-      heading: "Still not working? Check Location Services on your Mac",
+      label: "Mac",
       steps: [
         "Open System Settings → Privacy & Security → Location Services.",
         `Turn on Location Services, then turn on the switch for ${browserName}.`,
@@ -110,7 +113,7 @@ function deviceSectionsFor(browserName: string): [DeviceSection, DeviceSection] 
     },
     {
       id: "windows",
-      heading: "Still not working? Check Location Services on Windows",
+      label: "Windows",
       steps: [
         "Open Settings → Privacy & security → Location.",
         `Turn on Location services, and allow desktop apps (including ${browserName}) to use your location.`,
@@ -120,12 +123,16 @@ function deviceSectionsFor(browserName: string): [DeviceSection, DeviceSection] 
   ]
 }
 
-/** One section open at a time; pressing the open one again closes it. */
-export function nextOpenDeviceSection(
-  current: DeviceSectionId | null,
-  pressed: DeviceSectionId
-): DeviceSectionId | null {
-  return current === pressed ? null : pressed
+export const DEVICE_HEADING = "Still not working? Check Location Services"
+
+/**
+ * Which operating-system tab is selected first: Windows for a Windows user agent, otherwise
+ * Mac (including when the user agent is missing or unrecognised). Both tabs are always
+ * available; this only chooses the starting one. Call it from the click that opens the
+ * instructions, never while rendering on the server.
+ */
+export function detectDeviceSection(env: BrowserEnvironment): DeviceSectionId {
+  return /Windows/i.test(env.userAgent ?? "") ? "windows" : "mac"
 }
 
 export function getLocationInstructions(
@@ -137,6 +144,7 @@ export function getLocationInstructions(
     browser,
     browserName,
     browserSteps: browserStepsFor(browser),
+    deviceHeading: DEVICE_HEADING,
     deviceSections: deviceSectionsFor(browserName),
   }
 }
