@@ -1599,6 +1599,7 @@ export function IdentityVerificationHostProvider({
           detectedLocation={detectedLocation}
           initialState={flowLaunch.initialState}
           activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
+          activeTravelModeInForce={isTravelModeInForce(travelSummary)}
           onTravelModeConfirmed={() => void handleTravelModeConfirmed()}
           onPermanentlyRelocated={
             flowLaunch.detectBrowserLocationOnRelocate
