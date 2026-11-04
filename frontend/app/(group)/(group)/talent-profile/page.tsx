@@ -2032,6 +2032,7 @@ function Default() {
 
                 <CaseStudyGrid
                   key={caseStudyGridKey}
+                  ownerUserId={profile?.id}
                   canCreate={!isClientView}
                   isClientView={isClientView}
                   onOpenEditor={(caseStudyId) => {
@@ -5365,18 +5366,6 @@ function Default() {
             </DialogContent>
           </Dialog>
 
-          {caseStudyPreviewOpen && previewCaseStudyId && profile && (
-            <CaseStudyClientPreview
-              caseStudyId={previewCaseStudyId}
-              talentProfile={profile}
-              isSelfPreview={isOwnProfile}
-              onClose={() => {
-                setCaseStudyPreviewOpen(false)
-                setPreviewCaseStudyId(undefined)
-              }}
-            />
-          )}
-
           <Dialog
             open={!!deleteConfirm}
             onOpenChange={(open) => {
@@ -5454,6 +5443,19 @@ function Default() {
             </DialogContent>
           </Dialog>
         </>
+      )}
+      {/* Case-study popup. Outside the owner-only block above: it is the
+          popup a VISITOR opens from the grid, so it must render for them. */}
+      {caseStudyPreviewOpen && previewCaseStudyId && profile && (
+        <CaseStudyClientPreview
+          caseStudyId={previewCaseStudyId}
+          talentProfile={profile}
+          isSelfPreview={isOwnProfile}
+          onClose={() => {
+            setCaseStudyPreviewOpen(false)
+            setPreviewCaseStudyId(undefined)
+          }}
+        />
       )}
       {/* Resume uploading dialog */}
       <Dialog open={resumeStatus === "uploading"}>
