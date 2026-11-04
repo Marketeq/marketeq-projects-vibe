@@ -9771,7 +9771,7 @@ const DescribeProjectStep = ({
                       : "What do you want to accomplish with this project?"}
                 </Label>
                 <span className={firstQuestionCounterClassName}>
-                  {descriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {descriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
@@ -9803,7 +9803,7 @@ const DescribeProjectStep = ({
                       What are the main tasks or deliverables?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10019,7 +10019,7 @@ const DescribeProjectStep = ({
                     What are the main tasks or deliverables?
                   </Label>
                   <span className="text-sm leading-5 font-normal text-gray-400">
-                    {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                   </span>
                 </div>
                 <Textarea
@@ -10565,7 +10565,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10595,7 +10595,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className="text-xs leading-[18px] text-gray-500">
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -11921,7 +11921,7 @@ const NoScopeRoleInfoStep = ({
                     useNoScopeLayout && "font-normal",
                   )}
                 >
-                  {roleDescriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {roleDescriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
