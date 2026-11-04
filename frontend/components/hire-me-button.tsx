@@ -917,6 +917,20 @@ export function OfferDialog({
     selectedRate === "custom" && !(Number(customRateValue) > 0)
   const isCustomDurationIncomplete =
     selectedDuration === "custom" && !(Number(customDurationValue) > 0)
+  // BTB-283: inline message for the custom-value-is-zero case specifically —
+  // shown as soon as the field holds a complete-but-invalid value ("0",
+  // "00", "0.00", so non-empty) without waiting for a submit attempt, and
+  // also once showValidationErrors is true so an untouched-but-still-empty
+  // field errors on submit like every other required field here.
+  const customRateError =
+    isCustomRateIncomplete && (customRateValue !== "" || showValidationErrors)
+      ? "Rate must be greater than $0."
+      : null
+  const customDurationError =
+    isCustomDurationIncomplete &&
+    (customDurationValue !== "" || showValidationErrors)
+      ? "Duration must be at least 1 month."
+      : null
   // The "custom" sentinel is only meaningful INSIDE this component (see the
   // state declarations). Everything downstream reads these two values
   // literally: the four checkout screens price an offer by looking
@@ -2180,15 +2194,23 @@ export function OfferDialog({
                                     }
                                   }}
                                 />
-                                {/* No inline "must be greater than zero"
-                                message on purpose — Figma doesn't show one
-                                on this screen and Figma outranks the ticket
-                                (same call already made for custom schedule).
-                                An empty or zero value just keeps Send Offer
-                                disabled via isCustomRateIncomplete; nothing
-                                renders here to say why. The ticket does
-                                specify copy for this state — deliberately
-                                not built, not an oversight. */}
+                                {/* BTB-283: a zero/complete-but-invalid
+                                custom rate ("0", "00", "0.00") already keeps
+                                Send Offer disabled via isCustomRateIncomplete
+                                — this is the inline message explaining why.
+                                Always mounted (while this row is open) so the
+                                error appearing/disappearing never resizes the
+                                modal — only ErrorMessage's own visibility
+                                toggles, its real line-height always reserves
+                                the same one line. */}
+                                <ErrorMessage
+                                  className={cn(
+                                    "mt-2",
+                                    !customRateError && "invisible"
+                                  )}
+                                >
+                                  {customRateError || " "}
+                                </ErrorMessage>
                               </div>
                             ) : null}
                             {selectedRateError ? (
@@ -2236,80 +2258,93 @@ export function OfferDialog({
                             tile highlighting above both fall out of the one
                             comparison (AC-15.2). */}
                             {selectedDuration === "custom" ? (
-                              <div className="mt-3 flex gap-3">
-                                <Input
-                                  autoFocus
-                                  className="flex-1"
-                                  type="text"
-                                  inputMode="numeric"
-                                  maxLength={2}
-                                  placeholder="Enter duration"
-                                  value={customDurationValue}
-                                  onChange={(event) => {
-                                    // Same whole-value keystroke rejection as
-                                    // customHours/customRateValue — integers
-                                    // only, no fractional months/years.
-                                    //
-                                    // BTB-272: maxLength above stops the
-                                    // extreme case (a 50-digit paste); this
-                                    // adds a per-unit magnitude ceiling —
-                                    // unlike customRateValue's guard, no
-                                    // NaN-fallback is needed here, since
-                                    // /^\d*$/ never produces anything but ""
-                                    // or a plain digit string, and Number()
-                                    // of either is always finite.
-                                    const value = event.target.value
-                                    if (
-                                      /^\d*$/.test(value) &&
-                                      (value === "" ||
-                                        Number(value) <=
-                                          CUSTOM_DURATION_MAX[
-                                            customDurationUnit
-                                          ])
-                                    ) {
-                                      setCustomDurationValue(value)
-                                    }
-                                  }}
-                                />
-                                <Select
-                                  value={customDurationUnit}
-                                  onValueChange={(value) => {
-                                    // BTB-272: same defect reached through a
-                                    // different path — a value valid under
-                                    // the old unit can exceed the new one's
-                                    // max with no keystroke to catch it.
-                                    // Same clamp shape as customHours' Select
-                                    // onValueChange above (T1-12).
-                                    const nextUnit = value as
-                                      | "Months"
-                                      | "Years"
-                                    const max = CUSTOM_DURATION_MAX[nextUnit]
-                                    const clamped =
-                                      Number(customDurationValue) > max
-                                        ? String(max)
-                                        : customDurationValue
-                                    setCustomDurationUnit(nextUnit)
-                                    setCustomDurationValue(clamped)
-                                  }}
+                              <div className="mt-3">
+                                <div className="flex gap-3">
+                                  <Input
+                                    autoFocus
+                                    className="flex-1"
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={2}
+                                    placeholder="Enter duration"
+                                    value={customDurationValue}
+                                    onChange={(event) => {
+                                      // Same whole-value keystroke rejection
+                                      // as customHours/customRateValue —
+                                      // integers only, no fractional
+                                      // months/years.
+                                      //
+                                      // BTB-272: maxLength above stops the
+                                      // extreme case (a 50-digit paste); this
+                                      // adds a per-unit magnitude ceiling —
+                                      // unlike customRateValue's guard, no
+                                      // NaN-fallback is needed here, since
+                                      // /^\d*$/ never produces anything but
+                                      // "" or a plain digit string, and
+                                      // Number() of either is always finite.
+                                      const value = event.target.value
+                                      if (
+                                        /^\d*$/.test(value) &&
+                                        (value === "" ||
+                                          Number(value) <=
+                                            CUSTOM_DURATION_MAX[
+                                              customDurationUnit
+                                            ])
+                                      ) {
+                                        setCustomDurationValue(value)
+                                      }
+                                    }}
+                                  />
+                                  <Select
+                                    value={customDurationUnit}
+                                    onValueChange={(value) => {
+                                      // BTB-272: same defect reached through
+                                      // a different path — a value valid
+                                      // under the old unit can exceed the
+                                      // new one's max with no keystroke to
+                                      // catch it. Same clamp shape as
+                                      // customHours' Select onValueChange
+                                      // above (T1-12).
+                                      const nextUnit = value as
+                                        | "Months"
+                                        | "Years"
+                                      const max = CUSTOM_DURATION_MAX[nextUnit]
+                                      const clamped =
+                                        Number(customDurationValue) > max
+                                          ? String(max)
+                                          : customDurationValue
+                                      setCustomDurationUnit(nextUnit)
+                                      setCustomDurationValue(clamped)
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[140px] shrink-0 text-left">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Months">
+                                        Months
+                                      </SelectItem>
+                                      <SelectItem value="Years">
+                                        Years
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {/* BTB-283: a zero/complete-but-invalid
+                                custom duration ("0", "00") already keeps
+                                Send Offer disabled via
+                                isCustomDurationIncomplete — this is the
+                                inline message explaining why. Always mounted
+                                (while this row is open), same reserved-slot
+                                shape as Custom Rate above. */}
+                                <ErrorMessage
+                                  className={cn(
+                                    "mt-2",
+                                    !customDurationError && "invisible"
+                                  )}
                                 >
-                                  <SelectTrigger className="w-[140px] shrink-0 text-left">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Months">
-                                      Months
-                                    </SelectItem>
-                                    <SelectItem value="Years">
-                                      Years
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                {/* No inline "must be greater than zero"
-                                message here either — same Figma-outranks-
-                                the-ticket call as Custom Rate above. Empty
-                                or zero keeps Send Offer disabled via
-                                isCustomDurationIncomplete; nothing renders
-                                to explain why. Deliberate, not an oversight. */}
+                                  {customDurationError || " "}
+                                </ErrorMessage>
                               </div>
                             ) : null}
                             {selectedDurationError ? (
@@ -2525,11 +2560,20 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {customHoursError ? (
-                                <ErrorMessage className="mt-1">
-                                  {customHoursError}
-                                </ErrorMessage>
-                              ) : null}
+                              {/* BTB-283: same reserved-slot shape as the
+                              Custom Rate/Duration rows above — always
+                              mounted while this row is open so the error
+                              appearing/disappearing never resizes the modal.
+                              Text and logic (customHoursError state) are
+                              unchanged. */}
+                              <ErrorMessage
+                                className={cn(
+                                  "mt-1",
+                                  !customHoursError && "invisible"
+                                )}
+                              >
+                                {customHoursError || " "}
+                              </ErrorMessage>
                             </div>
                           ) : null}
 

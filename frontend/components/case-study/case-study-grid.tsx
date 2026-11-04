@@ -57,20 +57,35 @@ export function CaseStudyGrid({
   isClientView = false,
   onOpenEditor,
   onOpenPreview,
+  ownerUserId,
 }: {
   canCreate?: boolean
   /** Client-facing view — cards open the read-only preview instead of the editor, and lose their hover actions. */
   isClientView?: boolean
   onOpenEditor: (caseStudyId: string) => void
   onOpenPreview?: (caseStudyId: string) => void
+  /**
+   * Whose profile this grid sits on. Read-only grids list THIS user's
+   * published case studies through the public route, so another user (or a
+   * logged-out visitor) sees the talent's work, not their own.
+   */
+  ownerUserId?: string
 }) {
   const [caseStudies, setCaseStudies] = useState<CaseStudySummary[]>([])
   const [modalOpen, setModalOpen] = useState(false)
   const [isShowing, setIsShowing] = useState(false)
 
   const refresh = useCallback(async () => {
+    // A read-only grid can't know whose work to show until the profile has
+    // loaded; render nothing until then rather than the viewer's own list.
+    if (!canCreate && !ownerUserId) {
+      setCaseStudies([])
+      return
+    }
     try {
-      const { data } = await CaseStudyAPI.List({ status: "all" })
+      const { data } = canCreate
+        ? await CaseStudyAPI.List({ status: "all" })
+        : await CaseStudyAPI.ListPublic(ownerUserId as string)
       const items = (data?.items ?? []) as Array<{
         id: string
         title: string
@@ -101,7 +116,7 @@ export function CaseStudyGrid({
       // shouldn't take down the rest of the profile page.
       setCaseStudies([])
     }
-  }, [])
+  }, [canCreate, ownerUserId])
 
   useEffect(() => {
     refresh()
