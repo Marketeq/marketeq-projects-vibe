@@ -274,6 +274,34 @@ export class CaseStudyService {
     return cs;
   }
 
+  /** Published-only read by id, for viewers who don't own the case study. */
+  async getPublicById(id: string): Promise<CaseStudy> {
+    const cs = await this.caseStudies.findOne({ where: { id, status: 'published' } });
+    if (!cs) {
+      throw new NotFoundException('Case study not found');
+    }
+    return cs;
+  }
+
+  /**
+   * One talent's published case studies, for their public profile. Ordered
+   * the same way the owner's own grid is, so the visitor sees the cards in
+   * the order the talent does.
+   */
+  async listPublishedByOwner(
+    ownerUserId: string,
+    opts: { limit?: number; offset?: number } = {},
+  ): Promise<{ items: CaseStudy[]; total: number }> {
+    const { limit = 20, offset = 0 } = opts;
+    const [items, total] = await this.caseStudies.findAndCount({
+      where: { ownerUserId, status: 'published' },
+      order: { updatedAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+    return { items, total };
+  }
+
   async listByOwner(ownerUserId: string, opts: ListOptions = {}): Promise<{ items: CaseStudy[]; total: number }> {
     const { status, limit = 20, offset = 0 } = opts;
 

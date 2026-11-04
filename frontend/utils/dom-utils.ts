@@ -40,8 +40,14 @@ export function getHasExtension({
   extensions: string[]
   meta: File
 }) {
-  const value = getFileName(meta)
-  return extensions.some((extension) => value.endsWith(extension))
+  return hasExtension(getFileName(meta), extensions)
+}
+
+// Extensions are compared case-insensitively: cameras and phones commonly
+// save "IMG_0001.JPG", which is the same file type as ".jpg".
+function hasExtension(fileName: string, extensions: string[]) {
+  const value = fileName.toLowerCase()
+  return extensions.some((extension) => value.endsWith(extension.toLowerCase()))
 }
 
 export function matchesExtensions({
@@ -51,8 +57,7 @@ export function matchesExtensions({
   extensions: string[]
   file: File
 }) {
-  const value = getFileName(file)
-  return extensions.some((extension) => value.endsWith(extension))
+  return hasExtension(getFileName(file), extensions)
 }
 
 export function getPreview<T extends File>(
