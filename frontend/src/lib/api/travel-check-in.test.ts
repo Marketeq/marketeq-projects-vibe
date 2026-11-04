@@ -879,7 +879,7 @@ describe("the two new UI states are composed from design-system parts only", () 
   })
 
   it("the prompt: warning icon, title, supporting text and the two actions in order", () => {
-    assert.ok(dialog.includes('className="w-[405px] pt-[50px]"'))
+    assert.ok(dialog.includes("className={CHECK_IN_PROMPT_DIALOG_CLASS}"))
     assert.ok(dialog.includes("{CHECK_IN_COPY.prompt.title}"))
     assert.ok(
       dialog.indexOf("CHECK_IN_COPY.prompt.stillTraveling") <
