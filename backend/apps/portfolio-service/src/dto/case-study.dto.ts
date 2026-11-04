@@ -67,6 +67,30 @@ export class ReorderBlocksDto {
   blockOrder: string[];
 }
 
+/**
+ * Query for the public, unauthenticated list of one talent's case studies —
+ * what another user (or a logged-out visitor) sees on that talent's profile.
+ * Status is deliberately not a parameter: this route only ever returns
+ * published case studies.
+ */
+export class ListPublicCaseStudiesQueryDto {
+  @IsUUID()
+  ownerUserId: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 export class ListCaseStudiesQueryDto {
   @IsOptional()
   @IsIn(['draft', 'published', 'hidden', 'archived', 'all'])

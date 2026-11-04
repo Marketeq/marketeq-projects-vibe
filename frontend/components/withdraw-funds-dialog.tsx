@@ -27,6 +27,7 @@ import { getBalance, type BalanceResponse } from "@/service/http/earnings"
 import { getPublicAuthUrl, getPublicApiUrl } from "@/lib/runtime-urls"
 import { csrfHeader } from "@/src/lib/csrf"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 
 const PAYOUT_SERVICE_URL = `${getPublicApiUrl()}/v1`
@@ -164,22 +165,28 @@ const SummaryTile = ({ icon, value, label }: { icon: React.ReactNode; value: str
   </div>
 )
 
-export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
+export function WithdrawFundsDialog({ open, onOpenChange, onVerified, initialAmount }: {
   open: boolean; onOpenChange: (open: boolean) => void
+  // PMCM-806 AC-04: the failed-withdrawal email's "Try again" reopens this
+  // dialog with the failed amount already entered. Applied once per open.
+  initialAmount?: string
   // Fires once the magic link is confirmed (from any device/tab) while this
   // modal is still open on the "verify" step — lets the parent page refresh
   // its balance/recent-activity without a manual reload.
   onVerified?: () => void
 }) {
   const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   const [step, setStep] = React.useState<StepId>("amount")
 
   // G9: the payout service's identity gate answered 403/503 - the existing
-  // Verify My Account popup opens; "Verify My Account" continues on the talent dashboard.
+  // Verify My Account popup opens; "Verify My Account" closes it and starts the existing
+  // verification flow in place through the shared host. This dialog and what was entered stay
+  // open underneath, and the withdrawal is never retried: Confirm is clicked again.
   const [verificationBlock, setVerificationBlock] = React.useState<WithdrawalVerificationBlock>(null)
   const goVerify = () => {
     setVerificationBlock(null)
-    router.push("/talent-dashboard")
+    void startVerification()
   }
   const [gateAllowed, setGateAllowed] = React.useState<boolean | null>(null)
   const [gateBlockedBy, setGateBlockedBy] = React.useState<string | undefined>(undefined)
@@ -392,6 +399,7 @@ export function WithdrawFundsDialog({ open, onOpenChange, onVerified }: {
   React.useEffect(() => {
     if (!open) return
     resetAll()
+    if (initialAmount) setAmount(initialAmount)
     loadGate(); loadBalance(); loadMethods()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])

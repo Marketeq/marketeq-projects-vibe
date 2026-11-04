@@ -1,0 +1,90 @@
+name: Supabase Nightly Backup
+
+on:
+  schedule:
+    # Run every night at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: sudo apt-get install -y postgresql-client
+
+      - name: Dump database
+        run: |
+          DATE=$(date +%Y%m%d)
+          FILENAME="marketeq-prod-${DATE}.pgc"
+          echo "Creating dump: $FILENAME"
+          pg_dump \
+            --dbname="${{ secrets.SUPABASE_DB_BACKUP_URL }}" \
+            --format=custom \
+            --no-owner \
+            --no-privileges \
+            --file="/tmp/$FILENAME"
+          SIZE=$(du -sh /tmp/$FILENAME | cut -f1)
+          echo "Dump size: $SIZE"
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+
+      - name: Upload to R2
+        run: |
+          pip install boto3 --quiet
+          python3 << 'PYEOF'
+          import boto3, os
+          from pathlib import Path
+
+          filename = os.environ['FILENAME']
+          local_path = f"/tmp/{filename}"
+          s3_key = f"db-backups/marketeq-projects/{filename}"
+
+          s3 = boto3.client(
+              's3',
+              endpoint_url=os.environ['R2_ENDPOINT'],
+              aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
+              aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'],
+          )
+
+          print(f"Uploading {filename} ({Path(local_path).stat().st_size / 1024 / 1024:.1f} MB)...")
+          s3.upload_file(local_path, 'marketeq-attachments', s3_key)
+          print(f"Uploaded to r2://marketeq-attachments/{s3_key}")
+          PYEOF
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+
+      - name: Prune old backups (keep 14)
+        run: |
+          pip install boto3 --quiet
+          python3 << 'PYEOF'
+          import boto3, os
+
+          s3 = boto3.client(
+              's3',
+              endpoint_url=os.environ['R2_ENDPOINT'],
+              aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
+              aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'],
+          )
+
+          resp = s3.list_objects_v2(
+              Bucket='marketeq-attachments',
+              Prefix='db-backups/marketeq-projects/marketeq-prod-'
+          )
+          objects = sorted(
+              resp.get('Contents', []),
+              key=lambda x: x['LastModified'],
+              reverse=True
+          )
+          keep = 14
+          to_delete = objects[keep:]
+          for obj in to_delete:
+              print(f"Deleting old backup: {obj['Key']}")
+              s3.delete_object(Bucket='marketeq-attachments', Key=obj['Key'])
+          print(f"Kept {min(len(objects), keep)} backups, deleted {len(to_delete)}")
+          PYEOF
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

@@ -31,14 +31,12 @@ export interface ContractsIpcDeps {
   onUnauthorized?: () => Promise<boolean>;
 }
 
-export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
-  const log = deps.logger?.child({ svc: 'contracts-ipc' });
-
-  // Every backend call goes through here. The access token is short-lived
-  // (15 min), so a 401 triggers one silent refresh and one retry with the
-  // new token — same contract as the sync api-client (doc 15 §7). Without
-  // this, contracts and tasks stopped loading once the token expired.
-  const authedFetch = async (
+// Every backend call goes through here. The access token is short-lived
+// (15 min), so a 401 triggers one silent refresh and one retry with the
+// new token — same contract as the sync api-client (doc 15 §7). Without
+// this, contracts and tasks stopped loading once the token expired.
+function createAuthedFetch(deps: ContractsIpcDeps, log: Logger | undefined) {
+  return async (
     url: string,
     init: { method: string; body?: string } = { method: 'GET' },
   ): Promise<Response> => {
@@ -62,6 +60,39 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
     log?.debug({ url }, '401 — refreshed, retrying once');
     return send(deps.getAccessToken());
   };
+}
+
+/**
+ * PMCM-831: the current backend status of one of the talent's contracts
+ * ("active", "paused", "disputed", ...), or null when it can't be read
+ * (offline, signed out, not found) — callers must not act on null.
+ */
+export function createContractStatusFetcher(deps: ContractsIpcDeps) {
+  const log = deps.logger?.child({ svc: 'contract-status' });
+  const authedFetch = createAuthedFetch(deps, log);
+  return async (contractId: string): Promise<string | null> => {
+    const userId = deps.getUserId();
+    if (!deps.getAccessToken() || !userId) return null;
+    try {
+      const res = await authedFetch(
+        `${deps.apiBaseUrl}/contracts/talent/${encodeURIComponent(userId)}`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const match = Array.isArray(data)
+        ? (data as BackendContract[]).find((c) => c.id === contractId)
+        : undefined;
+      return typeof match?.status === 'string' ? match.status.toLowerCase() : null;
+    } catch (err) {
+      log?.debug({ err, contractId }, 'contract status check failed');
+      return null;
+    }
+  };
+}
+
+export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
+  const log = deps.logger?.child({ svc: 'contracts-ipc' });
+  const authedFetch = createAuthedFetch(deps, log);
 
   // Authenticated fetch of a contract's tasks — the token is required,
   // the backend route is not public (doc 15: the token only lives here,
@@ -153,10 +184,11 @@ export function registerContractsIpc(deps: ContractsIpcDeps): () => void {
             name: c.title || 'Untitled',
             client_name: c.clientId || 'unknown',
             status: c.status === 'active' ? 'active' : c.status === 'paused' ? 'paused' : 'ended',
-            currency: 'USD',
+            currency: /^[A-Z]{3}$/.test(c.currencyCode ?? '') ? c.currencyCode! : 'USD',
             rate_minor: Math.round((Number(c.rate) || 0) * 100),
             daily_cap_seconds: null,
-            weekly_cap_seconds: null,
+            weekly_cap_seconds:
+              Number(c.weeklyCapHours) > 0 ? Math.round(Number(c.weeklyCapHours) * 3600) : null,
             paid_break_allowance_seconds: 0,
             screenshot_interval_seconds: 60,
             mirrored_at: now,

@@ -734,6 +734,7 @@ export default function CaseStudyEditor({
         isPreview={isPreview}
         onPreviewToggle={() => setIsPreview((v) => !v)}
         onPublish={handleOpenPublish}
+        hasPublishError={descriptionError}
         onClose={onClose}
       />
 
@@ -868,6 +869,7 @@ export default function CaseStudyEditor({
               lastSavedAt={lastSavedAt}
               onEdit={() => setIsPreview(false)}
               onPublish={handleOpenPublish}
+              hasPublishError={descriptionError}
               onClose={() => setIsPreview(false)}
             />
 

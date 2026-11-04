@@ -192,9 +192,16 @@ function detectPlatform(): DesktopPlatform {
 export function DownloadDesktopTrackerDialog({
   open,
   onOpenChange,
+  onStartVerification,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /**
+   * G8: "Verify My Account" in the blocked popup starts verification in place through this
+   * callback (the pages pass the shared host's startVerification). Without it the popup keeps
+   * its earlier behavior and continues on the talent dashboard.
+   */
+  onStartVerification?: () => void | Promise<void>
 }) {
   const { toast } = useToast()
   const [platform, setPlatform] = useState<DesktopPlatform>("mac-arm64")
@@ -264,11 +271,16 @@ export function DownloadDesktopTrackerDialog({
 
   const otherOsPlatform: DesktopPlatform = isMac ? "win-x64" : "mac-arm64"
 
-  // "Verify My Account" in the existing popup continues on the talent dashboard,
-  // where the existing verification banner starts verification.
+  // "Verify My Account" in the existing popup closes it and this dialog, then starts
+  // verification in place when the page supplied the shared host's action; otherwise it
+  // continues on the talent dashboard, where the existing verification banner starts it.
   const goVerify = () => {
     setVerificationBlock(null)
     onOpenChange(false)
+    if (onStartVerification) {
+      void onStartVerification()
+      return
+    }
     router.push("/talent-dashboard")
   }
 

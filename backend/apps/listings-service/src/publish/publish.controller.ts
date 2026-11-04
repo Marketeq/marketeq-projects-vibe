@@ -45,6 +45,14 @@ export class PublishController {
     private readonly imageValidator: ImageValidator,
   ) {}
 
+  // G2 (PMCM-652): read-only twin of the creation gate. The listing form asks this before it
+  // creates anything; it writes nothing and answers 200, 403 VERIFICATION_REQUIRED or 503.
+  @Get('create-gate')
+  async checkCreateGate(@Req() req: AuthenticatedRequest) {
+    await this.publishService.assertCreateGateOpen(req.user.sub);
+    return { allowed: true };
+  }
+
   @Post('project')
   async createNewProject(
     @Req() req: AuthenticatedRequest,
