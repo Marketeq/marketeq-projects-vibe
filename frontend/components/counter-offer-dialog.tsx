@@ -9,6 +9,7 @@ import {
   X,
 } from "@blend-metrics/icons"
 import type { OfferDialogData } from "@/components/offer-dialog.types"
+import { cn } from "@/utils/functions"
 import {
   Alert,
   AlertContent,
@@ -22,6 +23,7 @@ import {
   DialogClose,
   DialogContent,
   DialogTitle,
+  ErrorMessage,
   IconButton,
   Input,
   Popover,
@@ -389,6 +391,24 @@ export function CounterOfferDialog({
   const isCustomScheduleIncomplete =
     state.showCustomScheduleInput &&
     !(Number(state.scheduleValue.replace(/\D/g, "")) > 0)
+  // BTB-283: inline messages for the three isCustom*Incomplete cases above —
+  // the gating already blocked Review/Submit, this is just the explanation.
+  // Shown once the row holds a non-empty (so user-typed, not freshly opened)
+  // value that's still invalid; an untouched empty row stays silent because
+  // the Review button it would otherwise reach is already disabled while
+  // empty, so there's no submit attempt to react to here.
+  const customRateError =
+    isCustomRateIncomplete && state.rateValue !== ""
+      ? "Rate must be greater than $0."
+      : null
+  const customDurationError =
+    isCustomDurationIncomplete && state.durationValue !== ""
+      ? "Duration must be at least 1 month."
+      : null
+  const customScheduleZeroError =
+    isCustomScheduleIncomplete && state.scheduleValue !== ""
+      ? "Hours must be greater than 0."
+      : null
   const isResendMode =
     mode === "edit" && Boolean(editTitle?.startsWith("Resend"))
 
@@ -670,7 +690,12 @@ export function CounterOfferDialog({
                     {mode === "edit" ? "Edit Offer" : "Edit Counter Offer"}
                   </Button>
                   <Button
-                    disabled={submitDisabled}
+                    disabled={
+                      submitDisabled ||
+                      isCustomRateIncomplete ||
+                      isCustomDurationIncomplete ||
+                      isCustomScheduleIncomplete
+                    }
                     onClick={() =>
                       onSubmit?.({
                         offerRate: state.rateValue,
@@ -859,6 +884,12 @@ export function CounterOfferDialog({
                             })
                           }}
                         />
+                        {/* BTB-283: always mounted while this row is open
+                        so the error appearing/disappearing never resizes
+                        the modal. */}
+                        <ErrorMessage className={cn(!customRateError && "invisible")}>
+                          {customRateError || " "}
+                        </ErrorMessage>
                         <div className="flex justify-end">
                           <Button
                             variant="link"
@@ -1015,6 +1046,12 @@ export function CounterOfferDialog({
                             </SelectContent>
                           </Select>
                         </div>
+                        {/* BTB-283: always mounted while this row is open
+                        so the error appearing/disappearing never resizes
+                        the modal. */}
+                        <ErrorMessage className={cn(!customDurationError && "invisible")}>
+                          {customDurationError || " "}
+                        </ErrorMessage>
                         <div className="flex">
                           <Button
                             variant="link"
@@ -1108,6 +1145,12 @@ export function CounterOfferDialog({
                           </SelectContent>
                         </Select>
                       </div>
+                      {/* BTB-283: always mounted while this row is open so
+                      the error appearing/disappearing never resizes the
+                      modal. */}
+                      <ErrorMessage className={cn(!customScheduleZeroError && "invisible")}>
+                        {customScheduleZeroError || " "}
+                      </ErrorMessage>
                       <div className="flex">
                         <Button
                           variant="link"

@@ -344,7 +344,16 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
   })
 
   it("Update opens the existing flow through the existing handler and is not a dismissal", () => {
-    assert.match(card, /handleLiveTravelUpdate\(\)/)
+    // The card calls a thin press wrapper (spinner only) that awaits the same handler exactly once.
+    assert.match(card, /void handleLiveTravelUpdatePress\(\)/)
+    const wrapper = page.slice(
+      page.indexOf("const handleLiveTravelUpdatePress = useCallback("),
+      page.indexOf("}, [handleLiveTravelUpdate])")
+    )
+    assert.ok(wrapper.length > 0)
+    assert.equal((wrapper.match(/await handleLiveTravelUpdate\(\)/g) ?? []).length, 1)
+    assert.ok(wrapper.includes("if (liveUpdateRunningRef.current) return"))
+    assert.match(card, /loading=\{liveUpdatePending\}\s+aria-busy=\{liveUpdatePending\}/)
     // On the dashboard it is the page's own handler (it hides its popup first); the host calls it.
     assert.match(
       dashboard,

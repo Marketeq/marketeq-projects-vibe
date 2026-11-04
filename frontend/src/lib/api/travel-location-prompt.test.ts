@@ -226,6 +226,8 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     const stubs = {
       activatingTravelModeRef: ref,
       setActivatingTravelMode: (v: boolean) => calls.push(`busy:${v}`),
+      // Loading-state UI: which button started the save (spinner only on that one).
+      setActivatingTravelAction: (v: string | null) => calls.push(`action:${v}`),
       setTravelModeSaveFailed: (v: boolean) => calls.push(`failed:${v}`),
       setTravelDurationSkipped: (v: boolean) => calls.push(`skipped:${v}`),
       travelModeDeps: async () => ({}),
@@ -251,14 +253,16 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
   it("Confirm success: nothing moves until the save returns, then the Travel Mode screen", async () => {
     const r = run({})
     await new Promise((x) => setTimeout(x, 5))
-    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
+    assert.deepEqual(r.calls, ["action:confirm", "busy:true", "failed:false", "duration:A few days"])
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:confirm",
       "busy:true",
       "failed:false",
       "duration:A few days",
       "busy:false",
+      "action:null",
       "skipped:false",
       "send:NEXT",
     ])
@@ -274,10 +278,12 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:skip",
       "busy:true",
       "failed:false",
       "duration:Not sure",
       "busy:false",
+      "action:null",
       "skipped:true",
       "send:NEXT",
     ])
@@ -294,10 +300,12 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:confirm",
       "busy:true",
       "failed:false",
       "duration:A few days",
       "busy:false",
+      "action:null",
       "failed:true",
     ])
   })
@@ -311,12 +319,18 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     const r = run({ mounted: false })
     r.release()
     await r.done
-    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
+    assert.deepEqual(r.calls, ["action:confirm", "busy:true", "failed:false", "duration:A few days"])
   })
   it("Skip is disabled only while saving; Confirm also until a duration is selected", () => {
     const s = screen()
     assert.ok(s.includes("disabled={activatingTravelMode || travelDuration === null}"))
-    assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 1)
+    // Skip, and (new) the Back arrow: Back is disabled while the save runs, so the screen cannot move
+    // and then be advanced a second time by the late success.
+    assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 2)
+    assert.match(s, /disabled=\{activatingTravelMode\}\s+onClick=\{\(\) => send\("BACK"\)\}/)
+    // Loading state: only the pressed button spins, the label is unchanged, and each is aria-busy.
+    assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "skip"\}\s+aria-busy=\{activatingTravelMode && activatingTravelAction === "skip"\}/)
+    assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "confirm"\}\s+aria-busy=\{\s*activatingTravelMode && activatingTravelAction === "confirm"\s*\}/)
     assert.ok(s.includes("onClick={() => void activateTravelMode(true)}"))
     assert.ok(s.includes("onClick={() => void activateTravelMode(false)}"))
   })

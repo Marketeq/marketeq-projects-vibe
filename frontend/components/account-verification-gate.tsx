@@ -34,6 +34,7 @@ export function AccountVerificationGate({
   onRetryConnectionCheck,
   onDismissConnectionError,
   onCancel,
+  retrying = false,
 }: {
   open: boolean
   reason: AccountVerificationGateReason
@@ -46,6 +47,11 @@ export function AccountVerificationGate({
   // "Verify My Account", and Escape and clicking outside do the same as Cancel. It is called at
   // most once per time the gate is opened, however many events one dismissal produces.
   onCancel?: () => void
+  // Optional. True only while a Retry pressed on the connection-error presentation is running:
+  // that presentation stays on screen until the answer, so Retry shows its spinner (the shared
+  // Button's, replacing its icon) and is disabled. Absent or false (every other caller): nothing
+  // changes. Dismiss stays available, since dismissing cancels the check.
+  retrying?: boolean
 }) {
   const connectionUnavailable = connectionCheckState === "unavailable"
 
@@ -104,11 +110,13 @@ export function AccountVerificationGate({
                 Dismiss
               </Button>
               <Button
-                className="text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
+                className="min-w-[93px] text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
                 size="md"
+                leftIcon={<RefreshCw className="size-[15px]" />}
+                loading={retrying}
+                aria-busy={retrying}
                 onClick={onRetryConnectionCheck}
               >
-                <RefreshCw className="size-[15px]" />
                 Retry
               </Button>
             </div>
@@ -140,12 +148,13 @@ export function AccountVerificationGate({
                 </Button>
               )}
               <Button
+                className="min-w-[178px]"
                 onClick={onVerify}
                 disabled={connectionCheckState === "checking"}
+                loading={connectionCheckState === "checking"}
+                aria-busy={connectionCheckState === "checking"}
               >
-                {connectionCheckState === "checking"
-                  ? "Checking..."
-                  : "Verify My Account"}
+                Verify My Account
               </Button>
             </div>
           </>

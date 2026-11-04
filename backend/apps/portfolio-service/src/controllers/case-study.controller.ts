@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Patch, Delete, Body, Param, Query, Req, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Body, Param, Query, Req, UseGuards, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { CaseStudyService } from '../services/case-study.service';
 import {
@@ -6,6 +6,7 @@ import {
   UpdateCaseStudyDto,
   ReorderBlocksDto,
   ListCaseStudiesQueryDto,
+  ListPublicCaseStudiesQueryDto,
   PublishCaseStudyDto,
   SetVisibilityDto,
 } from '../dto/case-study.dto';
@@ -27,7 +28,20 @@ export class CaseStudyController {
     return this.svc.listByOwner(req.user.userId, query);
   }
 
-  // Must be declared before ':id' — otherwise "public" would be matched as an :id value.
+  // Public routes. All must be declared before ':id' — otherwise "public"
+  // would be matched as an :id value. None of them take a JWT, and every one
+  // returns published case studies only, so a draft or hidden case study is
+  // never reachable by anyone but its owner.
+  @Get('public')
+  listPublic(@Query() query: ListPublicCaseStudiesQueryDto) {
+    return this.svc.listPublishedByOwner(query.ownerUserId, query);
+  }
+
+  @Get('public/id/:id')
+  getPublicById(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.svc.getPublicById(id);
+  }
+
   @Get('public/:slug')
   getPublic(@Param('slug') slug: string) {
     return this.svc.getPublicBySlug(slug);

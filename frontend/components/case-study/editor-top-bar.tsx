@@ -35,6 +35,7 @@ export function EditorTopBar({
   isPreview,
   onPreviewToggle,
   onPublish,
+  hasPublishError = false,
   onClose,
   className,
 }: {
@@ -47,6 +48,8 @@ export function EditorTopBar({
   isPreview?: boolean
   onPreviewToggle?: () => void
   onPublish?: () => void
+  /** A Publish attempt left an error on screen: Publish shows red until it is fixed. */
+  hasPublishError?: boolean
   onClose?: () => void
   className?: string
 }) {
@@ -143,6 +146,7 @@ export function EditorTopBar({
 
           <Button
             type="button"
+            visual={hasPublishError ? "error" : "primary"}
             onClick={onPublish}
             className="h-auto px-[14px] py-2 text-xs font-semibold"
           >

@@ -11,6 +11,7 @@ import React, {
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth"
 import { UserAPI } from "@/service/http/user"
+import { downscaleImage } from "@/lib/downscale-image"
 import { ClientAPI } from "@/service/http/client"
 import {
   getCertificationBrandFromUrl,
@@ -181,6 +182,7 @@ import {
   TooltipTrigger,
   buttonVariants,
   tabsListVariants,
+  useToast,
 } from "@/components/ui"
 import { ScrollBar } from "@/components/ui"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -462,6 +464,7 @@ export default function TalentProfilePage() {
 
 function Default() {
   const { user, isLoading: isAuthLoading, openAuthModal, setPendingRedirect, setUser } = useAuth()
+  const { toast } = useToast()
   const { toggle: openInviteWindow } = useInviteWindowStore()
   const router = useRouter()
   const pathname = usePathname()
@@ -842,7 +845,25 @@ function Default() {
 
   const handleAvatarUpload = useCallback(
     async (file: File) => {
-      await ClientAPI.UploadAvatar(file)
+      // The image editor only logs a rejected save, and user-service answers
+      // a storage outage with a 2xx `{ stored: false }` (the image is thrown
+      // away). Either way the photo silently vanished on reload, so say so
+      // here and rethrow — the rethrow keeps the editor open with the image.
+      try {
+        // 1024 = user-service's MAX_AVATAR_DIMENSION: anything larger is
+        // resized down server-side anyway, and a full-size phone photo
+        // otherwise trips the 5 MB upload cap (413).
+        const upload = await downscaleImage(file, 1024)
+        const { data } = await ClientAPI.UploadAvatar(upload)
+        if ((data as { stored?: boolean } | undefined)?.stored === false) {
+          throw new Error("Image storage is unavailable right now.")
+        }
+      } catch (error) {
+        toast({
+          description: "We couldn't save your profile image. Please try again.",
+        })
+        throw error
+      }
       if (!profile?.id) return
       try {
         const res = await UserAPI.getProfile(profile.id)
@@ -857,7 +878,7 @@ function Default() {
         /* noop */
       }
     },
-    [profile?.id, setUser]
+    [profile?.id, setUser, toast]
   )
 
   const handleRemoveAvatar = useCallback(async () => {
@@ -2011,6 +2032,7 @@ function Default() {
 
                 <CaseStudyGrid
                   key={caseStudyGridKey}
+                  ownerUserId={profile?.id}
                   canCreate={!isClientView}
                   isClientView={isClientView}
                   onOpenEditor={(caseStudyId) => {
@@ -5344,18 +5366,6 @@ function Default() {
             </DialogContent>
           </Dialog>
 
-          {caseStudyPreviewOpen && previewCaseStudyId && profile && (
-            <CaseStudyClientPreview
-              caseStudyId={previewCaseStudyId}
-              talentProfile={profile}
-              isSelfPreview={isOwnProfile}
-              onClose={() => {
-                setCaseStudyPreviewOpen(false)
-                setPreviewCaseStudyId(undefined)
-              }}
-            />
-          )}
-
           <Dialog
             open={!!deleteConfirm}
             onOpenChange={(open) => {
@@ -5433,6 +5443,19 @@ function Default() {
             </DialogContent>
           </Dialog>
         </>
+      )}
+      {/* Case-study popup. Outside the owner-only block above: it is the
+          popup a VISITOR opens from the grid, so it must render for them. */}
+      {caseStudyPreviewOpen && previewCaseStudyId && profile && (
+        <CaseStudyClientPreview
+          caseStudyId={previewCaseStudyId}
+          talentProfile={profile}
+          isSelfPreview={isOwnProfile}
+          onClose={() => {
+            setCaseStudyPreviewOpen(false)
+            setPreviewCaseStudyId(undefined)
+          }}
+        />
       )}
       {/* Resume uploading dialog */}
       <Dialog open={resumeStatus === "uploading"}>

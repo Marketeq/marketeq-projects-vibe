@@ -322,7 +322,11 @@ describe("how the host is wired (source)", () => {
   })
 
   it("Reload is disabled while a check runs", () => {
-    assert.ok(host.includes('disabled={connectionCheckState === "checking"}\n              onClick={() => void handleVerifyMyAccount()}'))
+    // Still disabled by the shared check state; the spinner only shows on the press that started it,
+    // and the press still runs the same single handler (one check at a time, shared).
+    assert.ok(host.includes('disabled={connectionCheckState === "checking"}\n              loading={reloadPending}'))
+    assert.ok(host.includes("onClick={() => void handleReload()}"))
+    assert.ok(host.includes("await handleVerifyMyAccount()\n    } finally {\n      if (reloadTokenRef.current === token) setReloadPending(false)"))
   })
 
   it("the handler runs through the session, and the answer is checked for currency before anything uses it", () => {
