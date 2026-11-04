@@ -13,7 +13,12 @@
  *
  * Usage:  DATABASE_URL=postgres://... npm run check:grant-drift
  */
-const { Client } = require('pg');
+const { createRequire } = require('module');
+const path = require('path');
+
+// This file sits outside backend/, so a bare require('pg') walks scripts/ and the
+// repo root and never reaches backend/node_modules. Resolve it from backend/.
+const { Client } = createRequire(path.join(__dirname, '..', '..', 'backend', 'package.json'))('pg');
 
 const DEFAULT_ROLES = ['anon', 'authenticated', 'PUBLIC'];
 
@@ -21,15 +26,26 @@ const DEFAULT_ROLES = ['anon', 'authenticated', 'PUBLIC'];
 // not something this repository controls.
 const SYSTEM_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast'];
 
+// Reads the ACLs from pg_class, not information_schema.role_table_grants. That view
+// only lists a grant when the connecting role is its grantor or grantee, so any role
+// that is not a superuser would see nothing and report "Clean".
 const QUERY = `
-  SELECT grantee, table_schema, table_name,
-         string_agg(DISTINCT privilege_type, ', ' ORDER BY privilege_type) AS privileges
-    FROM information_schema.role_table_grants
-   WHERE grantee = ANY($1)
-     AND table_schema <> ALL($2)
-     AND table_schema NOT LIKE 'pg\\_%'
-   GROUP BY grantee, table_schema, table_name
-   ORDER BY table_schema, table_name, grantee
+  SELECT g.grantee, g.table_schema, g.table_name,
+         string_agg(DISTINCT g.privilege_type, ', ' ORDER BY g.privilege_type) AS privileges
+    FROM (
+      SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE r.rolname::text END AS grantee,
+             n.nspname::text AS table_schema, c.relname::text AS table_name, a.privilege_type
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN LATERAL aclexplode(c.relacl) a
+        LEFT JOIN pg_roles r ON r.oid = a.grantee
+       WHERE c.relkind IN ('r', 'v', 'f', 'p')
+    ) g
+   WHERE g.grantee = ANY($1)
+     AND g.table_schema <> ALL($2)
+     AND g.table_schema NOT LIKE 'pg\_%'
+   GROUP BY g.grantee, g.table_schema, g.table_name
+   ORDER BY g.table_schema, g.table_name, g.grantee
 `;
 
 async function main() {
