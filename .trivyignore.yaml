@@ -1,0 +1,42 @@
+# Accepted dependency vulnerabilities.
+#
+# An entry here means: "we know, and we are choosing not to fix it yet."
+# That is a legitimate decision. What makes it legitimate is that it is
+# written down, attributed, and expires.
+#
+# ── Rules ──
+#   1. Every entry needs a `statement` saying WHY, in a sentence a stranger
+#      can evaluate. "Not exploitable" is not a reason. "Dev-only, used by
+#      the test runner, never reaches production" is.
+#   2. Every entry needs `expired_at`. There are no permanent exceptions.
+#      When the date passes, Trivy reports the finding again and the CI
+#      hygiene check fails until somebody renews or removes it.
+#   3. Maximum 90 days. If it genuinely cannot be fixed in 90 days, that is
+#      worth re-deciding in 90 days.
+#   4. Name yourself. An accepted risk belongs to a person.
+#
+# ── What does NOT belong here ──
+#   A finding in a runtime dependency with a published fix. That is an
+#   upgrade, not an acceptance. The ignore file is for things you cannot
+#   currently fix, not things you have not got round to.
+#
+# ── Template ──
+#   vulnerabilities:
+#     - id: CVE-2026-12345
+#       # Required. Why this is accepted, and what makes it survivable.
+#       statement: >-
+#         Dev-only: pulled in by the test runner and never bundled into a
+#         deployed artifact. No fix published upstream as of 2026-10-06.
+#         Accepted by: <name>. Revisit: upstream issue #123.
+#       # Required. Max 90 days out. Trivy re-reports after this date.
+#       expired_at: 2027-01-04
+#       # Optional. Narrows the exception to one lockfile instead of all.
+#       paths:
+#         - backend/package-lock.json
+#
+# ── Current state ──
+# Empty, deliberately. The scan has never run, so there is nothing to
+# triage yet and nothing has been accepted. The first entries come out of
+# reading the first baseline, not out of anticipating it.
+
+vulnerabilities: []
