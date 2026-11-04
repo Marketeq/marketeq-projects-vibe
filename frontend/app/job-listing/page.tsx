@@ -10637,9 +10637,11 @@ const DescribeProjectStep = ({
 const ReviewToolsTechnologiesStep = ({
   setProgress,
   source = "project",
+  hiringMode,
   jobListingId,
 }: ProgressProps & {
   source?: "project" | "service" | "roles";
+  hiringMode?: HiringModeChoice;
   jobListingId?: string | null;
 }) => {
   const { toggleValidation } = useStepContext();
@@ -10789,7 +10791,9 @@ const ReviewToolsTechnologiesStep = ({
             <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
               We&apos;ve generated a list based on your{" "}
               {source === "roles"
-                ? "roles' description"
+                ? hiringMode === "individual"
+                  ? "role description"
+                  : "roles' description"
                 : source === "service"
                   ? "service details"
                   : "project details"}
@@ -24170,6 +24174,7 @@ function PublishProject({
                         <ReviewToolsTechnologiesStep
                           setProgress={setProjectScopeProgress}
                           jobListingId={jobListingId}
+                          hiringMode={selectedHiringMode}
                           source={
                             isNoScopeFlow
                               ? "roles"
