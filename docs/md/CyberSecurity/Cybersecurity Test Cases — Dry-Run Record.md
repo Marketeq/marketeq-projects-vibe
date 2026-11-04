@@ -1,6 +1,6 @@
 # **Cybersecurity Test Cases — Dry-Run Record**
 
-**As of:** 2026-10-28
+**As of:** 2026-11-04
 **Covers:** all 26 parent test cases in `QA_Generated_Test_Cases/Cybersecurity — Parent Test Cases.docx`, read against the repository as it stands today.
 **What this is:** a desk check of all 26, plus **five cases actually executed** — 12, 13, 14, 23 and 25. For the executed five, the results below are real output, not predictions. For the rest, every verdict comes from reading the code, the workflows and the SOPs, and where a verdict says a case will fail the file and line that makes it fail is named, so the finding stands without anyone standing up an environment.
 
@@ -158,6 +158,12 @@ Seven services import it: `checkout-service`, `content-moderation-service`, `inv
 `backend/apps/user-service/src/guards/jwt-auth.guard.ts` handles the same situation correctly — no key and no secret throws `'JWT verifier is not configured'`. That is the shape the shared library should take.
 
 **Action:** remove the `|| 'asdasdasd'` fallback and throw instead. Add it to `Authorisation Remediation — Open Code Changes`.
+
+
+**Two gaps found later, worth recording here.** No real `.env` is committed — the only two tracked matches are a symlink (`packages/prisma/.env`, mode 120000) and a one-line comment file (`gh.env`), both inside the vendored cal.diy tree. But:
+
+- **A file named `prod.env` or `secrets.env` would be committed without complaint.** `.gitignore` has `.env` and `.env.*`, neither of which matches a prefixed name — confirmed with `git check-ignore`. Gitleaks does not cover it either: the `dotenv-file` rule's path is `(^|/)\.env(\..+)?$`, which matches `.env` and `.env.local` but not `prod.env`. One line in each file closes it.
+- **Both tracked matches sit in the one directory the secret scan excludes wholesale** (`^backend/apps/scheduling-service/app/`). Reasonable for vendored code, but it means a real `.env` added anywhere under that tree would never be flagged — the same shape as the blanket `docs/` exclusion that hid the VPS root and Jenkins admin passwords until #825 removed it.
 
 ### **Case 3 — Centralize custody of financial encryption keys (US-1.3)**
 
@@ -345,7 +351,7 @@ Nor do any of the tables (`security_credential_rotations`, `security_allowlist_c
 | Case | What it needs |
 |---|---|
 | 1 — Rotate the database credential | `npm run rotate`, `security_credential_rotations`, rotation-reminder workflow |
-| 11 — Strip default roles of standing access | `npm run check:grant-drift` |
+| 11 — Strip default roles of standing access | ~~`npm run check:grant-drift`~~ — **written**, see `scripts/security/check-grant-drift.js`. Needs database access only. |
 | 18 — Repeatable incident-response sequence | `inspect-connections.ts`, `incident:open`, `incident:close`, fixture JSON |
 | 20 — Structured record of every incident | `record-incident.ts`, `close-incident.ts`, `security_incidents` |
 | 21 — Alert on abnormal database activity | `anomaly-monitoring-check.ts` (the case already marks this gap CS-8.1) |
@@ -400,20 +406,30 @@ But the same read contract gated with **row-level security** instead of a grant 
 
 ---
 
-## **6. Case 26 — SCA in CI: blocked on us**
+## **6. Case 26 — SCA in CI (PMCM-761)**
 
-**Verdict: blocked by our own branch state, not by anything QA controls.**
+**Verdict: the blocker moved rather than cleared. AC-1.2 and AC-2.3 are now done; AC-1.1 needs the Jenkins job to be created.**
 
-The expected result is accurate. I checked it against `.github/workflows/sca.yml`: the Summary table is produced per lockfile (`backend`, `frontend`, `cms-service`) plus the base image, each with Runtime and Including-dev rows; the artifacts are named `sca-backend`, `sca-frontend`, `sca-cms-service` and `sca-base-image` with 90-day retention; and the `gate` job passes when no lockfile changed.
+The earlier entry said this was blocked on us not having pushed `sca.yml`. That is no longer true, and what replaced it is worse.
 
-The precondition — "`sca.yml` pushed to a branch on GitHub (has never run)" — is still unmet. `sca.yml` is committed on `security/gateway-rate-limiting` and that branch has not been pushed. Until it is, this workflow has never executed and the case cannot start.
+The branch was pushed and **PR #800** opened. The workflow fired and failed: all eight jobs got no runner and ran zero steps, on *"recent account payments have failed or your spending limit needs to be increased."* GitHub Actions has no billing on this account, which is the same reason Jenkins exists here at all. The case expects a run-summary table, a JSON artifact and SARIF; none was produced, so AC-1.1 cannot be assessed from that run.
 
-Two consequences worth stating in the case itself:
+The review of #800 found two further defects, independent of billing:
 
-1. **`workflow_dispatch` will not be available** until `sca.yml` reaches the default branch. The only way to trigger it before then is a PR that targets `dev-main` from a branch that has the file. "Manually dispatch the workflow" is not an option on a feature branch.
-2. **The `sca-override` label must exist in the repository** before the gate can be overridden, and it does not yet. Create it at the same time as the push.
+- **The Trivy install downloaded `latest` unverified.** The pinned version had no published release, so the fallback was the normal path — inside a job holding a write token.
+- **The gate reported a broken scanner as a clean pass.** A failed scan wrote no output file, and the next step read that absence as "no lockfile changed" and exited 0.
 
----
+**What has been done since.** The workflow is ported to `.jenkins/sca.groovy`, where it can actually run, with both defects fixed rather than carried over: no fallback to `latest`, the tarball verified against the release's checksums and cosign-verified where possible, and "lockfile changed" tracked separately from "scan produced output". The three Python scripts move to `scripts/security/sca/` unchanged. `sca.yml` is deliberately left behind — in place it registers as active and adds seven permanently red checks to every PR while scanning nothing.
+
+The gate fix was exercised against a scratch repository with a stubbed scanner, in both directions, including confirming that the old logic did report a pass with a changed lockfile and a broken scanner.
+
+**AC-1.2 is now satisfied on content, not on mechanism.** All three lockfiles have been scanned — `backend` and `frontend` in Phase 2, and `cms-service` in *Software Composition Analysis — cms-service Baseline*. That root was never audited before and turns out to be 96% runtime: 46 findings, 44 of them runtime, 3 critical. Project runtime findings go from 73 to 117. But AC-1.2 asks for the lockfiles to be scanned *by the workflow*, and the workflow still has not run, so this is local evidence standing in.
+
+**AC-2.3 is done.** See *Dependency Overrides — Register and Justification*. Two of the nine overrides turn out to constrain nothing at all.
+
+**What is left:** someone with Jenkins access creates the job from `.jenkins/sca.groovy` and sets `TRIVY_VERSION` to a release they have confirmed exists. No version is hard-coded on purpose — a version nobody checked would be a guess, and a wrong one breaks the build.
+
+**One open question that decides AC-2.1's deadlines.** `cms-service` could not be found in any deployment path: no entry in `render.yaml`, no reference in `Dockerfile.all`, and `boot-all.js` excludes it explicitly. If it runs nowhere, its three criticals do not reach production and the 7-day clock should not start. If it runs by some route not in the repository, they have been live and unscanned. Whoever owns the deployment needs to answer it.
 
 ## **7. What to change in the test cases themselves**
 
@@ -438,10 +454,11 @@ These are corrections to the documents, separate from the repository work:
 | Not executed by choice (mutates `staging`) | 1 | 17 |
 | Failed, cause identified | 4 | 2, 3, 15 (code/SOP defects) and 5 (defective test step) |
 | Partly runnable | 3 | 4, 14 (gitleaks half only), 16 (steps 1–2 only) |
-| Blocked — not implemented | 6 | 1, 11, 18, 20, 21, 22 |
+| Blocked — not implemented | 5 | 1, 18, 20, 21, 22 |
+| Blocked — needs database access only | 4 | 8, 9, 10, 11 |
 | Blocked — needs CTO or access | 6 | 6, 7, 8, 9, 19, 24 |
 | Partly executed, governance half failed | 1 | 10 |
-| Blocked — needs our push | 1 | 26 |
+| Blocked — needs the Jenkins job created | 1 | 26 |
 
 Twenty-six cases, every one accounted for.
 
