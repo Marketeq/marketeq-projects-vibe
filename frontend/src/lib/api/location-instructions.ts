@@ -27,11 +27,37 @@ export interface DeviceSection {
   steps: string[]
 }
 
+/**
+ * One panel of the decorative illustration above the steps. The illustration has exactly one
+ * panel per browser step, in the same order, so the numbers on it match the numbered text.
+ * It is decoration only: the numbered text is the instruction.
+ */
+export type IllustrationScene =
+  | "address-bar" // the address bar with the browser's site / permissions icon highlighted
+  | "site-menu" // the opened site panel with one row highlighted
+  | "menu-bar" // Safari's menu bar with Safari -> Settings highlighted
+  | "settings-tab" // Safari's Settings window with the Websites tab highlighted
+  | "clear-block" // Firefox's permissions panel with the blocked Location cleared
+  | "location-allow" // Location set to the lasting Allow option (never "Allow this time")
+  | "try-again" // back on Marketeq, selecting Try Again
+
+/** Which of the repository's icons the highlighted control uses. */
+export type IllustrationIcon = "tune" | "lock" | "pin" | "none"
+
+export interface IllustrationStep {
+  scene: IllustrationScene
+  icon: IllustrationIcon
+  /** The short caption under the panel (shown from the small breakpoint up). */
+  caption: string
+}
+
 export interface LocationInstructions {
   browser: BrowserKind
   browserName: string
   /** Steps in the browser's own site controls (always shown first). */
   browserSteps: string[]
+  /** The decorative panels that go with browserSteps, one each, in order. */
+  illustration: IllustrationStep[]
   /** The lead-in above the Mac / Windows tabs. */
   deviceHeading: string
   /** Both operating systems' Location Services help: one tab each, always offered. */
@@ -68,7 +94,7 @@ function browserStepsFor(browser: BrowserKind): string[] {
       return [
         "Select the site controls icon at the left of the address bar (the lock or tune icon).",
         "Select Site settings.",
-        "Next to Location, choose Allow.",
+        "For Location, choose Allow. Do not choose Allow this time.",
         TRY_AGAIN_STEP,
       ]
     case "edge":
@@ -96,6 +122,62 @@ function browserStepsFor(browser: BrowserKind): string[] {
         "Open this website's site settings in your browser (usually an icon at the left of the address bar).",
         "Set Location to Allow, or clear a blocked Location setting.",
         TRY_AGAIN_STEP,
+      ]
+  }
+}
+
+const TRY_AGAIN_PANEL: IllustrationStep = {
+  scene: "try-again",
+  icon: "none",
+  caption: "Try Again",
+}
+
+const ALLOW_PANEL: IllustrationStep = {
+  scene: "location-allow",
+  icon: "pin",
+  caption: "Allow",
+}
+
+/**
+ * The browser's own words and controls, so nothing Chrome-specific is shown for another
+ * browser: Chrome's "tune" icon is Chrome's alone (Edge and generic browsers show a lock,
+ * Safari has no address-bar icon in these steps, Firefox's is its permissions icon).
+ * Each list has the same length as the browser's steps.
+ */
+function illustrationFor(browser: BrowserKind): IllustrationStep[] {
+  switch (browser) {
+    case "chrome":
+      return [
+        { scene: "address-bar", icon: "tune", caption: "Site controls" },
+        { scene: "site-menu", icon: "none", caption: "Site settings" },
+        ALLOW_PANEL,
+        TRY_AGAIN_PANEL,
+      ]
+    case "edge":
+      return [
+        { scene: "address-bar", icon: "lock", caption: "Site info" },
+        { scene: "site-menu", icon: "none", caption: "Permissions" },
+        ALLOW_PANEL,
+        TRY_AGAIN_PANEL,
+      ]
+    case "safari":
+      return [
+        { scene: "menu-bar", icon: "none", caption: "Safari menu" },
+        { scene: "settings-tab", icon: "none", caption: "Websites" },
+        ALLOW_PANEL,
+        TRY_AGAIN_PANEL,
+      ]
+    case "firefox":
+      return [
+        { scene: "address-bar", icon: "pin", caption: "Permissions" },
+        { scene: "clear-block", icon: "pin", caption: "Clear block" },
+        TRY_AGAIN_PANEL,
+      ]
+    default:
+      return [
+        { scene: "address-bar", icon: "lock", caption: "Site settings" },
+        ALLOW_PANEL,
+        TRY_AGAIN_PANEL,
       ]
   }
 }
@@ -144,6 +226,7 @@ export function getLocationInstructions(
     browser,
     browserName,
     browserSteps: browserStepsFor(browser),
+    illustration: illustrationFor(browser),
     deviceHeading: DEVICE_HEADING,
     deviceSections: deviceSectionsFor(browserName),
   }

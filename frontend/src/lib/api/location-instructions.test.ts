@@ -65,8 +65,39 @@ describe("the steps", () => {
     const { browserSteps } = steps(UA.chromeMac)
     assert.match(browserSteps[0], /site controls icon/)
     assert.match(browserSteps[1], /Site settings/)
-    assert.match(browserSteps[2], /Location.*Allow/)
+    assert.equal(
+      browserSteps[2],
+      "For Location, choose Allow. Do not choose Allow this time."
+    )
     assert.match(browserSteps[3], /Try Again/)
+  })
+
+  it("only Chrome / Chromium tells the user not to choose 'Allow this time' (Edge, Safari, Firefox and a generic browser do not present that choice in these steps)", () => {
+    const withWarning = (ua: string) =>
+      steps(ua).browserSteps.some((step) => /Allow this time/.test(step))
+    for (const ua of [UA.chromeMac, UA.chromeWin]) {
+      assert.ok(withWarning(ua), ua)
+      assert.equal(
+        steps(ua).browserSteps.filter((s) => /Allow this time/.test(s)).length,
+        1
+      )
+    }
+    for (const ua of [
+      UA.edgeWin,
+      UA.edgeMac,
+      UA.safariMac,
+      UA.firefoxMac,
+      UA.firefoxWin,
+      UA.opera,
+      UA.iphoneSafari,
+      "",
+    ]) {
+      assert.ok(!withWarning(ua), ua)
+    }
+    // the Mac / Windows Location Services help never mentions it either
+    for (const section of steps(UA.chromeMac).deviceSections) {
+      assert.ok(!section.steps.some((s) => /Allow this time/.test(s)))
+    }
   })
 
   it("Edge: the same path, with Edge's own name for the site menu", () => {
@@ -198,5 +229,60 @@ describe("which operating-system tab is selected first", () => {
         2
       )
     }
+  })
+})
+
+describe("the decorative illustration above the steps (one panel per step)", () => {
+  const illus = (ua: string) => getLocationInstructions({ userAgent: ua })
+
+  it("has exactly one panel per browser step, for every browser, so its numbers match the numbered text", () => {
+    for (const ua of [...Object.values(UA), ""]) {
+      const { illustration, browserSteps } = illus(ua)
+      assert.equal(illustration.length, browserSteps.length)
+    }
+  })
+
+  it("always ends with Try Again, and Chrome / Edge / Safari / generic show the lasting Allow just before it", () => {
+    for (const ua of [UA.chromeMac, UA.edgeWin, UA.safariMac, UA.opera, ""]) {
+      const { illustration } = illus(ua)
+      assert.equal(illustration[illustration.length - 1].scene, "try-again")
+      assert.equal(illustration[illustration.length - 2].scene, "location-allow")
+    }
+    const firefox = illus(UA.firefoxMac).illustration
+    assert.equal(firefox[firefox.length - 1].scene, "try-again")
+  })
+
+  it("Chrome's tune icon is Chrome's alone: Edge and a generic browser show a lock, Firefox its permissions pin, Safari has no address-bar icon", () => {
+    assert.equal(illus(UA.chromeMac).illustration[0].icon, "tune")
+    assert.equal(illus(UA.chromeWin).illustration[0].icon, "tune")
+    assert.equal(illus(UA.edgeWin).illustration[0].icon, "lock")
+    assert.equal(illus(UA.edgeMac).illustration[0].icon, "lock")
+    assert.equal(illus(UA.opera).illustration[0].icon, "lock")
+    assert.equal(illus(UA.firefoxMac).illustration[0].icon, "pin")
+    const safari = illus(UA.safariMac).illustration
+    assert.equal(safari[0].scene, "menu-bar")
+    assert.ok(!safari.some((p) => p.scene === "address-bar" || p.icon === "tune"))
+    for (const ua of [UA.edgeWin, UA.safariMac, UA.firefoxMac, UA.opera]) {
+      assert.ok(!illus(ua).illustration.some((p) => p.icon === "tune"))
+    }
+  })
+
+  it("never says Chrome for another browser, and never offers 'Allow this time'", () => {
+    for (const ua of [...Object.values(UA), ""]) {
+      const { illustration, browser } = illus(ua)
+      for (const panel of illustration) {
+        assert.ok(!/this time/i.test(panel.caption))
+        if (browser !== "chrome") assert.ok(!/chrome/i.test(panel.caption))
+      }
+    }
+  })
+
+  it("Safari's panels follow Safari's own path (menu bar, then Websites), not an address-bar icon", () => {
+    const [first, second] = illus(UA.safariMac).illustration
+    assert.deepEqual([first.scene, second.scene], ["menu-bar", "settings-tab"])
+  })
+
+  it("an empty environment (server render) still gives the generic panels", () => {
+    assert.ok(getLocationInstructions({}).illustration.length >= 3)
   })
 })

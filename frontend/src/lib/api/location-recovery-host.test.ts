@@ -374,7 +374,7 @@ describe("the instructions view: browser steps first, then Mac / Windows tabs", 
     assert.match(host, /import \{ AppleSolid \} from "@blend-metrics\/icons\/social-solid"/)
     const icons = host.slice(
       host.indexOf("const DEVICE_TAB_ICONS"),
-      host.indexOf("function LocationHowTo()")
+      host.indexOf("// The decorative picture above the steps")
     )
     assert.equal(icons.split("size-[18px]").length - 1, 2)
     assert.equal(icons.split("text-gray-500").length - 1, 2)
@@ -418,6 +418,85 @@ describe("the instructions view: browser steps first, then Mac / Windows tabs", 
       ) || d.includes("locationRecovery.back()")
     )
     assert.ok(d.includes("void locationRecovery.tryAgain()"))
+  })
+})
+
+describe("the decorative illustration in the instructions view", () => {
+  const illustration = () =>
+    host.slice(
+      host.indexOf("const ILLUSTRATION_ICONS"),
+      host.indexOf("function LocationHowTo()")
+    )
+  const howTo = () =>
+    host.slice(
+      host.indexOf("function LocationHowTo()"),
+      host.indexOf("export function IdentityVerificationHostProvider")
+    )
+
+  it("is aria-hidden decoration: nothing in it can take focus and it carries no accessible name", () => {
+    const i = illustration()
+    assert.ok(i.includes('aria-hidden="true"'))
+    assert.ok(!/<button|<a[ >]|<input|tabIndex|role=|aria-label/.test(i))
+    assert.ok(!/<Button|<IconButton/.test(i))
+  })
+
+  it("is drawn in code: no image, video, GIF, custom SVG or remote asset", () => {
+    const i = illustration().replace(/\/\/.*$/gm, "")
+    assert.ok(!/<img|<svg|<video|<picture|<canvas|<source|<Image[ >]/.test(i))
+    assert.ok(!/https?:\/\/|url\(|\.(png|jpe?g|gif|webp|svg|mp4|webm)\b/i.test(i))
+  })
+
+  it("uses the repository's icons: Sliders04 for Chrome's tune icon (the closest of Sliders01-04), Lock01 and MarkerPin01", () => {
+    const i = illustration()
+    assert.match(host, /import \{[^}]*\bSliders04\b[^}]*\} from "@blend-metrics\/icons"/)
+    assert.ok(i.includes("<Sliders04"))
+    assert.ok(i.includes("<Lock01"))
+    assert.ok(i.includes("<MarkerPin01"))
+    assert.ok(!/Sliders0[123]\b/.test(host))
+  })
+
+  it("sits above the numbered text, which stays the real (not hidden) instruction", () => {
+    const h = howTo()
+    assert.ok(
+      h.indexOf("<LocationHowToIllustration") < h.indexOf("instructions.browserSteps.map")
+    )
+    assert.ok(h.includes("steps={instructions.illustration}"))
+    const list = h.slice(h.indexOf("<ol"), h.indexOf("</ol>"))
+    assert.ok(!list.includes("aria-hidden"))
+  })
+
+  it("one tile per step, laid out in 4 columns for four steps and 3 for three", () => {
+    const i = illustration()
+    assert.ok(i.includes('steps.length === 4 ? "grid-cols-4" : "grid-cols-3"'))
+    assert.ok(i.includes("steps.map((step, index)"))
+    assert.ok(i.includes("{index + 1}"))
+  })
+
+  it("this project's sm breakpoint is 375px, so the compact layout is the base and the roomier one starts at md", () => {
+    const i = illustration()
+    assert.ok(!/\bsm:/.test(i))
+    assert.ok(i.includes("md:"))
+    assert.match(read("tailwind.config.ts"), /sm: "375px"/)
+    // captions and the pills' words are hidden on the compact layout so tiles cannot overflow
+    assert.ok(i.includes('className="mt-1 hidden truncate'))
+    assert.ok(i.includes('<span className="hidden md:inline">Allow</span>'))
+    assert.ok(i.includes('<span className="hidden md:inline">Try Again</span>'))
+  })
+
+  it("uses light-gray strokes and the dialog's restrained primary highlight (design tokens only)", () => {
+    const i = illustration()
+    assert.ok(i.includes("border-gray-200"))
+    assert.ok(i.includes("bg-primary-50"))
+    assert.ok(i.includes("text-primary-500"))
+    assert.ok(i.includes("ring-primary-100"))
+    assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgb\(/.test(i), "no raw colours")
+  })
+
+  it("only the instructions view gets the tighter mobile footer gap; the main view keeps 50px", () => {
+    const d = dialogSource()
+    assert.ok(
+      d.includes('locationRecoveryState.view === "howto" ? "mt-4 md:mt-[50px]" : "mt-[50px]"')
+    )
   })
 })
 

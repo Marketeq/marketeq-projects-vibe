@@ -18,11 +18,15 @@ import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
+  Check,
   CheckCircle,
   ClockStopwatch,
+  Globe01,
+  Lock01,
   MarkerPin01,
   Plane,
   RefreshCw,
+  Sliders04,
   X,
 } from "@blend-metrics/icons"
 import { MicrosoftBrand } from "@blend-metrics/icons/brands"
@@ -81,6 +85,8 @@ import {
   detectDeviceSection,
   getLocationInstructions,
   type DeviceSectionId,
+  type IllustrationIcon,
+  type IllustrationStep,
 } from "@/src/lib/api/location-instructions"
 import {
   createConnectionCheckSession,
@@ -321,6 +327,137 @@ const DEVICE_TAB_ICONS: Record<DeviceSectionId, ReactNode> = {
   ),
 }
 
+// The decorative picture above the steps: one small panel per step, numbered like the text, drawn
+// with plain boxes and the repository's icons (no images, no custom SVG). It is aria-hidden: the
+// numbered text is the instruction. Light-gray strokes, one restrained blue highlight per panel.
+const ILLUSTRATION_ICONS: Record<
+  Exclude<IllustrationIcon, "none">,
+  (className: string) => ReactNode
+> = {
+  tune: (className) => <Sliders04 className={className} />,
+  lock: (className) => <Lock01 className={className} />,
+  pin: (className) => <MarkerPin01 className={className} />,
+}
+
+function IllustrationScene({ step }: { step: IllustrationStep }) {
+  const icon =
+    step.icon === "none"
+      ? null
+      : ILLUSTRATION_ICONS[step.icon]("size-2 md:size-3")
+  const grayRow = (
+    <div className="flex h-1.5 items-center gap-0.5 px-0.5 md:h-3 md:gap-1">
+      <span className="size-1 shrink-0 rounded-full bg-gray-200" />
+      <span className="h-0.5 flex-1 rounded-full bg-gray-200" />
+    </div>
+  )
+  switch (step.scene) {
+    case "address-bar":
+      return (
+        <div className="flex h-5 w-full items-center gap-1 rounded-full border border-gray-200 bg-white px-0.5 md:h-7 md:gap-1.5 md:px-1">
+          <span className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500 ring-2 ring-primary-100 md:size-5">
+            {icon}
+          </span>
+          <span className="h-1 flex-1 rounded-full bg-gray-200" />
+        </div>
+      )
+    case "site-menu":
+      return (
+        <div className="w-full space-y-0.5 rounded-md border border-gray-200 bg-white p-0.5 md:space-y-1 md:p-1">
+          {grayRow}
+          {grayRow}
+          <div className="flex h-1.5 items-center gap-0.5 rounded bg-primary-50 px-0.5 ring-1 ring-primary-100 md:h-3 md:gap-1">
+            <span className="size-1 shrink-0 rounded-full bg-primary-500" />
+            <span className="h-0.5 flex-1 rounded-full bg-primary-100" />
+          </div>
+        </div>
+      )
+    case "menu-bar":
+      return (
+        <div className="w-full rounded-md border border-gray-200 bg-white">
+          <div className="flex h-2.5 items-center gap-1 rounded-t-md bg-gray-100 px-1 md:h-4">
+            <AppleSolid className="size-1.5 shrink-0 text-gray-400 md:size-2.5" />
+            <span className="h-1 w-4 rounded bg-primary-500 md:h-1.5 md:w-6" />
+            <span className="h-0.5 w-2 rounded-full bg-gray-200" />
+          </div>
+          <div className="p-0.5 md:p-1">
+            <div className="h-1.5 w-3/5 rounded bg-primary-50 ring-1 ring-primary-100 md:h-2.5" />
+          </div>
+        </div>
+      )
+    case "settings-tab":
+      return (
+        <div className="w-full rounded-md border border-gray-200 bg-white p-0.5 md:p-1">
+          <div className="flex gap-0.5 md:gap-1">
+            <span className="h-3 flex-1 rounded border border-gray-200 md:h-5" />
+            <span className="inline-flex h-3 flex-1 items-center justify-center rounded bg-primary-50 text-primary-500 ring-1 ring-primary-100 md:h-5">
+              <Globe01 className="size-2 md:size-3" />
+            </span>
+            <span className="h-3 flex-1 rounded border border-gray-200 md:h-5" />
+          </div>
+        </div>
+      )
+    case "clear-block":
+      return (
+        <div className="w-full space-y-0.5 rounded-md border border-gray-200 bg-white p-0.5 md:space-y-1 md:p-1">
+          <div className="flex items-center gap-0.5 px-0.5 md:gap-1">
+            {icon}
+            <span className="h-0.5 flex-1 rounded-full bg-gray-200" />
+            <span className="inline-flex size-2.5 items-center justify-center rounded-full bg-primary-50 text-primary-500 ring-1 ring-primary-100 md:size-3.5">
+              <X className="size-1.5 md:size-2" />
+            </span>
+          </div>
+          {grayRow}
+        </div>
+      )
+    case "location-allow":
+      return (
+        <div className="w-full space-y-0.5 rounded-md border border-gray-200 bg-white p-0.5 md:space-y-1 md:p-1">
+          <div className="flex items-center justify-between gap-0.5">
+            <MarkerPin01 className="hidden size-3 shrink-0 text-gray-400 md:block" />
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary-50 px-1 text-[9px] font-semibold leading-3 text-primary-500 ring-1 ring-primary-100 md:text-[10px]">
+              <Check className="size-2 md:size-2.5" />
+              <span className="hidden md:inline">Allow</span>
+            </span>
+          </div>
+          {grayRow}
+        </div>
+      )
+    case "try-again":
+      return (
+        <span className="inline-flex h-4 items-center gap-0.5 rounded bg-primary-50 px-1 text-[9px] font-semibold text-primary-500 md:h-6 md:gap-1 md:px-2 md:text-[10px]">
+          <RefreshCw className="size-2 md:size-2.5" />
+          <span className="hidden md:inline">Try Again</span>
+        </span>
+      )
+  }
+}
+
+function LocationHowToIllustration({ steps }: { steps: IllustrationStep[] }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`mt-2 grid gap-1.5 md:mt-4 md:gap-2 ${steps.length === 4 ? "grid-cols-4" : "grid-cols-3"}`}
+    >
+      {steps.map((step, index) => (
+        <div
+          key={`${step.scene}-${index}`}
+          className="relative min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-1 pt-4 md:p-1.5 md:pt-5"
+        >
+          <span className="absolute left-0.5 top-0.5 inline-flex size-3.5 items-center justify-center rounded-full border border-gray-200 bg-white text-[9px] font-semibold leading-none text-gray-500 md:left-1 md:top-1 md:size-4 md:text-[10px]">
+            {index + 1}
+          </span>
+          <div className="flex h-7 w-full items-center justify-center md:h-11">
+            <IllustrationScene step={step} />
+          </div>
+          <p className="mt-1 hidden truncate text-center text-[11px] leading-4 text-gray-500 md:block">
+            {step.caption}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function LocationHowTo() {
   const instructions = getLocationInstructions(currentBrowserEnvironment())
   const [deviceTab, setDeviceTab] = useState<DeviceSectionId>(() =>
@@ -335,12 +472,13 @@ function LocationHowTo() {
       <DialogDescription className="sr-only">
         Steps for {instructions.browserName}
       </DialogDescription>
-      <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+      <LocationHowToIllustration steps={instructions.illustration} />
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400 md:mt-4">
         {instructions.browserSteps.map((step) => (
           <li key={step}>{step}</li>
         ))}
       </ol>
-      <h2 className="mt-5 text-sm font-semibold leading-5 text-dark-blue-400">
+      <h2 className="mt-4 text-sm font-semibold leading-5 text-dark-blue-400 md:mt-5">
         {instructions.deviceHeading}
       </h2>
       <Tabs
@@ -1892,7 +2030,9 @@ export function IdentityVerificationHostProvider({
             <LocationHowTo />
           )}
 
-          <div className="mt-[50px] flex justify-center items-center gap-x-3">
+          <div
+            className={`flex justify-center items-center gap-x-3 ${locationRecoveryState.view === "howto" ? "mt-4 md:mt-[50px]" : "mt-[50px]"}`}
+          >
             <Button
               className="w-[133px] bg-white focus-visible:ring-4 focus-visible:ring-primary-100"
               variant="outlined"
