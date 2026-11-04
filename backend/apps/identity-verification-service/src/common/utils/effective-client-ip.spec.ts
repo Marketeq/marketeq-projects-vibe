@@ -35,8 +35,10 @@ describe('dev client-IP override', () => {
         process.env.NODE_ENV = nodeEnv;
         process.env[VAR] = PUBLIC_IP;
         expect(getDevClientIpOverride()).toBeNull();
-        // Falls through to the normal extraction (loopback socket here).
-        expect(getEffectiveClientIp(req())).toBe('::1');
+        // Falls through to the normal extraction, which outside development
+        // never uses the socket (it is Render's load balancer): no IP, fail closed.
+        expect(getEffectiveClientIp(req())).toBeNull();
+        expect(getEffectiveClientIp(req({ headers: { 'cf-connecting-ip': '9.9.9.9' } }))).toBe('9.9.9.9');
       },
     );
 
@@ -44,7 +46,7 @@ describe('dev client-IP override', () => {
       delete process.env.NODE_ENV;
       process.env[VAR] = PUBLIC_IP;
       expect(getDevClientIpOverride()).toBeNull();
-      expect(getEffectiveClientIp(req())).toBe('::1');
+      expect(getEffectiveClientIp(req())).toBeNull();
     });
 
     it('does nothing when the variable is unset or blank, even in development', () => {
@@ -97,17 +99,19 @@ describe('dev client-IP override', () => {
       expect(getEffectiveClientIp(req(over))).toBe('::1');
     });
 
-    it('x-forwarded-for behaves exactly as before (normal extraction) when the server variable is absent', () => {
+    it('normal extraction (trusted CF-Connecting-IP, never x-forwarded-for) applies when the server variable is absent', () => {
       process.env.NODE_ENV = 'development';
-      expect(getEffectiveClientIp(req({ headers: { 'x-forwarded-for': '9.9.9.9' } }))).toBe('9.9.9.9');
+      expect(getEffectiveClientIp(req({ headers: { 'cf-connecting-ip': '9.9.9.9', 'x-forwarded-for': '1.1.1.1' } }))).toBe('9.9.9.9');
+      expect(getEffectiveClientIp(req({ headers: { 'x-forwarded-for': '1.1.1.1' } }))).toBe('::1');
     });
 
     it('the server variable wins over request-derived IPs only in development', () => {
       process.env[VAR] = PUBLIC_IP;
       process.env.NODE_ENV = 'development';
-      expect(getEffectiveClientIp(req({ headers: { 'x-forwarded-for': '9.9.9.9' } }))).toBe(PUBLIC_IP);
+      expect(getEffectiveClientIp(req({ headers: { 'cf-connecting-ip': '9.9.9.9' } }))).toBe(PUBLIC_IP);
       process.env.NODE_ENV = 'production';
-      expect(getEffectiveClientIp(req({ headers: { 'x-forwarded-for': '9.9.9.9' } }))).toBe('9.9.9.9');
+      expect(getEffectiveClientIp(req({ headers: { 'cf-connecting-ip': '9.9.9.9' } }))).toBe('9.9.9.9');
+      expect(getEffectiveClientIp(req())).toBeNull();
     });
   });
 

@@ -8,6 +8,7 @@ import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { ProjectAPI } from "@/service/http/project"
 import { editProjectListingUrl } from "@/src/lib/listing-urls"
 import { toUserMessage } from "@/lib/listing-errors"
+import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate"
 import {
   PublishConfirmDialog,
   getPendingReviewToastTitle,
@@ -1183,6 +1184,9 @@ export default function MyListingsPage() {
                   disabled={creatingType !== null}
                   className="w-full flex items-center gap-4 p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group disabled:opacity-50"
                   onClick={async () => {
+                    // G2: CreateProjectDraft asks the creation check first. When it is
+                    // refused the global G2 modal shows, no draft exists, and the chooser
+                    // closes without opening any listing form.
                     setCreatingType(option.type)
                     try {
                       const res = await ProjectAPI.CreateProjectDraft({
@@ -1200,6 +1204,9 @@ export default function MyListingsPage() {
                       }
                     } catch (err) {
                       console.error("Failed to create draft", err)
+                      if (isCreateListingBlocked(err)) {
+                        setShowNewListingDialog(false)
+                      }
                       setCreatingType(null)
                     }
                   }}

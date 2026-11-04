@@ -16,6 +16,7 @@ import { AlertTriangle, ArrowLeft, Check, Lock, RefreshCcw01 } from "@blend-metr
 import { Logo3 } from "@/components/icons"
 import { Button, Input } from "@/components/ui"
 import { AccountVerificationGate } from "@/components/account-verification-gate"
+import { useIdentityVerification } from "@/contexts/identity-verification-host"
 import { withdrawalBlockFor, type WithdrawalVerificationBlock } from "@/src/lib/api/withdrawal-verification"
 import AuthenticatedRoute from "@/hoc/AuthenticatedRoute"
 import { getBalance, type BalanceResponse } from "@/service/http/earnings"
@@ -577,16 +578,19 @@ const ConfirmStep = ({
 // ── Page ───────────────────────────────────────────────────────────────────
 function TransferFundsInner() {
   const router = useRouter()
+  const { startVerification } = useIdentityVerification()
   const [step, setStep] = React.useState<StepId>(1)
 
   // US-30/31/AC-30.01/31.01: gate check runs on mount, before the form is shown —
   // fail-closed per AC-30.04 (gateAllowed starts false until the server confirms).
   // G9: the payout service's identity gate answered 403/503 - the existing
-  // Verify My Account popup opens; "Verify My Account" continues on the talent dashboard.
+  // Verify My Account popup opens; "Verify My Account" closes it and starts the existing
+  // verification flow in place through the shared host. This page and what was entered stay as
+  // they are, and the withdrawal is never retried: Confirm is clicked again.
   const [verificationBlock, setVerificationBlock] = React.useState<WithdrawalVerificationBlock>(null)
   const goVerify = () => {
     setVerificationBlock(null)
-    router.push("/talent-dashboard")
+    void startVerification()
   }
   const [gateAllowed, setGateAllowed] = React.useState<boolean | null>(null)
   const [gateBlockedBy, setGateBlockedBy] = React.useState<string | undefined>(undefined)

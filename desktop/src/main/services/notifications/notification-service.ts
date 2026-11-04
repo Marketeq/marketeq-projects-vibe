@@ -23,7 +23,10 @@ export type NotificationCategory =
   | 'authNeedsLogin'
   | 'permissionsChanged'
   | 'networkOffline'
-  | 'networkRestored';
+  | 'networkRestored'
+  | 'capWarning'
+  | 'capReached'
+  | 'contractNotTrackable';
 
 export interface NotificationInput {
   category: NotificationCategory;
@@ -63,6 +66,8 @@ const RATE_LIMIT_WINDOW_MS: Partial<Record<NotificationCategory, number>> = {
   // A flapping connection must not spam the talent.
   networkOffline: 60_000,
   networkRestored: 60_000,
+  // Repeated Play clicks on a capped contract must not stack notices.
+  capReached: 10_000,
 };
 
 export interface NotificationService {
@@ -71,6 +76,12 @@ export interface NotificationService {
   workReminder(elapsedSec: number): void;
   breakReminder(elapsedSec: number): void;
   breakExpiring(remainingSec: number): void;
+  /** PMCM-829: the contract's time cap is close. */
+  capWarning(remainingSec: number): void;
+  /** PMCM-829: the cap was reached — the timer stopped or would not start. */
+  capReached(): void;
+  /** PMCM-831: the tracked contract was paused/disputed/ended, so the timer stopped. */
+  contractNotTrackable(status: string): void;
   breakExpired(): void;
   idleDetected(seconds: number): void;
   syncError(msg: string): void;
@@ -222,6 +233,33 @@ export function createNotificationService(
         category: 'breakExpired',
         title: 'Break ended',
         body: 'Your break has ended — ready to resume?',
+      });
+    },
+    capWarning(remainingSec) {
+      send({
+        category: 'capWarning',
+        title: 'Time limit almost reached',
+        body: `You have ${formatDuration(Math.max(60, remainingSec))} left on this contract's time limit. The timer stops when it's reached.`,
+      });
+    },
+    contractNotTrackable(status) {
+      const why =
+        status === 'disputed'
+          ? 'is in dispute'
+          : status === 'paused'
+            ? 'was paused'
+            : 'is no longer active';
+      send({
+        category: 'contractNotTrackable',
+        title: 'Timer stopped',
+        body: `This contract ${why}, so the timer was stopped. Time can't be tracked on it right now.`,
+      });
+    },
+    capReached() {
+      send({
+        category: 'capReached',
+        title: 'Time limit reached',
+        body: "You've reached this contract's time limit, so the timer can't run until it resets. Time over the limit isn't billed.",
       });
     },
     idleDetected(seconds) {

@@ -39,6 +39,7 @@ export interface AcceptedOfferInput {
     rate: number;
     durationMonths: number;
     workSchedule: { type: string; hoursPerWeek?: number };
+    currencyCode?: string;
   };
 }
 
@@ -56,6 +57,25 @@ const WORK_SCHEDULE_TO_CONTRACT: Record<string, string> = {
   PART_TIME: 'part-time',
   CUSTOM: 'custom',
 };
+
+// PMCM-829: weekly cap when the offer doesn't state hoursPerWeek. Custom
+// schedules always carry it (offer-service validates 1–80).
+const DEFAULT_WEEKLY_CAP_HOURS: Record<string, number> = {
+  FULL_TIME: 40,
+  PART_TIME: 20,
+};
+
+function weeklyCapHours(workSchedule?: { type: string; hoursPerWeek?: number }): number | null {
+  const hours = Number(workSchedule?.hoursPerWeek);
+  if (Number.isInteger(hours) && hours > 0) return hours;
+  return DEFAULT_WEEKLY_CAP_HOURS[workSchedule?.type ?? ''] ?? null;
+}
+
+// PMCM-837: the contract's rate currency (ISO 4217) as agreed in the offer.
+function currencyCode(code?: string): string {
+  const c = code?.trim().toUpperCase();
+  return c && /^[A-Z]{3}$/.test(c) ? c : 'USD';
+}
 
 @Injectable()
 export class GroupsService {
@@ -158,6 +178,8 @@ export class GroupsService {
             title: offer.contractTitle?.trim() || 'Untitled contract',
             rate: offer.terms.rate,
             schedule: WORK_SCHEDULE_TO_CONTRACT[offer.terms.workSchedule?.type] ?? 'custom',
+            weeklyCapHours: weeklyCapHours(offer.terms.workSchedule),
+            currencyCode: currencyCode(offer.terms.currencyCode),
             duration: `${offer.terms.durationMonths} ${offer.terms.durationMonths === 1 ? 'month' : 'months'}`,
             ...listingRef,
             status: ContractStatus.PENDING,

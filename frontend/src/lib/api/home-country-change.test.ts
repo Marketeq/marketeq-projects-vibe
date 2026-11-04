@@ -29,9 +29,10 @@ import {
   shouldOfferTravelerPrompt,
   travelLocationPromptKey,
 } from "./travel-location-prompt"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 const http = read("service", "http", "identity-verification.ts")
 
@@ -398,8 +399,14 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
     assert.equal((handler.match(/IdentityVerificationAPI\./g) ?? []).length, 1)
     assert.match(
       dialog,
-      /travelerPromptOpen\s*\?\s*void handleTravelerStillTraveling\(\)\s*:\s*void handleStillTraveling\(\)/
+      /void \(travelerPromptOpen\s*\?\s*handleTravelerStillTraveling\(\)\s*:\s*handleStillTraveling\(\)\)/
     )
+    // Each handler is still called from exactly one place, and only after the press is recorded for the
+    // spinner (the busy flag still disables both buttons).
+    assert.equal((dialog.match(/handleTravelerStillTraveling\(\)/g) ?? []).length, 1)
+    assert.equal((dialog.match(/handleStillTraveling\(\)/g) ?? []).length, 1)
+    assert.ok(dialog.includes('setLocationMismatchAction("still-traveling")'))
+    assert.ok(dialog.includes("aria-busy={"))
   })
 
   it("'Change my home country' is the existing handler for both prompts and closes the traveler prompt", () => {
@@ -409,7 +416,8 @@ describe("SOURCE-PINNED: the dashboard wiring and the approved copy", () => {
       page.indexOf("const handleStillTraveling")
     )
     assert.ok(open.includes("setTravelerPromptOpen(false)"))
-    assert.ok(open.includes("setIdentityFlowOpen(true)"))
+    // The host opens the flow (openFlow sets its open state); the page asks it to.
+    assert.ok(open.includes("openFlow("))
   })
 
   it("the traveler prompt is offered only through the per-login rule, and marked only when answered", () => {

@@ -9,7 +9,7 @@
 // a network error, a 5xx) is a closed gate here too, so an unanswered gate never launches
 // anything. This file only reads the answer; it never decides the gate. Pure: no UI, no
 // network, no storage.
-import type { MissingVerification } from "./join-team-gate"
+export type MissingVerification = "identity" | "location" | "both"
 
 export type StartTimeBlock =
   | { kind: "verification"; missing: MissingVerification }

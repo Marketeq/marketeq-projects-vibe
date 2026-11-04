@@ -9,7 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prebuild": "node scripts/make-placeholder-icon.js",
-    "build:main": "tsc -p tsconfig.main.json",
+    "build:main": "node -e \"require('fs').rmSync('dist/main/build-config.json',{force:true})\" && tsc -p tsconfig.main.json",
     "build:preload": "tsc -p tsconfig.preload.json",
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:preload && npm run build:renderer",
@@ -19,7 +19,10 @@
     "dev:electron": "wait-on http://localhost:5173 && npm run build:main && npm run build:preload && node scripts/dev-electron.js",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "build:staging": "node scripts/build-profile.js staging",
+    "dist:win:staging": "node scripts/build-profile.js staging && electron-builder --win",
+    "dist:mac:staging": "node scripts/build-profile.js staging && electron-builder --mac"
   },
   "dependencies": {
     "ably": "^2.5.0",

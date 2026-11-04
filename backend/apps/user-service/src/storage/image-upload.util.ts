@@ -22,8 +22,18 @@ export const RASTER_IMAGE_MIME_TYPES = new Set([
 
 export const SVG_MIME_TYPE = 'image/svg+xml';
 
-/** Company logos are small; well under the 5MB avatar ceiling. */
-export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+/**
+ * Company logo ceiling. 1MB, not the 5MB the avatar path uses: the Figma's
+ * upload step states "Max image size 1 mb", and R3-04 settles that the
+ * backend matches the design rather than the other way round.
+ */
+export const MAX_LOGO_BYTES = 1 * 1024 * 1024;
+
+/**
+ * The design's own wording, used verbatim so the API error and the text drawn
+ * under the upload control cannot drift apart.
+ */
+export const LOGO_TOO_LARGE_MESSAGE = 'Max image size 1 mb';
 
 /**
  * Logos are normalised like avatars — same EXIF strip, same re-encode — but

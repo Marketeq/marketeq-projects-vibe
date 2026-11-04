@@ -1,5 +1,6 @@
 "use client"
 
+import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate"
 import {
   CSSProperties,
   Fragment,
@@ -6331,6 +6332,8 @@ function PublishProject({
         )
       } catch (error) {
         console.error("Failed to hydrate project draft", error)
+        // G2: the creation gate refused (the modal is already showing): leave the empty form.
+        if (isCreateListingBlocked(error)) router.replace("/my-listings")
       } finally {
         if (!cancelled) {
           setIsDraftBootstrapping(false)

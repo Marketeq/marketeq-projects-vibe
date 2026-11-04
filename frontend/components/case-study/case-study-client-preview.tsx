@@ -48,7 +48,12 @@ export function CaseStudyClientPreview({
 
   useEffect(() => {
     let cancelled = false
-    CaseStudyAPI.Get(caseStudyId)
+    // The owner reads through the owner-only route; everyone else through
+    // the public, published-only one (the owner route 403s for them).
+    const load = isSelfPreview
+      ? CaseStudyAPI.Get(caseStudyId)
+      : CaseStudyAPI.GetPublicById(caseStudyId)
+    load
       .then(({ data }) => {
         if (cancelled) return
         setBlocks(data.schemaJson?.blocks ?? [])
@@ -61,7 +66,7 @@ export function CaseStudyClientPreview({
     return () => {
       cancelled = true
     }
-  }, [caseStudyId])
+  }, [caseStudyId, isSelfPreview])
 
   // Whether THIS viewer already liked it — the case study record itself only
   // carries the total, so the heart's own on/off state needs its own read.

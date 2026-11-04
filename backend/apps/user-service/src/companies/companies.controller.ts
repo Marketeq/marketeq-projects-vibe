@@ -30,6 +30,7 @@ import { JwtUser } from '../auth/types/jwt-user.type';
 import { R2Service } from '../storage/r2.service';
 import {
   MAX_LOGO_BYTES,
+  LOGO_TOO_LARGE_MESSAGE,
   RASTER_IMAGE_MIME_TYPES,
   SVG_MIME_TYPE,
   detectRasterImageMimeType,
@@ -104,11 +105,12 @@ export class CompaniesController {
     return { success: true, data, message: 'Companies retrieved successfully' };
   }
 
-  @ApiOperation({ summary: 'Search the company directory by name' })
+  @ApiOperation({ summary: "Search the caller's own companies by name" })
   @Get('search')
   @HttpCode(HttpStatus.OK)
-  async search(@Query() dto: SearchCompaniesDto) {
-    const data = await this.companies.search(dto.q);
+  async search(@CurrentUser() user: JwtUser, @Query() dto: SearchCompaniesDto) {
+    // Scoped to the caller: see CompaniesService.search for why (R3-06).
+    const data = await this.companies.search(dto.q, user.sub);
     return { success: true, data, message: 'Companies retrieved successfully' };
   }
 
@@ -131,7 +133,10 @@ export class CompaniesController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: MAX_LOGO_BYTES },
+      // One byte past the ceiling: multer still bounds what is buffered,
+      // but anything just over arrives here so the rejection can carry the
+      // design's wording rather than multer's generic "File too large".
+      limits: { fileSize: MAX_LOGO_BYTES + 1 },
     }),
   )
   async uploadLogo(
@@ -140,6 +145,11 @@ export class CompaniesController {
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException('Logo file is required');
+    }
+
+    // R3-04: the limit and the message both come from the design.
+    if (file.buffer.length > MAX_LOGO_BYTES) {
+      throw new BadRequestException(LOGO_TOO_LARGE_MESSAGE);
     }
 
     // `file.mimetype` is client-supplied, so it only ever gates which

@@ -60,39 +60,43 @@ export class InvitationNotFoundException extends InvitationApiException {
   }
 }
 
-/** Which of the acting user's own verification requirements is outstanding. */
-export type OutstandingVerificationRequirement = 'identity' | 'location' | 'both';
-
 /**
- * Account-verification gate G7 (accept an invitation, gated at acceptance):
- * the acting user has not satisfied gate_open = is_verified OR in_grace.
- * Carries only the acting user's own outstanding requirement - never a
- * status value, failure reason, document or vendor detail, and never anything
- * about another account. Same `{ success, error, message }` envelope as the
- * rest of this service, plus `missingRequirements`; InvitationExceptionFilter
- * renders any body carrying `error` as-is.
+ * The invite link is password-protected (Link Settings → Enable Link Password)
+ * and the request carried no password. Distinct from a wrong password so the
+ * client can tell "ask for it" from "ask again".
  */
-export class VerificationRequiredException extends HttpException {
-  constructor(missingRequirements: OutstandingVerificationRequirement) {
-    super(
-      {
-        success: false,
-        error: 'VERIFICATION_REQUIRED',
-        message: 'Verify your account to accept this invitation.',
-        missingRequirements,
-      },
-      HttpStatus.FORBIDDEN,
-    );
+export class LinkPasswordRequiredException extends InvitationApiException {
+  constructor(message = 'This invite link requires a password') {
+    super(HttpStatus.UNAUTHORIZED, 'LINK_PASSWORD_REQUIRED', message);
+  }
+}
+
+export class LinkPasswordInvalidException extends InvitationApiException {
+  constructor(message = 'That password is not correct') {
+    super(HttpStatus.UNAUTHORIZED, 'LINK_PASSWORD_INVALID', message);
   }
 }
 
 /**
- * The gate could not be evaluated (identity-verification-service unreachable,
- * timed out, not configured, or answered with something unusable). The action
- * is refused, not allowed: an unanswered gate is a closed gate.
+ * Link Settings → Who Has Access refuses this person: the link is restricted
+ * to invited guests and they hold no pending invitation, or it is owner-only.
+ *
+ * Deliberately says nothing about which rule rejected them or who the owner
+ * is — an invite link is a URL anyone can hold, so its errors must not
+ * describe the account behind it.
  */
-export class IdentityVerificationUnavailableException extends InvitationApiException {
-  constructor(message = "We couldn't confirm your verification status. Please try again shortly.") {
-    super(HttpStatus.SERVICE_UNAVAILABLE, 'IDENTITY_VERIFICATION_UNAVAILABLE', message);
+export class LinkAccessDeniedException extends InvitationApiException {
+  constructor(message = 'This invite link is not available to you') {
+    super(HttpStatus.FORBIDDEN, 'LINK_ACCESS_DENIED', message);
+  }
+}
+
+/**
+ * The acting user holds none of the permission roles R3-12 requires for the
+ * action they attempted on this invitation.
+ */
+export class InvitationForbiddenException extends InvitationApiException {
+  constructor(message = 'You do not have permission to manage this invitation') {
+    super(HttpStatus.FORBIDDEN, 'INVITATION_FORBIDDEN', message);
   }
 }
