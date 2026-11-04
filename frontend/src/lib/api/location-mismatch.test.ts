@@ -274,15 +274,11 @@ describe("check-in prompt: loading state and responsive actions", () => {
     )
     assert.equal((prompt.match(/handleCheckInUpdateHomeCountry\(\)/g) ?? []).length, 1)
     assert.ok(prompt.includes("onClick={handleCheckInStillTraveling}"))
-    assert.ok(prompt.includes("min-w-[227px]"))
+    assert.ok(prompt.includes("className={CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS}"))
   })
 
-  it("the actions stack when the full loading width does not fit, keeping order and the 12px gap", () => {
-    assert.ok(
-      prompt.includes(
-        "mx-auto mt-[50px] flex w-[calc(100%+2rem)] max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3"
-      )
-    )
+  it("the actions use the shared responsive layout (exact classes: travel-check-in-prompt-layout.test.ts), keeping order", () => {
+    assert.ok(prompt.includes("<div className={CHECK_IN_PROMPT_ACTIONS_CLASS}>"))
     assert.ok(
       prompt.indexOf("CHECK_IN_COPY.prompt.stillTraveling") <
         prompt.indexOf("CHECK_IN_COPY.prompt.updateHomeCountry")

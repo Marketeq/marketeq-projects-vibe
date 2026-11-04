@@ -72,6 +72,11 @@ import {
   TRAVEL_DURATION_OPTION_ROW_CLASS,
 } from "@/lib/travel-duration-option-styles"
 import {
+  CHECK_IN_PROMPT_ACTIONS_CLASS,
+  CHECK_IN_PROMPT_DIALOG_CLASS,
+  CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS,
+} from "@/lib/travel-check-in-prompt-layout"
+import {
   isPasswordSetupRequired,
   shouldStartIdentityCheck,
 } from "@/src/lib/api/identity-check-gate"
@@ -860,7 +865,7 @@ export default function TalentDashboard() {
         }}
       >
         {checkIn?.phase === "prompt" && (
-          <DialogContent className="w-[405px] pt-[50px]">
+          <DialogContent className={CHECK_IN_PROMPT_DIALOG_CLASS}>
             <div className="flex items-center justify-center">
               <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
                 <AlertTriangle className="size-6" />
@@ -876,7 +881,7 @@ export default function TalentDashboard() {
               </DialogDescription>
             </div>
 
-            <div className="mx-auto mt-[50px] flex w-[calc(100%+2rem)] max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3">
+            <div className={CHECK_IN_PROMPT_ACTIONS_CLASS}>
               <Button
                 variant="outlined"
                 visual="gray"
@@ -887,7 +892,7 @@ export default function TalentDashboard() {
                 {CHECK_IN_COPY.prompt.stillTraveling}
               </Button>
               <Button
-                className="min-w-[227px]"
+                className={CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS}
                 variant="light"
                 size="md"
                 disabled={checkInStarting}
