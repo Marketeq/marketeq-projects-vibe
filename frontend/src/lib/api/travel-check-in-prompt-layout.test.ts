@@ -61,8 +61,8 @@ describe("check-in prompt layout classes (source)", () => {
     assert.ok(c.includes("max-w-[calc(100vw-2rem)]"))
   })
 
-  it("the loading width stays pinned by min-w-[227px]", () => {
-    assert.equal(CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS, "min-w-[227px]")
+  it("the loading width stays pinned by min-w-[231px]", () => {
+    assert.equal(CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS, "min-w-[231px]")
   })
 
   it("does not touch the mismatch or duration dialogs", () => {
@@ -76,7 +76,7 @@ describe("check-in prompt layout classes (source)", () => {
 const STORYBOOK = process.env.STORYBOOK_URL ?? "http://localhost:6011"
 const STORY = `${STORYBOOK}/iframe.html?id=identity-verification-check-in--check-in&viewMode=story`
 const STILL = "I’m still traveling"
-const UPDATE = "Update my home country"
+const UPDATE = "Change my home country"
 
 interface Box {
   left: number

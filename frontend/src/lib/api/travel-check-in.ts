@@ -30,7 +30,7 @@ export const CHECK_IN_COPY = {
     title: "Still traveling?",
     body: "You’re logging in from a location outside your usual one. Just checking if you’re still away.",
     stillTraveling: "I’m still traveling",
-    updateHomeCountry: "Update my home country",
+    updateHomeCountry: "Change my home country",
   },
   // The duration question the first time it is asked: the existing Storybook copy.
   firstDuration: {
@@ -222,7 +222,7 @@ export function isCheckInStale(
 /**
  * The "Travel Mode is now active!" confirmation opens only when the server saved the answer
  * (POST /travel-duration/update returned 200): never for Skip, a close, a failed request, a
- * 409 (stale / in progress) or "Update my home country". It is an immediate success message
+ * 409 (stale / in progress) or "Change my home country". It is an immediate success message
  * held in page memory only, so a refresh never shows it again.
  */
 export function shouldShowCheckInConfirmation(
