@@ -167,28 +167,31 @@ describe("the dialog", () => {
       assert.match(buttonSource, /disabled=\{disabled \|\| loading\}/)
     })
 
-    it("is a fixed 133px wide in idle and loading (one static class, nothing depends on busy), like Cancel and Back", () => {
+    it("hugs its content in idle and loading: no fixed, minimum or maximum width on any footer button", () => {
+      const footer = dialogSource().slice(
+        dialogSource().indexOf('<div className="mt-[50px] flex justify-center')
+      )
+      assert.ok(!/w-\[|min-w|max-w|\bw-\d|\bw-full|\bflex-1|\bgrow\b/.test(footer))
       const b = tryAgainButton()
       const className = b.match(/className="([^"]*)"/)?.[1] ?? ""
-      assert.ok(className.split(" ").includes("w-[133px]"))
+      assert.ok(!/\bw-|min-w|max-w/.test(className))
       assert.ok(!/className=\{/.test(b))
-      assert.ok(!/min-w|max-w/.test(className))
+      assert.ok(!host.includes("w-[133px]"))
     })
 
-    it("uses the Storybook colours, the default faint shadow and the existing focus ring", () => {
-      const className = tryAgainButton().match(/className="([^"]*)"/)?.[1] ?? ""
-      for (const token of [
-        "text-primary-500",
-        "bg-primary-50",
-        "hover:text-white",
-        "hover:bg-primary-500",
-        "focus-visible:ring-4",
-        "focus-visible:ring-primary-100",
-      ]) {
-        assert.ok(className.split(" ").includes(token), token)
+    it("uses the documented Button pattern: primary light, size md, no colour overrides, plus the focus ring", () => {
+      const b = tryAgainButton()
+      const className = b.match(/className="([^"]*)"/)?.[1] ?? ""
+      assert.ok(b.includes('variant="light"'))
+      assert.ok(b.includes('size="md"'))
+      assert.ok(!b.includes("visual="), "default (primary) visual")
+      assert.equal(
+        className,
+        "focus-visible:ring-4 focus-visible:ring-primary-100"
+      )
+      for (const gone of ["bg-primary-50", "text-primary-500", "hover:", "shadow-none"]) {
+        assert.ok(!className.includes(gone), gone)
       }
-      assert.ok(!className.includes("shadow-none"))
-      assert.ok(tryAgainButton().includes('size="md"'))
     })
 
     it("still goes only through the controller: one request per press, with the 700 ms minimum", () => {
@@ -205,12 +208,11 @@ describe("the dialog", () => {
     assert.ok(d.includes("aria-busy={locationRecoveryState.busy}"))
   })
 
-  it("reuses the approved warning dialog: 531px responsive, warning icon, shared buttons, equal 133px, focus rings", () => {
+  it("reuses the approved warning dialog: 531px responsive, warning icon, shared buttons, focus rings", () => {
     const d = dialogSource()
     assert.ok(d.includes("w-[calc(100%-32px)] max-w-[531px]"))
     assert.ok(d.includes("bg-warning-100 border-[8px] border-warning-50"))
     assert.ok(d.includes("<AlertTriangle"))
-    assert.equal(d.split("w-[133px]").length - 1, 2)
     assert.equal(
       d.split("focus-visible:ring-4 focus-visible:ring-primary-100").length - 1,
       3 // the link, Cancel/Back and Try Again
@@ -221,12 +223,39 @@ describe("the dialog", () => {
     assert.equal(d.split("<RefreshCw").length - 1, 1)
   })
 
+  it("the warning icon is on the recovery view only, never on the 'How to turn on location' view", () => {
+    const d = dialogSource()
+    assert.equal(d.split("<AlertTriangle").length - 1, 1)
+    const at = d.indexOf("<AlertTriangle")
+    const before = d.slice(d.lastIndexOf("{locationRecoveryState.view", at), at)
+    assert.ok(before.includes('locationRecoveryState.view === "main"'))
+    // the instructions view has no icon of its own and no gap left where it was
+    const howTo = host.slice(
+      host.indexOf("function LocationHowTo()"),
+      host.indexOf("export function IdentityVerificationHostProvider")
+    )
+    assert.ok(!howTo.includes("AlertTriangle"))
+    assert.ok(howTo.includes('<div className="px-[19px]">'))
+    // the recovery view keeps its spacing under the icon
+    assert.ok(d.includes('<div className="mt-5 px-[19px]">'))
+  })
+
+  it("the dialog scrolls vertically when its content is taller than the screen (no sticky footer, no compressing)", () => {
+    const d = dialogSource()
+    assert.ok(d.includes("max-h-[calc(100dvh-32px)] overflow-y-auto"))
+    assert.ok(!/\bsticky\b/.test(d))
+    assert.ok(!/overflow-x/.test(d))
+    // opening the dialog focuses Try Again WITHOUT scrolling to it, so a short screen starts at the title
+    assert.equal(host.split("focus({ preventScroll: true })").length - 1, 2)
+    assert.ok(!/tryAgainButtonRef\.current\?\.focus\(\)/.test(host))
+  })
+
   it("initial focus is on Try Again, not on the page behind", () => {
     const d = dialogSource()
     assert.ok(d.includes("ref={tryAgainButtonRef}"))
     assert.match(
       d,
-      /onOpenAutoFocus=\{\(event\) => \{\s*event\.preventDefault\(\)\s*tryAgainButtonRef\.current\?\.focus\(\)/
+      /onOpenAutoFocus=\{\(event\) => \{\s*event\.preventDefault\(\)\s*tryAgainButtonRef\.current\?\.focus\(\{ preventScroll: true \}\)/
     )
   })
 
@@ -236,7 +265,9 @@ describe("the dialog", () => {
       at,
       host.indexOf("const cancelLocationDetection", at)
     )
-    assert.ok(effect.includes("tryAgainButtonRef.current?.focus()"))
+    assert.ok(
+      effect.includes("tryAgainButtonRef.current?.focus({ preventScroll: true })")
+    )
     assert.ok(effect.includes("locationRecoveryState.view"))
     assert.ok(effect.includes("locationRecoveryState.busy"))
   })
@@ -367,7 +398,7 @@ describe("the instructions view: browser steps first, then Mac / Windows tabs", 
     assert.ok(dialogSource().includes("<LocationHowTo />"))
   })
 
-  it("both tabs are always rendered, each with an 18px neutral-gray icon from the existing icon package", () => {
+  it("both tabs are always rendered, each with an 18px icon that inherits the tab colour, from the existing icon package", () => {
     const h = howTo()
     assert.ok(h.includes("instructions.deviceSections.map"))
     assert.match(host, /import \{ MicrosoftBrand \} from "@blend-metrics\/icons\/brands"/)
@@ -377,10 +408,28 @@ describe("the instructions view: browser steps first, then Mac / Windows tabs", 
       host.indexOf("// The decorative picture above the steps")
     )
     assert.equal(icons.split("size-[18px]").length - 1, 2)
-    assert.equal(icons.split("text-gray-500").length - 1, 2)
+    // no colour of their own: they take the tab's (gray when inactive, blue when selected)
+    assert.ok(!/text-(gray|primary|dark)|fill-(gray|primary)|stroke-/.test(icons))
     assert.equal(icons.split('aria-hidden="true"').length - 1, 2)
     assert.ok(icons.includes("[&_path]:fill-current")) // the Microsoft mark ships in four colours
     assert.ok(!/<svg/.test(icons), "no custom SVG")
+  })
+
+  it("the selected tab's text AND icon are blue and the others gray, both coming from the shared trigger colour", () => {
+    // the shared trigger is gray-500, and primary-500 when selected; the icons add no colour of their own
+    assert.match(
+      tabsSource,
+      /text-gray-500[^"]*data-\[state=active\]:text-primary-500/
+    )
+    const icons = host.slice(
+      host.indexOf("const DEVICE_TAB_ICONS"),
+      host.indexOf("// The decorative picture above the steps")
+    )
+    assert.ok(!/text-|fill-(?!current)/.test(icons.replace("[&_path]:fill-current", "")))
+    assert.ok(icons.includes("[&_path]:fill-current")) // the Microsoft mark's four fixed colours follow the trigger
+    // the trigger itself keeps no colour override
+    const tab = howTo().slice(howTo().indexOf("<TabsTrigger"), howTo().indexOf("</TabsTrigger>"))
+    assert.ok(!/\btext-(gray|primary)/.test(tab))
   })
 
   it("keeps a visible keyboard focus ring on the tabs and on each panel (the shared Tabs have none of their own)", () => {
@@ -465,22 +514,32 @@ describe("the decorative illustration in the instructions view", () => {
     assert.ok(!list.includes("aria-hidden"))
   })
 
-  it("one tile per step, laid out in 4 columns for four steps and 3 for three", () => {
+  it("one tile per step: two columns on a phone, four (or three) from 480px", () => {
     const i = illustration()
-    assert.ok(i.includes('steps.length === 4 ? "grid-cols-4" : "grid-cols-3"'))
+    assert.ok(
+      i.includes(
+        'steps.length === 4 ? "grid-cols-2 min-[480px]:grid-cols-4" : "grid-cols-2 min-[480px]:grid-cols-3"'
+      )
+    )
     assert.ok(i.includes("steps.map((step, index)"))
     assert.ok(i.includes("{index + 1}"))
   })
 
-  it("this project's sm breakpoint is 375px, so the compact layout is the base and the roomier one starts at md", () => {
+  it("has no compact-only rules: no breakpoint-dependent sizing, spacing or hidden captions (the dialog scrolls instead)", () => {
     const i = illustration()
-    assert.ok(!/\bsm:/.test(i))
-    assert.ok(i.includes("md:"))
-    assert.match(read("tailwind.config.ts"), /sm: "375px"/)
-    // captions and the pills' words are hidden on the compact layout so tiles cannot overflow
-    assert.ok(i.includes('className="mt-1 hidden truncate'))
-    assert.ok(i.includes('<span className="hidden md:inline">Allow</span>'))
-    assert.ok(i.includes('<span className="hidden md:inline">Try Again</span>'))
+    assert.ok(!/\b(sm|md|lg|xl):/.test(i))
+    assert.ok(!/\bhidden\b/.test(i.replace(/aria-hidden/g, "")))
+    // captions and the pills' words are always shown, at their normal size
+    assert.ok(i.includes('<p className="mt-1 truncate text-center text-[11px]'))
+    assert.ok(i.includes("Allow\n"))
+    assert.ok(i.includes("Try Again\n"))
+    assert.ok(!/text-\[(8|9)px\]/.test(i))
+    // the steps and the tabs keep their normal spacing too
+    const h = host.slice(
+      host.indexOf("function LocationHowTo()"),
+      host.indexOf("export function IdentityVerificationHostProvider")
+    )
+    assert.ok(!/\b(sm|md):/.test(h))
   })
 
   it("uses light-gray strokes and the dialog's restrained primary highlight (design tokens only)", () => {
@@ -492,11 +551,51 @@ describe("the decorative illustration in the instructions view", () => {
     assert.ok(!/#[0-9a-fA-F]{3,8}\b|rgb\(/.test(i), "no raw colours")
   })
 
-  it("only the instructions view gets the tighter mobile footer gap; the main view keeps 50px", () => {
+  it("the footer has the same spacing in both views (no mobile-only gap)", () => {
     const d = dialogSource()
-    assert.ok(
-      d.includes('locationRecoveryState.view === "howto" ? "mt-4 md:mt-[50px]" : "mt-[50px]"')
+    assert.ok(d.includes('<div className="mt-[50px] flex justify-center items-center gap-x-3">'))
+    assert.ok(!/mt-4 md:mt-\[50px\]/.test(d))
+  })
+})
+
+describe("the footer buttons (documented shared Button pattern)", () => {
+  const footer = () => {
+    const d = dialogSource()
+    return d.slice(d.indexOf('<div className="mt-[50px] flex justify-center'))
+  }
+  const backButton = () => {
+    const f = footer()
+    return f.slice(f.indexOf("<Button"), f.indexOf("</Button>"))
+  }
+
+  it("Cancel / Back is a gray outlined md Button with nothing but the focus ring added", () => {
+    const b = backButton()
+    assert.ok(b.includes('variant="outlined"'))
+    assert.ok(b.includes('visual="gray"'))
+    assert.ok(b.includes('size="md"'))
+    assert.equal(
+      b.match(/className="([^"]*)"/)?.[1],
+      "focus-visible:ring-4 focus-visible:ring-primary-100"
     )
+    assert.ok(!/bg-white|w-\[/.test(b))
+  })
+
+  it("Back shows the documented left arrow through the Button's leftIcon (never as a child), Cancel shows none", () => {
+    const b = backButton()
+    assert.ok(b.includes('<ArrowLeft className="size-[15px]" />'))
+    assert.match(b, /leftIcon=\{\s*locationRecoveryState\.view === "howto" \? \(\s*<ArrowLeft className="size-\[15px\]" \/>\s*\) : undefined\s*\}/)
+    const children = b.slice(b.indexOf("\n            >") + 1)
+    assert.ok(!children.includes("ArrowLeft"))
+    assert.match(host, /import \{[^}]*\bArrowLeft\b[^}]*\} from "@blend-metrics\/icons"/)
+    assert.equal(backButton().split("ArrowLeft").length - 1, 1) // in the leftIcon only
+  })
+
+  it("the 'Show me how' link is the plain link Button (no size or weight overrides)", () => {
+    const d = dialogSource()
+    const at = d.indexOf('variant="link"')
+    const tag = d.slice(d.lastIndexOf("<Button", at), at + 40)
+    assert.ok(tag.includes('className="focus-visible:ring-4 focus-visible:ring-primary-100"'))
+    assert.ok(!/h-auto|p-0|text-sm|font-semibold/.test(tag))
   })
 })
 
