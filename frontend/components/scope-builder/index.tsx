@@ -495,17 +495,34 @@ export const getPhaseDurationLabel = (phases: Phase[], phaseIndex: number) => {
 // doubles as the general-purpose "every phase must have a phaseType in
 // Service scope" normalizer (see ensureServicePhaseTypes below) — an
 // already-typed phase (and its recurrenceSchedule/recurrenceCount) is
-// left untouched; only an untyped phase gets assigned one. This keeps
-// Project→Service conversion's own output identical to before (project
-// phases have no phaseType at all, so index 0 still becomes "setup" and
-// the rest "recurring") while also being safe to call on a scope that's
-// already partially or fully typed.
+// left untouched; only an untyped phase gets assigned one.
+//
+// service-scope-ongoing-phase: a real Project→Service switch must also
+// close the scope with an Ongoing phase (Figma "Edit My Listings" file
+// ju1jerELmf8Xq9oJepX5rn, Service Scope 13576:25349 — "Setup always comes
+// first, and Ongoing always comes last"). `applyOngoingRule` gates that:
+// true only at the actual switch call sites below; the normalizer
+// (ensureServicePhaseTypes) always passes it false so loading an older
+// saved draft never silently adds an Ongoing phase it didn't have. Mapping
+// for the untyped phases (array position, not "position among untyped" —
+// an already-typed phase elsewhere just removes that slot from
+// contention): index 0 → Setup (unless a "setup" already exists
+// elsewhere); the last index → Ongoing, no recurrence fields (only when
+// applyOngoingRule, index 0 didn't already claim it as a 1-phase scope,
+// and no "ongoing" already exists elsewhere); everything else → Recurring,
+// same as before. A single untyped phase (index 0 === last index) only
+// ever becomes Setup — the Setup branch returns before the Ongoing check
+// is reached, matching "1 phase → Setup (no Ongoing added)".
 export function convertPhasesForScopeType(
   phases: Phase[],
-  target: ScopeType
+  target: ScopeType,
+  options?: { applyOngoingRule?: boolean }
 ): Phase[] {
   if (target === "service") {
+    const applyOngoingRule = options?.applyOngoingRule ?? false
     const hasSetup = phases.some((phase) => phase.phaseType === "setup")
+    const hasOngoing = phases.some((phase) => phase.phaseType === "ongoing")
+    const lastIndex = phases.length - 1
     return phases.map((phase, index) => {
       if (phase.phaseType) {
         // Already typed — keep it and its recurrence fields as-is.
@@ -514,9 +531,19 @@ export function convertPhasesForScopeType(
       if (index === 0 && !hasSetup) {
         return { ...phase, phaseType: "setup" as const }
       }
-      // Every other untyped phase, and an untyped phase at index 0 when
-      // some other phase already claims "setup" — never auto-assign
-      // "ongoing".
+      if (
+        applyOngoingRule &&
+        index === lastIndex &&
+        index !== 0 &&
+        !hasOngoing
+      ) {
+        const { recurrenceSchedule, recurrenceCount, ...rest } = phase
+        return { ...rest, phaseType: "ongoing" as const }
+      }
+      // Every other untyped phase, an untyped phase at index 0 when some
+      // other phase already claims "setup", and (outside a real switch,
+      // or once setup/ongoing are already claimed elsewhere) the last
+      // index too — fall back to Recurring.
       return {
         ...phase,
         phaseType: "recurring" as const,
@@ -539,7 +566,9 @@ export function convertPhasesForScopeType(
 // fallback ("Phase One") — every phase needs a phaseType. This is just
 // convertPhasesForScopeType's non-destructive "service" branch under a
 // name that reads correctly at a normalization call site (no actual
-// scope-type switch happening).
+// scope-type switch happening) — deliberately never passes
+// applyOngoingRule, so normalizing an already-"service" scope (an older
+// draft, or hydration) never adds an Ongoing phase on its own.
 export const ensureServicePhaseTypes = (phases: Phase[]): Phase[] =>
   convertPhasesForScopeType(phases, "service")
 
@@ -3346,7 +3375,9 @@ export function ScopeBuilder({
                 const previousPhases = phases
                 if (pendingScopeType) {
                   setPhases(
-                    convertPhasesForScopeType(phases, pendingScopeType)
+                    convertPhasesForScopeType(phases, pendingScopeType, {
+                      applyOngoingRule: true,
+                    })
                   )
                   onScopeTypeChange?.(pendingScopeType)
                   toast({
