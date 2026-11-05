@@ -7529,14 +7529,18 @@ const ProjectScope = ({
                   <DropdownMenuContent align="end" className="w-[280px]">
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      aria-current={!isService ? "true" : undefined}
                       onClick={() => requestScopeTypeChange("project")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
-                        {!isService && (
-                          <Check className="size-4 text-primary-500 shrink-0" />
-                        )}
+                        <Check
+                          className={cn(
+                            "size-4 text-primary-500 shrink-0",
+                            isService && "invisible"
+                          )}
+                        />
                         <span className="font-semibold text-sm text-gray-900">
-                          Project{!isService ? " (current)" : ""}
+                          Project
                         </span>
                       </div>
                       <span className="text-xs text-gray-500 ml-6">
@@ -7545,14 +7549,18 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      aria-current={isService ? "true" : undefined}
                       onClick={() => requestScopeTypeChange("service")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
-                        {isService && (
-                          <Check className="size-4 text-primary-500 shrink-0" />
-                        )}
+                        <Check
+                          className={cn(
+                            "size-4 text-primary-500 shrink-0",
+                            !isService && "invisible"
+                          )}
+                        />
                         <span className="font-semibold text-sm text-gray-900">
-                          Service{isService ? " (current)" : ""}
+                          Service
                         </span>
                       </div>
                       <span className="text-xs text-gray-500 ml-6">
