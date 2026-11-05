@@ -3178,6 +3178,7 @@ export function ScopeBuilder({
             <DropdownMenuContent align="end" className="w-[280px]">
               <DropdownMenuItem
                 className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                aria-current={scopeType === "project" ? "true" : undefined}
                 onClick={() => {
                   if (scopeType !== "project") {
                     setPendingScopeType("project")
@@ -3187,11 +3188,14 @@ export function ScopeBuilder({
                 }}
               >
                 <div className="flex items-center gap-x-2 w-full">
-                  {scopeType === "project" && (
-                    <Check className="size-4 text-primary-500 shrink-0" />
-                  )}
+                  <Check
+                    className={cn(
+                      "size-4 text-primary-500 shrink-0",
+                      scopeType !== "project" && "invisible"
+                    )}
+                  />
                   <span className="font-semibold text-sm text-gray-900">
-                    Project{scopeType === "project" ? " (current)" : ""}
+                    Project
                   </span>
                 </div>
                 <span className="text-xs text-gray-500 ml-6">
@@ -3200,6 +3204,7 @@ export function ScopeBuilder({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                aria-current={scopeType === "service" ? "true" : undefined}
                 onClick={() => {
                   if (scopeType !== "service") {
                     setPendingScopeType("service")
@@ -3209,11 +3214,14 @@ export function ScopeBuilder({
                 }}
               >
                 <div className="flex items-center gap-x-2 w-full">
-                  {scopeType === "service" && (
-                    <Check className="size-4 text-primary-500 shrink-0" />
-                  )}
+                  <Check
+                    className={cn(
+                      "size-4 text-primary-500 shrink-0",
+                      scopeType !== "service" && "invisible"
+                    )}
+                  />
                   <span className="font-semibold text-sm text-gray-900">
-                    Service{scopeType === "service" ? " (current)" : ""}
+                    Service
                   </span>
                 </div>
                 <span className="text-xs text-gray-500 ml-6">
