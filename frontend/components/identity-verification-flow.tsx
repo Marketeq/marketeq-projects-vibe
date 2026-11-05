@@ -545,6 +545,7 @@ export function IdentityVerificationFlow({
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
+  activeTravelModeInForce,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -607,6 +608,9 @@ export function IdentityVerificationFlow({
   // below, off by default, and never passed by any real caller — the
   // authenticated /talent-dashboard path always performs the real calls.
   simulateFreeKycForPreview?: boolean
+  // True while Travel Mode is in force (the host's /me summary): Confirm / Skip on the
+  // duration screen then call POST /travel-duration/update. Unset: first-time activation.
+  activeTravelModeInForce?: boolean
   onSimulatedFreeKycStart?: () => void
 }) {
   const getIsMounted = useMountedState()
@@ -903,7 +907,12 @@ export function IdentityVerificationFlow({
     return {
       recordTravelClassification: (c) =>
         IdentityVerificationAPI.recordTravelClassification(c),
-      recordTravelDuration: (d) => IdentityVerificationAPI.recordTravelDuration(d),
+      // A Travel Mode that is already in force is restarted with the update endpoint; the
+      // first-time activation (POST /travel-duration) is refused for it with a 409 (BTB-401).
+      recordTravelDuration: (d) =>
+        activeTravelModeInForce
+          ? IdentityVerificationAPI.reviseActiveTravelDuration(d)
+          : IdentityVerificationAPI.recordTravelDuration(d),
     }
   }
   // Only "Permanently relocated" is saved at its click, and for an account that already

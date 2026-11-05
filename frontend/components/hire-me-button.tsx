@@ -666,9 +666,10 @@ export function OfferDialog({
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
-  // BTB-260: 0 is rejected at input time (onChange guard below), so the only
-  // way tryConfirmCustomSchedule can still fail is an empty hours field —
-  // this surfaces that instead of the row stalling with no feedback.
+  // BTB-283: a complete-but-zero value ("0", "00") is now accepted at input
+  // time (see customHoursZeroError, derived) instead of rejected — this
+  // state is only for tryConfirmCustomSchedule's own empty-field message
+  // ("Please enter the number of hours."), confirmed on blur/Enter.
   const [customHoursError, setCustomHoursError] = React.useState<
     string | null
   >(null)
@@ -930,6 +931,15 @@ export function OfferDialog({
     isCustomDurationIncomplete &&
     (customDurationValue !== "" || showValidationErrors)
       ? "Duration must be at least 1 month."
+      : null
+  // BTB-283: same shape as customRateError/customDurationError above, for
+  // the hours field — shown as soon as a complete-but-zero value ("0",
+  // "00") sits in customHours, same priority as customHoursError (the
+  // empty-on-confirm message from tryConfirmCustomSchedule) in the one
+  // reserved slot that renders both.
+  const customHoursZeroError =
+    customScheduleOpen && customHours !== "" && Number(customHours) === 0
+      ? "Hours must be greater than 0."
       : null
   // The "custom" sentinel is only meaningful INSIDE this component (see the
   // state declarations). Everything downstream reads these two values
@@ -1205,6 +1215,12 @@ export function OfferDialog({
       setCustomHoursError(null)
       setSchedule("custom")
       setCustomScheduleOpen(false)
+    } else if (hours.trim() !== "" && parsedHours === 0) {
+      // BTB-283: a complete-but-zero value gets its own message instead of
+      // the generic empty-field one below — it's already shown immediately
+      // on change via the derived customHoursZeroError, this just keeps
+      // confirming (blur/Enter) from silently advancing past it.
+      setCustomHoursError("Hours must be greater than 0.")
     } else {
       // BTB-260: the row used to just sit there on invalid input. Enter
       // (new onKeyDown below) and blur both land here now, so both get the
@@ -2442,14 +2458,16 @@ export function OfferDialog({
                                     // question for the lead, not built.
                                     // T1-12: same rejection, extended with
                                     // the per-frequency max.
-                                    // BTB-260: also reject a non-empty value
-                                    // that parses to 0 ("0", "00") the same
-                                    // way — empty stays allowed so the field
-                                    // can still be cleared.
+                                    // BTB-283: a complete-but-zero value
+                                    // ("0", "00") is now ACCEPTED here
+                                    // (previously rejected at the keystroke
+                                    // level, BTB-260) so it can show "Hours
+                                    // must be greater than 0." in the
+                                    // reserved error slot below instead,
+                                    // matching Custom Rate/Duration.
                                     const value = event.target.value
                                     if (
                                       /^\d*$/.test(value) &&
-                                      (value === "" || Number(value) > 0) &&
                                       Number(value) <=
                                         CUSTOM_HOURS_MAX[customFrequency]
                                     ) {
@@ -2564,15 +2582,17 @@ export function OfferDialog({
                               Custom Rate/Duration rows above — always
                               mounted while this row is open so the error
                               appearing/disappearing never resizes the modal.
-                              Text and logic (customHoursError state) are
-                              unchanged. */}
+                              customHoursZeroError (derived, immediate) and
+                              customHoursError (state, set on blur/Enter)
+                              share this one slot. */}
                               <ErrorMessage
                                 className={cn(
                                   "mt-1",
-                                  !customHoursError && "invisible"
+                                  !(customHoursZeroError || customHoursError) &&
+                                    "invisible"
                                 )}
                               >
-                                {customHoursError || " "}
+                                {customHoursZeroError || customHoursError || " "}
                               </ErrorMessage>
                             </div>
                           ) : null}
