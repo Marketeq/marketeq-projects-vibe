@@ -75,6 +75,7 @@ const TEAM_OWNER_GATE_SQL = `AND ("createdBy" IS NULL
 export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DbFallbackService.name)
   private pool: Pool | null = null
+  private talentProfileExtras: { locationSql: string; avatarSql: string } | null = null
   private talentNameSql: Promise<string> | null = null
 
   // Maps a category + requested sort field to a real, hardcoded SQL ORDER BY
@@ -319,6 +320,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         const params: any[] = [pattern]
         const clauses: string[] = []
         const nameSql = await this.resolveTalentNameSql()
+        const { locationSql, avatarSql } = await this.resolveTalentProfileExtras()
 
         // cms.talent_profiles has no skills/industries/languages/rate columns
         // on the main row — Payload stores those array fields as child
@@ -473,7 +475,7 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
         let hits: any[] = []
         if (pageIds.length) {
           const detail = await this.pool.query(
-            `SELECT id, ${nameSql} AS name, username, availability,
+            `SELECT id, ${nameSql} AS name, username, availability, ${locationSql} AS location, ${avatarSql} AS avatar_url,
                     (SELECT MIN(jt.rate) FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id) AS hourly_rate,
                     (SELECT jt.headline FROM cms.talent_profiles_job_titles jt WHERE jt._parent_id = talent_profiles.id ORDER BY jt._order LIMIT 1) AS job_title,
                     (SELECT array_agg(s.name ORDER BY s._order) FROM cms.talent_profiles_skills s WHERE s._parent_id = talent_profiles.id) AS skills,
@@ -492,6 +494,8 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
               name: r.name || r.username,
               username: r.username,
               availability: r.availability,
+              location: r.location || undefined,
+              avatar_url: r.avatar_url || undefined,
               hourly_rate: r.hourly_rate != null ? Number(r.hourly_rate) : undefined,
               job_title: r.job_title ?? undefined,
               skills: Array.isArray(r.skills) ? r.skills : undefined,
@@ -1196,6 +1200,25 @@ export class DbFallbackService implements OnModuleInit, OnModuleDestroy {
     if (parts.length) return `NULLIF(btrim(concat_ws(' ', ${parts.join(', ')})), '')`
     if (present.has('name')) return 'talent_profiles.name'
     return 'NULL::text'
+  }
+
+  private async resolveTalentProfileExtras(): Promise<{ locationSql: string; avatarSql: string }> {
+    if (this.talentProfileExtras) return this.talentProfileExtras
+    if (!this.pool) return { locationSql: 'NULL::text', avatarSql: 'NULL::text' }
+    const result = await this.pool.query(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'cms'
+          AND table_name = 'talent_profiles'
+          AND column_name IN ('location', 'avatar_url')`,
+    )
+    const present = new Set(result.rows.map((row) => row.column_name as string))
+    const extras = {
+      locationSql: present.has('location') ? 'talent_profiles.location' : 'NULL::text',
+      avatarSql: present.has('avatar_url') ? 'talent_profiles.avatar_url' : 'NULL::text',
+    }
+    if (present.size === 2) this.talentProfileExtras = extras
+    return extras
   }
 
   private empty(limit: number, page: number): FallbackHits {
