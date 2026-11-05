@@ -541,6 +541,7 @@ export function IdentityVerificationFlow({
   activeTravelModeUpdate,
   onTravelModeConfirmed,
   onPermanentlyRelocated,
+  onBeforeLocationScreen,
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
@@ -586,6 +587,14 @@ export function IdentityVerificationFlow({
   // detection). The flow waits for it, then continues to the screen that shows the location.
   // Optional: callers that omit it (Verify My Account, the preview) behave exactly as before.
   onPermanentlyRelocated?: () => Promise<void>
+  // BTB-387: for a flow whose location is NOT the device's (the host opened it on the
+  // "How long are you traveling?" screen with the server-derived location). Called before the
+  // flow moves from a screen that shows no location to the one that does (Back from the
+  // duration screen, the travel reminder's Update). It resolves true once the device location
+  // has been obtained and handed to `detectedLocation`, and false when the user stays where
+  // they are (blocked, cancelled, navigated away). Optional: every other caller omits it and
+  // behaves exactly as before (the preview, and the flows opened with the device location).
+  onBeforeLocationScreen?: () => Promise<boolean>
   // Development preview only (app/identity-verification-preview/): skips the
   // real presigned-URL + R2 upload in handleCapture so every screen can be
   // walked through without storage credentials. Defaults to off and is
@@ -918,8 +927,8 @@ export function IdentityVerificationFlow({
   const [relocating, setRelocating] = useState(false)
   const handlePermanentlyRelocated = async () => {
     if (relocatingRef.current) return
-    persistTravelClassification("permanently_relocated")
     if (!onPermanentlyRelocated) {
+      persistTravelClassification("permanently_relocated")
       send("RELOCATED")
       return
     }
@@ -931,8 +940,35 @@ export function IdentityVerificationFlow({
       relocatingRef.current = false
       if (getIsMounted()) setRelocating(false)
     }
+    // BTB-387: nothing is saved before the device location exists. A cancelled "Turn on
+    // location" dialog replaces this instance, so a cancel ends here without a write.
     if (!getIsMounted()) return
+    persistTravelClassification("permanently_relocated")
     send("RELOCATED")
+  }
+
+  // BTB-387: moves to the screen that shows the location, after `onBeforeLocationScreen` (when
+  // the caller gave one) has produced the device location. One request at a time; a second
+  // press is ignored; an unmounted flow does nothing.
+  const locationScreenPendingRef = useRef(false)
+  const goToLocationScreen = (event: "BACK" | "UPDATE_LOCATION", then?: () => void) => {
+    if (!onBeforeLocationScreen) {
+      send(event)
+      then?.()
+      return
+    }
+    if (locationScreenPendingRef.current) return
+    locationScreenPendingRef.current = true
+    void onBeforeLocationScreen()
+      .then((ready) => {
+        if (!ready || !getIsMounted()) return
+        send(event)
+        then?.()
+      })
+      .catch(() => {})
+      .finally(() => {
+        locationScreenPendingRef.current = false
+      })
   }
 
   // Confirm / Skip. The duration request saves the whole Travel Mode activation in one
@@ -1898,7 +1934,7 @@ export function IdentityVerificationFlow({
               visual="gray"
               variant="ghost"
               disabled={activatingTravelMode}
-              onClick={() => send("BACK")}
+              onClick={() => goToLocationScreen("BACK")}
             >
               <ArrowLeft className="size-5" />
             </IconButton>
@@ -2136,8 +2172,7 @@ export function IdentityVerificationFlow({
               className="h-5 justify-start p-0 text-sm font-semibold leading-5"
               onClick={() => {
                 setTravelReminderOpen(false)
-                send("UPDATE_LOCATION")
-                onOpenChange(true)
+                goToLocationScreen("UPDATE_LOCATION", () => onOpenChange(true))
               }}
             >
               Update

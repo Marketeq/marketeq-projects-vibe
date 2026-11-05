@@ -468,32 +468,30 @@ describe("browser geolocation wiring (source guards)", () => {
   const page = readDashboardWithHost()
 
   it("is requested only from the explicit verify action, never on page load", () => {
-    // Three call sites: the explicit verify action (which may ask for the browser's
-    // location), the Travel Mode popup's Update action (server-derived location only: it
-    // never passes the option, so opening it can never trigger the permission prompt) and
-    // the Update flow's "Permanently relocated" choice (an explicit user action, wired
-    // through the flow's onPermanentlyRelocated prop; see travel-update-relocated-detection.test.ts).
+    // BTB-387: every call that asks the browser for the device location is an explicit user
+    // action: Verify My Account, "Permanently relocated", the location dialog's Try Again,
+    // and createDeviceLocationRequester (the Update, "Change my home country" and check-in "Update my
+    // home country" clicks). No IP-only (server-derived) lookup is made by any of them.
     const calls = page.match(/getDetectedLocation\(/g) ?? []
-    // (plus the host's own default for the live card's Update on a page without a popup: also
-    // server-derived only, so it can never trigger the permission prompt)
-    // (BTB-387: plus the location dialog's Try Again, which asks the device again and only
-    // when that button is clicked; see the host's createLocationRecovery)
-    assert.equal(calls.length, 5)
-    // two call sites + the dialog's Try Again + the host wrapper that only branches on it
-    assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 4)
+    assert.equal(calls.length, 4)
+    // those four + the host wrapper that only branches on the option
+    assert.equal((page.match(/useBrowserLocation/g) ?? []).length, 5)
     assert.ok(page.includes("getDetectedLocation({ useBrowserLocation: true })"))
-    assert.ok(page.includes("await getDetectedLocation()"))
+    assert.ok(!page.includes("await getDetectedLocation()"))
     // The explicit verify action lives in the host; before it (the host's imports, state and
     // return effect) nothing asks for a position, and neither does the page's load code.
     const host = readIdentityHost()
     const handlerAt = host.indexOf("const handleVerifyMyAccount")
     assert.ok(host.indexOf("getDetectedLocation(", handlerAt) > -1)
     const beforeHandler = host.slice(0, handlerAt)
-    // (BTB-387: the one earlier call is the location dialog's Try Again, which is made only
-    // when that button is clicked, inside createLocationRecovery)
-    assert.equal(beforeHandler.split("getDetectedLocation(").length - 1, 1)
+    // the two earlier calls are the dialog's Try Again (createLocationRecovery.tryAgain) and
+    // requestDeviceLocation, both made only from a click
+    assert.equal(beforeHandler.split("getDetectedLocation(").length - 1, 2)
     assert.ok(
       beforeHandler.slice(beforeHandler.indexOf("createLocationRecovery(")).includes("getDetectedLocation(")
+    )
+    assert.ok(
+      beforeHandler.slice(beforeHandler.indexOf("createDeviceLocationRequester({")).includes("getDetectedLocation(")
     )
     assert.ok(!beforeHandler.includes("getBrowserPosition"))
     assert.ok(!readDashboardPage().includes("getBrowserPosition"))

@@ -196,6 +196,7 @@ export default function TalentDashboard() {
   const {
     startVerification: handleVerifyMyAccount,
     openFlow,
+    requestDeviceLocation: hostRequestDeviceLocation,
     flowOpen: identityFlowOpen,
     connectionCheckState,
     setCooldownRetryTime,
@@ -521,6 +522,39 @@ export default function TalentDashboard() {
     setTravelSummary(null)
   }, [user?.id])
 
+  // The device location for a screen that shows the user's location (BTB-387). One request at
+  // a time from this page (a second press is ignored); it is cancelled when the page unmounts
+  // or the account changes, and an answer that arrives after that is dropped. null means "no
+  // location": the caller stays on the screen it was on.
+  const deviceLocationRequestRef = useRef<AbortController | null>(null)
+  const requestDeviceLocation = useCallback(async () => {
+    if (deviceLocationRequestRef.current) return null
+    const controller = new AbortController()
+    deviceLocationRequestRef.current = controller
+    try {
+      const location = await hostRequestDeviceLocation({
+        signal: controller.signal,
+        isCurrent: () => !controller.signal.aborted,
+      })
+      return controller.signal.aborted ? null : location
+    } finally {
+      if (deviceLocationRequestRef.current === controller) {
+        deviceLocationRequestRef.current = null
+      }
+    }
+  }, [hostRequestDeviceLocation])
+  useEffect(
+    () => () => {
+      deviceLocationRequestRef.current?.abort()
+      deviceLocationRequestRef.current = null
+    },
+    []
+  )
+  useEffect(() => {
+    deviceLocationRequestRef.current?.abort()
+    deviceLocationRequestRef.current = null
+  }, [user?.id])
+
   // Closing the popup (X, swipe or Escape). A closed reminder is spent: its occurrence
   // was claimed when it opened. A closed expiry popup is remembered for this login only.
   const handleTravelPopupClose = useCallback(() => {
@@ -542,10 +576,14 @@ export default function TalentDashboard() {
   const handleTravelUpdate = useCallback(
     async (kindOverride?: TravelPopupKind) => {
     const kind = kindOverride ?? travelPopup
-    setTravelPopup(null)
     const fresh = kind === "reminder" ? await fetchIdentityVerificationSummary() : null
     const activeTravelModeUpdate = isActiveTravelUpdate(kind, fresh)
-    const location = await getDetectedLocation()
+    // The Update screen shows the user's location, so the device location comes first
+    // (BTB-387). Without it the recovery dialog opens over this popup, the flow stays
+    // closed, and Cancel leaves the popup exactly as it was.
+    const location = await requestDeviceLocation()
+    if (!location) return
+    setTravelPopup(null)
     openFlow(
       {
         initialState: "current-location-showcase",
@@ -555,7 +593,7 @@ export default function TalentDashboard() {
       { detectedLocation: location }
     )
     },
-    [travelPopup, openFlow]
+    [travelPopup, openFlow, requestDeviceLocation]
   )
 
   // The live Travel Mode card's Update: the same flow and the same detection as the popup's
@@ -579,7 +617,15 @@ export default function TalentDashboard() {
       setLocationMismatchOpen(false)
       setTravelerPromptOpen(false)
       openFlow(
-        { initialState: launch.initialState },
+        {
+          initialState: launch.initialState,
+          // "I'm still traveling" opens on a screen that shows no location, with the
+          // server-derived one behind it: the flow asks for the device location before it
+          // reaches any screen that does (BTB-387).
+          ...(launch.initialState === "traveling-showcase"
+            ? { ipLocationOnly: true }
+            : {}),
+        },
         { detectedLocation: launch.location }
       )
     },
@@ -672,14 +718,20 @@ export default function TalentDashboard() {
     try {
       // Saves nothing and marks nothing: the claim is created only by the flow's own
       // explicit country confirmation, and the backend then keeps the prompt quiet.
-      openFlowFromMismatch(await startChangeHomeCountry(), "change-country")
+      const launch = await startChangeHomeCountry({
+        getDetectedLocation,
+        requestDeviceLocation,
+      })
+      // No device location: the recovery dialog was shown (or the attempt was cancelled) and
+      // this prompt stays open exactly as it was.
+      if (launch) openFlowFromMismatch(launch, "change-country")
     } catch (error) {
       // Nothing was started: the prompt stays open to try again.
       console.error("[identity-verification] could not open the flow", error)
     } finally {
       setLocationMismatchBusy(false)
     }
-  }, [openFlowFromMismatch])
+  }, [openFlowFromMismatch, requestDeviceLocation])
 
   // Skip, X, Escape or a click outside: not an answer. Nothing is sent and the occurrence
   // stays due; it is only kept from reopening until the next real re-check.
@@ -823,7 +875,12 @@ export default function TalentDashboard() {
     if (!checkIn || checkInStarting) return
     setCheckInStarting(true)
     try {
-      const launch = await startChangeHomeCountry()
+      const launch = await startChangeHomeCountry({
+        getDetectedLocation,
+        requestDeviceLocation,
+      })
+      // No device location: the modal stays open as it was (Cancel returns to it).
+      if (!launch) return
       checkInDismissalsRef.current.dismiss(checkInScopeKey, checkIn.occurrence)
       setCheckIn(null)
       openFlowFromMismatch(launch, "change-country")
@@ -833,7 +890,13 @@ export default function TalentDashboard() {
     } finally {
       setCheckInStarting(false)
     }
-  }, [checkIn, checkInStarting, checkInScopeKey, openFlowFromMismatch])
+  }, [
+    checkIn,
+    checkInStarting,
+    checkInScopeKey,
+    openFlowFromMismatch,
+    requestDeviceLocation,
+  ])
 
   // The host calls these when what it did concerns something this page owns.
   useIdentityVerificationObserver({

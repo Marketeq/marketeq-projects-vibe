@@ -79,6 +79,10 @@ import {
 } from "@/src/lib/api/status-alert-copy"
 import { checkVpnProxy } from "@/src/lib/api/vpn-proxy-detection"
 import {
+  createDeviceLocationRequester,
+  type DeviceLocationRequestOptions,
+} from "@/src/lib/api/device-location-request"
+import {
   createLocationRecovery,
   type LocationRecoveryState,
   type RecoveryHooks,
@@ -225,6 +229,10 @@ export interface IdentityFlowLaunch {
   // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
   // the location with the browser (see refreshLocationForRelocation).
   detectBrowserLocationOnRelocate?: boolean
+  // Set when the flow's location is the server-derived one (it was opened on "How long are you
+  // traveling?", which shows no location). Before the flow moves to a screen that shows a
+  // location it then asks for the device location first (BTB-387; see requestLocationForFlow).
+  ipLocationOnly?: boolean
 }
 
 export interface IdentityFlowOpenOptions {
@@ -266,6 +274,15 @@ export interface IdentityVerificationHost {
     options?: IdentityFlowOpenOptions
   ) => void
   flowOpen: boolean
+  /**
+   * The device (GPS) location, for any screen that shows the user's location (BTB-387). Resolves
+   * with it once the browser has produced it; when it cannot (blocked, dismissed, unsupported,
+   * unavailable, timed out) the "Turn on location to continue" dialog opens and this waits for
+   * a successful Try Again. Resolves null when the attempt ended without a location (Cancel,
+   * Escape, the caller's signal, a route/account/role change, an unmount, or a request that is
+   * already running), so the caller simply stays where it was. Never falls back to the IP.
+   */
+  requestDeviceLocation: (options?: DeviceLocationRequestOptions) => Promise<DetectedLocation | null>
   connectionCheckState: ConnectionCheckState
   /** The retry window of the "You've used all three attempts" dialog (null closes it). */
   setCooldownRetryTime: (retryAt: string | null) => void
@@ -641,6 +658,21 @@ export function IdentityVerificationHostProvider({
       locationRecovery.open(reason, hooks),
     [locationRecovery]
   )
+  // The device location for a screen that shows the user's location: GPS, else the recovery
+  // dialog (src/lib/api/device-location-request.ts). One request at a time; every exit that is
+  // not a GPS result returns null, so the caller never opens a location screen without one.
+  const [deviceLocationRequester] = useState(() =>
+    createDeviceLocationRequester({
+      detect: (options) =>
+        getDetectedLocation({ useBrowserLocation: true, ...options }),
+      recovery: locationRecovery,
+      attempt: () => locationAttemptRef.current,
+    })
+  )
+  const requestDeviceLocation = useCallback(
+    (options?: DeviceLocationRequestOptions) => deviceLocationRequester(options),
+    [deviceLocationRequester]
+  )
   const tryAgainButtonRef = useRef<HTMLButtonElement>(null)
   // Focus stays inside the dialog: on Try Again when it opens, when it switches between its
   // two views, and when a retry that failed lets the button work again (a button that was
@@ -677,6 +709,7 @@ export function IdentityVerificationHostProvider({
     // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
     // the location with the browser (see refreshLocationForRelocation).
     detectBrowserLocationOnRelocate?: boolean
+    ipLocationOnly?: boolean
   }>({ key: 0 })
 
   // The page's own reactions, reached through its observer. They keep the names of what they
@@ -1597,6 +1630,30 @@ export function IdentityVerificationHostProvider({
   // obtained, the "Turn on location to continue" dialog opens over the flow and this call
   // waits: the flow moves on only after a successful Try Again. Cancel returns to the same
   // screen (a fresh instance) and the flow does not continue.
+  // BTB-387: a flow opened with the server-derived location (still traveling) asks here before
+  // it moves to a screen that shows a location. The device location comes through the shared
+  // requestDeviceLocation (recovery dialog on failure); on success it replaces the location the
+  // flow holds, and later screens are not asked again. false = stay on the current screen.
+  const flowLocationRequestRef = useRef<AbortController | null>(null)
+  const requestLocationForFlow = useCallback(async () => {
+    const controller = new AbortController()
+    flowLocationRequestRef.current = controller
+    try {
+      const location = await requestDeviceLocation({
+        signal: controller.signal,
+        isCurrent: () => !controller.signal.aborted,
+      })
+      if (!location || controller.signal.aborted) return false
+      setDetectedLocation(location)
+      setFlowLaunch((prev) => ({ ...prev, ipLocationOnly: false }))
+      return true
+    } finally {
+      if (flowLocationRequestRef.current === controller) {
+        flowLocationRequestRef.current = null
+      }
+    }
+  }, [requestDeviceLocation])
+
   const refreshLocationForRelocation = useCallback(async () => {
     const location = await getDetectedLocation({ useBrowserLocation: true })
     if (location.cancelled) return
@@ -1626,6 +1683,8 @@ export function IdentityVerificationHostProvider({
   const handleIdentityFlowOpenChange = useCallback((open: boolean) => {
     setIdentityFlowOpen(open)
     if (!open) {
+      // A device-location request the flow was waiting on (or its dialog) belongs to nobody now.
+      flowLocationRequestRef.current?.abort()
       // For an Update on a Travel Mode that is already in force, the flow's "Temporarily
       // traveling" is a no-op: it opens its own temporary confirmation toast and
       // closes (components/identity-verification-flow.tsx, which is read-only). That toast
@@ -1656,6 +1715,7 @@ export function IdentityVerificationHostProvider({
 
   const openFlow = useCallback(
     (launch: IdentityFlowLaunch, options: IdentityFlowOpenOptions = {}) => {
+      flowLocationRequestRef.current?.abort() // the instance being replaced
       if (options.detectedLocation) setDetectedLocation(options.detectedLocation)
       setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))
       openOnClosedRef.current = options.onClosed ?? null
@@ -1706,7 +1766,10 @@ export function IdentityVerificationHostProvider({
     if (pageHandler) return pageHandler()
     const fresh = await fetchIdentityVerificationSummary()
     const activeTravelModeUpdate = isActiveTravelUpdate("reminder", fresh)
-    const location = await getDetectedLocation()
+    // The Update screen shows the user's location, so it needs the device location (BTB-387):
+    // without it the recovery dialog opens, the flow stays closed and the card stays as it was.
+    const location = await requestDeviceLocation()
+    if (!location) return
     openFlow(
       {
         initialState: "current-location-showcase",
@@ -1715,7 +1778,7 @@ export function IdentityVerificationHostProvider({
       },
       { detectedLocation: location }
     )
-  }, [openFlow])
+  }, [openFlow, requestDeviceLocation])
 
   // The card's Update, with its own spinner. The card stays on screen while this runs (it goes
   // away only when it is closed, the check-in priority hold applies or the account changes), and
@@ -1763,6 +1826,7 @@ export function IdentityVerificationHostProvider({
       host: {
         startVerification,
         openFlow,
+        requestDeviceLocation,
         flowOpen: identityFlowOpen,
         connectionCheckState,
         setCooldownRetryTime,
@@ -1779,6 +1843,7 @@ export function IdentityVerificationHostProvider({
     [
       startVerification,
       openFlow,
+      requestDeviceLocation,
       identityFlowOpen,
       connectionCheckState,
       closeGate,
@@ -1977,6 +2042,9 @@ export function IdentityVerificationHostProvider({
             flowLaunch.detectBrowserLocationOnRelocate
               ? refreshLocationForRelocation
               : undefined
+          }
+          onBeforeLocationScreen={
+            flowLaunch.ipLocationOnly ? requestLocationForFlow : undefined
           }
         />
       )}

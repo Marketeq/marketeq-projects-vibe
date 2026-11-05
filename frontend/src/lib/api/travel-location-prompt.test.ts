@@ -134,7 +134,8 @@ describe("'Change my home country' saves and marks nothing", () => {
   const handler = between(page, "const handleChangeHomeCountry", "// Skip, X, Escape or a click outside")
   it("only opens the flow: no marker, no classification request", () => {
     assert.ok(!/markTravelerPrompt|localStorage|recordTravel|IdentityVerificationAPI/.test(handler))
-    assert.ok(handler.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
+    assert.ok(handler.includes('if (launch) openFlowFromMismatch(launch, "change-country")'))
+    assert.ok(handler.includes("requestDeviceLocation,"))
   })
   it("closing the detected-country confirmation therefore changes nothing and the prompt returns on refresh", () => {
     const storage = memoryStorage()
@@ -147,7 +148,7 @@ describe("'Change my home country' saves and marks nothing", () => {
       getDetectedLocation: async () => (calls.push("lookup"), { country: "CA" }) as never,
     })
     assert.deepEqual(calls, ["lookup"])
-    assert.equal(launch.initialState, undefined)
+    assert.equal(launch!.initialState, undefined)
   })
 })
 
@@ -191,7 +192,9 @@ describe("closing the duration screen saves nothing (close, refresh, navigation,
   it("the screen's X and Back write nothing", () => {
     const header = screen.slice(0, screen.indexOf("How long are you traveling?"))
     assert.ok(!/recordTravel|persistTravel|activateTravelMode|IdentityVerificationAPI/.test(header))
-    assert.ok(header.includes('send("BACK")'))
+    // BTB-387: Back goes through goToLocationScreen, which asks for the device location first when
+    // the flow was opened with the server-derived one (and is a plain send("BACK") otherwise).
+    assert.ok(header.includes('goToLocationScreen("BACK")'))
   })
   it("nothing in the flow saves on unmount, unload or visibility change", () => {
     assert.ok(!/beforeunload|pagehide|visibilitychange|sendBeacon/.test(flow))
@@ -327,7 +330,7 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     // Skip, and (new) the Back arrow: Back is disabled while the save runs, so the screen cannot move
     // and then be advanced a second time by the late success.
     assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 2)
-    assert.match(s, /disabled=\{activatingTravelMode\}\s+onClick=\{\(\) => send\("BACK"\)\}/)
+    assert.match(s, /disabled=\{activatingTravelMode\}\s+onClick=\{\(\) => goToLocationScreen\("BACK"\)\}/)
     // Loading state: only the pressed button spins, the label is unchanged, and each is aria-busy.
     assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "skip"\}\s+aria-busy=\{activatingTravelMode && activatingTravelAction === "skip"\}/)
     assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "confirm"\}\s+aria-busy=\{\s*activatingTravelMode && activatingTravelAction === "confirm"\s*\}/)

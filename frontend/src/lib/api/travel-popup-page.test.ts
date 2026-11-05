@@ -147,11 +147,12 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(flow.includes('initialState ?? "ideal"')) // the flow reads it once, on mount
   })
 
-  it("shows the server's location only: opening Update never asks for the browser's", () => {
-    // Only the later "Permanently relocated" choice does (travel-update-relocated-detection.test.ts).
+  it("shows the device location only (BTB-387): the popup stays open until it is produced and no IP location is read", () => {
     const opening = update.slice(0, update.indexOf("// The live Travel Mode card's Update"))
-    assert.ok(opening.includes("await getDetectedLocation()"))
-    assert.ok(!opening.includes("useBrowserLocation"))
+    assert.ok(opening.includes("const location = await requestDeviceLocation()"))
+    assert.ok(opening.includes("if (!location) return"))
+    assert.ok(opening.indexOf("if (!location) return") < opening.indexOf("setTravelPopup(null)"))
+    assert.ok(!opening.includes("getDetectedLocation("))
   })
 
   it("the normal Verify path keeps its default start (an Update-launched flow is reset)", () => {
@@ -159,14 +160,14 @@ describe("Update opens the existing flow at the location-update screen", () => {
     assert.ok(page.includes("? { key: prev.key + 1, ...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {}) }"))
     assert.ok(
       page.includes(
-        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n    // Set only by the Travel Mode Update action: \"Permanently relocated\" then re-detects\n    // the location with the browser (see refreshLocationForRelocation).\n    detectBrowserLocationOnRelocate?: boolean\n  }>({ key: 0 })"
+        "useState<{\n    key: number\n    initialState?: \"current-location-showcase\" | \"traveling-showcase\"\n    activeTravelModeUpdate?: boolean\n    // Set only by the Travel Mode Update action: \"Permanently relocated\" then re-detects\n    // the location with the browser (see refreshLocationForRelocation).\n    detectBrowserLocationOnRelocate?: boolean\n    ipLocationOnly?: boolean\n  }>({ key: 0 })"
       )
     )
   })
 
   it("does not change the flow's own reminder toast or its Update action", () => {
     assert.ok(flow.includes("open={travelReminderOpen}"))
-    assert.match(flow, /setTravelReminderOpen\(false\)\s+send\("UPDATE_LOCATION"\)\s+onOpenChange\(true\)/)
+    assert.match(flow, /setTravelReminderOpen\(false\)\s+goToLocationScreen\("UPDATE_LOCATION", \(\) => onOpenChange\(true\)\)/)
   })
 })
 

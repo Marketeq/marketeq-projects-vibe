@@ -36,7 +36,7 @@ const refreshBody = page.slice(
 const updateStart = page.indexOf("const handleTravelUpdate = useCallback(")
 const updateBody = page.slice(
   updateStart,
-  page.indexOf("[travelPopup, openFlow]", updateStart)
+  page.indexOf("[travelPopup, openFlow, requestDeviceLocation]", updateStart)
 )
 const temporarilyAt = flow.indexOf("if (activeTravelModeUpdate) {")
 const temporarilyBody = flow.slice(
@@ -101,18 +101,15 @@ describe("Permanently relocated runs browser-based detection", () => {
     const { calls, promise } = await clickRelocated(
       () => new Promise<void>((r) => (release = r))
     )
-    assert.deepEqual(calls, [
-      "persist:permanently_relocated",
-      "relocating:true",
-      "detect",
-    ])
+    // BTB-387: nothing is saved until the device location exists.
+    assert.deepEqual(calls, ["relocating:true", "detect"])
     release()
     await promise
     assert.deepEqual(calls, [
-      "persist:permanently_relocated",
       "relocating:true",
       "detect",
       "relocating:false",
+      "persist:permanently_relocated",
       "send:RELOCATED",
     ])
   })
@@ -206,16 +203,18 @@ describe("denied permission or failed detection never produces a made-up locatio
 })
 
 describe("closing without choosing writes no state", () => {
-  it("nothing runs on open: Update calls only the server-side getDetectedLocation(), no browser", () => {
-    assert.match(updateBody, /await getDetectedLocation\(\)/)
-    assert.ok(!/useBrowserLocation|persistTravel|recordTravel/.test(updateBody))
+  it("nothing is saved on open: Update asks only for the device location (BTB-387), never the IP lookup", () => {
+    assert.match(updateBody, /await requestDeviceLocation\(\)/)
+    assert.ok(!/getDetectedLocation\(|persistTravel|recordTravel/.test(updateBody))
   })
   it("the only classification write in the flow is inside the Permanently relocated handler", () => {
     const code = flow
       .split("\n")
       .filter((l) => !/^\s*\/\//.test(l))
       .join("\n")
-    assert.equal((code.match(/persistTravelClassification\(/g) ?? []).length, 1) // the handler's call
+    // the handler's two calls: the synchronous path (no callback) and the one after the device location
+    assert.equal((code.match(/persistTravelClassification\(/g) ?? []).length, 2)
+    assert.equal((handlerBody.match(/persistTravelClassification\(/g) ?? []).length, 2)
     assert.ok(
       handlerBody.includes(
         'persistTravelClassification("permanently_relocated")'
@@ -290,6 +289,8 @@ describe("no duplicate home-country-change session", () => {
     )
     await promise
     assert.ok(!calls.includes("send:RELOCATED"))
+    // a cancelled "Turn on location" dialog replaces the instance: no classification is written
+    assert.ok(!calls.some((c) => c.startsWith("persist")))
     // and an unmounted flow sets no pending state after the detection returns
     assert.deepEqual(calls.filter((c) => c.startsWith("relocating")), ["relocating:true"])
   })

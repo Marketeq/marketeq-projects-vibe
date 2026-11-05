@@ -704,15 +704,16 @@ describe("Permanently relocated", () => {
   })
 })
 
-describe("Travel Mode Update is unchanged (IP-only, out of scope)", () => {
-  it("its detection never passes the browser option and never opens the dialog", () => {
+describe("Travel Mode Update asks for the device location first (Christopher's confirmed rule)", () => {
+  it("the live card's Update opens its location screen only after the device location, with no IP lookup", () => {
     const live = host.slice(
       host.indexOf("const handleLiveTravelUpdate = useCallback("),
-      host.indexOf("}, [openFlow])")
+      host.indexOf("}, [openFlow, requestDeviceLocation])")
     )
-    assert.ok(live.includes("await getDetectedLocation()"))
-    assert.ok(!live.includes("useBrowserLocation"))
-    assert.ok(!live.includes("openLocationRecovery"))
+    assert.ok(live.includes("const location = await requestDeviceLocation()"))
+    assert.ok(live.includes("if (!location) return"))
+    assert.ok(live.indexOf("if (!location) return") < live.indexOf("openFlow("))
+    assert.ok(!live.includes("getDetectedLocation("))
   })
 
   it("the wrapper passes a call that does not ask the browser straight through", () => {
