@@ -122,7 +122,7 @@ describe("copy: first time versus asked before", () => {
     assert.equal(CHECK_IN_COPY.prompt.stillTraveling, "I’m still traveling")
     assert.equal(
       CHECK_IN_COPY.prompt.updateHomeCountry,
-      "Update my home country"
+      "Change my home country"
     )
     assert.equal(CHECK_IN_COPY.skip, "Skip")
   })
@@ -305,7 +305,7 @@ describe("answer outcomes: stale two-tab 409 and a home-country change in progre
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     assert.ok(handler.includes('if (outcome === "failed")'))
     assert.ok(handler.includes("setCheckIn(null)"))
@@ -403,7 +403,7 @@ describe("Skip, X/close, Escape, refresh and navigation send nothing", () => {
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     assert.ok(
       handler.indexOf("const occurrence = checkIn.occurrence") <
@@ -1105,7 +1105,7 @@ describe("regression: a saved answer must not reopen the same modal (first manua
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     const record = handler.indexOf("recordCheckInAnswerOutcome({")
     assert.ok(record > handler.indexOf("await answerCheckIn("))

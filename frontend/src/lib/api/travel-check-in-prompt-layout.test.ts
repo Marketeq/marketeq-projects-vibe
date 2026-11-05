@@ -61,8 +61,8 @@ describe("check-in prompt layout classes (source)", () => {
     assert.ok(c.includes("max-w-[calc(100vw-2rem)]"))
   })
 
-  it("the loading width stays pinned by min-w-[227px]", () => {
-    assert.equal(CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS, "min-w-[227px]")
+  it("the loading width stays pinned by min-w-[231px]", () => {
+    assert.equal(CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS, "min-w-[231px]")
   })
 
   it("does not touch the mismatch or duration dialogs", () => {
@@ -76,7 +76,7 @@ describe("check-in prompt layout classes (source)", () => {
 const STORYBOOK = process.env.STORYBOOK_URL ?? "http://localhost:6011"
 const STORY = `${STORYBOOK}/iframe.html?id=identity-verification-check-in--check-in&viewMode=story`
 const STILL = "I’m still traveling"
-const UPDATE = "Update my home country"
+const UPDATE = "Change my home country"
 
 interface Box {
   left: number
@@ -99,6 +99,44 @@ interface Prod {
   dialog: string
   actions: string
   update: string
+}
+
+const STABLE_FRAMES = 6
+
+// Resolves once fonts are loaded, every finite animation/transition has finished, and the
+// dialog and both buttons have had identical geometry for STABLE_FRAMES consecutive frames.
+// No fixed sleeps: it fails (test timeout) rather than measure an unsettled page.
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(async (frames: number) => {
+    const raf = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
+    const geometry = () => {
+      const d = document.querySelector("[role=dialog]") as HTMLElement
+      const parts = [d, ...Array.from(d.querySelectorAll("button"))]
+      return parts
+        .map((e) => {
+          const r = e.getBoundingClientRect()
+          return [r.left, r.top, r.width, r.height].join(",")
+        })
+        .join("|")
+    }
+    let stable = 0
+    let last = ""
+    for (let guard = 0; guard < 600 && stable < frames; guard++) {
+      await document.fonts.ready
+      await Promise.all(
+        document
+          .getAnimations()
+          // The loading spinner repeats forever and never finishes.
+          .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => null))
+      )
+      await raf()
+      const now = document.fonts.status === "loaded" ? geometry() : ""
+      stable = now !== "" && now === last ? stable + 1 : 0
+      last = now
+    }
+    if (stable < frames) throw new Error("layout never settled")
+  }, STABLE_FRAMES)
 }
 
 async function measure(
@@ -132,18 +170,11 @@ async function measure(
     },
     { prod, loading }
   )
-  // Measure only once the dialog's open animation (zoom/slide) has finished: mid-animation the
-  // dialog is scaled and offset, which makes the numbers differ under load.
-  await page.waitForTimeout(100)
-  await page.evaluate(() =>
-    Promise.all(
-      document
-        .getAnimations()
-        // The loading spinner repeats forever and never finishes.
-        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
-        .map((a) => a.finished.catch(() => null))
-    )
-  )
+  // Measure only once the page is settled. Text widths depend on the web font, so wait for
+  // document.fonts.ready; the dialog's open animation (zoom/slide) and CSS transitions must
+  // have finished; and the geometry must then hold still across several animation frames
+  // (which also covers the style/layout recalculation after the class and spinner changes).
+  await settle(page)
   return page.evaluate(() => {
     const box = (e: Element): Box => {
       const r = e.getBoundingClientRect()
@@ -182,8 +213,19 @@ describe("check-in prompt layout (Chrome, Storybook)", () => {
 
   before(async () => {
     try {
-      const res = await fetch(STORY, { signal: AbortSignal.timeout(4000) })
-      if (!res.ok) throw new Error(`Storybook answered ${res.status}`)
+      // A cold Storybook answers iframe.html before it has compiled; poll until it is ready.
+      let status = 0
+      for (let i = 0; i < 120; i++) {
+        try {
+          status = (await fetch(STORY, { signal: AbortSignal.timeout(4000) }))
+            .status
+        } catch {
+          status = 0
+        }
+        if (status === 200) break
+        await new Promise((r) => setTimeout(r, 1000))
+      }
+      if (status !== 200) throw new Error(`Storybook answered ${status}`)
       const req = createRequire(join(process.cwd(), "package.json"))
       const { chromium } = req("playwright")
       browser = await chromium.launch({ channel: "chrome" })

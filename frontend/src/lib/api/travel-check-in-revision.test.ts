@@ -143,7 +143,7 @@ describe("changing the option saves a revision, not a new check-in", () => {
   })
 
   it("the count is not touched: the revision path never records an answer or an occurrence", () => {
-    const handler = between(page, "const handleCheckInRevise", "// \"Update my home country\"")
+    const handler = between(page, "const handleCheckInRevise", "// \"Change my home country\"")
     assert.ok(!/answerCheckIn|recordCheckInAnswerOutcome|markAnswered|checkInDismissalsRef/.test(handler))
     assert.ok(handler.includes("reviseCheckIn("))
     assert.ok(handler.includes("IdentityVerificationAPI.reviseActiveTravelDuration(duration)"))
@@ -155,7 +155,7 @@ describe("changing the option saves a revision, not a new check-in", () => {
   })
 
   it("after a saved revision /me is read again, so the restarted schedule is what the page holds", () => {
-    const handler = between(page, "const handleCheckInRevise", "// \"Update my home country\"")
+    const handler = between(page, "const handleCheckInRevise", "// \"Change my home country\"")
     assert.ok(handler.includes("await readTravelSummary(false)"))
   })
 })
@@ -177,7 +177,7 @@ describe("a failed revision stays on the duration screen", () => {
   }
 
   it("the page puts the selection back (value falls back to the saved option) and does not re-read /me", () => {
-    const handler = between(page, "const handleCheckInRevise", "// \"Update my home country\"")
+    const handler = between(page, "const handleCheckInRevise", "// \"Change my home country\"")
     assert.ok(handler.includes("setCheckInSelected(undefined)"))
     assert.ok(handler.includes('} else if (outcome !== "failed") {'))
   })
