@@ -242,12 +242,30 @@ describe("the dialog", () => {
 
   it("the dialog scrolls vertically when its content is taller than the screen (no sticky footer, no compressing)", () => {
     const d = dialogSource()
-    assert.ok(d.includes("max-h-[calc(100dvh-32px)] overflow-y-auto"))
+    // the documented ScrollArea (type "scroll": the bar shows only while scrolling), no custom scrollbar CSS
+    assert.ok(d.includes('<ScrollArea viewportClassName="max-h-[calc(100dvh-32px)]">'))
+    assert.ok(!d.includes("overflow-y-auto"))
+    assert.ok(!/scrollbar-|::-webkit-scrollbar/.test(d))
+    assert.ok(!/type="always"/.test(d))
     assert.ok(!/\bsticky\b/.test(d))
     assert.ok(!/overflow-x/.test(d))
     // opening the dialog focuses Try Again WITHOUT scrolling to it, so a short screen starts at the title
     assert.equal(host.split("focus({ preventScroll: true })").length - 1, 2)
     assert.ok(!/tryAgainButtonRef\.current\?\.focus\(\)/.test(host))
+  })
+
+  it("only the illustrations and numbered browser steps sit in one documented Card; title, tabs and footer stay outside", () => {
+    const howTo = host.slice(host.indexOf("function LocationHowTo()"), host.indexOf("export function IdentityVerificationHostProvider"))
+    const card = howTo.slice(howTo.indexOf("<Card"), howTo.indexOf("</Card>"))
+    assert.ok(card.includes("<LocationHowToIllustration"))
+    assert.ok(card.includes("instructions.browserSteps"))
+    assert.ok(!card.includes("How to turn on location"))
+    assert.ok(!card.includes("deviceHeading"))
+    assert.ok(!card.includes("<Tabs"))
+    assert.ok(howTo.indexOf("How to turn on location") < howTo.indexOf("<Card"))
+    assert.ok(howTo.indexOf("</Card>") < howTo.indexOf("deviceHeading"))
+    assert.equal(howTo.split("<Card").length - 1, 1)
+    assert.ok(howTo.includes('<h2 className="mt-6 '))
   })
 
   it("initial focus is on Try Again, not on the page behind", () => {
@@ -584,7 +602,7 @@ describe("the footer buttons (documented shared Button pattern)", () => {
     const b = backButton()
     assert.ok(b.includes('<ArrowLeft className="size-[15px]" />'))
     assert.match(b, /leftIcon=\{\s*locationRecoveryState\.view === "howto" \? \(\s*<ArrowLeft className="size-\[15px\]" \/>\s*\) : undefined\s*\}/)
-    const children = b.slice(b.indexOf("\n            >") + 1)
+    const children = b.slice(b.search(/\n\s*>\s*\n/) + 1)
     assert.ok(!children.includes("ArrowLeft"))
     assert.match(host, /import \{[^}]*\bArrowLeft\b[^}]*\} from "@blend-metrics\/icons"/)
     assert.equal(backButton().split("ArrowLeft").length - 1, 1) // in the leftIcon only

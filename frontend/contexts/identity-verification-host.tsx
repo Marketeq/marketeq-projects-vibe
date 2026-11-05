@@ -39,11 +39,13 @@ import {
   AlertIcon,
   AlertTitle,
   Button,
+  Card,
   CloseButton,
   Dialog,
   DialogContent,
   DialogDescription,
   IconButton,
+  ScrollArea,
   Tabs,
   TabsContent,
   TabsList,
@@ -434,7 +436,7 @@ function LocationHowToIllustration({ steps }: { steps: IllustrationStep[] }) {
   return (
     <div
       aria-hidden="true"
-      className={`mt-4 grid gap-2 ${steps.length === 4 ? "grid-cols-2 min-[480px]:grid-cols-4" : "grid-cols-2 min-[480px]:grid-cols-3"}`}
+      className={`grid gap-2 ${steps.length === 4 ? "grid-cols-2 min-[480px]:grid-cols-4" : "grid-cols-2 min-[480px]:grid-cols-3"}`}
     >
       {steps.map((step, index) => (
         <div
@@ -470,13 +472,15 @@ function LocationHowTo() {
       <DialogDescription className="sr-only">
         Steps for {instructions.browserName}
       </DialogDescription>
-      <LocationHowToIllustration steps={instructions.illustration} />
-      <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
-        {instructions.browserSteps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
-      <h2 className="mt-5 text-sm font-semibold leading-5 text-dark-blue-400">
+      <Card className="mt-4 flex-col items-stretch justify-start p-4">
+        <LocationHowToIllustration steps={instructions.illustration} />
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+          {instructions.browserSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      </Card>
+      <h2 className="mt-6 text-sm font-semibold leading-5 text-dark-blue-400">
         {instructions.deviceHeading}
       </h2>
       <Tabs
@@ -1992,77 +1996,81 @@ export function IdentityVerificationHostProvider({
         }}
       >
         <DialogContent
-          className="w-[calc(100%-32px)] max-w-[531px] max-h-[calc(100dvh-32px)] overflow-y-auto pt-[50px]"
+          className="w-[calc(100%-32px)] max-w-[531px] overflow-hidden p-0"
           accessibilityTitle="Turn on location to continue"
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             tryAgainButtonRef.current?.focus({ preventScroll: true })
           }}
         >
-          {locationRecoveryState.view === "main" ? (
-            <div className="flex items-center justify-center">
-              <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
-                <AlertTriangle className="size-6" />
+          <ScrollArea viewportClassName="max-h-[calc(100dvh-32px)]">
+            <div className="p-6 pt-[50px]">
+            {locationRecoveryState.view === "main" ? (
+              <div className="flex items-center justify-center">
+                <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+                  <AlertTriangle className="size-6" />
+                </div>
               </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {locationRecoveryState.view === "main" ? (
-            <div className="mt-5 px-[19px]">
-              <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
-                Turn on location to continue
-              </h1>
-              <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
-                Location permission must be turned on in your browser before
-                verification can continue.{" "}
-                {LOCATION_FAILURE_COPY[locationRecoveryState.reason]}
-              </DialogDescription>
-              <div className="mt-3 flex justify-center">
-                <Button
-                  className="focus-visible:ring-4 focus-visible:ring-primary-100"
-                  variant="link"
-                  onClick={() => locationRecovery.showHowTo()}
-                >
-                  Show me how
-                </Button>
+            {locationRecoveryState.view === "main" ? (
+              <div className="mt-5 px-[19px]">
+                <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+                  Turn on location to continue
+                </h1>
+                <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+                  Location permission must be turned on in your browser before
+                  verification can continue.{" "}
+                  {LOCATION_FAILURE_COPY[locationRecoveryState.reason]}
+                </DialogDescription>
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                    variant="link"
+                    onClick={() => locationRecovery.showHowTo()}
+                  >
+                    Show me how
+                  </Button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <LocationHowTo />
-          )}
+            ) : (
+              <LocationHowTo />
+            )}
 
-          <div className="mt-[50px] flex justify-center items-center gap-x-3">
-            <Button
-              className="focus-visible:ring-4 focus-visible:ring-primary-100"
-              variant="outlined"
-              visual="gray"
-              size="md"
-              leftIcon={
-                locationRecoveryState.view === "howto" ? (
-                  <ArrowLeft className="size-[15px]" />
-                ) : undefined
-              }
-              onClick={() =>
-                locationRecoveryState.view === "main"
-                  ? locationRecovery.cancel()
-                  : locationRecovery.back()
-              }
-            >
-              {locationRecoveryState.view === "main" ? "Cancel" : "Back"}
-            </Button>
-            <Button
-              ref={tryAgainButtonRef}
-              className="focus-visible:ring-4 focus-visible:ring-primary-100"
-              variant="light"
-              size="md"
-              leftIcon={<RefreshCw className="size-[15px]" />}
-              loading={locationRecoveryState.busy}
-              aria-busy={locationRecoveryState.busy}
-              onClick={() => void locationRecovery.tryAgain()}
-            >
-              Try Again
-            </Button>
-          </div>
+            <div className="mt-[50px] flex justify-center items-center gap-x-3">
+              <Button
+                className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                variant="outlined"
+                visual="gray"
+                size="md"
+                leftIcon={
+                  locationRecoveryState.view === "howto" ? (
+                    <ArrowLeft className="size-[15px]" />
+                  ) : undefined
+                }
+                onClick={() =>
+                  locationRecoveryState.view === "main"
+                    ? locationRecovery.cancel()
+                    : locationRecovery.back()
+                }
+              >
+                {locationRecoveryState.view === "main" ? "Cancel" : "Back"}
+              </Button>
+              <Button
+                ref={tryAgainButtonRef}
+                className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                variant="light"
+                size="md"
+                leftIcon={<RefreshCw className="size-[15px]" />}
+                loading={locationRecoveryState.busy}
+                aria-busy={locationRecoveryState.busy}
+                onClick={() => void locationRecovery.tryAgain()}
+              >
+                Try Again
+              </Button>
+            </div>
+            </div>
+          </ScrollArea>
         </DialogContent>
       </Dialog>
 
