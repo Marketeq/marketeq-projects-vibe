@@ -6629,7 +6629,12 @@ const ProjectScope = ({
     // order instead (convertPhasesForScopeType, same helper the inline
     // editor's ScopeBuilder uses). Undo still restores the exact previous
     // phases (not the converted ones) and the exact previous type.
-    setPhases(convertPhasesForScopeType(phases, type))
+    // service-scope-ongoing-phase: applyOngoingRule is true here (an actual
+    // switch), same as the shared ScopeBuilder's own confirm handler —
+    // closes a Project→Service conversion with an Ongoing phase.
+    setPhases(
+      convertPhasesForScopeType(phases, type, { applyOngoingRule: true })
+    )
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
