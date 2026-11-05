@@ -815,7 +815,7 @@ export default function TalentDashboard() {
     [checkInConfirmation, readTravelSummary, runIdentityVerificationCheck]
   )
 
-  // "Update my home country" enters the existing home-country flow: the current location
+  // "Change my home country" enters the existing home-country flow: the current location
   // (city, region, country and map), "Is this your home country?", then Didit. Starting
   // that flow is what resolves the check-in on the server; until then it stays due, so it
   // is only kept from reopening while the flow is on screen.
