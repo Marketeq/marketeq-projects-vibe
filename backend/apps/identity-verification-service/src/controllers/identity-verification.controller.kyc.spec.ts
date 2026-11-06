@@ -122,7 +122,7 @@ describe('Free KYC routes (HTTP)', () => {
     it('confirms from the request IP only — a country in the body has no effect', async () => {
       const res = await request(app.getHttpServer())
         .post('/v1/identity-verification/home-country/confirm')
-        .set('x-forwarded-for', '198.51.100.7')
+        .set('cf-connecting-ip', '198.51.100.7')
         .send({ country: 'ZZ', verifiedHomeCountry: 'ZZ' });
       expect(res.status).toBe(200);
       expect(identity.confirmHomeCountry).toHaveBeenCalledWith('user-1', '198.51.100.7');
@@ -150,7 +150,7 @@ describe('Free KYC routes (HTTP)', () => {
       process.env.IDENTITY_VERIFICATION_DEV_CLIENT_IP = '8.8.4.4';
       await request(app.getHttpServer())
         .post('/v1/identity-verification/home-country/confirm')
-        .set('x-forwarded-for', '9.9.9.9')
+        .set('cf-connecting-ip', '9.9.9.9')
         .set('x-identity-verification-dev-client-ip', '1.2.3.4')
         .send({});
       expect(detect).toHaveBeenCalledWith({ ipAddress: '8.8.4.4' });
@@ -162,7 +162,7 @@ describe('Free KYC routes (HTTP)', () => {
       process.env.IDENTITY_VERIFICATION_DEV_CLIENT_IP = '8.8.4.4';
       await request(app.getHttpServer())
         .post('/v1/identity-verification/home-country/confirm')
-        .set('x-forwarded-for', '9.9.9.9')
+        .set('cf-connecting-ip', '9.9.9.9')
         .send({});
       expect(detect).toHaveBeenCalledWith({ ipAddress: '9.9.9.9' });
       expect(identity.confirmHomeCountry).toHaveBeenCalledWith('user-1', '9.9.9.9');

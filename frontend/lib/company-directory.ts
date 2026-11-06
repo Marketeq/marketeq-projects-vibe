@@ -34,10 +34,17 @@ export const isEmailLikeCompanyName = (name: string): boolean =>
 export const COMPANY_NAME_IS_EMAIL_MESSAGE =
   "That's an email address. Enter the company's name instead."
 
-const toCompany = (company: ApiCompany, memberCount = 1): Company => ({
+/**
+ * `memberCount` comes from the API where the API has it (GET /companies now
+ * counts the roster). The fallback of 1 is for the responses that carry no
+ * count — a company the caller can see always has at least their own
+ * membership. It used to be the *only* source, so every company in the
+ * selector read "1 Member" no matter how many people were in it.
+ */
+const toCompany = (company: ApiCompany, memberCount?: number): Company => ({
   id: company.id,
   name: company.name,
-  memberCount,
+  memberCount: memberCount ?? company.memberCount ?? 1,
   logoUrl: company.logoUrl,
 })
 

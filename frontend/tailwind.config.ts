@@ -8,6 +8,7 @@ const config: Config = {
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./stories/**/*.{js,ts,jsx,tsx,mdx}",
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
+    "./contexts/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {

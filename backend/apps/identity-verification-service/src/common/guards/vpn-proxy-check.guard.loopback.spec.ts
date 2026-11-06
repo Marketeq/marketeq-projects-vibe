@@ -57,7 +57,7 @@ describe('VpnProxyCheckGuard — loopback callers by NODE_ENV', () => {
     );
   });
 
-  it('does not let a public X-Forwarded-For be bypassed by a loopback socket in development', async () => {
+  it('uses the trusted CF-Connecting-IP, not the loopback socket, in development', async () => {
     process.env.NODE_ENV = 'development';
     fetchMock.mockResolvedValue({
       ok: true,
@@ -67,8 +67,24 @@ describe('VpnProxyCheckGuard — loopback callers by NODE_ENV', () => {
     const guard = new VpnProxyCheckGuard(new ProxyCheckVpnProxyDetectionProvider());
 
     await expect(
-      guard.canActivate(contextFor('127.0.0.1', { 'x-forwarded-for': '203.0.113.5' })),
+      guard.canActivate(contextFor('127.0.0.1', { 'cf-connecting-ip': '203.0.113.5' })),
     ).rejects.toMatchObject({ code: 'VPN_PROXY_DETECTED' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('a clean X-Forwarded-For cannot let a loopback socket in development hide a trusted VPN IP', async () => {
+    process.env.NODE_ENV = 'development';
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'ok', '203.0.113.5': { detections: { vpn: true, proxy: false } } }),
+    });
+    const guard = new VpnProxyCheckGuard(new ProxyCheckVpnProxyDetectionProvider());
+
+    await expect(
+      guard.canActivate(
+        contextFor('127.0.0.1', { 'x-forwarded-for': '8.8.8.8', 'cf-connecting-ip': '203.0.113.5' }),
+      ),
+    ).rejects.toMatchObject({ code: 'VPN_PROXY_DETECTED' });
   });
 });

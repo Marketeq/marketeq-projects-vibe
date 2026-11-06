@@ -521,6 +521,31 @@ describe('IdentityVerificationService — periodic "Still traveling?" check-in',
       });
     });
 
+    it('BTB-401: a first revision of a never-answered period restarts it and leaves home country, identity status and the count alone', async () => {
+      build();
+      const before = {
+        home: row.verifiedHomeCountry,
+        identity: row.identityVerificationStatus,
+        classification: row.travelClassification,
+      };
+      expect(row.travelCheckInCount).toBe(0);
+
+      const reviseMs = at(2).getTime();
+      await revise(reviseMs, DeclaredDuration.NOT_SURE);
+
+      expect(row.declaredDuration).toBe(DeclaredDuration.NOT_SURE);
+      expect(row.travelModeActivatedAt).toEqual(new Date(reviseMs));
+      expect(
+        travelModeEndsAt(row.travelModeActivatedAt, row.declaredDuration),
+      ).toEqual(new Date(reviseMs + 30 * DAY));
+      expect(row.nextTravelReminderAt).toEqual(new Date(reviseMs + 3 * DAY));
+      expect(row.lastTravelReminderSentAt).toBeNull();
+      expect(row.travelCheckInCount).toBe(0);
+      expect(row.verifiedHomeCountry).toBe(before.home);
+      expect(row.identityVerificationStatus).toBe(before.identity);
+      expect(row.travelClassification).toBe(before.classification);
+    });
+
     it('several revisions in a row never count', async () => {
       build();
       await answer(at(3).getTime(), DeclaredDuration.NOT_SURE);

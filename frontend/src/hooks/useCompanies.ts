@@ -100,6 +100,34 @@ export function useCompanyMemberPermissions(companyIds: string[]) {
   })
 }
 
+/**
+ * Of the companies passed, the ones where the viewer's own membership row reads
+ * role 'admin'. That is the column user-service's assertIsAdmin gates on, so a
+ * menu driven by this offers exactly the actions the server will allow (R3-12).
+ *
+ * Shares KEYS.members with useCompanyMemberPermissions, so the roster's member
+ * lists are fetched once and this costs no extra requests.
+ */
+export function useCompanyAdminIds(companyIds: string[]) {
+  const { user } = useAuth()
+  const viewerId = user?.id
+  return useQueries({
+    queries: companyIds.map((companyId) => ({
+      queryKey: KEYS.members(companyId),
+      queryFn: () => CompanyAPI.getCompanyMembers(companyId),
+    })),
+    combine: (results) => {
+      const adminOf = new Set<string>()
+      if (!viewerId) return adminOf
+      results.forEach((result, index) => {
+        const mine = (result.data ?? []).find((m) => m.userId === viewerId)
+        if (mine?.role === "admin") adminOf.add(companyIds[index])
+      })
+      return adminOf
+    },
+  })
+}
+
 export function useCreateCompany() {
   const qc = useQueryClient()
   return useMutation({

@@ -1,8 +1,9 @@
 // Run like status-alerts.test.ts (from the frontend/ directory).
 //
-// The Travel Mode alert card is composed inline in the dashboard page (no component file,
-// no Storybook edit: frontend/COMPONENTS.md). The page cannot be mounted under node:test,
-// so these tests read the card's JSX out of the page source and pin the Figma measurements
+// The Travel Mode alert card is composed inline in the identity verification host (no
+// component file, no Storybook edit: frontend/COMPONENTS.md; it moved there from the dashboard
+// page unchanged so it shows on whatever page a flow was opened over). The host cannot be
+// mounted under node:test, so these tests read the card's JSX out of its source and pin the Figma measurements
 // (node 13101-46846), the semantics and the "not a popup" requirement.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -10,6 +11,12 @@ import { join } from "node:path"
 import { describe, it } from "node:test"
 
 const page = readFileSync(
+  join(__dirname, "../../../contexts/identity-verification-host.tsx"),
+  "utf8"
+)
+// The dashboard page still owns the legacy success toasts and the Travel Mode popup that some of
+// these tests compare the card with (unchanged there).
+const dashboard = readFileSync(
   join(__dirname, "../../../app/(group)/talent-dashboard/page.tsx"),
   "utf8"
 )
@@ -78,14 +85,10 @@ describe("Travel Mode alert card markup (Figma node 13101-46846)", () => {
     }
     assert.ok(classes.includes("left-4") && classes.includes("right-4"))
     assert.ok(classes.some((c) => /^z-\d+$/.test(c)))
-    // In the document flow there would be no "fixed"; and it is rendered before the page
-    // layout, so the layout (and its pinned hash) contains no part of it.
-    assert.ok(start < page.indexOf("<AuthenticatedRoute>"))
-    assert.ok(
-      !page
-        .slice(page.indexOf("<AuthenticatedRoute>"))
-        .includes("data-status-alert")
-    )
+    // In the document flow there would be no "fixed"; and it is rendered by the host, outside
+    // every page, so the dashboard layout (and its pinned hash) contains no part of it.
+    assert.ok(start > -1 && !page.includes("<AuthenticatedRoute>"))
+    assert.ok(!dashboard.includes("data-status-alert"))
     assert.ok(!classes.includes("md:mb-8"))
   })
 
@@ -244,7 +247,7 @@ describe("Verified alert card (Figma node 13101-47566)", () => {
     )
     // The existing toast uses the same icon with the same offsets (reused, unchanged).
     assert.match(
-      page,
+      dashboard,
       /<CheckCircle className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>[\s\S]*All set! Your identity and location are verified\./
     )
   })
@@ -281,7 +284,7 @@ describe("Home Country Updated alert card (Figma node 13101-47577)", () => {
     )
     // The existing toast (kept unchanged) uses the same icon and offsets.
     assert.match(
-      page,
+      dashboard,
       /<MarkerPin01 className="size-\[24\.75px\] translate-x-\[0\.38px\] -translate-y-\[0\.62px\] text-primary-500" \/>[\s\S]*HOME_COUNTRY_UPDATED_ALERT\.title/
     )
   })
@@ -335,22 +338,32 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
     assert.match(branch, /\{card\.actionLabel\}/)
     // The existing popup's Update button (reused styling, unchanged).
     assert.match(
-      page,
+      dashboard,
       /variant="link"\s+className="h-5 justify-start p-0 text-sm font-semibold leading-5"\s+onClick=\{\(\) => void handleTravelUpdate\(\)\}/
     )
   })
 
   it("Update opens the existing flow through the existing handler and is not a dismissal", () => {
-    assert.match(card, /handleLiveTravelUpdate\(\)/)
+    // The card calls a thin press wrapper (spinner only) that awaits the same handler exactly once.
+    assert.match(card, /void handleLiveTravelUpdatePress\(\)/)
+    const wrapper = page.slice(
+      page.indexOf("const handleLiveTravelUpdatePress = useCallback("),
+      page.indexOf("}, [handleLiveTravelUpdate])")
+    )
+    assert.ok(wrapper.length > 0)
+    assert.equal((wrapper.match(/await handleLiveTravelUpdate\(\)/g) ?? []).length, 1)
+    assert.ok(wrapper.includes("if (liveUpdateRunningRef.current) return"))
+    assert.match(card, /loading=\{liveUpdatePending\}\s+aria-busy=\{liveUpdatePending\}/)
+    // On the dashboard it is the page's own handler (it hides its popup first); the host calls it.
     assert.match(
-      page,
+      dashboard,
       /const handleLiveTravelUpdate = useCallback\(\s*\(\) => handleTravelUpdate\("reminder"\),\s*\[handleTravelUpdate\]\s*\)/
     )
-    const handler = page.slice(
-      page.indexOf("const handleLiveTravelUpdate"),
-      page.indexOf("const handleLiveTravelUpdate") + 300
-    )
-    assert.doesNotMatch(handler, /dismiss|localStorage|StatusAlertsAPI/i)
+    assert.match(page, /const pageHandler = observerRef\.current\?\.handleLiveTravelUpdate\s+if \(pageHandler\) return pageHandler\(\)/)
+    for (const source of [dashboard, page]) {
+      const at = source.indexOf("const handleLiveTravelUpdate")
+      assert.doesNotMatch(source.slice(at, at + 900), /dismiss|localStorage|StatusAlertsAPI/i)
+    }
   })
 
   it("the X on a live card never calls the persistent dismissal endpoint", () => {
@@ -375,15 +388,20 @@ describe("Live Travel Mode card (Figma node 13101-47532)", () => {
     )
     assert.match(
       page,
-      /travelSummary && !checkInHasPriorityNow\s+\? isTravelModeInForce\(travelSummary\)\s+: undefined/
+      /travelSummary && !liveAlertsHeld\s+\? isTravelModeInForce\(travelSummary\)\s+: undefined/
     )
     assert.match(page, /travelModeActivatedAt: null,\s+\}\)/)
   })
 
   it("any ordinary flow closing re-reads the summary, so a completed change removes the card (see travel-flow-completion-alerts.test.ts)", () => {
+    // the dashboard's own close handler, and the host's default for every other page
+    assert.match(
+      dashboard,
+      /if \(!open && kind === null\) \{[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
+    )
     assert.match(
       page,
-      /if \(!open && kind === null\) \{[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
+      /else if \(!open\) \{[\s\S]*fetchIdentityVerificationSummary\(\)\.then\(\(fresh\) => \{\s+if \(fresh\) setTravelSummary\(fresh\)/
     )
   })
 

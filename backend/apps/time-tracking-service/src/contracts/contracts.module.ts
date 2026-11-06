@@ -5,6 +5,6 @@ import { ContractAccessService } from './contract-access.service';
 @Global()
 @Module({
   providers: [ContractPartiesClient, ContractAccessService],
-  exports: [ContractAccessService],
+  exports: [ContractAccessService, ContractPartiesClient],
 })
 export class ContractsModule {}

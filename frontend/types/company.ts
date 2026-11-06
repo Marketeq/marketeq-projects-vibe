@@ -4,6 +4,11 @@ export interface Company {
   domain?: string
   logoUrl?: string
   ownerUserId: string
+  /**
+   * Roster size. Returned by GET /companies (the caller's own companies);
+   * absent on the single-company responses, which do not count members.
+   */
+  memberCount?: number
   industry?: string
   businessType?: string
   companySize?: string

@@ -666,9 +666,10 @@ export function OfferDialog({
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
-  // BTB-260: 0 is rejected at input time (onChange guard below), so the only
-  // way tryConfirmCustomSchedule can still fail is an empty hours field —
-  // this surfaces that instead of the row stalling with no feedback.
+  // BTB-283: a complete-but-zero value ("0", "00") is now accepted at input
+  // time (see customHoursZeroError, derived) instead of rejected — this
+  // state is only for tryConfirmCustomSchedule's own empty-field message
+  // ("Please enter the number of hours."), confirmed on blur/Enter.
   const [customHoursError, setCustomHoursError] = React.useState<
     string | null
   >(null)
@@ -917,6 +918,29 @@ export function OfferDialog({
     selectedRate === "custom" && !(Number(customRateValue) > 0)
   const isCustomDurationIncomplete =
     selectedDuration === "custom" && !(Number(customDurationValue) > 0)
+  // BTB-283: inline message for the custom-value-is-zero case specifically —
+  // shown as soon as the field holds a complete-but-invalid value ("0",
+  // "00", "0.00", so non-empty) without waiting for a submit attempt, and
+  // also once showValidationErrors is true so an untouched-but-still-empty
+  // field errors on submit like every other required field here.
+  const customRateError =
+    isCustomRateIncomplete && (customRateValue !== "" || showValidationErrors)
+      ? "Rate must be greater than $0."
+      : null
+  const customDurationError =
+    isCustomDurationIncomplete &&
+    (customDurationValue !== "" || showValidationErrors)
+      ? "Duration must be at least 1 month."
+      : null
+  // BTB-283: same shape as customRateError/customDurationError above, for
+  // the hours field — shown as soon as a complete-but-zero value ("0",
+  // "00") sits in customHours, same priority as customHoursError (the
+  // empty-on-confirm message from tryConfirmCustomSchedule) in the one
+  // reserved slot that renders both.
+  const customHoursZeroError =
+    customScheduleOpen && customHours !== "" && Number(customHours) === 0
+      ? "Hours must be greater than 0."
+      : null
   // The "custom" sentinel is only meaningful INSIDE this component (see the
   // state declarations). Everything downstream reads these two values
   // literally: the four checkout screens price an offer by looking
@@ -977,17 +1001,27 @@ export function OfferDialog({
                   : Number(customHours),
           }
         : { type: "FULL_TIME" }
-  // AC-13.1: "A contract title input field is displayed and required" — doc
-  // 04 §6 places it on the Send Offer screen, which is isStepThree here,
-  // not just isStepFour. The input was only ever wired to isStepFour; this
-  // is closing that gap against the spec, not adding a new field. Excluded
-  // for edit mode (selectedContract is always the static placeholder there,
-  // and edit mode never calls addContractGroupMember) and for the
-  // zero-existing-contracts case (selectedContract is null, isStepThree is
-  // true only via T1-10's `!hasExistingContracts` fallthrough — there's no
-  // group to title a membership against).
+  // isExistingContractOfferStep: isStepThree with a real existing contract
+  // selected — used below (and elsewhere in this file, estimate-fetch +
+  // the addContractGroupMember submission branch) to mean "an existing
+  // contract group is the target," unrelated to the Contract Title field.
+  // Left exactly as originally defined; do not fold Contract Title logic
+  // into it again — that was BTB-388's bug (see isNewContractOfferStep).
   const isExistingContractOfferStep =
     isStepThree && !isEditMode && Boolean(selectedContract)
+  // BTB-388: the Figma spec (confirmed by screenshot) is the inverse of
+  // what isExistingContractOfferStep's name suggests — Contract Title
+  // shows for a NEW contract (no existing contract selected, including
+  // the zero-existing-contracts fallthrough), and is replaced by the
+  // selected-contract card + "Change Contract" when one IS selected. The
+  // previous fix (AC-13.1 comment above) wired Contract Title to
+  // isExistingContractOfferStep itself — exactly backwards — which is why
+  // it never appeared on the common Part Time/Full Time path (isStepThree
+  // with no contract selected, the zero-contracts case included).
+  // isStepFour ("Invite me to a new contract") already correctly showed
+  // it and is unchanged.
+  const isNewContractOfferStep =
+    isStepThree && !isEditMode && !selectedContract
   const isOfferReady =
     (isStepThree
       ? Boolean(
@@ -1001,7 +1035,7 @@ export function OfferDialog({
           selectedRate &&
           selectedDuration &&
           selectedStartDateAction &&
-          (!isExistingContractOfferStep || contractTitle.trim())
+          (!isNewContractOfferStep || contractTitle.trim())
         )
       : isStepFour
         ? Boolean(
@@ -1013,7 +1047,7 @@ export function OfferDialog({
     !isCustomDurationIncomplete
   const contractTitleError =
     showValidationErrors &&
-    (isStepFour || isExistingContractOfferStep) &&
+    (isStepFour || isNewContractOfferStep) &&
     !contractTitle.trim()
       ? "Please enter a contract title."
       : null
@@ -1181,6 +1215,12 @@ export function OfferDialog({
       setCustomHoursError(null)
       setSchedule("custom")
       setCustomScheduleOpen(false)
+    } else if (hours.trim() !== "" && parsedHours === 0) {
+      // BTB-283: a complete-but-zero value gets its own message instead of
+      // the generic empty-field one below — it's already shown immediately
+      // on change via the derived customHoursZeroError, this just keeps
+      // confirming (blur/Enter) from silently advancing past it.
+      setCustomHoursError("Hours must be greater than 0.")
     } else {
       // BTB-260: the row used to just sit there on invalid input. Enter
       // (new onKeyDown below) and blur both land here now, so both get the
@@ -2057,10 +2097,12 @@ export function OfferDialog({
                         </div>
                       ) : null}
 
-                      {/* AC-13.1 / doc 04 §6: required on the Send Offer
-                      screen, which is isStepThree here too, not just
-                      isStepFour — see isExistingContractOfferStep above. */}
-                      {isStepFour || isExistingContractOfferStep ? (
+                      {/* BTB-388/AC-13.1: shown whenever no existing
+                      contract is selected (isStepFour's dedicated "new
+                      contract" screen, or isStepThree with nothing picked
+                      — see isNewContractOfferStep above for why this is
+                      not isExistingContractOfferStep). */}
+                      {isStepFour || isNewContractOfferStep ? (
                         <div className={isStepFour ? "mt-6" : undefined}>
                           <h2 className="text-[14px] font-semibold leading-normal text-dark-blue-400">
                             Contract Title
@@ -2168,15 +2210,23 @@ export function OfferDialog({
                                     }
                                   }}
                                 />
-                                {/* No inline "must be greater than zero"
-                                message on purpose — Figma doesn't show one
-                                on this screen and Figma outranks the ticket
-                                (same call already made for custom schedule).
-                                An empty or zero value just keeps Send Offer
-                                disabled via isCustomRateIncomplete; nothing
-                                renders here to say why. The ticket does
-                                specify copy for this state — deliberately
-                                not built, not an oversight. */}
+                                {/* BTB-283: a zero/complete-but-invalid
+                                custom rate ("0", "00", "0.00") already keeps
+                                Send Offer disabled via isCustomRateIncomplete
+                                — this is the inline message explaining why.
+                                Always mounted (while this row is open) so the
+                                error appearing/disappearing never resizes the
+                                modal — only ErrorMessage's own visibility
+                                toggles, its real line-height always reserves
+                                the same one line. */}
+                                <ErrorMessage
+                                  className={cn(
+                                    "mt-2",
+                                    !customRateError && "invisible"
+                                  )}
+                                >
+                                  {customRateError || " "}
+                                </ErrorMessage>
                               </div>
                             ) : null}
                             {selectedRateError ? (
@@ -2224,80 +2274,93 @@ export function OfferDialog({
                             tile highlighting above both fall out of the one
                             comparison (AC-15.2). */}
                             {selectedDuration === "custom" ? (
-                              <div className="mt-3 flex gap-3">
-                                <Input
-                                  autoFocus
-                                  className="flex-1"
-                                  type="text"
-                                  inputMode="numeric"
-                                  maxLength={2}
-                                  placeholder="Enter duration"
-                                  value={customDurationValue}
-                                  onChange={(event) => {
-                                    // Same whole-value keystroke rejection as
-                                    // customHours/customRateValue — integers
-                                    // only, no fractional months/years.
-                                    //
-                                    // BTB-272: maxLength above stops the
-                                    // extreme case (a 50-digit paste); this
-                                    // adds a per-unit magnitude ceiling —
-                                    // unlike customRateValue's guard, no
-                                    // NaN-fallback is needed here, since
-                                    // /^\d*$/ never produces anything but ""
-                                    // or a plain digit string, and Number()
-                                    // of either is always finite.
-                                    const value = event.target.value
-                                    if (
-                                      /^\d*$/.test(value) &&
-                                      (value === "" ||
-                                        Number(value) <=
-                                          CUSTOM_DURATION_MAX[
-                                            customDurationUnit
-                                          ])
-                                    ) {
-                                      setCustomDurationValue(value)
-                                    }
-                                  }}
-                                />
-                                <Select
-                                  value={customDurationUnit}
-                                  onValueChange={(value) => {
-                                    // BTB-272: same defect reached through a
-                                    // different path — a value valid under
-                                    // the old unit can exceed the new one's
-                                    // max with no keystroke to catch it.
-                                    // Same clamp shape as customHours' Select
-                                    // onValueChange above (T1-12).
-                                    const nextUnit = value as
-                                      | "Months"
-                                      | "Years"
-                                    const max = CUSTOM_DURATION_MAX[nextUnit]
-                                    const clamped =
-                                      Number(customDurationValue) > max
-                                        ? String(max)
-                                        : customDurationValue
-                                    setCustomDurationUnit(nextUnit)
-                                    setCustomDurationValue(clamped)
-                                  }}
+                              <div className="mt-3">
+                                <div className="flex gap-3">
+                                  <Input
+                                    autoFocus
+                                    className="flex-1"
+                                    type="text"
+                                    inputMode="numeric"
+                                    maxLength={2}
+                                    placeholder="Enter duration"
+                                    value={customDurationValue}
+                                    onChange={(event) => {
+                                      // Same whole-value keystroke rejection
+                                      // as customHours/customRateValue —
+                                      // integers only, no fractional
+                                      // months/years.
+                                      //
+                                      // BTB-272: maxLength above stops the
+                                      // extreme case (a 50-digit paste); this
+                                      // adds a per-unit magnitude ceiling —
+                                      // unlike customRateValue's guard, no
+                                      // NaN-fallback is needed here, since
+                                      // /^\d*$/ never produces anything but
+                                      // "" or a plain digit string, and
+                                      // Number() of either is always finite.
+                                      const value = event.target.value
+                                      if (
+                                        /^\d*$/.test(value) &&
+                                        (value === "" ||
+                                          Number(value) <=
+                                            CUSTOM_DURATION_MAX[
+                                              customDurationUnit
+                                            ])
+                                      ) {
+                                        setCustomDurationValue(value)
+                                      }
+                                    }}
+                                  />
+                                  <Select
+                                    value={customDurationUnit}
+                                    onValueChange={(value) => {
+                                      // BTB-272: same defect reached through
+                                      // a different path — a value valid
+                                      // under the old unit can exceed the
+                                      // new one's max with no keystroke to
+                                      // catch it. Same clamp shape as
+                                      // customHours' Select onValueChange
+                                      // above (T1-12).
+                                      const nextUnit = value as
+                                        | "Months"
+                                        | "Years"
+                                      const max = CUSTOM_DURATION_MAX[nextUnit]
+                                      const clamped =
+                                        Number(customDurationValue) > max
+                                          ? String(max)
+                                          : customDurationValue
+                                      setCustomDurationUnit(nextUnit)
+                                      setCustomDurationValue(clamped)
+                                    }}
+                                  >
+                                    <SelectTrigger className="w-[140px] shrink-0 text-left">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Months">
+                                        Months
+                                      </SelectItem>
+                                      <SelectItem value="Years">
+                                        Years
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                {/* BTB-283: a zero/complete-but-invalid
+                                custom duration ("0", "00") already keeps
+                                Send Offer disabled via
+                                isCustomDurationIncomplete — this is the
+                                inline message explaining why. Always mounted
+                                (while this row is open), same reserved-slot
+                                shape as Custom Rate above. */}
+                                <ErrorMessage
+                                  className={cn(
+                                    "mt-2",
+                                    !customDurationError && "invisible"
+                                  )}
                                 >
-                                  <SelectTrigger className="w-[140px] shrink-0 text-left">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="Months">
-                                      Months
-                                    </SelectItem>
-                                    <SelectItem value="Years">
-                                      Years
-                                    </SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                {/* No inline "must be greater than zero"
-                                message here either — same Figma-outranks-
-                                the-ticket call as Custom Rate above. Empty
-                                or zero keeps Send Offer disabled via
-                                isCustomDurationIncomplete; nothing renders
-                                to explain why. Deliberate, not an oversight. */}
+                                  {customDurationError || " "}
+                                </ErrorMessage>
                               </div>
                             ) : null}
                             {selectedDurationError ? (
@@ -2395,14 +2458,16 @@ export function OfferDialog({
                                     // question for the lead, not built.
                                     // T1-12: same rejection, extended with
                                     // the per-frequency max.
-                                    // BTB-260: also reject a non-empty value
-                                    // that parses to 0 ("0", "00") the same
-                                    // way — empty stays allowed so the field
-                                    // can still be cleared.
+                                    // BTB-283: a complete-but-zero value
+                                    // ("0", "00") is now ACCEPTED here
+                                    // (previously rejected at the keystroke
+                                    // level, BTB-260) so it can show "Hours
+                                    // must be greater than 0." in the
+                                    // reserved error slot below instead,
+                                    // matching Custom Rate/Duration.
                                     const value = event.target.value
                                     if (
                                       /^\d*$/.test(value) &&
-                                      (value === "" || Number(value) > 0) &&
                                       Number(value) <=
                                         CUSTOM_HOURS_MAX[customFrequency]
                                     ) {
@@ -2513,11 +2578,22 @@ export function OfferDialog({
                                   </SelectContent>
                                 </Select>
                               </div>
-                              {customHoursError ? (
-                                <ErrorMessage className="mt-1">
-                                  {customHoursError}
-                                </ErrorMessage>
-                              ) : null}
+                              {/* BTB-283: same reserved-slot shape as the
+                              Custom Rate/Duration rows above — always
+                              mounted while this row is open so the error
+                              appearing/disappearing never resizes the modal.
+                              customHoursZeroError (derived, immediate) and
+                              customHoursError (state, set on blur/Enter)
+                              share this one slot. */}
+                              <ErrorMessage
+                                className={cn(
+                                  "mt-1",
+                                  !(customHoursZeroError || customHoursError) &&
+                                    "invisible"
+                                )}
+                              >
+                                {customHoursZeroError || customHoursError || " "}
+                              </ErrorMessage>
                             </div>
                           ) : null}
 
@@ -2928,7 +3004,16 @@ export function OfferDialog({
                     try {
                       contract = await addContractGroupMember(selectedContract.id, {
                         talentId: hiredTalentId,
-                        title: contractTitle.trim(),
+                        // BTB-388: Contract Title is hidden once an
+                        // existing contract is selected, so contractTitle
+                        // is usually empty here. CreateContractDto.title is
+                        // @IsNotEmpty(), so fall back to the selected
+                        // contract's own title instead of sending "".
+                        title:
+                          contractTitle.trim() ||
+                          selectedContract.title ||
+                          jobTitle ||
+                          "Team Member",
                         // T2-14 report: fabricated for the predefined
                         // tiles — see offerRates' own comment above. Not the
                         // talent's real rate. T4-A: when custom is active
@@ -3068,9 +3153,17 @@ export function OfferDialog({
                         // offer_service.offers.contract_title is NOT NULL
                         // (InitialSchema) and create() inserts dto.contractTitle
                         // as-is, so omitting it fails the insert even though
-                        // the DTO allows it for PROJECT. Same title the review
-                        // dialog shows (buildOfferReviewData's fallback).
-                        contractTitle: jobTitle || "Team Member",
+                        // the DTO allows it for PROJECT.
+                        // BTB-388: this call site only runs for
+                        // isNewContractOfferStep (the existing-contract
+                        // branch above always returns before reaching
+                        // here) — contractTitle is now real, validated
+                        // input by the time we get here, not omitted. The
+                        // jobTitle/"Team Member" fallback stays as the
+                        // NOT NULL safety net (matches buildOfferReviewData's
+                        // own fallback) for the case this is ever reached
+                        // without going through that validation.
+                        contractTitle: contractTitle.trim() || jobTitle || "Team Member",
                         rate:
                           parseFabricatedRateValue(
                             selectedRate,

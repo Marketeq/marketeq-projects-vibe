@@ -14,6 +14,7 @@ import {
   IDENTITY_STATUS_REFRESHED_EVENT,
   markAwaitingResult,
 } from "./identity-verification-status"
+import { markCurrentPageAsReturnOrigin } from "./verification-return-origin-browser"
 
 export interface FreeKycDeps {
   // POST /v1/identity-verification/home-country/confirm — the backend
@@ -39,6 +40,10 @@ export interface FreeKycDeps {
   // verification (false), so the result can show the matching success alert. Defaults
   // to a one-shot localStorage flag (see home-country-change-result.ts).
   markHomeCountryChange?: (isChange: boolean) => void
+  // Called just before the browser leaves for Didit, with the hosted link: remembers the page
+  // verification started on so the return lands there (see verification-return-origin.ts).
+  // Defaults to the browser's own location and signed-in account.
+  markReturnOrigin?: (hostedUrl: string) => void
 }
 
 const NOT_STARTABLE_CODE = "IDENTITY_VERIFICATION_NOT_STARTABLE"
@@ -157,6 +162,7 @@ export async function confirmHomeCountryAndStartFreeKyc(
     ;(deps.markHomeCountryChange ?? defaultMarkHomeCountryChange)(
       isHomeCountryChange
     )
+    ;(deps.markReturnOrigin ?? markCurrentPageAsReturnOrigin)(data.url)
     deps.redirect(data.url)
     return "redirected"
   } catch (error) {

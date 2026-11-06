@@ -1,5 +1,6 @@
 "use client"
 
+import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate"
 import {
   CSSProperties,
   Fragment,
@@ -6628,7 +6629,12 @@ const ProjectScope = ({
     // order instead (convertPhasesForScopeType, same helper the inline
     // editor's ScopeBuilder uses). Undo still restores the exact previous
     // phases (not the converted ones) and the exact previous type.
-    setPhases(convertPhasesForScopeType(phases, type))
+    // service-scope-ongoing-phase: applyOngoingRule is true here (an actual
+    // switch), same as the shared ScopeBuilder's own confirm handler —
+    // closes a Project→Service conversion with an Ongoing phase.
+    setPhases(
+      convertPhasesForScopeType(phases, type, { applyOngoingRule: true })
+    )
     if (draftProjectId) {
       ProjectAPI.UpdateProjectDraft(draftProjectId, {
         listingType: type,
@@ -7523,14 +7529,18 @@ const ProjectScope = ({
                   <DropdownMenuContent align="end" className="w-[280px]">
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      aria-current={!isService ? "true" : undefined}
                       onClick={() => requestScopeTypeChange("project")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
-                        {!isService && (
-                          <Check className="size-4 text-primary-500 shrink-0" />
-                        )}
+                        <Check
+                          className={cn(
+                            "size-4 text-primary-500 shrink-0",
+                            isService && "invisible"
+                          )}
+                        />
                         <span className="font-semibold text-sm text-gray-900">
-                          Project{!isService ? " (current)" : ""}
+                          Project
                         </span>
                       </div>
                       <span className="text-xs text-gray-500 ml-6">
@@ -7539,14 +7549,18 @@ const ProjectScope = ({
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="flex flex-col items-start gap-y-0.5 py-2.5 px-3"
+                      aria-current={isService ? "true" : undefined}
                       onClick={() => requestScopeTypeChange("service")}
                     >
                       <div className="flex items-center gap-x-2 w-full">
-                        {isService && (
-                          <Check className="size-4 text-primary-500 shrink-0" />
-                        )}
+                        <Check
+                          className={cn(
+                            "size-4 text-primary-500 shrink-0",
+                            !isService && "invisible"
+                          )}
+                        />
                         <span className="font-semibold text-sm text-gray-900">
-                          Service{isService ? " (current)" : ""}
+                          Service
                         </span>
                       </div>
                       <span className="text-xs text-gray-500 ml-6">
@@ -12918,6 +12932,8 @@ function PublishProject({
         )
       } catch (error) {
         console.error("Failed to hydrate project draft", error)
+        // G2: the creation gate refused (the modal is already showing): leave the empty form.
+        if (isCreateListingBlocked(error)) router.replace("/my-listings")
       } finally {
         if (!cancelled) {
           hasHydratedRef.current = true

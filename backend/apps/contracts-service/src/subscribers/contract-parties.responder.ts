@@ -23,6 +23,7 @@ interface PartyRow {
   clientId: string;
   talentId: string;
   status: string;
+  weeklyCapHours: number | null;
 }
 
 @Injectable()
@@ -107,7 +108,7 @@ export class ContractPartiesResponder implements OnModuleInit, OnModuleDestroy {
   }
 
   private async lookup(req: PartiesRequest): Promise<PartyRow[]> {
-    const select = { id: true, clientId: true, talentId: true, status: true } as const;
+    const select = { id: true, clientId: true, talentId: true, status: true, weeklyCapHours: true } as const;
     if (req.contractIds?.length) {
       const ids = req.contractIds.slice(0, MAX_IDS_PER_REQUEST);
       const rows = await this.contracts.find({ select, where: { id: In(ids) } });
@@ -125,6 +126,12 @@ export class ContractPartiesResponder implements OnModuleInit, OnModuleDestroy {
   }
 
   private toRow(c: Contract): PartyRow {
-    return { id: c.id, clientId: c.clientId, talentId: c.talentId, status: String(c.status) };
+    return {
+      id: c.id,
+      clientId: c.clientId,
+      talentId: c.talentId,
+      status: String(c.status),
+      weeklyCapHours: c.weeklyCapHours ?? null,
+    };
   }
 }

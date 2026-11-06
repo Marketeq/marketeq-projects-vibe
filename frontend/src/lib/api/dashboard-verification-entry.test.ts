@@ -15,11 +15,13 @@ import {
   startStillTraveling,
 } from "./location-mismatch"
 import { parseIdentityVerificationSummary } from "./identity-verification-state"
+import {
+  readDashboardPage,
+  readDashboardWithHost,
+  readIdentityHost,
+} from "./dashboard-host-source"
 
-const page = readFileSync(
-  join(process.cwd(), "app", "(group)", "talent-dashboard", "page.tsx"),
-  "utf8"
-)
+const page = readDashboardWithHost()
 const count = (needle: string) => page.split(needle).length - 1
 
 describe("dashboard verification entry: nothing opens on page load", () => {
@@ -35,27 +37,44 @@ describe("dashboard verification entry: nothing opens on page load", () => {
     const end = page.indexOf("}, [runIdentityVerificationCheck])", start)
     assert.ok(start > -1 && end > start)
     const inHandler = page.slice(start, end)
-    for (const opener of ["setVerificationGateOpen(true)", "setVpnProxyModalOpen(true)"]) {
-      assert.equal(count(opener), 1, `${opener} appears exactly once in the file`)
-      assert.ok(inHandler.includes(opener), `${opener} is inside the click handler`)
+    // PMCM-637: the gate is opened twice, both inside the handler: its 'unavailable' branch and
+    // its own "Checking..." state while a check runs on a page whose gate already closed.
+    for (const [opener, times] of [["setVerificationGateOpen(true)", 2], ["setVpnProxyModalOpen(true)", 1]] as const) {
+      assert.equal(count(opener), times, `${opener} appears ${times}x in the file`)
+      assert.equal(inHandler.split(opener).length - 1, times, `${opener} is only inside the click handler`)
     }
   })
 
   it("the verification flow is opened only by a click: Verify, the popup's Update, or a mismatch answer", () => {
-    // The fourth is the Update confirmation's retry (PMCM-651): it reopens the Update screen
-    // only after a click-started confirmation failed.
-    assert.equal(count("setIdentityFlowOpen(true)"), 4)
+    // The host opens it in two places only: the Verify My Account handler and openFlow().
+    // The dashboard reaches openFlow() from the popup's Update, a mismatch answer, and (the
+    // third, PMCM-651) the Update confirmation's retry, which reopens the Update screen only
+    // after a click-started confirmation failed.
+    const host = readIdentityHost()
+    const dashboard = readDashboardPage()
+    assert.equal(host.split("setIdentityFlowOpen(true)").length - 1, 2)
+    const handler = host.slice(
+      host.indexOf("const handleVerifyMyAccount = useCallback("),
+      host.indexOf("}, [runIdentityVerificationCheck])")
+    )
+    assert.ok(handler.includes("setIdentityFlowOpen(true)"))
+    const openFlow = host.slice(host.indexOf("const openFlow = useCallback("))
+    assert.ok(openFlow.slice(0, openFlow.indexOf("[]\n  )")).includes("setIdentityFlowOpen(true)"))
+    assert.equal(dashboard.split("openFlow(").length - 1, 2) // Update, a mismatch answer
+    // (the Update confirmation's retry moved to the host with the confirmation; it is asserted next)
+    const hostSource = readIdentityHost()
+    const confirmAt = hostSource.indexOf("const handleTravelModeConfirmed = useCallback(")
+    assert.ok(confirmAt > -1)
+    assert.ok(hostSource.slice(confirmAt, hostSource.indexOf("\n  }, [", confirmAt)).includes("openFlow("))
     for (const owner of [
-      "const handleVerifyMyAccount = useCallback(",
       "const handleTravelUpdate = useCallback(",
       "const openFlowFromMismatch = useCallback(",
-      "const handleTravelModeConfirmed = useCallback(",
     ]) {
-      const from = page.indexOf(owner)
+      const from = dashboard.indexOf(owner)
       const next = owner.includes("openFlowFromMismatch")
-        ? page.indexOf("const handleIdentityFlowOpenChange", from)
-        : page.indexOf("\n  }, [", from)
-      assert.ok(from > -1 && page.slice(from, next).includes("setIdentityFlowOpen(true)"), owner)
+        ? dashboard.indexOf("const handleIdentityFlowOpenChange", from)
+        : dashboard.indexOf("\n  }, [", from)
+      assert.ok(from > -1 && dashboard.slice(from, next).includes("openFlow("), owner)
     }
   })
 
@@ -79,7 +98,17 @@ describe("dashboard verification entry: banner and action", () => {
     assert.ok(page.includes("Your profile is not public"))
     assert.ok(page.includes("To access full platform features, please verify your account"))
     assert.ok(/Verify My Account\s*<ArrowRight/.test(page))
-    assert.ok(page.includes("onClick={() => void handleVerifyMyAccount()}"))
+    // Loading-state UI (approved): the banner calls a thin wrapper that awaits the SAME single host
+    // handler exactly once, for its own spinner only. The button is still disabled by the shared check
+    // state, and the label and arrow are unchanged.
+    assert.ok(page.includes("onClick={() => void handleBannerVerifyMyAccount()}"))
+    const wrapper = page.slice(
+      page.indexOf("const handleBannerVerifyMyAccount = useCallback("),
+      page.indexOf("}, [handleVerifyMyAccount])")
+    )
+    assert.ok(wrapper.length > 0)
+    assert.equal((wrapper.match(/await handleVerifyMyAccount\(\)/g) ?? []).length, 1)
+    assert.ok(page.includes('disabled={connectionCheckState === "checking"}\n                        loading={bannerVerifyPending}\n                        aria-busy={bannerVerifyPending}'))
   })
 
   it("dismissing the banner is in memory only", () => {
@@ -98,7 +127,8 @@ describe("dashboard verification entry: banner and action", () => {
 describe("dashboard verification entry: return from Didit", () => {
   it("opens the success modal only from a backend 'complete' result, never on an ordinary load", () => {
     assert.ok(page.includes("const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)"))
-    assert.equal(count("setVerifiedModalOpen(true)"), 1)
+    // two places, both from the backend's answer: a Didit return, and a reviewed session approved later
+    assert.equal(count("setVerifiedModalOpen(true)"), 2)
     const at = page.indexOf("setVerifiedModalOpen(true)")
     assert.ok(page.slice(page.lastIndexOf("if (shouldShowSuccessModal(summary))", at), at).length < 400)
   })
@@ -129,7 +159,8 @@ describe("dashboard verification entry: the current mobile layout is preserved",
   })
 
   it("the page layout (everything from <AuthenticatedRoute> down, except the banner) is byte-identical to dev-main's", () => {
-    const body = page.slice(page.indexOf("<AuthenticatedRoute>"))
+    const dashboardPage = readDashboardPage()
+    const body = dashboardPage.slice(dashboardPage.indexOf("<AuthenticatedRoute>"))
     const bannerStart = body.indexOf("{profileBannerShown")
     const withoutBanner = body.slice(0, bannerStart) + body.slice(body.indexOf("<Welcome onToggle"))
     const digest = createHash("sha256").update(withoutBanner.replace(/\s+/g, "")).digest("hex")

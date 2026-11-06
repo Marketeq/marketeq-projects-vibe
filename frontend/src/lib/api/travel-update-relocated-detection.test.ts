@@ -11,10 +11,11 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
 import { type DetectedLocation, getDetectedLocation } from "./detected-location"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
 const flow = read("components", "identity-verification-flow.tsx")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
 const handlerStart = flow.indexOf(
@@ -35,7 +36,7 @@ const refreshBody = page.slice(
 const updateStart = page.indexOf("const handleTravelUpdate = useCallback(")
 const updateBody = page.slice(
   updateStart,
-  page.indexOf("[travelPopup]", updateStart)
+  page.indexOf("[travelPopup, openFlow]", updateStart)
 )
 const temporarilyAt = flow.indexOf("if (activeTravelModeUpdate) {")
 const temporarilyBody = flow.slice(
@@ -54,6 +55,8 @@ async function clickRelocated(
     persistTravelClassification: (c: string) => calls.push(`persist:${c}`),
     send: (e: string) => calls.push(`send:${e}`),
     relocatingRef,
+    // Loading-state UI: the card's spinner while the caller's detection is awaited.
+    setRelocating: (v: boolean) => calls.push(`relocating:${v}`),
     onPermanentlyRelocated: onPermanentlyRelocated
       ? async () => {
           calls.push("detect")
@@ -98,12 +101,18 @@ describe("Permanently relocated runs browser-based detection", () => {
     const { calls, promise } = await clickRelocated(
       () => new Promise<void>((r) => (release = r))
     )
-    assert.deepEqual(calls, ["persist:permanently_relocated", "detect"])
+    assert.deepEqual(calls, [
+      "persist:permanently_relocated",
+      "relocating:true",
+      "detect",
+    ])
     release()
     await promise
     assert.deepEqual(calls, [
       "persist:permanently_relocated",
+      "relocating:true",
       "detect",
+      "relocating:false",
       "send:RELOCATED",
     ])
   })
@@ -212,9 +221,10 @@ describe("Verify My Account is unchanged", () => {
     assert.deepEqual(calls, ["persist:permanently_relocated", "send:RELOCATED"])
   })
   it("only the Update launch sets the flag; Verify My Account's launch drops it", () => {
+    // the dashboard's Update, and the host's default for the live card on any other page
     assert.equal(
       (page.match(/detectBrowserLocationOnRelocate: true/g) ?? []).length,
-      1
+      2
     )
     assert.ok(updateBody.includes("detectBrowserLocationOnRelocate: true"))
     const verify = page.slice(
@@ -271,5 +281,34 @@ describe("no duplicate home-country-change session", () => {
     )
     await promise
     assert.ok(!calls.includes("send:RELOCATED"))
+    // and an unmounted flow sets no pending state after the detection returns
+    assert.deepEqual(calls.filter((c) => c.startsWith("relocating")), ["relocating:true"])
+  })
+})
+
+describe("Permanently relocated: loading state (only when the caller's detection is awaited)", () => {
+  it("a rejected detection still clears the pending state", async () => {
+    const { calls, promise } = await clickRelocated(async () => {
+      throw new Error("x")
+    })
+    await assert.rejects(promise)
+    assert.deepEqual(calls.filter((c) => c.startsWith("relocating")), ["relocating:true", "relocating:false"])
+  })
+  it("without the callback there is no pending state at all (it moves on at once)", async () => {
+    const { calls } = await clickRelocated(undefined)
+    assert.ok(!calls.some((c) => c.startsWith("relocating")))
+  })
+  it("the card shows the design-system Spinner in place of its icon (never both), is disabled and aria-busy; Back and the other card are disabled too", () => {
+    const screen = flow.slice(
+      flow.indexOf('{state === "current-location-showcase" && ('),
+      flow.indexOf('{state === "traveling-showcase" && (')
+    )
+    assert.match(screen, /disabled=\{relocating\}\s+aria-busy=\{relocating\}/)
+    assert.match(screen, /\{relocating \? \(\s*<Spinner[\s\S]*?\) : \(\s*<Home03 className="size-5 shrink-0 text-primary-500" \/>\s*\)\}/)
+    assert.equal((screen.match(/disabled=\{relocating\}/g) ?? []).length, 3) // Back, Temporarily, Permanently
+    assert.match(screen, /disabled=\{relocating\}\s+onClick=\{\(\) => send\("BACK"\)\}/)
+    assert.equal((screen.match(/void handlePermanentlyRelocated\(\)/g) ?? []).length, 1)
+    // the existing guard and classification write are untouched
+    assert.ok(handlerBody.includes("if (relocatingRef.current) return"))
   })
 })

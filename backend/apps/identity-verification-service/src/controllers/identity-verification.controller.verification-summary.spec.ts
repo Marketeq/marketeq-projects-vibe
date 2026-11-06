@@ -140,11 +140,11 @@ describe('GET /v1/identity-verification/me (HTTP)', () => {
   });
 
   it('returns locationMismatch false by default and true when the service reports a new country', async () => {
-    const quiet = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+    const quiet = await request(app.getHttpServer()).get('/v1/identity-verification/me').set('CF-Connecting-IP', '203.0.113.5').expect(200);
     expect(quiet.body.locationMismatch).toBe(false);
 
     ivs.getLocationMismatch.mockResolvedValue(true);
-    const mismatch = await request(app.getHttpServer()).get('/v1/identity-verification/me').expect(200);
+    const mismatch = await request(app.getHttpServer()).get('/v1/identity-verification/me').set('CF-Connecting-IP', '203.0.113.5').expect(200);
     expect(mismatch.body.locationMismatch).toBe(true);
     // The same loaded profile is compared; nothing else on the response changes.
     expect(ivs.getLocationMismatch).toHaveBeenLastCalledWith(

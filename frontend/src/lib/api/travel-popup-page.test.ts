@@ -3,9 +3,10 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, it } from "node:test"
+import { readDashboardWithHost } from "./dashboard-host-source"
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), "utf8")
-const page = read("app", "(group)", "talent-dashboard", "page.tsx")
+const page = readDashboardWithHost()
 const flow = read("components", "identity-verification-flow.tsx")
 
 // The Travel Mode popup in the page, and the approved reminder toast in the flow.
@@ -125,7 +126,7 @@ describe("Update opens the existing flow at the location-update screen", () => {
 
   it("starts the flow at 'current-location-showcase' ('Tell us more about your current location')", () => {
     assert.ok(update.includes('initialState: "current-location-showcase"'))
-    assert.ok(update.includes("setIdentityFlowOpen(true)"))
+    assert.ok(update.includes("openFlow("))
     assert.ok(flow.includes("Tell us more about you current location"))
     assert.ok(flow.includes('"current-location-showcase"'))
   })
@@ -148,7 +149,7 @@ describe("Update opens the existing flow at the location-update screen", () => {
 
   it("shows the server's location only: opening Update never asks for the browser's", () => {
     // Only the later "Permanently relocated" choice does (travel-update-relocated-detection.test.ts).
-    const opening = update.slice(0, update.indexOf("const refreshLocationForRelocation"))
+    const opening = update.slice(0, update.indexOf("// The live Travel Mode card's Update"))
     assert.ok(opening.includes("await getDetectedLocation()"))
     assert.ok(!opening.includes("useBrowserLocation"))
   })

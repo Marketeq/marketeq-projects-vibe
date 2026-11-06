@@ -51,7 +51,6 @@
 // header for the split and why).
 
 import { useEffect, useRef, useState } from "react"
-import Link from "next/link"
 import { useMountedState } from "react-use"
 import type { Map as LeafletMap } from "leaflet"
 import {
@@ -116,12 +115,21 @@ import type { DetectedLocation } from "@/src/lib/api/detected-location"
 import { submitIdentityDocument } from "@/src/lib/api/submit-identity-document"
 import { handleHomeCountryYes as runHomeCountryYes } from "@/src/lib/api/free-kyc"
 import {
+  openDiditOverlay,
+  subscribeDiditOverlay,
+} from "@/src/lib/api/didit-overlay"
+import {
   recordTravelClassification,
   recordTravelDuration,
   SKIPPED_TRAVEL_DURATION_LABEL,
   type TravelModeDeps,
 } from "@/src/lib/api/travel-mode-backend"
 import { type TravelDuration } from "@/src/lib/api/travel-mode-reminder"
+import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "@/lib/travel-duration-option-styles"
 import {
   getAcceptedDocuments,
   type AcceptedDocumentTypeId,
@@ -536,6 +544,7 @@ export function IdentityVerificationFlow({
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
+  activeTravelModeInForce,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -590,6 +599,9 @@ export function IdentityVerificationFlow({
   // below, off by default, and never passed by any real caller — the
   // authenticated /talent-dashboard path always performs the real calls.
   simulateFreeKycForPreview?: boolean
+  // True while Travel Mode is in force (the host's /me summary): Confirm / Skip on the
+  // duration screen then call POST /travel-duration/update. Unset: first-time activation.
+  activeTravelModeInForce?: boolean
   onSimulatedFreeKycStart?: () => void
 }) {
   const getIsMounted = useMountedState()
@@ -841,6 +853,17 @@ export function IdentityVerificationFlow({
   // components and states are kept, just no longer reachable from here).
   const [startingFreeKyc, setStartingFreeKyc] = useState(false)
   const startingFreeKycRef = useRef(false)
+  // Didit now opens over this screen: if it is dismissed without a result (closed, camera
+  // denied, expired), the same screen is usable again. A result is handled by the host.
+  useEffect(
+    () =>
+      subscribeDiditOverlay((event) => {
+        if (event.type !== "dismissed") return
+        startingFreeKycRef.current = false
+        setStartingFreeKyc(false)
+      }),
+    []
+  )
   const handleHomeCountryYes = async () => {
     if (startingFreeKycRef.current) return
     startingFreeKycRef.current = true
@@ -857,7 +880,7 @@ export function IdentityVerificationFlow({
         return {
           confirmHomeCountry: () => IdentityVerificationAPI.confirmHomeCountry(),
           startFreeKyc: () => IdentityVerificationAPI.startFreeKyc(),
-          redirect: (url: string) => window.location.assign(url),
+          redirect: (url: string) => void openDiditOverlay(url),
         }
       },
     })
@@ -875,7 +898,12 @@ export function IdentityVerificationFlow({
     return {
       recordTravelClassification: (c) =>
         IdentityVerificationAPI.recordTravelClassification(c),
-      recordTravelDuration: (d) => IdentityVerificationAPI.recordTravelDuration(d),
+      // A Travel Mode that is already in force is restarted with the update endpoint; the
+      // first-time activation (POST /travel-duration) is refused for it with a 409 (BTB-401).
+      recordTravelDuration: (d) =>
+        activeTravelModeInForce
+          ? IdentityVerificationAPI.reviseActiveTravelDuration(d)
+          : IdentityVerificationAPI.recordTravelDuration(d),
     }
   }
   // Only "Permanently relocated" is saved at its click, and for an account that already
@@ -894,6 +922,9 @@ export function IdentityVerificationFlow({
   // `onPermanentlyRelocated` the flow first waits for the caller's refreshed location, and
   // ignores a second click meanwhile (one classification write per choice).
   const relocatingRef = useRef(false)
+  // The wait for the caller's refreshed location, for the card's spinner only (the ref above is the
+  // guard). Never set when there is no callback: that path moves on at once.
+  const [relocating, setRelocating] = useState(false)
   const handlePermanentlyRelocated = async () => {
     if (relocatingRef.current) return
     persistTravelClassification("permanently_relocated")
@@ -902,10 +933,12 @@ export function IdentityVerificationFlow({
       return
     }
     relocatingRef.current = true
+    setRelocating(true)
     try {
       await onPermanentlyRelocated()
     } finally {
       relocatingRef.current = false
+      if (getIsMounted()) setRelocating(false)
     }
     if (!getIsMounted()) return
     send("RELOCATED")
@@ -917,12 +950,18 @@ export function IdentityVerificationFlow({
   // submits the selected duration and never a made-up one (its button is disabled until
   // one is chosen); Skip submits an explicit "Not sure" and ignores any earlier selection.
   const [activatingTravelMode, setActivatingTravelMode] = useState(false)
+  // Which of the two buttons started the save, so only that one shows the spinner (the other is
+  // just disabled by activatingTravelMode).
+  const [activatingTravelAction, setActivatingTravelAction] = useState<
+    "skip" | "confirm" | null
+  >(null)
   const activatingTravelModeRef = useRef(false)
   const activateTravelMode = async (skipped: boolean) => {
     if (activatingTravelModeRef.current) return
     const duration = skipped ? SKIPPED_TRAVEL_DURATION_LABEL : travelDuration
     if (duration === null) return
     activatingTravelModeRef.current = true
+    setActivatingTravelAction(skipped ? "skip" : "confirm")
     setActivatingTravelMode(true)
     setTravelModeSaveFailed(false)
     const saved = await travelModeDeps().then((deps) =>
@@ -931,6 +970,7 @@ export function IdentityVerificationFlow({
     activatingTravelModeRef.current = false
     if (!getIsMounted()) return
     setActivatingTravelMode(false)
+    setActivatingTravelAction(null)
     if (!saved) {
       setTravelModeSaveFailed(true)
       return
@@ -1064,22 +1104,25 @@ export function IdentityVerificationFlow({
               Is this your home country?
             </h1>
 
-            <div className="mt-6 flex items-center justify-center gap-x-3">
+            <div className="mx-auto mt-6 flex w-full max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3">
               <Button
                 size="md"
                 variant="outlined"
                 visual="gray"
+                disabled={startingFreeKyc}
                 onClick={() => send("NO")}
               >
                 No, I&rsquo;m currently traveling
               </Button>
               <Button
-                className="bg-primary-50 hover:bg-primary-500 hover:text-white"
+                className="min-w-[250px] bg-primary-50 hover:bg-primary-500 hover:text-white"
                 size="md"
                 variant="ghost"
                 disabled={
                   startingFreeKyc || detectedLocation.locationMismatch === true
                 }
+                loading={startingFreeKyc}
+                aria-busy={startingFreeKyc}
                 onClick={() => void handleHomeCountryYes()}
               >
                 Yes, this is my home country
@@ -1088,10 +1131,7 @@ export function IdentityVerificationFlow({
 
             <div className="mt-6 text-center">
               <span className="text-xs leading-5 text-gray-500">
-                Your data is encrypted and handled securely.{" "}
-                <Link href="#" className="focus-visible:outline-none underline">
-                  Learn More
-                </Link>
+                Your data is encrypted and handled securely.
               </span>
             </div>
           </div>
@@ -1778,6 +1818,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
+              disabled={relocating}
               onClick={() => send("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -1818,7 +1859,8 @@ export function IdentityVerificationFlow({
                 // leaves the account exactly as it was.
                 send("NEXT")
               }}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
                 <Luggage02 className="size-5 shrink-0 text-primary-500" />{" "}
@@ -1831,10 +1873,21 @@ export function IdentityVerificationFlow({
             </button>
             <button
               onClick={() => void handlePermanentlyRelocated()}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              aria-busy={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
-                <Home03 className="size-5 shrink-0 text-primary-500" />{" "}
+                {relocating ? (
+                  <Spinner
+                    size={20}
+                    strokeWidth={2}
+                    className="shrink-0 stroke-primary-500"
+                    trackClassName="stroke-gray-200"
+                  />
+                ) : (
+                  <Home03 className="size-5 shrink-0 text-primary-500" />
+                )}{" "}
                 <span className="text-sm font-medium text-dark-blue-400">
                   Permanently relocated
                 </span>
@@ -1853,6 +1906,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
+              disabled={activatingTravelMode}
               onClick={() => send("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -1888,32 +1942,57 @@ export function IdentityVerificationFlow({
               setTravelModeSaveFailed(false)
             }}
           >
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="A few days"
                 id="travel-duration-a-few-days"
               />{" "}
-              <Label htmlFor="travel-duration-a-few-days">A few days</Label>
+              <Label
+                htmlFor="travel-duration-a-few-days"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                A few days
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="1–2 weeks"
                 id="travel-duration-1-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-1-2-weeks">1–2 weeks</Label>
+              <Label
+                htmlFor="travel-duration-1-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                1–2 weeks
+              </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
               <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                 value="More than 2 weeks"
                 id="travel-duration-more-than-2-weeks"
               />{" "}
-              <Label htmlFor="travel-duration-more-than-2-weeks">
+              <Label
+                htmlFor="travel-duration-more-than-2-weeks"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
                 More than 2 weeks
               </Label>
             </div>
-            <div className="inline-flex items-center gap-x-3">
-              <RadioGroupItem value="Not sure" id="travel-duration-not-sure" />{" "}
-              <Label htmlFor="travel-duration-not-sure">Not sure</Label>
+            <div className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
+              <RadioGroupItem
+                className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
+                value="Not sure"
+                id="travel-duration-not-sure"
+              />{" "}
+              <Label
+                htmlFor="travel-duration-not-sure"
+                className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
+              >
+                Not sure
+              </Label>
             </div>
           </RadioGroup>
 
@@ -1946,12 +2025,18 @@ export function IdentityVerificationFlow({
               variant="outlined"
               visual="gray"
               disabled={activatingTravelMode}
+              loading={activatingTravelMode && activatingTravelAction === "skip"}
+              aria-busy={activatingTravelMode && activatingTravelAction === "skip"}
               onClick={() => void activateTravelMode(true)}
             >
               Skip
             </Button>
             <Button
               disabled={activatingTravelMode || travelDuration === null}
+              loading={activatingTravelMode && activatingTravelAction === "confirm"}
+              aria-busy={
+                activatingTravelMode && activatingTravelAction === "confirm"
+              }
               onClick={() => void activateTravelMode(false)}
             >
               Confirm

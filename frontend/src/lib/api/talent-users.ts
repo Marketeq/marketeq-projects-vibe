@@ -22,6 +22,12 @@ export interface TalentUser {
   avatarUrl?: string
   userType?: string
   availability?: string | null
+  /** IANA zone from the profile, used to show the talent's local time. */
+  timezone?: string | null
+  /** Work history from getUserById, which returns it under both names. */
+  experience?: Array<{ startDate?: string; start_date?: string }> | null
+  experiences?: Array<{ startDate?: string; start_date?: string }> | null
+  clientSuccessRating?: number | string | null
   location?: string
   country?: string
   rate?: number | null

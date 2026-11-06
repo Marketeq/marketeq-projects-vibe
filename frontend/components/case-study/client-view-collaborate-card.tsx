@@ -10,6 +10,7 @@ import {
   Plus,
   Send,
   Smile,
+  X2,
 } from "@blend-metrics/icons"
 import { EmojiProperties, type DataEmoji } from "@/utils/functions"
 import {
@@ -17,6 +18,7 @@ import {
   AvatarFallback,
   AvatarImage,
   Badge,
+  BadgeCloseButton,
   Button,
   IconButton,
   Textarea,
@@ -63,9 +65,10 @@ export function ClientViewCollaborateCard({
   composeRef?: RefObject<HTMLTextAreaElement | null>
 }) {
   const [message, setMessage] = useState("")
-  // Files staged by the image / attachment buttons below. The design has no
-  // attachment-preview element, so a toast confirms each pick and the files
-  // ride along with the message on send.
+  // Files staged by the image / attachment buttons below. They ride along with
+  // the message on send and are listed in the field as removable chips (the
+  // same Badge + BadgeCloseButton chip used for skills/roles elsewhere) —
+  // a toast alone left nothing in the field, so it read as "not attached".
   const [attachments, setAttachments] = useState<File[]>([])
   const imageInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -97,12 +100,10 @@ export function ClientViewCollaborateCard({
     const picked = Array.from(list ?? [])
     if (!picked.length) return
     setAttachments((current) => [...current, ...picked])
-    toast({
-      description:
-        picked.length === 1
-          ? `${picked[0].name} attached.`
-          : `${picked.length} files attached.`,
-    })
+  }
+
+  const removeAttachment = (index: number) => {
+    setAttachments((current) => current.filter((_, i) => i !== index))
   }
 
   // Matches the header's behaviour exactly (see client-view-top-bar.tsx):
@@ -251,6 +252,29 @@ export function ClientViewCollaborateCard({
             placeholder={`Leave a message for ${shortName}...`}
             className="h-[200px] resize-none rounded-none rounded-t-lg border border-gray-200 bg-gray-50 py-3.5 px-5 shadow-[0px_1px_2px_0px_rgba(16,24,40,.05)] placeholder:italic placeholder:text-gray-500 focus:ring-0"
           />
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 border-x border-gray-200 bg-gray-50 px-5 pb-3">
+              {attachments.map((file, index) => (
+                <Badge
+                  key={`${file.name}-${file.size}-${index}`}
+                  visual="primary"
+                  size="sm"
+                  variant="rounded"
+                  className="max-w-full pr-1.5"
+                  title={file.name}
+                >
+                  <span className="truncate">{file.name}</span>
+                  <BadgeCloseButton
+                    onClick={() => removeAttachment(index)}
+                    aria-label={`Remove ${file.name}`}
+                    disabled={sending}
+                  >
+                    <X2 className="h-3 w-3" />
+                  </BadgeCloseButton>
+                </Badge>
+              ))}
+            </div>
+          )}
           <div className="flex items-center justify-between rounded-b-lg border border-t-0 border-gray-200 bg-white p-3">
             <div className="flex items-center gap-x-1">
               <EmojiPicker onEmojiSelect={insertEmoji}>

@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react"
@@ -18,11 +17,9 @@ import {
   ArrowRight,
   CheckCircle,
   ChevronRight,
-  ClockStopwatch,
   MarkerPin01,
   Info,
   Plane,
-  RefreshCw,
   X,
 } from "@blend-metrics/icons"
 import SecuritySettingsStepper from "@/components/security-settings"
@@ -65,72 +62,29 @@ import {
   ToastViewport,
 } from "@/components/ui"
 import { StatusDialog } from "@/app/(group)/complete-profile/page"
-import { StatusAlertsAPI } from "@/service/http/status-alerts"
-import type { StatusAlert } from "@/src/lib/api/status-alerts"
-import {
-  type DismissalState,
-  buildAlertStack,
-  selectVisibleAlerts,
-} from "@/src/lib/api/status-alert-state"
-import {
-  dismissPersistentAlertOptimistically,
-  RENDERED_STATUS_ALERT_TYPES,
-  type LiveDisplayAlert,
-  dismissLiveAlert,
-  isRenderedAlert,
-} from "@/src/lib/api/status-alert-dismissal"
-import { readLiveDismissals } from "@/src/lib/api/live-alert-dismissal"
-import {
-  type PendingConfirmation,
-  confirmActiveTravelMode,
-} from "@/src/lib/api/travel-mode-confirmation"
-import {
-  readTravelActivationsInLogin,
-  rememberTravelActivationInLogin,
-} from "@/src/lib/api/travel-activation-login"
-import {
-  ALERT_RECENCY_WINDOW_MS,
-  hasNewAlertOfType,
-  hasRecentAlertOfType,
-  isNewTravelActivation,
-  reconcileStatusAlerts,
-} from "@/src/lib/api/status-alert-reconcile"
-import {
-  STATUS_ALERT_CLOSE_LABEL,
-  STATUS_ALERT_DISMISS_ERROR,
-} from "@/src/lib/api/status-alert-copy"
-import {
-  checkVpnProxy,
-  type VpnProxyDetectionOutcome,
-} from "@/src/lib/api/vpn-proxy-detection"
-import {
-  clearAwaitingResult,
-  hasAwaitingResult,
-  IDENTITY_STATUS_REFRESHED_EVENT,
-  RESULT_POLL_INTERVAL_MS,
-  RESULT_POLL_MAX_ATTEMPTS,
-} from "@/src/lib/api/identity-verification-status"
 import {
   cooldownRetryAt,
-  formatRetryAt,
   shouldShowProfileBanner,
-  startIdentityOnlyForDashboard,
-  verifyActionFor,
 } from "@/src/lib/api/identity-next-step"
+import {
+  TRAVEL_DURATION_OPTION_LABEL_CLASS,
+  TRAVEL_DURATION_OPTION_RADIO_CLASS,
+  TRAVEL_DURATION_OPTION_ROW_CLASS,
+} from "@/lib/travel-duration-option-styles"
+import {
+  CHECK_IN_PROMPT_ACTIONS_CLASS,
+  CHECK_IN_PROMPT_DIALOG_CLASS,
+  CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS,
+} from "@/lib/travel-check-in-prompt-layout"
 import {
   isPasswordSetupRequired,
   shouldStartIdentityCheck,
 } from "@/src/lib/api/identity-check-gate"
 import {
-  createReturnReconciler,
   fetchIdentityVerificationSummary,
-  shouldShowPendingModal,
-  shouldShowSuccessModal,
-  type IdentityVerificationSummaryView,
 } from "@/src/lib/api/identity-verification-state"
 import {
   getDetectedLocation,
-  type DetectedLocation,
 } from "@/src/lib/api/detected-location"
 import {
   answerCheckIn,
@@ -163,24 +117,12 @@ import {
   type MismatchFlowKind,
 } from "@/src/lib/api/travel-location-prompt"
 import {
-  clearReviewedResult,
-  markReviewedResult,
-  reconcileReviewedSession,
-  resolveReviewedResult,
-  shouldMarkReviewedResult,
-} from "@/src/lib/api/reviewed-approval-result"
-import {
-  clearHomeCountryChange,
-  consumeHomeCountryChange,
   HOME_COUNTRY_UPDATED_ALERT,
-  markHomeCountryChange,
-  successAlertKindFor,
   type SuccessAlertKind,
 } from "@/src/lib/api/home-country-change-result"
 import {
   createTravelPopupCloseGuard,
   isActiveTravelUpdate,
-  isTravelModeInForce,
   type TravelPopupKind,
   TRAVEL_POPUP_DURATION_MS,
 } from "@/src/lib/api/travel-popup"
@@ -190,12 +132,11 @@ import {
   startStillTraveling,
   type MismatchLaunch,
 } from "@/src/lib/api/location-mismatch"
-import { IdentityVerificationFlow } from "@/components/identity-verification-flow"
-import { startVerificationRequestedInBrowser } from "@/src/lib/api/start-verification-handoff"
 import {
-  AccountVerificationGate,
-  type ConnectionCheckState,
-} from "@/components/account-verification-gate"
+  useIdentityVerification,
+  useIdentityVerificationObserver,
+} from "@/contexts/identity-verification-host"
+import { startVerificationRequestedInBrowser } from "@/src/lib/api/start-verification-handoff"
 
 export default function TalentDashboard() {
   const [isOpen, setIsOpen] = useState(false)
@@ -248,62 +189,52 @@ export default function TalentDashboard() {
   // only the explicit "Verify My Account" click (or a failed connection check
   // from that click) opens anything. Dismissing the banner is in-memory only.
   const [profileBannerShown, setProfileBannerShown] = useState(false)
-  // Persistent status alerts (PMCM-651), kept by notification-service: dismissal is
-  // stored per account on the backend, so it holds across sessions and devices. This
-  // phase renders the Travel Mode alert only.
-  const [statusAlerts, setStatusAlerts] = useState<StatusAlert[]>([])
-  const [statusAlertDismissal, setStatusAlertDismissal] =
-    useState<DismissalState>({
-      dismissedPersistentIds: new Set(),
-      dismissedLiveKeys: new Set(),
-    })
-  const [statusAlertDismissFailed, setStatusAlertDismissFailed] =
-    useState(false)
-  const statusAlertRequestRef = useRef(0)
-  // The live "You are in Travel Mode" card (PMCM-651) is derived from the identity summary,
-  // not stored: its dismissal is per login (loginSessionKey) and lives in this browser only.
-  // A flow opened by its Update action re-reads the summary when it closes (see
-  // handleIdentityFlowOpenChange), so the card goes away once Travel Mode has ended.
-  const statusAlertsRef = useRef<StatusAlert[]>([])
-  const alertReconcileGenRef = useRef(0)
-  const previousTravelSummaryRef =
-    useRef<IdentityVerificationSummaryView | null>(null)
   const [profileBannerDismissed, setProfileBannerDismissed] = useState(false)
-  const [verificationGateOpen, setVerificationGateOpen] = useState(false)
-  const [connectionCheckState, setConnectionCheckState] =
-    useState<ConnectionCheckState>("idle")
-  const [vpnProxyResult, setVpnProxyResult] = useState<
-    VpnProxyDetectionOutcome | "checking" | null
-  >(null)
-  const [vpnProxyModalOpen, setVpnProxyModalOpen] = useState(false)
-  const [identityFlowOpen, setIdentityFlowOpen] = useState(false)
-  const [detectedLocation, setDetectedLocation] =
-    useState<DetectedLocation | null>(null)
+  // The verification flow and everything that answers it is hosted by
+  // IdentityVerificationHostProvider (contexts/identity-verification-host.tsx); this page
+  // keeps its banner, alerts and prompts and calls the host.
+  const {
+    startVerification: handleVerifyMyAccount,
+    openFlow,
+    flowOpen: identityFlowOpen,
+    connectionCheckState,
+    setCooldownRetryTime,
+    summary: travelSummary,
+    setSummary: setTravelSummary,
+    setLiveAlertsHeld,
+  } = useIdentityVerification()
   const identityStatusCheckStartedRef = useRef(false)
+  // The banner's own Verify My Account press, for its loading spinner only. The shared host
+  // already runs one check at a time and disables the button while it does; this only shows
+  // the spinner on the button that was pressed (not when the check came from elsewhere). The
+  // token keeps an older press from clearing a newer one.
+  const [bannerVerifyPending, setBannerVerifyPending] = useState(false)
+  const bannerVerifyTokenRef = useRef(0)
+  const handleBannerVerifyMyAccount = useCallback(async () => {
+    const token = ++bannerVerifyTokenRef.current
+    setBannerVerifyPending(true)
+    try {
+      await handleVerifyMyAccount()
+    } finally {
+      if (bannerVerifyTokenRef.current === token) setBannerVerifyPending(false)
+    }
+  }, [handleVerifyMyAccount])
   // Travel Mode popup (Figma node 13101-46860): the latest backend answer and which
   // popup, if any, is showing. "reminder" = a day-3/day-7 occurrence this tab claimed;
   // "expiry" = Travel Mode ended for an account that is not fully verified yet.
-  const [travelSummary, setTravelSummary] =
-    useState<IdentityVerificationSummaryView | null>(null)
   const [travelPopup, setTravelPopup] = useState<"reminder" | "expiry" | null>(
     null
   )
-  // How the existing verification flow is (re)started. The default is exactly what it
-  // always was; only the popup's Update action starts it at "Tell us more about your
-  // current location" (a new key remounts it, since the flow reads its start screen once).
-  const [flowLaunch, setFlowLaunch] = useState<{
-    key: number
-    initialState?: "current-location-showcase" | "traveling-showcase"
-    activeTravelModeUpdate?: boolean
-    // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
-    // the location with the browser (see refreshLocationForRelocation).
-    detectBrowserLocationOnRelocate?: boolean
-  }>({ key: 0 })
   // Returning-user new-location prompt (Storybook ChangeLocation). The backend's
   // locationMismatch decides. It has only its two buttons: no outside click, no Escape,
   // no X, so it is closed only by answering it.
   const [locationMismatchOpen, setLocationMismatchOpen] = useState(false)
   const [locationMismatchBusy, setLocationMismatchBusy] = useState(false)
+  // Which of the prompt's two buttons started the request in flight, so only that one shows
+  // the spinner while the other stays disabled (the busy flag above still guards both).
+  const [locationMismatchAction, setLocationMismatchAction] = useState<
+    "still-traveling" | "change-home-country" | null
+  >(null)
   // The same dialog for an account whose Travel Mode is in force and that was detected
   // in another country (travelModeLocationMismatch). Offered once per login: see
   // travel-location-prompt.ts. The login is marked only when a button is chosen.
@@ -369,6 +300,16 @@ export default function TalentDashboard() {
     travelSummary,
     checkIn !== null || checkInConfirmation !== null
   )
+  // The dashboard reads the summary itself on every visit and starts from none, so nothing it
+  // shows (popups, check-in, prompts) is decided by a copy the host kept from another page.
+  useLayoutEffect(() => {
+    setTravelSummary(null)
+  }, [setTravelSummary])
+  // The live Travel Mode card (shown by the host) waits while the check-in has priority.
+  useLayoutEffect(() => {
+    setLiveAlertsHeld(checkInHasPriorityNow)
+    return () => setLiveAlertsHeld(false)
+  }, [checkInHasPriorityNow, setLiveAlertsHeld])
 
 
   const runIdentityVerificationCheck = useCallback(async () => {
@@ -381,188 +322,6 @@ export default function TalentDashboard() {
     setLocationMismatchOpen(shouldShowLocationMismatchPrompt(summary))
   }, [])
 
-  // Reads the persistent alerts on load and whenever the identity summary is re-read (a
-  // Travel Mode activation in this session arrives as a new alert). Only the latest read
-  // is applied, and a failed read leaves the alerts that are already showing.
-  useEffect(() => {
-    // Talent accounts only: a client that lands here is redirected away and has no alerts.
-    if (!user || resolveDashboardRole(user) !== ROLE.TALENT) return
-    const request = ++statusAlertRequestRef.current
-    StatusAlertsAPI.list()
-      .then((alerts) => {
-        if (request === statusAlertRequestRef.current) setStatusAlerts(alerts)
-      })
-      .catch((error) => {
-        console.error("[status-alerts] could not load the alerts", error)
-      })
-  }, [user, travelSummary])
-
-  useEffect(() => {
-    statusAlertsRef.current = statusAlerts
-  }, [statusAlerts])
-  // A page leaving ends any reconciliation still waiting to read.
-  useEffect(
-    () => () => {
-      alertReconcileGenRef.current = -1
-    },
-    []
-  )
-
-  // A status alert that this page visit just caused (a Travel Mode activation, an approval) is
-  // stored ASYNCHRONOUSLY by notification-service: the identity service publishes the event
-  // after its write, and the consumer stores it (and supersedes the alert it replaces) a moment
-  // later. The list read that comes with the page, or with a summary, can run before that, so
-  // the list is re-read a bounded number of times (about 3 seconds in all, stopping at the
-  // first read that has a NEW alert of an expected type). Nothing polls; a newer run or the
-  // page leaving ends an older one, and the newest read always wins over an older, slower one.
-  //
-  // The awaited alert is a NEW one (an id the page did not already hold); with sinceMs it is
-  // instead one created at or after that time, which also covers an alert the page's own first
-  // read already contained, and cannot be satisfied by an older alert of the same type.
-  const startAlertReconcile = useCallback(
-    (expected: StatusAlert["type"][], options: { sinceMs?: number } = {}) => {
-      const known = new Set(
-        statusAlertsRef.current
-          .filter((a) => expected.includes(a.type))
-          .map((a) => a.id)
-      )
-      const generation = ++alertReconcileGenRef.current
-      let latestRequest = 0
-      void reconcileStatusAlerts({
-        list: () => {
-          latestRequest = ++statusAlertRequestRef.current
-          return StatusAlertsAPI.list()
-        },
-        isSettled: (alerts) =>
-          expected.some((type) =>
-            options.sinceMs !== undefined
-              ? hasRecentAlertOfType(alerts, type, options.sinceMs)
-              : hasNewAlertOfType(alerts, type, known)
-          ),
-        apply: (alerts) => {
-          if (latestRequest === statusAlertRequestRef.current) {
-            setStatusAlerts(alerts)
-          }
-        },
-        isCurrent: () => generation === alertReconcileGenRef.current,
-        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-      })
-    },
-    []
-  )
-
-  // A Travel Mode activation made in this page visit (the first-time flow's "Done", the
-  // traveler prompt, an Update that starts a new period): /me already says so, but the
-  // persistent "Travel Mode is on" alert is not stored yet. An unfinished flow, which creates
-  // no activation, never starts this.
-  useEffect(() => {
-    const previous = previousTravelSummaryRef.current
-    previousTravelSummaryRef.current = travelSummary
-    if (!user || !isNewTravelActivation(previous, travelSummary)) return
-    startAlertReconcile(["travel_mode"])
-  }, [user, travelSummary, startAlertReconcile])
-
-  // Which login this is, for the live cards' per-login dismissal. Unknown until the
-  // identity summary has been read; "unkeyed" (an older token) hides nothing across logins
-  // but also remembers nothing.
-  const liveLoginKey = travelSummary?.loginSessionKey ?? null
-  // Travel Mode activations made in THIS login (kept in this browser under the login's key, so
-  // a refresh keeps them and a new login starts empty): the persistent "Travel Mode is on"
-  // card announces those, and the live Update card waits for a later login. Marked in a layout
-  // effect, before the first paint that shows the new state, so Update never flashes.
-  const [travelActivationsHere, setTravelActivationsHere] = useState<ReadonlySet<string>>(
-    () => new Set()
-  )
-  useEffect(() => {
-    setTravelActivationsHere(
-      readTravelActivationsInLogin(liveLoginKey, window.localStorage)
-    )
-  }, [liveLoginKey])
-  useLayoutEffect(() => {
-    if (!user || !isNewTravelActivation(previousTravelSummaryRef.current, travelSummary)) return
-    const occurrence = travelSummary?.travelModeEndsAt
-    if (!occurrence) return
-    rememberTravelActivationInLogin(liveLoginKey, occurrence, window.localStorage)
-    setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
-  }, [user, travelSummary, liveLoginKey])
-  useEffect(() => {
-    setStatusAlertDismissal((prev) => ({
-      ...prev,
-      dismissedLiveKeys: readLiveDismissals(liveLoginKey, window.localStorage),
-    }))
-  }, [liveLoginKey])
-  // A live card is dismissed for this login only: hidden now, remembered in this browser
-  // under the login's key, and never sent to the backend.
-  const handleDismissLiveAlert = useCallback(
-    (card: LiveDisplayAlert) =>
-      dismissLiveAlert({
-        alert: card,
-        loginSessionKey: liveLoginKey,
-        storage: window.localStorage,
-        update: setStatusAlertDismissal,
-      }),
-    [liveLoginKey]
-  )
-
-  const statusAlertStack = useMemo(
-    () =>
-      selectVisibleAlerts(
-        buildAlertStack({
-          persistent: statusAlerts.filter((a) =>
-            (RENDERED_STATUS_ALERT_TYPES as readonly string[]).includes(a.type)
-          ),
-          ...statusAlertDismissal,
-          // Nothing live is shown while the profile is loading, or while the check-in
-          // modal has priority (the same rule as the existing Travel Mode popup).
-          loginSessionKey: travelSummary ? liveLoginKey ?? "unkeyed" : undefined,
-          travelModeActive:
-            travelSummary && !checkInHasPriorityNow
-              ? isTravelModeInForce(travelSummary)
-              : undefined,
-          travelModeOccurrence: travelSummary?.travelModeEndsAt ?? null,
-          travelModeActivatedThisLogin: Boolean(
-            travelSummary?.travelModeEndsAt &&
-              travelActivationsHere.has(travelSummary.travelModeEndsAt)
-          ),
-          travelModeActivatedAt: null,
-        })
-      ),
-    [
-      statusAlerts,
-      statusAlertDismissal,
-      travelSummary,
-      liveLoginKey,
-      travelActivationsHere,
-      checkInHasPriorityNow,
-    ]
-  )
-
-  // A start attempt rejected as not startable re-reads the real status; a
-  // verified account closes everything that was open.
-  useEffect(() => {
-    const onRefreshed = (event: Event) => {
-      const status = (event as CustomEvent<{ status?: string }>).detail?.status
-      if (status !== "verified") return
-      setVerificationGateOpen(false)
-      setIdentityFlowOpen(false)
-      setProfileBannerShown(false)
-    }
-    window.addEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
-    return () =>
-      window.removeEventListener(IDENTITY_STATUS_REFRESHED_EVENT, onRefreshed)
-  }, [])
-
-  // "You're all set!" — shown once, only to a browser that went to Didit and came
-  // back. On that return the dashboard reconciles ONCE (POST, no session id from the
-  // browser) and then reads GET /me: the backend's nextAction is the authoritative
-  // state and "complete" is the only thing that opens this dialog. The webhook can
-  // still land a moment later, so the bounded /me recheck and the tab-visibility
-  // refresh remain as fallbacks (GET only — never another reconcile). Nothing is read
-  // from the URL Didit returns to, and no attempt/cooldown/status rule lives here.
-  const [verifiedModalOpen, setVerifiedModalOpen] = useState(false)
-  // "Your verification has been submitted": shown once when this browser comes back
-  // from Didit and the backend says the session is in review. Done only closes it.
-  const [pendingModalOpen, setPendingModalOpen] = useState(false)
   // Success alert (Figma node 13101-47566): shown only AFTER the user clicks the
   // success modal's own Done button, never while the modal is open.
   const [successAlertOpen, setSuccessAlertOpen] = useState(false)
@@ -582,178 +341,8 @@ export default function TalentDashboard() {
       setHomeCountryUpdatedOpen(true)
     }
   }, [successAlertOpen, successAlertKind])
-  // "You've used all three attempts": the retry time (ISO) while the backend says to
-  // wait for a retry window, else null. Closing it only hides it for this view; a
-  // fresh backend answer shows it again.
-  const [cooldownRetryTime, setCooldownRetryTime] = useState<string | null>(null)
-  const retryWhen = formatRetryAt(cooldownRetryTime)
-  // The modal's existing Done button only closes the modal. The top-right notification for
-  // this event is the persistent Verified (or Home Country Updated) card of the status-alert
-  // stack, loaded by startAlertReconcile when the approval was seen; the old temporary
-  // "All set!" alert is not opened any more, so two cards never collide.
-  const handleSuccessDone = () => {
-    setVerifiedModalOpen(false)
-  }
-  // Held in a ref so rerenders and StrictMode's double effect share one reconcile.
-  const returnReconcilerRef = useRef<ReturnType<
-    typeof createReturnReconciler
-  > | null>(null)
-
-  useEffect(() => {
-    if (!user) return
-    if (resolveDashboardRole(user) !== ROLE.TALENT) return
-
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let attempts = 0
-
-    const apply = (summary: IdentityVerificationSummaryView | null) => {
-      if (cancelled) return
-      if (shouldShowSuccessModal(summary)) {
-        clearAwaitingResult(window.localStorage)
-        setVerificationGateOpen(false)
-        setProfileBannerShown(false)
-        setVerifiedModalOpen(true)
-        // The approval was just processed: its persistent alert (and the Submitted one it
-        // replaces) is stored a moment later, so reload the list until it is there.
-        startAlertReconcile(["verified", "home_country_updated"])
-        // The immediate result is handled by the modal: no review alert may follow it.
-        clearReviewedResult(window.localStorage, user.id)
-        // Which success alert follows the modal. Read once: a repeat (duplicate
-        // webhook, reconcile, refresh) finds no flag, so it can never show twice.
-        setSuccessAlertKind(
-          successAlertKindFor(consumeHomeCountryChange(window.localStorage))
-        )
-        return
-      }
-      // Back from Didit with the session in review: tell the user once. The result
-      // arrives later as a notification, so this browser stops waiting for it.
-      if (shouldShowPendingModal(summary)) {
-        clearAwaitingResult(window.localStorage)
-        // A home-country approval arrives as a backend notification: no alert from here.
-        clearHomeCountryChange(window.localStorage)
-        // Either kind (first-time or a home-country change) remembers it is under review,
-        // so the approved result can be shown (see reviewed-approval-result.ts); the
-        // backend's own "home country was updated" notification is separate.
-        if (shouldMarkReviewedResult(summary)) {
-          markReviewedResult(window.localStorage, user.id)
-        }
-        setVerificationGateOpen(false)
-        setProfileBannerShown(false)
-        setPendingModalOpen(true)
-        // In review, first-time or a home-country change: the persistent "location
-        // verification was submitted" alert was stored (asynchronously) by the reconcile that
-        // just ran, so load it without waiting for Done or a refresh. Only Submitted is
-        // awaited: Home Country Updated exists only after an approval.
-        startAlertReconcile(["submitted_for_review"], {
-          sinceMs: Date.now() - ALERT_RECENCY_WINDOW_MS,
-        })
-        return
-      }
-      // The banner or gate may have opened from an earlier read, before this result
-      // landed (e.g. an unfinished session that has since ended, or a new rejection
-      // with attempts left). Re-evaluate them from the same backend answer.
-      setProfileBannerShown(shouldShowProfileBanner(summary))
-      if (!shouldShowProfileBanner(summary)) setVerificationGateOpen(false)
-      // Waiting out a retry window (the third rejection): show the retry time and
-      // stop polling — nothing more is coming until then.
-      const retryAt = cooldownRetryAt(summary)
-      if (retryAt) {
-        setCooldownRetryTime(retryAt)
-        return
-      }
-      // Anything else — including an unknown or missing nextAction — shows nothing
-      // new yet; keep waiting (bounded) for the webhook.
-      attempts += 1
-      if (attempts < RESULT_POLL_MAX_ATTEMPTS) {
-        timer = setTimeout(() => void poll(), RESULT_POLL_INTERVAL_MS)
-      }
-    }
-
-    const poll = async () => {
-      if (cancelled || !hasAwaitingResult(window.localStorage)) return
-      apply(await fetchIdentityVerificationSummary())
-    }
-
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return
-      attempts = 0
-      if (timer) clearTimeout(timer)
-      void poll()
-    }
-
-    if (hasAwaitingResult(window.localStorage)) {
-      returnReconcilerRef.current ??= createReturnReconciler({
-        awaitingStorage: window.localStorage,
-        markerStorage: window.sessionStorage,
-      })
-      void returnReconcilerRef.current.run().then((result) => apply(result.summary))
-    }
-    // Coming back from the provider with Back can restore this page from the browser's
-    // back/forward cache without running anything again (no mount, no visibility change):
-    // a restored page rechecks exactly like a tab that became visible.
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (!event.persisted || !hasAwaitingResult(window.localStorage)) return
-      attempts = 0
-      if (timer) clearTimeout(timer)
-      // Nothing reconciled this trip while the page was frozen, and without the webhook
-      // the server still has the session as started: reconcile (once per return, the
-      // shared reconciler dedupes) and then read /me, exactly as a fresh load does.
-      returnReconcilerRef.current ??= createReturnReconciler({
-        awaitingStorage: window.localStorage,
-        markerStorage: window.sessionStorage,
-      })
-      void returnReconcilerRef.current.run().then((result) => apply(result.summary))
-    }
-    document.addEventListener("visibilitychange", onVisible)
-    window.addEventListener("pageshow", onPageShow)
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-      document.removeEventListener("visibilitychange", onVisible)
-      window.removeEventListener("pageshow", onPageShow)
-    }
-  }, [user, startAlertReconcile])
-
-  // PMCM-653: a first-time verification that was shown as submitted and is approved
-  // later shows the existing success alert once. The marker only says this browser is
-  // waiting; the backend summary (nextAction complete AND fullyVerified) decides. It is
-  // rechecked on load (one reconcile, then GET /me) and whenever the tab becomes
-  // visible (GET only), with no timer: a review can take days. Nothing is shown while
-  // the review continues, and the marker is consumed in the same step that shows it.
-  const reviewedCheckStartedRef = useRef(false)
-  useEffect(() => {
-    if (!user) return
-    if (resolveDashboardRole(user) !== ROLE.TALENT) return
-
-    const check = async (withReconcile: boolean) => {
-      const outcome = await resolveReviewedResult({
-        storage: window.localStorage,
-        userId: user.id,
-        fetchSummary: fetchIdentityVerificationSummary,
-        reconcile: withReconcile ? reconcileReviewedSession : undefined,
-      })
-      if (outcome !== "approved") return
-      setVerificationGateOpen(false)
-      setProfileBannerShown(false)
-      // Approved after review: the page's first alert read may have run before the approval
-      // was processed and still show "submitted". The persistent Verified card replaces it;
-      // the old temporary "All set!" alert is not opened (it would sit on top of that card).
-      startAlertReconcile(["verified", "home_country_updated"])
-    }
-
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void check(false)
-    }
-
-    // StrictMode runs this effect twice; the load check (and its reconcile) runs once.
-    if (!reviewedCheckStartedRef.current) {
-      reviewedCheckStartedRef.current = true
-      void check(true)
-    }
-    document.addEventListener("visibilitychange", onVisible)
-    return () => document.removeEventListener("visibilitychange", onVisible)
-  }, [user, startAlertReconcile])
+  // PMCM-653 (a reviewed session approved later) is resolved by the identity verification host,
+  // on whatever page the talent is on; the dashboard no longer runs a second resolver.
 
   // The Identity Verification check (which may open AccountVerificationGate) waits
   // for the "Secure your account" dialog: not while the authenticated user still
@@ -777,85 +366,6 @@ export default function TalentDashboard() {
     identityStatusCheckStartedRef.current = true
     void runIdentityVerificationCheck()
   }, [user, showSecurityModal, runIdentityVerificationCheck])
-
-  // Real required check, attempted only on "Verify My Account" / Retry. Never
-  // fakes a clean result and never marks anything verified itself.
-  const handleVerifyMyAccount = useCallback(async () => {
-    setConnectionCheckState("checking")
-    setVpnProxyResult("checking")
-    const outcome = await checkVpnProxy()
-    setVpnProxyResult(outcome)
-
-    if (outcome === "none") {
-      setVpnProxyModalOpen(false)
-      // The backend's state is re-read now, not trusted from page load.
-      const summary = await fetchIdentityVerificationSummary()
-      const action = verifyActionFor(summary)
-      if (action.kind === "limit") {
-        setConnectionCheckState("idle")
-        setVerificationGateOpen(false)
-        setProfileBannerShown(false)
-        setCooldownRetryTime(action.retryAt)
-        return
-      }
-      if (action.kind === "close") {
-        setConnectionCheckState("idle")
-        setVerificationGateOpen(false)
-        setProfileBannerShown(false)
-        return
-      }
-      if (action.kind === "didit") {
-        // This trip to Didit is a home-country change when a different country is
-        // pending (the backend hands the retry to the same session); recorded
-        // explicitly either way, so an ordinary trip clears a flag left by an earlier one.
-        markHomeCountryChange(
-          window.localStorage,
-          summary?.pendingHomeCountry != null
-        )
-        const started = await startIdentityOnlyForDashboard()
-        if (started === "redirected") return // the browser is leaving for Didit
-        if (started === "not_startable") {
-          setConnectionCheckState("idle")
-          void runIdentityVerificationCheck()
-          return
-        }
-        if (started === "failed") {
-          setConnectionCheckState("idle")
-          return
-        }
-        // "needs_location": fall through to the normal location step below
-      }
-      setConnectionCheckState("idle")
-      setVerificationGateOpen(false)
-      // Explicit user action: the only place browser location is requested.
-      setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
-      // A flow last started by the Travel Mode Update action starts fresh here. A traveler
-      // whose Travel Mode is already in force is told so (from the /me read above), so
-      // "Temporarily traveling" closes with the existing confirmation instead of asking for
-      // a second duration; everyone else gets exactly the flow they always did.
-      const activeTravelModeUpdate = isTravelModeInForce(summary)
-      setFlowLaunch((prev) =>
-        prev.initialState || Boolean(prev.activeTravelModeUpdate) !== activeTravelModeUpdate
-          ? { key: prev.key + 1, ...(activeTravelModeUpdate ? { activeTravelModeUpdate } : {}) }
-          : prev
-      )
-      setIdentityFlowOpen(true)
-      return
-    }
-
-    if (outcome === "unavailable") {
-      // Stays inside the same gate dialog, with its error and Retry.
-      setConnectionCheckState("unavailable")
-      setVpnProxyModalOpen(false)
-      setVerificationGateOpen(true)
-      return
-    }
-
-    // vpn_detected / proxy_detected / vpn_and_proxy_detected.
-    setConnectionCheckState("idle")
-    setVerificationGateOpen(false)
-    setVpnProxyModalOpen(true)
-  }, [runIdentityVerificationCheck])
 
   // Start Verification on the Job Apply blocked modal lands here with a one-shot marker.
   // It is the talent's own click on that button, so it runs the same Verify My Account
@@ -1036,26 +546,17 @@ export default function TalentDashboard() {
     const fresh = kind === "reminder" ? await fetchIdentityVerificationSummary() : null
     const activeTravelModeUpdate = isActiveTravelUpdate(kind, fresh)
     const location = await getDetectedLocation()
-    setDetectedLocation(location)
-    setFlowLaunch((prev) => ({
-      key: prev.key + 1,
-      initialState: "current-location-showcase",
-      activeTravelModeUpdate,
-      detectBrowserLocationOnRelocate: true,
-    }))
-    setIdentityFlowOpen(true)
+    openFlow(
+      {
+        initialState: "current-location-showcase",
+        activeTravelModeUpdate,
+        detectBrowserLocationOnRelocate: true,
+      },
+      { detectedLocation: location }
+    )
     },
-    [travelPopup]
+    [travelPopup, openFlow]
   )
-
-  // The Update action shows the server-derived location behind its first screen and asks
-  // for no permission. Choosing "Permanently relocated" is the explicit user action that
-  // asks the browser for its location, through the same call Verify My Account uses; a
-  // denied or failed detection yields the flow's own "couldn't detect" state, never a
-  // made-up location.
-  const refreshLocationForRelocation = useCallback(async () => {
-    setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
-  }, [])
 
   // The live Travel Mode card's Update: the same flow and the same detection as the popup's
   // Update for a reminder (Travel Mode in force, so "Temporarily traveling" changes nothing).
@@ -1075,35 +576,26 @@ export default function TalentDashboard() {
         travelSummary?.loginSessionKey ?? null
       )
       mismatchFlowKindRef.current = kind
-      setDetectedLocation(launch.location)
-      setFlowLaunch((prev) => ({ key: prev.key + 1, initialState: launch.initialState }))
       setLocationMismatchOpen(false)
       setTravelerPromptOpen(false)
-      setIdentityFlowOpen(true)
+      openFlow(
+        { initialState: launch.initialState },
+        { detectedLocation: launch.location }
+      )
     },
-    [travelSummary]
+    [travelSummary, openFlow]
   )
 
   // The flow opened by a popup answer closed. If its duration save succeeded the login is
   // answered (marker written). Otherwise nothing was completed: nothing is written, the
   // in-memory hold is released and /me is read again, so the popup is offered again.
   // Flows opened by anything else are untouched.
+  // (The host owns the flow's open state and, for an Update on a Travel Mode that is already
+  // in force, replaces the flow instance on close so its own no-op confirmation toast never
+  // mounts: see handleIdentityFlowOpenChange in contexts/identity-verification-host.tsx. It
+  // then calls this.)
   const handleIdentityFlowOpenChange = useCallback(
     (open: boolean) => {
-      setIdentityFlowOpen(open)
-      if (!open) {
-        // For an Update on a Travel Mode that is already in force, the flow's "Temporarily
-        // traveling" is a no-op: it opens its own temporary confirmation toast and
-        // closes (components/identity-verification-flow.tsx, which is read-only). That toast
-        // sits on top of this page's persistent alert stack, and the "You are in Travel Mode"
-        // card already says it. The toast's state lives in that flow instance and the open
-        // and the close are batched into one render, so replacing the instance with a fresh
-        // one in the same update means the toast never mounts. Nothing is saved or sent, and
-        // a first-time activation (no activeTravelModeUpdate) keeps its confirmation screen.
-        setFlowLaunch((prev) =>
-          prev.activeTravelModeUpdate ? { ...prev, key: prev.key + 1 } : prev
-        )
-      }
       const kind = mismatchFlowKindRef.current
       if (!open && kind === null) {
         // An ordinary flow closed (Verify My Account, or an Update): re-read /me so what it
@@ -1135,43 +627,6 @@ export default function TalentDashboard() {
     },
     [markTravelerPromptCompleted]
   )
-
-  // The flow's "Temporarily traveling" for an already-active traveler (Update): Travel Mode is
-  // confirmed again. The backend creates a new persistent "Travel Mode is on" occurrence (the
-  // period's dates are untouched); on success the live Update card is hidden for the rest of
-  // this login (the same per-login marker an activation uses) and the new alert is awaited.
-  // The flow's own toast never mounts (the instance is replaced on close). On failure nothing
-  // is hidden or announced: the Update card stays and the Update screen opens again to retry
-  // with the same confirmation id, so a request that did succeed is stored once.
-  const travelConfirmationRef = useRef<PendingConfirmation>({ current: null })
-  const handleTravelModeConfirmed = useCallback(async () => {
-    const { IdentityVerificationAPI } = await import(
-      "@/service/http/identity-verification"
-    )
-    await confirmActiveTravelMode({
-      confirm: (id) => IdentityVerificationAPI.confirmTravelMode(id),
-      pending: travelConfirmationRef.current,
-      newId: () => globalThis.crypto.randomUUID(),
-      loginSessionKey: liveLoginKey,
-      occurrence: travelSummary?.travelModeEndsAt ?? null,
-      storage: window.localStorage,
-      onConfirmed: (occurrence) => {
-        if (occurrence) {
-          setTravelActivationsHere((prev) => new Set([...prev, occurrence]))
-        }
-        startAlertReconcile(["travel_mode"])
-      },
-      onFailed: (error) => {
-        console.error("[identity-verification] could not confirm Travel Mode", error)
-        setFlowLaunch((prev) => ({
-          key: prev.key + 1,
-          initialState: "current-location-showcase",
-          activeTravelModeUpdate: true,
-        }))
-        setIdentityFlowOpen(true)
-      },
-    })
-  }, [travelSummary, liveLoginKey, startAlertReconcile])
 
   const handleStillTraveling = useCallback(async () => {
     setLocationMismatchBusy(true)
@@ -1225,28 +680,6 @@ export default function TalentDashboard() {
       setLocationMismatchBusy(false)
     }
   }, [openFlowFromMismatch])
-
-  const vpnProxyModalCopy =
-    vpnProxyResult === "vpn_detected"
-      ? {
-          title: "VPN Detected",
-          description:
-            "To protect the integrity of your account and to verify your actual location, we do not allow using vpn services.",
-          instruction: "Please turn off your VPN to continue",
-        }
-      : vpnProxyResult === "proxy_detected"
-        ? {
-            title: "Proxy Detected",
-            description:
-              "To protect the integrity of your account and to verify your actual location, we do not allow the use of proxy services.",
-            instruction: "Please disable your proxy to continue",
-          }
-        : {
-            title: "VPN & Proxy Detected",
-            description:
-              "To protect the integrity of your account and to verify your actual location, we do not allow the use of vpn or proxy services.",
-            instruction: "Please disable your VPN and proxy to continue",
-          }
 
   // Skip, X, Escape or a click outside: not an answer. Nothing is sent and the occurrence
   // stays due; it is only kept from reopening until the next real re-check.
@@ -1382,7 +815,7 @@ export default function TalentDashboard() {
     [checkInConfirmation, readTravelSummary, runIdentityVerificationCheck]
   )
 
-  // "Update my home country" enters the existing home-country flow: the current location
+  // "Change my home country" enters the existing home-country flow: the current location
   // (city, region, country and map), "Is this your home country?", then Didit. Starting
   // that flow is what resolves the check-in on the server; until then it stays due, so it
   // is only kept from reopening while the flow is on screen.
@@ -1402,6 +835,15 @@ export default function TalentDashboard() {
     }
   }, [checkIn, checkInStarting, checkInScopeKey, openFlowFromMismatch])
 
+  // The host calls these when what it did concerns something this page owns.
+  useIdentityVerificationObserver({
+    handleIdentityFlowOpenChange,
+    setProfileBannerShown,
+    runIdentityVerificationCheck,
+    setSuccessAlertKind,
+    handleLiveTravelUpdate,
+  })
+
   return (
     <>
       {showSecurityModal && (
@@ -1411,124 +853,6 @@ export default function TalentDashboard() {
           />
         </div>
       )}
-
-      <Dialog
-        open={vpnProxyModalOpen}
-        onOpenChange={(open) => {
-          if (!open) setVpnProxyModalOpen(false)
-        }}
-      >
-        <DialogContent className="w-[469px]">
-          <div className="flex items-center justify-center">
-            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
-              <AlertTriangle className="size-6" />
-            </div>
-          </div>
-
-          <h1 className="mt-5 text-lg text-center leading-7 text-dark-blue-400 font-semibold">
-            {vpnProxyModalCopy.title}
-          </h1>
-
-          <DialogDescription className="text-sm mt-2 text-center leading-5 text-dark-blue-400">
-            {vpnProxyModalCopy.description}
-          </DialogDescription>
-
-          {vpnProxyModalCopy.instruction && (
-            <div className="mt-6">
-              <p className="text-sm text-center text-dark-blue-400 leading-7">
-                {vpnProxyModalCopy.instruction}
-              </p>
-            </div>
-          )}
-
-          <div className="mt-5 flex justify-center items-center gap-x-3">
-            <Button
-              variant="outlined"
-              size="md"
-              onClick={() => setVpnProxyModalOpen(false)}
-            >
-              Dismiss
-            </Button>
-            <Button
-              className="text-primary-500 bg-primary-50 hover:text-white hover:bg-primary-500"
-              size="md"
-              onClick={() => void handleVerifyMyAccount()}
-            >
-              <RefreshCw className="size-[15px]" />
-              Reload
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={verifiedModalOpen} onOpenChange={setVerifiedModalOpen}>
-        <DialogContent className="max-w-[456px] pt-[50px]">
-          <div className="flex items-center justify-center">
-            <div className="size-12 rounded-full border-[8px] inline-flex items-center justify-center text-success-600 border-success-50 bg-success-100">
-              <CheckCircle className="size-6" />
-            </div>
-          </div>
-
-          <h1 className="text-lg text-center text-dark-blue-400 mt-5 font-semibold leading-7">
-            You’re all set!
-          </h1>
-          <DialogDescription className="text-sm text-center text-dark-blue-400 leading-5 mt-2">
-            Your identity and location have been successfully verified. You can
-            now access all platform features.
-          </DialogDescription>
-
-          <div className="mt-[50px] grid">
-            <Button onClick={handleSuccessDone}>Done</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={pendingModalOpen} onOpenChange={setPendingModalOpen}>
-        <DialogContent className="max-w-[456px] pt-[50px]">
-          <div className="flex items-center justify-center">
-            <div className="size-12 rounded-full border-[8px] inline-flex items-center justify-center text-success-600 border-success-50 bg-success-100">
-              <CheckCircle className="size-6" />
-            </div>
-          </div>
-
-          <h1 className="text-lg text-center text-dark-blue-400 mt-5 font-semibold leading-7">
-            Your verification has been submitted
-          </h1>
-          <DialogDescription className="text-sm text-center text-dark-blue-400 leading-5 mt-2">
-            Once approved, your new location will be confirmed and your profile
-            will be updated. You’ll receive a notification when the verification
-            is complete.
-          </DialogDescription>
-
-          <div className="mt-[50px] grid">
-            <Button onClick={() => setPendingModalOpen(false)}>Done</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={cooldownRetryTime !== null}
-        onOpenChange={(open) => {
-          if (!open) setCooldownRetryTime(null)
-        }}
-      >
-        <DialogContent className="w-[469px] pt-[50px]">
-          <div className="flex items-center justify-center">
-            <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
-              <AlertTriangle className="size-6" />
-            </div>
-          </div>
-
-          <h1 className="mt-5 text-lg text-center leading-7 text-dark-blue-400 font-semibold">
-            You’ve used all three attempts
-          </h1>
-
-          <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
-            {retryWhen &&
-              `You can try again on ${retryWhen.date} at ${retryWhen.time}. Nothing is lost — your account stays as it is until then.`}
-          </DialogDescription>
-        </DialogContent>
-      </Dialog>
 
       {/* "Still traveling?" check-in (Figma 13101-46785) and its duration question
           (13101-46818, "asked before" copy from the second answer on). Built from the
@@ -1541,7 +865,7 @@ export default function TalentDashboard() {
         }}
       >
         {checkIn?.phase === "prompt" && (
-          <DialogContent className="w-[405px] pt-[50px]">
+          <DialogContent className={CHECK_IN_PROMPT_DIALOG_CLASS}>
             <div className="flex items-center justify-center">
               <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
                 <AlertTriangle className="size-6" />
@@ -1557,7 +881,7 @@ export default function TalentDashboard() {
               </DialogDescription>
             </div>
 
-            <div className="mt-[50px] flex items-center justify-center gap-x-3">
+            <div className={CHECK_IN_PROMPT_ACTIONS_CLASS}>
               <Button
                 variant="outlined"
                 visual="gray"
@@ -1568,9 +892,12 @@ export default function TalentDashboard() {
                 {CHECK_IN_COPY.prompt.stillTraveling}
               </Button>
               <Button
+                className={CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS}
                 variant="light"
                 size="md"
                 disabled={checkInStarting}
+                loading={checkInStarting}
+                aria-busy={checkInStarting}
                 onClick={() => void handleCheckInUpdateHomeCountry()}
               >
                 {CHECK_IN_COPY.prompt.updateHomeCountry}
@@ -1620,15 +947,15 @@ export default function TalentDashboard() {
               onValueChange={(label) => void handleCheckInAnswer(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                <div key={label} className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
                   <RadioGroupItem
-                    className="cursor-pointer disabled:cursor-not-allowed"
+                    className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                     value={label}
                     id={`check-in-duration-${index}`}
                   />
                   <Label
                     htmlFor={`check-in-duration-${index}`}
-                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                    className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
                   >
                     {label}
                   </Label>
@@ -1763,15 +1090,15 @@ export default function TalentDashboard() {
               onValueChange={(label) => void handleCheckInRevise(label)}
             >
               {CHECK_IN_DURATION_LABELS.map((label, index) => (
-                <div key={label} className="group flex w-fit origin-left items-center gap-x-3 transition-transform duration-150 ease-out active:scale-[0.99] has-[:disabled]:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100">
+                <div key={label} className={TRAVEL_DURATION_OPTION_ROW_CLASS}>
                   <RadioGroupItem
-                    className="cursor-pointer disabled:cursor-not-allowed"
+                    className={TRAVEL_DURATION_OPTION_RADIO_CLASS}
                     value={label}
                     id={`check-in-revise-duration-${index}`}
                   />
                   <Label
                     htmlFor={`check-in-revise-duration-${index}`}
-                    className="transition-[color,font-weight] duration-150 ease-out group-hover:font-semibold group-hover:text-gray-900 group-has-[:disabled]:cursor-not-allowed group-has-[:disabled]:group-hover:font-medium group-has-[:disabled]:group-hover:text-gray-800 motion-reduce:transition-none"
+                    className={TRAVEL_DURATION_OPTION_LABEL_CLASS}
                   >
                     {label}
                   </Label>
@@ -1823,23 +1150,45 @@ export default function TalentDashboard() {
               checking if you’re still away.
             </DialogDescription>
 
-            <div className="mt-[50px] grid grid-cols-2 gap-x-3">
+            <div className="mx-auto mt-[50px] grid w-full max-w-[calc(100vw-2rem)] grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3">
               <Button
                 variant="outlined"
                 size="md"
                 disabled={locationMismatchBusy}
-                onClick={() =>
-                  travelerPromptOpen
-                    ? void handleTravelerStillTraveling()
-                    : void handleStillTraveling()
+                loading={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "still-traveling"
                 }
+                aria-busy={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "still-traveling"
+                }
+                onClick={() => {
+                  if (locationMismatchBusy) return
+                  setLocationMismatchAction("still-traveling")
+                  void (travelerPromptOpen
+                    ? handleTravelerStillTraveling()
+                    : handleStillTraveling())
+                }}
               >
                 I’m still traveling
               </Button>
               <Button
                 size="md"
                 disabled={locationMismatchBusy}
-                onClick={() => void handleChangeHomeCountry()}
+                loading={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "change-home-country"
+                }
+                aria-busy={
+                  locationMismatchBusy &&
+                  locationMismatchAction === "change-home-country"
+                }
+                onClick={() => {
+                  if (locationMismatchBusy) return
+                  setLocationMismatchAction("change-home-country")
+                  void handleChangeHomeCountry()
+                }}
               >
                 Change my home country
               </Button>
@@ -1968,135 +1317,6 @@ export default function TalentDashboard() {
         <ToastViewport className="top-5 right-5 left-auto bottom-auto w-auto max-w-[400px] flex-col gap-3 p-0 sm:top-5 sm:right-5 sm:left-auto sm:bottom-auto sm:flex-col md:max-w-[400px]" />
       </ToastProvider>
 
-      <AccountVerificationGate
-        open={verificationGateOpen}
-        reason="unstarted"
-        connectionCheckState={connectionCheckState}
-        onVerify={() => void handleVerifyMyAccount()}
-        onRetryConnectionCheck={() => void handleVerifyMyAccount()}
-        onDismissConnectionError={() => setConnectionCheckState("idle")}
-      />
-
-      {detectedLocation && (
-        <IdentityVerificationFlow
-          key={flowLaunch.key}
-          open={identityFlowOpen}
-          onOpenChange={handleIdentityFlowOpenChange}
-          detectedLocation={detectedLocation}
-          initialState={flowLaunch.initialState}
-          activeTravelModeUpdate={flowLaunch.activeTravelModeUpdate}
-          onTravelModeConfirmed={() => void handleTravelModeConfirmed()}
-          onPermanentlyRelocated={
-            flowLaunch.detectBrowserLocationOnRelocate
-              ? refreshLocationForRelocation
-              : undefined
-          }
-        />
-      )}
-
-      {/* Persistent status alerts (PMCM-651): a fixed top-right overlay, outside the dashboard
-          layout, so nothing on the page moves when an alert appears or is dismissed. Same
-          corner as the existing toasts (right 20px), 20px below the header (64px from md up, 92px
-          on phones, where it has a second row). Below md it spans the screen with 16px margins. Newest
-          first, three at most, 12px apart, no timeout. The wrapper ignores the pointer so
-          it never blocks the page; only the cards take it. */}
-      {(statusAlertStack.visible.length > 0 ||
-        statusAlertDismissFailed) && (
-        <div
-          data-status-alert-stack
-          className="pointer-events-none fixed left-4 right-4 top-[112px] z-40 flex flex-col items-end gap-3 md:left-auto md:right-5 md:top-[84px] md:w-[400px]"
-        >
-          {statusAlertStack.visible.filter(isRenderedAlert).map((card) => (
-            // Figma nodes 13101-46846 (Travel Mode, 98px), 13101-47555 (location verification
-            // submitted, 118px), 13101-47566 (verified, 118px) and 13101-47577 (home country
-            // updated, 98px): one card, a different icon and copy each. Figma's 16px padding
-            // sits over its 1px stroke, so padding is 15px here (border-box + 1px border) to
-            // keep the icon 16px from the edge and the content 368px; the 36px close button is
-            // 8px from the corner, i.e. 7px from the padding box.
-            <Alert
-              key={card.key}
-              data-status-alert={card.type}
-              className="pointer-events-auto relative w-full max-w-[400px] items-start md:w-[400px] gap-x-5 rounded-xl border-gray-100 bg-white p-[15px] text-gray-900 shadow-[0px_12px_16px_-4px_rgba(16,24,40,0.08),0px_4px_6px_-2px_rgba(16,24,40,0.03)]"
-            >
-              <AlertIcon className="flex size-[66px] shrink-0 items-center justify-center rounded-full border-[9.9px] border-primary-25 bg-primary-50">
-                {card.type === "submitted_for_review" ? (
-                  <ClockStopwatch className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
-                ) : card.type === "verified" ? (
-                  <CheckCircle className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
-                ) : card.type === "home_country_updated" ? (
-                  <MarkerPin01 className="size-[24.75px] translate-x-[0.38px] -translate-y-[0.62px] text-primary-500" />
-                ) : card.type === "travel_mode_ongoing" ? (
-                  <Plane className="size-[24.75px] translate-x-[0.38px] translate-y-[0.38px] text-primary-500" />
-                ) : (
-                  <Plane className="size-[24.75px] text-primary-500" />
-                )}
-              </AlertIcon>
-              <AlertContent className="flex min-w-0 flex-col gap-1 pr-10 pt-0.5">
-                <AlertTitle className="text-sm font-semibold leading-5 text-gray-900">
-                  {card.title}
-                </AlertTitle>
-                <AlertDescription className="mt-0 text-sm font-normal leading-5 text-gray-600">
-                  {card.body}
-                </AlertDescription>
-                {card.source === "live" && (
-                  // Figma node 13101-47532: 16px under the text block (4px gap + 12px).
-                  <Button
-                    variant="link"
-                    className="mt-3 h-5 w-fit justify-start p-0 text-sm font-semibold leading-5"
-                    onClick={() => void handleLiveTravelUpdate()}
-                  >
-                    {card.actionLabel}
-                  </Button>
-                )}
-              </AlertContent>
-              <IconButton
-                aria-label={STATUS_ALERT_CLOSE_LABEL}
-                className="absolute right-[7px] top-[7px] size-9 text-gray-500"
-                size="md"
-                visual="gray"
-                variant="ghost"
-                onClick={() => {
-                  setStatusAlertDismissFailed(false)
-                  if (card.source === "live") {
-                    handleDismissLiveAlert(card)
-                    return
-                  }
-                  void dismissPersistentAlertOptimistically({
-                    alert: card,
-                    dismiss: StatusAlertsAPI.dismiss,
-                    update: setStatusAlertDismissal,
-                  }).then((outcome) => {
-                    if (outcome.ok) return
-                    console.error(
-                      "[status-alerts] could not dismiss the alert",
-                      outcome.error
-                    )
-                    setStatusAlertDismissFailed(true)
-                  })
-                }}
-              >
-                <X className="size-5" />
-              </IconButton>
-            </Alert>
-          ))}
-          {statusAlertDismissFailed && (
-            <Alert
-              variant="error"
-              data-status-alert-error
-              className="pointer-events-auto w-full max-w-[400px] md:w-[400px]"
-            >
-              <AlertContent>
-                <AlertTitle>{STATUS_ALERT_DISMISS_ERROR}</AlertTitle>
-              </AlertContent>
-              <CloseButton
-                aria-label="Close"
-                onClick={() => setStatusAlertDismissFailed(false)}
-              />
-            </Alert>
-          )}
-        </div>
-      )}
-
       <AuthenticatedRoute>
         <div className="flex bg-gray-50">
           <LeftSidebar />
@@ -2122,9 +1342,11 @@ export default function TalentDashboard() {
                     <div className="mt-3 flex items-center gap-x-3 text-sm font-semibold">
                       <Button
                         variant="link"
-                        className="h-5 gap-x-2 p-0 text-sm font-semibold leading-5 text-warning-600"
+                        className="h-5 min-w-[178px] justify-start gap-x-2 p-0 text-sm font-semibold leading-5 text-warning-600"
                         disabled={connectionCheckState === "checking"}
-                        onClick={() => void handleVerifyMyAccount()}
+                        loading={bannerVerifyPending}
+                        aria-busy={bannerVerifyPending}
+                        onClick={() => void handleBannerVerifyMyAccount()}
                       >
                         Verify My Account
                         <ArrowRight className="size-5" />

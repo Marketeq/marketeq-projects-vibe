@@ -1,5 +1,6 @@
 "use client";
 
+import { isCreateListingBlocked } from "@/src/lib/api/create-listing-gate";
 import {
   CSSProperties,
   Fragment,
@@ -278,6 +279,8 @@ type SmartAssistantEditableField =
   | "overview"
   | "benefits"
   | "responsibilities";
+
+const SMART_ASSISTANT_SHORTEN_COMMAND = "Shorten it";
 
 const SMART_ASSISTANT_FIELD_MAX_LENGTH: Record<
   SmartAssistantEditableField,
@@ -2073,10 +2076,13 @@ const escapeHtmlText = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+// `preferredOffset` is the plain-text offset of the selection in the field, so
+// the occurrence the user selected is replaced rather than the first match.
 const replaceFirstTextInRichTextHtml = (
   html: string,
   selectedText: string,
-  replacementText: string
+  replacementText: string,
+  preferredOffset?: number
 ): { html: string; replaced: boolean } => {
   const trimmedSelectedText = selectedText.trim();
 
@@ -2098,20 +2104,47 @@ const replaceFirstTextInRichTextHtml = (
     window.NodeFilter.SHOW_TEXT
   );
   let currentNode = walker.nextNode();
+  let nodeStartOffset = 0;
+  let bestMatch: { node: Node; index: number; distance: number } | null = null;
 
   while (currentNode) {
     const textContent = currentNode.textContent ?? "";
-    const matchIndex = textContent.indexOf(trimmedSelectedText);
+    let matchIndex = textContent.indexOf(trimmedSelectedText);
 
-    if (matchIndex !== -1) {
-      currentNode.textContent =
-        textContent.slice(0, matchIndex) +
-        replacementText +
-        textContent.slice(matchIndex + trimmedSelectedText.length);
-      return { html: container.innerHTML, replaced: true };
+    while (matchIndex !== -1) {
+      const distance =
+        preferredOffset === undefined
+          ? 0
+          : Math.abs(nodeStartOffset + matchIndex - preferredOffset);
+
+      if (!bestMatch || distance < bestMatch.distance) {
+        bestMatch = { node: currentNode, index: matchIndex, distance };
+      }
+
+      if (preferredOffset === undefined || distance === 0) break;
+
+      matchIndex = textContent.indexOf(
+        trimmedSelectedText,
+        matchIndex + trimmedSelectedText.length
+      );
     }
 
+    if (bestMatch && (preferredOffset === undefined || bestMatch.distance === 0)) {
+      break;
+    }
+
+    nodeStartOffset += textContent.length;
     currentNode = walker.nextNode();
+  }
+
+  if (bestMatch) {
+    const textContent = bestMatch.node.textContent ?? "";
+
+    bestMatch.node.textContent =
+      textContent.slice(0, bestMatch.index) +
+      replacementText +
+      textContent.slice(bestMatch.index + trimmedSelectedText.length);
+    return { html: container.innerHTML, replaced: true };
   }
 
   const nextHtml = html.replace(trimmedSelectedText, escapeHtmlText(replacementText));
@@ -3434,6 +3467,9 @@ type JobListingDraftDetails = {
   briefFilename?: string;
   briefSizeBytes?: number;
   tools?: string[];
+  // Set once the tools list has been generated or edited, so a list the client
+  // emptied on purpose is not regenerated when they return to the step.
+  toolsReviewed?: boolean;
   jobType?: string;
   ndaEnabled?: boolean;
   ndaDocumentId?: string | null;
@@ -9028,6 +9064,25 @@ const durationOptions = [
 
 const projectDurationUnits = ["days", "weeks", "months", "quarters", "years"];
 
+// AC-JC-30: a custom duration in any unit is stored as whole months, the same
+// conversion the Team and Individual step uses.
+const convertCustomDurationToMonths = (amount: number, unit: string) => {
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
+
+  switch (unit) {
+    case "days":
+      return Math.max(1, Math.ceil(amount / 30));
+    case "weeks":
+      return Math.max(1, Math.ceil(amount / 4));
+    case "quarters":
+      return amount * 3;
+    case "years":
+      return amount * 12;
+    default:
+      return amount;
+  }
+};
+
 const getDurationSelectionFromMonths = (months?: number) => {
   if (typeof months !== "number" || !Number.isFinite(months)) {
     return "3-months-0";
@@ -9349,8 +9404,8 @@ const DescribeProjectStep = ({
   const durationMonths =
     selectedDurationOption?.unit === "months"
       ? Number(selectedDurationOption.value)
-      : isCustomDurationSelected && customDurationUnit === "months"
-        ? customDurationAmount || undefined
+      : isCustomDurationSelected
+        ? convertCustomDurationToMonths(customDurationAmount, customDurationUnit)
         : undefined;
   const getDraftDurationMonths = useCallback(
     (
@@ -9368,11 +9423,11 @@ const DescribeProjectStep = ({
         return Number(nextSelectedDurationOption.value);
       }
 
-      if (
-        nextSelectedDurationOption?.value === "Other" &&
-        nextCustomDurationUnit === "months"
-      ) {
-        return nextCustomDurationAmount || undefined;
+      if (nextSelectedDurationOption?.value === "Other") {
+        return convertCustomDurationToMonths(
+          nextCustomDurationAmount,
+          nextCustomDurationUnit,
+        );
       }
 
       return undefined;
@@ -9719,7 +9774,7 @@ const DescribeProjectStep = ({
                       : "What do you want to accomplish with this project?"}
                 </Label>
                 <span className={firstQuestionCounterClassName}>
-                  {descriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {descriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
@@ -9751,7 +9806,7 @@ const DescribeProjectStep = ({
                       What are the main tasks or deliverables?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -9967,7 +10022,7 @@ const DescribeProjectStep = ({
                     What are the main tasks or deliverables?
                   </Label>
                   <span className="text-sm leading-5 font-normal text-gray-400">
-                    {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                   </span>
                 </div>
                 <Textarea
@@ -10513,7 +10568,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10543,7 +10598,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className="text-xs leading-[18px] text-gray-500">
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10582,15 +10637,21 @@ const DescribeProjectStep = ({
 const ReviewToolsTechnologiesStep = ({
   setProgress,
   source = "project",
+  hiringMode,
   jobListingId,
 }: ProgressProps & {
   source?: "project" | "service" | "roles";
+  hiringMode?: HiringModeChoice;
   jobListingId?: string | null;
 }) => {
   const { toggleValidation } = useStepContext();
   const { details, setDetails } = useJobListingDraftContext();
   const [tools, setTools] = useState(() =>
-    details.tools?.length ? details.tools : serviceToolTags,
+    details.tools?.length
+      ? details.tools
+      : details.toolsReviewed
+        ? []
+        : serviceToolTags,
   );
   const [isGeneratingTools, setIsGeneratingTools] = useState(false);
   const [toolAutocompleteOptions, setToolAutocompleteOptions] = useState<
@@ -10620,7 +10681,11 @@ const ReviewToolsTechnologiesStep = ({
   const updateTools = useCallback(
     (nextTools: string[]) => {
       setTools(nextTools);
-      setDetails((current) => ({ ...current, tools: nextTools }));
+      setDetails((current) => ({
+        ...current,
+        tools: nextTools,
+        toolsReviewed: true,
+      }));
     },
     [setDetails],
   );
@@ -10674,6 +10739,7 @@ const ReviewToolsTechnologiesStep = ({
     if (
       !jobListingId ||
       didRequestGeneratedToolsRef.current ||
+      details.toolsReviewed ||
       details.tools?.length
     ) {
       return;
@@ -10703,6 +10769,8 @@ const ReviewToolsTechnologiesStep = ({
   }, [
     details.deliverables,
     details.description,
+    details.toolsReviewed,
+    details.tools?.length,
     jobListingId,
     source,
     updateTools,
@@ -10723,7 +10791,9 @@ const ReviewToolsTechnologiesStep = ({
             <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
               We&apos;ve generated a list based on your{" "}
               {source === "roles"
-                ? "roles' description"
+                ? hiringMode === "individual"
+                  ? "role description"
+                  : "roles' description"
                 : source === "service"
                   ? "service details"
                   : "project details"}
@@ -10877,6 +10947,8 @@ const teamRoleLocationPillClassName = `${teamRolePillClassName} w-[108px]`;
 const teamRoleExperiencePillClassName = `${teamRolePillClassName} w-[73px]`;
 const teamRoleSchedulePillClassName = `${teamRolePillClassName} w-[92px]`;
 const teamRoleLengthPillClassName = `${teamRolePillClassName} w-[92px]`;
+const teamRoleReadOnlyPillClassName =
+  "h-7 w-fit max-w-full gap-x-1.5 rounded-[5px] border border-solid border-gray-200 bg-white px-2 py-[5px] text-xs font-medium leading-[18px] text-gray-700 opacity-65 mix-blend-normal";
 
 const renderLocationOptionLabel = (location?: string) => {
   const flagUrl = location ? getFlagUrlByName(location) : null;
@@ -10999,16 +11071,23 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
           const assignedHourlyRateUsdCents = getCandidateHourlyRateUsdCents(
             assignedMember?.hourlyRate,
           );
-          const assigneeName = assignedMember
-            ? [assignedMember.firstName, assignedMember.username && `@${assignedMember.username}`]
-                .filter(Boolean)
-                .join(" ") || "Assigned Member"
-            : null;
+          const assignedUserId =
+            row?.assignedUserId ?? assignedMember?.userId ?? null;
+          const assignedUsername =
+            assignedMember?.username ?? row?.assignedUsername;
+          const assigneeName = [
+            assignedMember?.firstName,
+            assignedUsername && `@${String(assignedUsername).replace(/^@/, "")}`,
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return createTeamRoleRow(index, {
             role,
-            assignee: assigneeName ?? (row?.assignedUserId ? "Assigned Member" : "Unassigned Member"),
-            assigneeUserId: row?.assignedUserId ?? null,
+            assignee:
+              assigneeName ||
+              (assignedUserId ? "Assigned Member" : "Unassigned Member"),
+            assigneeUserId: assignedUserId,
             assigneeHourlyRateUsdCents: assignedHourlyRateUsdCents,
             location: String(row?.location ?? "USA"),
             experience: toTeamRoleExperience(
@@ -11029,7 +11108,7 @@ const createTeamRoleRowsFromApi = (rows: unknown): TeamRoleRow[] =>
                     row?.hourlyRateLowUsdCents,
                     row?.hourlyRateHighUsdCents,
                   ),
-            editable: true,
+            editable: !assignedUserId,
           });
         })
         .filter((row): row is TeamRoleRow => Boolean(row))
@@ -11826,7 +11905,7 @@ const NoScopeRoleInfoStep = ({
             <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
-                : "Describe role you need"}
+                : "Describe the role you need"}
             </h1>
 
             <div
@@ -11860,7 +11939,7 @@ const NoScopeRoleInfoStep = ({
                     useNoScopeLayout && "font-normal",
                   )}
                 >
-                  {roleDescriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {roleDescriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
@@ -11873,7 +11952,11 @@ const NoScopeRoleInfoStep = ({
                   hasWordLimitError &&
                     "border-error-300 focus:border-error-300 focus:ring-error-100",
                 )}
-                placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                placeholder={
+                  isTeamMode
+                    ? "Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                    : "Add key tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                }
                 value={roleDescription}
                 isInvalid={hasWordLimitError}
                 onChange={(event) => setRoleDescription(event.target.value)}
@@ -13539,7 +13622,10 @@ const ProjectScopeEditStep = ({
                   ))}
                 </div>
               ) : (
-                visiblePhases.map((phase, phaseIndex) => {
+                visiblePhases.map((phase) => {
+                // Search only filters the list, so a phase keeps its number and
+                // day range from its position in the full scope.
+                const phaseIndex = phases.indexOf(phase)
                 const phaseName = phase.phaseName ?? `Phase ${phaseIndex + 1}`
                 const isExpanded = expandedPhaseNames.includes(phaseName)
                 const phaseNameParts = phaseName.split(" ")
@@ -14367,17 +14453,13 @@ const VariableInsertIcon = ({ className }: { className?: string }) => (
     className={className}
     width="12"
     height="12"
-    viewBox="0 0 12 12"
+    viewBox="0 0 24 24"
     fill="none"
     aria-hidden="true"
     xmlns="http://www.w3.org/2000/svg"
   >
     <path
-      d="M1.5 3.25c0-.414.336-.75.75-.75h5.5c.414 0 .75.336.75.75V5H7.25V3.75h-4.5v4.5h4.5V7H8.5v1.75c0 .414-.336.75-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z"
-      fill="currentColor"
-    />
-    <path
-      d="M7 4.75 10.75 6.5 7 8.25v-1.2H4.75v-1.1H7v-1.2Z"
+      d="M3 17V7h18v4h-2V9H5v6h9v2zm2-2V9zm16.6 5L18 16.425V19.5h-2V13h6.5v2h-3.1l3.6 3.6z"
       fill="currentColor"
     />
   </svg>
@@ -14769,6 +14851,28 @@ const useDynamicFinalReviewSkills = () => {
   return { skills, setSkills, addSkill, removeSkill, addSkillDialog }
 }
 
+const getSelectionTextOffsetInField = (field: HTMLElement | null) => {
+  if (typeof window === "undefined" || !field) return undefined
+
+  const editor = field.querySelector<HTMLElement>(".ProseMirror")
+  const selection = window.getSelection()
+
+  if (!editor || !selection || selection.rangeCount === 0) return undefined
+
+  const range = selection.getRangeAt(0)
+
+  if (!editor.contains(range.startContainer)) return undefined
+
+  const textBeforeSelection = window.document.createRange()
+  textBeforeSelection.selectNodeContents(editor)
+  textBeforeSelection.setEnd(range.startContainer, range.startOffset)
+
+  const selectedRaw = range.toString()
+  const leadingWhitespace = selectedRaw.length - selectedRaw.trimStart().length
+
+  return textBeforeSelection.toString().length + leadingWhitespace
+}
+
 const FinalReviewRichTextField = ({
   title,
   initialValue = "",
@@ -14831,13 +14935,16 @@ const FinalReviewRichTextField = ({
   const handleSmartAssistant = (
     selection: FinalReviewSmartAssistantSelection
   ) => {
+    const selectionOffset = getSelectionTextOffsetInField(fieldRef.current)
+
     onSmartAssistant?.({
       ...selection,
       insertText: (replacementText: string, targetText?: string) => {
         const replacement = replaceFirstTextInRichTextHtml(
           valueRef.current,
           targetText ?? selection.selectedText,
-          replacementText
+          replacementText,
+          selectionOffset
         )
 
         const nextValue = replacement.html
@@ -15011,7 +15118,7 @@ const useFinalReviewSmartAssistant = ({
 
       selectedTextInsertRef.current = payload.insertText
       setSelectedText(trimmedText)
-      setMessage("")
+      setMessage(SMART_ASSISTANT_SHORTEN_COMMAND)
     },
     []
   )
@@ -15443,6 +15550,15 @@ const resolveFinalReviewAssistantField = (
 
   return "responsibilities"
 }
+
+// AC-JC-84: with no field in focus the panel offers one action per field.
+const getFinalReviewAssistantNoFocusActions = (
+  workType: "Project" | "Service"
+): { label: string; field: SmartAssistantEditableField }[] => [
+  { label: `Change a ${workType} Title`, field: "title" },
+  { label: "Rewrite Overview", field: "overview" },
+  { label: "Rewrite Benefits", field: "benefits" },
+]
 
 type RoleDescriptionDraft = {
   roleTitle?: string
@@ -16152,10 +16268,10 @@ const FinalServiceReviewStep = ({
   const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
   const visibleRoleOptions = showAllRoleOptions
     ? roleOptions
-    : roleOptions.slice(0, 4)
+    : roleOptions.slice(0, 5)
   const remainingRoleCount = Math.max(
     0,
-    roleOptions.length - visibleRoleOptions.length
+    roleOptions.length - 5
   )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
@@ -16170,7 +16286,7 @@ const FinalServiceReviewStep = ({
   const [isGeneratingBasicInformation, setIsGeneratingBasicInformation] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const didGenerateBasicInformationRef = useRef(false)
   const didGenerateRoleDescriptionsRef = useRef(false)
   const { skills, setSkills, addSkill, removeSkill, addSkillDialog } =
@@ -16262,8 +16378,17 @@ const FinalServiceReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]",
+      suggestion === "Change a Service Title" && "w-fit"
     )
+  const serviceAssistantVisibleActions = activeAssistantField
+    ? serviceAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Service")
   useEffect(() => {
     window.requestAnimationFrame(() => {
       const scrollContainer = serviceAssistantScrollRef.current
@@ -16277,6 +16402,21 @@ const FinalServiceReviewStep = ({
   useEffect(() => {
     setShowServiceAssistantFollowUps(false)
   }, [latestServiceAssistantItem?.id])
+
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = serviceAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showServiceAssistantFollowUps,
+    serviceAssistantFollowUpSuggestions.length,
+  ])
 
   useEffect(() => {
     if (!roleOptions.includes(selectedRole)) {
@@ -16678,14 +16818,7 @@ const FinalServiceReviewStep = ({
                 />
 
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
-                  <div
-                    className={cn(
-                      "flex w-full items-start gap-2 self-stretch p-0",
-                      showAllRoleOptions
-                        ? "flex-wrap"
-                        : "h-10 flex-nowrap overflow-hidden"
-                    )}
-                  >
+                  <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
                     {visibleRoleOptions.map((role) => (
                       <Button
                         key={role}
@@ -16708,9 +16841,12 @@ const FinalServiceReviewStep = ({
                         visual="gray"
                         type="button"
                         className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
-                        onClick={() => setShowAllRoleOptions(true)}
+                        aria-expanded={showAllRoleOptions}
+                        onClick={() => setShowAllRoleOptions((current) => !current)}
                       >
-                        + {remainingRoleCount} More
+                        {showAllRoleOptions
+                          ? "Show Less"
+                          : `+ ${remainingRoleCount} More`}
                       </Button>
                     ) : null}
                   </div>
@@ -16808,21 +16944,21 @@ const FinalServiceReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {serviceAssistantQuickActions[activeAssistantField].map((item) => (
+                {serviceAssistantVisibleActions.map((item) => (
                   <Button
-                    key={`${activeAssistantField}-${item}`}
+                    key={`${item.field}-${item.label}`}
                     className={cn(
                       "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                      getServiceAssistantSuggestionWidthClass(item)
+                      getServiceAssistantSuggestionWidthClass(item.label)
                     )}
                     variant="outlined"
                     visual="gray"
                     disabled={serviceAssistant.isLoading}
                     onClick={() =>
-                      serviceAssistant.run(item, activeAssistantField)
+                      serviceAssistant.run(item.label, item.field)
                     }
                   >
-                    <span className="h-5 shrink-0">{item}</span>
+                    <span className="h-5 shrink-0">{item.label}</span>
                   </Button>
                 ))}
               </div>
@@ -16905,7 +17041,7 @@ const FinalServiceReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -16926,11 +17062,13 @@ const FinalServiceReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={serviceAssistant.isLoading}
                               onClick={() => serviceAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -16943,23 +17081,23 @@ const FinalServiceReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {serviceAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowServiceAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showServiceAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showServiceAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -16973,21 +17111,19 @@ const FinalServiceReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getServiceAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={serviceAssistant.isLoading}
                           onClick={() =>
                             serviceAssistant.run(
                               suggestion,
                               latestServiceAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -17053,7 +17189,10 @@ const FinalServiceReviewStep = ({
                     onClick={() =>
                       serviceAssistant.run(
                         serviceAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            serviceAssistant.message
+                          )
                       )
                     }
                   >
@@ -17091,10 +17230,10 @@ const FinalProjectReviewStep = ({
   const [showAllRoleOptions, setShowAllRoleOptions] = useState(false)
   const visibleRoleOptions = showAllRoleOptions
     ? roleOptions
-    : roleOptions.slice(0, 4)
+    : roleOptions.slice(0, 5)
   const remainingRoleCount = Math.max(
     0,
-    roleOptions.length - visibleRoleOptions.length
+    roleOptions.length - 5
   )
   const [ndaChoice, setNdaChoice] = useState<"yes" | "no">(
     details.ndaEnabled === true ? "yes" : "no"
@@ -17111,7 +17250,7 @@ const FinalProjectReviewStep = ({
   const [isGeneratingRoleDescriptions, setIsGeneratingRoleDescriptions] =
     useState(false)
   const [activeAssistantField, setActiveAssistantField] =
-    useState<SmartAssistantEditableField>("title")
+    useState<SmartAssistantEditableField | null>(null)
   const [showProjectAssistantFollowUps, setShowProjectAssistantFollowUps] =
     useState(false)
   const projectAssistantScrollRef = useRef<HTMLDivElement | null>(null)
@@ -17180,6 +17319,21 @@ const FinalProjectReviewStep = ({
     setShowProjectAssistantFollowUps(false)
   }, [latestProjectAssistantItem?.id])
 
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = projectAssistantScrollRef.current
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      })
+    })
+  }, [
+    showProjectAssistantFollowUps,
+    projectAssistantFollowUpSuggestions.length,
+  ])
+
   const projectAssistantQuickActions: Record<
     SmartAssistantEditableField,
     string[]
@@ -17218,8 +17372,17 @@ const FinalProjectReviewStep = ({
       suggestion === "Highlight learning opportunities" && "w-[248px]",
       suggestion === "Add more specifics" && "w-[169px]",
       suggestion === "Simplify the task list" && "w-[184px]",
-      suggestion === "Group similar tasks" && "w-[181px]"
+      suggestion === "Group similar tasks" && "w-[181px]",
+      suggestion === "Change a Project Title" && "w-[187px]",
+      suggestion === "Rewrite Overview" && "w-[157px]",
+      suggestion === "Rewrite Benefits" && "w-[149px]"
     )
+  const projectAssistantVisibleActions = activeAssistantField
+    ? projectAssistantQuickActions[activeAssistantField].map((label) => ({
+        label,
+        field: activeAssistantField,
+      }))
+    : getFinalReviewAssistantNoFocusActions("Project")
   const didGenerateBasicInformationRef = useRef(false)
   useEffect(() => {
     if (!jobListingId || didGenerateBasicInformationRef.current) return
@@ -17640,14 +17803,7 @@ const FinalProjectReviewStep = ({
                 />
 
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
-                  <div
-                    className={cn(
-                      "flex w-full items-start gap-2 self-stretch p-0",
-                      showAllRoleOptions
-                        ? "flex-wrap"
-                        : "h-10 flex-nowrap overflow-hidden"
-                    )}
-                  >
+                  <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
                     {visibleRoleOptions.map((role) => (
                       <Button
                         key={role}
@@ -17670,9 +17826,12 @@ const FinalProjectReviewStep = ({
                         visual="gray"
                         type="button"
                         className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
-                        onClick={() => setShowAllRoleOptions(true)}
+                        aria-expanded={showAllRoleOptions}
+                        onClick={() => setShowAllRoleOptions((current) => !current)}
                       >
-                        + {remainingRoleCount} More
+                        {showAllRoleOptions
+                          ? "Show Less"
+                          : `+ ${remainingRoleCount} More`}
                       </Button>
                     ) : null}
                   </div>
@@ -17770,25 +17929,23 @@ const FinalProjectReviewStep = ({
                 </p>
               </div>
               <div className="flex h-[136px] w-[282px] shrink-0 flex-col items-start gap-2 self-stretch">
-                {projectAssistantQuickActions[activeAssistantField].map(
-                  (item) => (
-                    <Button
-                      key={`${activeAssistantField}-${item}`}
-                      className={cn(
-                        "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                        getProjectAssistantSuggestionWidthClass(item)
-                      )}
-                      variant="outlined"
-                      visual="gray"
-                      disabled={projectAssistant.isLoading}
-                      onClick={() =>
-                        projectAssistant.run(item, activeAssistantField)
-                      }
-                    >
-                      <span className="h-5 shrink-0">{item}</span>
-                    </Button>
-                  )
-                )}
+                {projectAssistantVisibleActions.map((item) => (
+                  <Button
+                    key={`${item.field}-${item.label}`}
+                    className={cn(
+                      "h-10 justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
+                      getProjectAssistantSuggestionWidthClass(item.label)
+                    )}
+                    variant="outlined"
+                    visual="gray"
+                    disabled={projectAssistant.isLoading}
+                    onClick={() =>
+                      projectAssistant.run(item.label, item.field)
+                    }
+                  >
+                    <span className="h-5 shrink-0">{item.label}</span>
+                  </Button>
+                ))}
               </div>
               {projectAssistant.history.length > 0 ? (
                 <div className="flex w-[282px] flex-col items-start gap-6 self-stretch">
@@ -17869,7 +18026,7 @@ const FinalProjectReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-3 text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return
@@ -17890,13 +18047,15 @@ const FinalProjectReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] font-semibold leading-[12px] text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={projectAssistant.isLoading}
                               onClick={() =>
                                 projectAssistant.retry(item)
                               }
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -17909,23 +18068,23 @@ const FinalProjectReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pb-5 pt-3">
               {projectAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowProjectAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showProjectAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showProjectAssistantFollowUps && "rotate-180"
                       )}
                     />
@@ -17939,21 +18098,19 @@ const FinalProjectReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getProjectAssistantSuggestionWidthClass(
-                              suggestion
-                            ) || "w-fit"
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={projectAssistant.isLoading}
                           onClick={() =>
                             projectAssistant.run(
                               suggestion,
                               latestProjectAssistantItem?.field ??
-                                activeAssistantField
+                                activeAssistantField ??
+                                resolveFinalReviewAssistantField(suggestion)
                             )
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -18019,7 +18176,10 @@ const FinalProjectReviewStep = ({
                     onClick={() =>
                       projectAssistant.run(
                         projectAssistant.message,
-                        activeAssistantField
+                        activeAssistantField ??
+                          resolveFinalReviewAssistantField(
+                            projectAssistant.message
+                          )
                       )
                     }
                   >
@@ -20554,6 +20714,7 @@ const ExistingContractFinalReviewStep = ({
 
     return stepFourRoles.length > 0 ? stepFourRoles : finalReviewRoles;
   }, [details.teamRoleRows]);
+  const hasSingleRole = roleOptions.length === 1;
   const [selectedRole, setSelectedRole] = useState(
     roleOptions[0] ?? finalReviewRoles[0],
   );
@@ -20563,7 +20724,7 @@ const ExistingContractFinalReviewStep = ({
     : roleOptions.slice(0, 5);
   const remainingRoleCount = Math.max(
     0,
-    roleOptions.length - visibleRoleOptions.length,
+    roleOptions.length - 5,
   );
   const [includeNda, setIncludeNda] = useState(false);
   const [responsibilities, setResponsibilities] = useState("");
@@ -20644,6 +20805,21 @@ const ExistingContractFinalReviewStep = ({
   useEffect(() => {
     setShowRoleAssistantFollowUps(false);
   }, [latestRoleAssistantItem?.id]);
+
+  // The follow-up block sits under the chat area; when it appears or
+  // expands the chat area shrinks, so keep the latest result in view.
+  useEffect(() => {
+    window.requestAnimationFrame(() => {
+      const scrollContainer = roleAssistantScrollRef.current;
+      scrollContainer?.scrollTo({
+        top: scrollContainer.scrollHeight,
+        behavior: "smooth",
+      });
+    });
+  }, [
+    showRoleAssistantFollowUps,
+    roleAssistantFollowUpSuggestions.length,
+  ]);
 
   useEffect(() => {
     if (roleOptions.length === 0 || roleOptions.includes(selectedRole)) {
@@ -20865,47 +21041,45 @@ const ExistingContractFinalReviewStep = ({
             <div className="mt-8 flex w-full flex-col items-center gap-6 rounded-lg border border-[#E6E8ED] bg-white p-6">
               <div className="flex h-7 w-full items-center justify-center gap-2 self-stretch p-0">
                 <h2 className="h-7 flex-1 text-lg leading-7 font-semibold text-dark-blue-400">
-                  Role Description
+                  {hasSingleRole ? selectedRole : "Role Description"}
                 </h2>
               </div>
               <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
                 <div className="flex w-full flex-col items-start gap-6 self-stretch p-0">
-                  <div
-                    className={cn(
-                      "flex w-full items-start gap-2 self-stretch p-0",
-                      showAllRoleOptions
-                        ? "flex-wrap"
-                        : "h-10 flex-nowrap overflow-hidden",
-                    )}
-                  >
-                    {visibleRoleOptions.map((role) => (
-                      <Button
-                        key={role}
-                        variant="outlined"
-                        visual="gray"
-                        type="button"
-                        className={cn(
-                          "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
-                          selectedRole === role &&
-                            "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500",
-                        )}
-                        onClick={() => setSelectedRole(role)}
-                      >
-                        {role}
-                      </Button>
-                    ))}
-                    {remainingRoleCount > 0 ? (
-                      <Button
-                        variant="outlined"
-                        visual="gray"
-                        type="button"
-                        className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
-                        onClick={() => setShowAllRoleOptions(true)}
-                      >
-                        + {remainingRoleCount} More
-                      </Button>
-                    ) : null}
-                  </div>
+                  {!hasSingleRole ? (
+                    <div className="flex w-full flex-wrap items-start gap-2 self-stretch p-0">
+                      {visibleRoleOptions.map((role) => (
+                        <Button
+                          key={role}
+                          variant="outlined"
+                          visual="gray"
+                          type="button"
+                          className={cn(
+                            "box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400",
+                            selectedRole === role &&
+                              "border-2 border-primary-500 bg-white text-primary-500 hover:bg-white hover:text-primary-500",
+                          )}
+                          onClick={() => setSelectedRole(role)}
+                        >
+                          {role}
+                        </Button>
+                      ))}
+                      {remainingRoleCount > 0 ? (
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          type="button"
+                          className="box-border h-10 shrink-0 justify-center gap-0 rounded-[40px] border border-gray-300 bg-white px-4 py-2.5 text-sm leading-5 font-medium text-dark-blue-400 shadow-none hover:bg-white hover:text-dark-blue-400"
+                          aria-expanded={showAllRoleOptions}
+                          onClick={() => setShowAllRoleOptions((current) => !current)}
+                        >
+                          {showAllRoleOptions
+                            ? "Show Less"
+                            : `+ ${remainingRoleCount} More`}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="flex w-full flex-col items-start gap-12 self-stretch p-0">
                     <FinalReviewRichTextField
@@ -21088,7 +21262,7 @@ const ExistingContractFinalReviewStep = ({
                             item.result ? (
                               <Button
                                 type="button"
-                                className="h-7 w-[69px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-7 w-[69px] gap-x-1 rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-3 font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 disabled={item.inserted}
                                 onClick={() => {
                                   if (item.inserted || !item.result) return;
@@ -21109,11 +21283,13 @@ const ExistingContractFinalReviewStep = ({
                             ) : null}
                             <Button
                               type="button"
-                              className="h-7 w-[67px] rounded-[5px] bg-primary-50 px-3 py-2 text-[10px] leading-[12px] font-semibold text-primary-500 shadow-none hover:bg-primary-50 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-60"
+                              variant="outlined"
+                              visual="gray"
+                              className="h-7 w-[63px] gap-x-1 rounded-[5px] border-gray-300 bg-white py-2 pl-2 pr-3 text-[10px] font-semibold leading-3 text-gray-800 shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={roleAssistant.isLoading}
                               onClick={() => roleAssistant.retry(item)}
                             >
-                              <RefreshCcw05 className="size-3 shrink-0 text-primary-500" />
+                              <MdAutorenew className="size-3 shrink-0 text-gray-800" />
                               Retry
                             </Button>
                           </div>
@@ -21126,23 +21302,23 @@ const ExistingContractFinalReviewStep = ({
             </div>
             <div className="flex w-full shrink-0 flex-col items-start gap-2 self-stretch overflow-x-hidden px-5 pt-3 pb-5">
               {roleAssistantFollowUpSuggestions.length > 0 ? (
-                <div className="flex w-full max-w-[282px] flex-col items-start gap-3 self-stretch">
+                <div className="flex w-full max-w-[282px] flex-col items-start gap-2 self-stretch">
                   <Button
                     variant="ghost"
                     visual="gray"
-                    className="flex h-[18px] w-full items-center gap-2 self-stretch p-0 text-left text-xs leading-[18px] font-normal text-gray-400 hover:bg-transparent"
+                    className="flex h-[18px] w-full items-center justify-start gap-x-1 self-stretch p-0 text-left text-xs font-normal leading-[18px] text-gray-400 hover:bg-transparent hover:text-gray-400 focus:bg-transparent focus:text-gray-400 active:bg-transparent"
                     onClick={() =>
                       setShowRoleAssistantFollowUps((isVisible) => !isVisible)
                     }
                   >
-                    <span className="flex-1">
+                    <span>
                       {showRoleAssistantFollowUps
                         ? "Use these suggestions"
                         : "Follow-up suggestions"}
                     </span>
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-gray-400 transition-transform",
+                        "size-3 shrink-0 text-gray-400 transition-transform",
                         showRoleAssistantFollowUps && "rotate-180",
                       )}
                     />
@@ -21156,16 +21332,14 @@ const ExistingContractFinalReviewStep = ({
                           variant="outlined"
                           visual="gray"
                           className={cn(
-                            "h-10 max-w-[282px] justify-start rounded-full bg-white px-4 py-2.5 text-sm leading-5 font-normal text-dark-blue-400 shadow-none",
-                            getRoleAssistantSuggestionWidthClass(suggestion) ||
-                              "w-fit",
+                            "h-7 max-w-[282px] justify-start gap-x-1 rounded-full border-gray-300 bg-white px-3 py-2 text-[10px] font-medium leading-3 text-dark-blue-400 shadow-xs"
                           )}
                           disabled={roleAssistant.isLoading}
                           onClick={() =>
                             roleAssistant.run(suggestion, "responsibilities")
                           }
                         >
-                          <span className="h-5 min-w-0 truncate">
+                          <span className="h-3 min-w-0 truncate">
                             {suggestion}
                           </span>
                         </Button>
@@ -21316,7 +21490,10 @@ const TeamRoles = ({
   const teamRoleAutocompleteRequestIdRef = useRef(0);
   const [rows, setRows] = useState<TeamRoleRow[]>(() => {
     if (details.teamRoleRows?.length) {
-      return details.teamRoleRows;
+      return details.teamRoleRows.map((row) => ({
+        ...row,
+        editable: row.editable && !row.assigneeUserId,
+      }));
     }
 
     if (!existingContractId) {
@@ -21385,6 +21562,7 @@ const TeamRoles = ({
     [ensureJobListingDraft, jobListingId, setDetails, toast],
   );
   const updateRow = (rowIndex: number, nextValues: Partial<TeamRoleRow>) => {
+    if (!rows[rowIndex]?.editable) return;
     const nextRows = rows.map((row, index) =>
       index === rowIndex ? { ...row, ...nextValues } : row,
     );
@@ -21542,6 +21720,7 @@ const TeamRoles = ({
     setTeamRoleAutocompleteOpen(false);
   };
   const openRenameRoleDialog = (rowIndex: number) => {
+    if (!rows[rowIndex]?.editable) return;
     setRoleDialogMode("rename");
     setActiveRoleIndex(rowIndex);
     setDraftRoleTitle(rows[rowIndex]?.role ?? "");
@@ -21553,6 +21732,10 @@ const TeamRoles = ({
     const role = draftRoleTitle.trim();
 
     if (roleDialogMode === "rename" && activeRoleIndex !== null) {
+      if (!rows[activeRoleIndex]?.editable) {
+        closeRoleDialog();
+        return;
+      }
       if (role) {
         const nextRows = rows.map((row, index) =>
           index === activeRoleIndex
@@ -21583,7 +21766,7 @@ const TeamRoles = ({
   };
   const duplicateRow = (rowIndex: number) => {
     const rowToCopy = rows[rowIndex];
-    if (!rowToCopy) return;
+    if (!rowToCopy?.editable) return;
 
     const nextRows = [
       ...rows.slice(0, rowIndex + 1),
@@ -21601,7 +21784,7 @@ const TeamRoles = ({
     void persistTeamRoleRows(nextRows);
   };
   const removeRow = (rowIndex: number) => {
-    if (rows.length <= 1) return;
+    if (rows.length <= 1 || !rows[rowIndex]?.editable) return;
 
     const nextRows = rows.filter((_, index) => index !== rowIndex);
     setRows(nextRows);
@@ -21767,7 +21950,32 @@ const TeamRoles = ({
                     <TableRow className="h-11 border-b border-gray-200 hover:bg-transparent">
                       <TableHead className="h-11 w-[239px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-6 py-3 pr-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] min-w-0 flex-1">Role</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  tabIndex={0}
+                                  className="h-[18px] cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                >
+                                  Role
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="right"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span>
+                                  Defines the type of specialist needed for this
+                                  task. Used to match talent and generate the job
+                                  description.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[140px] px-0 py-0">
@@ -21798,7 +22006,32 @@ const TeamRoles = ({
                       </TableHead>
                       <TableHead className="h-11 w-[105px] px-0 py-0">
                         <div className="flex h-11 items-center gap-3 px-4 py-3 text-xs font-medium leading-[18px] text-gray-600">
-                          <span className="h-[18px] w-16">Experience</span>
+                          <TooltipProvider delayDuration={75}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  tabIndex={0}
+                                  className="h-[18px] w-16 cursor-default focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                >
+                                  Experience
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent
+                                side="left"
+                                align="center"
+                                sideOffset={12}
+                                visual="white"
+                                className="flex h-28 w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                              >
+                                <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                <span>
+                                  Helps determine the level of skill needed.
+                                  Impacts estimated delivery time and team
+                                  composition.
+                                </span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </div>
                       </TableHead>
                       <TableHead className="h-11 w-[124px] px-0 py-0">
@@ -21908,12 +22141,13 @@ const TeamRoles = ({
                     {rows.map((row, index) => (
                       <TableRow
                         key={`${row.role}-${index}`}
+                        aria-disabled={!row.editable || undefined}
                         className="h-[72px] border-b border-gray-200 hover:bg-transparent"
                       >
                         <TableCell className="h-[72px] w-[239px] px-0 py-0">
                           <div className="flex h-[72px] items-center gap-3 py-4 pl-6 pr-3">
                             {row.editable ? (
-                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start justify-start gap-0">
+                              <div className="flex h-10 min-w-0 flex-1 flex-col items-start justify-start gap-0">
                                 <Button
                                   type="button"
                                   variant="ghost"
@@ -21925,12 +22159,42 @@ const TeamRoles = ({
                                     {row.role}
                                   </span>
                                 </Button>
+                                <p className="h-5 max-w-full truncate text-sm font-normal leading-5 text-gray-500">
+                                  {row.assignee}
+                                </p>
                               </div>
                             ) : (
-                              <div className="flex h-5 min-w-0 flex-1 flex-col items-start">
-                                <p className="h-5 w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
-                                  {row.role}
-                                </p>
+                              <div className="flex h-10 min-w-0 flex-1 flex-col items-start">
+                                <TooltipProvider delayDuration={75}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        tabIndex={0}
+                                        className="flex h-10 w-full cursor-default flex-col items-start opacity-65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500"
+                                      >
+                                        <p className="h-5 max-w-full truncate text-sm font-semibold leading-5 text-dark-blue-400">
+                                          {row.role}
+                                        </p>
+                                        <p className="h-5 max-w-full truncate text-sm font-normal leading-5 text-gray-500">
+                                          {row.assignee}
+                                        </p>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent
+                                      side="right"
+                                      align="center"
+                                      sideOffset={12}
+                                      visual="white"
+                                      className="flex h-[94px] w-[222.55px] max-w-none items-start rounded-lg bg-primary-50 p-5 text-xs font-normal leading-[18px] text-dark-blue-400 shadow-[0px_4px_19px_rgba(0,0,0,0.04)]"
+                                    >
+                                      <TooltipArrow className="h-[25.45px] w-[35px] fill-primary-50" />
+                                      <span>
+                                        This team member is already part of your
+                                        team. You can’t make changes here.
+                                      </span>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               </div>
                             )}
                           </div>
@@ -21950,7 +22214,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLocationPillClassName}
+                                className={cn(teamRoleReadOnlyPillClassName, "pl-[5px]")}
                               >
                                 {renderLocationOptionLabel(row.location)}
                               </Badge>
@@ -21988,7 +22252,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleExperiencePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.experience}
                               </Badge>
@@ -22024,7 +22288,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleSchedulePillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.schedule}
                               </Badge>
@@ -22057,7 +22321,7 @@ const TeamRoles = ({
                               <Badge
                                 size="lg"
                                 visual="gray"
-                                className={teamRoleLengthPillClassName}
+                                className={teamRoleReadOnlyPillClassName}
                               >
                                 {row.length}
                               </Badge>
@@ -22069,7 +22333,12 @@ const TeamRoles = ({
                             <TooltipProvider delayDuration={75}>
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="cursor-default whitespace-nowrap text-sm leading-5 text-gray-600">
+                                  <span
+                                    className={cn(
+                                      "cursor-default whitespace-nowrap text-sm leading-5 text-gray-600",
+                                      !row.editable && "opacity-65",
+                                    )}
+                                  >
                                     {row.estimate}
                                   </span>
                                 </TooltipTrigger>
@@ -23053,6 +23322,8 @@ function PublishProject({
         );
       } catch (error) {
         console.error("Failed to hydrate project draft", error);
+        // G2: the creation gate refused (the modal is already showing): leave the empty form.
+        if (isCreateListingBlocked(error)) router.replace("/my-listings");
         if (isJobListingFlow && existingJobListingId) {
           redirectToMyJobs();
         }
@@ -23799,15 +24070,20 @@ function PublishProject({
   const [teamRolesProgress, setTeamRolesProgress] = useState(0);
   const [finalReviewProgress, setFinalReviewProgress] = useState(0);
 
+  // The bar shows the progress of the steps up to and including the current one,
+  // so going back drops the share the later steps had already reported.
   const overallProgress = useMemo(() => {
-    return (
-      projectInfoProgress +
-      mediaProgress +
-      projectScopeProgress +
-      teamRolesProgress +
-      finalReviewProgress
-    );
+    return [
+      projectInfoProgress,
+      mediaProgress,
+      projectScopeProgress,
+      teamRolesProgress,
+      finalReviewProgress,
+    ]
+      .slice(0, currentStep + 1)
+      .reduce((total, stepProgress) => total + stepProgress, 0);
   }, [
+    currentStep,
     projectInfoProgress,
     mediaProgress,
     projectScopeProgress,
@@ -23907,6 +24183,7 @@ function PublishProject({
                         <ReviewToolsTechnologiesStep
                           setProgress={setProjectScopeProgress}
                           jobListingId={jobListingId}
+                          hiringMode={selectedHiringMode}
                           source={
                             isNoScopeFlow
                               ? "roles"

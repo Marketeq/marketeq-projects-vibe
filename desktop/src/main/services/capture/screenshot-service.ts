@@ -6,7 +6,7 @@
 //   * doc 17 §2 — CaptureScheduler (interval + jitter + battery saver)
 //   * doc 17 §3 — ScreenshotCapturer (desktopCapturer + toPNG/toJPEG)
 //   * doc 17 §4 — SensitiveContentFilter (title deny-list)
-//   * doc 17 §5 — Screenshot Processor (write to disk + DB row)
+//   * doc 17 §5 — Screenshot Processor (DB row; the image stays in memory, PMCM-832)
 //   * doc 17 §7 — Privacy guarantees
 //   * doc 23 §"Privacy Zones" — window-title / URL blocklist (full blur)
 //
@@ -19,7 +19,7 @@
 //     JS. Doc 23 allows any one-way blur; we picked this to avoid an
 //     optional native dep (`sharp`) that would not build on CI without
 //     extra tooling.
-//   * All displays are captured, one file per display, and one DB row
+//   * All displays are captured, one image per display, and one DB row
 //     per display (keyed by `display_id`).
 //
 // The service is standalone: it queries session state via the DB (no
@@ -144,7 +144,15 @@ export interface ScreenshotService {
   getStats: () => ScreenshotStats;
   deleteById: (id: string) => void;
   setPrivacyMode: (on: boolean) => void;
-  subscribe: (cb: (e: ScreenshotTakenEvent) => void) => () => void;
+  subscribe: (cb: (e: CapturedScreenshot) => void) => () => void;
+}
+
+/**
+ * A capture as the main process sees it: the IPC event plus the JPEG bytes,
+ * held in memory only (PMCM-832). Never sent over IPC.
+ */
+export interface CapturedScreenshot extends ScreenshotTakenEvent {
+  jpeg: Buffer;
 }
 
 export function createScreenshotService(deps: Deps): ScreenshotService {
@@ -181,16 +189,6 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
     const base = intervalSeconds * 1000;
     const delta = base * jitterRatio * (Math.random() * 2 - 1);
     return Math.max(Math.floor(base + delta), 5000);
-  }
-
-  function datedDir(ts: number): string {
-    const d = new Date(ts);
-    const yyyy = String(d.getUTCFullYear());
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
-    const dir = path.join(rootDir, yyyy, mm, dd);
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
   }
 
   function resolveSessionId(): string | null {
@@ -299,7 +297,6 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
         return [];
       }
       const now = Date.now();
-      const dir = datedDir(now);
       // Every monitor of this capture shares one group key, and the monitors
       // are numbered 1..n: the laptop's built-in screen is 1 (Windows' own
       // display 1), even when an external monitor is set as the main display;
@@ -356,8 +353,6 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
         const screenNumber = screenIdx + 1;
         const id = `shot_${uuid()}`;
         const size = src.thumbnail.getSize();
-        const fullPath = path.join(dir, `${id}.jpg`);
-        const blurPath = path.join(dir, `${id}.blur.jpg`);
         const displayId = src.display_id ?? src.id ?? 'unknown';
 
         if (sensitive) {
@@ -384,8 +379,7 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
         }
 
         // Full-blur mode (privacy zone OFF but user turned on blur-on-capture
-        // via preferences): only the blurred preview is persisted, no full
-        // image is ever written to disk.
+        // via preferences): only the blurred preview is ever captured.
         const blurOnCapture = (() => {
           try {
             const p = deps.preferenceRepo.get('dtt.blurOnCapture');
@@ -395,49 +389,31 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           }
         })();
 
-        
-
+        // PMCM-832 (DTT-119/218): the image stays in memory until the
+        // backend acknowledges the upload. No .jpg / .blur.jpg is written;
+        // the outbox holds it encrypted while it waits to sync.
         let jpegBuf: Buffer;
-        let diskPath: string | null;
         if (blurOnCapture) {
           jpegBuf = buildBlurredThumbnail(src.thumbnail);
-          diskPath = fullPath;
-          fs.writeFileSync(diskPath, jpegBuf);
         } else {
           jpegBuf = src.thumbnail.toJPEG(jpegQuality);
           // macOS 26+: desktopCapturer may return empty thumbnails because
           // Apple deprecated CGWindowListCreateImage. Fall back to the native
-          // screencapture CLI which uses ScreenCaptureKit.
+          // screencapture CLI which uses ScreenCaptureKit. The CLI can only
+          // write a file, so it is read back and deleted straight away.
           if (jpegBuf.length === 0 && process.platform === 'darwin') {
             log.warn('toJPEG returned 0 bytes — falling back to native screencapture');
+            const tmpPath = path.join(os.tmpdir(), `${id}.jpg`);
             try {
-              execFileSync('screencapture', ['-x', '-t', 'jpg', fullPath]);
-              jpegBuf = fs.readFileSync(fullPath);
+              execFileSync('screencapture', ['-x', '-t', 'jpg', tmpPath]);
+              jpegBuf = fs.readFileSync(tmpPath);
             } catch (scErr) {
               log.error({ err: scErr }, 'native screencapture fallback failed');
+            } finally {
+              fs.rmSync(tmpPath, { force: true });
             }
           }
-          diskPath = fullPath;
-          if (jpegBuf.length > 0) {
-            fs.writeFileSync(diskPath, jpegBuf);
-          }
         }
-        // Build blur thumbnail — if jpegBuf has data, resize it; otherwise
-        // use the (possibly empty) Electron thumbnail as-is
-        let blurBuf: Buffer;
-        if (jpegBuf.length > 0 && !blurOnCapture) {
-          // Re-read as NativeImage so we can use Electron's resize for blur
-          try {
-            const { nativeImage } = require('electron');
-            const ni = nativeImage.createFromBuffer(jpegBuf);
-            blurBuf = buildBlurredThumbnail(ni);
-          } catch {
-            blurBuf = buildBlurredThumbnail(src.thumbnail);
-          }
-        } else {
-          blurBuf = buildBlurredThumbnail(src.thumbnail);
-        }
-        fs.writeFileSync(blurPath, blurBuf);
 
         const sha = crypto.createHash('sha256').update(jpegBuf).digest('hex');
 
@@ -445,7 +421,7 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           id,
           session_id: sessionId,
           taken_at: now,
-          local_path: diskPath,
+          local_path: null,
           r2_key: null,
           status: 'pending',
           width: size.width,
@@ -453,7 +429,7 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           bytes: jpegBuf.length,
           sensitive: 0,
           synced_at: null,
-          blur_path: blurPath,
+          blur_path: null,
           display_id: displayId,
           sha256: sha,
         });
@@ -484,8 +460,6 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           width: size.width,
           height: size.height,
           bytes: jpegBuf.length,
-          filePath: diskPath,
-          blurPath,
           displayId,
           screenNumber,
           groupKey,
@@ -494,7 +468,8 @@ export function createScreenshotService(deps: Deps): ScreenshotService {
           activeAppIcons,
         };
         results.push(evt);
-        bus.emit('taken', evt);
+        const captured: CapturedScreenshot = { ...evt, jpeg: jpegBuf };
+        bus.emit('taken', captured);
       }
       capturedCount += results.length;
       lastCaptureAt = Date.now();

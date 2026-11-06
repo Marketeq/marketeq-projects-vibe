@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config'
 import { Request, Response } from 'express'
 import { firstValueFrom } from 'rxjs'
 import { AxiosRequestConfig, AxiosError, AxiosResponse } from 'axios'
+import { resolveTrustedClientIp } from './trusted-client-ip'
 
 @Injectable()
 export class ProxyService {
@@ -104,13 +105,19 @@ export class ProxyService {
     // currency detection) do their own IP-geolocation and need the real
     // client IP — without this they only ever see the gateway's own
     // request, which silently breaks that detection with no error anywhere.
-    // Preserve any existing x-forwarded-for chain (CDN/load balancer hops)
-    // and append this gateway's view of the client, same convention as
-    // every other reverse proxy.
-    const existingXff = req.headers['x-forwarded-for']
-    const xffChain = (Array.isArray(existingXff) ? existingXff.join(',') : existingXff) || ''
-    const clientIp = req.ip || req.socket?.remoteAddress || ''
-    headers['x-forwarded-for'] = [xffChain, clientIp].filter(Boolean).join(', ')
+    // Forward exactly one client IP, taken from Render's trusted
+    // CF-Connecting-IP (see trusted-client-ip.ts). The caller's own
+    // x-forwarded-for / x-real-ip are never relayed: Render appends to a
+    // caller-supplied chain, so any entry in it can be forged. Both headers
+    // are overwritten with the same single value so services still reading
+    // the legacy x-forwarded-for see it too. With no trustworthy IP neither
+    // header is sent and the service decides (identity-verification fails
+    // closed) rather than being handed the load balancer's address.
+    const clientIp = resolveTrustedClientIp(req)
+    if (clientIp) {
+      headers['cf-connecting-ip'] = clientIp
+      headers['x-forwarded-for'] = clientIp
+    }
 
     // Always forward auth headers so downstream services can validate JWT
     const authHeader = req.headers.authorization as string | undefined
