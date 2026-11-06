@@ -10783,12 +10783,12 @@ const ReviewToolsTechnologiesStep = ({
       scrollBar={<ScrollBar className="w-4 p-1" />}
     >
       <div className="flex min-h-full flex-col gap-8 bg-gray-50 px-5 py-10 md:px-10 min-[1024px]:px-[100px] min-[1024px]:pb-5 min-[1024px]:pt-[50px] min-[1180px]:flex-row min-[1180px]:items-start">
-        <div className="min-w-0 flex-auto min-[1180px]:w-[886px]">
-          <div className="flex h-20 w-[886px] flex-col items-center justify-center gap-4">
-            <h1 className="h-11 w-[886px] text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
+        <div className="min-w-0 flex-auto min-[1180px]:max-w-[886px]">
+          <div className="flex min-h-20 w-full flex-col items-center justify-center gap-4">
+            <h1 className="h-11 w-full text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               Review tools and technologies
             </h1>
-            <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
+            <p className="min-h-5 w-full text-sm leading-5 text-dark-blue-400">
               We&apos;ve generated a list based on your{" "}
               {source === "roles"
                 ? hiringMode === "individual"
@@ -10808,7 +10808,7 @@ const ReviewToolsTechnologiesStep = ({
           >
             <TagsInputContext>
               {(tagsInput) => (
-                <TagsInputControl className="flex w-full flex-col items-start gap-4 border-0 bg-transparent p-0 shadow-none focus-within:border-transparent focus-within:ring-0 min-[1180px]:w-[886px] [&>div:first-child>div]:w-full">
+                <TagsInputControl className="flex w-full flex-col items-start gap-4 border-0 bg-transparent p-0 shadow-none focus-within:border-transparent focus-within:ring-0 [&>div:first-child>div]:w-full">
                   <div className="relative w-full">
                     <SearchMd className="pointer-events-none absolute left-3 top-1/2 z-10 size-5 -translate-y-1/2 text-gray-400" />
                     <TagsInputInput
