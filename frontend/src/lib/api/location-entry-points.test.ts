@@ -385,6 +385,13 @@ const hostCallbackBody = (() => {
   return host.slice(at + marker.length, host.indexOf("\n  }, [requestDeviceLocation])", at))
 })()
 
+const activateBody = (() => {
+  const marker = "const activateTravelMode = async (skipped: boolean) => {"
+  const at = flowSource.indexOf(marker)
+  assert.ok(at > -1)
+  return flowSource.slice(at + marker.length, flowSource.indexOf("\n  }\n", at))
+})()
+
 function flowHarness(w: ReturnType<typeof world>, options: { guarded?: boolean; mounted?: () => boolean } = {}) {
   const calls: string[] = []
   const state = { detected: null as DetectedLocation | null, ipLocationOnly: true }
@@ -403,13 +410,40 @@ function flowHarness(w: ReturnType<typeof world>, options: { guarded?: boolean; 
           ref
         ) as Promise<boolean>
   const pendingRef = { current: false }
+  const tokenRef = { current: 0 }
+  const activatingRef = { current: false }
+  const leaving: boolean[] = []
+  const mountedFn = options.mounted ?? (() => true)
   const go = new Function(
-    "onBeforeLocationScreen", "locationScreenPendingRef", "getIsMounted", "send", "event", "then",
+    "onBeforeLocationScreen", "locationScreenPendingRef", "locationNavTokenRef", "activatingTravelModeRef",
+    "setLeavingForLocation", "getIsMounted", "send", "event", "then",
     goBody
   ) as (...a: unknown[]) => void
   const press = (event: "BACK" | "UPDATE_LOCATION", then?: () => void) =>
-    go(onBeforeLocationScreen, pendingRef, options.mounted ?? (() => true), (e: string) => calls.push("send:" + e), event, then)
-  return { calls, state, ref, press, pendingRef }
+    go(onBeforeLocationScreen, pendingRef, tokenRef, activatingRef, (v: boolean) => leaving.push(v), mountedFn, (e: string) => calls.push("send:" + e), event, then)
+  // The REAL Confirm/Skip handler (activateTravelMode) sharing the same refs. `shareNavRefs: false`
+  // simulates a save that begins even though the pending flag is not seen (defence in depth).
+  let releaseSave!: () => void
+  const saveGate = new Promise<void>((r) => (releaseSave = r))
+  const save = (skipped: boolean, shareNavRefs = true) => {
+    const stubs = {
+      activatingTravelModeRef: activatingRef,
+      locationScreenPendingRef: shareNavRefs ? pendingRef : { current: false },
+      locationNavTokenRef: tokenRef,
+      setActivatingTravelMode: (v: boolean) => calls.push("saving:" + v),
+      setActivatingTravelAction: () => {},
+      setTravelModeSaveFailed: () => {},
+      setTravelDurationSkipped: () => {},
+      travelModeDeps: async () => ({}),
+      recordTravelDuration: async () => { calls.push("save:started"); await saveGate; calls.push("save:done"); return true },
+      SKIPPED_TRAVEL_DURATION_LABEL: "Not sure",
+      travelDuration: "A few days",
+      getIsMounted: mountedFn,
+      send: (e: string) => calls.push("send:" + e),
+    }
+    return new AsyncFunction(...Object.keys(stubs), "skipped", activateBody)(...Object.values(stubs), skipped) as Promise<void>
+  }
+  return { calls, state, ref, press, pendingRef, tokenRef, activatingRef, leaving, save, releaseSave: () => releaseSave() }
 }
 
 describe("inside the flow: Back from 'How long are you traveling?' and the reminder's Update need the device location", () => {
@@ -561,5 +595,135 @@ describe("source: the flow and its callers", () => {
     assert.equal(persists.length, 2)
     assert.ok(persists[0] < awaitAt && handler.slice(0, persists[0]).includes("if (!onPermanentlyRelocated)"))
     assert.ok(persists[1] > awaitAt, "the callback path saves only after the device location")
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// The duration-screen Back race (PR #872 review): while the device location for Back is pending,
+// Confirm / Skip start no save, and a save that does begin invalidates the pending move, so a late
+// GPS answer can never change the screen after Travel Mode saving has begun. The REAL
+// goToLocationScreen and activateTravelMode run from source against the simulated browser.
+// ---------------------------------------------------------------------------------------------
+describe("duration screen: Back versus Confirm / Skip (completion orders)", () => {
+  it("order 1, GPS completes before the save: the screen moves once, the later save then runs normally", async () => {
+    const w = world([{ status: "ok" }])
+    const f = flowHarness(w)
+    f.press("BACK")
+    await flush(); await flush()
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:BACK"])
+    assert.equal(f.pendingRef.current, false)
+    assert.deepEqual(f.leaving, [true, false], "Confirm/Skip/Back were disabled only while the request ran")
+    const saving = f.save(false)
+    await flush()
+    f.releaseSave()
+    await saving
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:BACK", "send:NEXT"])
+  })
+
+  it("order 2, a save is pressed while the location is pending: no save starts, and the screen still moves once the location arrives", async () => {
+    const w = world([]) // the browser's own prompt is open
+    const f = flowHarness(w)
+    f.press("BACK")
+    await flush()
+    await f.save(false) // Confirm
+    await f.save(true) // Skip
+    assert.ok(!f.calls.includes("save:started"), "neither Confirm nor Skip started a save")
+    assert.ok(!f.calls.some((c) => c.startsWith("saving:")))
+    assert.equal(f.activatingRef.current, false)
+    w.answer({ status: "ok" })
+    await flush(); await flush()
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:BACK"])
+  })
+
+  it("order 2b, a save begins first (the pending flag unseen): the late GPS answer cannot change the screen", async () => {
+    const w = world([])
+    const f = flowHarness(w)
+    f.press("BACK")
+    await flush()
+    const saving = f.save(false, false) // defence in depth: a save that starts anyway
+    await flush()
+    assert.ok(f.calls.includes("save:started"))
+    w.answer({ status: "ok" })
+    await flush(); await flush()
+    assert.ok(!f.calls.includes("send:BACK"), "the move was invalidated by the save beginning")
+    f.releaseSave()
+    await saving
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:NEXT"], "only the save's own move")
+  })
+
+  it("a save that is already running blocks Back altogether (no request, no move)", async () => {
+    const w = world([{ status: "ok" }])
+    const f = flowHarness(w)
+    const saving = f.save(true)
+    await flush()
+    f.press("BACK")
+    await flush(); await flush()
+    assert.equal(w.log.positionRequests, 0)
+    assert.ok(!f.calls.includes("send:BACK"))
+    f.releaseSave()
+    await saving
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:NEXT"])
+  })
+
+  it("duplicate Back: one request, one move", async () => {
+    const w = world([{ status: "ok" }])
+    const f = flowHarness(w)
+    f.press("BACK"); f.press("BACK"); f.press("BACK")
+    await flush(); await flush()
+    assert.equal(w.log.positionRequests, 1)
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), ["send:BACK"])
+  })
+
+  it("Cancel on the recovery dialog: nothing moves, the buttons are enabled again and a save works", async () => {
+    const w = world([{ status: "denied", permission: "denied" }])
+    const f = flowHarness(w)
+    f.press("BACK")
+    await flush()
+    await f.save(false) // while the dialog is open: ignored
+    assert.ok(!f.calls.includes("save:started"))
+    w.recovery.cancel()
+    await flush(); await flush()
+    assert.deepEqual(f.leaving, [true, false])
+    assert.ok(!f.calls.includes("send:BACK"))
+    const saving = f.save(false)
+    await flush()
+    assert.ok(f.calls.includes("save:started"), "after Cancel, Confirm saves normally")
+    f.releaseSave()
+    await saving
+  })
+
+  it("unmount while pending: nothing moves and no state is set afterwards", async () => {
+    const w = world([])
+    let mounted = true
+    const f = flowHarness(w, { mounted: () => mounted })
+    f.press("BACK")
+    await flush()
+    mounted = false
+    w.answer({ status: "ok" })
+    await flush(); await flush()
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), [])
+    assert.deepEqual(f.leaving, [true], "no setState after unmount")
+  })
+
+  it("navigation while pending: the answer is dropped, nothing moves, the buttons are released", async () => {
+    const w = world([])
+    const f = flowHarness(w)
+    f.press("BACK")
+    await flush()
+    w.navigate()
+    w.answer({ status: "ok" })
+    await flush(); await flush()
+    assert.deepEqual(f.calls.filter((c) => c.startsWith("send:")), [])
+    assert.equal(f.pendingRef.current, false)
+  })
+
+  it("source: Confirm, Skip and Back are disabled while the move is pending, and the loading states are unchanged", () => {
+    const duration = flowSource.slice(flowSource.indexOf('{state === "traveling-showcase"'))
+    assert.ok(duration.includes("disabled={activatingTravelMode || leavingForLocation}\n              onClick={() => goToLocationScreen(\"BACK\")}"))
+    assert.ok(duration.includes("disabled={activatingTravelMode || leavingForLocation}\n              loading={activatingTravelMode && activatingTravelAction === \"skip\"}"))
+    assert.ok(duration.includes("disabled={activatingTravelMode || leavingForLocation || travelDuration === null}"))
+    assert.ok(duration.includes('loading={activatingTravelMode && activatingTravelAction === "confirm"}'))
+    assert.ok(flowSource.includes("if (locationScreenPendingRef.current) return"))
+    assert.ok(flowSource.includes("locationNavTokenRef.current += 1 // a save that begins invalidates any pending move"))
   })
 })

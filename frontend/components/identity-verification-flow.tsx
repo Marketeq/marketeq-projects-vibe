@@ -958,25 +958,40 @@ export function IdentityVerificationFlow({
 
   // BTB-387: moves to the screen that shows the location, after `onBeforeLocationScreen` (when
   // the caller gave one) has produced the device location. One request at a time; a second
-  // press is ignored; an unmounted flow does nothing.
+  // press is ignored; an unmounted flow does nothing. While the request is pending Confirm, Skip
+  // and Back are disabled (`leavingForLocation`) and Confirm/Skip start no save; and a save that
+  // does begin invalidates the pending move (the token), so a late device location can never
+  // change the screen once Travel Mode saving has started.
   const locationScreenPendingRef = useRef(false)
+  const locationNavTokenRef = useRef(0)
+  const [leavingForLocation, setLeavingForLocation] = useState(false)
   const goToLocationScreen = (event: "BACK" | "UPDATE_LOCATION", then?: () => void) => {
     if (!onBeforeLocationScreen) {
       send(event)
       then?.()
       return
     }
-    if (locationScreenPendingRef.current) return
+    if (locationScreenPendingRef.current || activatingTravelModeRef.current) return
     locationScreenPendingRef.current = true
+    const token = ++locationNavTokenRef.current
+    setLeavingForLocation(true)
     void onBeforeLocationScreen()
       .then((ready) => {
-        if (!ready || !getIsMounted()) return
+        if (
+          !ready ||
+          !getIsMounted() ||
+          token !== locationNavTokenRef.current ||
+          activatingTravelModeRef.current
+        ) {
+          return
+        }
         send(event)
         then?.()
       })
       .catch(() => {})
       .finally(() => {
         locationScreenPendingRef.current = false
+        if (getIsMounted()) setLeavingForLocation(false)
       })
   }
 
@@ -994,8 +1009,11 @@ export function IdentityVerificationFlow({
   const activatingTravelModeRef = useRef(false)
   const activateTravelMode = async (skipped: boolean) => {
     if (activatingTravelModeRef.current) return
+    // BTB-387: no save while a move to the location screen is waiting for the device location
+    if (locationScreenPendingRef.current) return
     const duration = skipped ? SKIPPED_TRAVEL_DURATION_LABEL : travelDuration
     if (duration === null) return
+    locationNavTokenRef.current += 1 // a save that begins invalidates any pending move
     activatingTravelModeRef.current = true
     setActivatingTravelAction(skipped ? "skip" : "confirm")
     setActivatingTravelMode(true)
@@ -1942,7 +1960,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
-              disabled={activatingTravelMode}
+              disabled={activatingTravelMode || leavingForLocation}
               onClick={() => goToLocationScreen("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -2060,7 +2078,7 @@ export function IdentityVerificationFlow({
             <Button
               variant="outlined"
               visual="gray"
-              disabled={activatingTravelMode}
+              disabled={activatingTravelMode || leavingForLocation}
               loading={activatingTravelMode && activatingTravelAction === "skip"}
               aria-busy={activatingTravelMode && activatingTravelAction === "skip"}
               onClick={() => void activateTravelMode(true)}
@@ -2068,7 +2086,7 @@ export function IdentityVerificationFlow({
               Skip
             </Button>
             <Button
-              disabled={activatingTravelMode || travelDuration === null}
+              disabled={activatingTravelMode || leavingForLocation || travelDuration === null}
               loading={activatingTravelMode && activatingTravelAction === "confirm"}
               aria-busy={
                 activatingTravelMode && activatingTravelAction === "confirm"
