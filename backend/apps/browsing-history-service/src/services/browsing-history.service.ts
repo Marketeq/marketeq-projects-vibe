@@ -35,6 +35,12 @@ const CLIENT_BY_TYPE: Record<
   [BrowsingHistoryItemType.SERVICE]: LISTING_OWNER_TARGET_CLIENT,
   [BrowsingHistoryItemType.TEAM]: USER_OWNER_TARGET_CLIENT,
   [BrowsingHistoryItemType.TALENT]: USER_OWNER_TARGET_CLIENT,
+  // JOB is a listing, so it routes to the same client as PROJECT. It inherits
+  // the SERVICE caveat above verbatim: listings-service's validateTarget only
+  // resolves targetType 'project' today, so job items read back as
+  // unavailable until it gains a resolver. Storing and listing them works;
+  // only live resolution does not.
+  [BrowsingHistoryItemType.JOB]: LISTING_OWNER_TARGET_CLIENT,
 };
 
 export interface BrowsingHistoryListItem {

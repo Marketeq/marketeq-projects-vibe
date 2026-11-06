@@ -12,6 +12,7 @@ export enum BrowsingHistoryItemType {
   SERVICE = 'service',
   TEAM = 'team',
   TALENT = 'talent',
+  JOB = 'job',
 }
 
 /**
