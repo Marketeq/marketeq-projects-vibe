@@ -4,7 +4,7 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { Transport } from '@nestjs/microservices';
+import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { LISTINGS_GATE_QUEUE } from './identity-gate/gate-state.consumer';
 import { AppModule } from './app.module';
 
@@ -40,6 +40,23 @@ async function bootstrap() {
     credentials: true,
   });
 
+  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
+  if (!rabbitmqUrl) {
+    logger.warn(
+      'RABBITMQ_URI / RABBITMQ_URL is not set: the listings RPC and gate-change consumers are not connected, the HTTP API still starts',
+    );
+  } else {
+    app.connectMicroservice<MicroserviceOptions>({
+      transport: Transport.RMQ,
+      options: {
+        urls: [rabbitmqUrl],
+        queue: 'listings_service_queue',
+        queueOptions: { durable: true },
+      },
+    });
+    logger.log('RabbitMQ microservice connected (queue: listings_service_queue)');
+  }
+
   try {
     app.connectMicroservice({
       transport: Transport.GRPC,
@@ -56,8 +73,6 @@ async function bootstrap() {
   // G5: durable queue of identity-verification-service's `identity.gate_changed`
   // events, which keep the last known gate of every rostered account up to date.
   // Manual ack (GateStateConsumer acknowledges after the state is written).
-  // Without a broker URL the service still starts and serves the last known state.
-  const rabbitmqUrl = process.env.RABBITMQ_URI || process.env.RABBITMQ_URL;
   if (rabbitmqUrl) {
     app.connectMicroservice({
       transport: Transport.RMQ,
@@ -69,8 +84,6 @@ async function bootstrap() {
         prefetchCount: 10,
       },
     });
-  } else {
-    logger.warn('RABBITMQ_URI/RABBITMQ_URL not set - gate-change consumer disabled; last known gate state is served');
   }
 
   // One start for every connected transport; a transport that cannot start
