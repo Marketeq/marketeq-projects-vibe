@@ -15,6 +15,12 @@ import {
   getAllFavorites,
   removeFavorite,
 } from "@/src/lib/api/favorites"
+import { useQuery } from "@tanstack/react-query"
+import {
+  type BrowsingHistoryEntry,
+  type BrowsingHistoryItemType,
+  getBrowsingHistory,
+} from "@/service/http/browsing-history"
 import { cn, getFirstItem } from "@/utils/functions"
 import { Check, SearchMd, User01, XCircle } from "@blend-metrics/icons"
 import { ToggleGroupItem, ToggleGroupRoot } from "@/components/ui/toggle-group"
@@ -61,7 +67,8 @@ const TABS = [
 type TabValue = (typeof TABS)[number]
 
 // ========================
-// Placeholder data — layout-only until browsing-history backend is wired
+// Card shapes. These are the props the master cards take; history rows are
+// mapped into them below.
 // ========================
 
 interface ProjectPlaceholder {
@@ -76,57 +83,7 @@ interface ProjectPlaceholder {
   collaborators: string[]
 }
 
-const STATIC_PROJECTS: ProjectPlaceholder[] = [
-  {
-    id: "history-project-1",
-    title: "The Ultimate Mobile App Experience",
-    description:
-      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
-    mediaUrl: "/browsing-history-project.jpg",
-    budget: "$50,000",
-    duration: "Starting from 12 weeks",
-    rating: 4.9,
-    reviewCount: 5,
-    collaborators: ["/woman.jpg", "/man.jpg", "/woman.jpg", "/man.jpg"],
-  },
-  {
-    id: "history-project-2",
-    title: "Corporate Dashboard Redesign",
-    description:
-      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
-    mediaUrl: "/dashboard.png",
-    budget: "$32,000",
-    duration: "Starting from 8 weeks",
-    rating: 4.8,
-    reviewCount: 12,
-    collaborators: ["/man.jpg", "/woman.jpg"],
-  },
-]
 
-const STATIC_SERVICES: ProjectPlaceholder[] = [
-  {
-    id: "history-service-1",
-    title: "The Ultimate Mobile App Experience",
-    description:
-      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
-    mediaUrl: "/browsing-history-service.jpg",
-    budget: "$5,000",
-    rating: 4.9,
-    reviewCount: 5,
-    collaborators: ["/woman.jpg", "/man.jpg", "/woman.jpg", "/man.jpg"],
-  },
-  {
-    id: "history-service-2",
-    title: "Full-Stack Web Development",
-    description:
-      "Brief Description of the project. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt.",
-    mediaUrl: "/dashboard.png",
-    budget: "$3,200",
-    rating: 4.7,
-    reviewCount: 9,
-    collaborators: ["/man.jpg"],
-  },
-]
 
 interface TeamPlaceholder {
   id: string
@@ -143,38 +100,72 @@ interface TeamPlaceholder {
   previousClientLogos: string[]
 }
 
-const STATIC_TEAMS: TeamPlaceholder[] = [
-  {
-    id: "history-team-1",
-    name: "Team Name",
-    handle: "@Tech_Sential",
-    tagline: "Development Team",
-    experience: "Average 10 years of experience",
-    rate: "$85 - $120/hr",
-    locations: "UK, USA, Brazil, Philippines, more...",
-    rating: 4.9,
-    projectCount: 16,
-    skills: [
-      "iOS",
-      "E-commerce",
-      "Mobile Application",
-      "Small Business",
-      "Software Development",
-    ],
-    memberAvatars: ["/woman.jpg", "/man.jpg", "/woman.jpg", "/man.jpg"],
-    previousClientLogos: ["/Adobe-1.png", "/google.png"],
-  },
-]
 
 interface JobPlaceholder {
   id: string
   title: string
 }
 
-const STATIC_JOBS: JobPlaceholder[] = [
-  { id: "history-job-1", title: "Camera Motion Sensing Project" },
-  { id: "history-job-2", title: "Encrypted SMS Gateway Integration" },
-]
+
+/**
+ * Turning a history row into a card.
+ *
+ * The service can only tell us `title`, `displayName`, `skills` and
+ * `available` — that is the whole of the shared `owner_target` gRPC contract
+ * (`{exists, displayName, status}` + `{title, skills}`). Rate, rating,
+ * avatars, budgets and counts simply are not reachable through it.
+ *
+ * Those fields are therefore left empty rather than filled with
+ * plausible-looking defaults. A blank price is visibly missing data; an
+ * invented one looks like a real listing and hides the gap. Filling them for
+ * real needs the enrichment decision in docs/BROWSING_HISTORY_NOTES.md §10.
+ */
+const entryLabel = (entry: BrowsingHistoryEntry) =>
+  entry.title ?? entry.displayName ?? "Unavailable item"
+
+function entryToProject(entry: BrowsingHistoryEntry): ProjectPlaceholder {
+  return {
+    id: entry.itemId,
+    title: entryLabel(entry),
+    description: "",
+    mediaUrl: "",
+    budget: "",
+    rating: 0,
+    reviewCount: 0,
+    collaborators: [],
+  }
+}
+
+function entryToTeam(entry: BrowsingHistoryEntry): TeamPlaceholder {
+  return {
+    id: entry.itemId,
+    name: entryLabel(entry),
+    handle: "",
+    tagline: "",
+    experience: "",
+    rate: "",
+    locations: "",
+    rating: 0,
+    projectCount: 0,
+    skills: entry.skills ?? [],
+    memberAvatars: [],
+    previousClientLogos: [],
+  }
+}
+
+function entryToJob(entry: BrowsingHistoryEntry): JobPlaceholder {
+  return { id: entry.itemId, title: entryLabel(entry) }
+}
+
+/** Which backend item type each tab reads. Show All sends none. */
+const TAB_ITEM_TYPE: Record<TabValue, BrowsingHistoryItemType | undefined> = {
+  "Show All": undefined,
+  "Recent Projects": "project",
+  "Recent Services": "service",
+  "Recent Talent": "talent",
+  "Recent Teams": "team",
+  "Recent Jobs": "job",
+}
 
 type HistoryItem =
   | { type: "talent"; data: ReturnType<typeof talentToCardProps>; raw: TalentUser }
@@ -446,40 +437,71 @@ export default function BrowsingHistoryPage() {
     }
   }
 
-  // Build items using the same talentToCardProps the marketplace uses
-  const talentItems: HistoryItem[] = talents.map((u, idx) => ({
-    type: "talent",
-    data: talentToCardProps(u, idx),
-    raw: u,
-  }))
-  const projectItems: HistoryItem[] = STATIC_PROJECTS.map((data) => ({
-    type: "project",
-    data,
-  }))
-  const serviceItems: HistoryItem[] = STATIC_SERVICES.map((data) => ({
-    type: "service",
-    data,
-  }))
-  const teamItems: HistoryItem[] = STATIC_TEAMS.map((data) => ({
-    type: "team",
-    data,
-  }))
-  const jobItems: HistoryItem[] = STATIC_JOBS.map((data) => ({
-    type: "job",
-    data,
-  }))
+  // Real history for the open tab. The service already orders by
+  // lastViewedAt DESC, so "most-recently-viewed first" (AC-01.4) holds
+  // before any client-side sort is applied. 20 per page matches AC-SCALE.1;
+  // the page controls themselves are PMCM-843 and are not built yet, so
+  // this reads the first page only.
+  const activeItemType = TAB_ITEM_TYPE[activeTab]
+  const {
+    data: historyPage,
+    isLoading: historyLoading,
+    isError: historyError,
+    refetch: refetchHistory,
+  } = useQuery({
+    queryKey: ["browsing-history", activeItemType ?? "all"],
+    queryFn: () => getBrowsingHistory({ limit: 20, itemType: activeItemType }),
+  })
 
-  const itemsByTab: Record<TabValue, HistoryItem[]> = {
-    "Show All": sortHistoryItems(
-      interleave([talentItems, teamItems, jobItems, projectItems, serviceItems]),
-      sortBy
-    ),
-    "Recent Projects": sortHistoryItems(projectItems, sortBy),
-    "Recent Services": sortHistoryItems(serviceItems, sortBy),
-    "Recent Talent": sortHistoryItems(talentItems, sortBy),
-    "Recent Teams": sortHistoryItems(teamItems, sortBy),
-    "Recent Jobs": sortHistoryItems(jobItems, sortBy),
-  }
+  // Talent is the one type the page can still render in full: the marketplace
+  // already exposes the whole directory, so a history row is matched to it by
+  // id and run through the same talentToCardProps the marketplace uses. The
+  // other four have no equivalent lookup — see the mapper comments above.
+  const talentById = React.useMemo(() => {
+    const map = new Map<string, { user: TalentUser; index: number }>()
+    talents.forEach((user, index) => map.set(String(user.id), { user, index }))
+    return map
+  }, [talents])
+
+  const historyItems: HistoryItem[] = React.useMemo(() => {
+    const entries = historyPage?.items ?? []
+    return entries.flatMap<HistoryItem>((entry) => {
+      switch (entry.itemType) {
+        case "talent": {
+          const match = talentById.get(String(entry.itemId))
+          // A talent we can't resolve is skipped rather than shown as a blank
+          // card — the directory is the only source of their card fields.
+          if (!match) return []
+          return [
+            {
+              type: "talent",
+              data: talentToCardProps(match.user, match.index),
+              raw: match.user,
+            },
+          ]
+        }
+        case "project":
+          return [{ type: "project", data: entryToProject(entry) }]
+        case "service":
+          return [{ type: "service", data: entryToProject(entry) }]
+        case "team":
+          return [{ type: "team", data: entryToTeam(entry) }]
+        case "job":
+          return [{ type: "job", data: entryToJob(entry) }]
+        default:
+          return []
+      }
+    })
+  }, [historyPage, talentById])
+
+  // Only the open tab is populated; the others render no content while hidden.
+  const itemsByTab: Record<TabValue, HistoryItem[]> = React.useMemo(() => {
+    const base = Object.fromEntries(
+      TABS.map((tab) => [tab, [] as HistoryItem[]])
+    ) as Record<TabValue, HistoryItem[]>
+    base[activeTab] = sortHistoryItems(historyItems, sortBy)
+    return base
+  }, [activeTab, historyItems, sortBy])
 
   const normalizedQuery = searchQuery.trim().toLowerCase()
   const matchesSearch = (item: HistoryItem) => {
@@ -488,7 +510,8 @@ export default function BrowsingHistoryPage() {
   }
 
   const showTalentLoading =
-    isLoading && (activeTab === "Recent Talent" || activeTab === "Show All")
+    historyLoading ||
+    (isLoading && (activeTab === "Recent Talent" || activeTab === "Show All"))
 
   return (
     <div className="pt-3 px-3.5 pb-3.5 md:p-6 lg:py-[100px] lg:px-[200px]">
@@ -677,6 +700,39 @@ export default function BrowsingHistoryPage() {
                       >
                         Clear Search
                       </Button>
+                    </div>
+                  )
+                }
+
+                // AC-ERROR.1-.2: a failed tab request must not present
+                // partial data as if it loaded, and must offer a retry. The
+                // exact wording is called out as a design gap in PMCM-350,
+                // so this copy is provisional; the markup deliberately
+                // mirrors the empty state below rather than introducing a
+                // new component.
+                if (historyError) {
+                  return (
+                    <div className="mt-4 md:mt-6 rounded-lg border border-dashed border-gray-300 bg-white py-10 px-4 md:py-16 md:px-6 flex flex-col items-center justify-center text-center">
+                      <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center">
+                        <XCircle className="size-6 text-gray-400" />
+                      </div>
+                      <h3 className="mt-4 text-base font-semibold text-dark-blue-400">
+                        We couldn&apos;t load your browsing history
+                      </h3>
+                      <p className="mt-1 max-w-md text-sm text-gray-500">
+                        Nothing has been lost. This tab didn&apos;t load, so
+                        it isn&apos;t showing anything rather than showing
+                        part of it.
+                      </p>
+                      <div className="mt-5">
+                        <Button
+                          variant="outlined"
+                          visual="gray"
+                          onClick={() => refetchHistory()}
+                        >
+                          Try Again
+                        </Button>
+                      </div>
                     </div>
                   )
                 }
