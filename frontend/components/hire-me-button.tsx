@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 import { cn, isAccountTypeRole } from "@/utils/functions"
 import {
   ArrowRight,
@@ -20,8 +19,6 @@ import { UserAPI } from "@/service/http/user"
 import {
   logHireFlowInitiated,
   getMyContractGroups,
-  addContractGroupMember,
-  type ContractDTO,
   type ContractGroupSummary,
   type ContractGroupMemberSummary,
 } from "@/service/http/contracts"
@@ -522,7 +519,6 @@ export function OfferDialog({
   mode = "create",
   onSaveOffer,
 }: OfferDialogProps) {
-  const router = useRouter()
   const { toast } = useToast()
   const initialState = React.useMemo(() => getInitialOfferState(mode), [mode])
   const [schedule, setSchedule] = React.useState(initialState.schedule)
@@ -630,35 +626,22 @@ export function OfferDialog({
   const [contractTitle, setContractTitle] = React.useState(
     initialState.contractTitle
   )
-  // T2-14: true only while the Send Offer click is awaiting
-  // addContractGroupMember — separate from isLoadingGroups/isFetchingTalent,
+  // T2-14, updated BTB-364: true while the Send Offer click is awaiting
+  // submitCreateOffer() — separate from isLoadingGroups/isFetchingTalent,
   // which are about the two background fetches, not this user-initiated
   // submission.
   const [isSubmittingOffer, setIsSubmittingOffer] = React.useState(false)
-  // ERR-007: 409 from addContractGroupMember — inline in the footer, not a
-  // toast (that's ERR-006, the 5xx/network case). Single "duplicate" value
-  // rather than the literal message string, matching groupsFetchError's
-  // convention elsewhere in this file.
-  const [addMemberError, setAddMemberError] = React.useState<
-    "duplicate" | null
-  >(null)
   const [message, setMessage] = React.useState(initialState.message)
   const [offerSent, setOfferSent] = React.useState(initialState.offerSent)
-  // BTB-364/D2: addContractGroupMember's response was previously discarded —
-  // kept now so "Review Your Offer" (BTB-353/D3) has a real id to route
-  // with when this is the path that actually ran. Stays null for the
-  // zero-existing-contracts path, since nothing is created there today
-  // (D1: offer-service's job_listing_id is NOT NULL on the shared cloud DB
-  // and createOffer() can't be called without one — see the report).
-  const [createdContract, setCreatedContract] =
-    React.useState<ContractDTO | null>(null)
-  // BTB-364/D2/D3: the zero-existing-contracts path's real counterpart to
-  // createdContract above — set on a real createOffer() success, read by
-  // "Review Your Offer" (D3) to open the in-memory OfferFlowDialog below
-  // with the real offer's own data, no navigation.
+  // BTB-364: set on a real createOffer() success — all three Send Offer
+  // branches (existing-contract, isStepFour's "Invite me to a new
+  // contract," and the zero-existing-contracts fallthrough) populate this
+  // now, via the shared submitCreateOffer() helper above. Read by "Review
+  // Your Offer" (D3) to open the in-memory OfferFlowDialog below with the
+  // real offer's own data, no navigation.
   const [createdOffer, setCreatedOffer] = React.useState<Offer | null>(null)
   // ACTIVE_OFFER_ALREADY_EXISTS from createOffer() — inline, same shape as
-  // addMemberError above (that one is addContractGroupMember's own 409).
+  // the old addMemberError this replaced.
   const [offerSubmitError, setOfferSubmitError] = React.useState<
     "duplicate" | null
   >(null)
@@ -666,9 +649,10 @@ export function OfferDialog({
   const [showValidationErrors, setShowValidationErrors] = React.useState(false)
   const [customScheduleOpen, setCustomScheduleOpen] = React.useState(false)
   const [customHours, setCustomHours] = React.useState("")
-  // BTB-260: 0 is rejected at input time (onChange guard below), so the only
-  // way tryConfirmCustomSchedule can still fail is an empty hours field —
-  // this surfaces that instead of the row stalling with no feedback.
+  // BTB-283: a complete-but-zero value ("0", "00") is now accepted at input
+  // time (see customHoursZeroError, derived) instead of rejected — this
+  // state is only for tryConfirmCustomSchedule's own empty-field message
+  // ("Please enter the number of hours."), confirmed on blur/Enter.
   const [customHoursError, setCustomHoursError] = React.useState<
     string | null
   >(null)
@@ -931,6 +915,15 @@ export function OfferDialog({
     (customDurationValue !== "" || showValidationErrors)
       ? "Duration must be at least 1 month."
       : null
+  // BTB-283: same shape as customRateError/customDurationError above, for
+  // the hours field — shown as soon as a complete-but-zero value ("0",
+  // "00") sits in customHours, same priority as customHoursError (the
+  // empty-on-confirm message from tryConfirmCustomSchedule) in the one
+  // reserved slot that renders both.
+  const customHoursZeroError =
+    customScheduleOpen && customHours !== "" && Number(customHours) === 0
+      ? "Hours must be greater than 0."
+      : null
   // The "custom" sentinel is only meaningful INSIDE this component (see the
   // state declarations). Everything downstream reads these two values
   // literally: the four checkout screens price an offer by looking
@@ -991,6 +984,80 @@ export function OfferDialog({
                   : Number(customHours),
           }
         : { type: "FULL_TIME" }
+  // BTB-364: shared createOffer() call + error handling for all three real
+  // Send Offer paths — the existing-contract path (selected contract's own
+  // title), isStepFour's "Invite me to a new contract," and the
+  // zero-existing-contracts fallthrough below (both of the latter two use
+  // the Contract Title field via the default). Same payload shape, same
+  // 401/409 (ACTIVE_OFFER_ALREADY_EXISTS)/429/generic handling for all
+  // three; extracted here so none of them duplicates it. Caller must
+  // already have set isSubmittingOffer(true) and checked hiredTalentId/
+  // offline (same pre-flight every branch already did before this fix).
+  // Returns the created Offer on success, or null after already showing
+  // whatever error UI applies and resetting isSubmittingOffer — the caller
+  // only needs to bail out on null, never its own catch block.
+  const submitCreateOffer = async (
+    talentId: string,
+    contractTitleOverride?: string
+  ): Promise<Offer | null> => {
+    setOfferSubmitError(null)
+    try {
+      return await createOffer({
+        talentId,
+        contractType: "PROJECT",
+        contractTitle:
+          contractTitleOverride ??
+          (contractTitle.trim() || jobTitle || "Team Member"),
+        rate: parseFabricatedRateValue(selectedRate, customRateValue) ?? 0,
+        currencyCode: "USD",
+        durationMonths: resolvedDurationMonths,
+        workSchedule: resolvedWorkSchedule,
+        startDate: `${selectedStartDate.getFullYear()}-${String(
+          selectedStartDate.getMonth() + 1
+        ).padStart(2, "0")}-${String(selectedStartDate.getDate()).padStart(
+          2,
+          "0"
+        )}`,
+        message: message.trim() || undefined,
+      })
+    } catch (error: any) {
+      setIsSubmittingOffer(false)
+
+      if (error?.response?.status === 401) {
+        if (!sessionExpiredRedirecting) {
+          sessionExpiredRedirecting = true
+          const returnTo = `${window.location.pathname}${window.location.search}`
+          window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
+        }
+        return null
+      }
+
+      const errorCode = (
+        error as { response?: { data?: { error?: string } } }
+      )?.response?.data?.error
+      if (errorCode === "ACTIVE_OFFER_ALREADY_EXISTS") {
+        setOfferSubmitError("duplicate")
+        return null
+      }
+
+      if (error?.response?.status === 429) {
+        toast({
+          variant: "destructive",
+          description:
+            "You're sending too quickly. Please wait a moment and try again.",
+          duration: 5000,
+        })
+        return null
+      }
+
+      toast({
+        variant: "destructive",
+        description: "Couldn't send this offer. Please try again.",
+        duration: 5000,
+      })
+      return null
+    }
+  }
   // isExistingContractOfferStep: isStepThree with a real existing contract
   // selected — used below (and elsewhere in this file, estimate-fetch +
   // the addContractGroupMember submission branch) to mean "an existing
@@ -1074,8 +1141,6 @@ export function OfferDialog({
     setStartDateRetryToken(0)
     setContractTitle(initialState.contractTitle)
     setIsSubmittingOffer(false)
-    setAddMemberError(null)
-    setCreatedContract(null)
     setCreatedOffer(null)
     setOfferSubmitError(null)
     setReviewDialogOpen(false)
@@ -1205,6 +1270,12 @@ export function OfferDialog({
       setCustomHoursError(null)
       setSchedule("custom")
       setCustomScheduleOpen(false)
+    } else if (hours.trim() !== "" && parsedHours === 0) {
+      // BTB-283: a complete-but-zero value gets its own message instead of
+      // the generic empty-field one below — it's already shown immediately
+      // on change via the derived customHoursZeroError, this just keeps
+      // confirming (blur/Enter) from silently advancing past it.
+      setCustomHoursError("Hours must be greater than 0.")
     } else {
       // BTB-260: the row used to just sit there on invalid input. Enter
       // (new onKeyDown below) and blur both land here now, so both get the
@@ -1645,51 +1716,31 @@ export function OfferDialog({
                           variant="outlined"
                           visual="gray"
                           onClick={() => {
-                            // BTB-364/D3: replaces BTB-353's own earlier fix
-                            // here (a /talent-checkout/<slug>/project-details
-                            // redirect) — checkout is the payment step, not
-                            // offer review, and routing "Review Your Offer"
-                            // there was wrong regardless of whether the URL
-                            // itself resolved. Confirmed (research pass, not
-                            // guessed): no page anywhere in this app can
-                            // open a single offer's or contract's details by
-                            // id — getNotificationHref's own comment
-                            // (frontend/libs/notifications.ts) says so
-                            // directly ("every other offer event has no
-                            // page anywhere in the app that could show that
-                            // specific record"), no /my-offers or
-                            // /offers/[id] route exists, and chats-comp.tsx's
-                            // offer-detail panel only opens from a click on
-                            // an already-rendered row, never from a URL id.
-                            // createdContract (set above, only on a real
-                            // addContractGroupMember success) is the one
-                            // case with a real persisted record — for it,
-                            // /my-contracts is the SAME existing fallback
-                            // this codebase already uses for "a real thing
-                            // was created/accepted but there's no per-record
-                            // page for it yet" (see getNotificationHref's
-                            // offer.accepted/counter_accepted case). For the
-                            // zero-existing-contracts path: D1+D2 now really
-                            // call createOffer() and keep the result in
-                            // createdOffer — open it in-memory via
-                            // OfferFlowDialog (rendered below), no
+                            // BTB-364/D3: no page anywhere in this app can
+                            // open a single offer's details by navigating
+                            // to a URL with only an id (confirmed, research
+                            // pass, not guessed — getNotificationHref's own
+                            // comment in frontend/libs/notifications.ts says
+                            // so directly; no /my-offers or /offers/[id]
+                            // route exists; chats-comp.tsx's offer-detail
+                            // panel only opens from a click on an
+                            // already-rendered row). All three Send Offer
+                            // paths now call createOffer() via the shared
+                            // submitCreateOffer() helper and keep the
+                            // result in createdOffer — open it in-memory
+                            // via OfferFlowDialog (rendered below), no
                             // navigation, no redirect to a page that can't
                             // open a single offer by id.
                             if (createdOffer) {
                               setReviewDialogOpen(true)
                               return
                             }
-                            if (!createdContract) {
-                              toast({
-                                variant: "destructive",
-                                description:
-                                  "We couldn't load this offer right now. Please try again.",
-                                duration: 5000,
-                              })
-                              return
-                            }
-                            onOpenChange(false)
-                            router.push("/my-contracts")
+                            toast({
+                              variant: "destructive",
+                              description:
+                                "We couldn't load this offer right now. Please try again.",
+                              duration: 5000,
+                            })
                           }}
                         >
                           Review Your Offer
@@ -2067,12 +2118,6 @@ export function OfferDialog({
                               className="ml-auto mt-3 flex px-0 text-[12px] font-medium leading-normal text-dark-blue-400"
                               onClick={() => {
                                 setSelectedContractId(null)
-                                // ERR-007 recovery path: this button IS "the
-                                // client selects a different contract" — the
-                                // stale 409 from the abandoned selection
-                                // must not carry over to whatever they pick
-                                // next.
-                                setAddMemberError(null)
                               }}
                             >
                               Change Contract
@@ -2442,14 +2487,16 @@ export function OfferDialog({
                                     // question for the lead, not built.
                                     // T1-12: same rejection, extended with
                                     // the per-frequency max.
-                                    // BTB-260: also reject a non-empty value
-                                    // that parses to 0 ("0", "00") the same
-                                    // way — empty stays allowed so the field
-                                    // can still be cleared.
+                                    // BTB-283: a complete-but-zero value
+                                    // ("0", "00") is now ACCEPTED here
+                                    // (previously rejected at the keystroke
+                                    // level, BTB-260) so it can show "Hours
+                                    // must be greater than 0." in the
+                                    // reserved error slot below instead,
+                                    // matching Custom Rate/Duration.
                                     const value = event.target.value
                                     if (
                                       /^\d*$/.test(value) &&
-                                      (value === "" || Number(value) > 0) &&
                                       Number(value) <=
                                         CUSTOM_HOURS_MAX[customFrequency]
                                     ) {
@@ -2564,15 +2611,17 @@ export function OfferDialog({
                               Custom Rate/Duration rows above — always
                               mounted while this row is open so the error
                               appearing/disappearing never resizes the modal.
-                              Text and logic (customHoursError state) are
-                              unchanged. */}
+                              customHoursZeroError (derived, immediate) and
+                              customHoursError (state, set on blur/Enter)
+                              share this one slot. */}
                               <ErrorMessage
                                 className={cn(
                                   "mt-1",
-                                  !customHoursError && "invisible"
+                                  !(customHoursZeroError || customHoursError) &&
+                                    "invisible"
                                 )}
                               >
-                                {customHoursError || " "}
+                                {customHoursZeroError || customHoursError || " "}
                               </ErrorMessage>
                             </div>
                           ) : null}
@@ -2924,16 +2973,9 @@ export function OfferDialog({
             // offerSent flips true, so isOfferDetailsStep stays true. Never
             // visible before because offerSent was never reachable.
             <div className="shrink-0 border-t border-gray-200 bg-white px-6 py-4">
-              {/* ERR-007: inline, not a toast (that's ERR-006 below). The
-              Change Contract button above is the recovery path this error
-              points at — clicking it already clears addMemberError. */}
-              {addMemberError ? (
-                <ErrorMessage className="mb-3">
-                  This talent is already part of this contract.
-                </ErrorMessage>
-              ) : null}
-              {/* BTB-364/D2: createOffer()'s own 409 — inline, same shape as
-              addMemberError above. Clicking Send Offer again clears it. */}
+              {/* BTB-364: createOffer()'s own 409 — inline, not a toast
+              (that's the generic 5xx/network case below). Clicking Send
+              Offer again clears it (submitCreateOffer resets it first). */}
               {offerSubmitError ? (
                 <ErrorMessage className="mb-3">
                   You already have an active offer with this talent.
@@ -2954,13 +2996,23 @@ export function OfferDialog({
 
                   setShowValidationErrors(false)
 
-                  // T2-14: only the existing-contract path calls
-                  // addContractGroupMember. isStepFour ("Invite me to a new
-                  // contract") has no wiring yet — that's POST
-                  // /contract-groups, a different endpoint, out of scope
-                  // here. Edit mode and the zero-existing-contracts
-                  // fallthrough (isExistingContractOfferStep excludes both)
-                  // proceed exactly as before this chunk.
+                  // BTB-364: the existing-contract path now sends a real
+                  // offer exactly like the other two paths, via the same
+                  // submitCreateOffer() helper, instead of calling
+                  // addContractGroupMember at send time — that call used to
+                  // write a live, consent-free PENDING membership into the
+                  // EXISTING group the instant it succeeded, before the
+                  // talent had seen or agreed to anything, and published no
+                  // event (no notification, no chat card, no 409 on
+                  // repeat). The one thing this doesn't yet do: attach the
+                  // ACCEPTED offer to this specific existing contract group
+                  // — contracts-service's GroupsService.createFromAcceptedOffer
+                  // always creates a brand-new group on accept, and
+                  // CreateOfferDto/the Offer entity have no field to target
+                  // an existing one. That's a separate, explicitly deferred
+                  // follow-up (see this ticket's progress note), not part
+                  // of this change. The client still picks a contract here;
+                  // it now only supplies the offer's contractTitle.
                   if (isExistingContractOfferStep && selectedContract) {
                     // Checked and returned on BEFORE setIsSubmittingOffer(true)
                     // — same ordering as every other offline pre-flight in
@@ -2978,96 +3030,22 @@ export function OfferDialog({
 
                     if (!hiredTalentId) return
 
-                    setAddMemberError(null)
                     setIsSubmittingOffer(true)
-                    let contract: ContractDTO
-                    try {
-                      contract = await addContractGroupMember(selectedContract.id, {
-                        talentId: hiredTalentId,
-                        // BTB-388: Contract Title is hidden once an
-                        // existing contract is selected, so contractTitle
-                        // is usually empty here. CreateContractDto.title is
-                        // @IsNotEmpty(), so fall back to the selected
-                        // contract's own title instead of sending "".
-                        title:
-                          contractTitle.trim() ||
-                          selectedContract.title ||
-                          jobTitle ||
-                          "Team Member",
-                        // T2-14 report: fabricated for the predefined
-                        // tiles — see offerRates' own comment above. Not the
-                        // talent's real rate. T4-A: when custom is active
-                        // this is the real number the user typed, not a
-                        // fabricated tile price.
-                        rate:
-                          parseFabricatedRateValue(
-                            selectedRate,
-                            customRateValue
-                          ) ?? 0,
-                        schedule,
-                        // T4-A: selectedDuration holds the literal string
-                        // "custom" while that row is open (see the state
-                        // declaration) — that sentinel is meaningless to
-                        // the backend, so it's resolved into the same shape
-                        // as the predefined tiles ("5 Months"). Shared with
-                        // the checkout URL and onSaveOffer via
-                        // resolvedDuration above, rather than formatted
-                        // only here where the other two exits missed it.
-                        duration: resolvedDuration,
-                      })
-                    } catch (error: any) {
-                      setIsSubmittingOffer(false)
+                    const offer = await submitCreateOffer(
+                      hiredTalentId,
+                      // BTB-388: Contract Title is hidden once an existing
+                      // contract is selected, so contractTitle is usually
+                      // empty here — same fallback precedence
+                      // addContractGroupMember's own title used.
+                      contractTitle.trim() ||
+                        selectedContract.title ||
+                        jobTitle ||
+                        "Team Member"
+                    )
+                    if (!offer) return
 
-                      if (error?.response?.status === 401) {
-                        // Same module-level guard as the two fetch effects
-                        // above — one flag, so a concurrent 401 from any of
-                        // them only redirects once.
-                        if (!sessionExpiredRedirecting) {
-                          sessionExpiredRedirecting = true
-                          const returnTo = `${window.location.pathname}${window.location.search}`
-                          window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
-                        }
-                        return
-                      }
-
-                      if (error?.response?.status === 409) {
-                        setAddMemberError("duplicate")
-                        return
-                      }
-
-                      if (error?.response?.status === 429) {
-                        // ERR-009: rate-limited is a different signal from
-                        // "something broke" (ERR-006 below), so it gets its
-                        // own copy — same toast shape/duration as every
-                        // other toast in this file. setIsSubmittingOffer(false)
-                        // already ran at the top of this catch block, so the
-                        // CTA re-enables and every piece of form state is
-                        // untouched — nothing here resets or clears it.
-                        toast({
-                          variant: "destructive",
-                          description:
-                            "You're sending too quickly. Please wait a moment and try again.",
-                          duration: 5000,
-                        })
-                        return
-                      }
-
-                      // ERR-006: every other failure (5xx, network) is a
-                      // toast, not inline — the modal stays open so the
-                      // client can just press Send Offer again.
-                      toast({
-                        variant: "destructive",
-                        description:
-                          "Couldn't add talent to this contract. Please try again.",
-                        duration: 5000,
-                      })
-                      return
-                    }
                     setIsSubmittingOffer(false)
-                    // BTB-364/D2: kept instead of discarded — this is what
-                    // "Review Your Offer" (D3) routes with below, since this
-                    // is the one path that creates a real, persisted record.
-                    setCreatedContract(contract)
+                    setCreatedOffer(offer)
 
                     // FR-13: a real successful submission — show Offer Sent
                     // instead of closing and redirecting. The dialog stays
@@ -3085,16 +3063,36 @@ export function OfferDialog({
                     return
                   }
 
-                  // QA bug fix: isStepFour (existing contracts, "create a new
-                  // contract" — T2-14, POST /contract-groups still isn't
-                  // wired) has no real submission to call "successful" —
-                  // unchanged, same in-modal confirmation as before, no
-                  // backend call. BTB-364/D2 only wires the OTHER branch that
-                  // used to share this fallthrough: isStepThree with no
-                  // existing contracts at all (selectedContract null,
-                  // !hasExistingContracts) — a real "Hire Me" offer, which
-                  // now really calls createOffer().
+                  // BTB-364 (reopened): isStepFour ("Invite me to a new
+                  // contract") used to call nothing at all — "Offer Sent!"
+                  // shown with no real offer, no notification, and a repeat
+                  // send never 409ing. Now calls createOffer() via the
+                  // shared helper above, same as the zero-existing-contracts
+                  // branch right below (both are "create a brand-new
+                  // contract" scenarios — accept-time contract creation
+                  // doesn't distinguish how the client reached this screen).
+                  // contractTitle comes from the Contract Title field,
+                  // already required here by isOfferReady/
+                  // isNewContractOfferStep (BTB-388, unchanged).
                   if (!isEditMode && isStepFour) {
+                    if (typeof navigator !== "undefined" && !navigator.onLine) {
+                      toast({
+                        variant: "destructive",
+                        description:
+                          "You appear to be offline. Please check your connection and try again.",
+                        duration: 5000,
+                      })
+                      return
+                    }
+
+                    if (!hiredTalentId) return
+
+                    setIsSubmittingOffer(true)
+                    const offer = await submitCreateOffer(hiredTalentId)
+                    if (!offer) return
+
+                    setIsSubmittingOffer(false)
+                    setCreatedOffer(offer)
                     onSaveOffer?.({
                       selectedRate,
                       schedule,
@@ -3120,89 +3118,16 @@ export function OfferDialog({
 
                     if (!hiredTalentId) return
 
-                    setOfferSubmitError(null)
+                    // BTB-364 (reopened): now goes through the shared
+                    // helper above — same payload/error handling as before,
+                    // no behavior change for this branch; see the helper's
+                    // own comment for the jobListingId-omitted (BTB-364/D1)
+                    // and contractTitle (BTB-388) notes that used to live
+                    // inline here.
                     setIsSubmittingOffer(true)
-                    let offer: Offer
-                    try {
-                      // BTB-364/D1: jobListingId omitted entirely — this is
-                      // the one call site with no job listing in context at
-                      // all (see create-offer.dto.ts's matching change).
-                      offer = await createOffer({
-                        talentId: hiredTalentId,
-                        contractType: "PROJECT",
-                        // offer_service.offers.contract_title is NOT NULL
-                        // (InitialSchema) and create() inserts dto.contractTitle
-                        // as-is, so omitting it fails the insert even though
-                        // the DTO allows it for PROJECT.
-                        // BTB-388: this call site only runs for
-                        // isNewContractOfferStep (the existing-contract
-                        // branch above always returns before reaching
-                        // here) — contractTitle is now real, validated
-                        // input by the time we get here, not omitted. The
-                        // jobTitle/"Team Member" fallback stays as the
-                        // NOT NULL safety net (matches buildOfferReviewData's
-                        // own fallback) for the case this is ever reached
-                        // without going through that validation.
-                        contractTitle: contractTitle.trim() || jobTitle || "Team Member",
-                        rate:
-                          parseFabricatedRateValue(
-                            selectedRate,
-                            customRateValue
-                          ) ?? 0,
-                        currencyCode: "USD",
-                        durationMonths: resolvedDurationMonths,
-                        workSchedule: resolvedWorkSchedule,
-                        startDate: `${selectedStartDate.getFullYear()}-${String(
-                          selectedStartDate.getMonth() + 1
-                        ).padStart(2, "0")}-${String(
-                          selectedStartDate.getDate()
-                        ).padStart(2, "0")}`,
-                        message: message.trim() || undefined,
-                      })
-                    } catch (error: any) {
-                      setIsSubmittingOffer(false)
+                    const offer = await submitCreateOffer(hiredTalentId)
+                    if (!offer) return
 
-                      if (error?.response?.status === 401) {
-                        if (!sessionExpiredRedirecting) {
-                          sessionExpiredRedirecting = true
-                          const returnTo = `${window.location.pathname}${window.location.search}`
-                          window.location.href = `/sign-in?redirect=${encodeURIComponent(returnTo)}&sessionExpired=1`
-                        }
-                        return
-                      }
-
-                      // BTB-364/D2: ACTIVE_OFFER_ALREADY_EXISTS -> the exact
-                      // safe message the ticket specifies, inline (matches
-                      // addMemberError's placement/shape above), never the
-                      // raw backend error text.
-                      const errorCode = (
-                        error as {
-                          response?: { data?: { error?: string } }
-                        }
-                      )?.response?.data?.error
-                      if (errorCode === "ACTIVE_OFFER_ALREADY_EXISTS") {
-                        setOfferSubmitError("duplicate")
-                        return
-                      }
-
-                      if (error?.response?.status === 429) {
-                        toast({
-                          variant: "destructive",
-                          description:
-                            "You're sending too quickly. Please wait a moment and try again.",
-                          duration: 5000,
-                        })
-                        return
-                      }
-
-                      toast({
-                        variant: "destructive",
-                        description:
-                          "Couldn't send this offer. Please try again.",
-                        duration: 5000,
-                      })
-                      return
-                    }
                     setIsSubmittingOffer(false)
                     // BTB-364/D3: "Review Your Offer" opens this directly —
                     // see the OfferFlowDialog rendered below.

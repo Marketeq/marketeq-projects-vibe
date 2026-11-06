@@ -250,10 +250,10 @@ describe("Travel Mode and location actions route correctly", () => {
 
   it("'Change my home country' starts from the top and saves nothing", async () => {
     assert.ok(page.includes("Change my home country"))
-    assert.ok(page.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
+    assert.ok(page.includes('openFlowFromMismatch(launch, "change-country")'))
     const deps = { getDetectedLocation: async () => ({ country: "PT" }) } as never
     const launch = await startChangeHomeCountry(deps)
-    assert.equal(launch.initialState, undefined)
+    assert.equal(launch!.initialState, undefined)
   })
 
   it("an answered prompt closes itself and both buttons are disabled while one is in flight", () => {

@@ -91,6 +91,11 @@ const PUBLIC_PATTERNS = [
   // request ever gets there, the same way the talent/public entries above
   // need their own allowlist entry regardless of the downstream guard.
   /^\/case-studies\/public\/[^/]+$/,
+  // A talent's published case studies, listed on their public profile
+  // (GET /case-studies/public?ownerUserId=) and opened by id from that grid
+  // (GET /case-studies/public/id/:id). Both return published rows only.
+  /^\/case-studies\/public$/,
+  /^\/case-studies\/public\/id\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/v1\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   // Stripe/Ramp call these directly — no Marketeq session exists to send.
   // Authenticity is verified downstream via each provider's own signature

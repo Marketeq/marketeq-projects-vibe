@@ -56,10 +56,15 @@ const seams = (gps: unknown, position: unknown = { status: "ok", latitude: 30.26
     getPosition: async () => position,
     fetchGpsLocation: async () => gps,
   }) as unknown as GetDetectedLocationOptions
-const returningPath = (options: GetDetectedLocationOptions) =>
+const returningPathOrNull = (options: GetDetectedLocationOptions) =>
   startChangeHomeCountry({
     getDetectedLocation: (o) => getDetectedLocation({ ...o, ...options }),
   })
+const returningPath = async (options: GetDetectedLocationOptions) => {
+  const launch = await returningPathOrNull(options)
+  assert.ok(launch, "a device location was produced")
+  return launch
+}
 // What Verify My Account does (page.tsx): getDetectedLocation({ useBrowserLocation: true }).
 const originalPath = (options: GetDetectedLocationOptions) =>
   getDetectedLocation({ useBrowserLocation: true, ...options })
@@ -115,16 +120,17 @@ describe("Change my home country loads the location exactly like the original fl
     assert.deepEqual((await returningPath(options)).location, await originalPath(options))
   })
 
-  it("every shortfall behaves as it does for a first-time user (denied, unavailable, timeout, failed server call)", async () => {
-    for (const position of [{ status: "denied" }, { status: "unavailable" }, { status: "timeout" }]) {
+  it("every shortfall (denied, unsupported, unavailable, timeout, failed server call) ends the attempt: no launch, so no IP-derived screen opens (BTB-387)", async () => {
+    for (const position of [{ status: "denied" }, { status: "unsupported" }, { status: "unavailable" }, { status: "timeout" }]) {
       const options = seams(GPS_RESOLVED_US, position)
-      assert.deepEqual((await returningPath(options)).location, await originalPath(options), String(position.status))
+      assert.equal(await returningPathOrNull(options), null, String(position.status))
+      assert.ok((await originalPath(options)).locationFailure, "the same shortfall is a failure for Verify My Account")
     }
     const failing = {
       ...seams(GPS_RESOLVED_US),
       fetchGpsLocation: async () => { throw new Error("down") },
     } as unknown as GetDetectedLocationOptions
-    assert.deepEqual((await returningPath(failing)).location, await originalPath(failing))
+    assert.equal(await returningPathOrNull(failing), null)
   })
 
   it("a browser position in another country than the request is a conflict, handled as in the original flow", async () => {

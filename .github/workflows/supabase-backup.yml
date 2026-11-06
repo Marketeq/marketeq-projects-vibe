@@ -11,14 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install postgresql-client
-        run: sudo apt-get install -y postgresql-client
+        run: |
+          # pg_dump refuses to dump a server newer than itself, and the database runs
+          # PostgreSQL 17. The runner's default client is older, so pin the major version.
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
 
       - name: Dump database
         run: |
           DATE=$(date +%Y%m%d)
           FILENAME="marketeq-prod-${DATE}.pgc"
           echo "Creating dump: $FILENAME"
-          pg_dump \
+          /usr/lib/postgresql/17/bin/pg_dump \
             --dbname="${{ secrets.SUPABASE_DB_BACKUP_URL }}" \
             --format=custom \
             --no-owner \

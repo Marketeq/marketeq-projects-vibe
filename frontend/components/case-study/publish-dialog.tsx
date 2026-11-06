@@ -184,6 +184,15 @@ export interface PublishDetails {
   skills: string[]
 }
 
+/** A cover image already saved on the case study, with its transform. */
+export interface SavedCover {
+  coverImage: string | null
+  coverImageZoom: number
+  coverImageRotation: number
+  coverImageOffsetX: number
+  coverImageOffsetY: number
+}
+
 /**
  * "Publish Your Case Study" modal, matching the Figma spec. Replaces the
  * plain "Ready to publish?" confirmation previously inline in
@@ -199,10 +208,18 @@ export function PublishDialog({
   content = "",
   onPublish,
   publishing = false,
+  savedCover = null,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
+  /**
+   * The cover image already saved on this case study, with its transform.
+   * When set, the dialog opens with it in place so a re-publish doesn't ask
+   * for a cover the case study already has. It can still be replaced or
+   * removed; removing it brings back the "add a cover image" error.
+   */
+  savedCover?: SavedCover | null
   /**
    * Plain-text digest of the case study's own content (see
    * `collectCaseStudyText`). Drives the "Suggested Skills" row — without it
@@ -228,11 +245,17 @@ export function PublishDialog({
   const [skillLimitReached, setSkillLimitReached] = useState(false)
   const { toast } = useToast()
 
-  // Re-seed from the editor's current title (and clear image/skills/errors)
-  // every time the dialog is freshly opened.
+  // Re-seed from the editor's current title and saved cover image (and clear
+  // errors) every time the dialog is freshly opened.
   useEffect(() => {
     if (open) {
+      const cover = savedCover?.coverImage ? savedCover : null
       setTitleValue(initialTitle)
+      setCoverImage(cover?.coverImage ?? null)
+      setCoverImageZoom(cover?.coverImageZoom ?? 1)
+      setCoverImageRotation(cover?.coverImageRotation ?? 0)
+      setCoverImageOffsetX(cover?.coverImageOffsetX ?? 50)
+      setCoverImageOffsetY(cover?.coverImageOffsetY ?? 50)
       setAttemptedSubmit(false)
       setSkillLimitReached(false)
     }

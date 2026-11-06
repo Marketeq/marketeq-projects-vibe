@@ -119,6 +119,19 @@ export const CaseStudyAPI = {
   GetPublicBySlug: (slug: string) => {
     return AxiosRequest.get(`${BASE}/case-studies/public/${slug}`)
   },
+  /** One talent's PUBLISHED case studies — no login needed, any viewer. */
+  ListPublic: (
+    ownerUserId: string,
+    params?: Omit<ListCaseStudiesParams, "status">
+  ) => {
+    return AxiosRequest.get(`${BASE}/case-studies/public`, {
+      params: { ...params, ownerUserId },
+    })
+  },
+  /** A published case study by id, for a viewer who doesn't own it. */
+  GetPublicById: (id: string) => {
+    return AxiosRequest.get(`${BASE}/case-studies/public/id/${id}`)
+  },
   GetLikeState: (id: string) => {
     return AxiosRequest.get(`${BASE}/case-studies/${id}/like`)
   },

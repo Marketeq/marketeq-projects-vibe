@@ -9774,7 +9774,7 @@ const DescribeProjectStep = ({
                       : "What do you want to accomplish with this project?"}
                 </Label>
                 <span className={firstQuestionCounterClassName}>
-                  {descriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {descriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
@@ -9806,7 +9806,7 @@ const DescribeProjectStep = ({
                       What are the main tasks or deliverables?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10022,7 +10022,7 @@ const DescribeProjectStep = ({
                     What are the main tasks or deliverables?
                   </Label>
                   <span className="text-sm leading-5 font-normal text-gray-400">
-                    {deliverablesWordCount}/{STEP_TWO_WORD_LIMIT} words
+                    {deliverablesWordCount} / {STEP_TWO_WORD_LIMIT}
                   </span>
                 </div>
                 <Textarea
@@ -10568,7 +10568,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className={descriptionCounterClassName}>
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10598,7 +10598,7 @@ const DescribeProjectStep = ({
                       How will you know this project is successful?
                     </Label>
                     <span className="text-xs leading-[18px] text-gray-500">
-                      {successCriteriaWordCount}/{STEP_TWO_WORD_LIMIT} words
+                      {successCriteriaWordCount} / {STEP_TWO_WORD_LIMIT}
                     </span>
                   </div>
                   <Textarea
@@ -10637,9 +10637,11 @@ const DescribeProjectStep = ({
 const ReviewToolsTechnologiesStep = ({
   setProgress,
   source = "project",
+  hiringMode,
   jobListingId,
 }: ProgressProps & {
   source?: "project" | "service" | "roles";
+  hiringMode?: HiringModeChoice;
   jobListingId?: string | null;
 }) => {
   const { toggleValidation } = useStepContext();
@@ -10789,7 +10791,9 @@ const ReviewToolsTechnologiesStep = ({
             <p className="h-5 w-[886px] text-sm leading-5 text-dark-blue-400">
               We&apos;ve generated a list based on your{" "}
               {source === "roles"
-                ? "roles' description"
+                ? hiringMode === "individual"
+                  ? "role description"
+                  : "roles' description"
                 : source === "service"
                   ? "service details"
                   : "project details"}
@@ -11901,7 +11905,7 @@ const NoScopeRoleInfoStep = ({
             <h1 className="text-[36px] font-bold leading-[44px] tracking-[-0.02em] text-dark-blue-400">
               {isTeamMode
                 ? "Describe roles you need"
-                : "Describe role you need"}
+                : "Describe the role you need"}
             </h1>
 
             <div
@@ -11935,7 +11939,7 @@ const NoScopeRoleInfoStep = ({
                     useNoScopeLayout && "font-normal",
                   )}
                 >
-                  {roleDescriptionWordCount}/{STEP_TWO_WORD_LIMIT} words
+                  {roleDescriptionWordCount} / {STEP_TWO_WORD_LIMIT}
                 </span>
               </div>
               <Textarea
@@ -11948,7 +11952,11 @@ const NoScopeRoleInfoStep = ({
                   hasWordLimitError &&
                     "border-error-300 focus:border-error-300 focus:ring-error-100",
                 )}
-                placeholder="Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                placeholder={
+                  isTeamMode
+                    ? "Add tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                    : "Add key tasks and responsibilities (e.g. build product pages, run tests, write content)"
+                }
                 value={roleDescription}
                 isInvalid={hasWordLimitError}
                 onChange={(event) => setRoleDescription(event.target.value)}
@@ -24062,15 +24070,20 @@ function PublishProject({
   const [teamRolesProgress, setTeamRolesProgress] = useState(0);
   const [finalReviewProgress, setFinalReviewProgress] = useState(0);
 
+  // The bar shows the progress of the steps up to and including the current one,
+  // so going back drops the share the later steps had already reported.
   const overallProgress = useMemo(() => {
-    return (
-      projectInfoProgress +
-      mediaProgress +
-      projectScopeProgress +
-      teamRolesProgress +
-      finalReviewProgress
-    );
+    return [
+      projectInfoProgress,
+      mediaProgress,
+      projectScopeProgress,
+      teamRolesProgress,
+      finalReviewProgress,
+    ]
+      .slice(0, currentStep + 1)
+      .reduce((total, stepProgress) => total + stepProgress, 0);
   }, [
+    currentStep,
     projectInfoProgress,
     mediaProgress,
     projectScopeProgress,
@@ -24170,6 +24183,7 @@ function PublishProject({
                         <ReviewToolsTechnologiesStep
                           setProgress={setProjectScopeProgress}
                           jobListingId={jobListingId}
+                          hiringMode={selectedHiringMode}
                           source={
                             isNoScopeFlow
                               ? "roles"

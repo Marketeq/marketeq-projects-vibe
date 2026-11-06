@@ -8,6 +8,30 @@
 //
 // The position is returned to the caller for one immediate server round trip
 // and is never stored, cached or logged here.
+//
+// WHY the timeout is not handed to the browser (BTB-387):
+// Chrome counts the time the native permission prompt is open against
+// getCurrentPosition's `timeout` (measured in real Chrome: with the prompt
+// unanswered the permission state stays "prompt" and the error callback fires
+// with code 3 exactly when the timeout elapses). A user who simply had not
+// answered yet was therefore reported as a failure, the "turn on location"
+// dialog opened under Chrome's prompt, and a later "Allow" went nowhere.
+//
+// So the request is made with the largest native timeout, which never fires
+// while the prompt waits, and OUR OWN timer measures only the time after the
+// permission is granted (the only time a missing position is a real failure):
+//
+//   permission "prompt"  -> wait. No timer runs. The prompt's own outcome decides:
+//                           Allow  -> the pending request succeeds (or our timer starts
+//                                     on the change to "granted");
+//                           Block / X / dismiss -> the request errors with code 1.
+//   permission "granted" -> our timer runs; no position in time => "timeout".
+//   permission "denied"  -> "denied".
+//   no Permissions API   -> cannot observe the prompt, so the timer starts at once
+//                           (the old behaviour, and the only safe bound there).
+//
+// The first outcome wins; every later callback, event or timer is ignored. An
+// AbortSignal cancels the wait ("cancelled") and removes every listener and timer.
 
 export type BrowserPositionResult =
   | { status: "ok"; latitude: number; longitude: number }
@@ -15,6 +39,7 @@ export type BrowserPositionResult =
   | { status: "denied" }
   | { status: "unavailable" }
   | { status: "timeout" }
+  | { status: "cancelled" }
 
 export interface GeolocationLike {
   getCurrentPosition: (
@@ -30,51 +55,204 @@ export interface GeolocationLike {
   ) => void
 }
 
+export interface PermissionStatusLike {
+  readonly state: string
+  addEventListener: (type: "change", listener: () => void) => void
+  removeEventListener: (type: "change", listener: () => void) => void
+}
+
+export interface PermissionsLike {
+  query: (descriptor: { name: "geolocation" }) => Promise<PermissionStatusLike>
+}
+
+export interface TimersLike {
+  set: (callback: () => void, ms: number) => unknown
+  clear: (handle: unknown) => void
+}
+
+export interface GetBrowserPositionOptions {
+  /** Defaults to navigator.permissions. Pass null to simulate a browser without it. */
+  permissions?: PermissionsLike | null
+  signal?: AbortSignal
+  timers?: TimersLike
+  /** How long after the permission is granted a missing position counts as a failure. */
+  timeoutMs?: number
+}
+
 // GeolocationPositionError codes.
 const PERMISSION_DENIED = 1
 const TIMEOUT = 3
 
+// Time allowed for a position once the permission is granted.
 const TIMEOUT_MS = 10_000
+// Largest value the API accepts (unsigned long): never fires while a prompt waits.
+const NATIVE_NO_TIMEOUT_MS = 0xffffffff
+// A browser that reports a native timeout while the prompt is still unanswered is asked again.
+const REENQUEUE_MS = 1_000
+
+const defaultTimers: TimersLike = {
+  set: (callback, ms) => setTimeout(callback, ms),
+  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+}
+
+function browserPermissions(): PermissionsLike | undefined {
+  if (typeof navigator === "undefined") return undefined
+  const permissions = (navigator as { permissions?: PermissionsLike })
+    .permissions
+  return permissions && typeof permissions.query === "function"
+    ? permissions
+    : undefined
+}
 
 export function getBrowserPosition(
   geolocation: GeolocationLike | undefined = typeof navigator === "undefined"
     ? undefined
-    : navigator.geolocation
+    : navigator.geolocation,
+  options: GetBrowserPositionOptions = {}
 ): Promise<BrowserPositionResult> {
   if (!geolocation || typeof geolocation.getCurrentPosition !== "function") {
     return Promise.resolve({ status: "unsupported" })
   }
+  const permissions =
+    options.permissions === null
+      ? undefined
+      : (options.permissions ?? browserPermissions())
+  const timers = options.timers ?? defaultTimers
+  const timeoutMs = options.timeoutMs ?? TIMEOUT_MS
+  const { signal } = options
+
   return new Promise((resolve) => {
-    try {
-      geolocation.getCurrentPosition(
-        ({ coords }) => {
-          const { latitude, longitude } = coords
-          if (
-            !Number.isFinite(latitude) ||
-            !Number.isFinite(longitude) ||
-            Math.abs(latitude) > 90 ||
-            Math.abs(longitude) > 180
-          ) {
-            resolve({ status: "unavailable" })
-            return
-          }
-          resolve({ status: "ok", latitude, longitude })
-        },
-        (error) =>
-          resolve({
-            status:
-              error?.code === PERMISSION_DENIED
-                ? "denied"
-                : error?.code === TIMEOUT
-                  ? "timeout"
-                  : "unavailable",
-          }),
-        // Coarse accuracy is all a city-level display needs, and it avoids a
-        // slow GPS fix; a fresh position each time, never a cached one.
-        { enableHighAccuracy: false, timeout: TIMEOUT_MS, maximumAge: 0 }
-      )
-    } catch {
-      resolve({ status: "unavailable" })
+    let settled = false
+    let timer: unknown
+    let retry: unknown
+    let status: PermissionStatusLike | undefined
+    let onChange: (() => void) | undefined
+
+    const onAbort = () => finish({ status: "cancelled" })
+    function finish(result: BrowserPositionResult) {
+      if (settled) return
+      settled = true
+      if (timer !== undefined) timers.clear(timer)
+      if (retry !== undefined) timers.clear(retry)
+      if (status && onChange) status.removeEventListener("change", onChange)
+      signal?.removeEventListener("abort", onAbort)
+      resolve(result)
     }
+
+    if (signal?.aborted) {
+      finish({ status: "cancelled" })
+      return
+    }
+    signal?.addEventListener("abort", onAbort, { once: true })
+
+    const startTimer = () => {
+      if (settled || timer !== undefined) return
+      timer = timers.set(() => finish({ status: "timeout" }), timeoutMs)
+    }
+
+    const onSuccess = ({
+      coords,
+    }: {
+      coords: { latitude: number; longitude: number }
+    }) => {
+      if (settled) return
+      const { latitude, longitude } = coords
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        Math.abs(latitude) > 90 ||
+        Math.abs(longitude) > 180
+      ) {
+        finish({ status: "unavailable" })
+        return
+      }
+      finish({ status: "ok", latitude, longitude })
+    }
+
+    const onError = (error: { code: number }) => {
+      if (settled) return
+      if (error?.code === PERMISSION_DENIED) {
+        finish({ status: "denied" })
+      } else if (error?.code === TIMEOUT) {
+        onNativeTimeout()
+      } else {
+        finish({ status: "unavailable" })
+      }
+    }
+
+    // A native timeout is only a failure once the permission is granted.
+    const onNativeTimeout = () => {
+      if (!status) {
+        finish({ status: "timeout" })
+        return
+      }
+      if (status.state === "prompt") {
+        // Still unanswered: not a denial. Ask again shortly; the answer decides.
+        retry = timers.set(() => {
+          retry = undefined
+          request()
+        }, REENQUEUE_MS)
+      } else if (status.state === "denied") {
+        finish({ status: "denied" })
+      } else {
+        finish({ status: "timeout" })
+      }
+    }
+
+    function request() {
+      if (settled) return
+      try {
+        geolocation!.getCurrentPosition(onSuccess, onError, {
+          enableHighAccuracy: false,
+          timeout: NATIVE_NO_TIMEOUT_MS,
+          maximumAge: 0,
+        })
+      } catch {
+        finish({ status: "unavailable" })
+      }
+    }
+
+    request()
+    if (settled) return
+
+    if (!permissions) {
+      startTimer()
+      return
+    }
+    void permissions
+      .query({ name: "geolocation" })
+      .then((current) => {
+        if (settled) return
+        status = current
+        const sync = () => {
+          if (settled) return
+          if (current.state === "granted") startTimer()
+          else if (current.state === "denied") finish({ status: "denied" })
+        }
+        onChange = sync
+        current.addEventListener("change", sync)
+        sync()
+      })
+      .catch(() => startTimer())
   })
+}
+
+export type GeolocationPermissionState = "granted" | "denied" | "prompt"
+
+/**
+ * The browser's current geolocation permission, or undefined when it cannot be read
+ * (no Permissions API, or the query fails). Read-only: it never prompts.
+ */
+export async function queryGeolocationPermission(
+  permissions: PermissionsLike | null | undefined = browserPermissions()
+): Promise<GeolocationPermissionState | undefined> {
+  if (!permissions) return undefined
+  try {
+    const { state } = await permissions.query({ name: "geolocation" })
+    return state === "granted" || state === "denied" || state === "prompt"
+      ? state
+      : undefined
+  } catch {
+    return undefined
+  }
 }
