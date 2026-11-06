@@ -241,7 +241,20 @@ pipeline {
                                 "frontend/app/(group)/billing/invoices/page.tsx"|\
                                 "frontend/app/(group)/billing/my-plans/page.tsx"|\
                                 "frontend/app/(group)/billing/payment-methods/page.tsx"|\
-                                "frontend/app/(group)/my-jobs/page.tsx")
+                                "frontend/app/(group)/my-jobs/page.tsx"|\
+                                frontend/components/scope-builder/index.tsx)
+                                    # ScopeBuilder is co-owned: its two owners (checkout
+                                    # engineer + Vitaly) may change it without the
+                                    # frozen-unlock label. Everyone else is held to the
+                                    # same design-surface rule as every frozen file.
+                                    case "$f" in
+                                        frontend/components/scope-builder/index.tsx)
+                                            case " shreyanshsahu1008 VAndrejeus " in
+                                                *" ${PR_AUTHOR:-} "*)
+                                                    FROZEN_OK_FILES="$FROZEN_OK_FILES $f (scope-builder owner)"
+                                                    continue ;;
+                                            esac ;;
+                                    esac
                                     BEFORE=$(design_surface "$BASE_SHA" "$f")
                                     AFTER=$(design_surface HEAD "$f")
                                     if [ "$BEFORE" = "$AFTER" ]; then
