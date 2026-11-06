@@ -215,7 +215,10 @@ transitional state.
 
 - All new cross-schema access must be reviewed
 
-- All schema contracts must be documented
+- All schema contracts must be documented in the
+  [Cross-Schema Read Grants — Register](./Cross-Schema%20Read%20Grants%20%E2%80%94%20Register.md),
+  which records the view, the owning service, the role granted, the approver
+  and the date. A grant that is not in the register is not approved.
 
 - Repeated or complex read dependencies may trigger a design review
 

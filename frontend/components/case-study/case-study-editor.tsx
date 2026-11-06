@@ -23,7 +23,11 @@ import { AddBlockDivider } from "./add-block-divider"
 import { InitialBlock } from "./initial-block"
 import { SECTION_TYPE_LABELS, TemplateDialog } from "./template-dialog"
 import { ColumnLayoutPicker } from "./column-layout-picker"
-import { PublishDialog, type PublishDetails } from "./publish-dialog"
+import {
+  PublishDialog,
+  type PublishDetails,
+  type SavedCover,
+} from "./publish-dialog"
 import { SectionRenderer } from "./section-renderer"
 import { EditorTopBar } from "./editor-top-bar"
 import { EditorPreviewBar } from "./editor-preview-bar"
@@ -523,6 +527,9 @@ export default function CaseStudyEditor({
   const [status, setStatus] = useState<CaseStudyStatus>("draft")
   const [publishDialogOpen, setPublishDialogOpen] = useState(false)
   const [isPublishing, setIsPublishing] = useState(false)
+  // The cover image already saved on this case study. Handed to the publish
+  // dialog so it opens with that cover in place instead of empty.
+  const [savedCover, setSavedCover] = useState<SavedCover | null>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined
   )
@@ -571,6 +578,7 @@ export default function CaseStudyEditor({
           if (cancelled) return
           setId(cs.id)
           setStatus(cs.status)
+          setSavedCover(cs)
           dispatch({
             type: "hydrate",
             payload: {
@@ -673,6 +681,7 @@ export default function CaseStudyEditor({
       )
       dispatch({ type: "set-title", payload: cs.title })
       setStatus(cs.status)
+      setSavedCover(cs)
       setPublishDialogOpen(false)
       toast({
         title: "Case study published",
@@ -918,6 +927,7 @@ export default function CaseStudyEditor({
         content={contentText}
         onPublish={handlePublish}
         publishing={isPublishing}
+        savedCover={savedCover}
       />
     </div>
   )
