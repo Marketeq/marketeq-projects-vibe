@@ -318,7 +318,7 @@ describe("RUNTIME: 'Change my home country' opens the existing detected-location
     const launch = await startChangeHomeCountry({
       getDetectedLocation: async () => ({ country: "CA" }) as never,
     })
-    assert.equal(launch.initialState, undefined) // the flow's own first screen
+    assert.equal(launch!.initialState, undefined) // the flow's own first screen
   })
 })
 

@@ -153,8 +153,8 @@ describe("Change my home country", () => {
     const { d, calls } = deps()
     const launch = await startChangeHomeCountry(d)
     assert.deepEqual(calls, ["detected-location"])
-    assert.equal(launch.initialState, undefined)
-    assert.equal(launch.location, LOCATION)
+    assert.equal(launch!.initialState, undefined)
+    assert.equal(launch!.location, LOCATION)
   })
 
   it("a failed lookup rejects, so the page keeps the prompt open to try again", async () => {
@@ -226,7 +226,7 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
     // The host remounts the flow (new key) and takes the server location; the page asks it to.
     assert.match(
       page,
-      /openFlow\(\s*\{ initialState: launch\.initialState \},\s*\{ detectedLocation: launch\.location \}\s*\)/
+      /openFlow\(\s*\{\s*initialState: launch\.initialState,[\s\S]*?\.\.\.\(launch\.initialState === \"traveling-showcase\"\s*\? \{ ipLocationOnly: true \}\s*: \{\}\),?\s*\},\s*\{ detectedLocation: launch\.location \}\s*\)/
     )
     // Only "Change my home country" asks for the browser position (an explicit click, the
     // same load as Verify My Account); "still traveling" shows no location and asks nothing.

@@ -23,6 +23,14 @@
 // decision, Didit, location) and their order are untouched; what was added is one-check-at-a-time
 // gating, a currency check after every await, and the gate's existing "Checking..." state while
 // a check runs. The hashes below were updated for that.
+//
+// BTB-387 changed the Verify My Account handler on purpose, once more (Christopher approved
+// the replacement design): when the DEVICE location cannot be obtained, the handler now opens
+// the "Turn on location to continue" dialog and returns instead of opening the location
+// flow, which opens only after a successful Try Again (and never from an IP lookup). The
+// steps and their order are untouched (connection check, fresh summary, decision, Didit,
+// location); the added lines are the cancelled/locationFailure branch right after the
+// location call. The handler hash was updated for that.
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
@@ -178,7 +186,7 @@ describe("decision 4: the Verify My Account flow is unchanged", () => {
   it("the handler is as PMCM-637 left it (steps and order of dev-main's flow, plus its gating)", () => {
     assert.equal(
       sha(handler),
-      "f046d7344027e330fcdf9935d3141f6cacbc524318e17be25c872fd4a7f9d8cd"
+      "0645c1548afc722bcfbba84a2bb1bab0c39215dd45673ad4206f71c3a1828a23"
     )
   })
 

@@ -59,7 +59,7 @@ describe("what must stay unchanged in the flow", () => {
     assert.ok(flow.includes("Update your status if your location changes"))
     assert.match(
       flow,
-      /setTravelReminderOpen\(false\)\s+send\("UPDATE_LOCATION"\)\s+onOpenChange\(true\)/
+      /setTravelReminderOpen\(false\)\s+goToLocationScreen\("UPDATE_LOCATION", \(\) => onOpenChange\(true\)\)/
     )
   })
 

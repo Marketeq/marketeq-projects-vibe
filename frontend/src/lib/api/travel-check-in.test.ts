@@ -760,7 +760,11 @@ describe("home-country transition: the existing PMCM-650 flow, no new location o
       "const handleCheckInUpdateHomeCountry",
       "return (\n    <>"
     )
-    assert.ok(handler.includes("await startChangeHomeCountry()"))
+    assert.ok(handler.includes("await startChangeHomeCountry({"))
+    assert.ok(handler.includes("requestDeviceLocation,"))
+    // no device location: the modal stays as it was (nothing dismissed, no flow)
+    assert.ok(handler.includes("if (!launch) return"))
+    assert.ok(handler.indexOf("if (!launch) return") < handler.indexOf("checkInDismissalsRef.current.dismiss("))
     assert.ok(
       handler.includes('openFlowFromMismatch(launch, "change-country")')
     )

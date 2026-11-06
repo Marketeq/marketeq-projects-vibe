@@ -11,19 +11,27 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { flushSync } from "react-dom"
 import dynamic from "next/dynamic"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth, resolveDashboardRole } from "@/contexts/auth"
 import { ROLE } from "@/types/user"
 import {
   AlertTriangle,
+  ArrowLeft,
+  Check,
   CheckCircle,
   ClockStopwatch,
+  Globe01,
+  Lock01,
   MarkerPin01,
   Plane,
   RefreshCw,
+  Sliders04,
   X,
 } from "@blend-metrics/icons"
+import { MicrosoftBrand } from "@blend-metrics/icons/brands"
+import { AppleSolid } from "@blend-metrics/icons/social-solid"
 import {
   Alert,
   AlertContent,
@@ -31,11 +39,17 @@ import {
   AlertIcon,
   AlertTitle,
   Button,
+  Card,
   CloseButton,
   Dialog,
   DialogContent,
   DialogDescription,
   IconButton,
+  ScrollArea,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from "@/components/ui"
 import { StatusAlertsAPI } from "@/service/http/status-alerts"
 import {
@@ -64,6 +78,23 @@ import {
   STATUS_ALERT_DISMISS_ERROR,
 } from "@/src/lib/api/status-alert-copy"
 import { checkVpnProxy } from "@/src/lib/api/vpn-proxy-detection"
+import {
+  createDeviceLocationRequester,
+  type DeviceLocationRequestOptions,
+} from "@/src/lib/api/device-location-request"
+import {
+  createLocationRecovery,
+  type LocationRecoveryState,
+  type RecoveryHooks,
+} from "@/src/lib/api/location-recovery"
+import {
+  currentBrowserEnvironment,
+  detectDeviceSection,
+  getLocationInstructions,
+  type DeviceSectionId,
+  type IllustrationIcon,
+  type IllustrationStep,
+} from "@/src/lib/api/location-instructions"
 import {
   createConnectionCheckSession,
   detectionOf,
@@ -95,8 +126,10 @@ import {
   type IdentityVerificationSummaryView,
 } from "@/src/lib/api/identity-verification-state"
 import {
-  getDetectedLocation,
+  getDetectedLocation as detectLocation,
   type DetectedLocation,
+  type GetDetectedLocationOptions,
+  type LocationFailureReason,
 } from "@/src/lib/api/detected-location"
 import {
   clearReviewedResult,
@@ -196,6 +229,10 @@ export interface IdentityFlowLaunch {
   // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
   // the location with the browser (see refreshLocationForRelocation).
   detectBrowserLocationOnRelocate?: boolean
+  // Set when the flow's location is the server-derived one (it was opened on "How long are you
+  // traveling?", which shows no location). Before the flow moves to a screen that shows a
+  // location it then asks for the device location first (BTB-387; see requestLocationForFlow).
+  ipLocationOnly?: boolean
 }
 
 export interface IdentityFlowOpenOptions {
@@ -237,6 +274,15 @@ export interface IdentityVerificationHost {
     options?: IdentityFlowOpenOptions
   ) => void
   flowOpen: boolean
+  /**
+   * The device (GPS) location, for any screen that shows the user's location (BTB-387). Resolves
+   * with it once the browser has produced it; when it cannot (blocked, dismissed, unsupported,
+   * unavailable, timed out) the "Turn on location to continue" dialog opens and this waits for
+   * a successful Try Again. Resolves null when the attempt ended without a location (Cancel,
+   * Escape, the caller's signal, a route/account/role change, an unmount, or a request that is
+   * already running), so the caller simply stays where it was. Never falls back to the IP.
+   */
+  requestDeviceLocation: (options?: DeviceLocationRequestOptions) => Promise<DetectedLocation | null>
   connectionCheckState: ConnectionCheckState
   /** The retry window of the "You've used all three attempts" dialog (null closes it). */
   setCooldownRetryTime: (retryAt: string | null) => void
@@ -265,6 +311,231 @@ interface IdentityVerificationHostContextValue {
 
 const IdentityVerificationHostContext =
   createContext<IdentityVerificationHostContextValue | null>(null)
+
+// The sentence added to "Turn on location to continue" for each way the device location can
+// fail. The first sentence is always the same; this one says what is different.
+const LOCATION_FAILURE_COPY: Record<LocationFailureReason, string> = {
+  blocked: "Location is currently blocked for this site in your browser.",
+  dismissed:
+    "Select Try Again and choose Allow when your browser asks.",
+  unsupported:
+    "This browser can't share its location. Try Chrome, Edge, Safari or Firefox.",
+  device_unavailable:
+    "Your device couldn't provide a location. Make sure Location Services are turned on.",
+  timeout: "Your device took too long to find your location.",
+  resolve_failed: "We couldn't read your location. Select Try Again.",
+}
+
+// The instructions view of the dialog above: steps for the detected browser first, then
+// "Still not working? Check Location Services" with two equal-width tabs, Mac and Windows.
+// Both tabs are always offered; the one for the user's own operating system is selected first.
+// That is read from the user agent when this view mounts, which only happens after "Show me
+// how" is pressed (never during server rendering), and falls back to Mac. Rendered inside the
+// same dialog; it never opens another modal.
+const DEVICE_TAB_ICONS: Record<DeviceSectionId, ReactNode> = {
+  mac: (
+    <AppleSolid aria-hidden="true" className="size-[18px] shrink-0" />
+  ),
+  windows: (
+    <MicrosoftBrand
+      aria-hidden="true"
+      className="size-[18px] shrink-0 [&_path]:fill-current"
+    />
+  ),
+}
+
+// The decorative picture above the steps: one small panel per step, numbered like the text, drawn
+// with plain boxes and the repository's icons (no images, no custom SVG). It is aria-hidden: the
+// numbered text is the instruction. Light-gray strokes, one restrained blue highlight per panel.
+const ILLUSTRATION_ICONS: Record<
+  Exclude<IllustrationIcon, "none">,
+  (className: string) => ReactNode
+> = {
+  tune: (className) => <Sliders04 className={className} />,
+  lock: (className) => <Lock01 className={className} />,
+  pin: (className) => <MarkerPin01 className={className} />,
+}
+
+function IllustrationScene({ step }: { step: IllustrationStep }) {
+  const icon =
+    step.icon === "none"
+      ? null
+      : ILLUSTRATION_ICONS[step.icon]("size-3")
+  const grayRow = (
+    <div className="flex h-3 items-center gap-1 px-0.5">
+      <span className="size-1 shrink-0 rounded-full bg-gray-200" />
+      <span className="h-0.5 flex-1 rounded-full bg-gray-200" />
+    </div>
+  )
+  switch (step.scene) {
+    case "address-bar":
+      return (
+        <div className="flex h-7 w-full items-center gap-1.5 rounded-full border border-gray-200 bg-white px-1">
+          <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-primary-50 text-primary-500 ring-2 ring-primary-100">
+            {icon}
+          </span>
+          <span className="h-1 flex-1 rounded-full bg-gray-200" />
+        </div>
+      )
+    case "site-menu":
+      return (
+        <div className="w-full space-y-1 rounded-md border border-gray-200 bg-white p-1">
+          {grayRow}
+          {grayRow}
+          <div className="flex h-3 items-center gap-1 rounded bg-primary-50 px-0.5 ring-1 ring-primary-100">
+            <span className="size-1 shrink-0 rounded-full bg-primary-500" />
+            <span className="h-0.5 flex-1 rounded-full bg-primary-100" />
+          </div>
+        </div>
+      )
+    case "menu-bar":
+      return (
+        <div className="w-full rounded-md border border-gray-200 bg-white">
+          <div className="flex h-4 items-center gap-1 rounded-t-md bg-gray-100 px-1">
+            <AppleSolid className="size-2.5 shrink-0 text-gray-400" />
+            <span className="h-1.5 w-6 rounded bg-primary-500" />
+            <span className="h-0.5 w-2 rounded-full bg-gray-200" />
+          </div>
+          <div className="p-1">
+            <div className="h-2.5 w-3/5 rounded bg-primary-50 ring-1 ring-primary-100" />
+          </div>
+        </div>
+      )
+    case "settings-tab":
+      return (
+        <div className="w-full rounded-md border border-gray-200 bg-white p-1">
+          <div className="flex gap-1">
+            <span className="h-5 flex-1 rounded border border-gray-200" />
+            <span className="inline-flex h-5 flex-1 items-center justify-center rounded bg-primary-50 text-primary-500 ring-1 ring-primary-100">
+              <Globe01 className="size-3" />
+            </span>
+            <span className="h-5 flex-1 rounded border border-gray-200" />
+          </div>
+        </div>
+      )
+    case "clear-block":
+      return (
+        <div className="w-full space-y-1 rounded-md border border-gray-200 bg-white p-1">
+          <div className="flex items-center gap-1 px-0.5">
+            {icon}
+            <span className="h-0.5 flex-1 rounded-full bg-gray-200" />
+            <span className="inline-flex size-3.5 items-center justify-center rounded-full bg-primary-50 text-primary-500 ring-1 ring-primary-100">
+              <X className="size-2" />
+            </span>
+          </div>
+          {grayRow}
+        </div>
+      )
+    case "location-allow":
+      return (
+        <div className="w-full space-y-1 rounded-md border border-gray-200 bg-white p-1">
+          <div className="flex items-center justify-between gap-1">
+            <MarkerPin01 className="size-3 shrink-0 text-gray-400" />
+            <span className="inline-flex items-center gap-0.5 rounded-full bg-primary-50 px-1 text-[10px] font-semibold leading-3 text-primary-500 ring-1 ring-primary-100">
+              <Check className="size-2.5" />
+              Allow
+            </span>
+          </div>
+          {grayRow}
+        </div>
+      )
+    case "try-again":
+      return (
+        <span className="inline-flex h-6 items-center gap-1 rounded bg-primary-50 px-2 text-[10px] font-semibold text-primary-500">
+          <RefreshCw className="size-2.5" />
+          Try Again
+        </span>
+      )
+  }
+}
+
+function LocationHowToIllustration({ steps }: { steps: IllustrationStep[] }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`grid gap-2 ${steps.length === 4 ? "grid-cols-2 min-[480px]:grid-cols-4" : "grid-cols-2 min-[480px]:grid-cols-3"}`}
+    >
+      {steps.map((step, index) => (
+        <div
+          key={`${step.scene}-${index}`}
+          className="relative min-w-0 rounded-lg border border-gray-200 bg-gray-50 p-1.5 pt-5"
+        >
+          <span className="absolute left-1 top-1 inline-flex size-4 items-center justify-center rounded-full border border-gray-200 bg-white text-[10px] font-semibold leading-none text-gray-500">
+            {index + 1}
+          </span>
+          <div className="flex h-11 w-full items-center justify-center">
+            <IllustrationScene step={step} />
+          </div>
+          <p className="mt-1 truncate text-center text-[11px] leading-4 text-gray-500">
+            {step.caption}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LocationHowTo() {
+  const instructions = getLocationInstructions(currentBrowserEnvironment())
+  const [deviceTab, setDeviceTab] = useState<DeviceSectionId>(() =>
+    detectDeviceSection(currentBrowserEnvironment())
+  )
+  return (
+    <div className="px-[19px]">
+      <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+        How to turn on location
+      </h1>
+      {/* Not shown on screen; the dialog still gets its description for assistive tech. */}
+      <DialogDescription className="sr-only">
+        Steps for {instructions.browserName}
+      </DialogDescription>
+      <Card className="mt-4 flex-col items-stretch justify-start p-4">
+        <LocationHowToIllustration steps={instructions.illustration} />
+        <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+          {instructions.browserSteps.map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      </Card>
+      <h2 className="mt-6 text-sm font-semibold leading-5 text-dark-blue-400">
+        {instructions.deviceHeading}
+      </h2>
+      <Tabs
+        className="mt-2"
+        value={deviceTab}
+        onValueChange={(value) => setDeviceTab(value as DeviceSectionId)}
+        unanimated
+      >
+        <TabsList className="grid grid-cols-2 gap-0 px-0 pt-0">
+          {instructions.deviceSections.map((section) => (
+            <TabsTrigger
+              key={section.id}
+              value={section.id}
+              containerClassName="justify-center"
+              className="w-full rounded-t-[5px] pb-3 pt-1 focus-visible:ring-4 focus-visible:ring-primary-100"
+            >
+              {DEVICE_TAB_ICONS[section.id]}
+              {section.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {instructions.deviceSections.map((section) => (
+          <TabsContent
+            key={section.id}
+            value={section.id}
+            className="mt-3 rounded-[5px] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-100"
+          >
+            <ol className="list-decimal space-y-1 pl-5 text-sm leading-5 text-dark-blue-400">
+              {section.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  )
+}
 
 export function IdentityVerificationHostProvider({
   children,
@@ -330,6 +601,98 @@ export function IdentityVerificationHostProvider({
   const liveUpdateTokenRef = useRef(0)
   const liveUpdateRunningRef = useRef(false)
   const vpnProxyModalOpenRef = useRef(false)
+  // Bumped when the page, account or role changes and on unmount: a detection that started
+  // before then is stale (its answer is never applied).
+  const locationAttemptRef = useRef(0)
+  const locationAbortsRef = useRef(new Set<AbortController>())
+  // Every detection that asks for the browser's location goes through this, so the two entry
+  // points (Verify My Account, "Permanently relocated") and the dialog's Try Again share ONE
+  // behaviour without their own code changing. It only ever asks for the DEVICE location (no
+  // network/IP fallback); the attempt is dropped if the page/account changes meanwhile.
+  // A call that does not ask the browser (Travel Mode Update) is passed through untouched.
+  const getDetectedLocation = useCallback(
+    (options: GetDetectedLocationOptions = {}) => {
+      if (!options.useBrowserLocation) return detectLocation(options)
+      const attempt = locationAttemptRef.current
+      // The wait for the browser's own permission prompt can be long (the user may not
+      // have answered yet), so it is cancellable: a route/account/role change, an unmount
+      // or the caller's own signal aborts it, and nothing is left listening.
+      const controller = new AbortController()
+      locationAbortsRef.current.add(controller)
+      options.signal?.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      })
+      if (options.signal?.aborted) controller.abort()
+      return detectLocation({
+        ...options,
+        signal: controller.signal,
+        isCurrent: () =>
+          attempt === locationAttemptRef.current &&
+          (options.isCurrent?.() ?? true),
+      }).finally(() => locationAbortsRef.current.delete(controller))
+    },
+    []
+  )
+  // "Turn on location to continue": shown when the device location could not be obtained.
+  // Verification stays blocked while it is open; the location-confirmation flow opens only
+  // when a retry produces the device location.
+  const [locationRecoveryState, setLocationRecoveryState] =
+    useState<LocationRecoveryState>({
+      open: false,
+      reason: "blocked",
+      view: "main",
+      busy: false,
+    })
+  const [locationRecovery] = useState(() =>
+    createLocationRecovery({
+      detect: ({ signal, isCurrent }) =>
+        getDetectedLocation({ useBrowserLocation: true, signal, isCurrent }),
+      onChange: setLocationRecoveryState,
+      // A blocked permission refuses in milliseconds; keep Try Again's spinner up long
+      // enough to be seen so the press visibly does something.
+      minBusyMs: 700,
+    })
+  )
+  const openLocationRecovery = useCallback(
+    (reason: LocationFailureReason, hooks: RecoveryHooks) =>
+      locationRecovery.open(reason, hooks),
+    [locationRecovery]
+  )
+  // The device location for a screen that shows the user's location: GPS, else the recovery
+  // dialog (src/lib/api/device-location-request.ts). One request at a time; every exit that is
+  // not a GPS result returns null, so the caller never opens a location screen without one.
+  const [deviceLocationRequester] = useState(() =>
+    createDeviceLocationRequester({
+      detect: (options) =>
+        getDetectedLocation({ useBrowserLocation: true, ...options }),
+      recovery: locationRecovery,
+      attempt: () => locationAttemptRef.current,
+    })
+  )
+  const requestDeviceLocation = useCallback(
+    (options?: DeviceLocationRequestOptions) => deviceLocationRequester(options),
+    [deviceLocationRequester]
+  )
+  const tryAgainButtonRef = useRef<HTMLButtonElement>(null)
+  // Focus stays inside the dialog: on Try Again when it opens, when it switches between its
+  // two views, and when a retry that failed lets the button work again (a button that was
+  // disabled while loading drops focus). Never on the page behind it. Focus does not scroll the
+  // dialog: on a short screen the instructions view starts at its title, not at its buttons.
+  useEffect(() => {
+    if (locationRecoveryState.open && !locationRecoveryState.busy) {
+      tryAgainButtonRef.current?.focus({ preventScroll: true })
+    }
+  }, [
+    locationRecoveryState.open,
+    locationRecoveryState.view,
+    locationRecoveryState.busy,
+  ])
+  const cancelLocationDetection = useCallback(() => {
+    locationAttemptRef.current += 1
+    locationRecovery.abort()
+    locationAbortsRef.current.forEach((controller) => controller.abort())
+    locationAbortsRef.current.clear()
+  }, [locationRecovery])
   vpnProxyModalOpenRef.current = vpnProxyModalOpen
   const connectionCheckStateRef = useRef<ConnectionCheckState>("idle")
   connectionCheckStateRef.current = connectionCheckState
@@ -346,6 +709,7 @@ export function IdentityVerificationHostProvider({
     // Set only by the Travel Mode Update action: "Permanently relocated" then re-detects
     // the location with the browser (see refreshLocationForRelocation).
     detectBrowserLocationOnRelocate?: boolean
+    ipLocationOnly?: boolean
   }>({ key: 0 })
 
   // The page's own reactions, reached through its observer. They keep the names of what they
@@ -801,6 +1165,7 @@ export function IdentityVerificationHostProvider({
     setVerificationGateOpen(false)
     acknowledgeRetryGate() // a page or account change is a decision: the gate is not brought back
     checkSessionRef.current.invalidate() // a check still in flight belongs to the page/account it started on
+    cancelLocationDetection() // and so does a pending location request or its dialog
     setRetryingFromUnavailable(false)
     reloadTokenRef.current += 1
     setReloadPending(false)
@@ -1190,6 +1555,23 @@ export function IdentityVerificationHostProvider({
       // Explicit user action: the only place browser location is requested.
       const location = await getDetectedLocation({ useBrowserLocation: true })
       if (!isCurrent()) return
+      // The device location is required. Without it the "Turn on location to continue"
+      // dialog opens instead and the flow stays closed (BTB-387); a successful Try Again
+      // opens it. There is no network (IP) fallback.
+      if (location.cancelled) return
+      if (location.locationFailure) {
+        openLocationRecovery(location.locationFailure, {
+          // A successful Try Again opens the flow through openFlow (a fresh instance), with
+          // the same Travel Mode awareness as below.
+          onSuccess: (resolved) =>
+            openFlow(
+              isTravelModeInForce(summary) ? { activeTravelModeUpdate: true } : {},
+              { detectedLocation: resolved }
+            ),
+          onDismiss: () => {},
+        })
+        return
+      }
       setDetectedLocation(location)
       // A flow last started by the Travel Mode Update action starts fresh here. A traveler
       // whose Travel Mode is already in force is told so (from the /me read above), so
@@ -1238,14 +1620,62 @@ export function IdentityVerificationHostProvider({
     setConnectionCheckState("idle")
   }, [])
   useEffect(() => () => checkSessionRef.current.invalidate(), [])
+  // Unmount: a pending location request and its dialog belong to nobody.
+  useEffect(() => cancelLocationDetection, [cancelLocationDetection])
 
-    // The Update action shows the server-derived location behind its first screen and asks
-  // for no permission. Choosing "Permanently relocated" is the explicit user action that
-  // asks the browser for its location, through the same call Verify My Account uses; a
-  // denied or failed detection yields the flow's own "couldn't detect" state, never a
-  // made-up location.
+  // The Update action shows the server-derived location behind its first screen and asks
+  // for no permission (out of scope for BTB-387: it keeps its IP-only behaviour). Choosing
+  // "Permanently relocated" is the explicit user action that asks the browser for its
+  // location, through the same call Verify My Account uses. If the device location cannot be
+  // obtained, the "Turn on location to continue" dialog opens over the flow and this call
+  // waits: the flow moves on only after a successful Try Again. Cancel returns to the same
+  // screen (a fresh instance) and the flow does not continue.
+  // BTB-387: a flow opened with the server-derived location (still traveling) asks here before
+  // it moves to a screen that shows a location. The device location comes through the shared
+  // requestDeviceLocation (recovery dialog on failure); on success it replaces the location the
+  // flow holds, and later screens are not asked again. false = stay on the current screen.
+  const flowLocationRequestRef = useRef<AbortController | null>(null)
+  const requestLocationForFlow = useCallback(async () => {
+    const controller = new AbortController()
+    flowLocationRequestRef.current = controller
+    try {
+      const location = await requestDeviceLocation({
+        signal: controller.signal,
+        isCurrent: () => !controller.signal.aborted,
+      })
+      if (!location || controller.signal.aborted) return false
+      setDetectedLocation(location)
+      setFlowLaunch((prev) => ({ ...prev, ipLocationOnly: false }))
+      return true
+    } finally {
+      if (flowLocationRequestRef.current === controller) {
+        flowLocationRequestRef.current = null
+      }
+    }
+  }, [requestDeviceLocation])
+
   const refreshLocationForRelocation = useCallback(async () => {
-    setDetectedLocation(await getDetectedLocation({ useBrowserLocation: true }))
+    const location = await getDetectedLocation({ useBrowserLocation: true })
+    if (location.cancelled) return
+    if (!location.locationFailure) {
+      setDetectedLocation(location)
+      return
+    }
+    await new Promise<void>((resolve) => {
+      openLocationRecovery(location.locationFailure!, {
+        onSuccess: (resolved) => {
+          setDetectedLocation(resolved)
+          resolve()
+        },
+        onDismiss: (kind) => {
+          if (kind === "cancel") {
+            // Replace the flow instance before it is told to continue.
+            flushSync(() => setFlowLaunch((prev) => ({ ...prev, key: prev.key + 1 })))
+          }
+          resolve()
+        },
+      })
+    })
   }, [])
 
   // The flow opened or closed. What the page re-reads afterwards (its own summary, prompts
@@ -1253,6 +1683,8 @@ export function IdentityVerificationHostProvider({
   const handleIdentityFlowOpenChange = useCallback((open: boolean) => {
     setIdentityFlowOpen(open)
     if (!open) {
+      // A device-location request the flow was waiting on (or its dialog) belongs to nobody now.
+      flowLocationRequestRef.current?.abort()
       // For an Update on a Travel Mode that is already in force, the flow's "Temporarily
       // traveling" is a no-op: it opens its own temporary confirmation toast and
       // closes (components/identity-verification-flow.tsx, which is read-only). That toast
@@ -1283,6 +1715,7 @@ export function IdentityVerificationHostProvider({
 
   const openFlow = useCallback(
     (launch: IdentityFlowLaunch, options: IdentityFlowOpenOptions = {}) => {
+      flowLocationRequestRef.current?.abort() // the instance being replaced
       if (options.detectedLocation) setDetectedLocation(options.detectedLocation)
       setFlowLaunch((prev) => ({ key: prev.key + 1, ...launch }))
       openOnClosedRef.current = options.onClosed ?? null
@@ -1333,7 +1766,10 @@ export function IdentityVerificationHostProvider({
     if (pageHandler) return pageHandler()
     const fresh = await fetchIdentityVerificationSummary()
     const activeTravelModeUpdate = isActiveTravelUpdate("reminder", fresh)
-    const location = await getDetectedLocation()
+    // The Update screen shows the user's location, so it needs the device location (BTB-387):
+    // without it the recovery dialog opens, the flow stays closed and the card stays as it was.
+    const location = await requestDeviceLocation()
+    if (!location) return
     openFlow(
       {
         initialState: "current-location-showcase",
@@ -1342,7 +1778,7 @@ export function IdentityVerificationHostProvider({
       },
       { detectedLocation: location }
     )
-  }, [openFlow])
+  }, [openFlow, requestDeviceLocation])
 
   // The card's Update, with its own spinner. The card stays on screen while this runs (it goes
   // away only when it is closed, the check-in priority hold applies or the account changes), and
@@ -1390,6 +1826,7 @@ export function IdentityVerificationHostProvider({
       host: {
         startVerification,
         openFlow,
+        requestDeviceLocation,
         flowOpen: identityFlowOpen,
         connectionCheckState,
         setCooldownRetryTime,
@@ -1406,6 +1843,7 @@ export function IdentityVerificationHostProvider({
     [
       startVerification,
       openFlow,
+      requestDeviceLocation,
       identityFlowOpen,
       connectionCheckState,
       closeGate,
@@ -1606,8 +2044,104 @@ export function IdentityVerificationHostProvider({
               ? refreshLocationForRelocation
               : undefined
           }
+          onBeforeLocationScreen={
+            flowLaunch.ipLocationOnly ? requestLocationForFlow : undefined
+          }
         />
       )}
+
+      {/* "Turn on location to continue" (BTB-387). Shown when the DEVICE location could not be
+          obtained (denied, dismissed, blocked, unavailable); there is no IP fallback and the
+          location-confirmation flow stays closed until a Try Again produces the device
+          location. Mounted after the flow so, for "Permanently relocated" (asked while the flow
+          is open), it stacks above it. "Show me how" switches this same dialog to its
+          instructions view (never a second modal); Back returns. Escape, an outside click and
+          Cancel all give up. A web page cannot open the browser's settings, so the user is told
+          where to click. */}
+      <Dialog
+        open={locationRecoveryState.open}
+        onOpenChange={(open) => {
+          if (!open) locationRecovery.cancel()
+        }}
+      >
+        <DialogContent
+          className="w-[calc(100%-32px)] max-w-[531px] overflow-hidden p-0"
+          accessibilityTitle="Turn on location to continue"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            tryAgainButtonRef.current?.focus({ preventScroll: true })
+          }}
+        >
+          <ScrollArea viewportClassName="max-h-[calc(100dvh-32px)]">
+            <div className="p-6 pt-[50px]">
+            {locationRecoveryState.view === "main" ? (
+              <div className="flex items-center justify-center">
+                <div className="size-[48px] rounded-full text-warning-600 bg-warning-100 border-[8px] border-warning-50 inline-flex items-center justify-center shrink-0">
+                  <AlertTriangle className="size-6" />
+                </div>
+              </div>
+            ) : null}
+
+            {locationRecoveryState.view === "main" ? (
+              <div className="mt-5 px-[19px]">
+                <h1 className="text-lg text-center leading-7 text-dark-blue-400 font-semibold">
+                  Turn on location to continue
+                </h1>
+                <DialogDescription className="mt-2 text-sm text-center leading-5 text-dark-blue-400">
+                  Location permission must be turned on in your browser before
+                  verification can continue.{" "}
+                  {LOCATION_FAILURE_COPY[locationRecoveryState.reason]}
+                </DialogDescription>
+                <div className="mt-3 flex justify-center">
+                  <Button
+                    className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                    variant="link"
+                    onClick={() => locationRecovery.showHowTo()}
+                  >
+                    Show me how
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <LocationHowTo />
+            )}
+
+            <div className="mt-[50px] flex justify-center items-center gap-x-3">
+              <Button
+                className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                variant="outlined"
+                visual="gray"
+                size="md"
+                leftIcon={
+                  locationRecoveryState.view === "howto" ? (
+                    <ArrowLeft className="size-[15px]" />
+                  ) : undefined
+                }
+                onClick={() =>
+                  locationRecoveryState.view === "main"
+                    ? locationRecovery.cancel()
+                    : locationRecovery.back()
+                }
+              >
+                {locationRecoveryState.view === "main" ? "Cancel" : "Back"}
+              </Button>
+              <Button
+                ref={tryAgainButtonRef}
+                className="focus-visible:ring-4 focus-visible:ring-primary-100"
+                variant="light"
+                size="md"
+                leftIcon={<RefreshCw className="size-[15px]" />}
+                loading={locationRecoveryState.busy}
+                aria-busy={locationRecoveryState.busy}
+                onClick={() => void locationRecovery.tryAgain()}
+              >
+                Try Again
+              </Button>
+            </div>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
       {/* Persistent status alerts (PMCM-651): a fixed top-right overlay, outside the dashboard
           layout, so nothing on the page moves when an alert appears or is dismissed. Same

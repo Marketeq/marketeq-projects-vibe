@@ -122,7 +122,7 @@ describe("the protected flow changed only as approved", () => {
     // PMCM-651 (explicitly approved exception): one optional additive prop, onTravelModeConfirmed,
     // sits between them; see travel-mode-confirmation.test.ts for exactly where it is called.
     // onPermanentlyRelocated (travel-update-relocated-detection.test.ts) sits after it, also optional.
-    assert.ok(code.includes("  activeTravelModeUpdate,\n  onTravelModeConfirmed,\n  onPermanentlyRelocated,\n  simulateUploadForPreview,"))
+    assert.ok(code.includes("  activeTravelModeUpdate,\n  onTravelModeConfirmed,\n  onPermanentlyRelocated,\n  onBeforeLocationScreen,\n  simulateUploadForPreview,"))
     assert.ok(code.includes("  activeTravelModeUpdate?: boolean"))
     assert.ok(code.includes("if (activeTravelModeUpdate) {"))
   })
@@ -139,7 +139,7 @@ describe("the protected flow changed only as approved", () => {
 
   it("the flow's own reminder toast and its Update action are untouched", () => {
     assert.ok(flow.includes("open={travelReminderOpen}"))
-    assert.match(flow, /setTravelReminderOpen\(false\)\s+send\("UPDATE_LOCATION"\)\s+onOpenChange\(true\)/)
+    assert.match(flow, /setTravelReminderOpen\(false\)\s+goToLocationScreen\("UPDATE_LOCATION", \(\) => onOpenChange\(true\)\)/)
   })
 
   it("the Didit start from 'Yes, this is my home country' is untouched", () => {

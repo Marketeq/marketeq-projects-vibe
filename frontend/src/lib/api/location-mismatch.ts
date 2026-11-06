@@ -17,9 +17,11 @@
 //              is confirmed again, and SAVES NOTHING either. Closing the confirmation
 //              changes no account state; the pending claim is created only by the
 //              explicit "Yes, this is my home country" confirmation.
-// The location behind "Change my home country" is loaded exactly as the first-time flow
-// loads it (the browser's position on that explicit click, reverse-geocoded and checked by
-// the server against the request country); "I'm still traveling" shows no location.
+// The location behind "Change my home country" is the DEVICE location, requested on that
+// explicit click (BTB-387): the browser's position, reverse-geocoded and checked by the
+// server against the request country. If the device location cannot be obtained the flow does
+// not open (the "Turn on location to continue" dialog does, from the caller) and there is no
+// IP fallback. "I'm still traveling" shows no location.
 import {
   type DetectedLocation,
   type GetDetectedLocationOptions,
@@ -42,6 +44,12 @@ export interface MismatchDeps {
   getDetectedLocation: (
     options?: GetDetectedLocationOptions
   ) => Promise<DetectedLocation>
+  /**
+   * The device location with the recovery dialog behind it (the host's requestDeviceLocation):
+   * resolves with a GPS result, or null when the attempt ended without one. When it is not
+   * supplied the browser is asked once and any shortfall ends the attempt.
+   */
+  requestDeviceLocation?: () => Promise<DetectedLocation | null>
 }
 
 const defaultDeps: MismatchDeps = {
@@ -99,15 +107,19 @@ export async function startStillTraveling(
  * flow does, loaded the same way: Verify My Account asks for the browser's position (an
  * explicit user action, and so is this click), the backend reverse-geocodes it, accepts it
  * only if its country matches the server-derived request country, and the screen shows the
- * city, region and country with the real map. Anything short of that (denied, unavailable,
- * a country-only IP result) falls back exactly as it does for a first-time user. The
- * country that is eventually recorded is resolved by the backend from the request again,
- * never taken from this view.
+ * city, region and country with the real map. It returns null, and the caller leaves the
+ * flow closed, whenever the device location was not produced (denied, dismissed, blocked,
+ * unsupported, unavailable, timed out, cancelled): there is never an IP-derived country, city
+ * or map and never a blank "couldn't detect your location" screen. The country that is
+ * eventually recorded is resolved by the backend from the request again, never taken from
+ * this view.
  */
 export async function startChangeHomeCountry(
   deps: MismatchDeps = defaultDeps
-): Promise<MismatchLaunch> {
-  return {
-    location: await deps.getDetectedLocation({ useBrowserLocation: true }),
-  }
+): Promise<MismatchLaunch | null> {
+  const location = deps.requestDeviceLocation
+    ? await deps.requestDeviceLocation()
+    : await deps.getDetectedLocation({ useBrowserLocation: true })
+  if (!location || location.cancelled || location.locationFailure) return null
+  return { location }
 }

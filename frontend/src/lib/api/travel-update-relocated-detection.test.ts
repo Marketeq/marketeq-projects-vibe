@@ -36,7 +36,7 @@ const refreshBody = page.slice(
 const updateStart = page.indexOf("const handleTravelUpdate = useCallback(")
 const updateBody = page.slice(
   updateStart,
-  page.indexOf("[travelPopup, openFlow]", updateStart)
+  page.indexOf("[travelPopup, openFlow, requestDeviceLocation]", updateStart)
 )
 const temporarilyAt = flow.indexOf("if (activeTravelModeUpdate) {")
 const temporarilyBody = flow.slice(
@@ -101,27 +101,27 @@ describe("Permanently relocated runs browser-based detection", () => {
     const { calls, promise } = await clickRelocated(
       () => new Promise<void>((r) => (release = r))
     )
-    assert.deepEqual(calls, [
-      "persist:permanently_relocated",
-      "relocating:true",
-      "detect",
-    ])
+    // BTB-387: nothing is saved until the device location exists.
+    assert.deepEqual(calls, ["relocating:true", "detect"])
     release()
     await promise
     assert.deepEqual(calls, [
-      "persist:permanently_relocated",
       "relocating:true",
       "detect",
       "relocating:false",
+      "persist:permanently_relocated",
       "send:RELOCATED",
     ])
   })
 
-  it("the dashboard's callback is exactly getDetectedLocation({ useBrowserLocation: true })", () => {
+  it("the dashboard's callback asks with exactly getDetectedLocation({ useBrowserLocation: true }) and applies a device location", () => {
+    // BTB-387: the same call as Verify My Account; a failure opens the "Turn on location to
+    // continue" dialog instead of applying anything (see location-recovery-host.test.ts).
     assert.match(
       refreshBody,
-      /setDetectedLocation\(await getDetectedLocation\(\{ useBrowserLocation: true \}\)\)/
+      /const location = await getDetectedLocation\(\{ useBrowserLocation: true \}\)/
     )
+    assert.match(refreshBody, /setDetectedLocation\(location\)/)
   })
 
   it("the next screen gets city/state/country and coordinates (map tiles + red pin) from browser GPS", async () => {
@@ -160,26 +160,32 @@ describe("Temporarily traveling does not invoke it", () => {
   })
 })
 
-describe("denied permission or failed detection uses the existing failure state", () => {
-  it("denied GPS falls back to the server lookup: country only, detected false, no coordinates", async () => {
+describe("denied permission or failed detection never produces a made-up location", () => {
+  it("denied GPS is a locationFailure with nothing from the server: no country, city or coordinates", async () => {
     const loc = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
+      getPermissionState: async () => "denied",
       fetchLocation: async () => COUNTRY_ONLY,
     })
     assert.equal(loc.detected, false)
-    assert.deepEqual([loc.latitude, loc.longitude, loc.city], [null, null, ""])
+    assert.equal(loc.locationFailure, "blocked")
+    assert.deepEqual(
+      [loc.latitude, loc.longitude, loc.city, loc.countryCode],
+      [null, null, "", ""]
+    )
   })
-  it("a failed server call is serviceUnavailable with nothing fabricated", async () => {
+  it("the server lookup is never made on this path, so its failure cannot matter", async () => {
     const loc: DetectedLocation = await getDetectedLocation({
       useBrowserLocation: true,
       getPosition: position("denied"),
+      getPermissionState: async () => "denied",
       fetchLocation: async () => {
-        throw new Error("down")
+        throw new Error("must not be called")
       },
     })
-    assert.equal(loc.detected, false)
-    assert.equal(loc.serviceUnavailable, true)
+    assert.equal(loc.locationFailure, "blocked")
+    assert.equal(loc.serviceUnavailable, false)
     assert.equal(loc.latitude, null)
   })
   it("the flow's text for both states is unchanged", () => {
@@ -197,16 +203,18 @@ describe("denied permission or failed detection uses the existing failure state"
 })
 
 describe("closing without choosing writes no state", () => {
-  it("nothing runs on open: Update calls only the server-side getDetectedLocation(), no browser", () => {
-    assert.match(updateBody, /await getDetectedLocation\(\)/)
-    assert.ok(!/useBrowserLocation|persistTravel|recordTravel/.test(updateBody))
+  it("nothing is saved on open: Update asks only for the device location (BTB-387), never the IP lookup", () => {
+    assert.match(updateBody, /await requestDeviceLocation\(\)/)
+    assert.ok(!/getDetectedLocation\(|persistTravel|recordTravel/.test(updateBody))
   })
   it("the only classification write in the flow is inside the Permanently relocated handler", () => {
     const code = flow
       .split("\n")
       .filter((l) => !/^\s*\/\//.test(l))
       .join("\n")
-    assert.equal((code.match(/persistTravelClassification\(/g) ?? []).length, 1) // the handler's call
+    // the handler's two calls: the synchronous path (no callback) and the one after the device location
+    assert.equal((code.match(/persistTravelClassification\(/g) ?? []).length, 2)
+    assert.equal((handlerBody.match(/persistTravelClassification\(/g) ?? []).length, 2)
     assert.ok(
       handlerBody.includes(
         'persistTravelClassification("permanently_relocated")'
@@ -281,6 +289,8 @@ describe("no duplicate home-country-change session", () => {
     )
     await promise
     assert.ok(!calls.includes("send:RELOCATED"))
+    // a cancelled "Turn on location" dialog replaces the instance: no classification is written
+    assert.ok(!calls.some((c) => c.startsWith("persist")))
     // and an unmounted flow sets no pending state after the detection returns
     assert.deepEqual(calls.filter((c) => c.startsWith("relocating")), ["relocating:true"])
   })
