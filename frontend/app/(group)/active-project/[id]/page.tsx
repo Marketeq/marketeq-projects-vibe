@@ -1,11 +1,12 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from "react"
+import { zipSync } from "fflate"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { addDays, addWeeks, endOfWeek, format, isBefore, isValid, parse, startOfDay, startOfWeek } from "date-fns"
 import { preventDefault } from "@/utils/dom-utils"
-import { getFirstItem } from "@/utils/functions"
+import { cn, getFirstItem } from "@/utils/functions"
 import {
   DndContext,
   DragOverlay,
@@ -107,6 +108,9 @@ import {
 } from "@/components/ui"
 import {
   ArrowDown,
+  ArrowUp,
+  Archive,
+  ArrowLeft,
   AlertTriangle,
   Attachment01,
   Calendar,
@@ -147,6 +151,7 @@ import {
   Shield,
   SearchMd,
   Send01,
+  Share06,
   Trash01,
   UploadCloud,
   Users,
@@ -187,6 +192,38 @@ const sampleMembers: TeamMember[] = [
   { name: "Elena Gilbert", username: "@elenagilbertdesign", role: "Ethical Hacker", avatar: "/man.jpg" },
   { name: "Isla Fisher", username: "@islafisherprojects", role: "Project Manager", avatar: "/man.jpg" },
 ]
+
+interface ProjectFile {
+  id: string
+  name: string
+  fullName: string
+  task: string
+  author: string
+  time: string
+  type: string
+  folderId?: string
+  url?: string
+  archived?: boolean
+  sharedWith?: string[]
+}
+
+interface ProjectFolder {
+  id: string
+  name: string
+}
+
+const initialProjectFiles: ProjectFile[] = [
+  { name: "Software Desi... .pdf", fullName: "Software Design.pdf", task: "Design Logo", author: "Chris", time: "just now", type: "pdf" },
+  { name: "Value Proposit... .pdf", fullName: "Value Proposition.pdf", task: "Define project goals", author: "Chris", time: "1 hour ago", type: "pdf" },
+  { name: "Product Design.png", fullName: "Product Design.png", task: "Create sitemap", author: "Chris", time: "Yesterday at 8:04 am", type: "image" },
+  { name: "Wireframes_v2.pdf", fullName: "Wireframes_v2.pdf", task: "Design wireframes", author: "Chris", time: "2 days ago", type: "pdf" },
+  { name: "Sprint_Report.pdf", fullName: "Sprint_Report.pdf", task: "Weekly report", author: "Chris", time: "3 days ago", type: "pdf" },
+  { name: "User_Flow.pdf", fullName: "User_Flow.pdf", task: "Map user flows", author: "Chris", time: "4 days ago", type: "pdf" },
+].map(file => ({ ...file, id: file.fullName, folderId: file.task }))
+
+const initialProjectFolders: ProjectFolder[] = [
+  "Design Logo", "Research Best i...", "Build Informatio...", "Wireframes", "Brand Assets", "User Testing",
+].map(name => ({ id: name, name }))
 
 const vacantRoles = [
   "UX/UI Designer",
@@ -833,6 +870,59 @@ export default function ActiveProjectPage() {
   // table checkboxes are multi-select, not completion
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
   const [showAllFolders, setShowAllFolders] = useState(false)
+  const [filesView, setFilesView] = useState(["grid"])
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>(initialProjectFiles)
+  const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>(initialProjectFolders)
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
+  const activeFolder = projectFolders.find(folder => folder.id === activeFolderId)
+  const [isFilesExpanded, setIsFilesExpanded] = useState(false)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState("")
+  const [newFolderError, setNewFolderError] = useState("")
+  const newFolderInputRef = useRef<HTMLInputElement>(null)
+  const projectFileInputRef = useRef<HTMLInputElement>(null)
+  const projectFileUrls = useRef<string[]>([])
+  const [moveFilesOpen, setMoveFilesOpen] = useState(false)
+  const [moveFileIds, setMoveFileIds] = useState<string[]>([])
+  const [moveFolderId, setMoveFolderId] = useState<string | null>(null)
+  const [shareFilesOpen, setShareFilesOpen] = useState(false)
+  const [shareMemberNames, setShareMemberNames] = useState<string[]>([])
+  const [isDownloadingFiles, setIsDownloadingFiles] = useState(false)
+
+  useEffect(() => () => {
+    projectFileUrls.current.forEach(url => URL.revokeObjectURL(url))
+  }, [])
+  const [isFilesSearchOpen, setIsFilesSearchOpen] = useState(false)
+  const [filesSearchQuery, setFilesSearchQuery] = useState("")
+  const filesSearchInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isFilesSearchOpen) {
+      const timer = setTimeout(() => filesSearchInputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
+    }
+  }, [isFilesSearchOpen])
+
+  const [selectedFileIds, setSelectedFileIds] = useState<string[]>([])
+  const selectedProjectFiles = projectFiles.filter(file => !file.archived && selectedFileIds.includes(file.id))
+  const [fileNameSort, setFileNameSort] = useState<"asc" | "desc" | null>(null)
+  const normalizedFilesQuery = filesSearchQuery.trim().toLowerCase()
+  const visibleProjectFiles = projectFiles.filter(file =>
+    !file.archived && (!activeFolderId || file.folderId === activeFolderId) &&
+    (!normalizedFilesQuery || file.fullName.toLowerCase().includes(normalizedFilesQuery))
+  )
+  const sortedProjectFiles = fileNameSort
+    ? [...visibleProjectFiles].sort((a, b) =>
+        (fileNameSort === "asc" ? 1 : -1) * a.fullName.localeCompare(b.fullName)
+      )
+    : visibleProjectFiles
+  const allVisibleFilesSelected = visibleProjectFiles.length > 0 && visibleProjectFiles.every(file => selectedFileIds.includes(file.id))
+  const someVisibleFilesSelected = visibleProjectFiles.some(file => selectedFileIds.includes(file.id))
+  const toggleFileSelection = (name: string, checked: boolean) =>
+    setSelectedFileIds(previous => checked
+      ? [...previous.filter(selected => selected !== name), name]
+      : previous.filter(selected => selected !== name)
+    )
   const [scopePhases, setScopePhases] = useState<any[] | undefined>(undefined)
   const scopeTeamMembers = sampleMembers.map((m, i) => ({
     id: String(i + 1),
@@ -1071,6 +1161,110 @@ export default function ActiveProjectPage() {
   }
   const taskFileInputRef = useRef<HTMLInputElement>(null)
 
+  const addProjectFiles = (files: FileList | null) => {
+    if (!files?.length) return
+    const added: ProjectFile[] = Array.from(files, file => {
+      const url = URL.createObjectURL(file)
+      projectFileUrls.current.push(url)
+      return {
+        id: crypto.randomUUID(), name: file.name, fullName: file.name,
+        task: activeFolder?.name || "Project files", folderId: activeFolderId ?? undefined,
+        author: "You", time: "just now", type: file.type.startsWith("image/") ? "image" : "file", url,
+      }
+    })
+    setProjectFiles(previous => [...previous, ...added])
+    setFilesSearchQuery("")
+    setIsFilesSearchOpen(false)
+    toast({ variant: "success", title: `${added.length} ${added.length === 1 ? "file added" : "files added"}` })
+  }
+
+  const createProjectFolder = () => {
+    const name = newFolderName.trim()
+    if (!name) { setNewFolderError("Enter a folder name."); return }
+    if (projectFolders.some(folder => folder.name.toLowerCase() === name.toLowerCase())) {
+      setNewFolderError("A folder with this name already exists.")
+      return
+    }
+    const id = crypto.randomUUID()
+    setProjectFolders(previous => [...previous, { id, name }])
+    setActiveFolderId(id)
+    setShowAllFolders(true)
+    setSelectedFileIds([])
+    setNewFolderOpen(false)
+    setNewFolderName("")
+    setNewFolderError("")
+    toast({ variant: "success", title: "Folder created" })
+  }
+
+  const openMoveFiles = (ids: string[]) => {
+    setMoveFileIds(ids)
+    setMoveFolderId(null)
+    setMoveFilesOpen(true)
+  }
+
+  const duplicateProjectFiles = () => {
+    const names = new Set(projectFiles.map(file => file.fullName))
+    const copies = selectedProjectFiles.map(file => {
+      const dot = file.fullName.lastIndexOf(".")
+      const base = dot > 0 ? file.fullName.slice(0, dot) : file.fullName
+      const extension = dot > 0 ? file.fullName.slice(dot) : ""
+      let number = 1
+      let name = `${base} copy${extension}`
+      while (names.has(name)) name = `${base} copy ${++number}${extension}`
+      names.add(name)
+      return { ...file, id: crypto.randomUUID(), name, fullName: name, author: "You", time: "just now" }
+    })
+    setProjectFiles(previous => [...previous, ...copies])
+    setSelectedFileIds(copies.map(file => file.id))
+    toast({ variant: "success", title: `${copies.length} ${copies.length === 1 ? "file duplicated" : "files duplicated"}` })
+  }
+
+  const archiveProjectFiles = (ids: string[], action = "archived") => {
+    setProjectFiles(previous => previous.map(file => ids.includes(file.id) ? { ...file, archived: true } : file))
+    setSelectedFileIds(previous => previous.filter(id => !ids.includes(id)))
+    toast({
+      variant: "success", title: `${ids.length} ${ids.length === 1 ? "file" : "files"} ${action}`,
+      action: <ToastAction altText="Restore files" onClick={() => {
+        setProjectFiles(previous => previous.map(file => ids.includes(file.id) ? { ...file, archived: false } : file))
+      }}>Undo</ToastAction>,
+    })
+  }
+
+  const downloadProjectFiles = async (files: ProjectFile[]) => {
+    if (!files.length || isDownloadingFiles) return
+    if (files.some(file => !file.url)) {
+      toast({ title: "Sample files have no download attached", description: "Add a local file to try downloading." })
+      return
+    }
+    setIsDownloadingFiles(true)
+    try {
+      let url = files[0].url!
+      let name = files[0].fullName
+      if (files.length > 1) {
+        const entries: Record<string, Uint8Array> = {}
+        for (const file of files) {
+          const response = await fetch(file.url!)
+          if (!response.ok) throw new Error("File could not be read")
+          let entryName = file.fullName.replace(/[\\/]/g, "_")
+          let suffix = 1
+          while (entries[entryName]) entryName = `${++suffix}-${file.fullName.replace(/[\\/]/g, "_")}`
+          entries[entryName] = new Uint8Array(await response.arrayBuffer())
+        }
+        url = URL.createObjectURL(new Blob([new Uint8Array(zipSync(entries)).buffer], { type: "application/zip" }))
+        projectFileUrls.current.push(url)
+        name = "project-files.zip"
+      }
+      const link = document.createElement("a")
+      link.href = url
+      link.download = name
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch {
+      toast({ variant: "destructive", title: "Download failed", description: "Please try again." })
+    } finally { setIsDownloadingFiles(false) }
+  }
+
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -1078,6 +1272,322 @@ export default function ActiveProjectPage() {
     const timer = setTimeout(() => setVisible(true), 50)
     return () => clearTimeout(timer)
   }, [])
+
+  const filesPanel = (
+    <div className={cn("bg-white p-6", isFilesExpanded ? "min-h-0 flex-1 overflow-y-auto" : "mt-6 rounded-lg border border-gray-200 shadow-xs")}>
+      {/* Toolbar */}
+      {selectedFileIds.length > 0 && (
+        <div className="flex h-[52px] items-center justify-between gap-3 overflow-x-auto rounded-lg bg-gray-100 px-3 py-2" role="toolbar" aria-label="Selected file actions">
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="flex items-center gap-3 pl-1">
+              <Checkbox size="md" checked="indeterminate" aria-label="Clear selected files" onCheckedChange={() => setSelectedFileIds([])} />
+              <span className="whitespace-nowrap text-sm font-medium leading-6 text-dark-blue-400">{selectedFileIds.length} selected</span>
+            </div>
+            <Button variant="link" visual="primary" className="h-5 p-0 text-xs font-semibold leading-5" onClick={() => setSelectedFileIds([])}>Clear</Button>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <Button variant="ghost" visual="gray" size="sm" className="h-9 w-[108px] gap-2 rounded-[5px] px-3.5 py-2 text-xs font-semibold text-gray-500" onClick={() => openMoveFiles(selectedFileIds)}><ArrowLeft className="size-[15px]" />Move to...</Button>
+            <Button variant="ghost" visual="gray" size="sm" className="h-9 w-[107px] gap-2 rounded-[5px] px-3.5 py-2 text-xs font-semibold text-gray-500" onClick={duplicateProjectFiles}><Edit03 className="size-[15px]" />Duplicate</Button>
+            <Button variant="ghost" visual="gray" size="sm" className="h-9 w-[85px] gap-2 rounded-[5px] px-3.5 py-2 text-xs font-semibold text-gray-500" onClick={() => { setShareMemberNames(Array.from(new Set(selectedProjectFiles.flatMap(file => file.sharedWith ?? [])))); setShareFilesOpen(true) }}><Share06 className="size-[15px]" />Share</Button>
+            <div className="flex items-center gap-1.5">
+              <IconButton variant="ghost" visual="gray" size="sm" className="h-[31px] w-[29px] rounded-[5px] px-[7px] py-2 text-gray-500" aria-label="Download selected files" disabled={isDownloadingFiles} onClick={() => void downloadProjectFiles(selectedProjectFiles)}><Download01 className="size-[15px]" /></IconButton>
+              <IconButton variant="ghost" visual="gray" size="sm" className="h-[31px] w-[29px] rounded-[5px] px-[7px] py-2 text-gray-500" aria-label="Archive selected files" onClick={() => archiveProjectFiles(selectedFileIds)}><Archive className="size-[15px]" /></IconButton>
+            </div>
+            <div className="flex h-9 items-center border-l border-gray-300 pl-2">
+              <IconButton variant="ghost" visual="gray" size="sm" className="size-7 rounded-md p-1.5 text-gray-500 opacity-50 hover:opacity-100" aria-label="Close selection" onClick={() => setSelectedFileIds([])}><X className="size-4" /></IconButton>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className={cn("flex items-center justify-between", selectedFileIds.length > 0 && "hidden")}>
+        <div className={cn("flex min-w-0 shrink-0 items-center gap-3 whitespace-nowrap transition-all ease-in-out", isFilesSearchOpen ? "max-w-0 overflow-hidden opacity-0 pointer-events-none duration-150" : "max-w-[800px] opacity-100 duration-300")} aria-hidden={isFilesSearchOpen}>
+          <Button variant="outlined" visual="gray" size="sm" tabIndex={isFilesSearchOpen ? -1 : 0} onClick={() => projectFileInputRef.current?.click()} leftIcon={<UploadCloud className="size-[15px]" />}>
+            Upload
+          </Button>
+          <Button variant="outlined" visual="gray" size="sm" tabIndex={isFilesSearchOpen ? -1 : 0} onClick={() => { setNewFolderName(""); setNewFolderError(""); setNewFolderOpen(true) }} leftIcon={<Plus className="size-[15px]" />}>
+            New Folder
+          </Button>
+        </div>
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+          <div
+            className={cn(
+              "flex min-w-0 h-10 items-center overflow-clip border-b-2 transition-all ease-in-out",
+              isFilesSearchOpen ? "w-full border-primary-500 pr-3 duration-150" : "w-10 shrink-0 border-transparent duration-300"
+            )}
+            onBlur={event => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setIsFilesSearchOpen(false)
+                setFilesSearchQuery("")
+              }
+            }}
+          >
+            <Button
+              variant="ghost"
+              visual="gray"
+              className={cn("size-10 shrink-0 rounded-full p-0 transition-colors duration-150", isFilesSearchOpen ? "text-primary-500 pointer-events-none" : "text-gray-500 hover:text-primary-500")}
+              onClick={() => setIsFilesSearchOpen(true)}
+              aria-label="Search files"
+              aria-expanded={isFilesSearchOpen}
+              aria-controls="project-files-search"
+            >
+              <SearchMd className="size-[18px]" />
+            </Button>
+            <Input
+              ref={filesSearchInputRef}
+              id="project-files-search"
+              type="text"
+              className="h-5 min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-black shadow-none placeholder:text-gray-500 placeholder:opacity-50 focus:outline-none focus:ring-0 focus-visible:ring-0"
+              placeholder="Search"
+              aria-label="Search project files"
+              value={filesSearchQuery}
+              onChange={event => setFilesSearchQuery(event.target.value)}
+              tabIndex={isFilesSearchOpen ? 0 : -1}
+            />
+            <Button
+              variant="ghost"
+              visual="gray"
+              size="sm"
+              className={cn("shrink-0 p-0 hover:bg-transparent transition-opacity duration-200", isFilesSearchOpen && filesSearchQuery ? "opacity-100" : "opacity-0 pointer-events-none")}
+              tabIndex={isFilesSearchOpen && filesSearchQuery ? 0 : -1}
+              onClick={() => {
+                setIsFilesSearchOpen(false)
+                setFilesSearchQuery("")
+              }}
+              aria-label="Close search"
+            >
+              <XCircle className="size-4 text-gray-500/50 hover:text-gray-500" />
+            </Button>
+          </div>
+          <Button variant="outlined" visual="gray" size="sm" leftIcon={<FilterLines className="size-[15px]" />}>
+            Filters
+          </Button>
+          <ToggleGroupRoot value={filesView} onValueChange={({ value }) => { if (value.length) setFilesView(value) }} className="shrink-0 p-0 gap-x-0" aria-label="File view">
+            <ToggleGroupItem className="size-10 py-0 px-0 rounded-l-lg rounded-r-none" value="grid" aria-label="Grid view">
+              <Grid />
+            </ToggleGroupItem>
+            <ToggleGroupItem className="size-10 py-0 px-0 rounded-r-lg rounded-l-none" value="list" aria-label="List view">
+              <List />
+            </ToggleGroupItem>
+          </ToggleGroupRoot>
+          <IconButton variant="outlined" visual="gray" size="sm" aria-label={isFilesExpanded ? "Collapse Files view" : "Expand Files view"} onClick={() => setIsFilesExpanded(previous => !previous)}>
+            {isFilesExpanded ? <X className="size-4" /> : <Expand01 className="size-4" />}
+          </IconButton>
+        </div>
+      </div>
+
+      {activeFolder && (
+        <div className="mt-6 flex items-center gap-2 text-sm text-gray-600">
+          <Button variant="link" visual="gray" className="h-auto p-0 text-sm" onClick={() => { setActiveFolderId(null); setSelectedFileIds([]) }}>All files</Button>
+          <ChevronRight className="size-4" />
+          <span className="font-medium text-gray-black">{activeFolder.name}</span>
+        </div>
+      )}
+      {/* Folder pills */}
+      <div className="mt-6 flex items-center gap-4">
+        {projectFolders.slice(0, 3).map(folder => (
+          <Button key={folder.id} variant="ghost" visual="gray" className={cn("flex h-16 min-w-0 flex-1 items-center justify-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-xs hover:bg-gray-50", activeFolderId === folder.id && "border-primary-500 bg-primary-25")} onClick={() => { setActiveFolderId(folder.id); setSelectedFileIds([]) }}>
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-[5px] bg-white"><img src="/icons/folder.svg" alt="" className="h-8 w-9" /></div>
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="truncate text-sm font-medium leading-5 text-gray-800">{folder.name}</p>
+              <p className="text-xs font-normal capitalize leading-5 text-gray-500">{projectFiles.filter(file => !file.archived && file.folderId === folder.id).length} Files</p>
+            </div>
+          </Button>
+        ))}
+        {projectFolders.length > 3 && <Button variant="ghost" visual="gray" className="h-16 rounded-lg border border-gray-200 bg-gray-100 px-6 py-5 text-sm font-medium text-gray-800 shadow-xs hover:bg-gray-50" onClick={() => setShowAllFolders(previous => !previous)} aria-expanded={showAllFolders} aria-label={showAllFolders ? "Show fewer folders" : "Show more folders"}>{showAllFolders ? "Less" : `+ ${projectFolders.length - 3}`}</Button>}
+      </div>
+      <div className={`grid transition-all duration-300 ease-out ${showAllFolders ? "mt-4 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"}`}>
+        <div className="overflow-hidden">
+          <div className="grid grid-cols-3 gap-4">
+            {projectFolders.slice(3).map(folder => (
+              <Button key={folder.id} variant="ghost" visual="gray" tabIndex={showAllFolders ? 0 : -1} className={cn("flex h-16 min-w-0 items-center justify-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-left shadow-xs hover:bg-gray-50", activeFolderId === folder.id && "border-primary-500 bg-primary-25")} onClick={() => { setActiveFolderId(folder.id); setSelectedFileIds([]) }}>
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-[5px] bg-white"><img src="/icons/folder.svg" alt="" className="h-8 w-9" /></div>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <p className="truncate text-sm font-medium leading-5 text-gray-800">{folder.name}</p>
+                  <p className="text-xs font-normal capitalize leading-5 text-gray-500">{projectFiles.filter(file => !file.archived && file.folderId === folder.id).length} Files</p>
+                </div>
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {visibleProjectFiles.length === 0 && normalizedFilesQuery ? (
+        <div className="py-8 md:py-16 text-center" role="status">
+          <p className="text-sm font-semibold text-dark-blue-400">0 Results for &quot;{filesSearchQuery}&quot;</p>
+          <p className="mt-1 text-sm text-gray-400">
+            We couldn&apos;t find any results for your search. Try adjusting your keywords or clearing your search.
+          </p>
+          <Button variant="outlined" visual="gray" size="sm" className="mt-4" onClick={() => {
+            setFilesSearchQuery("")
+            setIsFilesSearchOpen(false)
+          }}>Clear Search</Button>
+        </div>
+      ) : visibleProjectFiles.length === 0 ? (
+        <div className="mt-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white px-4 py-10 text-center md:px-6 md:py-16">
+          <div className="flex size-12 items-center justify-center rounded-full bg-gray-100"><FolderClosed className="size-6 text-gray-400" /></div>
+          <h3 className="mt-4 text-base font-semibold text-dark-blue-400">{activeFolder ? "This folder is empty" : "No files yet"}</h3>
+          <p className="mt-1 max-w-md text-sm text-gray-500">{activeFolder ? "Add files to this folder to keep your project organized." : "Add files to your project to get started."}</p>
+          <Button variant="outlined" visual="gray" className="mt-5" onClick={() => projectFileInputRef.current?.click()}><UploadCloud className="size-4" />Upload files</Button>
+        </div>
+      ) : (
+      <Tabs value={getFirstItem(filesView)}>
+        <TabsContent value="list">
+        <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xs">
+          <Table className="min-w-[737px] table-fixed" aria-label="Project files">
+            <TableHeader className="[&_tr]:border-t-0 [&_th]:py-0">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-9 py-3 pl-4 pr-0">
+                  <Checkbox
+                    size="md"
+                    aria-label="Select all files"
+                    checked={allVisibleFilesSelected ? true : someVisibleFilesSelected ? "indeterminate" : false}
+                    onCheckedChange={checked => setSelectedFileIds(previous => checked === true
+                      ? Array.from(new Set([...previous, ...visibleProjectFiles.map(file => file.id)]))
+                      : previous.filter(name => !visibleProjectFiles.some(file => file.id === name))
+                    )}
+                  />
+                </TableHead>
+                <TableHead className="py-3 pl-3 pr-6" aria-sort={fileNameSort === "asc" ? "ascending" : fileNameSort === "desc" ? "descending" : "none"}>
+                  <Button variant="ghost" visual="gray" className="group/sort h-auto gap-1 p-0 text-xs font-medium leading-[18px] text-gray-600" onClick={() => setFileNameSort(previous => previous === "asc" ? "desc" : "asc")} aria-label="Sort files by name">
+                    Name
+                    {fileNameSort === "asc" ? <ArrowUp className="size-4" /> : <ArrowDown className={`size-4 ${fileNameSort ? "" : "opacity-0 transition-opacity duration-300 group-hover/sort:opacity-50"}`} />}
+                  </Button>
+                </TableHead>
+                <TableHead className="w-[232px] px-6 py-3 text-xs font-medium leading-[18px]">Task</TableHead>
+                <TableHead className="w-[165px] px-6 py-3 text-xs font-medium leading-[18px]">Uploaded by</TableHead>
+                <TableHead className="w-[55px] py-3 pl-3 pr-4"><span className="sr-only">Actions</span></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedProjectFiles.map(file => (
+                <TableRow key={file.id} data-state={selectedFileIds.includes(file.id) ? "selected" : undefined} className="h-[72px] border-gray-200 data-[state=selected]:bg-primary-25 hover:bg-primary-25">
+                  <TableCell className="py-4 pl-4 pr-0">
+                    <Checkbox size="md" aria-label={`Select ${file.fullName}`} checked={selectedFileIds.includes(file.id)} onCheckedChange={checked => toggleFileSelection(file.id, checked === true)} />
+                  </TableCell>
+                  <TableCell className="py-2 pl-3 pr-6">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-12 w-10 shrink-0 items-center justify-center rounded-[5px] bg-white">
+                        <File02 className="size-10 text-gray-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium leading-5 text-gray-black" title={file.fullName}>{file.fullName}</p>
+                        <p className="text-sm leading-5 text-gray-600">{file.fullName.split(".").pop()?.toUpperCase() || "FILE"}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="px-6 py-4 align-top text-sm leading-5 text-gray-600">{file.task}</TableCell>
+                  <TableCell className="px-6 py-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar size="sm"><AvatarImage src="/man.jpg" alt={file.author} /><AvatarFallback>{file.author[0]}</AvatarFallback></Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold leading-5 text-gray-black">{file.author}</p>
+                        <p className="truncate text-sm leading-5 text-gray-500" title={file.time}>{file.time}</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-4 pl-3 pr-4">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton variant="ghost" visual="gray" size="sm" className="h-[23px] min-w-0 w-[27px] rounded-[5px] px-1.5 py-1" aria-label={`Actions for ${file.fullName}`}><MoreHorizontal className="size-[15px]" /></IconButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => void downloadProjectFiles([file])}>Download</DropdownMenuItem>
+                        <DropdownMenuItem>Rename</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openMoveFiles([file.id])}>Move to folder</DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-error-600 focus:text-error-600" onClick={() => archiveProjectFiles([file.id], "deleted")}><Trash01 className="size-4" />Delete</DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+        </TabsContent>
+        <TabsContent value="grid">
+      {/* File cards grid */}
+      <div className="mt-6 grid grid-cols-3 gap-5">
+        {visibleProjectFiles.slice(0, 3).map((file, fi) => (
+          <div key={fi} className="border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors duration-300">
+            {/* Preview area */}
+            <div className="relative h-[180px] bg-gray-50 flex items-center justify-center">
+              <Checkbox className="absolute top-3 left-3" aria-label={`Select ${file.fullName}`} checked={selectedFileIds.includes(file.id)} onCheckedChange={checked => toggleFileSelection(file.id, checked === true)} />
+              {file.type === "image" ? (
+                <img src={file.url || "/man.jpg"} alt={file.name} className="size-full object-cover" />
+              ) : (
+                <File02 className="size-12 text-gray-300" />
+              )}
+            </div>
+            {/* File info */}
+            <div className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-dark-blue-400 truncate">{file.name}</p>
+                  <p className="text-xs text-gray-500 mt-1">{file.task}</p>
+                  <p className="text-xs text-gray-400 mt-1">{file.author} · {file.time}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <IconButton variant="ghost" visual="gray" size="sm">
+                      <MoreHorizontal className="size-4" />
+                    </IconButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => void downloadProjectFiles([file])}>Download</DropdownMenuItem>
+                    <DropdownMenuItem>Rename</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openMoveFiles([file.id])}>Move to folder</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-error-600 focus:text-error-600" onClick={() => archiveProjectFiles([file.id], "deleted")}>
+                      <Trash01 className="size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        ))}
+        {visibleProjectFiles.slice(3).map((file, fi) => (
+          <div key={`row2-${fi}`} className="border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors duration-300">
+            <div className="relative h-[180px] bg-gray-50 flex items-center justify-center">
+              <Checkbox className="absolute top-3 left-3" aria-label={`Select ${file.fullName}`} checked={selectedFileIds.includes(file.id)} onCheckedChange={checked => toggleFileSelection(file.id, checked === true)} />
+              {file.type === "image" ? <img src={file.url || "/man.jpg"} alt={file.name} className="size-full object-cover" /> : <File02 className="size-12 text-gray-300" />}
+            </div>
+            <div className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-dark-blue-400 truncate">{file.name}</p>
+                  <p className="text-xs text-gray-500 mt-1">{file.task}</p>
+                  <p className="text-xs text-gray-400 mt-1">{file.author} · {file.time}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <IconButton variant="ghost" visual="gray" size="sm">
+                      <MoreHorizontal className="size-4" />
+                    </IconButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => void downloadProjectFiles([file])}>Download</DropdownMenuItem>
+                    <DropdownMenuItem>Rename</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openMoveFiles([file.id])}>Move to folder</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-error-600 focus:text-error-600" onClick={() => archiveProjectFiles([file.id], "deleted")}>
+                      <Trash01 className="size-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+        </TabsContent>
+      </Tabs>
+      )}
+    </div>
+  )
 
   return (
     <AuthenticatedRoute>
@@ -2192,181 +2702,16 @@ export default function ActiveProjectPage() {
                   </div>
                 </TabsContent>
                 <TabsContent value="files">
-                  <div className="mt-6 bg-white border border-gray-200 shadow-xs rounded-lg p-6">
-                    {/* Toolbar */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<UploadCloud className="size-[15px]" />}>
-                          Upload
-                        </Button>
-                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<Plus className="size-[15px]" />}>
-                          New Folder
-                        </Button>
+                  {!isFilesExpanded && filesPanel}
+                  <Dialog open={isFilesExpanded} onOpenChange={setIsFilesExpanded}>
+                    <DialogContent variant="unanimated" className="inset-0 flex h-dvh max-w-none flex-col overflow-hidden bg-white p-0">
+                      <div className="flex shrink-0 items-center justify-between gap-6 border-b border-gray-200 px-6 py-4">
+                        <div><DialogTitle className="text-lg font-semibold text-dark-blue-400">Files</DialogTitle><DialogDescription className="mt-1 text-sm text-gray-500">{contractTitle}</DialogDescription></div>
+                        <CloseButton onClick={() => setIsFilesExpanded(false)} aria-label="Close expanded Files view" />
                       </div>
-                      <div className="flex items-center gap-3">
-                        <IconButton variant="ghost" visual="gray" size="sm">
-                          <SearchMd className="size-4" />
-                        </IconButton>
-                        <Button variant="outlined" visual="gray" size="sm" leftIcon={<FilterLines className="size-[15px]" />}>
-                          Filters
-                        </Button>
-                        <ToggleGroupRoot defaultValue={["grid"]} className="p-0 gap-x-0">
-                          <ToggleGroupItem className="size-10 py-0 px-0 rounded-l-lg rounded-r-none" value="grid">
-                            <Grid />
-                          </ToggleGroupItem>
-                          <ToggleGroupItem className="size-10 py-0 px-0 rounded-r-lg rounded-l-none" value="list">
-                            <List />
-                          </ToggleGroupItem>
-                        </ToggleGroupRoot>
-                        <IconButton variant="outlined" visual="gray" size="sm">
-                          <Expand01 className="size-4" />
-                        </IconButton>
-                      </div>
-                    </div>
-
-                    {/* Folder pills */}
-                    <div className="mt-6 flex items-center gap-4">
-                      {[
-                        { name: "Design Logo", count: 2 },
-                        { name: "Research Best i...", count: 3 },
-                        { name: "Build Informatio...", count: 3 },
-                      ].map((folder) => (
-                        <div key={folder.name} className="flex-1 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16">
-                          <div className="flex items-center justify-center size-10 bg-white rounded-[5px]">
-                            <img src="/icons/folder.svg" alt="" className="w-9 h-8" />
-                          </div>
-                          <div className="flex flex-col gap-0.5">
-                            <p className="text-sm font-medium text-gray-800 leading-5">{folder.name}</p>
-                            <p className="text-xs text-gray-500 capitalize leading-5">{folder.count} Files</p>
-                          </div>
-                        </div>
-                      ))}
-                      <div
-                        className="flex items-center justify-center px-6 py-5 bg-gray-100 border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16"
-                        onClick={() => setShowAllFolders(prev => !prev)}
-                      >
-                        <span className="text-sm font-medium text-gray-800 text-center">
-                          {showAllFolders ? "Less" : "+ 3"}
-                        </span>
-                      </div>
-                    </div>
-                    <div
-                      className={`grid transition-all duration-300 ease-out ${
-                        showAllFolders
-                          ? "mt-4 grid-rows-[1fr] opacity-100"
-                          : "mt-0 grid-rows-[0fr] opacity-0"
-                      }`}
-                    >
-                      <div className="overflow-hidden">
-                      <div className="flex items-center gap-4">
-                        {[
-                          { name: "Wireframes", count: 4 },
-                          { name: "Brand Assets", count: 6 },
-                          { name: "User Testing", count: 2 },
-                        ].map((folder) => (
-                          <div key={folder.name} className="flex-1 flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 shadow-[0px_1px_5px_rgba(16,24,40,0.02)] rounded-lg cursor-pointer hover:bg-gray-50 transition-colors duration-300 h-16">
-                            <div className="flex items-center justify-center size-10 bg-white rounded-[5px]">
-                              <img src="/icons/folder.svg" alt="" className="w-9 h-8" />
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <p className="text-sm font-medium text-gray-800 leading-5">{folder.name}</p>
-                              <p className="text-xs text-gray-500 capitalize leading-5">{folder.count} Files</p>
-                            </div>
-                          </div>
-                        ))}
-                        <div className="invisible flex items-center justify-center px-6 py-5 h-16">
-                          <span className="text-sm font-medium">+ 3</span>
-                        </div>
-                      </div>
-                      </div>
-                    </div>
-
-                    {/* File cards grid */}
-                    <div className="mt-6 grid grid-cols-3 gap-5">
-                      {[
-                        { name: "Software Desi... .pdf", task: "Design Logo", author: "Chris", time: "just now", type: "pdf" },
-                        { name: "Value Proposit... .pdf", task: "Define project goals", author: "Chris", time: "1 hour ago", type: "pdf" },
-                        { name: "Product Design.png", task: "Create sitemap", author: "Chris", time: "Yesterday at 8:04 am", type: "image" },
-                      ].map((file, fi) => (
-                        <div key={fi} className="border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors duration-300">
-                          {/* Preview area */}
-                          <div className="relative h-[180px] bg-gray-50 flex items-center justify-center">
-                            <Checkbox className="absolute top-3 left-3" />
-                            {file.type === "image" ? (
-                              <img src="/man.jpg" alt={file.name} className="size-full object-cover" />
-                            ) : (
-                              <File02 className="size-12 text-gray-300" />
-                            )}
-                          </div>
-                          {/* File info */}
-                          <div className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-dark-blue-400 truncate">{file.name}</p>
-                                <p className="text-xs text-gray-500 mt-1">{file.task}</p>
-                                <p className="text-xs text-gray-400 mt-1">{file.author} · {file.time}</p>
-                              </div>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <IconButton variant="ghost" visual="gray" size="sm">
-                                    <MoreHorizontal className="size-4" />
-                                  </IconButton>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>Download</DropdownMenuItem>
-                                  <DropdownMenuItem>Rename</DropdownMenuItem>
-                                  <DropdownMenuItem>Move to folder</DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-error-600 focus:text-error-600">
-                                    <Trash01 className="size-4" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      {[
-                        { name: "Wireframes_v2.pdf", task: "Design wireframes", author: "Chris", time: "2 days ago", type: "pdf" },
-                        { name: "Sprint_Report.pdf", task: "Weekly report", author: "Chris", time: "3 days ago", type: "pdf" },
-                        { name: "User_Flow.pdf", task: "Map user flows", author: "Chris", time: "4 days ago", type: "pdf" },
-                      ].map((file, fi) => (
-                        <div key={`row2-${fi}`} className="border border-gray-200 rounded-lg overflow-hidden hover:border-gray-300 transition-colors duration-300">
-                          <div className="relative h-[180px] bg-gray-50 flex items-center justify-center">
-                            <Checkbox className="absolute top-3 left-3" />
-                            <File02 className="size-12 text-gray-300" />
-                          </div>
-                          <div className="p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-dark-blue-400 truncate">{file.name}</p>
-                                <p className="text-xs text-gray-500 mt-1">{file.task}</p>
-                                <p className="text-xs text-gray-400 mt-1">{file.author} · {file.time}</p>
-                              </div>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <IconButton variant="ghost" visual="gray" size="sm">
-                                    <MoreHorizontal className="size-4" />
-                                  </IconButton>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>Download</DropdownMenuItem>
-                                  <DropdownMenuItem>Rename</DropdownMenuItem>
-                                  <DropdownMenuItem>Move to folder</DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-error-600 focus:text-error-600">
-                                    <Trash01 className="size-4" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                      {filesPanel}
+                    </DialogContent>
+                  </Dialog>
                 </TabsContent>
                 <TabsContent value="contract">
                   <div className="mt-6 bg-white border border-gray-200 rounded-lg">
@@ -4461,6 +4806,47 @@ export default function ActiveProjectPage() {
               Confirm
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Input ref={projectFileInputRef} type="file" multiple className="hidden" aria-label="Upload project files" onChange={event => { addProjectFiles(event.target.files); event.target.value = "" }} />
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent onOpenAutoFocus={event => { event.preventDefault(); newFolderInputRef.current?.focus() }}>
+          <DialogTitle className="text-lg font-semibold text-dark-blue-400">New Folder</DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-gray-500">Create a folder to organize your project files.</DialogDescription>
+          <Input ref={newFolderInputRef} className="mt-6" aria-label="Folder name" placeholder="Folder name" value={newFolderName} isInvalid={!!newFolderError} aria-describedby={newFolderError ? "new-folder-error" : undefined} onChange={event => { setNewFolderName(event.target.value); setNewFolderError("") }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); createProjectFolder() } }} />
+          {newFolderError && <p id="new-folder-error" className="mt-2 text-sm text-error-600" role="alert">{newFolderError}</p>}
+          <div className="mt-6 flex justify-end gap-3"><DialogClose asChild><Button variant="outlined" visual="gray">Cancel</Button></DialogClose><Button onClick={createProjectFolder}>Create folder</Button></div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={moveFilesOpen} onOpenChange={setMoveFilesOpen}>
+        <DialogContent>
+          <DialogTitle className="text-lg font-semibold text-dark-blue-400">Move files</DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-gray-500">Choose a destination for {moveFileIds.length} {moveFileIds.length === 1 ? "file" : "files"}.</DialogDescription>
+          <div className="mt-6 max-h-80 space-y-1 overflow-y-auto">
+            {[{ id: null, name: "All files" }, ...projectFolders].map(folder => <Button key={folder.id || "root"} variant="ghost" visual="gray" className={cn("h-auto w-full justify-start gap-3 px-3 py-3 text-sm", moveFolderId === folder.id && "bg-primary-25 text-primary-500")} onClick={() => setMoveFolderId(folder.id)}><FolderClosed className="size-5" />{folder.name}{moveFolderId === folder.id && <Check className="ml-auto size-4" />}</Button>)}
+          </div>
+          <div className="mt-6 flex justify-end gap-3"><DialogClose asChild><Button variant="outlined" visual="gray">Cancel</Button></DialogClose><Button onClick={() => {
+            const folder = projectFolders.find(item => item.id === moveFolderId)
+            setProjectFiles(previous => previous.map(file => moveFileIds.includes(file.id) ? { ...file, folderId: moveFolderId ?? undefined, task: folder?.name || "Project files" } : file))
+            setSelectedFileIds([])
+            setMoveFilesOpen(false)
+            toast({ variant: "success", title: "Files moved" })
+          }}>Move</Button></div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={shareFilesOpen} onOpenChange={setShareFilesOpen}>
+        <DialogContent>
+          <DialogTitle className="text-lg font-semibold text-dark-blue-400">Share files</DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-gray-500">Choose project team members for {selectedFileIds.length} selected {selectedFileIds.length === 1 ? "file" : "files"}.</DialogDescription>
+          <div className="mt-6 max-h-80 space-y-3 overflow-y-auto">
+            {sampleMembers.map(member => <div key={member.name} className="flex items-center gap-3"><Checkbox checked={shareMemberNames.includes(member.name)} aria-label={`Share with ${member.name}`} onCheckedChange={checked => setShareMemberNames(previous => checked === true ? [...previous, member.name] : previous.filter(name => name !== member.name))} /><Avatar size="sm"><AvatarImage src={member.avatar} alt={member.name} /><AvatarFallback>{member.name[0]}</AvatarFallback></Avatar><div><p className="text-sm font-medium text-gray-black">{member.name}</p><p className="text-xs text-gray-500">{member.role}</p></div></div>)}
+          </div>
+          <div className="mt-6 flex justify-end gap-3"><DialogClose asChild><Button variant="outlined" visual="gray">Cancel</Button></DialogClose><Button disabled={shareMemberNames.length === 0} onClick={() => {
+            setProjectFiles(previous => previous.map(file => selectedFileIds.includes(file.id) ? { ...file, sharedWith: shareMemberNames } : file))
+            setShareFilesOpen(false)
+            toast({ variant: "success", title: "Sharing updated" })
+          }}>Share</Button></div>
         </DialogContent>
       </Dialog>
 
