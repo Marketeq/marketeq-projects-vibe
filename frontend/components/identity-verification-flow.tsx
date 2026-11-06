@@ -541,9 +541,11 @@ export function IdentityVerificationFlow({
   activeTravelModeUpdate,
   onTravelModeConfirmed,
   onPermanentlyRelocated,
+  onBeforeLocationScreen,
   simulateUploadForPreview,
   simulateFreeKycForPreview,
   onSimulatedFreeKycStart,
+  activeTravelModeInForce,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -586,6 +588,14 @@ export function IdentityVerificationFlow({
   // detection). The flow waits for it, then continues to the screen that shows the location.
   // Optional: callers that omit it (Verify My Account, the preview) behave exactly as before.
   onPermanentlyRelocated?: () => Promise<void>
+  // BTB-387: for a flow whose location is NOT the device's (the host opened it on the
+  // "How long are you traveling?" screen with the server-derived location). Called before the
+  // flow moves from a screen that shows no location to the one that does (Back from the
+  // duration screen, the travel reminder's Update). It resolves true once the device location
+  // has been obtained and handed to `detectedLocation`, and false when the user stays where
+  // they are (blocked, cancelled, navigated away). Optional: every other caller omits it and
+  // behaves exactly as before (the preview, and the flows opened with the device location).
+  onBeforeLocationScreen?: () => Promise<boolean>
   // Development preview only (app/identity-verification-preview/): skips the
   // real presigned-URL + R2 upload in handleCapture so every screen can be
   // walked through without storage credentials. Defaults to off and is
@@ -598,6 +608,9 @@ export function IdentityVerificationFlow({
   // below, off by default, and never passed by any real caller — the
   // authenticated /talent-dashboard path always performs the real calls.
   simulateFreeKycForPreview?: boolean
+  // True while Travel Mode is in force (the host's /me summary): Confirm / Skip on the
+  // duration screen then call POST /travel-duration/update. Unset: first-time activation.
+  activeTravelModeInForce?: boolean
   onSimulatedFreeKycStart?: () => void
 }) {
   const getIsMounted = useMountedState()
@@ -894,7 +907,12 @@ export function IdentityVerificationFlow({
     return {
       recordTravelClassification: (c) =>
         IdentityVerificationAPI.recordTravelClassification(c),
-      recordTravelDuration: (d) => IdentityVerificationAPI.recordTravelDuration(d),
+      // A Travel Mode that is already in force is restarted with the update endpoint; the
+      // first-time activation (POST /travel-duration) is refused for it with a 409 (BTB-401).
+      recordTravelDuration: (d) =>
+        activeTravelModeInForce
+          ? IdentityVerificationAPI.reviseActiveTravelDuration(d)
+          : IdentityVerificationAPI.recordTravelDuration(d),
     }
   }
   // Only "Permanently relocated" is saved at its click, and for an account that already
@@ -913,21 +931,68 @@ export function IdentityVerificationFlow({
   // `onPermanentlyRelocated` the flow first waits for the caller's refreshed location, and
   // ignores a second click meanwhile (one classification write per choice).
   const relocatingRef = useRef(false)
+  // The wait for the caller's refreshed location, for the card's spinner only (the ref above is the
+  // guard). Never set when there is no callback: that path moves on at once.
+  const [relocating, setRelocating] = useState(false)
   const handlePermanentlyRelocated = async () => {
     if (relocatingRef.current) return
-    persistTravelClassification("permanently_relocated")
     if (!onPermanentlyRelocated) {
+      persistTravelClassification("permanently_relocated")
       send("RELOCATED")
       return
     }
     relocatingRef.current = true
+    setRelocating(true)
     try {
       await onPermanentlyRelocated()
     } finally {
       relocatingRef.current = false
+      if (getIsMounted()) setRelocating(false)
     }
+    // BTB-387: nothing is saved before the device location exists. A cancelled "Turn on
+    // location" dialog replaces this instance, so a cancel ends here without a write.
     if (!getIsMounted()) return
+    persistTravelClassification("permanently_relocated")
     send("RELOCATED")
+  }
+
+  // BTB-387: moves to the screen that shows the location, after `onBeforeLocationScreen` (when
+  // the caller gave one) has produced the device location. One request at a time; a second
+  // press is ignored; an unmounted flow does nothing. While the request is pending Confirm, Skip
+  // and Back are disabled (`leavingForLocation`) and Confirm/Skip start no save; and a save that
+  // does begin invalidates the pending move (the token), so a late device location can never
+  // change the screen once Travel Mode saving has started.
+  const locationScreenPendingRef = useRef(false)
+  const locationNavTokenRef = useRef(0)
+  const [leavingForLocation, setLeavingForLocation] = useState(false)
+  const goToLocationScreen = (event: "BACK" | "UPDATE_LOCATION", then?: () => void) => {
+    if (!onBeforeLocationScreen) {
+      send(event)
+      then?.()
+      return
+    }
+    if (locationScreenPendingRef.current || activatingTravelModeRef.current) return
+    locationScreenPendingRef.current = true
+    const token = ++locationNavTokenRef.current
+    setLeavingForLocation(true)
+    void onBeforeLocationScreen()
+      .then((ready) => {
+        if (
+          !ready ||
+          !getIsMounted() ||
+          token !== locationNavTokenRef.current ||
+          activatingTravelModeRef.current
+        ) {
+          return
+        }
+        send(event)
+        then?.()
+      })
+      .catch(() => {})
+      .finally(() => {
+        locationScreenPendingRef.current = false
+        if (getIsMounted()) setLeavingForLocation(false)
+      })
   }
 
   // Confirm / Skip. The duration request saves the whole Travel Mode activation in one
@@ -936,12 +1001,21 @@ export function IdentityVerificationFlow({
   // submits the selected duration and never a made-up one (its button is disabled until
   // one is chosen); Skip submits an explicit "Not sure" and ignores any earlier selection.
   const [activatingTravelMode, setActivatingTravelMode] = useState(false)
+  // Which of the two buttons started the save, so only that one shows the spinner (the other is
+  // just disabled by activatingTravelMode).
+  const [activatingTravelAction, setActivatingTravelAction] = useState<
+    "skip" | "confirm" | null
+  >(null)
   const activatingTravelModeRef = useRef(false)
   const activateTravelMode = async (skipped: boolean) => {
     if (activatingTravelModeRef.current) return
+    // BTB-387: no save while a move to the location screen is waiting for the device location
+    if (locationScreenPendingRef.current) return
     const duration = skipped ? SKIPPED_TRAVEL_DURATION_LABEL : travelDuration
     if (duration === null) return
+    locationNavTokenRef.current += 1 // a save that begins invalidates any pending move
     activatingTravelModeRef.current = true
+    setActivatingTravelAction(skipped ? "skip" : "confirm")
     setActivatingTravelMode(true)
     setTravelModeSaveFailed(false)
     const saved = await travelModeDeps().then((deps) =>
@@ -950,6 +1024,7 @@ export function IdentityVerificationFlow({
     activatingTravelModeRef.current = false
     if (!getIsMounted()) return
     setActivatingTravelMode(false)
+    setActivatingTravelAction(null)
     if (!saved) {
       setTravelModeSaveFailed(true)
       return
@@ -1083,22 +1158,25 @@ export function IdentityVerificationFlow({
               Is this your home country?
             </h1>
 
-            <div className="mt-6 flex items-center justify-center gap-x-3">
+            <div className="mx-auto mt-6 flex w-full max-w-[calc(100vw-2rem)] flex-wrap items-center justify-center gap-3">
               <Button
                 size="md"
                 variant="outlined"
                 visual="gray"
+                disabled={startingFreeKyc}
                 onClick={() => send("NO")}
               >
                 No, I&rsquo;m currently traveling
               </Button>
               <Button
-                className="bg-primary-50 hover:bg-primary-500 hover:text-white"
+                className="min-w-[250px] bg-primary-50 hover:bg-primary-500 hover:text-white"
                 size="md"
                 variant="ghost"
                 disabled={
                   startingFreeKyc || detectedLocation.locationMismatch === true
                 }
+                loading={startingFreeKyc}
+                aria-busy={startingFreeKyc}
                 onClick={() => void handleHomeCountryYes()}
               >
                 Yes, this is my home country
@@ -1794,6 +1872,7 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
+              disabled={relocating}
               onClick={() => send("BACK")}
             >
               <ArrowLeft className="size-5" />
@@ -1834,7 +1913,8 @@ export function IdentityVerificationFlow({
                 // leaves the account exactly as it was.
                 send("NEXT")
               }}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
                 <Luggage02 className="size-5 shrink-0 text-primary-500" />{" "}
@@ -1847,10 +1927,21 @@ export function IdentityVerificationFlow({
             </button>
             <button
               onClick={() => void handlePermanentlyRelocated()}
-              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg"
+              disabled={relocating}
+              aria-busy={relocating}
+              className="p-3 h-[56px] w-full focus-visible:outline-none hover:border-gray-300 hover:ring-1 hover:ring-gray-300 pl-[18px] flex items-center justify-between bg-white shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] border border-gray-200 rounded-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               <div className="inline-flex items-center gap-x-3">
-                <Home03 className="size-5 shrink-0 text-primary-500" />{" "}
+                {relocating ? (
+                  <Spinner
+                    size={20}
+                    strokeWidth={2}
+                    className="shrink-0 stroke-primary-500"
+                    trackClassName="stroke-gray-200"
+                  />
+                ) : (
+                  <Home03 className="size-5 shrink-0 text-primary-500" />
+                )}{" "}
                 <span className="text-sm font-medium text-dark-blue-400">
                   Permanently relocated
                 </span>
@@ -1869,7 +1960,8 @@ export function IdentityVerificationFlow({
               size="md"
               visual="gray"
               variant="ghost"
-              onClick={() => send("BACK")}
+              disabled={activatingTravelMode || leavingForLocation}
+              onClick={() => goToLocationScreen("BACK")}
             >
               <ArrowLeft className="size-5" />
             </IconButton>
@@ -1986,13 +2078,19 @@ export function IdentityVerificationFlow({
             <Button
               variant="outlined"
               visual="gray"
-              disabled={activatingTravelMode}
+              disabled={activatingTravelMode || leavingForLocation}
+              loading={activatingTravelMode && activatingTravelAction === "skip"}
+              aria-busy={activatingTravelMode && activatingTravelAction === "skip"}
               onClick={() => void activateTravelMode(true)}
             >
               Skip
             </Button>
             <Button
-              disabled={activatingTravelMode || travelDuration === null}
+              disabled={activatingTravelMode || leavingForLocation || travelDuration === null}
+              loading={activatingTravelMode && activatingTravelAction === "confirm"}
+              aria-busy={
+                activatingTravelMode && activatingTravelAction === "confirm"
+              }
               onClick={() => void activateTravelMode(false)}
             >
               Confirm
@@ -2101,8 +2199,7 @@ export function IdentityVerificationFlow({
               className="h-5 justify-start p-0 text-sm font-semibold leading-5"
               onClick={() => {
                 setTravelReminderOpen(false)
-                send("UPDATE_LOCATION")
-                onOpenChange(true)
+                goToLocationScreen("UPDATE_LOCATION", () => onOpenChange(true))
               }}
             >
               Update

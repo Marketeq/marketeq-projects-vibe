@@ -27,6 +27,7 @@ import {
   availablePeriods,
   costPerPeriod,
   formatDuration,
+  PERIOD_PRICE_ROW_CONNECTOR,
   PERIOD_WIDGET_LABELS,
   resolvePeriod,
   scopeDurationDays,
@@ -552,7 +553,7 @@ function JoinProjectDialog({
                       )
                       if (atMax) {
                         return (
-                          <TooltipProvider key={role} delayDuration={150}>
+                          <TooltipProvider key={role} delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-not-allowed">{row}</div>
@@ -592,7 +593,7 @@ function JoinProjectDialog({
                       )
                       if (otherAtMax) {
                         return (
-                          <TooltipProvider delayDuration={150}>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-not-allowed">{otherBtn}</div>
@@ -706,7 +707,7 @@ function JoinProjectDialog({
                       )
                       if (atMax) {
                         return (
-                          <TooltipProvider key={task} delayDuration={150}>
+                          <TooltipProvider key={task} delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-not-allowed">{row}</div>
@@ -746,7 +747,7 @@ function JoinProjectDialog({
                       )
                       if (otherAtMax) {
                         return (
-                          <TooltipProvider delayDuration={150}>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="cursor-not-allowed">{otherBtn}</div>
@@ -1722,7 +1723,7 @@ const Chats = ({
               }}
             />
             <InputRightElement className="items-end pb-[13px]">
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger
                     className="focus-visible:outline-none text-gray-500 hover:disabled:text-gray-500/50 hover:text-primary-500 disabled:text-gray-500/50"
@@ -3561,7 +3562,7 @@ export default function ProjectDetails({
                           onValueChange={handleFavoriteToggle}
                         >
                           {({ pressed }) => (
-                            <TooltipProvider delayDuration={75}>
+                            <TooltipProvider delayDuration={0}>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="inline-block">
@@ -3648,83 +3649,91 @@ export default function ProjectDetails({
                               with a 3-column checkmark grid per phase, separated
                               by horizontal rules. Empty state: "Deliverables coming soon".
                             */}
-                            {Array.isArray(project.deliverables) &&
-                            project.deliverables.length > 0 ? (
-                              <div className="mt-6 flex flex-col">
-                                {typeof project.deliverables[0] === "string" ? (
-                                  /* Legacy flat string[] from seed data */
-                                  <div className="grid grid-cols-3 gap-y-3 gap-x-6">
-                                    {(project.deliverables as string[]).map((item, i) => (
-                                      <div
-                                        key={`${item}-${i}`}
-                                        className="flex min-w-0 items-center gap-x-3"
-                                      >
-                                        <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                          <Check className="size-2" />
-                                        </span>
-                                        <p
-                                          className="min-w-0 truncate text-sm font-extralight leading-tight text-dark-blue-400"
-                                          title={item}
+                            <TooltipProvider delayDuration={0}>
+                              {Array.isArray(project.deliverables) &&
+                              project.deliverables.length > 0 ? (
+                                <div className="mt-6 flex flex-col">
+                                  {typeof project.deliverables[0] === "string" ? (
+                                    /* Legacy flat string[] from seed data */
+                                    <div className="grid grid-cols-3 gap-y-3 gap-x-6">
+                                      {(project.deliverables as string[]).map((item, i) => (
+                                        <div
+                                          key={`${item}-${i}`}
+                                          className="flex min-w-0 items-center gap-x-3"
                                         >
-                                          {item}
-                                        </p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  /* Grouped DeliverableGroup[] from sync pipeline (3-6 per phase) */
-                                  (
-                                    project.deliverables as Array<{
-                                      phaseLabel: string
-                                      phaseName: string
-                                      items: string[]
-                                    }>
-                                  ).map((phase, pi) => (
-                                    <div
-                                      key={`${phase.phaseLabel}-${pi}`}
-                                      className={cn(
-                                        pi > 0 &&
-                                          "mt-6 pt-6 border-t border-gray-200"
-                                      )}
-                                    >
-                                      <div className="flex min-w-0 items-center text-sm text-dark-blue-400">
-                                        <span className="shrink-0 whitespace-nowrap font-extralight">
-                                          {phase.phaseLabel}
-                                        </span>{"\u00a0"}
-                                        <span
-                                          className="min-w-0 truncate font-semibold"
-                                          title={phase.phaseName}
-                                        >
-                                          {phase.phaseName}
-                                        </span>
-                                      </div>
-                                      <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
-                                        {(phase.items ?? []).map((item, i) => (
-                                          <div
-                                            key={`${item}-${i}`}
-                                            className="flex min-w-0 items-center gap-x-3"
-                                          >
-                                            <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
-                                              <Check className="size-2" />
-                                            </span>
-                                            <p
-                                              className="min-w-0 truncate text-sm font-extralight leading-tight text-dark-blue-400"
-                                              title={item}
-                                            >
-                                              {item}
-                                            </p>
-                                          </div>
-                                        ))}
-                                      </div>
+                                          <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                            <Check className="size-2" />
+                                          </span>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <p className="min-w-0 truncate text-sm font-extralight leading-tight text-dark-blue-400">
+                                                {item}
+                                              </p>
+                                            </TooltipTrigger>
+                                            <TooltipContent>{item}</TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))
-                                )}
-                              </div>
-                            ) : (
-                              <p className="mt-6 text-sm font-extralight text-gray-500">
-                                Deliverables coming soon.
-                              </p>
-                            )}
+                                  ) : (
+                                    /* Grouped DeliverableGroup[] from sync pipeline (3-6 per phase) */
+                                    (
+                                      project.deliverables as Array<{
+                                        phaseLabel: string
+                                        phaseName: string
+                                        items: string[]
+                                      }>
+                                    ).map((phase, pi) => (
+                                      <div
+                                        key={`${phase.phaseLabel}-${pi}`}
+                                        className={cn(
+                                          pi > 0 &&
+                                            "mt-6 pt-6 border-t border-gray-200"
+                                        )}
+                                      >
+                                        <div className="flex min-w-0 items-center text-sm text-dark-blue-400">
+                                          <span className="shrink-0 whitespace-nowrap font-extralight">
+                                            {phase.phaseLabel}
+                                          </span>{"\u00a0"}
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span className="min-w-0 truncate font-semibold">
+                                                {phase.phaseName}
+                                              </span>
+                                            </TooltipTrigger>
+                                            <TooltipContent>{phase.phaseName}</TooltipContent>
+                                          </Tooltip>
+                                        </div>
+                                        <div className="mt-3 grid grid-cols-3 gap-y-3 gap-x-6">
+                                          {(phase.items ?? []).map((item, i) => (
+                                            <div
+                                              key={`${item}-${i}`}
+                                              className="flex min-w-0 items-center gap-x-3"
+                                            >
+                                              <span className="inline-flex size-3 items-center justify-center shrink-0 rounded-full bg-primary-500 text-white">
+                                                <Check className="size-2" />
+                                              </span>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <p className="min-w-0 truncate text-sm font-extralight leading-tight text-dark-blue-400">
+                                                    {item}
+                                                  </p>
+                                                </TooltipTrigger>
+                                                <TooltipContent>{item}</TooltipContent>
+                                              </Tooltip>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="mt-6 text-sm font-extralight text-gray-500">
+                                  Deliverables coming soon.
+                                </p>
+                              )}
+                            </TooltipProvider>
 
                             <Alert className="mt-6">
                               <AlertIcon>
@@ -6182,7 +6191,7 @@ export default function ProjectDetails({
                                   {(phase.tasks ?? []).map((task, ti) => (
                                     <TableRow key={`task-${pi}-${ti}`}>
                                       <TableCell className="py-4 px-6">
-                                        <TooltipProvider delayDuration={200}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="text-sm font-semibold text-dark-blue-400 truncate block cursor-default">
@@ -6196,7 +6205,7 @@ export default function ProjectDetails({
                                         </TooltipProvider>
                                       </TableCell>
                                       <TableCell className="py-4 px-6 whitespace-nowrap max-w-[200px]">
-                                        <TooltipProvider delayDuration={200}>
+                                        <TooltipProvider delayDuration={0}>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <span className="text-sm font-extralight text-dark-blue-400 truncate block cursor-default">
@@ -6829,8 +6838,15 @@ export default function ProjectDetails({
                         return price > 0 ? `$${price.toLocaleString()}` : "—"
                       })()}
                     </span>
-                    <span className="text-sm font-medium leading-none text-dark-blue-400">
-                      {selectedPeriod === "biweek" ? "every" : "per"}
+                    <span
+                      className={cn(
+                        "font-medium leading-none text-dark-blue-400",
+                        PERIOD_PRICE_ROW_CONNECTOR[selectedPeriod] === "every"
+                          ? "text-xs"
+                          : "text-sm"
+                      )}
+                    >
+                      {PERIOD_PRICE_ROW_CONNECTOR[selectedPeriod]}
                     </span>
                   </div>
 
@@ -6840,7 +6856,17 @@ export default function ProjectDetails({
                         className="text-sm lowercase py-[5px] px-[7px] h-max w-auto whitespace-nowrap"
                         iconClassName="ml-1"
                         placeholder="Select"
-                      />
+                      >
+                        {({ value }: { value: PricingPeriod }) =>
+                          value === "biweek" ? (
+                            <span className="text-xs whitespace-nowrap">
+                              {PERIOD_WIDGET_LABELS[value]}
+                            </span>
+                          ) : (
+                            PERIOD_WIDGET_LABELS[value]
+                          )
+                        }
+                      </ListboxButton>
                       <ListboxOptions className="w-[153px]">
                         {(sidebarPricing?.periodOptions ?? []).map((opt) => (
                           <ListboxOption key={opt.value} value={opt.value}>
@@ -6857,7 +6883,7 @@ export default function ProjectDetails({
                   onValueChange={handleFavoriteToggle}
                 >
                   {({ pressed }) => (
-                    <TooltipProvider delayDuration={75}>
+                    <TooltipProvider delayDuration={0}>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="inline-block">
@@ -6934,7 +6960,7 @@ export default function ProjectDetails({
                       </div>
                     </div>
                   ) : (
-                  <TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <AvatarGroup size="sm" excess reverse={false}>
@@ -7220,31 +7246,8 @@ export default function ProjectDetails({
                       </DialogClose>
                       <Button
                         onClick={() => {
-                          // PMCM-259/AC2: pass the buyer's selected Budget
-                          // Calculator period + the amount they saw for it
-                          // along to checkout (which had no existing
-                          // mechanism to receive this) — mirrors the
-                          // existing per-period cost lookup used for the
-                          // sidebar display above.
-                          // PMCM-402/D3: PMCM-216's checkout rework replaced
-                          // the old dynamic /checkout/[slug] route with the
-                          // static /checkout/project-details?listingId=<slug>
-                          // (confirmed: no [slug] folder remains under
-                          // app/checkout/ at all — the old route 404s).
-                          // Matches job-details/[slug]/page.tsx's existing
-                          // link to the same route.
-                          const activePeriod =
-                            sidebarPricing?.periodOptions.find(
-                              (p) => p.value === selectedPeriod
-                            ) ?? sidebarPricing?.periodOptions[0]
-                          const amount =
-                            activePeriod?.cost ?? sidebarPricing?.totalCost
                           const qs = new URLSearchParams()
-                          qs.set("listingId", String(params.slug))
-                          qs.set("period", selectedPeriod)
-                          if (amount != null && amount > 0) {
-                            qs.set("periodAmount", String(Math.round(amount)))
-                          }
+                          qs.set("listingId", String(project?.id ?? ""))
                           router.push(
                             `/checkout/project-details?${qs.toString()}`
                           )
@@ -7318,7 +7321,7 @@ export default function ProjectDetails({
                     Klarna
                   </span>
 
-                  <TooltipProvider>
+                  <TooltipProvider delayDuration={0}>
                     <Tooltip>
                       <TooltipTrigger className="focus-visible:outline-none text-gray-500">
                         <Info className="size-[17px]" />

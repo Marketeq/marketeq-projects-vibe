@@ -25,12 +25,12 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
-  BankNote02,
+  BankNote01,
   BarChartSquare02,
   Briefcase,
   Calendar,
+  CalendarCheck02,
   Check,
-  CheckCircle,
   ChevronDown,
   ArrowLeft,
   ChevronLeft,
@@ -50,6 +50,7 @@ import {
   RefreshCcw01,
   Search,
   SearchMd,
+  Settings01,
   Settings02,
   SlashCircle01,
   Trash01,
@@ -83,6 +84,10 @@ import NextImage from "@/components/next-image"
 import NextLink from "@/components/next-link"
 import { useToast } from "@/components/ui"
 import {
+  Alert,
+  AlertContent,
+  AlertDescription,
+  AlertIcon,
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -90,6 +95,7 @@ import {
   Button,
   Card,
   Checkbox,
+  CloseButton,
   Combobox,
   ComboboxButton,
   ComboboxInput,
@@ -1424,6 +1430,60 @@ async function payoutFetch(
     headers: { ...Object.fromEntries(new Headers(init.headers).entries()), ...csrfHeader(init.method) },
   })
 }
+
+// A failed load counts as "the service is down" only when the backend really
+// is: a 5xx, or no response at all (network error, gateway unreachable,
+// timeout). Only then does a card show its "temporarily unavailable" state.
+// Any other failure (a 4xx, a one-off blip) shows no error at all; the card
+// keeps its loading state or last data while useBackgroundRetry() keeps
+// retrying. Callers throw the non-ok fetch Response itself so its status can
+// be read here.
+function isServiceDown(e: unknown): boolean {
+  if (e instanceof Response) return e.status >= 500
+  const status = (e as { response?: { status?: unknown } } | null)?.response
+    ?.status
+  if (typeof status === "number") return status >= 500
+  return true
+}
+
+// Retries a failed load in the background with backoff (3s, 6s, 12s ... capped
+// at 60s) until it succeeds. There is no Retry/Refresh button anywhere: a card
+// recovers on its own as soon as the backend answers again.
+function useBackgroundRetry() {
+  const timers = React.useRef(
+    new Map<
+      string,
+      { timer: ReturnType<typeof setTimeout> | null; attempt: number }
+    >()
+  )
+  React.useEffect(() => {
+    const map = timers.current
+    return () => {
+      map.forEach((t) => {
+        if (t.timer) clearTimeout(t.timer)
+      })
+      map.clear()
+    }
+  }, [])
+  const retryLater = React.useCallback((key: string, run: () => void) => {
+    const t = timers.current.get(key) ?? { timer: null, attempt: 0 }
+    if (t.timer) clearTimeout(t.timer)
+    const delay = Math.min(60_000, 3_000 * 2 ** t.attempt)
+    t.attempt += 1
+    t.timer = setTimeout(() => {
+      t.timer = null
+      run()
+    }, delay)
+    timers.current.set(key, t)
+  }, [])
+  const succeeded = React.useCallback((key: string) => {
+    const t = timers.current.get(key)
+    if (t?.timer) clearTimeout(t.timer)
+    timers.current.delete(key)
+  }, [])
+  return { retryLater, succeeded }
+}
+
 interface DepositMethodOption {
   id: string
   methodType: string
@@ -1801,22 +1861,17 @@ const StatCard = ({
     // BTB-384: no h-full — height:100% stopped the parent row's items-stretch
     // from evening out the three cards once one of them wraps below 4xl.
     <div className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white p-6 shadow-[0px_1px_4px_0px_rgba(0,0,0,.03)] flex flex-col gap-3">
-      {/* BTB-383/384: below 4xl (1600px) the three cards are too narrow for
-          label + aside + amount on one row — the label overlapped the amount
-          and the Next Payout date was cut off. There the amount sits under
-          the label, in every card at once so the three stay aligned; at 4xl
-          and up it's the Figma single row. */}
-      <div className="flex flex-col items-start gap-1 min-w-0 4xl:flex-row 4xl:items-center 4xl:justify-between 4xl:gap-4">
-        <div className="min-w-0 w-full 4xl:w-auto 4xl:flex-1">
-          {/* Figma "Frame 1948757701": label + aside share one fixed row,
-              never wrapping to a second line — flex-wrap here let a long
-              date (e.g. "Sunday, Sep 27th") drop onto its own row, making
-              this card's top section taller than its two siblings even
-              though all three share the same h-full/items-stretch height. */}
-          <div className="flex items-baseline gap-x-2 min-w-0">
+      {/* BTB-383/384: Figma keeps the amount on the right of the label at
+          every width. When the card is too narrow for label + aside + amount
+          on one line, the aside (e.g. the Next Payout date) wraps under the
+          label instead of being truncated, and a long label wraps rather than
+          running under the amount — nothing is cut off and nothing overlaps. */}
+      <div className="flex items-start justify-between gap-4 min-w-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 min-w-0">
             <p
               className={cn(
-                "text-sm whitespace-nowrap shrink-0",
+                "text-sm",
                 visual === "emphasis"
                   ? "font-semibold text-[#22376B]"
                   : "font-medium text-[#667085]"
@@ -1825,7 +1880,9 @@ const StatCard = ({
               {label}
             </p>
             {aside ? (
-              <span className="text-sm text-[#667085] truncate">{aside}</span>
+              <span className="text-sm text-[#667085] whitespace-nowrap">
+                {aside}
+              </span>
             ) : null}
           </div>
           {sublabel && !aside ? (
@@ -1910,7 +1967,7 @@ export const formatMethodOptionLabel = (m: any): string => {
   if (m.methodType === "CRYPTO") {
     const address = m.cryptoAddress
       ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-      : (m.displayLabel ?? "")
+      : formatPayoutMethodMask(m.displayLabel ?? "")
     return [m.nickname || m.cryptoProvider || "Crypto Wallet", address]
       .filter(Boolean)
       .join(" ")
@@ -1918,10 +1975,13 @@ export const formatMethodOptionLabel = (m: any): string => {
   // Bank methods (and anything else without a dedicated branch above): a
   // nickname must not swallow the masked account number — combine them,
   // same as splitMethodLabel() below does for this exact case.
+  // BTB-385: "...6789", never the "••••6789" stored in displayLabel.
   if (m.nickname) {
-    return `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`.trim()
+    return formatPayoutMethodMask(
+      `${m.nickname} ${m.displayLabel?.replace("Bank ", "") || ""}`
+    )
   }
-  return m.displayLabel || m.methodType
+  return m.displayLabel ? formatPayoutMethodMask(m.displayLabel) : m.methodType
 }
 
 function splitMethodLabel(m: {
@@ -1939,7 +1999,7 @@ function splitMethodLabel(m: {
   if (m.methodType === "CRYPTO") {
     const address = m.cryptoAddress
       ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-      : (m.displayLabel ?? "")
+      : formatPayoutMethodMask(m.displayLabel ?? "")
     return {
       name: m.nickname || m.cryptoProvider || "Crypto Wallet",
       sub: address,
@@ -2003,6 +2063,7 @@ export const OverviewTab = ({
   const router = useRouter()
   const { toast } = useToast()
   const { user } = useAuth()
+  const { retryLater, succeeded } = useBackgroundRetry()
   const [withdrawOpen, setWithdrawOpen] = React.useState(false)
   const [summary, setSummary] = React.useState<EarningsSummary | null>(null)
   // US-12/US-13/US-14: this endpoint returns all four cards (Today/This Week/
@@ -2087,16 +2148,12 @@ export const OverviewTab = ({
   // PayoutRequest row, so without the second fetch it never appeared here at
   // all — only payout lifecycle events did.
   const loadRecentActivity = React.useCallback(async () => {
-    setRecentActivityError(false)
     try {
       const [payoutsRes, scheduleRes] = await Promise.all([
         payoutFetch(`/payouts?page=1&pageSize=8`),
         payoutFetch(`/payouts/schedule/activity`),
       ])
-      if (!payoutsRes.ok) {
-        setRecentActivityError(true)
-        return
-      }
+      if (!payoutsRes.ok) throw payoutsRes
       const d = await payoutsRes.json()
       const payoutItems = (d.payouts ?? []).map((p: any) => toActivityItem(p))
       // A failure here shouldn't blank out the payout-derived entries that did
@@ -2110,13 +2167,17 @@ export const OverviewTab = ({
         .sort((a, b) => b.sortAt - a.sortAt)
         .slice(0, 8)
       setRecentActivity(merged)
+      setRecentActivityError(false)
+      setRecentActivityLoading(false)
+      succeeded("recentActivity")
     } catch (e) {
       console.error("Failed to fetch recent activity", e)
-      setRecentActivityError(true)
-    } finally {
-      setRecentActivityLoading(false)
+      const down = isServiceDown(e)
+      setRecentActivityError(down)
+      if (down) setRecentActivityLoading(false)
+      retryLater("recentActivity", () => loadRecentActivity())
     }
-  }, [])
+  }, [retryLater, succeeded])
 
   // US-93 persistent failure banner — queried directly by status rather than
   // derived from the 8-item recentActivity feed above. A failed withdrawal
@@ -2405,27 +2466,26 @@ export const OverviewTab = ({
   }
 
   const fetchMethods = React.useCallback(async () => {
-    setMethodsLoading(true)
-    setMethodsError(false)
     try {
       const res = await payoutFetch(`/deposit-methods`)
       // AC-01.02/01.05/01.06: every saved method must remain visible regardless of
       // verification status — pending/locked methods are surfaced via a status badge,
       // not hidden. Only the withdrawal method-selector (US-14) restricts to verified.
-      if (!res.ok) {
-        setMethodsError(true)
-        return
-      }
+      if (!res.ok) throw res
       const d = await res.json()
       setMethods(d.methods ?? [])
       setCanAddMore(d.canAddMore ?? true)
+      setMethodsError(false)
+      setMethodsLoading(false)
+      succeeded("methods")
     } catch (e) {
       console.error("Failed to fetch deposit methods", e)
-      setMethodsError(true)
-    } finally {
-      setMethodsLoading(false)
+      const down = isServiceDown(e)
+      setMethodsError(down)
+      if (down) setMethodsLoading(false)
+      retryLater("methods", () => fetchMethods())
     }
-  }, [])
+  }, [retryLater, succeeded])
 
   // PMCM-806 AC-04: the failed/cancelled withdrawal email links here.
   // "Review payout method" → ?method=<id> opens that method's Edit dialog;
@@ -3200,7 +3260,7 @@ export const OverviewTab = ({
     if (m.methodType === "CRYPTO") {
       const address = m.cryptoAddress
         ? m.cryptoAddress.slice(0, 6) + "..." + m.cryptoAddress.slice(-4)
-        : (m.displayLabel ?? "")
+        : formatPayoutMethodMask(m.displayLabel ?? "")
       return {
         name: m.nickname || m.cryptoProvider || "Crypto Wallet",
         sub: address,
@@ -3279,24 +3339,32 @@ export const OverviewTab = ({
   const defaultMethodMask = defaultMethodLabel?.sub.replace(/^•{4}/, "...") ?? ""
 
   const loadBalance = React.useCallback(() => {
-    setBalanceError(false)
     getBalance()
-      .then(setBalance)
+      .then((b) => {
+        setBalance(b)
+        setBalanceError(false)
+        succeeded("balance")
+      })
       .catch((e) => {
         console.error("Balance fetch failed:", e)
-        setBalanceError(true)
+        setBalanceError(isServiceDown(e))
+        retryLater("balance", () => loadBalance())
       })
-  }, [])
+  }, [retryLater, succeeded])
 
   const loadSummary = React.useCallback(() => {
-    setSummaryError(false)
     getEarningsSummary()
-      .then(setSummary)
+      .then((s) => {
+        setSummary(s)
+        setSummaryError(false)
+        succeeded("summary")
+      })
       .catch((e) => {
         console.error("Earnings summary fetch failed:", e)
-        setSummaryError(true)
+        setSummaryError(isServiceDown(e))
+        retryLater("summary", () => loadSummary())
       })
-  }, [])
+  }, [retryLater, succeeded])
 
   // US-91–94: live balance/earnings push over Ably, replacing the old
   // always-on 60s poll as the primary path. isLive gates the polling
@@ -3398,36 +3466,30 @@ export const OverviewTab = ({
   // US-100/US-101: extracted to a callback (not an inline mount-effect IIFE)
   // so the error state below has something to retry against.
   const loadSchedule = React.useCallback(async () => {
-    setScheduleLoading(true)
-    setScheduleError(false)
     try {
       const res = await payoutFetch(`/payouts/schedule`)
-      if (!res.ok) {
-        setScheduleError(true)
-        return
-      }
+      if (!res.ok) throw res
       const d = await res.json()
       setScheduleNextRunAt(d.nextRunAt ?? null)
       setReserveUsd(d.reserveUsd ? parseFloat(d.reserveUsd) : 0)
+      setScheduleError(false)
+      setScheduleLoading(false)
+      succeeded("schedule")
     } catch (e) {
       console.error("Failed to fetch payout schedule", e)
-      setScheduleError(true)
-    } finally {
-      setScheduleLoading(false)
+      const down = isServiceDown(e)
+      setScheduleError(down)
+      if (down) setScheduleLoading(false)
+      retryLater("schedule", () => loadSchedule())
     }
-  }, [])
+  }, [retryLater, succeeded])
 
   const loadPreviousPayout = React.useCallback(async () => {
-    setPreviousPayoutLoading(true)
-    setPreviousPayoutError(false)
     try {
       const res = await payoutFetch(
         `/payouts?status=completed&page=1&pageSize=1`
       )
-      if (!res.ok) {
-        setPreviousPayoutError(true)
-        return
-      }
+      if (!res.ok) throw res
       const d = await res.json()
       const latest = d.payouts?.[0]
       setPreviousPayout(
@@ -3439,13 +3501,17 @@ export const OverviewTab = ({
             }
           : null
       )
+      setPreviousPayoutError(false)
+      setPreviousPayoutLoading(false)
+      succeeded("previousPayout")
     } catch (e) {
       console.error("Failed to fetch previous payout", e)
-      setPreviousPayoutError(true)
-    } finally {
-      setPreviousPayoutLoading(false)
+      const down = isServiceDown(e)
+      setPreviousPayoutError(down)
+      if (down) setPreviousPayoutLoading(false)
+      retryLater("previousPayout", () => loadPreviousPayout())
     }
-  }, [])
+  }, [retryLater, succeeded])
 
   useEffect(() => {
     loadSummary()
@@ -3531,33 +3597,9 @@ export const OverviewTab = ({
   const showFailedBanner =
     !!failedPayout && failedPayout.id !== dismissedFailedPayoutId
   // The Figma alert slot also carried promo copy (Marketeq Visa Card, 5%
-  // cashback on Starbucks, referral gift card, TurboTax discount). None of
-  // those offers exist, so only the earnings banner, which is built from the
-  // contractor's real totals, is shown.
-  const [bannerDismissed, setBannerDismissedState] = React.useState(
-    () => readSS("overview_banner_dismissed") === "1"
-  )
-  const setBannerDismissed = (v: boolean) => {
-    setBannerDismissedState(v)
-    writeSS("overview_banner_dismissed", v ? "1" : "0")
-  }
-  const earningsBanner =
-    balance && parseFloat(balance.totalEarnedUsd) > 0
-      ? {
-          emoji: "\u{1F929}",
-          content: (
-            <>
-              You&apos;ve earned{" "}
-              <span className="font-semibold text-success-600">
-                {amountSign(balance.totalEarnedUsd)}$
-                {formatWholeAmount(balance.totalEarnedUsd)}
-              </span>{" "}
-              total &mdash; {summary?.allTime?.hoursLabel ?? "..."} logged
-            </>
-          ),
-        }
-      : null
-  const currentBanner = bannerDismissed ? null : earningsBanner
+  // cashback on Starbucks, referral gift card, TurboTax discount) and an
+  // "earned $X total" banner. None of them are shown; only the failed
+  // withdrawal alert uses this slot.
 
   return (
     <>
@@ -3572,49 +3614,35 @@ export const OverviewTab = ({
             underlying failed withdrawal, just stops repeating the nudge
             once the contractor has seen it. */}
           {failedPayout && showFailedBanner && (
-            <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3">
-              <p className="text-sm text-red-700">
-                <span className="mr-2">⚠️</span>
-                Your withdrawal of {failedPayout.description}{" "}
-                couldn&apos;t be completed. The money has been returned to
-                your available balance.
-              </p>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="link"
-                  visual="gray"
-                  size="sm"
-                  onClick={() => onNavigateTab?.("payouts")}
-                >
-                  View Details
-                </Button>
-                <IconButton
-                  size="sm"
-                  variant="ghost"
-                  visual="gray"
-                  onClick={() => dismissFailedBanner(failedPayout.id)}
-                >
-                  <X className="size-4" />
-                </IconButton>
-              </div>
-            </div>
-          )}
-
-          {currentBanner && (
-            <div className="flex items-center justify-between rounded-lg border border-success-500 bg-success-25 px-4 py-3">
-              <p className="text-sm text-dark-blue-400">
-                <span className="mr-2">{currentBanner.emoji}</span>
-                {currentBanner.content}
-              </p>
-              <IconButton
-                size="sm"
-                variant="ghost"
-                visual="gray"
-                onClick={() => setBannerDismissed(true)}
-              >
-                <X className="size-4" />
-              </IconButton>
-            </div>
+            // COMPONENTS.md Alert, Storybook "Error" story layout.
+            <Alert variant="error">
+              <AlertIcon>
+                <AlertCircle className="h-5 w-5" />
+              </AlertIcon>
+              <AlertContent>
+                <AlertDescription className="mt-0">
+                  Your withdrawal of {failedPayout.description}{" "}
+                  couldn&apos;t be completed. The money has been returned to
+                  your available balance.
+                </AlertDescription>
+                <div className="mt-3 flex items-center gap-x-3 text-sm font-semibold">
+                  <Button
+                    variant="link"
+                    visual="error"
+                    className="h-auto p-0 font-semibold"
+                    onClick={() => onNavigateTab?.("payouts")}
+                  >
+                    View Details
+                  </Button>
+                </div>
+              </AlertContent>
+              {/* onClick replaces CloseButton's own close so the dismissal is
+                  remembered (sessionStorage) and the alert unmounts. */}
+              <CloseButton
+                aria-label="Dismiss"
+                onClick={() => dismissFailedBanner(failedPayout.id)}
+              />
+            </Alert>
           )}
 
           {/* Earnings Summary */}
@@ -3646,12 +3674,13 @@ export const OverviewTab = ({
               </TooltipProvider>
             </div>
 
+            {/* Only shown while the earnings service is actually down (5xx /
+                no response); it clears itself once the background retry
+                succeeds. */}
             {summaryError && (
-              <p className="text-xs text-red-600 -mt-3 mb-3">
-                We couldn't load your earnings summary.{" "}
-                <button className="underline font-medium" onClick={loadSummary}>
-                  Refresh
-                </button>
+              <p className="text-xs text-error-600 -mt-3 mb-3">
+                Temporarily couldn&apos;t fetch your earnings summary. The
+                service is down; this updates automatically.
               </p>
             )}
 
@@ -3935,15 +3964,9 @@ export const OverviewTab = ({
                 {scheduleLoading ? (
                   <div className="h-9 w-28 bg-gray-100 rounded animate-pulse" />
                 ) : scheduleError ? (
-                  <div>
-                    <p className="text-sm text-red-600">Unavailable.</p>
-                    <button
-                      className="text-sm text-primary-600 underline mt-1"
-                      onClick={loadSchedule}
-                    >
-                      Retry
-                    </button>
-                  </div>
+                  <p className="text-sm text-error-600">
+                    Temporarily unavailable
+                  </p>
                 ) : scheduleNextRunAt ? (
                   <FigmaAmount
                     amount={balance?.availableBalance}
@@ -4030,15 +4053,9 @@ export const OverviewTab = ({
                 {methodsLoading ? (
                   <div className="h-10 bg-gray-100 rounded animate-pulse" />
                 ) : methodsError ? (
-                  <div className="text-sm">
-                    <span className="text-red-600">Unavailable.</span>{" "}
-                    <button
-                      className="text-primary-600 underline"
-                      onClick={fetchMethods}
-                    >
-                      Retry
-                    </button>
-                  </div>
+                  <p className="text-sm text-error-600">
+                    Temporarily unavailable
+                  </p>
                 ) : defaultMethod && defaultMethodLabel ? (
                   <div className="flex items-center gap-3 rounded-lg border border-gray-200 px-4 py-3">
                     {/* Figma: plain bank glyph in a bordered square for this card,
@@ -4080,17 +4097,9 @@ export const OverviewTab = ({
               {previousPayoutLoading ? (
                 <div className="h-9 w-full bg-gray-100 rounded animate-pulse" />
               ) : previousPayoutError ? (
-                <div className="text-sm">
-                  <span className="text-red-600">
-                    Previous payout unavailable.
-                  </span>{" "}
-                  <button
-                    className="text-primary-600 underline"
-                    onClick={loadPreviousPayout}
-                  >
-                    Retry
-                  </button>
-                </div>
+                <p className="text-sm text-error-600">
+                  Temporarily couldn&apos;t fetch your previous payout.
+                </p>
               ) : previousPayout ? (
                 <>
                   <div>
@@ -4179,15 +4188,12 @@ export const OverviewTab = ({
                 ))
               ) : methodsError ? (
                 <div className="text-center py-6">
-                  <p className="text-sm text-red-600">
-                    We couldn't load your connected accounts.
+                  <p className="text-sm text-error-600">
+                    Temporarily couldn&apos;t fetch your connected accounts.
                   </p>
-                  <button
-                    className="text-sm text-primary-600 underline mt-1"
-                    onClick={fetchMethods}
-                  >
-                    Retry
-                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    The service is down. This updates automatically.
+                  </p>
                 </div>
               ) : methods.length === 0 ? (
                 <div className="text-sm text-gray-400 text-center py-6">
@@ -7767,13 +7773,12 @@ export const OverviewTab = ({
               in this epic). */}
             {balanceError ? (
               <div className="py-2">
-                <p className="text-sm text-red-600">Balance unavailable.</p>
-                <button
-                  className="text-sm text-primary-600 underline mt-1"
-                  onClick={loadBalance}
-                >
-                  Retry
-                </button>
+                <p className="text-sm text-error-600">
+                  Temporarily couldn&apos;t fetch your balance.
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  The service is down. This updates automatically.
+                </p>
               </div>
             ) : balance && parseFloat(balance.totalEarnedUsd) === 0 ? (
               // US-04: "genuinely zero" means never earned anything at all — distinct
@@ -7942,11 +7947,13 @@ export const OverviewTab = ({
 
           {/* Recent Activity — derived from real payout history (no dedicated
             activity-feed endpoint exists in payout-service; see toActivityItem). */}
-          <div className="rounded-lg border border-gray-200 bg-white p-5">
-            <h3 className="text-sm font-semibold text-dark-blue-400 mb-4">
+          <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-[0px_2px_2.5px_0px_rgba(0,0,0,.04)]">
+            {/* Figma 13258:19377: 18px bold #22376B heading, 20px gap to the
+                list, 20px between rows. */}
+            <h3 className="text-lg font-bold text-dark-blue-400 mb-5">
               Recent Activity
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {recentActivityLoading ? (
                 [...Array(4)].map((_, i) => (
                   <div
@@ -7956,37 +7963,43 @@ export const OverviewTab = ({
                 ))
               ) : recentActivityError ? (
                 <div className="text-center py-6">
-                  <p className="text-sm text-red-600">
-                    We couldn't load your recent activity.
+                  <p className="text-sm text-error-600">
+                    Temporarily couldn&apos;t fetch your recent activity.
                   </p>
-                  <button
-                    className="text-sm text-primary-600 underline mt-1"
-                    onClick={loadRecentActivity}
-                  >
-                    Retry
-                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    The service is down. This updates automatically.
+                  </p>
                 </div>
               ) : recentActivity.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-6">
                   No activity yet
                 </p>
               ) : (
+                // Figma "Connect your account" row (13251:89769): 44px chip
+                // with a 1.5px #EAECF0 border and a 20px icon, 12px gap, 14px
+                // medium title / 11px description in #475467, 14px/21px time
+                // in #637387.
                 recentActivity.map((item) => (
-                  <div key={item.id} className="flex items-start gap-3">
-                    <div className="size-11 rounded-lg border border-gray-200 flex items-center justify-center shrink-0">
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 pr-3 rounded-lg"
+                  >
+                    <div className="size-11 rounded-lg border-[1.5px] border-gray-200 flex items-center justify-center shrink-0">
                       {ACTIVITY_ICON[item.kind].icon}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-dark-blue-400">
-                        {item.title}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate">
-                        {item.description}
-                      </p>
+                    <div className="flex flex-1 min-w-0 items-center justify-between gap-3">
+                      <div className="flex flex-1 min-w-0 h-12 flex-col justify-center gap-1 text-gray-600">
+                        <p className="text-sm font-medium truncate">
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] truncate">
+                          {item.description}
+                        </p>
+                      </div>
+                      <span className="text-sm leading-[21px] text-[#637387] shrink-0">
+                        {item.time}
+                      </span>
                     </div>
-                    <span className="text-xs text-gray-400 shrink-0">
-                      {item.time}
-                    </span>
                   </div>
                 ))
               )}
@@ -9477,6 +9490,19 @@ export const PayoutScheduleDialog = ({
   )
 }
 
+// Figma Recent Activity time labels: "Just now", "2hrs ago" (compact units,
+// no space before hrs/mins), not date-fns' "2 hours ago".
+function formatActivityTime(at: string): string {
+  const mins = Math.floor((Date.now() - new Date(at).getTime()) / 60_000)
+  if (mins < 1) return "Just now"
+  if (mins < 60) return `${mins}${mins === 1 ? "min" : "mins"} ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}${hrs === 1 ? "hr" : "hrs"} ago`
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days} ${days === 1 ? "day" : "days"} ago`
+  return formatDistanceToNowStrict(new Date(at), { addSuffix: true })
+}
+
 // Recent Activity — payout-service has no dedicated activity-feed endpoint, so this
 // derives real entries from the payout history list (GET /v1/payouts) rather than
 // showing fabricated data. Each payout request's current status becomes one entry.
@@ -9489,9 +9515,7 @@ function toActivityItem(p: {
   settledAt: string | null
 }) {
   const at = p.settledAt ?? p.createdAt
-  const time = formatDistanceToNowStrict(new Date(at), {
-    addSuffix: true,
-  })
+  const time = formatActivityTime(at)
   const sortAt = new Date(at).getTime()
   const method = p.methodLabel
     ? formatPayoutMethodMask(p.methodLabel)
@@ -9563,13 +9587,18 @@ function toScheduleActivityItem(a: {
   createdAt: string
   metadata: Record<string, any> | null
 }) {
-  const time = formatDistanceToNowStrict(new Date(a.createdAt), {
-    addSuffix: true,
-  })
+  const time = formatActivityTime(a.createdAt)
   const sortAt = new Date(a.createdAt).getTime()
   const m = a.metadata ?? {}
+  // BTB-385: the stored method labels carry "••••6789"; Figma shows "...6789".
+  const primaryLabel = m.primaryMethodLabel
+    ? formatPayoutMethodMask(m.primaryMethodLabel)
+    : undefined
+  const secondaryLabel = m.secondaryMethodLabel
+    ? formatPayoutMethodMask(m.secondaryMethodLabel)
+    : undefined
   const splitDescription = (primaryPercent: number, secondaryPercent: number) =>
-    `${m.primaryMethodLabel ?? "Primary method"} ${primaryPercent}% • ${m.secondaryMethodLabel ?? "Secondary method"} ${secondaryPercent}%`
+    `${primaryLabel ?? "Primary method"} ${primaryPercent}% • ${secondaryLabel ?? "Secondary method"} ${secondaryPercent}%`
 
   let description = "Your deposit schedule was updated."
   switch (a.action) {
@@ -9583,8 +9612,8 @@ function toScheduleActivityItem(a: {
       )
       break
     case "split.disabled":
-      description = m.primaryMethodLabel
-        ? `${m.primaryMethodLabel} 100%`
+      description = primaryLabel
+        ? `${primaryLabel} 100%`
         : "Split payout turned off."
       break
     case "schedule.updated":
@@ -9604,36 +9633,19 @@ function toScheduleActivityItem(a: {
   }
 }
 
-// Figma's "Payout Scheduled" icon is a composite — a plain calendar with a
-// separate circular checkmark badge overlapping its bottom-right corner, not
-// a single-path icon. @blend-metrics/icons only has CalendarCheck01/02,
-// which draw the checkmark inline inside the calendar body — visually
-// different. Built from the library's own Calendar + CheckCircle instead of
-// hand-drawing new paths.
-const ScheduledIcon = ({ className }: { className?: string }) => (
-  <div className={cn("relative shrink-0", className)}>
-    <Calendar className="w-full h-full" />
-    <span className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white">
-      <CheckCircle className="size-2.5" />
-    </span>
-  </div>
-)
-
+// Figma "Recent Activity" rows (13251:89769), checked path-for-path against
+// @blend-metrics/icons: Payout Scheduled = CalendarCheck02, Deposit Sent =
+// BankNote01, Deposit Initiated = Clock, Deposit Settings Changed =
+// Settings01, all 20px in Primary/500. Failed and cancelled have no Figma
+// row, so they keep a status icon from the same set (red XCircle, gray
+// SlashCircle01).
 const ACTIVITY_ICON: Record<string, { icon: React.ReactNode }> = {
-  // Figma "Recent Activity": bordered square chip (no fill), outline icon —
-  // calendar-check for scheduled, banknote for a completed/sent payout,
-  // clock for still-processing, circle-x for a definite failure, slash-circle
-  // for a cancellation (distinct from failed). Color still carries status
-  // meaning (red = failed, gray = neutral/pending) — only the chip shape and
-  // fill changed to match Figma, not the semantic color-coding.
-  scheduled: { icon: <ScheduledIcon className="size-5 text-primary-500" /> },
-  sent: { icon: <BankNote02 className="size-5 text-primary-500" /> },
-  // Figma's own "Deposit Initiated" reference uses this exact clock icon in blue.
+  scheduled: { icon: <CalendarCheck02 className="size-5 text-primary-500" /> },
+  sent: { icon: <BankNote01 className="size-5 text-primary-500" /> },
   processing: { icon: <Clock className="size-5 text-primary-500" /> },
   failed: { icon: <XCircle className="size-5 text-error-500" /> },
   cancelled: { icon: <SlashCircle01 className="size-5 text-gray-400" /> },
-  // Figma "Deposit Settings Changed" reference uses this gear icon in blue.
-  settings: { icon: <Settings02 className="size-5 text-primary-500" /> },
+  settings: { icon: <Settings01 className="size-5 text-primary-500" /> },
 }
 
 // ─── Earnings Tab ───────────────────────────────────────────────────────
@@ -9940,6 +9952,14 @@ function DateRangeFilterPopoverContent({
     [preset, handlePresetChange]
   )
 
+  // BTB-307/BTB-329: earnings and payouts only exist up to today, and the API
+  // rejects a future startDate ("startDate cannot be in the future") with an
+  // error Retry can't clear. The DS DualCalendar can't disable later days
+  // (no maxValue prop, and DS files are read-only), so a range that reaches
+  // past today is refused on Apply with an error toast instead of being sent.
+  const { toast } = useToast()
+  const todayKey = formatDate(new Date(), "yyyy-MM-dd")
+
   if (preset !== "custom range") {
     return (
       <div className="bg-white rounded-lg border border-gray-200 shadow-xl">
@@ -9958,7 +9978,17 @@ function DateRangeFilterPopoverContent({
       onCancel={onCancel}
       onApply={(applied) => {
         if (!applied) return
-        onCommit("custom", formatDate(applied.start, "yyyy-MM-dd"), formatDate(applied.end, "yyyy-MM-dd"))
+        const start = formatDate(applied.start, "yyyy-MM-dd")
+        const end = formatDate(applied.end, "yyyy-MM-dd")
+        if (start > todayKey || end > todayKey) {
+          toast({
+            title: "Invalid date range",
+            description: "Dates can't be later than today.",
+            variant: "destructive",
+          })
+          return
+        }
+        onCommit("custom", start, end)
       }}
       left={() => sidebar}
     />
@@ -10152,6 +10182,7 @@ export const EarningsTab = ({
   // with Retry, not just leave the UI stuck on its loading copy indefinitely — that
   // was the bug here: catch(console.error) never set anything the UI could branch on.
   const [earningsSummaryError, setEarningsSummaryError] = React.useState(false)
+  const { retryLater, succeeded } = useBackgroundRetry()
   const [earningsResult, setEarningsResult] =
     React.useState<EarningsListResponse | null>(null)
   const [earningsLoading, setEarningsLoading] = React.useState(true)
@@ -10208,22 +10239,32 @@ export const EarningsTab = ({
   }, [])
 
   const loadSummary = React.useCallback(() => {
-    setEarningsSummaryError(false)
     getEarningsSummary()
-      .then(setEarningsSummary)
+      .then((s) => {
+        setEarningsSummary(s)
+        setEarningsSummaryError(false)
+        succeeded("summary")
+      })
       .catch((e) => {
         console.error(e)
-        setEarningsSummaryError(true)
+        setEarningsSummaryError(isServiceDown(e))
+        retryLater("summary", () => loadSummary())
       })
-  }, [])
+  }, [retryLater, succeeded])
 
   useEffect(() => {
     loadSummary()
   }, [loadSummary])
 
-  const loadEarnings = React.useCallback(() => {
-    setEarningsLoading(true)
-    setEarningsError(false)
+  const loadEarnings = React.useCallback((isRetry = false) => {
+    // A filter/page change is a fresh request: drop any pending retry of
+    // the previous query so it can't overwrite the new result. A background
+    // retry leaves the current loading/error state on screen (no flicker).
+    if (!isRetry) {
+      succeeded("earnings")
+      setEarningsLoading(true)
+      setEarningsError(false)
+    }
     const q: any = {
       view: viewMode,
       dateRange,
@@ -10243,13 +10284,22 @@ export const EarningsTab = ({
     if (clientId) q.clientId = clientId
     if (searchQuery.length >= 1) q.search = searchQuery
     getEarnings(q)
-      .then(setEarningsResult)
+      .then((r) => {
+        setEarningsResult(r)
+        setEarningsError(false)
+        setEarningsLoading(false)
+        succeeded("earnings")
+      })
       .catch((e) => {
         console.error(e)
-        setEarningsError(true)
+        const down = isServiceDown(e)
+        setEarningsError(down)
+        if (down) setEarningsLoading(false)
+        retryLater("earnings", () => loadEarnings(true))
       })
-      .finally(() => setEarningsLoading(false))
   }, [
+    retryLater,
+    succeeded,
     viewMode,
     dateRange,
     dateFrom,
@@ -10538,11 +10588,9 @@ export const EarningsTab = ({
         />
       </div>
       {earningsSummaryError && (
-        <p className="text-xs text-red-600 -mt-3">
-          We couldn't load your earnings summary.{" "}
-          <button className="underline font-medium" onClick={loadSummary}>
-            Retry
-          </button>
+        <p className="text-xs text-error-600 -mt-3">
+          Temporarily couldn&apos;t fetch your earnings summary. The service
+          is down; this updates automatically.
         </p>
       )}
 
@@ -10837,15 +10885,12 @@ export const EarningsTab = ({
             ) : earningsError ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-10">
-                  <p className="text-sm text-red-600">
-                    We couldn't load your earnings. Please try again.
+                  <p className="text-sm text-error-600">
+                    Temporarily couldn&apos;t fetch your earnings.
                   </p>
-                  <button
-                    className="text-sm text-primary-600 underline mt-1"
-                    onClick={loadEarnings}
-                  >
-                    Retry
-                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    The service is down. This updates automatically.
+                  </p>
                 </TableCell>
               </TableRow>
             ) : earningsResult?.data.length === 0 ? (
@@ -11604,21 +11649,23 @@ export const PayoutsTab = ({
     nextPayoutAmountUsd: string | null
   } | null>(null)
   const [monthlySummaryError, setMonthlySummaryError] = useState(false)
+  const { retryLater, succeeded } = useBackgroundRetry()
   const loadMonthlySummary = React.useCallback(() => {
-    setMonthlySummaryError(false)
     payoutFetch(`/payouts/summary`)
       .then(async (res) => {
-        if (!res.ok) {
-          setMonthlySummaryError(true)
-          return null
-        }
+        if (!res.ok) throw res
         return res.json()
       })
-      .then((data) => { if (data) setMonthlySummary(data) })
-      .catch(() => {
-        setMonthlySummaryError(true)
+      .then((data) => {
+        setMonthlySummary(data)
+        setMonthlySummaryError(false)
+        succeeded("monthlySummary")
       })
-  }, [])
+      .catch((e) => {
+        setMonthlySummaryError(isServiceDown(e))
+        retryLater("monthlySummary", () => loadMonthlySummary())
+      })
+  }, [retryLater, succeeded])
 
   // Surfaces the real in-flight payout's status/ETA to the page header's
   // "Where Is My Deposit?" trigger — replaces a static "2-3 business days" toast.
@@ -11648,34 +11695,37 @@ export const PayoutsTab = ({
   // Empty).
   const [balanceError, setBalanceError] = useState(false)
   const loadPayoutsBalance = React.useCallback(() => {
-    setBalanceError(false)
     getBalance()
-      .then(setBalance)
+      .then((b) => {
+        setBalance(b)
+        setBalanceError(false)
+        succeeded("balance")
+      })
       .catch((e) => {
         console.error("Balance fetch failed:", e)
-        setBalanceError(true)
+        setBalanceError(isServiceDown(e))
+        retryLater("balance", () => loadPayoutsBalance())
       })
-  }, [])
+  }, [retryLater, succeeded])
 
   const loadPayoutsSchedule = React.useCallback(async () => {
-    setScheduleLoading(true)
-    setScheduleError(false)
     try {
       const res = await payoutFetch(`/payouts/schedule`)
-      if (!res.ok) {
-        setScheduleError(true)
-        return
-      }
+      if (!res.ok) throw res
       const d = await res.json()
       setNextRunAt(d.nextRunAt ?? null)
       setDefaultMethodLabel(d.primaryMethod?.displayLabel ?? null)
+      setScheduleError(false)
+      setScheduleLoading(false)
+      succeeded("schedule")
     } catch (e) {
       console.error("Failed to fetch schedule", e)
-      setScheduleError(true)
-    } finally {
-      setScheduleLoading(false)
+      const down = isServiceDown(e)
+      setScheduleError(down)
+      if (down) setScheduleLoading(false)
+      retryLater("schedule", () => loadPayoutsSchedule())
     }
-  }, [])
+  }, [retryLater, succeeded])
 
   useEffect(() => {
     loadPayoutsSchedule()
@@ -11715,8 +11765,10 @@ export const PayoutsTab = ({
     !!depositMethodId
 
   const loadPayouts = React.useCallback(
-    async (silent = false) => {
-      if (!silent) {
+    async (silent = false, isRetry = false) => {
+      if (!silent && !isRetry) {
+        // A new filter/page request replaces any pending retry of the old one.
+        succeeded("payouts")
         setLoading(true)
         setLoadError("")
       }
@@ -11737,21 +11789,29 @@ export const PayoutsTab = ({
         if (depositMethodId) qs.set("depositMethodId", depositMethodId)
         if (amountSortOrder) qs.set("sort", `amount_${amountSortOrder}`)
         const res = await payoutFetch(`/payouts?${qs.toString()}`)
+        if (!res.ok) throw res
         const data = await res.json()
-        if (!res.ok) throw new Error(data.message ?? "Failed to load")
         setPayouts(data.payouts ?? [])
         setTotalCount(data.totalCount ?? 0)
-      } catch {
-        // AC-29.03: a failed background poll must not disrupt an already-rendered list.
-        if (!silent)
-          setLoadError(
-            "We couldn't load your transaction history. Please try again."
-          )
-      } finally {
-        if (!silent) setLoading(false)
+        setLoadError("")
+        setLoading(false)
+        succeeded("payouts")
+      } catch (e) {
+        // AC-29.03: a failed background poll must not disrupt an already-rendered
+        // list. A failed first load shows an error only while the service is
+        // actually down; either way it keeps retrying in the background.
+        if (!silent) {
+          if (isServiceDown(e)) {
+            setLoadError(
+              "Temporarily couldn't fetch your transaction history. The service is down; this updates automatically."
+            )
+            setLoading(false)
+          }
+          retryLater("payouts", () => loadPayouts(false, true))
+        }
       }
     },
-    [currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId, amountSortOrder]
+    [retryLater, succeeded, currentPage, statusFilter, searchQuery, dateRange, dateFrom, dateTo, depositMethodId, amountSortOrder]
   )
 
   useEffect(() => {
@@ -11816,8 +11876,11 @@ export const PayoutsTab = ({
     <div className="space-y-5">
       {/* Stats Cards — Figma: navy labels, 2×2 rows, bottom-aligned meta,
           equal flex-grow so all three cards stay the same width (Figma
-          "Frame 1948757691": gap 20px, each card flex-grow:1). */}
-      <div className="flex gap-5 items-stretch">
+          "Frame 1948757691": gap 20px, each card flex-grow:1).
+          BTB-383/384: below xl (1280px) a third of the row is too narrow for
+          the label, date and amount side by side, so the cards stack there —
+          each keeps the Figma layout, amount on the right of the label. */}
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-stretch">
         <StatCard
           visual="emphasis"
           label="Next Payout"
@@ -11825,7 +11888,7 @@ export const PayoutsTab = ({
             scheduleLoading
               ? "Loading..."
               : scheduleError
-                ? "Unavailable"
+                ? "Temporarily unavailable"
                 : nextRunAt
                   ? formatPayoutCardDate(nextRunAt)
                   : "No schedule set"
@@ -11843,20 +11906,8 @@ export const PayoutsTab = ({
               : undefined
           }
           extra={
-            scheduleError ? (
-              <button
-                className="text-red-600 underline"
-                onClick={loadPayoutsSchedule}
-              >
-                Unavailable — Retry
-              </button>
-            ) : balanceError ? (
-              <button
-                className="text-red-600 underline"
-                onClick={loadPayoutsBalance}
-              >
-                Unavailable — Retry
-              </button>
+            scheduleError || balanceError ? (
+              <span className="text-error-600">Temporarily unavailable</span>
             ) : defaultMethodLabel ? (
               <span className="inline-flex items-center gap-1.5">
                 <BankIcon className="size-3.5 text-[#98A2B3]" />
@@ -11892,12 +11943,7 @@ export const PayoutsTab = ({
           }
           extra={
             monthlySummaryError ? (
-              <button
-                className="text-red-600 underline"
-                onClick={loadMonthlySummary}
-              >
-                Unavailable — Retry
-              </button>
+              <span className="text-error-600">Temporarily unavailable</span>
             ) : (
               `Earnings in ${new Date().toLocaleDateString("en-US", { month: "long" })}`
             )
@@ -11913,12 +11959,7 @@ export const PayoutsTab = ({
           }
           extra={
             balanceError ? (
-              <button
-                className="text-red-600 underline"
-                onClick={loadPayoutsBalance}
-              >
-                Unavailable — Retry
-              </button>
+              <span className="text-error-600">Temporarily unavailable</span>
             ) : completedCount != null ? (
               `${completedCount} Completed Project${completedCount === 1 ? "" : "s"}`
             ) : undefined
@@ -12136,15 +12177,9 @@ export const PayoutsTab = ({
               <TableRow>
                 <TableCell
                   colSpan={5}
-                  className="text-center py-6 text-sm text-red-600"
+                  className="text-center py-6 text-sm text-error-600"
                 >
-                  {loadError}{" "}
-                  <button
-                    className="underline font-medium ml-1"
-                    onClick={() => loadPayouts()}
-                  >
-                    Retry
-                  </button>
+                  {loadError}
                 </TableCell>
               </TableRow>
             ) : payouts.length === 0 && hasActiveFilters ? (

@@ -134,7 +134,8 @@ describe("'Change my home country' saves and marks nothing", () => {
   const handler = between(page, "const handleChangeHomeCountry", "// Skip, X, Escape or a click outside")
   it("only opens the flow: no marker, no classification request", () => {
     assert.ok(!/markTravelerPrompt|localStorage|recordTravel|IdentityVerificationAPI/.test(handler))
-    assert.ok(handler.includes('openFlowFromMismatch(await startChangeHomeCountry(), "change-country")'))
+    assert.ok(handler.includes('if (launch) openFlowFromMismatch(launch, "change-country")'))
+    assert.ok(handler.includes("requestDeviceLocation,"))
   })
   it("closing the detected-country confirmation therefore changes nothing and the prompt returns on refresh", () => {
     const storage = memoryStorage()
@@ -147,7 +148,7 @@ describe("'Change my home country' saves and marks nothing", () => {
       getDetectedLocation: async () => (calls.push("lookup"), { country: "CA" }) as never,
     })
     assert.deepEqual(calls, ["lookup"])
-    assert.equal(launch.initialState, undefined)
+    assert.equal(launch!.initialState, undefined)
   })
 })
 
@@ -191,7 +192,9 @@ describe("closing the duration screen saves nothing (close, refresh, navigation,
   it("the screen's X and Back write nothing", () => {
     const header = screen.slice(0, screen.indexOf("How long are you traveling?"))
     assert.ok(!/recordTravel|persistTravel|activateTravelMode|IdentityVerificationAPI/.test(header))
-    assert.ok(header.includes('send("BACK")'))
+    // BTB-387: Back goes through goToLocationScreen, which asks for the device location first when
+    // the flow was opened with the server-derived one (and is a plain send("BACK") otherwise).
+    assert.ok(header.includes('goToLocationScreen("BACK")'))
   })
   it("nothing in the flow saves on unmount, unload or visibility change", () => {
     assert.ok(!/beforeunload|pagehide|visibilitychange|sendBeacon/.test(flow))
@@ -225,7 +228,11 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     const gate = new Promise<void>((r) => (release = r))
     const stubs = {
       activatingTravelModeRef: ref,
+      locationScreenPendingRef: { current: false },
+      locationNavTokenRef: { current: 0 },
       setActivatingTravelMode: (v: boolean) => calls.push(`busy:${v}`),
+      // Loading-state UI: which button started the save (spinner only on that one).
+      setActivatingTravelAction: (v: string | null) => calls.push(`action:${v}`),
       setTravelModeSaveFailed: (v: boolean) => calls.push(`failed:${v}`),
       setTravelDurationSkipped: (v: boolean) => calls.push(`skipped:${v}`),
       travelModeDeps: async () => ({}),
@@ -251,14 +258,16 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
   it("Confirm success: nothing moves until the save returns, then the Travel Mode screen", async () => {
     const r = run({})
     await new Promise((x) => setTimeout(x, 5))
-    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
+    assert.deepEqual(r.calls, ["action:confirm", "busy:true", "failed:false", "duration:A few days"])
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:confirm",
       "busy:true",
       "failed:false",
       "duration:A few days",
       "busy:false",
+      "action:null",
       "skipped:false",
       "send:NEXT",
     ])
@@ -274,10 +283,12 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:skip",
       "busy:true",
       "failed:false",
       "duration:Not sure",
       "busy:false",
+      "action:null",
       "skipped:true",
       "send:NEXT",
     ])
@@ -294,10 +305,12 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     r.release()
     await r.done
     assert.deepEqual(r.calls, [
+      "action:confirm",
       "busy:true",
       "failed:false",
       "duration:A few days",
       "busy:false",
+      "action:null",
       "failed:true",
     ])
   })
@@ -311,12 +324,19 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     const r = run({ mounted: false })
     r.release()
     await r.done
-    assert.deepEqual(r.calls, ["busy:true", "failed:false", "duration:A few days"])
+    assert.deepEqual(r.calls, ["action:confirm", "busy:true", "failed:false", "duration:A few days"])
   })
   it("Skip is disabled only while saving; Confirm also until a duration is selected", () => {
     const s = screen()
-    assert.ok(s.includes("disabled={activatingTravelMode || travelDuration === null}"))
-    assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 1)
+    // BTB-387: Confirm is also disabled while the move to the location screen waits for the device location
+    assert.ok(s.includes("disabled={activatingTravelMode || leavingForLocation || travelDuration === null}"))
+    // Skip, and (new) the Back arrow: Back is disabled while the save runs, so the screen cannot move
+    // and then be advanced a second time by the late success.
+    assert.equal((s.match(/disabled=\{activatingTravelMode \|\| leavingForLocation\}/g) ?? []).length, 2)
+    assert.match(s, /disabled=\{activatingTravelMode \|\| leavingForLocation\}\s+onClick=\{\(\) => goToLocationScreen\("BACK"\)\}/)
+    // Loading state: only the pressed button spins, the label is unchanged, and each is aria-busy.
+    assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "skip"\}\s+aria-busy=\{activatingTravelMode && activatingTravelAction === "skip"\}/)
+    assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "confirm"\}\s+aria-busy=\{\s*activatingTravelMode && activatingTravelAction === "confirm"\s*\}/)
     assert.ok(s.includes("onClick={() => void activateTravelMode(true)}"))
     assert.ok(s.includes("onClick={() => void activateTravelMode(false)}"))
   })

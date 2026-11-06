@@ -18,13 +18,13 @@ describe("getBrowserPosition", () => {
       touched++
     })
     assert.equal(touched, 0)
-    void getBrowserPosition(g)
+    void getBrowserPosition(g, { permissions: null })
     assert.equal(touched, 1)
   })
 
   it("returns the coordinates on success", async () => {
     const g = geo((ok) => ok({ coords: { latitude: 41.88, longitude: -87.63 } }))
-    assert.deepEqual(await getBrowserPosition(g), {
+    assert.deepEqual(await getBrowserPosition(g, { permissions: null }), {
       status: "ok",
       latitude: 41.88,
       longitude: -87.63,
@@ -39,7 +39,7 @@ describe("getBrowserPosition", () => {
       [99, "unavailable"],
     ] as const) {
       const g = geo((_ok, fail) => fail({ code }))
-      assert.deepEqual(await getBrowserPosition(g), { status })
+      assert.deepEqual(await getBrowserPosition(g, { permissions: null }), { status })
     }
   })
 
@@ -55,7 +55,7 @@ describe("getBrowserPosition", () => {
     const g = geo(() => {
       throw new Error("insecure context")
     })
-    assert.deepEqual(await getBrowserPosition(g), { status: "unavailable" })
+    assert.deepEqual(await getBrowserPosition(g, { permissions: null }), { status: "unavailable" })
   })
 
   it("rejects out-of-range or non-finite coordinates", async () => {
@@ -66,7 +66,7 @@ describe("getBrowserPosition", () => {
       [0, Number.POSITIVE_INFINITY],
     ]) {
       const g = geo((ok) => ok({ coords: { latitude, longitude } }))
-      assert.deepEqual(await getBrowserPosition(g), { status: "unavailable" })
+      assert.deepEqual(await getBrowserPosition(g, { permissions: null }), { status: "unavailable" })
     }
   })
 
@@ -76,10 +76,13 @@ describe("getBrowserPosition", () => {
       seen = options
       ok({ coords: { latitude: 1, longitude: 2 } })
     })
-    await getBrowserPosition(g)
+    await getBrowserPosition(g, { permissions: null })
+    // The browser is given the largest timeout, which never fires while its permission
+    // prompt waits; our own timer (after the grant) bounds the real failure case.
+    // See browser-permission-race.test.ts.
     assert.deepEqual(seen, {
       enableHighAccuracy: false,
-      timeout: 10000,
+      timeout: 0xffffffff,
       maximumAge: 0,
     })
   })

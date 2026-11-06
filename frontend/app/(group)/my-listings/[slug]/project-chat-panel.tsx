@@ -1209,7 +1209,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
             </div>
           </div>
           <div className="flex items-center gap-x-1">
-            <TooltipProvider>
+            <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <IconButton
@@ -1860,7 +1860,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
         {checkedChats > 0 ? (
           <div className="mb-3 flex items-center justify-between">
             <span className="inline-flex items-center gap-x-0.5">
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1880,7 +1880,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
               </span>
             </span>
             <div className="flex items-center gap-x-1">
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1897,7 +1897,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
                   <TooltipContent side="bottom">Mark Unread</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1914,7 +1914,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
                   <TooltipContent side="bottom">Star</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1931,7 +1931,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
                   <TooltipContent side="bottom">Pin</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1948,7 +1948,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
                   <TooltipContent side="bottom">Archive</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton
@@ -1965,7 +1965,7 @@ export function ProjectChatPanel({ projectId }: { projectId: string }) {
                   <TooltipContent side="bottom">Move to Spam</TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <TooltipProvider>
+              <TooltipProvider delayDuration={0}>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <IconButton

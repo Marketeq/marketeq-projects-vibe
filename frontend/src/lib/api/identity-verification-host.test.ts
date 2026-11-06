@@ -320,11 +320,20 @@ describe("the host is inert on public and authentication pages, and when nobody 
         "}, [runIdentityVerificationCheck])"
       ), // a click
       region("const refreshLocationForRelocation = useCallback(", "}, [])"), // a click
+      // BTB-387: the location dialog's Try Again asks the device for its location again; the
+      // call is only ever made by that click (createLocationRecovery.tryAgain).
+      region(
+        "const [locationRecovery] = useState(",
+        "onChange: setLocationRecoveryState"
+      ),
       region(
         "const handleIdentityFlowOpenChange = useCallback(",
         "const openFlow = useCallback("
       ), // a flow closing
-      region("const handleLiveTravelUpdate = useCallback(", "}, [openFlow])"), // a click
+      region("const handleLiveTravelUpdate = useCallback(", "}, [openFlow, requestDeviceLocation])"), // a click
+      // BTB-387: the device location for a screen that shows the user's location, only ever
+      // called from a click handler (Update, Change my home country)
+      region("const [deviceLocationRequester] = useState(", "recovery: locationRecovery"),
       region(
         "if (!hostActive) return",
         "}, [user, startAlertReconcile, hostActive, returnGen])"

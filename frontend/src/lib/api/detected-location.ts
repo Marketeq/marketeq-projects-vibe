@@ -20,8 +20,28 @@
 
 import {
   getBrowserPosition,
+  queryGeolocationPermission,
   type BrowserPositionResult,
+  type GeolocationPermissionState,
 } from "./browser-geolocation"
+
+// Why the device location could not be obtained. Never inferred from missing data:
+// each one comes from a definite browser outcome. There is NO network (IP) fallback
+// for any of them — the verification flow stays closed until the device GPS succeeds.
+//   blocked            the browser's Location permission is blocked for this site
+//   dismissed          the browser's prompt was closed without an answer
+//   unsupported        the browser has no geolocation
+//   device_unavailable the permission is fine but the device cannot provide a position
+//                      (e.g. Location Services are off)
+//   timeout            permission granted but no position arrived in time
+//   resolve_failed     a position arrived but the server could not resolve it
+export type LocationFailureReason =
+  | "blocked"
+  | "dismissed"
+  | "unsupported"
+  | "device_unavailable"
+  | "timeout"
+  | "resolve_failed"
 
 export interface DetectedLocation {
   city: string
@@ -41,6 +61,15 @@ export interface DetectedLocation {
    *  unexpected response shape/etc.), as opposed to succeeding with an
    *  empty result. See file header. */
   serviceUnavailable: boolean
+  /** True when the detection attempt was abandoned (navigation, logout, account
+   *  switch, a newer attempt) before it produced anything. The result carries no
+   *  location and must not be applied to the UI. */
+  cancelled?: boolean
+  /** Set when a request for the DEVICE location (useBrowserLocation) did not produce one.
+   *  The location carries nothing from the network: no country, city, state or
+   *  coordinates. The caller shows the "Turn on location to continue" dialog and does
+   *  not open the verification flow. */
+  locationFailure?: LocationFailureReason
 }
 
 const MOCK_OVERRIDE_KEY = "__mock_detected_location"
@@ -158,9 +187,18 @@ export interface GetDetectedLocationOptions {
   // ONLY an explicit user action — Verify My Account / Retry — may pass this;
   // it must never run on page load.
   useBrowserLocation?: boolean
+  // False once this attempt is no longer the live one (navigation, logout, account
+  // switch, a newer attempt). Checked after every await so a stale answer neither
+  // fetches nor returns a location.
+  isCurrent?: () => boolean
+  // Cancels the wait for the browser's own permission prompt (navigation, logout,
+  // account switch, a newer attempt). The wait ends as a cancelled attempt.
+  signal?: AbortSignal
   // Test seams; default to the real browser API and service endpoints.
   fetchLocation?: () => Promise<unknown>
-  getPosition?: () => Promise<BrowserPositionResult>
+  getPosition?: (signal?: AbortSignal) => Promise<BrowserPositionResult>
+  // Reads the browser's permission after a refusal, to tell "blocked" from "dismissed".
+  getPermissionState?: () => Promise<GeolocationPermissionState | undefined>
   fetchGpsLocation?: (latitude: number, longitude: number) => Promise<unknown>
 }
 
@@ -247,17 +285,33 @@ export async function getDetectedLocation(
     if (override) return override
   }
 
-  // Browser geolocation: only on explicit opt-in. Any shortfall (denied,
-  // unavailable, timeout, unsupported, a failed or inconclusive server call)
-  // falls through to the server-derived country-only path below.
+  const isCurrent = options.isCurrent ?? (() => true)
+  const cancelled = (): DetectedLocation => ({
+    ...UNDETECTED_LOCATION,
+    cancelled: true,
+  })
+
+  // Browser geolocation: only on explicit opt-in, and ONLY the device position is used
+  // here. A usable GPS result is returned; every shortfall is returned as a
+  // locationFailure with nothing IP-derived, so the caller can explain how to turn
+  // location on and ask again. The IP lookup below is never reached from this path.
   if (options.useBrowserLocation) {
-    const position = await (options.getPosition ?? getBrowserPosition)()
+    const failed = (reason: LocationFailureReason): DetectedLocation => ({
+      ...UNDETECTED_LOCATION,
+      locationFailure: reason,
+    })
+    const position = await (
+      options.getPosition ?? ((signal) => getBrowserPosition(undefined, { signal }))
+    )(options.signal)
+    if (position.status === "cancelled" || !isCurrent()) return cancelled()
+
     if (position.status === "ok") {
       try {
         const gps = await (options.fetchGpsLocation ?? fetchServerGpsLocation)(
           position.latitude,
           position.longitude
         )
+        if (!isCurrent()) return cancelled()
         if (isValidGpsLocationResponse(gps)) {
           if (gps.status === "resolved") {
             const resolved = toDetectedLocation(gps)
@@ -270,17 +324,30 @@ export async function getDetectedLocation(
           }
         }
       } catch {
-        // fall through to the country-only path
+        // inconclusive: reported below as a failure to resolve the position
       }
+      if (!isCurrent()) return cancelled()
+      return failed("resolve_failed")
     }
+
+    if (position.status === "unsupported") return failed("unsupported")
+    if (position.status === "unavailable") return failed("device_unavailable")
+    if (position.status === "timeout") return failed("timeout")
+    // denied: Chrome reports both Block and a closed prompt as a refusal, so the
+    // permission state tells them apart. An unreadable state counts as blocked.
+    const state = await (options.getPermissionState ?? queryGeolocationPermission)()
+    if (!isCurrent()) return cancelled()
+    return failed(state === "prompt" ? "dismissed" : "blocked")
   }
 
   let data: unknown
   try {
     data = await (options.fetchLocation ?? fetchServerLocation)()
   } catch {
+    if (!isCurrent()) return cancelled()
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }
   }
+  if (!isCurrent()) return cancelled()
 
   if (!isValidDetectedLocationResponse(data)) {
     return { ...UNDETECTED_LOCATION, serviceUnavailable: true }

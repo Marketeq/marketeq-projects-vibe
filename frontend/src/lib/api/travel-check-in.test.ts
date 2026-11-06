@@ -122,7 +122,7 @@ describe("copy: first time versus asked before", () => {
     assert.equal(CHECK_IN_COPY.prompt.stillTraveling, "I’m still traveling")
     assert.equal(
       CHECK_IN_COPY.prompt.updateHomeCountry,
-      "Update my home country"
+      "Change my home country"
     )
     assert.equal(CHECK_IN_COPY.skip, "Skip")
   })
@@ -305,7 +305,7 @@ describe("answer outcomes: stale two-tab 409 and a home-country change in progre
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     assert.ok(handler.includes('if (outcome === "failed")'))
     assert.ok(handler.includes("setCheckIn(null)"))
@@ -403,7 +403,7 @@ describe("Skip, X/close, Escape, refresh and navigation send nothing", () => {
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     assert.ok(
       handler.indexOf("const occurrence = checkIn.occurrence") <
@@ -760,7 +760,11 @@ describe("home-country transition: the existing PMCM-650 flow, no new location o
       "const handleCheckInUpdateHomeCountry",
       "return (\n    <>"
     )
-    assert.ok(handler.includes("await startChangeHomeCountry()"))
+    assert.ok(handler.includes("await startChangeHomeCountry({"))
+    assert.ok(handler.includes("requestDeviceLocation,"))
+    // no device location: the modal stays as it was (nothing dismissed, no flow)
+    assert.ok(handler.includes("if (!launch) return"))
+    assert.ok(handler.indexOf("if (!launch) return") < handler.indexOf("checkInDismissalsRef.current.dismiss("))
     assert.ok(
       handler.includes('openFlowFromMismatch(launch, "change-country")')
     )
@@ -879,7 +883,7 @@ describe("the two new UI states are composed from design-system parts only", () 
   })
 
   it("the prompt: warning icon, title, supporting text and the two actions in order", () => {
-    assert.ok(dialog.includes('className="w-[405px] pt-[50px]"'))
+    assert.ok(dialog.includes("className={CHECK_IN_PROMPT_DIALOG_CLASS}"))
     assert.ok(dialog.includes("{CHECK_IN_COPY.prompt.title}"))
     assert.ok(
       dialog.indexOf("CHECK_IN_COPY.prompt.stillTraveling") <
@@ -1105,7 +1109,7 @@ describe("regression: a saved answer must not reopen the same modal (first manua
     const handler = between(
       page,
       "const handleCheckInAnswer",
-      '// "Update my home country" enters'
+      '// "Change my home country" enters'
     )
     const record = handler.indexOf("recordCheckInAnswerOutcome({")
     assert.ok(record > handler.indexOf("await answerCheckIn("))

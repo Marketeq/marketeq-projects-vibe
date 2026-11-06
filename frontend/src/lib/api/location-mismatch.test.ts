@@ -153,8 +153,8 @@ describe("Change my home country", () => {
     const { d, calls } = deps()
     const launch = await startChangeHomeCountry(d)
     assert.deepEqual(calls, ["detected-location"])
-    assert.equal(launch.initialState, undefined)
-    assert.equal(launch.location, LOCATION)
+    assert.equal(launch!.initialState, undefined)
+    assert.equal(launch!.location, LOCATION)
   })
 
   it("a failed lookup rejects, so the page keeps the prompt open to try again", async () => {
@@ -179,12 +179,34 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
     assert.ok(dialog.includes("checking if you’re still away."))
     assert.match(
       dialog,
-      /void handleStillTraveling\(\)[\s\S]*I’m still traveling/
+      /handleStillTraveling\(\)\)\s*\}\}[\s\S]*I’m still traveling/
     )
     assert.match(
       dialog,
-      /onClick=\{\(\) => void handleChangeHomeCountry\(\)\}[\s\S]*Change my home country/
+      /setLocationMismatchAction\("change-home-country"\)\s*void handleChangeHomeCountry\(\)\s*\}\}[\s\S]*Change my home country/
     )
+  })
+
+  it("loading state: each button is busy only when it started the request, the other is disabled, handlers called once", () => {
+    assert.equal((dialog.match(/disabled=\{locationMismatchBusy\}/g) ?? []).length, 2)
+    assert.ok(/loading=\{\s*locationMismatchBusy &&\s*locationMismatchAction === "still-traveling"\s*\}/.test(dialog))
+    assert.ok(/loading=\{\s*locationMismatchBusy &&\s*locationMismatchAction === "change-home-country"\s*\}/.test(dialog))
+    assert.equal((dialog.match(/aria-busy=\{/g) ?? []).length, 2)
+    // A press while a request runs is ignored, and each handler is called from exactly one place.
+    assert.equal((dialog.match(/if \(locationMismatchBusy\) return/g) ?? []).length, 2)
+    assert.equal((dialog.match(/void handleChangeHomeCountry\(\)/g) ?? []).length, 1)
+    assert.equal((dialog.match(/handleStillTraveling\(\)/g) ?? []).length, 1)
+    assert.equal((dialog.match(/handleTravelerStillTraveling\(\)/g) ?? []).length, 1)
+  })
+
+  it("the two buttons sit in a container that stacks when the full loading width does not fit", () => {
+    assert.ok(
+      dialog.includes(
+        "mx-auto mt-[50px] grid w-full max-w-[calc(100vw-2rem)] grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-3"
+      )
+    )
+    // Order is unchanged (it is the keyboard order too): the secondary action first.
+    assert.ok(dialog.indexOf("I’m still traveling") < dialog.indexOf("Change my home country"))
   })
 
   it("is built from design-system parts only", () => {
@@ -204,7 +226,7 @@ describe("page wiring and approved copy (Storybook ChangeLocation)", () => {
     // The host remounts the flow (new key) and takes the server location; the page asks it to.
     assert.match(
       page,
-      /openFlow\(\s*\{ initialState: launch\.initialState \},\s*\{ detectedLocation: launch\.location \}\s*\)/
+      /openFlow\(\s*\{\s*initialState: launch\.initialState,[\s\S]*?\.\.\.\(launch\.initialState === \"traveling-showcase\"\s*\? \{ ipLocationOnly: true \}\s*: \{\}\),?\s*\},\s*\{ detectedLocation: launch\.location \}\s*\)/
     )
     // Only "Change my home country" asks for the browser position (an explicit click, the
     // same load as Verify My Account); "still traveling" shows no location and asks nothing.
@@ -232,6 +254,34 @@ describe("the first-time flow is preserved", () => {
     assert.ok(!page.includes("shouldOpenFirstTimeGate"))
     assert.ok(
       page.includes("const handleVerifyMyAccount = useCallback(async () => {")
+    )
+  })
+})
+
+// Loading-state UI for the check-in prompt's "Update my home country" (sits beside the mismatch
+// prompt: both are two-action dialogs that must stack, never clip, once the spinner is reserved).
+describe("check-in prompt: loading state and responsive actions", () => {
+  const promptStart = page.indexOf('checkIn?.phase === "prompt" && (')
+  const prompt = page.slice(promptStart, page.indexOf('checkIn?.phase === "duration"', promptStart))
+
+  it("only 'Update my home country' shows the spinner; 'I’m still traveling' is disabled meanwhile", () => {
+    assert.ok(promptStart > -1)
+    assert.equal((prompt.match(/disabled=\{checkInStarting\}/g) ?? []).length, 2)
+    assert.equal((prompt.match(/loading=\{checkInStarting\}/g) ?? []).length, 1)
+    assert.equal((prompt.match(/aria-busy=\{checkInStarting\}/g) ?? []).length, 1)
+    assert.ok(
+      /loading=\{checkInStarting\}\s+aria-busy=\{checkInStarting\}\s+onClick=\{\(\) => void handleCheckInUpdateHomeCountry\(\)\}/.test(prompt)
+    )
+    assert.equal((prompt.match(/handleCheckInUpdateHomeCountry\(\)/g) ?? []).length, 1)
+    assert.ok(prompt.includes("onClick={handleCheckInStillTraveling}"))
+    assert.ok(prompt.includes("className={CHECK_IN_PROMPT_UPDATE_BUTTON_CLASS}"))
+  })
+
+  it("the actions use the shared responsive layout (exact classes: travel-check-in-prompt-layout.test.ts), keeping order", () => {
+    assert.ok(prompt.includes("<div className={CHECK_IN_PROMPT_ACTIONS_CLASS}>"))
+    assert.ok(
+      prompt.indexOf("CHECK_IN_COPY.prompt.stillTraveling") <
+        prompt.indexOf("CHECK_IN_COPY.prompt.updateHomeCountry")
     )
   })
 })

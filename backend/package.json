@@ -16,7 +16,8 @@
     "dev:restart": "npx pm2 restart all",
     "build:all": "npm run build --workspaces --if-present",
     "lint": "eslint apps shared --ext .ts --fix",
-    "format": "prettier --write \"apps/**/*.ts\" \"shared/**/*.ts\""
+    "format": "prettier --write \"apps/**/*.ts\" \"shared/**/*.ts\"",
+    "check:grant-drift": "node ../scripts/security/check-grant-drift.js"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
