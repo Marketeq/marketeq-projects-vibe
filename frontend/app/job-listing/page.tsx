@@ -24070,15 +24070,20 @@ function PublishProject({
   const [teamRolesProgress, setTeamRolesProgress] = useState(0);
   const [finalReviewProgress, setFinalReviewProgress] = useState(0);
 
+  // The bar shows the progress of the steps up to and including the current one,
+  // so going back drops the share the later steps had already reported.
   const overallProgress = useMemo(() => {
-    return (
-      projectInfoProgress +
-      mediaProgress +
-      projectScopeProgress +
-      teamRolesProgress +
-      finalReviewProgress
-    );
+    return [
+      projectInfoProgress,
+      mediaProgress,
+      projectScopeProgress,
+      teamRolesProgress,
+      finalReviewProgress,
+    ]
+      .slice(0, currentStep + 1)
+      .reduce((total, stepProgress) => total + stepProgress, 0);
   }, [
+    currentStep,
     projectInfoProgress,
     mediaProgress,
     projectScopeProgress,
