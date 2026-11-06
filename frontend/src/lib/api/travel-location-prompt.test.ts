@@ -228,6 +228,8 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
     const gate = new Promise<void>((r) => (release = r))
     const stubs = {
       activatingTravelModeRef: ref,
+      locationScreenPendingRef: { current: false },
+      locationNavTokenRef: { current: 0 },
       setActivatingTravelMode: (v: boolean) => calls.push(`busy:${v}`),
       // Loading-state UI: which button started the save (spinner only on that one).
       setActivatingTravelAction: (v: string | null) => calls.push(`action:${v}`),
@@ -326,11 +328,12 @@ describe("Confirm / Skip awaits the saved duration before showing the Travel Mod
   })
   it("Skip is disabled only while saving; Confirm also until a duration is selected", () => {
     const s = screen()
-    assert.ok(s.includes("disabled={activatingTravelMode || travelDuration === null}"))
+    // BTB-387: Confirm is also disabled while the move to the location screen waits for the device location
+    assert.ok(s.includes("disabled={activatingTravelMode || leavingForLocation || travelDuration === null}"))
     // Skip, and (new) the Back arrow: Back is disabled while the save runs, so the screen cannot move
     // and then be advanced a second time by the late success.
-    assert.equal((s.match(/disabled=\{activatingTravelMode\}/g) ?? []).length, 2)
-    assert.match(s, /disabled=\{activatingTravelMode\}\s+onClick=\{\(\) => goToLocationScreen\("BACK"\)\}/)
+    assert.equal((s.match(/disabled=\{activatingTravelMode \|\| leavingForLocation\}/g) ?? []).length, 2)
+    assert.match(s, /disabled=\{activatingTravelMode \|\| leavingForLocation\}\s+onClick=\{\(\) => goToLocationScreen\("BACK"\)\}/)
     // Loading state: only the pressed button spins, the label is unchanged, and each is aria-busy.
     assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "skip"\}\s+aria-busy=\{activatingTravelMode && activatingTravelAction === "skip"\}/)
     assert.match(s, /loading=\{activatingTravelMode && activatingTravelAction === "confirm"\}\s+aria-busy=\{\s*activatingTravelMode && activatingTravelAction === "confirm"\s*\}/)
